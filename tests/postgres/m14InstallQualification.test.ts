@@ -85,3 +85,81 @@ it("reports pre-provisioned role flags/graph and proves safe actor-role collisio
     client.release();
   }
 });
+
+it("keeps hostile search-path role observation read-only and authoritative", async () => {
+  const client = await restricted.connect();
+  try {
+    await admin.query(`
+      CREATE SCHEMA m14_role_probe_shadow;
+      CREATE TABLE m14_role_probe_shadow.calls (kind pg_catalog.text NOT NULL);
+      GRANT USAGE ON SCHEMA m14_role_probe_shadow TO m14_restricted;
+      GRANT SELECT, INSERT ON m14_role_probe_shadow.calls TO m14_restricted;
+      CREATE FUNCTION m14_role_probe_shadow.note(label pg_catalog.text)
+        RETURNS pg_catalog.bool LANGUAGE plpgsql VOLATILE AS $$
+        BEGIN INSERT INTO m14_role_probe_shadow.calls VALUES (label); RETURN true; END $$;
+      CREATE DOMAIN m14_role_probe_shadow.text AS pg_catalog.text
+        CHECK (m14_role_probe_shadow.note('text-cast'));
+      CREATE DOMAIN m14_role_probe_shadow.jsonb AS pg_catalog.jsonb
+        CHECK (m14_role_probe_shadow.note('jsonb-cast'));
+      CREATE FUNCTION m14_role_probe_shadow.current_database()
+        RETURNS pg_catalog.name LANGUAGE plpgsql VOLATILE AS $$
+        BEGIN
+          PERFORM m14_role_probe_shadow.note('current_database');
+          RETURN pg_catalog.current_database();
+        END $$;
+      CREATE FUNCTION m14_role_probe_shadow.jsonb_accumulate(state pg_catalog.jsonb, value pg_catalog.jsonb)
+        RETURNS pg_catalog.jsonb LANGUAGE plpgsql VOLATILE AS $$
+        BEGIN
+          PERFORM m14_role_probe_shadow.note('jsonb_agg');
+          RETURN state OPERATOR(pg_catalog.||) pg_catalog.jsonb_build_array(
+            value OPERATOR(pg_catalog.||) pg_catalog.jsonb_build_object('superuser', true));
+        END $$;
+      CREATE AGGREGATE m14_role_probe_shadow.jsonb_agg(pg_catalog.jsonb)
+        (SFUNC = m14_role_probe_shadow.jsonb_accumulate, STYPE = pg_catalog.jsonb, INITCOND = '[]');
+      CREATE FUNCTION m14_role_probe_shadow.name_eq_text(a pg_catalog.name, b pg_catalog.text)
+        RETURNS pg_catalog.bool LANGUAGE plpgsql VOLATILE AS $$
+        BEGIN
+          PERFORM m14_role_probe_shadow.note('name-text-equality');
+          RETURN a OPERATOR(pg_catalog.=) b;
+        END $$;
+      CREATE OPERATOR m14_role_probe_shadow.=
+        (LEFTARG = pg_catalog.name, RIGHTARG = pg_catalog.text, FUNCTION = m14_role_probe_shadow.name_eq_text);
+      CREATE FUNCTION m14_role_probe_shadow.name_eq_name(a pg_catalog.name, b pg_catalog.name)
+        RETURNS pg_catalog.bool LANGUAGE plpgsql VOLATILE AS $$
+        BEGIN
+          PERFORM m14_role_probe_shadow.note('name-name-equality');
+          RETURN a OPERATOR(pg_catalog.=) b;
+        END $$;
+      CREATE OPERATOR m14_role_probe_shadow.=
+        (LEFTARG = pg_catalog.name, RIGHTARG = pg_catalog.name, FUNCTION = m14_role_probe_shadow.name_eq_name);
+      CREATE FUNCTION m14_role_probe_shadow.oid_eq(a pg_catalog.oid, b pg_catalog.oid)
+        RETURNS pg_catalog.bool LANGUAGE plpgsql VOLATILE AS $$
+        BEGIN
+          PERFORM m14_role_probe_shadow.note('oid-equality');
+          RETURN a OPERATOR(pg_catalog.=) b;
+        END $$;
+      CREATE OPERATOR m14_role_probe_shadow.=
+        (LEFTARG = pg_catalog.oid, RIGHTARG = pg_catalog.oid, FUNCTION = m14_role_probe_shadow.oid_eq);
+    `);
+    const database = (await client.query("SELECT pg_catalog.current_database() AS database")).rows[0].database;
+    await client.query("BEGIN READ WRITE");
+    await client.query("SET LOCAL search_path TO m14_role_probe_shadow, pg_catalog");
+    const report = await inspectLegacyPostgresInstallRoles(client, {
+      migrationLogin: "m14_restricted", runtimeLogin: "m14_restricted", roleMode: "installer-managed",
+    });
+    const calls = (await client.query(`SELECT kind, pg_catalog.count(*)::pg_catalog.int4 AS calls
+      FROM m14_role_probe_shadow.calls GROUP BY kind ORDER BY kind`)).rows;
+    expect({ report, calls }).toMatchObject({
+      report: {
+        database, currentUser: "m14_restricted", sessionUser: "m14_restricted",
+        rolePrerequisitesMet: false, blockers: [{ code: "legacy_bootstrap_requires_superuser" }],
+        roles: [expect.objectContaining({ name: "m14_restricted", login: true, superuser: false })],
+      },
+      calls: [],
+    });
+  } finally {
+    await client.query("ROLLBACK");
+    client.release();
+    await admin.query("DROP SCHEMA IF EXISTS m14_role_probe_shadow CASCADE");
+  }
+});

@@ -120,6 +120,47 @@ describe("application scaffold upgrade", () => {
     expect(await tree(root)).toEqual(before);
   });
 
+  it("rejects initially absent directory-prefix aliases before any write", async () => {
+    for (const files of [
+      { "A/one.txt": "one", "a/two.txt": "two" },
+      { "shared/caf\u00e9/one.txt": "one", "shared/cafe\u0301/two.txt": "two" },
+    ] as Record<string, string>[]) {
+      const root = await scratch();
+      const input: AppUpgradeInput = {
+        root, schemaVersion: 0,
+        from: { version: "1", schema: { min: 0, max: 0 }, files: {} },
+        to: { version: "2", schema: { min: 0, max: 0 }, files },
+      };
+      await expect(planAppUpgrade(input)).rejects.toThrow("path alias");
+      await expect(applyAppUpgrade(input)).rejects.toThrow("path alias");
+      expect(await tree(root)).toEqual({});
+    }
+  });
+
+  it("resumes and replays creation under one exact directory-prefix spelling", async () => {
+    const root = await scratch();
+    const input: AppUpgradeInput = {
+      root, schemaVersion: 0,
+      from: { version: "1", schema: { min: 0, max: 0 }, files: {} },
+      to: { version: "2", schema: { min: 0, max: 0 }, files: { "A/one.txt": "one", "A/two.txt": "two" } },
+    };
+    const nativeRename = fs.rename.bind(fs);
+    let renames = 0;
+    vi.spyOn(fs, "rename").mockImplementation(async (source, destination) => {
+      if (++renames === 2) throw new Error("interrupted same-prefix creation");
+      await nativeRename(source, destination);
+    });
+    await expect(applyAppUpgrade(input)).rejects.toThrow("interrupted same-prefix creation");
+    expect(await tree(root)).toEqual({ A: "directory", "A/one.txt": Buffer.from("one").toString("hex") });
+    vi.restoreAllMocks();
+    expect((await planAppUpgrade(input)).files).toEqual([
+      { path: "A/one.txt", action: "already-applied" }, { path: "A/two.txt", action: "create" },
+    ]);
+    expect((await applyAppUpgrade(input)).applied).toEqual(["A/two.txt"]);
+    expect((await applyAppUpgrade(input)).applied).toEqual([]);
+    expect(await tree(root)).toEqual({ A: "directory", "A/one.txt": Buffer.from("one").toString("hex"), "A/two.txt": Buffer.from("two").toString("hex") });
+  });
+
   it("resumes exact completed renames after an I/O interruption without a journal", async () => {
     const input = await fixture(), nativeRename = fs.rename.bind(fs);
     let renames = 0;
