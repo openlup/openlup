@@ -124,6 +124,7 @@ describe("application scaffold upgrade", () => {
     for (const files of [
       { "A/one.txt": "one", "a/two.txt": "two" },
       { "shared/caf\u00e9/one.txt": "one", "shared/cafe\u0301/two.txt": "two" },
+      { "\u03c3/one.txt": "one", "\u03c2/two.txt": "two" },
     ] as Record<string, string>[]) {
       const root = await scratch();
       const input: AppUpgradeInput = {

@@ -724,6 +724,22 @@ released 0.28.0 baseline, version or lock changes, future runtime/installation
 allowance, SDK, DDL or new runner follow. Exact metadata edits require actual
 approved-input remeasurement; this technical read is not final review or proof.
 
+After the C+D directory-prefix and catalog-binding repair, the actual working
+artifact measured code gzip 1,660,249 B, tarball 1,932,801 B and unpacked
+8,996,893 B. On 2026-10-27 the owner explicitly requested an appropriate reserve
+for future sessions. The active supervisor chose 5% above those three measured
+values, rounded up to KiB with `ceil(measured * 1.05 / 1024) * 1024`, producing
+fixed caps of 1,743,872 B, 2,029,568 B and 9,447,424 B respectively. These are
+computed values under that grant, not a quote of numbers supplied by the owner.
+The earlier exact-minimum C+D allocation remains historical. This decision
+changes only those three byte limits: code/total file caps 2574/2628, docs
+73,728 B/ten files, all browser limits, the released 0.28.0 baseline, versions
+and locks remain unchanged. The reserve is bounded by these fixed values;
+future sessions receive no automatic percentage increase, limit adjustment,
+programme scope, compatibility claim or release authority. Every subsequent
+candidate still needs its actual native artifact and size checks, including
+remeasurement after these metadata edits.
+
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
 measurements above. On the release-set path only, a candidate more than 30%

@@ -1677,6 +1677,23 @@ npm --workspace @openlup/core run ci
 
 Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
 
+Disposable PostgreSQL fixtures mount `/var/lib/postgresql/data` as `tmpfs`.
+This covers the PostgreSQL image's declared data volume before container
+creation, so an interrupted worker cannot leave an anonymous data volume.
+Normal and failed-start teardown still removes the owned container with
+`docker rm -f -v`; other anonymous mounts are removed too. A worker killed
+with `SIGKILL` can still leave a container, including one in `Created` state:
+temporary data storage prevents the volume leak, but does not reap containers.
+The container-helper regression checks exact owned container and volume IDs
+for normal teardown and port-bind failure, without relying on global counts.
+
+For the Node scheduler drain boundary, run
+`npm test -- --run tests/postgres/nodeHostRuntimeDrain.test.ts`. Its dedicated
+PostgreSQL sessions prove same-session exclusion and replacement-host admission
+only after the original callback drains. Missing Docker or PostgreSQL fails the
+witness rather than skipping it; this focused run does not replace the required
+package, coverage or full verification gates.
+
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 #### Choose a location and proof
@@ -2570,6 +2587,11 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
+  native `σ`/`ς` filename alias → extend the existing preflight equivalence
+  while preserving prior refusals, and prove the observed collision before
+  writes alongside exact-spelling replay.
 
 - 2026-10-27, M14 A/C: ignored historical configs and source copies entered lint
   traversal → keep archival copies outside the checkout, following

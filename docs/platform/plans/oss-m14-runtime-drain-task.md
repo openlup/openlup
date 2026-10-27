@@ -1,9 +1,9 @@
 # M14 Node runtime drain task
 
-Status: source-only local draft handoff (2026-10-27). The current stacked tree
-remains unverified; earlier baseline failures and positive probes below retain
-their historical inputs. Receiving-machine owner metadata remains unverified.
-This record grants no delivery or release authority.
+Status: resumed for current-candidate proof and owner-authorized delivery
+(2026-10-27). Earlier baseline failures and positive probes below retain their
+historical inputs. Full current verification and independent review remain owed.
+Authority comes from the human instructions recorded below, not from this record.
 
 - Outcome: stopping a Node host fences its stopped registrations and retains
   per-job cluster ownership until callbacks already admitted have completed and
@@ -115,7 +115,9 @@ was zero. Used fail-fast broker admission, with no waiter or second batch:
 PATH=/opt/homebrew/Cellar/node@24/24.21.0_1/bin:$PATH VITEST_MAX_WORKERS=2 \
 ai-resource-gate run --execution-timeout 600 --lane tooling --cpu 2 \
   --memory-mb 2048 openlup:m14:heavy -- sh -c \
-  'npm ci --ignore-scripts --no-audit --no-fund && npm run pretest && npx --no -- vitest run --project=node packages/platform/test/scheduler/nodeScheduler.test.ts packages/platform/test/composition/nodeHost.test.ts tests/postgres/nodeHostRuntimeDrain.test.ts'
+  'npm ci --ignore-scripts --no-audit --no-fund &&
+   npm run pretest &&
+   npx --no -- vitest run --project=node packages/platform/test/scheduler/nodeScheduler.test.ts packages/platform/test/composition/nodeHost.test.ts tests/postgres/nodeHostRuntimeDrain.test.ts'
 ```
 
 Actual admission: waited 0 seconds, tooling lane, 2 CPU / 2048 MiB. Own npm ci
@@ -295,3 +297,188 @@ recorded authors, exclusions, findings and review budgets remain applicable.
 Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
 Generated metadata, regression execution, package measurements, independent
 review and final verification remain owed on the author's proving machine.
+
+## Author-machine continuation and effective authority, 2026-10-27
+
+The owner resumed required tests and full verification of all five corrected M14
+drafts here, then explicitly instructed: "merguj jak mozesz zeby calosc doprowadzic
+do konca". This supersedes the earlier draft-only and source-only endpoints for
+this run. Master `01a17909-94d4-7cc0-b40f-9a8782a0986f` coordinates the existing
+C+D, runtime, E1, E2 and F tasks. The actual grant covers necessary in-scope
+repairs, signed checkpoints, draft updates and, after required proof and reviews,
+ready, source receipt/admission, required source/group checks and merge queue.
+All M14 sessions retain the owner's standing bidirectional communication grant.
+No release, npm publication, deployment, production, real provisioning/cutover,
+credentials, account/settings change or other-repository action is authorized.
+
+Fresh policy pin: `a03d920eec32bfb3d0de90b9a12535cc57f88d53`, fetched and compared
+separately from the code head `533ec09574fbe3c42bcbc6ebc7f054fe16fa0608` and
+predecessor `32644012ce5a7b5a3962c33098a337296f359e95`. The dedicated existing
+worktree and all ignored historical evidence were preserved. Historical and
+receiving source authors, including the master, remain excluded from independent
+reviews; no native session or PASS has been manufactured.
+
+With Node 24.21.0 and npm 11.19.0, the actual current source selection in the three
+existing scheduler/advisory-lock/host test files passed 78/78 tests. This is
+focused source proof, not a built or installed PostgreSQL qualification. The
+first cheap checks exposed two documentation defects: the shipped task record
+was absent from the publication inventory and generated navigation was stale.
+Registering that exact record and regenerating navigation repaired the inventory.
+The policy check then found the historical compound install/test transcript
+ambiguous to the npm command parser; line breaks retain its exact arguments while
+making the separate npm invocations explicit. No classifier, allowlist or guard
+was weakened. Current policy (two obligations, zero unanswered), inventory and
+ast-grep checks passed. Logs are retained in the master's existing execution
+evidence directory, `/private/tmp/m14-verification-20261027`.
+
+Fresh build/API production, cumulative pack measurements, current real PostgreSQL,
+cold/installed/coverage proof, two independent FULL reviews and clean-tree full
+verification remain required before delivery. The predecessor must actually land
+before dependent admission. Existing failures and counters are preserved.
+
+Self-retro: registering an already-shipped task record exposed actionable policy
+defects before broad tests; direct inventory and transcript repairs sufficed.
+No extra runtime mechanism, checker exception or timeout increase was needed.
+
+## Actual predecessor integration preparation, 2026-10-27
+
+Master `01a17909-94d4-7cc0-b40f-9a8782a0986f` delegated runtime-only preparation
+to its `m14_runtime_delivery` worker in the already assigned worktree. The
+owner's actual author-machine grant above covers required tests, full/native
+verification, readiness, source receipt/admission, required source and merge-group
+checks and merge for the five existing M14 PRs. The standing two-way
+communication grant remains effective; the originating user message is
+`01a17f18-81d3-7602-9229-db425d5124ca` in the master's thread. The master retains
+coordination, heavy scheduling and sensitive-packet/native delivery ownership.
+This worker's present turn ends before commit, DCO, native preparation or push.
+No release, npm publication, deployment, live/account/settings action or separate
+repository is in scope. Earlier narrower writer grants remain historical.
+
+Fresh applicable policy was read at main
+`75d08b8207053fe9a5207e003b625133685ffdf4`, separately from runtime HEAD
+`533ec09574fbe3c42bcbc6ebc7f054fe16fa0608`. The policy delta since a03d920 is
+the disposable PostgreSQL tmpfs fixture paragraph in CONTRIBUTING. The actual
+C+D predecessor is `b040add7f9fbc5cdd461881f09421cb0a6700145`. An ordinary
+two-parent merge of that dependency is prepared without conflicts and left
+uncommitted. It carries C's sigma-alias repair, current caps and tmpfs fixture
+changes without modifying those responsibilities. No mechanical-integration
+exemption or inherited runtime proof is claimed: runtime's first candidate still
+requires its ordinary full proof and two independent FULL reviews.
+
+Before integration, the three owned dirty files were copied with SHA-256
+identities to `/private/tmp/m14-runtime-owned-wip-20261027` and preserved in
+explicit owned stash `ba4b9f740aa6887111b9fc44be863fa71cc99161`. Applying only
+that stash restored all three files byte-for-byte; the backup patch and stash
+remain available. All earlier transcripts, findings, failures and evidence are
+preserved. Runtime still has no initialized native session or counted PASS.
+
+The package scheduled-jobs owner, runtime owner, migration fragment and existing
+composition/scheduler API snapshots describe the explicit drain promise. Their
+producer validation remains owed. The real-PostgreSQL witness already has its
+publication and substrate routing entries; its exact file is now registered as
+a public direct execution entrypoint so the documented focused command can be
+run through the source command contract:
+
+```sh
+npm test -- --run tests/postgres/nodeHostRuntimeDrain.test.ts
+```
+
+No broader execution surface, classifier exception or production mechanism was
+added. The root test configuration already discovers this witness. The existing
+78-test source selection and historical PostgreSQL evidence retain their stated
+inputs; no new test result is asserted here.
+
+While the merge is pending, precommit metadata checking uses actual HEAD
+ancestor `32644012ce5a7b5a3962c33098a337296f359e95`, never the future nonancestor
+b040add7 pin. Its initial policy/navigation run reported five obligations and
+one unanswered inherited application-lifecycle obligation: C's no-impact
+trailer is not yet in runtime HEAD ancestry. Resolve attribution through the
+ordinary signed integration after precommit checks, rather than manufacturing
+an impact exception or future base. Only after that merge is committed may
+`OPENLUP_STACK_BASE=b040add7f9fbc5cdd461881f09421cb0a6700145` be exported for
+runtime checks, review and final verification. C must actually land on main
+before dependent delivery. Build/API producer, cumulative pack measurement,
+current PostgreSQL and installed/cold/coverage/full verification remain pending.
+No heavy command or waiter was started during E1's reserved execution slot.
+
+The final light preparation check ran under Node 24.21.0/npm 11.19.0:
+ast-grep passed, `git diff --check` passed, and policy/navigation reported six
+obligations with only the same inherited C lifecycle obligation unanswered.
+CONTRIBUTING now documents the exact focused PostgreSQL command and its proof
+limits beside the fixture instructions; the exact source-entrypoint registration
+therefore has an owning explanation. Logs are in the owned backup directory as
+`ast.log` and `policy-final-prep.log`. The pending merge, this metadata work and
+the current candidate have not been committed or independently reviewed.
+
+Self-retro: backing up and hashing only the three owned edits made the dependency
+merge reversible and verified their exact restoration. Keeping the merge pending
+also exposed the expected inherited-impact attribution limit before any costly
+verification; no control relaxation or extra runtime abstraction was necessary.
+
+## Authorized current working proof, 2026-10-27
+
+The master granted one finite runtime working-proof phase after E1's working
+phase ended. The pending merge and existing source stayed fixed throughout
+execution. Node 24.21.0, npm 11.19.0 and this worktree's own dependencies were
+used. No install, full verify, DCO, commit, native session or push was performed.
+Evidence is in `/private/tmp/m14-runtime-working-proof-20261027`; the resulting
+staged-tree packet is working proof for the master's sensitive read, not clean
+committed-candidate or native evidence.
+
+Fresh builds passed for core (1.220 seconds), outbox (0.372 seconds) and platform
+(2.892 seconds). All three actual API producers/checks passed without rewriting
+a snapshot. The existing composition/scheduler snapshots therefore match the
+built declarations, including `stopAll(): Promise<void>` and host drain notes.
+
+The actual cumulative tarballs passed the repository artifact allowlist, packed
+content/source checks, all size/file caps and every complete browser-entry
+bundle cap, with zero findings. The current platform measurements are code gzip
+1,661,321 / 1,743,872 bytes, tarball 1,934,304 / 2,029,568 bytes, unpacked
+9,002,283 / 9,447,424 bytes, code files 2,574 / 2,574 and total files
+2,628 / 2,628. Docs gzip is 65,460 / 73,728 bytes. No cap, baseline, version,
+manifest or lockfile was changed. Core packed bytes are 167,341 and outbox
+39,165; their artifact/budget checks also passed. Full digests, browser values,
+caps and tarballs are retained in `packs/measurements.json` and `packs/`.
+
+The actual current three runtime source suites passed 78/78 tests. Both real
+PostgreSQL dedicated-session/host-drain cases then passed with the built public
+exports (1.77 seconds tests, 2.00 seconds total). Missing Docker refused the
+initial sandbox run, rather than skipping qualification; the same authorized
+witness passed through ordinary `require_escalated` Docker access. Fixture
+teardown completed successfully, and a bounded read of containers matching this
+witness's `node-host-drain-` prefix returned no remaining containers.
+
+Canonical `npm run lint` passed under `openlup:typecheck` in 26.628 seconds
+(zero errors, 33 existing warnings). Published typecheck passed under that same
+profile in 22.564 seconds: all five projects, zero unresolved edges and zero
+consumer-side errors. These are working-tree results; final clean committed
+verification and independent review remain owed.
+
+Execution diagnostics remain visible. The first finite driver incorrectly used
+the task-named tooling resource for every step. The master's correction arrived
+after its final typecheck child had already started; that child was allowed to
+finish safely, then the outer lock exited. Those original lint/typecheck passes
+remain diagnostic observations; both were qualified again under the required
+typecheck profile. Successful standalone builds were not repeated merely to
+change their profile. The first pack refused the sandbox's global npm-cache
+write; an isolated task-owned cache resolved it without changing global files.
+The first unit invocation combined the package's relative include with root
+paths and discovered zero tests; the corrected root Node project ran all 78.
+Neither input failure is claimed as a product regression or qualifying PASS.
+
+The corrected remaining phases were serialized with normal `--wait`, the actual
+worktree numeric suffix `wt521061927005047226`, and existing profiles:
+`openlup:tooling` (2 CPU / 2,048 MB) for pack/unit work,
+`openlup:postgres` (2 CPU / 6,144 MB) for real PostgreSQL, and
+`openlup:typecheck` (4 CPU / 6,144 MB) for lint/published typecheck. No nested
+broker, timeout increase, budget relaxation or leftover heavy waiter was used.
+The pending-merge policy diagnostic remains attributed to actual HEAD ancestor
+32644012 until ordinary signed integration makes b040add7 an ancestor. Runtime
+still owes its first two independent FULL reviews, native verification and full
+clean-tree proof; predecessor delivery remains required before admission.
+
+Self-retro: the incorrect initial resource profile and test selector cost one
+small refused/empty probe plus repeated lint/typecheck. Dispatch each existing
+phase profile directly and use the root project for root-relative test paths.
+Actual packs fit the already approved reserves, so another cap change or runtime
+mechanism would add no accepted benefit.
