@@ -348,6 +348,22 @@ Smallest adequate solution: union the existing registrations and regenerate;
 no runtime changes, new helpers or controls. Focused execution logs are under
 ignored `.context/scratch/m15-main400/` in each worktree.
 
+R1 merge candidate: `c722a154`. API update, documentation policy and
+`--docs-update`, two-thread ast-grep, lint (zero errors, 33 warnings), workspace
+API checks and 23/23 risk tests pass. Root has no `api:check`/`api:update` script,
+so the supported workspace commands run all three packages. Official
+`packages:check -- --out .context/scratch/m15-main400/packs` passes for all three
+packages with no findings. Existing `measurePack` on the retained platform
+tarball records packed 1,948,811; unpacked 9,108,271; files 2,659; code gzip
+1,669,304; code files 2,604; docs gzip 65,158; docs files 5. Every cap is met.
+This evidence-only follow-up changes no packed input. Full-stack measurement
+remains R3's next acceptance step. No external write occurred.
+
+Self-retro: existing JSON registrations and generators resolved five shared
+conflicts without changing module behavior. The clean-package gate required
+committing the candidate before packing; retain its exact artifact for the
+measurement instead of introducing a second pack or a new measurement tool.
+
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
@@ -781,3 +797,16 @@ architecture additions and complete task histories (the two conflict files).
 M14 source comes from main unchanged; R2 runtime remains unchanged. Regenerate
 API/navigation and execute the requested focused checks with two workers.
 No package-lock delta or reinstall; no push, counted admission or full verify.
+
+R2 integration candidate `73a0e110`: all requested focused checks pass—two-thread
+ast-grep, lint (zero errors, 33 warnings), all workspace API checks and 42/42
+risk tests in five files with `--maxWorkers=2`. API regeneration and both
+documentation policy commands pass with no generated-byte changes. This final
+merge adds only R1's non-packed evidence to the checked tree; its sole conflict
+is the task record append point, preserving both histories. Package inputs,
+runtime and tests are identical to the focused-check candidate. Logs remain in
+`.context/scratch/m15-main400/`. Full verify/admission remain deferred.
+
+Self-retro: the shared task record's append point causes evidence-only merge
+conflicts; retaining whole sections preserves the audit history with no runtime
+repair, helper or new tracking mechanism. No further improvement is justified.
