@@ -812,6 +812,15 @@ committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
 
+The `release-gates.json` pack caps are 1,980,000 tarball bytes, 9,260,000
+unpacked bytes, 2,712 total files, 1,695,000 code gzip bytes and 2,656 code files.
+The [M15 budget decision](../../docs/platform/plans/oss-m15-generic-risk-controls.md#cd-m15-6-platform-pack-budget--2026-10-27)
+sizes this one R1 increase from the measured full M15 stack after M14 #397,
+with approximately 2% for S1 and repairs. Documentation caps remain 73,728 gzip
+bytes and 10 files; browser caps and the release baseline are unchanged.
+Every candidate still needs its actual artifact check; later growth needs its
+own measured budget decision.
+
 The source-checkout binding `npm run test:consumer` runs
 [`platform-cold-consumer.ts`](../../scripts/packages/platform-cold-consumer.ts).
 It requires the cold package producer's verified `OPENLUP_PACK_MANIFEST` and
