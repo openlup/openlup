@@ -315,6 +315,11 @@
       "types": "./dist/risk/server/index.d.ts",
       "import": "./dist/risk/server/index.js",
       "default": "./dist/risk/server/index.js"
+    },
+    "./lifecycle": {
+      "types": "./dist/lifecycle/index.d.ts",
+      "import": "./dist/lifecycle/index.js",
+      "default": "./dist/lifecycle/index.js"
     }
   },
   "repository": {

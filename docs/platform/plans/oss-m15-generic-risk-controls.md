@@ -364,6 +364,42 @@ conflicts without changing module behavior. The clean-package gate required
 committing the candidate before packing; retain its exact artifact for the
 measurement instead of introducing a second pack or a new measurement tool.
 
+### M14 #401 / #406 local stack maintenance — 2026-10-27
+
+Direct maintainer continuation authorizes local non-fast-forward DCO-signed
+merges main → R1 → R2 → R3, regeneration, focused checks with two workers,
+and package checks in R1/R3. No rebase, force-push, push, full verify, counted
+admission, activation or release. Existing draft endpoint remains unchanged.
+Current main/policy pin: `35ee4227babaa2fe16f88110af52e61d242b3296`;
+the code review base remains separate. Current CONTRIBUTING additions cover
+lifecycle proof, archive traversal and tmpfs PostgreSQL fixtures; prior task
+history and review budgets remain intact.
+
+R1 has three conflict files: architecture, package exports and release gates.
+Retain both complete lifecycle/risk sections and registrations; M14 lifecycle
+and tmpfs source/test bytes remain main's exact bytes and risk source/test
+bytes remain R1's. Per-cap maxima give packed 2,029,568, unpacked 9,447,424,
+files 2,712, code gzip 1,743,872 and code files 2,656; docs/browser caps stay
+unchanged. These are parent reconciliation, separate from conditional
+CD-M15-6a, which applies only to an exceeded measured full-stack cap.
+No lockfile delta, so no reinstall. Smallest adequate solution: preserve the
+existing registrations and regenerate outputs without a new runtime mechanism.
+Logs and retained package artifacts: `.context/scratch/m15-main406/` per tree.
+
+R1 candidate `22725549`: API regeneration and both documentation commands pass
+with no generated-byte delta. Final post-merge policy uses the current main pin
+and has five obligations, zero unanswered. Two-thread ast-grep, lint (zero
+errors, 33 warnings), all workspace API checks, 23/23 risk tests (four files,
+`--maxWorkers=2`), `git diff --check`, and official `packages:check` pass.
+Root has no standalone API script; the supported workspace API commands run
+Core, Outbox and Platform. Package artifacts and exact measurements are retained
+in the scratch directory above. No lockfile or dependency changes occurred.
+
+Self-retro: the parent maxima preserve M14's byte allocation and M15's file
+allocation. Existing generators produced identical output; no additional
+mechanism or unrelated repair was needed. Package preparation is serialized
+with API/lint builds to avoid sharing mutable outputs.
+
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
@@ -817,6 +853,27 @@ only the existing scoped no-impact answers in this evidence commit; the risk
 architecture still owns the graph and the existing consumer command still owns
 these added witnesses. No checker, command, test selection or control changes.
 
+### R2 lifecycle/tmpfs cascade — 2026-10-27
+
+Continue the direct local grant above by merging R1 `c9f6978e` into R2.
+Two conflict files: retain R2 risk delegation before M14 lifecycle architecture,
+and retain complete predecessor and R2 task histories. M14 source/test files
+and inherited caps come unchanged from R1; R2 risk/composition behavior is
+unchanged. No lockfile delta or reinstall. Regenerate and run requested focused
+checks with two workers; logs use `.context/scratch/m15-main406/`.
+
+R2 candidate `a2923b45`: API/navigation regeneration, both documentation
+commands, two-thread ast-grep, lint (zero errors, 33 warnings), all workspace
+API checks and 42/42 risk tests in five files with `--maxWorkers=2` pass.
+The explicit new R1-base policy correctly detects two expired fingerprints
+for the merged ESLint and cold-consumer delta. Refresh the existing scoped
+repository/tooling explanations in this normal signed evidence commit; their
+meaning is unchanged and the checker is unchanged. No package input changes.
+
+Self-retro: checking the exact predecessor catches stale scoped documentation
+evidence that a main-relative check can mask. Preserve complete task append
+sections and renew only the changed fingerprints; no new mechanism is needed.
+
 ## Approved R3 boundary — 2026-10-27
 
 Outcome: a bounded M03-compatible risk privacy contributor, explicit unavailable
@@ -1235,3 +1292,13 @@ A normal signed documentation commit carries the same two explanations; the
 checker is unchanged. Lesson: keep refreshed impact trailers on a non-merge
 commit when integrating a stack. This bounded record fix leaves package inputs
 and all focused proof intact; no retry budget or native session was reset.
+
+### R3 lifecycle/tmpfs cascade — 2026-10-27
+
+Continue the local grant above by merging R2 `5cb3c337` into R3. Architecture
+and task-history append conflicts retain the full R3 privacy text and incoming
+M14 lifecycle/R1/R2 evidence. M14 source/test bytes and caps remain inherited;
+R3 risk/privacy behavior is unchanged. No lockfile delta or reinstall.
+Regenerate, run focused two-worker checks, then commit and run the official
+full-stack package gate. CD-M15-6a remains conditional on an exceeded cap.
+Logs and retained tarballs: `.context/scratch/m15-main406/`.

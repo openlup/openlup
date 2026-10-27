@@ -325,6 +325,31 @@ it("acceptance refuses missing selectors and cleanup identity mismatches", () =>
   expect(() => assertContainerOwnership({ ...container, Id: "b".repeat(64) }, expected)).toThrow("ownership mismatch");
   expect(() => assertContainerOwnership({ ...container, Config: { Labels: { [expected.label]: "another-run" } } }, expected)).toThrow("ownership mismatch");
 });
+it.each([false, true])("acceptance recovers a lost start response and refuses foreign ownership=%s", async foreign => {
+  const { execFileSync } = await import("node:child_process");
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "identity-cleanup-"))); directories.push(directory);
+  const statePath = join(directory, "docker-state.json");
+  writeFileSync(join(directory, "npm"), '#!/bin/sh\nprintf "11.19.0\\n"\n', { mode: 0o700 });
+  writeFileSync(join(directory, "docker"), `#!${process.execPath}
+const fs = require("node:fs"), args = process.argv.slice(2), path = ${JSON.stringify(statePath)};
+let state = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, "utf8")) : {};
+if (args[0] === "run") {
+  state.label = args[args.indexOf("--label") + 1].split("=")[1];
+  state.tmpfs = args[args.indexOf("--tmpfs") + 1];
+  fs.writeFileSync(path, JSON.stringify(state)); process.exit(1);
+}
+if (args[0] === "ps") console.log("a".repeat(64));
+if (args[0] === "inspect") console.log(JSON.stringify([{ Id: "a".repeat(64), Config: { Labels: { "com.openlup.identity.run": ${foreign ? '"foreign"' : "state.label"} } } }]));
+if (args[0] === "rm") { state.removed = args; fs.writeFileSync(path, JSON.stringify(state)); }
+`, { mode: 0o700 });
+  expect(() => execFileSync(process.execPath, [resolve("tests/identity/runAcceptance.mjs"), "--bundle", "node-postgres"], {
+    env: { ...processEnvironment, PATH: `${directory}:${processEnvironment.PATH}`, TMPDIR: directory }, stdio: "pipe",
+  })).toThrow();
+  const state = JSON.parse(readFileSync(statePath, "utf8"));
+  expect(state.tmpfs).toBe("/var/lib/postgresql/data");
+  if (foreign) expect(state.removed).toBeUndefined();
+  else expect(state.removed).toEqual(["rm", "-f", "-v", "a".repeat(64)]);
+});
 it("acceptance permits unpublished ports and explicit IPv4/IPv6 loopback bindings", () => {
   const Ports = { "80/tcp": null, "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "58421" }, { HostIp: "::1", HostPort: "58421" }] };
   expect(() => assertPortBindings({ NetworkSettings: { Ports }, HostConfig: { PortBindings: Ports } })).not.toThrow();
