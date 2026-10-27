@@ -274,6 +274,87 @@ but the API compiler was rerun alone and that serial pass is the counted result.
 Subsequent execution is serial. Full command results and pack reconciliation
 follow below after the clean-commit artifact check.
 
+### R2 executed proof and artifact reconciliation — 2026-10-27
+
+The local execution candidate is
+`bcfec20f0aadde0e5f309149bda3338482f9b807` —
+`fix(risk): verify browser fixture and generate API reports (M15 R2)`.
+Its DCO sign-off is Bart Roszkowski's instructed sign-off. The final evidence-only
+commit changes this task record; package inputs remain identical. Every command
+below uses the full R1 `OPENLUP_STACK_BASE`; direct Vitest uses `--maxWorkers=2`.
+The root has no `api:check` script, so the platform workspace owns that command.
+
+| Command | Observed local result |
+| --- | --- |
+| `npm run pretest` | PASS; Core, Outbox and Platform build |
+| `npm --workspace @openlup/platform run api:update` | PASS; only `composition.api.md` (+24 lines) and `risk-server.api.md` (+504 lines) change |
+| `npm run oss:published-tree -- --policy` | Initial exit 1 for three missing impact answers; after the scoped trailers, PASS, eight obligations and zero unanswered |
+| `npm run oss:published-tree -- --policy --docs-update` | Same initial refusal; after the trailers, PASS; regenerated navigation has no byte delta |
+| `npx --no -- vitest run packages/platform/test/risk server/domains/risk server/adapters/postgres/riskControl.test.ts server/adapters/supabase/riskAdminPort.test.ts server/adapters/supabase/riskOrderPaid.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx src/domains/risk/riskClient.test.ts src/pages/admin/RiskReviewPage.test.tsx --maxWorkers=2` | PASS, 15 files / 79 cases |
+| `npx --no -- vitest run scripts/packages/platform-cold-consumer.test.ts -t M15 --maxWorkers=2` | PASS, five selected cases; 86 unrelated cases filtered, no new source skips |
+| `npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2` | PASS, two files / 2,671 cases |
+| `npx --no -- tsc -p tsconfig.api.json` | PASS; repeated serially after the initial overlap noted above |
+| `npx --no -- tsc -p tsconfig.node.json` | PASS |
+| `npx --no -- tsc -p tsconfig.app.json` | Initial exit 2 on the R2 fixture; PASS after the type-only fix |
+| `npx --no -- tsc --ignoreConfig --noEmit --skipLibCheck --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --resolveJsonModule --allowImportingTsExtensions packages/platform/test/risk/*.test.ts tests/postgres/riskControl.conformance.test.ts` | PASS, including the unchanged schema/contract type witness |
+| `npx --no -- vitest run src/public-reference/riskReviewRoutes.test.tsx --maxWorkers=2` | PASS, all four affected cases after the fixture fix |
+| `npm run lint` | PASS, zero errors / 33 warnings; includes package builds and eight structural-rule fixture suites |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS after the source change and after lint |
+| `npm --workspace @openlup/platform run api:check` | PASS |
+| `npx --no -- vitest run tests/postgres/riskControl.conformance.test.ts --maxWorkers=2` | PASS, 14 cases on the two actual PostgreSQL rails, including reused managed pgTAP assertions; 11.70 s summed test time |
+| `npx --no -- vitest list packages/platform/test/risk tests/postgres/riskControl.conformance.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx scripts/packages/platform-cold-consumer.test.ts packages/platform/test/packageBoundary.test.ts --maxWorkers=2 --json` | PASS; discovery confirms R1 +77, R2 +44, combined +121; JSON retained in ignored evidence |
+| `npm run packages:check -- --out .context/scratch/m15-r2/artifacts` | PASS on the clean committed candidate, three packages and no findings; retained actual tarballs and producer manifest |
+| `node --experimental-strip-types .context/scratch/m15-r2/measure.mjs .context/scratch/m15-r2/artifacts` | PASS; existing `measurePack`/`checkPackBudget` functions on the extracted official tarballs, no findings |
+| `npm run oss:published-tree -- --inventory` | PASS, 6,459 tracked public paths |
+| `git diff --check` | PASS |
+| `npm run check:dco-signoff -- "$OPENLUP_STACK_BASE" HEAD` | Exit 2: the historical deferred spelling supplies a symbolic endpoint, which this checker refuses |
+| `npm run check:dco-signoff -- "$OPENLUP_STACK_BASE" "$(git rev-parse HEAD)"` | PASS, all six R2 commits through the execution candidate signed off; use the full-digest spelling for the final evidence commit too |
+
+The producer manifest binds the retained pack proof to the exact execution
+candidate above. All values below are measured/cap; no cap or package control
+changed. This evidence reserves no M14 or R3 headroom.
+
+| Metric | Core | Outbox | Platform |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 167,341 / 327,680 | 39,165 / 81,920 | 1,898,755 / 1,925,000 |
+| Unpacked bytes | 712,626 / 1,392,640 | 133,216 / 266,240 | 8,890,843 / 8,970,000 |
+| Files | 224 / 420 | 41 / 90 | 2,571 / 2,580 |
+| Code gzip bytes | 143,737 / 276,480 | 20,930 / 43,008 | 1,623,846 / 1,648,000 |
+| Code files | 213 / 400 | 33 / 70 | 2,517 / 2,520 |
+| Docs gzip bytes | 17,213 / 49,152 | 13,216 / 26,624 | 63,969 / 73,728 |
+| Docs files | 10 / 20 | 6 / 12 | 5 / 10 |
+
+The type-only `risk/contracts` browser bundle measures 20 gzip bytes against
+32. Relative to recorded R1, Platform adds 3,548 packed bytes, 16,896 unpacked
+bytes, nine files, 2,476 code gzip bytes, nine code files and 230 docs gzip bytes.
+Platform headroom is 26,245 packed bytes, 79,157 unpacked bytes, nine total files,
+24,154 code gzip bytes, three code files and 9,759 docs gzip bytes.
+
+Two independent fresh-context read-only reviewers (`r2_final_review_a` and
+`r2_final_review_b`) inspected the complete R1-to-execution-candidate delta,
+including the generated declarations and repaired browser fixture. Both returned
+PASS with no material findings or optional advice, independently closed the two
+earlier finding cards, and considered direct delegation/the incumbent slot/the
+existing harness the smallest adequate approach. They ran no tests, builds or
+generators and changed no review-session state. These are preliminary local
+semantic reviews, not counted native admission or a new expiry/counter history.
+
+Remaining delivery gates: the combined +121 discovery increase exceeds the
+programme's +100 allowance by 21; the coordinator must obtain the finite budget
+decision and hosted-time reconciliation. Full root verification/coverage and
+counted native review remain coordinator-owned. The checker also reports the
+pre-existing committed binding snapshot as stale and explicitly reserves its
+refresh for release preparation; local policy/inventory pass. No release-prep
+snapshot, donor behavior, R3 privacy, M14 file, cap, timeout, source skip, version,
+SQL, activation or external state changed. No push was attempted.
+
+Self-retro: executing the app compiler caught one fixture-only type defect missed
+by static authoring and the server compiler. The direct type-only import fixed
+it without an assertion, abstraction or behavior change. One initial compiler
+overlap required a 7.6-second serial rerun; subsequent commands waited for actual
+process completion. The deferred DCO spelling required full endpoint resolution.
+No formal rethink or additional process was justified.
+
 ### R2 authored cases and deferred commands
 
 The written witness has **35 explicit new cases**: `adminHandlers.test.ts` has
