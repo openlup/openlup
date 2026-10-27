@@ -7,14 +7,20 @@ stable-framework acceptance.
 ## Outcome and authority
 
 The accountable maintainer authorized M14 implementation and independent review,
-with Codex coordinating named workstreams and bounded subagents. The first
-external delivery endpoint is reviewed, appropriately verified, stacked **draft
-pull requests**. That grant includes scoped local work, signed commits and draft
-submission. It does not authorize ready conversion, merge-queue arming, merge,
-package publication, provider activation, account/settings/credential operations,
-real-store cutover or production deployment. Required API/security/control reads
-and native evidence remain applicable. Technical review is delegated and does
-not assert personal maintainer reading of every diff.
+with Codex coordinating named workstreams and bounded subagents. The original
+external endpoint of reviewed, appropriately verified, stacked **draft pull
+requests** is historical; that initial grant covered scoped local work, signed
+commits and draft submission.
+
+The direct human amendment of 27 October 2026 (message
+`01a17c90-a079-7f02-b102-a9e35d770649`) authorizes this same M14 C2 programme
+through push, PR, ready conversion, required source checks and native admission,
+merge queue, required group checks and confirmed merge. The finite implementation
+and proof scope is unchanged. Package publication, provider activation, live
+provisioning/cutover, deployment and account/settings/credential operations remain
+excluded. Required API/security/control reads and native evidence still apply.
+Technical review is delegated and does not assert personal human reading of
+every diff.
 
 The module preserves operational behavior while supplying public lifecycle
 capabilities for an existing synthetic store: compatible install/upgrade,

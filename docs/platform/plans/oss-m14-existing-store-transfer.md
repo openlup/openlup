@@ -121,8 +121,9 @@ Current stable handoff: Master confirmed exact signed A head
 reviews and native reviewed result. B retained its recovery stash, fast-forwarded
 and restored its first slice without conflicts. Ordered export conditions,
 complete incoming consumer proofs, versions, lockfiles, existing API reports and
-baseline are preserved. B’s four production files, four test witnesses and API
-report remain byte-identical to its saved source. `OPENLUP_STACK_BASE` names this
+baseline are preserved. At that initial integration B’s four production files, four test witnesses and
+API report were byte-identical to its saved source. The necessary Unicode repair
+below is the only subsequent runtime/witness delta. `OPENLUP_STACK_BASE` names this
 exact A head; later material changes retain the same history and proof limits.
 
 The incoming `0.29.0` metadata carries code/aggregate file caps 2,574 / 2,628
@@ -150,6 +151,31 @@ record this bounded decision. Source/API/witness bytes, dependencies, selectors
 and included outputs are unchanged; approved-cap remeasurement and all unexecuted
 prerequisites still precede the final technical read, DCO and counted reviews.
 
+The first committed candidate `7f564eef` retained that exact accepted tree and
+passed committed package/API/cold/real-PostgreSQL gates. Its two fresh full
+reviews returned one PASS and one material finding, `B0-S1`: admitted metadata
+can occupy more UTF-8 bytes than the filesystem reader allowed, so a successful
+publication could be permanently unreadable and unresumable. The native reports
+and open finding remain in the same cycle-zero history.
+
+The necessary repair shares a 262,144-byte encoded-descriptor bound between
+publication and readback, preserving the existing admitted Unicode range and
+refusing oversize before publication. The existing real-store checkpoint/resume
+witness reproduced the old failure, then passed with near-bound non-ASCII
+metadata; no case or selector was added. Public declarations/API remain unchanged.
+The rebuilt repair measured code gzip 1,650,621, exactly 128 above the first
+approved minimum; tarball 1,922,586 / unpacked 8,959,599 bytes and file counts
+were otherwise within their existing limits. Master read the exact three-path
+repair, red/green proof and minimum proposal SHA-256
+`7f606c5d2e70fc55d72a1ccd6d7f63af840752c30274e51bb9fe8d2ce1791938`, and approved
+only 1,650,493 → 1,650,621. This cumulative +2,621 bytes from 1,648,000 provides
+zero additional forecast headroom. All other caps/baseline/exports/dependencies
+and the original finite scope remain exact. Remeasurement/current affected proof
+and the final applicable technical read still precede repair DCO; the ordinary
+next native cycle is one, and two new full reviews must assess `B0-S1` closure.
+The earlier PASS is not evidence for the new tree; counters/history carry
+forward and review expiry follows the actual native reports.
+
 Earlier `97c239ef` proof remains historical; the `a57e635c` waits were unexecuted
 or cancelled before admission. No current B committed artifact or full
 verification is claimed. Master reports A’s exact full fourteen-phase `--pgtap`
@@ -166,7 +192,7 @@ tests, with B's later access-policy amendment. Master
 `01a17909-94d4-7cc0-b40f-9a8782a0986f` authored the inherited module overview and
 made scope/contract decisions. Read-only effect-authority and integration-fit
 agents supplied advice. Source authors cannot be counted independent reviewers;
-same-candidate native prepare history will register them without resetting cycles.
+same-candidate native prepare history registers them without resetting cycles.
 
 ## Smallest sufficient scope and proof
 
@@ -346,8 +372,10 @@ behavior, other cap, dependency, SQL or test selection is changed. The root Post
 now imports the declared export. New installed proofs are authored, not yet an
 executed full integration result; A's full PASS remains a submission/completion
 dependency. Counted review follows the stable-replacement route above.
-At this pre-DCO snapshot there is no final committed candidate, counted native
-review, verification stamp or submission. Native repair cycles consumed: 0.
+The initial commit and its two recorded reports remain attributed to `7f564eef`.
+This repair is uncommitted and has no accepted new-tree review, full verification
+stamp or submission. Native cycle zero/history remain; the next ordinary repair
+cycle is one.
 
 The source/API remains frozen and the worktree intentionally uncommitted while
 the granted metadata/owner integration and final checks precede the stabilized

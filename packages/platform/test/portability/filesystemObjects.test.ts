@@ -21,12 +21,14 @@ function descriptor(bytes = Buffer.from("private object")): TransferObject {
 const objectDirectory = (root: string) => join(root, createHash("sha256").update(descriptor().key).digest("hex"));
 
 describe("private filesystem transfer objects", () => {
-  it("copies between real existing stores and resumes after checkpoint interruption", async () => {
+  it("copies Unicode metadata between real stores and resumes after checkpoint interruption", async () => {
     const sourceRoot = await directory(), targetRoot = await directory();
     const source = await createFilesystemTransferObjects({ root: sourceRoot, maximumObjectBytes: 1024, access: "private" });
     const destination = await createFilesystemTransferObjects({ root: targetRoot, maximumObjectBytes: 1024, access: "private-target" });
-    await source.createIfAbsent(descriptor(), Buffer.from("private object"));
-    const input = { source, destination, inventory: { sourceId: "local-source", snapshot: { kind: "quiesced" as const, id: "fence" }, objects: [descriptor()] },
+    const object = { ...descriptor(), metadata: Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`m${index}`, "\u6c49".repeat(8000)])) };
+    expect(Buffer.byteLength(JSON.stringify(object.metadata))).toBeGreaterThan(131072);
+    await source.createIfAbsent(object, Buffer.from("private object"));
+    const input = { source, destination, inventory: { sourceId: "local-source", snapshot: { kind: "quiesced" as const, id: "fence" }, objects: [object] },
       accessMapping: { private: "private-target" }, maximumObjectBytes: 1024, maximumTotalBytes: 1024 };
     await expect(copyTransferObjects({ ...input, checkpoint: async () => { throw new Error("interruption"); } })).rejects.toThrow("interruption");
     const resumeStarted = performance.now();
@@ -36,6 +38,7 @@ describe("private filesystem transfer objects", () => {
     const read = await reopened.read(descriptor().key, "v1");
     expect(Buffer.from(await verifyRead(read, read.object))).toEqual(Buffer.from("private object"));
     expect(read.object).toMatchObject({ access: "private-target", lineage: { sourceId: "local-source", snapshotId: "fence", sourceVersion: "v1" } });
+    expect(read.object.metadata).toEqual(object.metadata);
     expect((await lstat(objectDirectory(targetRoot))).mode & 0o777).toBe(0o700);
     expect((await lstat(join(objectDirectory(targetRoot), "bytes"))).mode & 0o777).toBe(0o600);
     expect((await readdir(targetRoot)).some(name => name.startsWith(".partial-"))).toBe(false);

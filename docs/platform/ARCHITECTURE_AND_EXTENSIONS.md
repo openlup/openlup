@@ -2115,6 +2115,9 @@ The [private filesystem capability](../../packages/platform/src/portability/file
 publishes bytes and metadata through exclusive files, fsync and one directory
 rename. Its configured access label means process-owner-only reads through
 0700 directories and 0600 single-link files; another access label refuses.
+Publication and readback share a 256 KiB encoded-descriptor ceiling covering
+admitted Unicode metadata and escaped identifiers; oversize encodings refuse
+before publication.
 Logical version/source lineage is retained separately from provider-native
 versioning. The owner account/root must be exclusively controlled. Symlinks,
 unsafe modes and hardlinks refuse rather than becoming absence. These checks

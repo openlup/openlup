@@ -7,6 +7,9 @@ import {
   type TransferObject, type TransferObjectRead, type TransferObjectStore,
 } from "./objects.js";
 
+// Covers bounded metadata JSON in UTF-8 plus JSON-escaped bounded identifiers.
+const maximumDescriptorBytes = 262144;
+
 /**
  * Private local transfer store, exclusively controlled by its owner process/account.
  * Metadata and bytes publish together through one directory rename. Concurrent use through
@@ -41,7 +44,7 @@ export async function createFilesystemTransferObjects(options: {
         const metadata = await openPrivateFile(join(directory, "metadata.json"));
         let object: TransferObject;
         try {
-          if ((await metadata.stat()).size > 131072) throw new ObjectTransferError("integrity_conflict");
+          if ((await metadata.stat()).size > maximumDescriptorBytes) throw new ObjectTransferError("integrity_conflict");
           try { object = JSON.parse(await metadata.readFile("utf8")) as TransferObject; }
           catch { throw new ObjectTransferError("integrity_conflict"); }
         } finally { await metadata.close(); }
@@ -75,7 +78,8 @@ export async function createFilesystemTransferObjects(options: {
     async createIfAbsent(object, bytes) {
       let temporary: string | undefined;
       try {
-        const encoded = encodeTransferObject(object);
+        const encoded = Buffer.from(encodeTransferObject(object));
+        if (encoded.byteLength > maximumDescriptorBytes) throw new ObjectTransferError("invalid_input");
         if (object.access !== access) throw new ObjectTransferError("denied");
         const key = object.key;
         if (object.bytes > maximum || bytes.byteLength !== object.bytes
@@ -83,7 +87,7 @@ export async function createFilesystemTransferObjects(options: {
         await privateDirectory(root, true);
         temporary = join(root, `.partial-${randomUUID()}`);
         await mkdir(temporary, { mode: 0o700 });
-        await writePrivateFile(join(temporary, "metadata.json"), Buffer.from(encoded));
+        await writePrivateFile(join(temporary, "metadata.json"), encoded);
         await writePrivateFile(join(temporary, "bytes"), bytes);
         const directoryHandle = await open(temporary, constants.O_RDONLY | constants.O_NOFOLLOW);
         try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
