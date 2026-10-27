@@ -1436,3 +1436,74 @@ migration and scheduler changes arrive from main; R3 risk/privacy behavior
 is unchanged. No cap or lockfile changes, no reinstall. Regenerate APIs and
 navigation, run the requested focused checks serially with two Vitest workers,
 then retain and measure the official full-stack package artifact.
+
+### Current-main maintenance result — 2026-10-27
+
+Local signed integration heads: R1 `2319e024`, R2 `727280a4`, R3 `0574a5e3`.
+Each is a two-parent non-fast-forward merge. R1 unions both task-page
+registrations in the publication catalogue; R2/R3 preserve complete task
+histories at the shared append point. M14 implementation/API/test changes
+come from main unchanged and each worktree preserves its prior M15 risk
+implementation/tests. No dependency, lockfile, version, cap, SQL installation
+chain, timeout or test-selection changes. No npm ci, rebase or push occurred.
+
+| Requested focused check | R1 | R2 | R3 |
+| --- | --- | --- | --- |
+| Two-thread ast-grep scan | PASS | PASS | PASS |
+| `npm run lint` | PASS; 0 errors, 33 warnings | PASS; 0 errors, 33 warnings | PASS; 0 errors, 33 warnings |
+| Workspace `api:check` | PASS, all three packages | PASS, all three packages | PASS, all three packages |
+| Risk Vitest, `--maxWorkers=2` | 23/23 PASS | 42/42 PASS | 58/58 PASS |
+| API update and documentation regeneration | PASS | PASS | PASS |
+| Final documentation policy | PASS; 5 obligations, 0 unanswered | PASS; 8 obligations, 0 unanswered | PASS; 3 obligations, 0 unanswered |
+| Official `packages:check` | PASS; all three packages, no findings | Not requested | PASS; all three packages, no findings |
+| Full-digest DCO check including merge ancestors | 13/13 signed | 14/14 signed | 15/15 signed |
+
+Root has no standalone `api:check`/`api:update` scripts; the supported
+`npm run api:check --workspaces --if-present` and corresponding update
+command execute Core, Outbox and Platform. All heavy checks were serialized.
+API regeneration produced no additional snapshot delta. Final R2/R3 policy
+uses the exact new predecessor SHA. Initial pre-commit ancestry probes were
+refused because the new parent was only MERGE_HEAD, not yet an ancestor of
+HEAD; the successful final logs supersede those probes without a policy edit.
+The initial R1 explicit ref-name probe also refused the full-SHA requirement.
+
+The official retained R3 artifact binds `0574a5e3` and has integrity
+`sha512-3YY872HOYj+Fvy9OHE2kXGnZ29CRwvXIeHMU3PirwS7vBfVEVTilkKS9m6fcIn8JYkV6CI2zX0bXMntFdG+xOw==`.
+Existing `measurePack` reads the retained tarball, not a second pack:
+
+| Full-stack platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,967,823 | 2,029,568 | 61,745 |
+| Unpacked bytes | 9,188,629 | 9,447,424 | 258,795 |
+| Files | 2,680 | 2,712 | 32 |
+| Code gzip bytes | 1,687,466 | 1,743,872 | 56,406 |
+| Code files | 2,625 | 2,656 | 31 |
+| Docs gzip bytes | 66,755 | 73,728 | 6,973 |
+| Docs files | 5 | 10 | 5 |
+
+All caps are met. CD-M15-6a is not triggered, so there is no 102% rounding,
+cap adjustment, changed allocation reason or second cascade. Existing caps
+equal both parents' per-cap maxima, including code/docs/browser allowances.
+Historical CD-M15-6 evidence remains historical. R1's retained artifact
+measures packed 1,961,214; unpacked 9,155,147; files 2,668; code gzip
+1,680,824; code files 2,613; docs gzip 66,370; docs files five.
+
+This result addition changes only the unpacked task record; package inputs
+and retained artifacts stay identical to the integration candidates. Full
+verify-local, counted native admission and later remote delivery remain with
+the coordinator. Existing preliminary/native histories and budgets are not
+reset, and local passes grant no readiness, activation or release authority.
+
+Independent fresh-context preliminary reviewers `stack_review_a` and
+`stack_review_b` both PASS the exact three integration candidates above,
+with no material findings. They independently confirm parent/source/API/test
+preservation, exact publication unions, complete history, parent-max caps
+and unchanged lockfiles; current cap prose matches configuration. These
+read-only local inspections create no counted admission or receipt.
+
+Self-retro: no code defect or cap repair was needed. The only recovered
+execution issue was probing a new explicit documentation parent before its
+merge commit existed. Use the ordinary pre-commit comparison and the exact
+predecessor after committing; this avoids invalid ancestry probes while
+retaining the checker and full history. Registration union plus existing
+generators remained sufficient; no new mechanism or successor was added.
