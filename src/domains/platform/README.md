@@ -67,3 +67,15 @@ Message-only success objects and mismatched state/outcome codes are invalid.
 Removal returns `{ revoked: true }` and retains identities and customer links.
 Platform settings remain here; the identity owner describes authorization,
 directory lookup and direct invitation acceptance, expiry and cancellation.
+
+## Packaged operations
+
+The settings, pipeline-read, alert-view and control-plane compatibility paths now
+forward the existing implementation to the experimental operations package.
+Schemas/browser clients use `@openlup/platform/operations`; typed ports use
+`operations/contracts`; server handlers and watchdog delivery use
+`operations/server`. The reference keeps its existing domain evaluator and
+explicitly supplies it to the package kernel. Membership schemas and ports,
+identity wrappers and tracking effects retain their previous owners and logic.
+See the [operations architecture](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+for SQL, authorization, replay and preview limits.

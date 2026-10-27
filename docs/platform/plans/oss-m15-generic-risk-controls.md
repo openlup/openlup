@@ -185,6 +185,78 @@ resolved it without changing a guard. Inspecting the staged deletion also avoide
 mistaking an index mismatch for a documentation defect. No additional process or
 abstraction was justified; no formal rethink was required.
 
+### M14 main integration — 2026-10-27
+
+Direct maintainer continuation: merge freshly fetched `origin/main` into the
+assigned R1 branch with `git merge --no-ff origin/main`, preserve both modules,
+regenerate derived outputs, run the requested focused checks with two Vitest
+workers, and create local Bart Roszkowski DCO commits. No push, cap change,
+release or activation is authorized. This bounded integration does not complete
+the coordinator's full verification or native admission obligations above.
+
+Main and current instruction freshness pin:
+`80cb0e7063206a9fead36b4e6680c9a83fa3e108`.
+The relevant instruction delta adds M14 proof, exact SQL neutrality inventory
+and review lessons; earlier R1 scope and delivery restrictions remain applicable.
+The code review base remains separately recorded above.
+
+All 11 conflicts are shared additions: documentation routing/catalogue,
+architecture and documentation ownership, generated source map, ESLint graph,
+package README, browser budgets, package boundary and import-map inventories,
+and installed-consumer export classification. Retain operations content and
+append risk entries beside it. The generated source map starts from main for
+regeneration in the separate follow-up commit. No runtime algorithm is edited.
+The smallest adequate resolution is the union of these existing registrations;
+no helper, dependency or raised cap is needed. Dependency versions and lockfile
+are unchanged, so no reinstall is required.
+
+Integration commit: `1c7e5ae6f69bea8f06dd26d1e487913b55c7e278`, with the
+original R1 head and fetched main as its two parents and the instructed DCO
+trailer. Regeneration is a separate signed follow-up. Platform `api:update`
+completed without changing any API report bytes. `oss:published-tree -- --policy`
+first refused the stale source map; `--policy --docs-update` regenerated the
+combined operations/risk navigation and passed all five documentation obligations
+with zero unanswered. The committed release snapshot remains release-prep owned;
+the checker confirms live computed bindings. Neither module's source, tests or
+API reports differ from its corresponding parent.
+
+Focused integration results (logs under ignored
+`.context/scratch/m15-r1-main-merge/`):
+
+| Check | Result |
+| --- | --- |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS |
+| `npm run lint` | PASS; zero errors, 33 existing warnings |
+| `npm run api:check --workspaces --if-present` | PASS for core, outbox and platform; root has no standalone API script |
+| `npm run packages:check` | FAIL solely on the five platform size caps below; all packages packed and no other findings |
+| `npx --no -- vitest run packages/platform/test/risk --maxWorkers=2` | PASS, 23/23 in four files |
+| `npx --no -- vitest run scripts/packages/platform-cold-consumer.test.ts -t M15 --maxWorkers=2` | PASS, 1 selected; 86 unrelated cases excluded by the name filter |
+| `npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2` | PASS, 2,746/2,746; verifies the merged module inventories |
+
+The actual platform tarball was independently measured with the existing
+`measurePack` implementation and matches every official gate finding. These are
+main's caps, with no adjustment in this integration:
+
+| Metric | Measured | Cap | Result |
+| --- | ---: | ---: | --- |
+| Packed bytes | 1,932,551 | 1,925,000 | Exceeds by 7,551 |
+| Unpacked bytes | 9,044,275 | 8,970,000 | Exceeds by 74,275 |
+| Files | 2,647 | 2,628 | Exceeds by 19 |
+| Code gzip bytes | 1,654,451 | 1,648,000 | Exceeds by 6,451 |
+| Code files | 2,592 | 2,574 | Exceeds by 18 |
+| Docs gzip bytes | 64,287 | 73,728 | Within by 9,441 |
+| Docs files | 5 | 10 | Within by 5 |
+
+The size gate remains a delivery blocker for the coordinator. The direct task
+explicitly requires reporting rather than changing caps; no capacity workaround
+or unrelated repair is added. Full verification, counted native admission and
+remote delivery remain outside this local continuation.
+
+Self-retro: using the union of existing registrations and the existing generators
+kept integration free of new mechanisms. Measuring the combined artifact exposed
+five concrete budget overruns despite each lane's earlier local evidence; retain
+that combined-artifact check before delivery. No successor work was opened.
+
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
@@ -533,6 +605,81 @@ or donor behavior. The lesson is to compare the complete exported surface and
 use the established concrete-callable witness pattern; no new abstraction or
 process was justified, and no formal rethink was needed. Machine contention
 prevented execution evidence, so no runtime delay or performance claim is made.
+
+### R2 predecessor integration — 2026-10-27
+
+Direct maintainer instruction authorizes the local no-fast-forward merge of
+`claude/oss-m15-r1-risk-import` at `7a1886aa599a96a9d1fef90769583e7251342aa3`
+into R2 at `c88f5894`, conflict resolution preserving M14 and both M15 slices,
+serial generation, the requested focused checks with two Vitest workers, and
+separate DCO-signed merge/regeneration commits. No push, cap change, release,
+behavior correction or counted review is in this continuation. Bart Roszkowski
+remains the accountable author; the coordinator retains subsequent delivery.
+
+Instruction freshness: freshly fetched `origin/main` is
+`80cb0e7063206a9fead36b4e6680c9a83fa3e108`, separate from the original R1 stack
+base. The predecessor contains that main commit and M14 #397. The only merge
+conflict is this record's append point: retain predecessor R1 integration
+evidence before the entire R2 record. Source and configuration merge without
+conflicts; preserve generated inputs and regenerate outputs in the next commit.
+Acceptance is the two local signed commits, preserved source intent, focused
+check results and exact Platform pack measurements against unchanged caps.
+Known M14 size excess remains reportable and blocks a passing package gate;
+this instruction grants no budget waiver.
+
+Integration merge: `aadc7b072547dedfe033dd613b0c478297ba2c2a`; parents are
+`c88f589435676743e5a603fce1eac68a6945141e` and
+`7a1886aa599a96a9d1fef90769583e7251342aa3`. The merge has the instructed
+Bart Roszkowski DCO trailer. Comparing the merge against its parents confirms
+R2 risk/composition sources and M14 operations sources/tests are unchanged.
+Release-gate bytes equal the predecessor's; no cap was adjusted.
+
+Serial regeneration completed successfully: Platform `api:update`, followed by
+`oss:published-tree -- --policy`, then `--policy --docs-update`. Every generated
+output is byte-identical to the merged inputs, so this separate regeneration
+commit records the result rather than inventing generated changes. The policy
+comparison now uses main `80cb0e70`, with nine obligations and zero unanswered.
+The pre-merge policy probe used the older HEAD's merge-base and reported one
+unanswered configuration obligation; committing the merge restores the actual
+main comparison and the existing scoped impact answer without a policy edit.
+
+Focused results for the merge candidate (Node 24.22.1, npm 11.19.1; command logs
+and measurement JSON under ignored `.context/scratch/m15-r2-predecessor-merge/`):
+
+| Command | Result |
+| --- | --- |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS; structural scan used `RAYON_NUM_THREADS=2` |
+| `npm run lint` | PASS; zero errors, 33 warnings, all eight structural-rule fixture suites pass |
+| `npm run api:check --workspaces --if-present` | PASS for Core, Outbox and Platform; root has no standalone API script |
+| `npx --no -- vitest run packages/platform/test/risk --maxWorkers=2` | PASS, 42 tests in five files |
+| `npm run packages:check` | FAIL, exactly five Platform size-cap findings; all three packages packed with no other findings |
+| `node --experimental-strip-types .context/scratch/m15-r2-predecessor-merge/measure.mjs` | PASS as measurement; all five budget findings reproduced with the existing `measurePack` and `checkPackBudget` functions |
+| `git diff --check` | PASS |
+
+The independent Platform tarball integrity equals the official gate's integrity:
+`sha512-M2LKdqqc/yAl0uhbNlipnbiQvLQSGuyLoMn4lGL2VVQpy7XZXamsNKXpc63biJ6AVq97oDPu88O+NaPQqlf/yQ==`.
+The follow-up evidence changes only this non-packed task record; package inputs
+and measurements remain those of the merge candidate.
+
+| Platform metric | Measured | Unchanged cap | Result |
+| --- | ---: | ---: | --- |
+| Packed bytes | 1,936,088 | 1,925,000 | Exceeds by 11,088 |
+| Unpacked bytes | 9,061,171 | 8,970,000 | Exceeds by 91,171 |
+| Files | 2,656 | 2,628 | Exceeds by 28 |
+| Code gzip bytes | 1,656,903 | 1,648,000 | Exceeds by 8,903 |
+| Code files | 2,601 | 2,574 | Exceeds by 27 |
+| Docs gzip bytes | 64,499 | 73,728 | Within by 9,229 |
+| Docs files | 5 | 10 | Within by 5 |
+
+The requested local integration is complete with the known package gate failure
+reported. Full verification, counted review, budget reconciliation and later
+delivery remain with the coordinator; no push, waiver or release is claimed.
+
+Self-retro: the single append conflict needed only preservation of both evidence
+sections. Existing generators confirmed that no generated-byte repair was
+necessary, avoiding manual output edits. The initial policy probe's old base
+resolved after the merge commit; retain that distinction when interpreting a
+mid-merge policy result. No extra mechanism or successor work was added.
 
 ## Approved R3 boundary — 2026-10-27
 
