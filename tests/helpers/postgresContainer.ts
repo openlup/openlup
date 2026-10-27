@@ -215,6 +215,10 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
     const port = await reservePort();
     const args = [
       "run", "-d", "--name", spec.name,
+      // Cover the image's VOLUME before create: even a SIGKILL between create
+      // and start cannot allocate an anonymous PostgreSQL data volume. This is
+      // disposable test data, like the existing installed-consumer fixtures.
+      "--tmpfs", "/var/lib/postgresql/data",
       ...(pulled ? ["--pull=never"] : []),
       "-e", `POSTGRES_PASSWORD=${spec.password}`,
       ...(spec.database ? ["-e", `POSTGRES_DB=${spec.database}`] : []),

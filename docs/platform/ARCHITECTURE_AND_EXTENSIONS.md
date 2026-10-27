@@ -2094,6 +2094,62 @@ typed calls, authorization/input/output refusals and the real native invoker rol
 including durable replay/conflict, checkOnly and a second-process restart.
 Its executed result, rather than this source description, establishes proof.
 
+## Application file upgrades
+
+The experimental Node-only
+[`@openlup/platform/lifecycle`](../../packages/platform/src/lifecycle/index.ts)
+entry reconciles a finite pair of application-owned file snapshots. It uses
+Node filesystem primitives, imports no optional SDK and has no cross-module
+platform edge. It creates no route, timer, migration runner or upgrade framework.
+
+[`planAppUpgrade`](../../packages/platform/src/lifecycle/appUpgrade.ts) only
+reads the absolute canonical application root. The predecessor and candidate
+name exact UTF-8 files and schema ranges. Files outside that inventory belong
+to the adopter. An upstream-unchanged file retains local content or deletion;
+a changed file must match the predecessor or exact candidate bytes. A third
+value is a conflict requiring adopter reconciliation. Every existing managed
+path component must match its actual directory-entry spelling exactly; filesystem
+case or normalization aliases confer no ownership of an unlisted entry.
+Unsafe or aliasing paths, links, nonregular files and file-parent collisions
+refuse. Across both snapshots, each case- and normalization-folded directory
+prefix must have one exact spelling, even when that directory does not yet exist
+and the managed leaf names differ. Planning is not a
+write authority: `applyAppUpgrade` rechecks the whole input before any mutation.
+
+Apply requires an exclusive maintenance window over the tree. Each replacement
+uses a same-directory temporary file and rename; the complete operation is not
+an atomic transaction. Exact completed create/replace/remove states permit
+resume with the same snapshots after an I/O failure or process interruption.
+An abrupt termination before rename can leave an unreferenced temporary file;
+it is not adopted as resume state. Ordinary permission bits survive replacement,
+while ownership, ACLs, extended attributes and special bits are not preserved.
+These checks do not protect against a hostile concurrent filesystem writer or
+establish power-loss durability.
+
+The schema ordinal and both compatible ranges come from the host. Range
+admission is separate from observing a real database upgrade, backfill or
+rollback path. This API invokes no SQL, package installation, version marker,
+deployment or user hook. Keep the
+[database compatibility lifecycle](DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+and adopter dependency/provenance checks under their existing owners.
+
+The [owner-local witnesses](../../packages/platform/test/lifecycle/appUpgrade.test.ts)
+exercise custom files, conflict/stale-plan refusal, exact byte comparison,
+filesystem boundaries, interruption/replay and a real child-process SIGKILL.
+The existing [cold consumer](../../scripts/packages/platform-cold-consumer.ts)
+adds an installed public-export app-file operation, interruption/resume,
+unchanged brand/theme and type/refusal checks without optional peers. Executed
+results establish proof; authored witnesses alone do not. The
+[neutral disposable recipe](PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade)
+uses this boundary without claiming a complete npm or database upgrade service.
+
+The same lifecycle entry exports the injected-query
+`inspectLegacyPostgresInstallRoles` helper. Its fixed read-only observation is
+limited to `legacy-fresh-bootstrap-role-prerequisites` and
+`rolePrerequisitesMet`; it adds no role, DDL, migration path or installation
+readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
+defines the legacy prerequisites and actual PostgreSQL refusal evidence.
+
 ## Existing-store transfer and recovery
 
 The experimental Node-only

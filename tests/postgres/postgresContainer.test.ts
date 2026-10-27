@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
 
-const mocks = vi.hoisted(() => ({ exec: vi.fn(), pull: vi.fn(), resolve: vi.fn(), realPg: false, connect: vi.fn(), query: vi.fn(), release: vi.fn(), end: vi.fn(), configs: [] as import("pg").PoolConfig[] }));
+const mocks = vi.hoisted(() => ({ port: 15432, exec: vi.fn(), pull: vi.fn(), resolve: vi.fn(), realPg: false, connect: vi.fn(), query: vi.fn(), release: vi.fn(), end: vi.fn(), configs: [] as import("pg").PoolConfig[] }));
 vi.mock("pg", async importOriginal => {
   const actual = await importOriginal<typeof import("pg")>();
   return {
@@ -28,7 +28,7 @@ vi.mock("../../scripts/ci-image-pull.mjs", async importOriginal => ({
 vi.mock("node:net", () => ({
   createServer: () => ({
     once: vi.fn(), listen(_port: number, _host: string, ready: () => void) { ready(); },
-    address: () => ({ port: 15432 }), close(done: () => void) { done(); },
+    address: () => ({ port: mocks.port }), close(done: () => void) { done(); },
   }),
 }));
 
@@ -36,6 +36,7 @@ const spec = { name: "offline-postgres", password: "disposable" };
 const pin = readCiImage("test-postgres");
 beforeEach(() => {
   vi.resetModules();
+  mocks.port = 15432;
   mocks.configs.length = 0;
   mocks.realPg = false;
   mocks.release.mockReset();
@@ -318,4 +319,73 @@ it.each(["handshake", "query"])("closes real TCP sockets when a peer stalls the 
     for (const socket of sockets) socket.destroy();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
+});
+
+describe("PostgreSQL owned Docker volume cleanup", () => {
+  it.each([false, true])("leaves no owned container or volume after failedStart=%s", async failedStart => {
+    const { execFile } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const { promisify } = await import("node:util");
+    const exec = promisify(execFile);
+    const { createServer } = await vi.importActual<typeof import("node:net")>("node:net");
+    const { randomUUID } = await import("node:crypto");
+    const { runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    // Real Docker is mandatory for this lifecycle witness. Never compare global
+    // volume counts: sibling suites can create resources at the same time.
+    await exec("docker", ["version", "--format", "{{.Server.Version}}"]);
+    const { pullWithRetry } = await vi.importActual<typeof import("../../scripts/ci-image-pull.mjs")>("../../scripts/ci-image-pull.mjs");
+    const reference = await pullWithRetry(pin, {
+      exec: async (args, timeout = 5_000) => (await exec("docker", args, { timeout })).stdout,
+      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)), now: () => performance.now(),
+    });
+    const image = (await exec("docker", ["image", "inspect", reference, "--format", "{{.Id}}"])).stdout.trim();
+    const name = `openlup-volume-cleanup-${randomUUID()}`;
+    const server = createServer();
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    mocks.port = (server.address() as import("node:net").AddressInfo).port;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    let blocker: string | undefined;
+    const containers: string[] = [], volumes: string[] = [];
+    mocks.exec.mockImplementation(async (command, args, options) => {
+      if (args[0] !== "run") return exec(command, args, options);
+      // An extra anonymous mount makes the -v cleanup assertion non-vacuous,
+      // while the data mount separately proves prevention before startup.
+      const actual = [...args.slice(0, -1), "--mount", "type=volume,destination=/openlup-cleanup-witness", args.at(-1)];
+      try { return await exec(command, actual, options); }
+      finally {
+        const { stdout } = await exec("docker", ["inspect", name]);
+        const info = JSON.parse(stdout)[0];
+        containers.push(info.Id);
+        volumes.push(...info.Mounts.filter((mount: { Type: string }) => mount.Type === "volume").map((mount: { Name: string }) => mount.Name));
+        expect(info.HostConfig.Tmpfs).toHaveProperty("/var/lib/postgresql/data");
+        expect(info.Mounts.some((mount: { Type: string; Destination: string }) => mount.Type === "volume" && mount.Destination === "/var/lib/postgresql/data")).toBe(false);
+      }
+    });
+    try {
+      if (failedStart) {
+        // Reserve in Docker itself: OrbStack can publish a port even while a
+        // host-side Node listener holds that port.
+        const { stdout } = await exec("docker", ["run", "-d", "--pull=never", "--name", `${name}-blocker`, "--tmpfs", "/var/lib/postgresql/data", "-p", "127.0.0.1::5432", "--entrypoint", "sleep", image, "120"]);
+        blocker = stdout.trim();
+        const binding = await exec("docker", ["port", blocker, "5432/tcp"]);
+        mocks.port = Number(binding.stdout.trim().split(":").at(-1));
+      }
+      const pending = runPostgresContainer({ name, password: "disposable", image });
+      if (failedStart) await expect(pending).rejects.toThrow("PostgreSQL Docker start");
+      else await (await pending).remove();
+      expect(containers).toHaveLength(failedStart ? 5 : 1);
+      expect(volumes).toHaveLength(containers.length);
+      for (const id of containers) {
+        await expect(exec("docker", ["inspect", id])).rejects.toMatchObject({ stderr: expect.stringMatching(/No such (object|container)/i) });
+      }
+      for (const id of volumes) {
+        await expect(exec("docker", ["volume", "inspect", id])).rejects.toMatchObject({ stderr: expect.stringMatching(/no such volume/i) });
+      }
+    } finally {
+      if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
+      // Only this witness's unique container and captured owned volume IDs.
+      await exec("docker", ["rm", "-f", "-v", name]).catch(() => {});
+      if (failedStart) await exec("docker", ["rm", "-f", "-v", blocker ?? `${name}-blocker`]).catch(() => {});
+      for (const id of volumes) await exec("docker", ["volume", "rm", id]).catch(() => {});
+    }
+  }, 600_000);
 });

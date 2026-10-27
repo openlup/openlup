@@ -76,6 +76,23 @@ The package entry and contributor witness descriptions link to that boundary;
 publication inventory includes the four control witnesses/fragment and inert
 fixtures without admitting them to the canonical installation catalogue.
 
+Application lifecycle source, owner-local witnesses and its API report route
+to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
+The package README remains the short import entry, the package reference owns
+the disposable recipe, and database/runtime owners retain their separate
+compatibility and admission duties. Generated navigation adds no upgrade,
+installation or provider claim.
+
+The lifecycle legacy PostgreSQL role helper, its package witness and actual
+PostgreSQL witness route to the
+[finite legacy role-observation owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation).
+Its report is role-prerequisite evidence, never install readiness. The package
+reference owns the invocation; runtime guidance keeps installation and grant
+admission separate. Shared lifecycle API documentation retains both boundaries.
+
+The app-file witness's owned child Node process is named in the existing closed
+public execution inventory; this records its CLI carrier without adding a job.
+
 Portability source, package witnesses, the compatible-row PostgreSQL witness and
 its API report route to the
 [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).

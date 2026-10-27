@@ -166,6 +166,20 @@ not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
 
+The lifecycle slice uses existing build/API/package/cold-consumer commands.
+Owner-local tests cover file conflicts, path boundaries and process interruption;
+the installed consumer adds the public export, custom app files, crash/resume
+and a no-op falsifier. Range admission remains caller evidence, separate from
+actual PostgreSQL compatibility. No new runner or required job is added.
+Its owned child Node witness is registered by exact path in the existing public
+execution inventory; the classifier and all other entries remain unchanged.
+
+The same lifecycle selection retains the read-only legacy PostgreSQL role
+observer's package and actual database witnesses. The installed consumer checks
+its public query/report types, finite prerequisite result, superuser refusal and
+redacted error, with a false-admission falsifier. These checks create no installer
+or role grants and do not turn a prerequisite report into installation readiness.
+
 The portability package witnesses cover private bytes, access/version/integrity
 refusals and interrupted resume. The root
 [`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
@@ -1523,6 +1537,11 @@ build, sharded required root tests, DCO check, and publication checks from this 
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
+Keep historical source/config backups outside the checkout's tool traversal.
+Git-ignore alone prevents neither executable `eslint.config.*` discovery nor
+linting an archived test import. Preserve archival byte/hash provenance in task
+evidence; retain the scope and semantics of real test fixtures.
+
 `npm run lint` runs ESLint over the tree, including the import boundaries in
 [eslint.config.js](eslint.config.js): a package under `packages/` imports
 nothing outside its own directory, other code reaches a package only through
@@ -1669,6 +1688,16 @@ npm --workspace @openlup/core run ci
 ```
 
 Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
+
+Disposable PostgreSQL fixtures mount `/var/lib/postgresql/data` as `tmpfs`.
+This covers the PostgreSQL image's declared data volume before container
+creation, so an interrupted worker cannot leave an anonymous data volume.
+Normal and failed-start teardown still removes the owned container with
+`docker rm -f -v`; other anonymous mounts are removed too. A worker killed
+with `SIGKILL` can still leave a container, including one in `Created` state:
+temporary data storage prevents the volume leak, but does not reap containers.
+The container-helper regression checks exact owned container and volume IDs
+for normal teardown and port-bind failure, without relying on global counts.
 
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
@@ -2155,9 +2184,9 @@ A new or renamed path needs its authored row in
 nested directories and other extensions refuse. The catalogue remains an
 explicit classification and execution inventory, not a generated list.
 
-The bounded qualified-installation witness declares its exact child path
-`tests/postgres/m14QualifiedComposition.proof.ts` in that existing execution
-inventory. The control-only registration precedes the E2 source: it permits no
+The bounded qualified-installation witness declares its exact future child path
+in the [existing execution inventory](scripts/oss-publication-contract.ts).
+The control-only registration precedes the E2 source: it permits no
 other child path and changes neither entrypoint detection nor fixture rules.
 The adjacent Vitest witness owns each disposable database and the child lifetime
 used to close the production runner's internal pool. This is preparation for
@@ -2572,6 +2601,15 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
+  native `σ`/`ς` filename alias → extend the existing preflight equivalence
+  while preserving prior refusals, and prove the observed collision before
+  writes alongside exact-spelling replay.
+
+- 2026-10-27, M14 A/C: ignored historical configs and source copies entered lint
+  traversal → keep archival copies outside the checkout, following
+  [commands and lint rules](#commands-and-lint-rules).
 
 - 2026-10-27, M14 filesystem transfer: character counts and default UTF-8 key
   hashing lost admitted string identity → use explicit representation at byte
