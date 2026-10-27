@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Portability source, package witnesses, the compatible-row PostgreSQL witness and
+its API report route to the
+[transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
+Data guidance retains canonical import-trigger/identity limitations; runtime
+guidance retains effect-time fencing and host capability ownership. Navigation
+and selected-row/local-object evidence do not close the full M14 store outcome.
+
 Operations source, owner-local witnesses, the unchanged control-plane SQL
 projection and the three operations API reports route to the
 [operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).

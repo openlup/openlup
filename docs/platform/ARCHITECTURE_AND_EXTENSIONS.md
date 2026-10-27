@@ -2167,3 +2167,65 @@ requires injected schema readiness, preserves host actor mapping and exposes no
 default routes. The neutral [admin witness](../../packages/platform/test/risk/adminHandlers.test.ts)
 and [composition witness](../../server/runtime/public-reference/m15RiskBinding.test.ts)
 are authored falsifiers; execution status belongs to the task record.
+
+## Existing-store transfer and recovery
+
+The experimental Node-only
+[`@openlup/platform/portability`](../../packages/platform/src/portability/index.ts)
+entry moves bounded data through explicit host capabilities. It imports only its
+own modules and Node built-ins; PostgreSQL and provider SDKs remain behind the
+injected handles. It installs no route, worker, schema, role or effect authority.
+
+[`copyTransferObjects`](../../packages/platform/src/portability/objects.ts)
+requires an explicitly complete immutable/quiesced inventory, exact logical
+versions, byte counts/digests, metadata, source identity and access mapping.
+Reads distinguish absent, denied, unavailable, version and integrity conflicts.
+A successful write is insufficient: target bytes and descriptor must match
+before checkpoint. Resume recognizes the exact retained object after a lost
+write ACK or checkpoint interruption and refuses a divergent existing key.
+This first slice has no remote inventory traversal or live object-delta protocol.
+
+The [private filesystem capability](../../packages/platform/src/portability/filesystemObjects.ts)
+publishes bytes and metadata through exclusive files, fsync and one directory
+rename. Its configured access label means process-owner-only reads through
+0700 directories and 0600 single-link files; another access label refuses.
+Publication and readback share a 256 KiB encoded-descriptor ceiling covering
+admitted Unicode metadata and escaped identifiers; oversize encodings refuse
+before publication.
+Filesystem locations hash the JSON string encoding of each logical key, so
+distinct admitted UTF-16 strings retain distinct identities before hashing.
+Logical version/source lineage is retained separately from provider-native
+versioning. The owner account/root must be exclusively controlled. Symlinks,
+unsafe modes and hardlinks refuse rather than becoming absence. These checks
+do not certify an S3 or managed-storage ACL.
+
+[`captureCompatiblePostgresRows` and `restoreCompatiblePostgresRows`](../../packages/platform/src/portability/postgresRows.ts)
+operate on a finite candidate table list through host-owned read-only
+repeatable-read and atomic transaction handles. Source PostgreSQL JSON text is
+transported unchanged, including bigint and timestamp precision. The host first
+qualifies the canonical catalogue and login privileges; the packet's catalogue
+label is binding input, not independent catalogue certification. Target locks,
+column/type/primary-key comparison and refusal of **every** enabled user INSERT
+trigger precede writes. Exact typed readback permits identical replay; a
+different row or alternate unique-key collision refuses the whole transaction.
+Referenced parents remain explicit prerequisites. There is no generic upsert,
+deletion scan, identity relinking, ledger copy or permission change.
+
+The [canonical PostgreSQL witness](../../tests/postgres/portabilityRows.test.ts)
+compares entire selected rows in two disposable canonical clusters, retains
+active subscriptions/frozen terms/in-flight outbox state, and checks replay,
+conflict rollback and unchanged migration ledger/ACLs. The existing
+[cold consumer](../../scripts/packages/platform-cold-consumer.ts) executes actual
+private bytes and injected-row refusal without optional peers, then selected
+outbox recovery against its existing canonical PostgreSQL fixture using installed
+artifacts. Its client-side query fixtures prove translation only; actual database
+effects depend on the separate connected proof.
+
+The [HTTP probe](../../packages/platform/test/payments/tpay/effectAuthority.test.ts)
+uses the existing payment client and a local synthetic provider. It demonstrates
+the cached-token pause race and provider-enforced rejection, accepted-before-ACK
+readback and late observation. Its local generation model is not a cloned domain
+database or hosted revocation certification. Full-store import, managed identity
+mapping, consistent live catch-up and independently enforced old-executor fencing
+remain [M14 obligations](plans/oss-m14-operations-portability.md), including the
+[import-safe domain dependency](DATA_AND_MIGRATIONS.md#compatible-data-transfer).

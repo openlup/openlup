@@ -1354,6 +1354,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-existing-store-transfer.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -2515,6 +2519,10 @@
     },
     {
       "path": "packages/platform/api/payments.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/portability.api.md",
       "class": "public-output"
     },
     {
@@ -5678,6 +5686,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/portability/filesystemObjects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/objects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/postgresRows.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/acquisitionFinancialPolicy.ts",
       "class": "public-output"
     },
@@ -7814,6 +7838,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/tpay/effectAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/tpay/factory.test.ts",
       "class": "public-output"
     },
@@ -7887,6 +7915,14 @@
     },
     {
       "path": "packages/platform/test/payments/verifyHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/portability/filesystemObjects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/portability/objects.test.ts",
       "class": "public-output"
     },
     {
@@ -25847,6 +25883,10 @@
     },
     {
       "path": "tests/postgres/platformBffMovedRoutes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/portabilityRows.test.ts",
       "class": "public-output"
     },
     {

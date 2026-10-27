@@ -10,6 +10,7 @@ import {
   RISK_WORKFLOW_PROOFS,
   proveRiskWorkflowConsumer,
   proveCommerceServerConsumer,
+  provePortabilityConsumer,
   proveAccountSupportReadsConsumer,
   ACCOUNT_SUPPORT_READ_SCENARIOS,
   type AccountSupportReadScenarioResult,
@@ -62,9 +63,11 @@ function fixture() {
   packageFixture(consumer, "@openlup/platform", Object.fromEntries([...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => [`./${name}`, { types: "./index.d.ts", default: "./index.js" }])));
   const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
+  platformMetadata.exports["./portability"] = { types: "./portability/index.d.ts", default: "./portability/index.js" };
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
   platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
+  cpSync(join(root, "packages/platform/dist/portability"), join(consumer, "node_modules/@openlup/platform/portability"), { recursive: true });
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
   // The server port extends the browser contract with historical commands.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
@@ -440,6 +443,18 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it("proves installed portability copy/resume and rejects a copy that skips byte publication", () => {
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
+  provePortabilityConsumer(consumer);
+  const path = join(consumer, "node_modules/@openlup/platform/dist/portability/objects.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = original.replace("export async function copyTransferObjects(input) {", "export async function copyTransferObjects(input) { return {copied:0,replayed:0,verifiedKeys:[]};");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => provePortabilityConsumer(consumer)).toThrow(/installed byte copy must reach verified checkpoint/);
+  } finally { writeFileSync(path, original); }
+});
 it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers or checkout fallback", () => {
   const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   proveA1ReferenceBindingConsumer(consumer, "imports");
