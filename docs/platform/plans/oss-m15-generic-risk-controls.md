@@ -1302,3 +1302,43 @@ R3 risk/privacy behavior is unchanged. No lockfile delta or reinstall.
 Regenerate, run focused two-worker checks, then commit and run the official
 full-stack package gate. CD-M15-6a remains conditional on an exceeded cap.
 Logs and retained tarballs: `.context/scratch/m15-main406/`.
+
+R3 candidate `b0622861`: API/navigation regeneration and both documentation
+commands pass without generated-byte changes. Two-thread ast-grep, lint (zero
+errors, 33 warnings), all workspace API checks and 58/58 risk tests in seven
+files with `--maxWorkers=2` pass. The explicit new R2-base policy detects one
+expired repository fingerprint for merged ESLint bytes; the tooling explanation
+remains fresh. This normal signed evidence commit renews only that scoped
+repository explanation, preserving its meaning and the checker.
+
+Official `packages:check` passes for all three packages with no findings.
+The retained full-stack Platform tarball, measured using existing `measurePack`,
+has integrity
+`sha512-KINLJNMx7/ZYkkF0AdjQ3iwgFfIR6kRyQf04rxPYxu9T7fCgrPtVXPSaynfI1SuumT7CAuTaj/pQzpsgworVSw==`.
+
+| Full-stack Platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,965,454 | 2,029,568 | 64,114 |
+| Unpacked bytes | 9,179,071 | 9,447,424 | 268,353 |
+| Files | 2,680 | 2,712 | 32 |
+| Code gzip bytes | 1,685,465 | 1,743,872 | 58,407 |
+| Code files | 2,625 | 2,656 | 31 |
+| Docs gzip bytes | 66,051 | 73,728 | 7,677 |
+| Docs files | 5 | 10 | 5 |
+
+No metric exceeds its cap, so CD-M15-6a is not triggered and no 102% rounding
+or additional cap commit/cascade is needed. R1's three changed byte caps are
+only the instructed parent maxima: packed max(1,980,000, 2,029,568), unpacked
+max(9,260,000, 9,447,424), code gzip max(1,695,000, 1,743,872). File caps retain
+R1's higher values, and docs/browser caps are unchanged. Historical CD-M15-6's
+reason stays historical rather than claiming a new allocation.
+
+This evidence-only follow-up changes no packed input. Final policy uses each
+exact local predecessor; no dependency, version, SQL, runtime, timeout or test
+selection changes. Full verify, counted native review and delivery remain with
+the coordinator. No rebase, force-push, push or external mutation was performed.
+
+Self-retro: all runtime merges preserved parent bytes; shared append points
+needed only union, with no helper or abstraction. Exact predecessor policy
+exposed expired fingerprints, repaired in normal signed commits as required.
+The retained official artifact avoided a redundant pack to obtain measurements.
