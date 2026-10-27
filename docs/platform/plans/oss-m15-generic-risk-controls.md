@@ -304,3 +304,102 @@ This is one preliminary repair iteration, not a native prepare/admission cycle.
 No existing native session, findings, counter or expiry was reset or inferred.
 Fresh reviewers must inspect the repaired committed candidate and explicitly
 close both cards. All deferred execution obligations remain open.
+
+### R2 local authoring handoff — 2026-10-27
+
+Signed implementation commits:
+
+- `d86106821614ec4ce395312051f463ef4b313dc2` — reference runtime/schema/port delegation.
+- `273ca0ac` — captured admin workflow, inert composition and 31 written cases.
+- `583c3f49f2fc6a75ded17636384e7a0ff52bd367` — four packed workflow cases and deferred command ledger.
+- `6684d9fd692830f3323c3d6d4e964d441fc2cd2e` — close preliminary helper-export and route-witness findings.
+
+Two new independent fresh-context reviewers inspected the **complete** repaired
+base-to-`6684d9fd692830f3323c3d6d4e964d441fc2cd2e` comparison. Both returned
+preliminary static PASS, explicitly closing R2-P1 and R2-P2 with no further
+material findings. They considered direct delegates, responder injection and the
+existing slot the smallest adequate solution. All four review contexts used
+reads/Git only. No native receipt, admission or evidence expiry is established;
+the coordinator retains the later counted review and verification route.
+
+Observed local proof is limited to clean Git whitespace checks and DCO trailers
+on the instructed local commits. A handoff fetch still resolves `origin/main` to
+the instruction pin above with no relevant instruction delta. No tests, pgTAP,
+builds, install, lint, compiler, API generation, policy checker or broad verify ran.
+The tree is an authored candidate, not a verified delivery candidate.
+
+Fit-report placement adjustments: the eight cross-boundary composition cases
+live beside `m15RiskBinding.ts`, where they exercise the actual existing commerce
+registry; the four installed/compiler/isolation cases extend the existing
+cold-consumer harness. Separate package `bindings.test.ts` and a new consumer
+harness would duplicate those proofs. The admin case suite calls the packaged
+binding directly. No behavioral requirement was narrowed. The captured escalated
+UI refusal is preserved even though the server advertises allowed actions.
+Generated snapshots/navigation remain unmodified because their commands require
+the deferred build/verification slot. These are explicit remaining gates, not
+accepted deviations from behavior or proof requirements.
+
+Small add-only shared-companion edits:
+
+- `packages/platform/src/risk/server/index.ts`: export the new handler and binding.
+- `packages/platform/src/composition/index.ts`: export the inert risk contribution.
+- `eslint.config.js`: add only the risk schema value edge and HTTP/BFF type edges
+  to `risk/server`; no other graph permission changes.
+- `scripts/packages/platform-cold-consumer.ts`: add installed workflow proofs,
+  their existing-esbuild import and invocation in the official consumer run.
+- `scripts/packages/platform-cold-consumer.test.ts`: add four independent rows.
+- `config/openlup-publication-catalog.json`: add seven public-output records.
+- `packages/platform/README.md`: append the binding/slot recipe.
+- `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`: append R2's delegation contract.
+- `docs/platform/plans/oss-m15-generic-risk-controls.md`: append this R2 task/evidence
+  record; retain R1's history unchanged.
+
+No package.json export, R1 fragment, API snapshot, release gate, version, lockfile,
+SQL, M14 source or default BFF router changed. Remaining coordinator decisions:
+actual case/time/pack reconciliation and any finite budget exception; after the
+machine rule is lifted, run the exact commands above, review generated API/docs
+deltas, then complete required verification and counted reviews. No open R2 code
+or donor-policy question is identified by the static reviews.
+
+Changed paths (complete R2 delta):
+
+```text
+config/openlup-publication-catalog.json
+config/public-reference-capability-manifest.json
+docs/platform/ARCHITECTURE_AND_EXTENSIONS.md
+docs/platform/RUNTIME_AND_SELF_HOSTING.md
+docs/platform/plans/oss-m15-generic-risk-controls.md
+eslint.config.js
+packages/platform/README.md
+packages/platform/changes/m15-r2.md
+packages/platform/src/composition/index.ts
+packages/platform/src/composition/riskContribution.ts
+packages/platform/src/risk/server/bindings.ts
+packages/platform/src/risk/server/index.ts
+packages/platform/src/risk/server/riskAdminCasesHandler.ts
+packages/platform/test/risk/adminHandlers.test.ts
+scripts/packages/platform-cold-consumer.test.ts
+scripts/packages/platform-cold-consumer.ts
+server/adapters/README.md
+server/adapters/postgres/riskControl.ts
+server/adapters/supabase/riskAdminPort.ts
+server/adapters/supabase/riskOrderPaid.ts
+server/domains/risk/orderPaidRiskPort.ts
+server/domains/risk/riskAdminCasesHandler.ts
+server/domains/risk/riskFingerprint.test.ts
+server/domains/risk/riskFingerprint.ts
+server/runtime/public-reference/m15RiskBinding.test.ts
+server/runtime/public-reference/m15RiskBinding.ts
+src/domains/risk/README.md
+src/domains/risk/contracts.ts
+src/domains/risk/ports.ts
+src/public-reference/riskReviewRoutes.test.tsx
+```
+
+Self-retro: the first static review caught an omitted compatibility helper and
+an erased descriptor signature in a new witness. Restoring the named export and
+recovering the known callable type closed both without changing public metadata
+or donor behavior. The lesson is to compare the complete exported surface and
+use the established concrete-callable witness pattern; no new abstraction or
+process was justified, and no formal rethink was needed. Machine contention
+prevented execution evidence, so no runtime delay or performance claim is made.
