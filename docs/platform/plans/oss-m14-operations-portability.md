@@ -463,3 +463,13 @@ The entry registration is control-only here, before E2 source introduction; it
 changes no classifier or exception. All further source repairs remain on this
 Daybreak-capable machine. The stronger machine may only execute the supplied
 measurements/tests/verify and return evidence; defects return here for repair.
+
+
+Statement-pin accounting: the fixed SQL query text intentionally changed from
+`8c9494f87d3147ec25bf0d6461ed214061e410b2594186cb4b90baea60dca54c` to
+`e897c3028f5b097baea6e16f79e75ad33ffcf8174d751ed3a95486b803bc5e50` for catalog qualification. The existing prepared-statement
+unit pin is updated to those exact constructed statement bytes. Static fragment
+extraction first reproduced the old pin; this is source-data integrity, not
+SQL execution. PROJECTION_PAYLOAD, PROJECTION_DIGEST, query names and every
+legacy/E-only manifest inventory expectation remain unchanged. Actual canonical
+PostgreSQL byte equivalence still requires the proving-machine run.
