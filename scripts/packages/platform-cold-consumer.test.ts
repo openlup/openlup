@@ -7,6 +7,8 @@ import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
   proveRiskConsumer,
+  RISK_WORKFLOW_PROOFS,
+  proveRiskWorkflowConsumer,
   proveCommerceServerConsumer,
   proveAccountSupportReadsConsumer,
   ACCOUNT_SUPPORT_READ_SCENARIOS,
@@ -1053,3 +1055,11 @@ it("M15 consumes packed risk assessment and payment refusal without optional pee
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root,"node_modules",name),join(consumer,"node_modules",name),{recursive:true});
   compileConsumer(consumer,["risk","risk/contracts"],join(root,"node_modules/typescript/lib/tsc.js"));
 },30_000);
+
+// Four independently reported installed-artifact cases; each starts from its own copy.
+it.each(RISK_WORKFLOW_PROOFS)("M15 R2 packed workflow: %s", proof => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  proveRiskWorkflowConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"), proof);
+}, 30_000);

@@ -224,3 +224,60 @@ assess once before at most one fulfillment. Execution, API generation and docs
 navigation remain deferred under the machine rule; written tests are no PASS
 claim. Preliminary read-only review will inspect the signed candidate and its
 preserved donor statements; it creates no native admission or review expiry.
+
+### R2 authored cases and deferred commands
+
+The written witness has **35 explicit new cases**: `adminHandlers.test.ts` has
+15 individual cases plus four independent decision rows (19);
+`m15RiskBinding.test.ts` has three individual cases plus five independent outcome
+rows (8); `riskReviewRoutes.test.tsx` has four; the existing cold-consumer suite
+has four independent `RISK_WORKFLOW_PROOFS` rows (admin, NodeNext, Bundler,
+isolation). The installed admin scenario exercises the actual managed readback
+through the handler and deliberately expects `replayed: false` after a SQL reply
+of true. Existing five handler guards, client/UI cases, R1 adapter/SQL and managed
+timestamp-conflict witnesses remain unchanged.
+
+Three new production package files also expand the existing three per-source
+boundary tables by an expected nine instances. That makes an expected R2
+**44-case discovery increase**, pending actual discovery. R1 recorded 77, so the
+combined expected increase is 121 before R3, above the +100 programme allowance.
+No cap, skip, timeout or budget changed here; the coordinator must reconcile the
+actual discovery/hosted time and obtain the finite budget read before delivery.
+
+Run the following serially from this worktree **after the machine rule is lifted**.
+Keep `OPENLUP_STACK_BASE` pinned to the full R1 predecessor:
+
+```sh
+export OPENLUP_STACK_BASE=2e7d70ad25aeea42736394aebbf0e87f0b9a4c79
+npm run pretest
+npm --workspace @openlup/platform run api:update
+npm --workspace @openlup/platform run api:check
+npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression
+npm run lint
+npx --no -- tsc -p tsconfig.api.json
+npx --no -- tsc -p tsconfig.node.json
+npx --no -- vitest run packages/platform/test/risk server/domains/risk server/adapters/postgres/riskControl.test.ts server/adapters/supabase/riskAdminPort.test.ts server/adapters/supabase/riskOrderPaid.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx src/domains/risk/riskClient.test.ts src/pages/admin/RiskReviewPage.test.tsx --maxWorkers=2
+npx --no -- vitest run tests/postgres/riskControl.conformance.test.ts --maxWorkers=2
+npx --no -- vitest run scripts/packages/platform-cold-consumer.test.ts -t M15 --maxWorkers=2
+npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2
+npm run packages:check
+npm run oss:published-tree -- --policy --docs-update
+npm run oss:published-tree -- --policy
+npm run oss:published-tree -- --inventory
+git diff --check
+npm run check:dco-signoff -- "$OPENLUP_STACK_BASE" HEAD
+```
+
+API generation is intentionally deferred, rather than hand-writing a generated
+snapshot. Expected affected reports are `risk-server.api.md` and
+`composition.api.md`; the new BFF/HTTP declaration closure must be reviewed.
+Do not accept unrelated sibling regeneration. The installed compiler cases use
+strict NodeNext/Bundler consumers with `skipLibCheck` for optional peer declaration
+closures; they prove the entrance's requests/results and required actor/responder,
+not absence of all optional peer declaration dependencies. The isolation case
+separately bundles actual installed browser/contracts entries, refuses the server
+browser bundle and private paths, and proves that pg is absent.
+
+Required full verification, coverage, API and navigation generation, actual
+case/time/pack measurements and counted review remain with the coordinator. No
+execution, hosted PASS, installation proof or budget exception is claimed here.
