@@ -626,3 +626,57 @@ Acceptance is the two local signed commits, preserved source intent, focused
 check results and exact Platform pack measurements against unchanged caps.
 Known M14 size excess remains reportable and blocks a passing package gate;
 this instruction grants no budget waiver.
+
+Integration merge: `aadc7b072547dedfe033dd613b0c478297ba2c2a`; parents are
+`c88f589435676743e5a603fce1eac68a6945141e` and
+`7a1886aa599a96a9d1fef90769583e7251342aa3`. The merge has the instructed
+Bart Roszkowski DCO trailer. Comparing the merge against its parents confirms
+R2 risk/composition sources and M14 operations sources/tests are unchanged.
+Release-gate bytes equal the predecessor's; no cap was adjusted.
+
+Serial regeneration completed successfully: Platform `api:update`, followed by
+`oss:published-tree -- --policy`, then `--policy --docs-update`. Every generated
+output is byte-identical to the merged inputs, so this separate regeneration
+commit records the result rather than inventing generated changes. The policy
+comparison now uses main `80cb0e70`, with nine obligations and zero unanswered.
+The pre-merge policy probe used the older HEAD's merge-base and reported one
+unanswered configuration obligation; committing the merge restores the actual
+main comparison and the existing scoped impact answer without a policy edit.
+
+Focused results for the merge candidate (Node 24.22.1, npm 11.19.1; command logs
+and measurement JSON under ignored `.context/scratch/m15-r2-predecessor-merge/`):
+
+| Command | Result |
+| --- | --- |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS; structural scan used `RAYON_NUM_THREADS=2` |
+| `npm run lint` | PASS; zero errors, 33 warnings, all eight structural-rule fixture suites pass |
+| `npm run api:check --workspaces --if-present` | PASS for Core, Outbox and Platform; root has no standalone API script |
+| `npx --no -- vitest run packages/platform/test/risk --maxWorkers=2` | PASS, 42 tests in five files |
+| `npm run packages:check` | FAIL, exactly five Platform size-cap findings; all three packages packed with no other findings |
+| `node --experimental-strip-types .context/scratch/m15-r2-predecessor-merge/measure.mjs` | PASS as measurement; all five budget findings reproduced with the existing `measurePack` and `checkPackBudget` functions |
+| `git diff --check` | PASS |
+
+The independent Platform tarball integrity equals the official gate's integrity:
+`sha512-M2LKdqqc/yAl0uhbNlipnbiQvLQSGuyLoMn4lGL2VVQpy7XZXamsNKXpc63biJ6AVq97oDPu88O+NaPQqlf/yQ==`.
+The follow-up evidence changes only this non-packed task record; package inputs
+and measurements remain those of the merge candidate.
+
+| Platform metric | Measured | Unchanged cap | Result |
+| --- | ---: | ---: | --- |
+| Packed bytes | 1,936,088 | 1,925,000 | Exceeds by 11,088 |
+| Unpacked bytes | 9,061,171 | 8,970,000 | Exceeds by 91,171 |
+| Files | 2,656 | 2,628 | Exceeds by 28 |
+| Code gzip bytes | 1,656,903 | 1,648,000 | Exceeds by 8,903 |
+| Code files | 2,601 | 2,574 | Exceeds by 27 |
+| Docs gzip bytes | 64,499 | 73,728 | Within by 9,229 |
+| Docs files | 5 | 10 | Within by 5 |
+
+The requested local integration is complete with the known package gate failure
+reported. Full verification, counted review, budget reconciliation and later
+delivery remain with the coordinator; no push, waiver or release is claimed.
+
+Self-retro: the single append conflict needed only preservation of both evidence
+sections. Existing generators confirmed that no generated-byte repair was
+necessary, avoiding manual output edits. The initial policy probe's old base
+resolved after the merge commit; retain that distinction when interpreting a
+mid-merge policy result. No extra mechanism or successor work was added.
