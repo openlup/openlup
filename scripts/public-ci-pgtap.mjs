@@ -54,9 +54,12 @@ function must(command, args, options) {
   return result.stdout;
 }
 async function available(port) {
-  return new Promise((resolvePort) => {
+  return new Promise((resolvePort, rejectPort) => {
     const server = createServer();
-    server.once("error", () => resolvePort(false));
+    server.once("error", (error) => {
+      if (error.code === "EADDRINUSE") resolvePort(false);
+      else rejectPort(new Error(`cannot probe owned managed baseline port 127.0.0.1:${port}: ${error.code ?? error.message}`, { cause: error }));
+    });
     server.listen(port, "127.0.0.1", () => server.close(() => resolvePort(true)));
   });
 }
