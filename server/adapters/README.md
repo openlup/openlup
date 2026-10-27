@@ -22,14 +22,17 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
-Acquisition case and research evidence adapters remain application-owned.
-Their schemas and DTO types come directly from `@openlup/platform/marketing`
-and its type-only contracts entry, including reachable case and evidence
-ports. The full reference case port extends the package port; its retired
-commands and methods remain application-owned. Retired case admission types stay in the
-application shim. This binding preserves SQL routine names, argument order,
-result parsing, replay behavior and executor ownership; it moves no adapter
-or database operation into the package.
+Acquisition case and research evidence PostgreSQL adapters delegate through
+thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain
+lazy adapter imports after bundle and connection guards, host environment
+selection and pool-close ownership. Handler imports from the separate
+`@openlup/platform/marketing/server` entry do not load the optional `pg` peer.
+Schemas/DTOs use the browser marketing entries; server-only structural command
+types preserve the historical adapter's submit/transition signatures. Retired
+admission schemas and terminal route factories stay application-owned. SQL text,
+argument order, result parsing, role selection, replay and pool handling are
+unchanged. Package tests own the adapter assertions; the real PostgreSQL witness
+connects through a login granted only `platform_acquisition_runtime` membership.
 
 Commerce returns and native review lifecycle/media adapters delegate to
 `@openlup/platform/commerce/server`; the former paths retain factory identity. Returns
@@ -288,3 +291,10 @@ opener. Simulator settlement retains the canonical transition time and attempt.
 Current/prepared attempt hints cannot supply this authority. The
 [managed replay contract](../../docs/platform/DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures)
 owns fresh NULL refusal and the existing-donor host mapping.
+
+The platform control-plane compatibility adapter forwards to
+`@openlup/platform/operations/server`. It still accepts the existing structural
+SQL executor and operator ID, uses the same fixed routines and preserves
+command hashing, row decoding and conflict/error mapping. Native pool/transaction
+ownership and managed RPC translation stay with the reference bindings; the
+package creates neither a connection nor a provider client on import.

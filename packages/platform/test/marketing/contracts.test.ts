@@ -5,11 +5,36 @@ import type { z } from "zod";
 import type * as Runtime from "../../src/marketing/index.js";
 import * as Contracts from "../../src/marketing/contracts/index.js";
 import type * as Core from "@openlup/core/marketing/research";
+import type * as Server from "../../src/marketing/server/index.js";
+import type { PersonalDataContributor } from "../../src/identity/index.js";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2)
   ? ((<T>() => T extends B ? 1 : 2) extends (<T>() => T extends A ? 1 : 2) ? true : false) : false;
 type Assert<T extends true> = T;
+export type MarketingPrivacyContributorCompatibility = [
+  Assert<Equal<ReturnType<typeof Server.createMarketingPrivacyContributor<null>>, PersonalDataContributor<null>>>,
+  Assert<Equal<NonNullable<ReturnType<typeof Server.createMarketingPrivacyBindings<null>>["contributor"]>, PersonalDataContributor<null>>>,
+];
 export type MarketingContractEquality = [
+  Assert<Equal<Contracts.AnalyticsCheckoutItem, Runtime.AnalyticsCheckoutItem>>,
+  Assert<Equal<Contracts.AnalyticsPurchaseItem, Runtime.AnalyticsPurchaseItem>>,
+  Assert<Equal<Contracts.AnalyticsCheckoutMode, Runtime.AnalyticsCheckoutMode>>,
+  Assert<Equal<Contracts.AnalyticsPaymentWaitOutcome, Runtime.AnalyticsPaymentWaitOutcome>>,
+  Assert<Equal<Contracts.AnalyticsEventMap, Runtime.AnalyticsEventMap>>,
+  Assert<Equal<Contracts.AnalyticsEventName, Runtime.AnalyticsEventName>>,
+  Assert<Equal<Contracts.AnalyticsSinkAttemptMask, Runtime.AnalyticsSinkAttemptMask>>,
+  Assert<Equal<Contracts.AnalyticsSinkAdmission, Runtime.AnalyticsSinkAdmission>>,
+  Assert<Equal<Contracts.AnalyticsCookieConsent, Runtime.AnalyticsCookieConsent>>,
+  Assert<Equal<Contracts.AnalyticsBrowserWindow, Runtime.AnalyticsBrowserWindow>>,
+  Assert<Equal<Contracts.AnalyticsDataLayerOptions, Runtime.AnalyticsDataLayerOptions>>,
+  Assert<Equal<Contracts.AnalyticsRoutePolicyInput, Runtime.AnalyticsRoutePolicyInput>>,
+  Assert<Equal<Contracts.PurchaseOrder, Runtime.PurchaseOrder>>,
+  Assert<Equal<Contracts.PurchaseSuppressionReason, Runtime.PurchaseSuppressionReason>>,
+  Assert<Equal<Contracts.MarketingHistoricalConsentCommand, Runtime.MarketingHistoricalConsentCommand>>,
+  Assert<Equal<Contracts.MarketingHistoricalConsentState, Runtime.MarketingHistoricalConsentState>>,
+  Assert<Equal<Contracts.MarketingHistoricalConsentResult, Runtime.MarketingHistoricalConsentResult>>,
+  Assert<Equal<Contracts.AnalyticsStepName<"choose" | "confirm">, "choose" | "confirm">>,
+  Assert<Equal<Runtime.AnalyticsEventMap<"choose" | "confirm">["configurator_step_view"]["step_name"], "choose" | "confirm">>,
   Assert<Equal<Contracts.PrelaunchAcquisitionListRequest, z.infer<typeof Runtime.prelaunchAcquisitionListRequestSchema>>>,
   Assert<Equal<Contracts.PrelaunchAcquisitionDetailRequest, z.infer<typeof Runtime.prelaunchAcquisitionDetailRequestSchema>>>,
   Assert<Equal<Contracts.PrelaunchAcquisitionLead, z.infer<typeof Runtime.prelaunchAcquisitionLeadSchema>>>,
@@ -59,6 +84,7 @@ it("executes exact type equality with the TypeScript checker and exposes no runt
   const file = fileURLToPath(import.meta.url);
   const program = ts.createProgram([file], { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true, noEmit: true,
+    lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
     esModuleInterop: true, allowImportingTsExtensions: true, types: ["node"] });
   expect(ts.formatDiagnosticsWithColorAndContext(ts.getPreEmitDiagnostics(program), {
     getCanonicalFileName: path => path, getCurrentDirectory: () => process.cwd(), getNewLine: () => "\n",
@@ -77,3 +103,11 @@ interface ExpectedEvidencePort {
   applyNewsletterConsent(input: Contracts.AcquisitionNewsletterConsentEvent): Promise<Contracts.AcquisitionEvidenceResult<Contracts.AcquisitionNewsletterConsentResponse>>;
   close(): Promise<void>;
 }
+
+// New seam 7: literal host vocabulary survives both contracts and the emitter.
+function hostStepWitness(analytics: ReturnType<typeof import("../../src/marketing/index.js").createAnalyticsDataLayer<"choose" | "confirm">>) {
+  analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "choose" });
+  // @ts-expect-error host steps stay closed to the supplied literal union
+  analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "other" });
+}
+export type HostStepWitness = typeof hostStepWitness;

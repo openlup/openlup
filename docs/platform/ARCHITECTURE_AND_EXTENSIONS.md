@@ -30,12 +30,90 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
-Marketing runtime composition remains application-owned. Evidence bindings use
-the type-only package port; case bindings retain the reference port extending
-the package read/count/close surface with retired application methods. Portable
-prelaunch validators are browser-safe package contracts, while rich prelaunch
-joins and their orchestration remain in the reference application. This type
-rebinding adds no server implementation, executor or activation seam.
+Operational reference handlers and browser clients delegate through the isolated
+[operations package entries](#operations-and-diagnostics). Environment/bundle
+selection, connection ownership and the maintained domain evaluator remain in
+reference composition; the neutral persisted-job tick and watchdog delivery
+mechanisms have one package owner.
+
+Marketing host composition remains application-owned. The Node-only
+`@openlup/platform/marketing/server` entry owns acquisition case handlers,
+direct history/prelaunch/evidence factories, research submit/admin handlers,
+managed survey orchestration without loading `pg`. PostgreSQL routines are
+published separately at `@openlup/platform/marketing/server/postgres` and loaded
+by the reference bindings only after their bundle and connection guards. Hosts inject the BFF
+responder, authorization, persistence binding and notification HTML/subject.
+Case direct reads evaluate the injected bundle predicate at their existing
+position; prelaunch and evidence dispatch predicates stay with host callers.
+Retired route factories, observed wrappers, admin authentication and raw signed
+newsletter ingress stay in the reference. Browser marketing entries reach no
+server code or database driver. Server-only structural compatibility commands
+retain retired adapter signatures without publishing admission schemas.
+Research contracts/ports retain their core compatibility owner; notification
+delivery uses communications/contracts. The server graph admits marketing value
+imports, identity-contract values, and HTTP, BFF, marketing-contract,
+communications-contract type edges. The existing optional pg peer is imported only by the two PostgreSQL
+files. SQL text, transaction role selection and pool ownership are unchanged.
+Portable prelaunch validators remain browser-safe package contracts; rich
+prelaunch joins and orchestration remain in the reference application. No route,
+executor, scheduler or profile is activated by importing the package.
+
+The marketing browser entry also owns neutral analytics vocabulary, inert defaults,
+instance-scoped data-layer and route-policy factories, structural paid-purchase
+projection and historical consent chronology. Hosts supply step vocabulary,
+browser/storage access, consent and event wire names (including ordered consent
+signals through `consentSignalNames`), container selection, sink
+callbacks, route manifests and sensitive sets. No platform module edge, server
+entry or provider transport is introduced. Types are exposed type-only through
+`marketing/contracts`; the analytics port is reused from core. Allocation and
+chronology preserve source behavior; authorization, money truth and activation
+remain with their existing owners. Missing consent signal bindings disable consent
+commands and optional event admission while deployment attempts stay independent.
+Local sink admission never attests delivery.
+
+The separate server entry also exposes `createAnalyticsContextHandler` and its
+server-only persistence and capability ports. Required host bindings supply the
+responder, enable reader, store, bearer parsing, verified subject, token mint/hash
+and historical cookie and client-id request field names (`clientIdField`). Browser
+entries expose none of these server ports.
+The handler preserves strict request admission, withdrawal without identity and
+explicit replacement of a revoked context; enrollment uses only a server-verified
+subject. Hosts retain their route/observability, flag/RPC names and persistence
+authority. No default persistence or portable context SQL is provided, so the
+reference mounts no context route. Telemetry context failure never gates commerce;
+an `active` result establishes only a local context fact, never delivery.
+
+The browser-safe `@openlup/platform/marketing` entry also owns JSON-LD
+serialization and graph construction, URL/hreflang derivation, ordered head data
+and plain contact/legal projections. Applications supply identity, origin,
+locale, images, routes, document wording and processor disclosures. The type-only
+`@openlup/platform/marketing/contracts` entry carries the shared organization and
+content-slot shapes without runtime initialization. Neither entry selects a head
+renderer, reads an environment or route manifest, or installs a provider client;
+the host owns document mutation and local content policy. Package browser proofs
+and the cold installed consumer exercise these boundaries.
+
+The marketing server entry additionally admits the runtime `identity/contracts`
+entry for obligation validation. Its contributor ports and return types are local
+structural interfaces built from identity contract types; no declaration references
+the identity main entry. `createMarketingPrivacyContributor` composes acquisition records/evidence
+and remote case/fence owners through the existing identity registry. Missing
+either owner leaves every marketing resource unavailable and unresolved without
+calling either owner. Preparation and assessment make no writes; identity runs
+all assessments, including the subscriptions veto, before `eraseOrRetain` can
+fence. A failed fence throws so the identity unit of work rolls back. Remote
+request acceptance remains retention with an explicit accepted-not-observed
+reason; remote profile export coverage is always unavailable. Worker, operator,
+store, provider execution and late-import orphan handling remain app-owned.
+`createMarketingPrivacyBindings` defaults off, selects only with both complete
+owner ports, and shares one contributor's named methods with composition.
+The reference privacy graph leaves marketing unselected; its marketing privacy
+coverage remains an open gap. This addition introduces no PostgreSQL import.
+
+Both privacy factories preserve structural compatibility with identity's
+`PersonalDataContributor`, checked by the existing marketing compiler witness.
+Strict installed-consumer compilation keeps this server entry independent of
+`pg` and `@types/pg`; only its `/postgres` entry selects that optional peer.
 
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
@@ -730,6 +808,17 @@ For a separate integration artifact, follow the canonical
 Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
+`createMarketingContribution` in `@openlup/platform/composition` describes selected
+callables under the `marketing` capability, providing `./marketing`,
+`./marketing/contracts` and `./marketing/server`. Its runtime dependency is
+`identity` through `./identity/contracts` for obligation validation. Handler
+registrations become frozen descriptors
+without `handle`; namespaced ports, routes and triggers retain supplied callable
+identity. Null ports stay required without a binding, and duplicate handler,
+schedule or route identities refuse. Construction invokes no callable and
+installs no worker, route or schedule; host admission and installation remain
+application-owned.
+
 `createCommerceContribution` in `@openlup/platform/composition` declares the
 installed `./commerce`, `./commerce/contracts` and `./commerce/server` entries
 under the `commerce` capability. Its namespaced ports describe the selected
@@ -1956,3 +2045,167 @@ checkout/recovery and ATP callables stay behind their owner boundaries; the
 existing outbox registry supplies inert effect descriptors during host construction
 and is supplied separately as `commerceRegistry`, retaining handler
 identity. No second dispatcher, installer or stock policy is introduced.
+
+## Operations and diagnostics
+
+The experimental `@openlup/platform/operations` module separates browser-safe
+validation, alert projections and injected BFF clients from the Node
+`operations/server` mechanisms. `operations/contracts` contains only DTOs and
+ports. Separate settings, pipeline, alerts and control-plane methods preserve
+request/result types; there is no operation-name dispatcher or second domain
+command engine. Existing callers keep compatibility imports.
+
+The [control-plane handler](../../packages/platform/src/operations/server/controlPlaneHandler.ts)
+checks injected admin authorization before a typed read or mutation, validates
+requests and results, maps replay conflicts to `CONFLICT`, and keeps raw SQL
+errors out of responses. The host binds the existing request-reference callback.
+The [SQL executor adapter](../../packages/platform/src/operations/server/controlPlaneStore.ts)
+uses the existing fixed invoker-rights routines, hashes the complete command and
+retains receipt identity on replay. Its capability-local operator allowlist is
+independent of identity membership; neither is substituted for the other.
+
+The [watchdog kernel](../../packages/platform/src/operations/server/platformWatchdogService.ts)
+accepts typed evidence and a typed evaluator. Host channel keys are opaque and
+remain correlated through decisions, sink receipts and ledger writes. The kernel
+retains the existing `webhook` key for skipped-attempt audit rows; the reference
+keeps its existing channel enum and persisted values. The maintained public
+[reference binding](../../server/domains/platform/platformWatchdogService.ts)
+supplies the existing domain evaluator. The package retains keyed queue ordering,
+bounded concurrency, draining on failure, serialized alert delivery, persistent
+backoff, escalation and snooze semantics. `checkOnly` evaluates without ledger or
+notification writes. The smaller
+[control-plane tick](../../packages/platform/src/operations/server/controlPlaneWatchdog.ts)
+evaluates enabled persisted job failures and records the existing heartbeat key.
+Alert overview uses a stale or absent heartbeat to report unknown health even
+when the alert list is empty.
+
+Settings and pipeline handlers preserve the existing read/result projections;
+the host owns their stores. Membership invitation/role/removal remains identity
+work, and shipment refresh remains tracking work. The SQL projection has no tester,
+email-template or provider tables. These entries add no managed provider parity
+or activation evidence. The [module record](plans/oss-m14-operations-portability.md)
+retains the remaining M14 evaluator/default portability, role, lifecycle and
+transfer obligations; this bounded slice does not complete that programme.
+
+The [operations witnesses](../../packages/platform/test/operations/) preserve the
+existing behavior assertions. The existing
+[installed consumer](../../scripts/packages/platform-cold-consumer.ts) exercises
+typed calls, authorization/input/output refusals and the real native invoker role,
+including durable replay/conflict, checkOnly and a second-process restart.
+Its executed result, rather than this source description, establishes proof.
+
+## Application file upgrades
+
+The experimental Node-only
+[`@openlup/platform/lifecycle`](../../packages/platform/src/lifecycle/index.ts)
+entry reconciles a finite pair of application-owned file snapshots. It uses
+Node filesystem primitives, imports no optional SDK and has no cross-module
+platform edge. It creates no route, timer, migration runner or upgrade framework.
+
+[`planAppUpgrade`](../../packages/platform/src/lifecycle/appUpgrade.ts) only
+reads the absolute canonical application root. The predecessor and candidate
+name exact UTF-8 files and schema ranges. Files outside that inventory belong
+to the adopter. An upstream-unchanged file retains local content or deletion;
+a changed file must match the predecessor or exact candidate bytes. A third
+value is a conflict requiring adopter reconciliation. Every existing managed
+path component must match its actual directory-entry spelling exactly; filesystem
+case or normalization aliases confer no ownership of an unlisted entry.
+Unsafe or aliasing paths, links, nonregular files and file-parent collisions
+refuse. Planning is not a
+write authority: `applyAppUpgrade` rechecks the whole input before any mutation.
+
+Apply requires an exclusive maintenance window over the tree. Each replacement
+uses a same-directory temporary file and rename; the complete operation is not
+an atomic transaction. Exact completed create/replace/remove states permit
+resume with the same snapshots after an I/O failure or process interruption.
+An abrupt termination before rename can leave an unreferenced temporary file;
+it is not adopted as resume state. Ordinary permission bits survive replacement,
+while ownership, ACLs, extended attributes and special bits are not preserved.
+These checks do not protect against a hostile concurrent filesystem writer or
+establish power-loss durability.
+
+The schema ordinal and both compatible ranges come from the host. Range
+admission is separate from observing a real database upgrade, backfill or
+rollback path. This API invokes no SQL, package installation, version marker,
+deployment or user hook. Keep the
+[database compatibility lifecycle](DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+and adopter dependency/provenance checks under their existing owners.
+
+The [owner-local witnesses](../../packages/platform/test/lifecycle/appUpgrade.test.ts)
+exercise custom files, conflict/stale-plan refusal, exact byte comparison,
+filesystem boundaries, interruption/replay and a real child-process SIGKILL.
+The existing [cold consumer](../../scripts/packages/platform-cold-consumer.ts)
+adds an installed public-export app-file operation, interruption/resume,
+unchanged brand/theme and type/refusal checks without optional peers. Executed
+results establish proof; authored witnesses alone do not. The
+[neutral disposable recipe](PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade)
+uses this boundary without claiming a complete npm or database upgrade service.
+
+The same lifecycle entry exports the injected-query
+`inspectLegacyPostgresInstallRoles` helper. Its fixed read-only observation is
+limited to `legacy-fresh-bootstrap-role-prerequisites` and
+`rolePrerequisitesMet`; it adds no role, DDL, migration path or installation
+readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
+defines the legacy prerequisites and actual PostgreSQL refusal evidence.
+
+## Existing-store transfer and recovery
+
+The experimental Node-only
+[`@openlup/platform/portability`](../../packages/platform/src/portability/index.ts)
+entry moves bounded data through explicit host capabilities. It imports only its
+own modules and Node built-ins; PostgreSQL and provider SDKs remain behind the
+injected handles. It installs no route, worker, schema, role or effect authority.
+
+[`copyTransferObjects`](../../packages/platform/src/portability/objects.ts)
+requires an explicitly complete immutable/quiesced inventory, exact logical
+versions, byte counts/digests, metadata, source identity and access mapping.
+Reads distinguish absent, denied, unavailable, version and integrity conflicts.
+A successful write is insufficient: target bytes and descriptor must match
+before checkpoint. Resume recognizes the exact retained object after a lost
+write ACK or checkpoint interruption and refuses a divergent existing key.
+This first slice has no remote inventory traversal or live object-delta protocol.
+
+The [private filesystem capability](../../packages/platform/src/portability/filesystemObjects.ts)
+publishes bytes and metadata through exclusive files, fsync and one directory
+rename. Its configured access label means process-owner-only reads through
+0700 directories and 0600 single-link files; another access label refuses.
+Publication and readback share a 256 KiB encoded-descriptor ceiling covering
+admitted Unicode metadata and escaped identifiers; oversize encodings refuse
+before publication.
+Filesystem locations hash the JSON string encoding of each logical key, so
+distinct admitted UTF-16 strings retain distinct identities before hashing.
+Logical version/source lineage is retained separately from provider-native
+versioning. The owner account/root must be exclusively controlled. Symlinks,
+unsafe modes and hardlinks refuse rather than becoming absence. These checks
+do not certify an S3 or managed-storage ACL.
+
+[`captureCompatiblePostgresRows` and `restoreCompatiblePostgresRows`](../../packages/platform/src/portability/postgresRows.ts)
+operate on a finite candidate table list through host-owned read-only
+repeatable-read and atomic transaction handles. Source PostgreSQL JSON text is
+transported unchanged, including bigint and timestamp precision. The host first
+qualifies the canonical catalogue and login privileges; the packet's catalogue
+label is binding input, not independent catalogue certification. Target locks,
+column/type/primary-key comparison and refusal of **every** enabled user INSERT
+trigger precede writes. Exact typed readback permits identical replay; a
+different row or alternate unique-key collision refuses the whole transaction.
+Referenced parents remain explicit prerequisites. There is no generic upsert,
+deletion scan, identity relinking, ledger copy or permission change.
+
+The [canonical PostgreSQL witness](../../tests/postgres/portabilityRows.test.ts)
+compares entire selected rows in two disposable canonical clusters, retains
+active subscriptions/frozen terms/in-flight outbox state, and checks replay,
+conflict rollback and unchanged migration ledger/ACLs. The existing
+[cold consumer](../../scripts/packages/platform-cold-consumer.ts) executes actual
+private bytes and injected-row refusal without optional peers, then selected
+outbox recovery against its existing canonical PostgreSQL fixture using installed
+artifacts. Its client-side query fixtures prove translation only; actual database
+effects depend on the separate connected proof.
+
+The [HTTP probe](../../packages/platform/test/payments/tpay/effectAuthority.test.ts)
+uses the existing payment client and a local synthetic provider. It demonstrates
+the cached-token pause race and provider-enforced rejection, accepted-before-ACK
+readback and late observation. Its local generation model is not a cloned domain
+database or hosted revocation certification. Full-store import, managed identity
+mapping, consistent live catch-up and independently enforced old-executor fencing
+remain [M14 obligations](plans/oss-m14-operations-portability.md), including the
+[import-safe domain dependency](DATA_AND_MIGRATIONS.md#compatible-data-transfer).

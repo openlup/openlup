@@ -14,10 +14,15 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "lifecycle",
+  "portability",
+  "operations",
+  "operations/contracts",
   "account-support",
   "account-support/contracts",
   "marketing",
   "marketing/contracts",
+  "marketing/server",
   "commerce",
   "commerce/contracts",
   "commerce/server",
@@ -49,6 +54,8 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "operations/server",
+  "marketing/server/postgres",
   "blob",
   "catalog",
   "communications",
@@ -223,6 +230,7 @@ import assert from "node:assert/strict";
 import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails, createOperatorRecovery, createPostgresOperatorAuthority, operatorAuthorityCapabilities, linkThenApply } from "@openlup/platform/account-support";
 import * as contracts from "@openlup/platform/account-support/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+
 const account={revision:"owner-revision", getAccount(userId){assert.equal(this,account);assert.equal(userId,"principal-a");return Promise.resolve(snapshot);}};
 const snapshot={profile:{privateExtension:"host-owned"},frozenTotal:2301};
 const input={limit:17}, list={orders:[{orderId:"order-b",frozenTotal:2301}]}, detail={orderId:"order-c",revision:"original"};
@@ -504,10 +512,93 @@ assert.deepEqual(marketing.prelaunchAcquisitionListRequestSchema.parse({ view: m
 assert.equal(marketing.prelaunchAcquisitionDetailRequestSchema.safeParse({ sourceRef: "case:one" }).success, false);
 assert.equal("MARKETING_PRELAUNCH_CONTRACT_VERSION" in marketing, false);
 assert.deepEqual(Object.keys(contracts), []);
+assert.equal(marketing.createNoopAnalytics().trackPageView("/"), undefined);
+assert.deepEqual(marketing.createAnalyticsDataLayer().emitAnalyticsEvent("page_view", { page_path: "/" }), { deployment: false, optional: false });
+const routes = marketing.createAnalyticsRoutePolicy({ publicPaths: ["/entry"], redirectSources: [], privatePathPrefixes: [], privateAuthPaths: [], capabilityPathPrefixes: [] });
+assert.equal(routes.sanitizeDeploymentAnalyticsUrl("/entry?secret=one", "https://host.example"), "https://host.example/entry");
+assert.equal(marketing.projectPaidPurchase({ status: "pending" }), null);
+assert.equal(marketing.selectMarketingHistoricalConsentTime({ command: { consentedAt: null, listId: null }, state: { consent: "unknown", suppressions: [] }, now: new Date(NaN) }).reason, "consent_time_invalid");
+const origin="https://shop.example";
+const facts={name:"Example Store",legalName:"Example Company",url:origin,logo:{url:origin+"/logo.png",contentUrl:origin+"/logo.png",width:160,height:60},email:"contact@example.invalid",vatID:"VAT-1",taxID:"TAX-1",areaServed:"Region-A",sameAs:[],contactPoint:{email:"contact@example.invalid",contactType:"support",availableLanguage:["alpha"]},address:{streetAddress:"Example Lane 1",addressLocality:"Example Town",postalCode:"00000",addressRegion:"Region-A",addressCountry:"Territory-A"}};
+const node=marketing.organizationLd(origin,"Organization",facts);
+assert.equal(node["@id"],origin+"/#organization");
+assert.equal(marketing.jsonLdGraph(node,node)["@graph"].length,1);
+const hostile={name:"</script><script>probe</script>\\u2028\\u2029"};
+const serialized=marketing.serializeJsonLd(hostile);
+assert(!serialized.includes("<"));
+assert.deepEqual(JSON.parse(serialized),hostile);
+const head=marketing.buildHeadDescriptor({origin,route:{id:"home",locale:"alpha",canonicalPath:"/"},routes:[],xDefaultLocale:"alpha",htmlLang:"alpha",title:"Example",description:"Example content",siteName:facts.name,ogImage:origin+"/image.png",ogImageWidth:1200,ogImageHeight:630,twitterHandle:"@example",ogLocale:"alpha",twitterImage:origin+"/card.png",jsonLd:hostile});
+assert.deepEqual(head.tags[1],{kind:"link",rel:"canonical",href:origin+"/"});
+assert.deepEqual(JSON.parse(head.jsonLd)["@graph"],[hostile]);
 for (const [name, value] of Object.entries(core)) assert.equal(marketing[name], value);
 for (const name of ["acquisitionCaseSubmitRequestSchema", "acquisitionCaseSubmitResponseSchema", "acquisitionCaseTransitionRequestSchema", "acquisitionCaseTransitionResponseSchema"]) assert.equal(name in marketing, false);
 await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 `);
+}
+
+/** Installed server factories preserve historical reads and bounded port refusals without pg. */
+export function proveMarketingServerConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler, createAnalyticsContextHandler } from "@openlup/platform/marketing/server";
+import { createBffResponder } from "@openlup/platform/bff";
+const calls = [];
+const port = { activeCount: async scope => { calls.push(scope); return { ok: true, value: 4 }; } };
+const handlers = createAcquisitionCaseHandlers(port);
+const respond = createBffResponder();
+let status, body;
+const res = { setHeader() {}, status(value) { status = value; return this; }, json(value) { body = value; return this; } };
+await createAcquisitionCaseActiveCountDirectHandler({ respond, isDirect: () => true, authorize: async () => { throw Error("public count must not authorize"); }, resolveBinding: async () => ({ handlers }) })({ method: "GET" }, res);
+assert.equal(status, 200);
+assert.deepEqual(body, { ok: true, data: { activeTesterCount: 4 } });
+assert.deepEqual(calls, ["public_tester_application"]);
+await createAcquisitionSurveySubmitDirectHandler({ respond, authorize: async () => null, resolveBinding: async () => ({ submitSurvey: async () => ({ ok: false, error: { kind: "conflict" } }) }) })({ method: "POST", headers: { "idempotency-key": "survey-key-0001" }, body: { view: "acquisition_survey_v1", caseReference: "acquisition-case:11111111-1111-4111-8111-111111111111", surveyType: "consumer", responseData: { answer: "synthetic" } } }, res);
+assert.equal(status, 409);
+assert.deepEqual(body, { ok: false, error: { code: "CONFLICT", message: "Acquisition evidence request conflicts with prior state" } });
+await createAnalyticsContextHandler({ respond, isEnabled: () => true,
+  resolveStore: () => { throw Error("invalid context must not read persistence"); },
+  readAccessToken: () => null, resolveTrustedSubject: async () => null,
+  capabilityCrypto: { mintToken: () => { throw Error("invalid context must not mint"); }, hashToken: token => token },
+  cookieName: "__Host-context", clientIdField: "browserRef",
+})({ method: "POST", headers: { host: "shop.example", origin: "https://shop.example" }, body: { granted: true } }, res);
+assert.equal(status, 400);
+assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
+await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+const { createMarketingPrivacyContributor, createMarketingPrivacyBindings } = await import("@openlup/platform/marketing/server");
+assert.equal(typeof createMarketingPrivacyContributor, "function");
+assert.equal(typeof createMarketingPrivacyBindings, "function");
+const disabledPrivacy = createMarketingPrivacyBindings({ acquisition: null, remoteErasure: null,
+  randomId: () => { throw Error("disabled privacy must not create a case"); } });
+assert.equal(disabledPrivacy.contributor, null);
+assert.deepEqual(disabledPrivacy.callables, { exportPersonalData: null, assessErasure: null, eraseOrRetain: null });
+assert.equal(disabledPrivacy.issues.length, 2);
+`);
+}
+
+/** Installed type witness for neutral analytics facts and host step literals. */
+export function compileMarketingAnalyticsConsumer(consumer: string, compiler: string): void {
+  const file = join(consumer, "marketing-analytics.ts");
+  writeFileSync(file, [
+    'import { createAnalyticsDataLayer, projectPaidPurchase, selectMarketingHistoricalConsentTime } from "@openlup/platform/marketing";',
+    'import type { AnalyticsEventMap, PurchaseOrder, MarketingHistoricalConsentCommand } from "@openlup/platform/marketing/contracts";',
+    'const analytics = createAnalyticsDataLayer<"choose" | "confirm">();',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "choose" });',
+    '// @ts-expect-error the host literal union stays closed',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "other" });',
+    'declare const order: PurchaseOrder;',
+    'export const purchase: AnalyticsEventMap["purchase"] | null = projectPaidPurchase(order);',
+    'declare const command: MarketingHistoricalConsentCommand;',
+    'export const consent = selectMarketingHistoricalConsentTime({ command, state: { consent: "unknown", suppressions: [] }, now: new Date() });',
+  ].join("\n"));
+  for (const mode of ["NodeNext", "Bundler"]) {
+    const configuration = join(consumer, "marketing-analytics-tsconfig.json");
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: {
+      target: "ES2020", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode,
+      strict: true, skipLibCheck: false, noEmit: true, types: ["node"],
+      typeRoots: [join(consumer, "node_modules/@types")],
+    }, files: [file] }));
+    process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+  }
 }
 
 /** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
@@ -606,12 +697,201 @@ assert.deepEqual(calls, [
 `);
 }
 
+/** Useful operations proof from the installed artifact; no provider or optional SDK is loaded. */
+export function proveOperationsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as operations from "@openlup/platform/operations";
+import * as contracts from "@openlup/platform/operations/contracts";
+import * as server from "@openlup/platform/operations/server";
+assert.deepEqual(Object.keys(contracts), []);
+assert.equal(operations.buildAlertsOverview([], null, new Date("2026-10-26T12:00:00Z")).health, "unknown");
+const calls=[];
+const clients=operations.createOperationsClients(async (path,schema,options)=>{
+  calls.push({path,options});
+  return schema.parse(path.endsWith("/update")?{key:options.body.key,saved:true}:{settings:{"jobs.enabled":true},adminUsers:[]});
+});
+assert.deepEqual(await clients.getAdminSettings("synthetic-token"),{settings:{"jobs.enabled":true},adminUsers:[]});
+assert.deepEqual(await clients.updateAdminSetting("synthetic-token",{key:"jobs.enabled",value:false}),{key:"jobs.enabled",saved:true});
+assert.equal(calls[0].options.headers.get("authorization"),"Bearer synthetic-token");
+assert.equal(calls[1].options.method,"POST");
+const receipts=new Map();let writes=0;
+const executor={async query(sql,values){
+  if(!sql.includes("platform_control_set_control"))return {rows:[]};
+  const [operator,key,fingerprint]=values;
+  assert.equal(operator,"operator");assert.match(fingerprint,/^[a-f0-9]{64}$/);
+  const prior=receipts.get(key);
+  if(prior){if(prior.fingerprint!==fingerprint)throw Object.assign(Error("private database details"),{code:"23505"});return {rows:[{...prior.row,replayed:true}]};}
+  writes++;const row={action:"set-control",replayed:false,revision:writes,recorded_at:"2026-10-26T12:00:00Z"};receipts.set(key,{fingerprint,row});return {rows:[row]};
+}};
+function response(){return {statusCode:0,payload:null,headers:{},setHeader(name,value){this.headers[name]=value;},status(code){this.statusCode=code;return this;},json(value){this.payload=value;return this;},end(){return this;}};}
+const command={action:"set-control",idempotencyKey:"control-key",controlKey:"jobs.enabled",enabled:true};
+const handler=server.createPlatformControlPlaneHandler({port:server.createPlatformControlPlanePort(executor,"operator"),authorizeAdmin:async()=>true,responseRequestId:()=>"request-operations"});
+let res=response();await handler({method:"POST",body:command},res);assert.equal(res.statusCode,200);assert.equal(res.payload.data.replayed,false);assert.equal(res.headers["x-request-id"],"request-operations");
+res=response();await handler({method:"POST",body:command},res);assert.equal(res.payload.data.replayed,true);assert.equal(writes,1);
+res=response();await handler({method:"POST",body:{...command,enabled:false}},res);assert.equal(res.statusCode,409);assert(!JSON.stringify(res.payload).includes("private database details"));assert.equal(writes,1);
+res=response();await handler({method:"POST",body:{...command,enabled:"wrong"}},res);assert.equal(res.statusCode,400);assert.equal(writes,1);
+res=response();await server.createPlatformControlPlaneHandler({port:server.createPlatformControlPlanePort(executor,"operator"),authorizeAdmin:async()=>false})({method:"POST",body:command},res);assert.equal(res.statusCode,401);assert.equal(writes,1);
+res=response();await server.createPlatformControlPlaneHandler({port:{readControlPlane:async()=>({controls:"invalid"}),mutateControlPlane:async()=>null},authorizeAdmin:async()=>true})({method:"GET"},res);assert.equal(res.statusCode,502);
+let heartbeats=0;
+const port={readControlPlane:async()=>({controls:[],alerts:[],jobs:[{jobName:"refresh-example",enabled:true,lastStatus:"failed"}]}),mutateControlPlane:async()=>{heartbeats++;return {replayed:false};}};
+const dry=await server.runControlPlaneWatchdogTick(port,new Date("2026-10-26T12:00:00Z"),true);assert.equal(dry.body.health,"degraded");assert.equal(heartbeats,0);
+const tick=await server.runControlPlaneWatchdogTick(port,new Date("2026-10-26T12:00:00Z"),false);assert.equal(tick.body.heartbeatRecorded,true);assert.equal(heartbeats,1);
+await assert.rejects(import("@openlup/platform/operations/server/internal"),{code:"ERR_PACKAGE_PATH_NOT_EXPORTED"});
+`);
+}
+
+/** Installed server entry: actual private bytes, replay and injected-row refusals without peers. */
+export function provePortabilityConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { join } from "node:path";
+import * as portability from "@openlup/platform/portability";
+assert.deepEqual(Object.keys(portability).sort(),["ObjectTransferError","PostgresTransferError","captureCompatiblePostgresRows","copyTransferObjects","createFilesystemTransferObjects","restoreCompatiblePostgresRows"].sort());
+const {copyTransferObjects,createFilesystemTransferObjects,captureCompatiblePostgresRows,restoreCompatiblePostgresRows}=portability;
+const root=await mkdtemp(join(await realpath(process.cwd()),"portability-"));
+try {
+ const bytes=Buffer.from("private installed object"),object={key:"nested/private",version:"v1",bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex"),metadata:{contentType:"application/octet-stream"},access:"source-private"};
+ const source=await createFilesystemTransferObjects({root:join(root,"source"),maximumObjectBytes:1024,access:"source-private"});
+ const targetOptions={root:join(root,"target"),maximumObjectBytes:1024,access:"target-private"};
+ let destination=await createFilesystemTransferObjects(targetOptions);
+ await source.createIfAbsent(object,bytes);
+ const input={inventory:{sourceId:"installed-source",snapshot:{kind:"quiesced",id:"snapshot-1"},objects:[object]},source,destination,accessMapping:{"source-private":"target-private"},maximumObjectBytes:1024,maximumTotalBytes:1024};
+ await assert.rejects(copyTransferObjects({...input,checkpoint:async()=>{throw Error("checkpoint interrupted");}}),/checkpoint interrupted/,"installed byte copy must reach verified checkpoint");
+ destination=await createFilesystemTransferObjects(targetOptions);
+ assert.deepEqual(await copyTransferObjects({...input,destination}),{copied:0,replayed:1,verifiedKeys:[object.key]});
+ const read=await destination.read(object.key,"v1"),chunks=[];for await(const chunk of read.body)chunks.push(chunk);
+ assert.deepEqual(Buffer.concat(chunks),bytes);
+ assert.deepEqual(read.object,{...object,access:"target-private",lineage:{sourceId:"installed-source",snapshotId:"snapshot-1",sourceVersion:"v1"}});
+ await assert.rejects(destination.read("absent"),{code:"absent"});
+ await assert.rejects(destination.read(object.key,"v2"),{code:"version_conflict"});
+ await assert.rejects(destination.createIfAbsent({...object,key:"public",access:"public"},bytes),{code:"denied"});
+ const raw='{"id":"11111111-1111-4111-8111-111111111111","payload":{"large":9007199254740993}}';
+ const columns=[{name:"id",type:"uuid",key:true,generated:"",identity:""},{name:"payload",type:"jsonb",key:false,generated:"",identity:""}];
+ let stored=false,trigger=false,conflict=false;
+ const db={async query(sql,values){
+  if(sql.includes("transaction_read_only"))return {rows:[{readonly:"on",isolation:"repeatable read"}]};
+  if(sql.includes("session_replication_role"))return {rows:[{mode:"origin"}]};
+  if(sql.includes("pg_catalog.pg_attribute"))return {rows:columns};
+  if(sql.includes("pg_catalog.pg_trigger"))return {rows:trigger?[{}]:[]};
+  if(sql.startsWith("SELECT to_jsonb(t)::text"))return {rows:[{value:raw}]};
+  if(sql.startsWith("INSERT")){assert.equal(values[0],raw);const prior=stored;stored=true;return {rows:prior?[]:[{inserted:1}]};}
+  if(sql.startsWith("SELECT to_jsonb(t) ="))return {rows:[{identical:!conflict}]};
+  assert(sql.startsWith("SET LOCAL")||sql.startsWith("LOCK TABLE"));return {rows:[]};
+ }};
+ const packet=await captureCompatiblePostgresRows({source:{withSnapshot:work=>work(db)},sourceId:"injected-source",catalogueId:"injected-profile",tables:["outbox_events"],maximumRows:10,maximumBytes:1024});
+ assert.equal(packet.tables[0].rows[0],raw);
+ const restore={target:{withTransaction:work=>work(db)},catalogueId:"injected-profile",packet};
+ assert.equal((await restoreCompatiblePostgresRows(restore)).inserted,1);
+ assert.equal((await restoreCompatiblePostgresRows(restore)).replayed,1);
+ trigger=true;await assert.rejects(restoreCompatiblePostgresRows(restore),{code:"insert_trigger_requires_owner"});
+ trigger=false;conflict=true;await assert.rejects(restoreCompatiblePostgresRows(restore),{code:"target_conflict"});
+} finally {await rm(root,{recursive:true,force:true});}
+`);
+}
+
+/** Installed lifecycle operations retain file ownership and finite legacy-role refusals. */
+export function proveLifecycleConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import {execFileSync} from "node:child_process";
+import {promises as fs} from "node:fs";
+import {join} from "node:path";
+import {pathToFileURL} from "node:url";
+import * as lifecycle from "@openlup/platform/lifecycle";
+assert.deepEqual(Object.keys(lifecycle).sort(),["AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade"]);
+const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
+const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
+const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
+let queries=0;
+const query=async(sql,values)=>{queries++;assert.ok(sql.startsWith("SELECT "));assert.deepEqual(values,[["anon","authenticated","platform_acquisition_owner","platform_acquisition_runtime","migration"]]);return {rows:[observed]};};
+const qualified=await lifecycle.inspectLegacyPostgresInstallRoles({query},roleRequest);
+assert.equal(queries,1);assert.equal(qualified.scope,"legacy-fresh-bootstrap-role-prerequisites");
+assert.equal(qualified.rolePrerequisitesMet,true);assert.deepEqual(qualified.blockers,[]);
+const refused=await lifecycle.inspectLegacyPostgresInstallRoles({query:async()=>({rows:[{...observed,roles:[{...role,superuser:false}]}]})},roleRequest);
+assert.equal(refused.rolePrerequisitesMet,false,"installed role observation must retain superuser refusal");
+assert.deepEqual(refused.blockers,[{code:"legacy_bootstrap_requires_superuser"}]);
+await assert.rejects(lifecycle.inspectLegacyPostgresInstallRoles({query:async()=>{throw new Error("synthetic private driver detail");}},roleRequest),{message:"postgres_install_observation_failed"});
+const root=await fs.mkdtemp(join(await fs.realpath(process.cwd()),"app-upgrade-"));
+try {
+ const from={version:"example-N-1",schema:{min:1,max:2},files:{"generated/entry.mjs":"export const revision = 1;\\n","generated/second.txt":"old\\n","theme.css":"original\\n"}};
+ const to={version:"example-N",schema:{min:1,max:2},files:{"generated/entry.mjs":"export const revision = 2;\\n","generated/second.txt":"new\\n","theme.css":"original\\n"}};
+ await fs.mkdir(join(root,"generated"));
+ for(const [path,bytes] of Object.entries(from.files))await fs.writeFile(join(root,path),bytes);
+ await fs.writeFile(join(root,"brand.txt"),"adopter brand");
+ await fs.writeFile(join(root,"theme.css"),"adopter theme");
+ const input={root,from,to,schemaVersion:2};
+ assert.deepEqual((await lifecycle.planAppUpgrade(input)).conflicts,[]);
+ assert.equal(await fs.readFile(join(root,"generated/entry.mjs"),"utf8"),from.files["generated/entry.mjs"],"planning must not write");
+ await fs.writeFile(join(root,"generated/entry.mjs"),"local managed edit");
+ await assert.rejects(lifecycle.applyAppUpgrade(input),lifecycle.AppUpgradeConflictError);
+ assert.equal(await fs.readFile(join(root,"generated/entry.mjs"),"utf8"),"local managed edit");
+ assert.equal(await fs.readFile(join(root,"generated/second.txt"),"utf8"),from.files["generated/second.txt"],"conflict must precede other writes");
+ await fs.writeFile(join(root,"generated/entry.mjs"),from.files["generated/entry.mjs"]);
+ const child=\`import {promises as fs} from "node:fs";import {applyAppUpgrade} from "@openlup/platform/lifecycle";const rename=fs.rename.bind(fs);fs.rename=async(...args)=>{await rename(...args);process.kill(process.pid,"SIGKILL");await new Promise(()=>{});};await applyAppUpgrade(JSON.parse(process.argv[1]));\`;
+ assert.throws(()=>execFileSync(process.execPath,["--input-type=module","-e",child,JSON.stringify(input)],{cwd:process.cwd(),timeout:5000,stdio:["ignore","pipe","pipe"]}),error=>error.signal==="SIGKILL","installed app upgrade must reach atomic replacement");
+ assert.equal(await fs.readFile(join(root,"generated/entry.mjs"),"utf8"),to.files["generated/entry.mjs"]);
+ assert.deepEqual((await lifecycle.applyAppUpgrade(input)).applied,["generated/second.txt"]);
+ assert.deepEqual((await lifecycle.applyAppUpgrade(input)).applied,[]);
+ assert.equal((await import(pathToFileURL(join(root,"generated/entry.mjs")).href)).revision,2);
+ assert.equal(await fs.readFile(join(root,"brand.txt"),"utf8"),"adopter brand");
+ assert.equal(await fs.readFile(join(root,"theme.css"),"utf8"),"adopter theme");
+ await assert.rejects(lifecycle.applyAppUpgrade({...input,schemaVersion:3}),lifecycle.AppUpgradeConflictError);
+ await assert.rejects(import("@openlup/platform/lifecycle/internal"),{code:"ERR_PACKAGE_PATH_NOT_EXPORTED"});
+} finally {await fs.rm(root,{recursive:true,force:true});}
+`);
+}
+
+/** Two separate methods keep their own request and result shapes in both module-resolution modes. */
+export function compileOperationsConsumer(consumer: string, compiler: string): void {
+  const file=join(consumer,"operations-types.ts");
+  writeFileSync(file,`
+import { createOperationsClients } from "@openlup/platform/operations";
+import type { OperationsRequestBff } from "@openlup/platform/operations";
+import type { PlatformControlPlanePort } from "@openlup/platform/operations/contracts";
+import { runPlatformWatchdog } from "@openlup/platform/operations/server";
+declare const requestBff: OperationsRequestBff;
+const clients=createOperationsClients(requestBff);
+const setting: {key:string;saved:true}=await clients.updateAdminSetting("token",{key:"enabled",value:true});
+const pipeline: {emailSendCount:number}=await clients.getAdminPipeline("token");
+// @ts-expect-error a setting write does not return a pipeline result
+const wrong: {emailSendCount:number}=await clients.updateAdminSetting("token",{key:"enabled",value:true});
+// @ts-expect-error values remain the existing scalar setting contract
+clients.updateAdminSetting("token",{key:"enabled",value:{invented:true}});
+declare const control: PlatformControlPlanePort;
+control.mutateControlPlane({action:"set-control",idempotencyKey:"key",controlKey:"enabled",enabled:true});
+// @ts-expect-error heartbeat inputs cannot masquerade as control writes
+control.mutateControlPlane({action:"set-control",idempotencyKey:"key",health:"healthy"});
+declare const ledgerPort: import("@openlup/platform/operations/contracts").AlertLedgerPort;
+declare const sinkPort: import("@openlup/platform/operations/contracts").AlertSinkPort;
+runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant",sample:7})},ledgerPort,sinkPort,catalog:[{name:"example"}],checkOnly:true,evaluate(snapshot,catalog){const sample:number=snapshot.sample;const name:string=catalog[0].name;void sample;void name;return [];}});
+declare const hostLedger: import("@openlup/platform/operations/contracts").AlertLedgerPort<"operator-pager">;
+declare const hostSink: import("@openlup/platform/operations/contracts").AlertSinkPort<"operator-pager">;
+const hostDecision: import("@openlup/platform/operations/contracts").AlertDecision<"operator-pager">={dedupeKey:"example",severity:"p0",owner:"ops",runbookUrl:"/runbook",title:"Example",message:"Synthetic",channels:["operator-pager"],payload:{}};
+const hostRun=await runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant"})},ledgerPort:hostLedger,sinkPort:hostSink,catalog:[],checkOnly:false,evaluate:()=>[hostDecision]});
+const hostChannel: "operator-pager"=hostRun.decisions[0].channels[0];
+// @ts-expect-error the host sink preserves its own channel key
+hostSink.send({...hostDecision,channels:["other-channel"]},{id:"alert",dedupeKey:"example",status:"open",severity:"p0",lastNotifiedAt:null});
+const otherDecision: import("@openlup/platform/operations/contracts").AlertDecision<"other-channel">={...hostDecision,channels:["other-channel"]};
+// @ts-expect-error composition cannot widen a narrow host sink/ledger to another channel
+runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant"})},ledgerPort:hostLedger,sinkPort:hostSink,catalog:[],checkOnly:false,evaluate:()=>[otherDecision]});
+void setting;void pipeline;void wrong;void hostChannel;
+`);
+  const configuration=join(consumer,"operations-types.json");
+  for(const [module,moduleResolution] of [["NodeNext","NodeNext"],["ESNext","Bundler"]]) {
+    writeFileSync(configuration,JSON.stringify({compilerOptions:{module,moduleResolution,target:"ES2022",strict:true,noEmit:true,skipLibCheck:false,types:["node"],typeRoots:[join(consumer,"node_modules/@types")]},files:[file]}));
+    command(process.execPath,[compiler,"-p",configuration],consumer,isolatedConsumerEnv());
+  }
+}
+
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
-    'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema } from "@openlup/platform/marketing";',
-    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest } from "@openlup/platform/marketing/contracts";',
+    'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
+    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest, ContactContent, LegalDocumentContent, PrivacyProcessorDisclosure } from "@openlup/platform/marketing/contracts";',
     'export const marketingRequest: AcquisitionCaseListRequest = acquisitionCaseListRequestSchema.parse({ view: "acquisition_case_v1" });',
     '// @ts-expect-error parsed default is required in the output type',
     'export const missingMarketingLimit: AcquisitionCaseListRequest = { view: "acquisition_case_v1" };',
@@ -626,6 +906,54 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const explicitConsent: boolean = marketingEvent.explicitOptInEvidence;',
     'declare const surveyPort: MarketingResearchSurveySubmitPort;',
     'export const surveyResult = surveyPort.submitSurveyResponse({ surveyType: "consumer", responseData: { answer: true } });',
+    'declare const contact: ContactContent;',
+    'export const processor: PrivacyProcessorDisclosure = { processorName: "Example Processor", purpose: "Example purpose", dataCategories: ["Example data"] };',
+    'export const legal: LegalDocumentContent = { title: "Example document", intro: "Example introduction", sections: [{ title: "Example section", body: "Example body" }] };',
+    'export const contactInput: ContactContent = { organization: contact.organization, supportEmail: "support@example.invalid", addressLine: "Example address", registrationIdentifiers: [] };',
+    'export const siteIdentity = contact.organization.name;',
+    'export const processorName = processor.processorName;',
+    'export const head = buildHeadDescriptor({ origin: "https://shop.example", route: { id: "home", locale: "alpha", canonicalPath: "/" }, routes: [], xDefaultLocale: "alpha", htmlLang: "alpha", title: "Example", description: "Example content", siteName: "Example Store", ogImage: "https://shop.example/image.png", ogImageWidth: 1200, ogImageHeight: 630, twitterHandle: "@example", ogLocale: "alpha", twitterImage: "https://shop.example/card.png", jsonLd: organizationLd("https://shop.example", "Organization", contact.organization) });',
+    '// @ts-expect-error organization facts are required for contact content',
+    'const missingContact: ContactContent = { supportEmail: "support@example.invalid", addressLine: "Example address", registrationIdentifiers: [] };',
+    '// @ts-expect-error legal document sections are required',
+    'const missingSections: LegalDocumentContent = { title: "Example", intro: "Example introduction" };',
+    '// @ts-expect-error processor data categories are required',
+    'const missingCategories: PrivacyProcessorDisclosure = { processorName: "Example", purpose: "Example purpose" };',
+    'void missingContact; void missingSections; void missingCategories;',
+  ].join("\n"));
+  if (entries.includes("marketing/server")) surfaces.push([
+    'import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler } from "@openlup/platform/marketing/server";',
+    'import type { AcquisitionCasePort as ServerAcquisitionCasePort, AcquisitionCaseDirectDeps } from "@openlup/platform/marketing/server";',
+    'declare const acquisitionPort: ServerAcquisitionCasePort;',
+    'declare const acquisitionDirect: AcquisitionCaseDirectDeps;',
+    'export const acquisitionHandlers = createAcquisitionCaseHandlers(acquisitionPort);',
+    'export const acquisitionCount = createAcquisitionCaseActiveCountDirectHandler(acquisitionDirect);',
+  ].join("\n"));
+  if (entries.includes("lifecycle")) surfaces.push([
+    'import { planAppUpgrade, applyAppUpgrade, inspectLegacyPostgresInstallRoles } from "@openlup/platform/lifecycle";',
+    'import type { AppVersionSnapshot, AppUpgradeInput, AppUpgradePlan, PostgresInstallQuery, LegacyPostgresInstallRequest, LegacyPostgresInstallRoleReport } from "@openlup/platform/lifecycle";',
+    'declare const from: AppVersionSnapshot; declare const to: AppVersionSnapshot;',
+    'const upgrade: AppUpgradeInput = { root: "/example-app", from, to, schemaVersion: 2 };',
+    'export const plannedUpgrade: Promise<AppUpgradePlan> = planAppUpgrade(upgrade);',
+    'export const appliedUpgrade = applyAppUpgrade(upgrade);',
+    'declare const roleDb: PostgresInstallQuery;',
+    'const roleRequest: LegacyPostgresInstallRequest = { migrationLogin: "migration", runtimeLogin: "migration", roleMode: "installer-managed" };',
+    'export const legacyRoles: Promise<LegacyPostgresInstallRoleReport> = inspectLegacyPostgresInstallRoles(roleDb, roleRequest);',
+    '// @ts-expect-error qualification modes are explicit and do not imply install readiness',
+    'inspectLegacyPostgresInstallRoles(roleDb, { ...roleRequest, roleMode: "ready" });',
+    '// @ts-expect-error schema admission uses an explicit integer ordinal',
+    'planAppUpgrade({ ...upgrade, schemaVersion: "2" });',
+  ].join("\n"));
+  if (entries.includes("portability")) surfaces.push([
+    'import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, copyTransferObjects } from "@openlup/platform/portability";',
+    'import type { CompatiblePostgresSnapshot, CompatiblePostgresTarget, CompatiblePostgresPacket, TransferObjectInventory, TransferObjectStore } from "@openlup/platform/portability";',
+    'declare const source: CompatiblePostgresSnapshot; declare const target: CompatiblePostgresTarget;',
+    'export const captured: Promise<CompatiblePostgresPacket> = captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["outbox_events"],maximumRows:10,maximumBytes:1024});',
+    'export const restored = restoreCompatiblePostgresRows({target,catalogueId:"catalogue",packet:await captured});',
+    'declare const inventory: TransferObjectInventory; declare const objects: TransferObjectStore;',
+    'export const copied = copyTransferObjects({inventory,source:objects,destination:objects,accessMapping:{private:"private"},maximumObjectBytes:1024,maximumTotalBytes:1024});',
+    '// @ts-expect-error migration ledgers are not compatible data candidates',
+    'captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["platform_schema_migrations"],maximumRows:10,maximumBytes:1024});',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
     'import { tryCompensate } from "@openlup/platform/commerce/server";',
@@ -793,6 +1121,9 @@ assert.equal(await createManagedLinkStore(structuralClient).findAccountByPrincip
 
 export function proveAdapterRefusals(consumer: string): void {
   consumerNode(consumer, adapterOperations + `
+// This selected entry retains its original static driver import.
+await assert.rejects(import("@openlup/platform/marketing/server/postgres"),
+  error => error.code === "ERR_MODULE_NOT_FOUND" && /Cannot find package 'pg'/.test(error.message));
 const blob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid" });
 const checks = [["@aws-sdk/client-s3", () => blob.upload("probe", Buffer.from("probe"))],
   ...Object.values(postgresOperations("postgresql://unused.invalid/consumer")).map(operation => ["pg", operation])];
@@ -807,6 +1138,11 @@ export function proveInstalledAdapters(consumer: string): void {
 import * as sdk from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
 import { createS3ClientFromEnv } from "@openlup/platform/blob";
+import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server/postgres";
+assert.equal(typeof createPostgresAcquisitionCasePort, "function");
+assert.equal(typeof createPostgresAcquisitionEvidencePort, "function");
+assert.throws(() => createPostgresAcquisitionCasePort({ connectionString: " " }), /acquisition_case_database_url_required/);
+assert.throws(() => createPostgresAcquisitionEvidencePort({ connectionString: " " }), /acquisition_evidence_database_url_required/);
 // The default loaders must reach real SDK configuration, without opening a socket.
 // Invalid URLs deterministically fail before a transport can contact any provider.
 const invalidBlob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid",
@@ -1190,6 +1526,112 @@ try {
 `, [connectionString]);
 }
 
+/** Installed adapter with the complete native catalogue and an explicitly granted invoker role. */
+export function proveOperationsPostgres(consumer: string, connectionString: string): void {
+  const operator="b4000000-0000-4000-8000-000000000001";
+  const setup=consumerNode(consumer,`
+import assert from "node:assert/strict";
+import pg from "pg";
+import { createPostgresGatewayTypeOverrides } from "@openlup/platform/data";
+import { createPlatformControlPlanePort, runControlPlaneWatchdogTick, OPERATIONS_MIGRATIONS } from "@openlup/platform/operations/server";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+assert.equal(createHash("sha256").update(readFileSync(OPERATIONS_MIGRATIONS.native.units[0].url)).digest("hex"),OPERATIONS_MIGRATIONS.native.units[0].sha256);
+const client=new pg.Client({connectionString:process.argv[2],types:createPostgresGatewayTypeOverrides(pg.TypeOverrides)});await client.connect();
+const operator=process.argv[3],inactive="b4000000-0000-4000-8000-000000000002";
+async function snapshot(){return (await client.query("SELECT jsonb_build_object('controls',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY control_key) FROM public.platform_operational_controls t),'operations',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY idempotency_key) FROM public.platform_control_operations t),'heartbeat',(SELECT to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) FROM public.platform_job_controls t WHERE job_name='platform-watchdog')) AS state")).rows[0].state;}
+try {
+  await client.query("INSERT INTO public.platform_control_operators(principal_id,active) VALUES($1,true),($2,false)",[operator,inactive]);
+  await client.query("CREATE ROLE operations_runtime NOLOGIN; CREATE ROLE operations_denied NOLOGIN; GRANT USAGE ON SCHEMA public TO operations_runtime; GRANT SELECT ON public.platform_control_operators,public.platform_alerts TO operations_runtime; GRANT SELECT,INSERT,UPDATE ON public.platform_operational_controls,public.platform_control_operations,public.platform_job_controls TO operations_runtime; GRANT EXECUTE ON FUNCTION public.platform_control_operator_is_active(uuid),public.platform_control_require_operator(uuid),public.platform_control_set_control(uuid,text,text,text,boolean),public.platform_control_record_heartbeat(uuid,text,text,text,integer,text,boolean),public.platform_control_list_controls(uuid),public.platform_control_list_jobs(uuid),public.platform_control_list_alerts(uuid) TO operations_runtime");
+  const before=await snapshot();
+  await client.query("SET ROLE operations_denied");
+  assert.equal((await client.query("SELECT current_user AS role")).rows[0].role,"operations_denied");
+  const denied=createPlatformControlPlanePort(client,operator);
+  await assert.rejects(denied.mutateControlPlane({action:"set-control",idempotencyKey:"denied",controlKey:"jobs.enabled",enabled:true}),{name:"PlatformControlPlaneUnavailableError"});
+  await assert.rejects(client.query("UPDATE public.platform_operational_controls SET enabled=false"),{code:"42501"});
+  await client.query("RESET ROLE");assert.deepEqual(await snapshot(),before);
+  await client.query("SET ROLE operations_runtime");
+  assert.equal((await client.query("SELECT current_user AS role")).rows[0].role,"operations_runtime");
+  const port=createPlatformControlPlanePort(client,operator);
+  const command={action:"set-control",idempotencyKey:"m14-control",controlKey:"jobs.enabled",enabled:true};
+  const first=await port.mutateControlPlane(command);assert.equal(first.replayed,false);assert.equal(first.revision,1);
+  const settled=await snapshot();
+  assert.deepEqual(await port.mutateControlPlane(command),{...first,replayed:true});assert.deepEqual(await snapshot(),settled);
+  await assert.rejects(port.mutateControlPlane({...command,enabled:false}),{name:"PlatformControlPlaneConflictError"});assert.deepEqual(await snapshot(),settled);
+  await assert.rejects(createPlatformControlPlanePort(client,inactive).mutateControlPlane({...command,idempotencyKey:"inactive"}),{name:"PlatformControlPlaneUnavailableError"});assert.deepEqual(await snapshot(),settled);
+  // Grants are confined to operations. A neighboring domain write still refuses.
+  await assert.rejects(client.query("UPDATE public.subscriptions SET cadence_days=cadence_days"),{code:"42501"});
+  const revised=await port.mutateControlPlane({...command,idempotencyKey:"m14-control-2",enabled:false});assert.equal(revised.revision,2);
+  assert.deepEqual((await port.readControlPlane({})).controls,[{controlKey:"jobs.enabled",enabled:false,revision:2,updatedAt:revised.recordedAt}]);
+  const dryBefore=await snapshot();await runControlPlaneWatchdogTick(port,new Date("2026-10-26T12:00:00Z"),true);assert.deepEqual(await snapshot(),dryBefore);
+  const heartbeat={action:"record-heartbeat",idempotencyKey:"m14-heartbeat",health:"degraded",firingCount:1,maxSeverity:"p1",promotionReady:false};
+  const beat=await port.mutateControlPlane(heartbeat);assert.equal(beat.replayed,false);assert.equal(beat.revision,null);
+  const durable=await snapshot();
+  assert.equal(durable.heartbeat.last_status,"success");assert.equal(durable.heartbeat.active_driver,"operator");
+  assert.equal(durable.heartbeat.last_success_at,beat.recordedAt);assert.deepEqual(durable.heartbeat.metadata,{health:"degraded",firingCount:1,maxSeverity:"p1",promotionReady:false});
+  assert.deepEqual(await port.mutateControlPlane(heartbeat),{...beat,replayed:true});assert.deepEqual(await snapshot(),durable);
+  await assert.rejects(port.mutateControlPlane({...heartbeat,firingCount:2}),{name:"PlatformControlPlaneConflictError"});assert.deepEqual(await snapshot(),durable);
+  process.stdout.write(JSON.stringify({first,beat,durable}));
+} finally {await client.query("RESET ROLE");await client.end();}
+`,[connectionString,operator]);
+  const expected=JSON.parse(setup);
+  // A second independent consumer process reconstructs the adapter against the same durable state.
+  const restarted=consumerNode(consumer,`
+import assert from "node:assert/strict";
+import pg from "pg";
+import { createPostgresGatewayTypeOverrides } from "@openlup/platform/data";
+import { createPlatformControlPlanePort } from "@openlup/platform/operations/server";
+const client=new pg.Client({connectionString:process.argv[2],types:createPostgresGatewayTypeOverrides(pg.TypeOverrides)});await client.connect();
+try {
+  await client.query("SET ROLE operations_runtime");assert.equal((await client.query("SELECT current_user AS role")).rows[0].role,"operations_runtime");
+  const port=createPlatformControlPlanePort(client,process.argv[3]);
+  const first=await port.mutateControlPlane({action:"set-control",idempotencyKey:"m14-control",controlKey:"jobs.enabled",enabled:true});
+  const beat=await port.mutateControlPlane({action:"record-heartbeat",idempotencyKey:"m14-heartbeat",health:"degraded",firingCount:1,maxSeverity:"p1",promotionReady:false});
+  const durable=(await client.query("SELECT jsonb_build_object('controls',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY control_key) FROM public.platform_operational_controls t),'operations',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY idempotency_key) FROM public.platform_control_operations t),'heartbeat',(SELECT to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) FROM public.platform_job_controls t WHERE job_name='platform-watchdog')) AS state")).rows[0].state;
+  process.stdout.write(JSON.stringify({first,beat,durable}));
+} finally {await client.query("RESET ROLE");await client.end();}
+`,[connectionString,operator]);
+  const actual=JSON.parse(restarted);
+  assert.deepEqual(actual,{first:{...expected.first,replayed:true},beat:{...expected.beat,replayed:true},durable:expected.durable});
+  console.log("Operations installed native proof PASS (explicit invoker role, denied neighbor, durable replay/conflict/checkOnly/process restart)");
+}
+
+/** Selected-row recovery from installed bytes against the already-owned canonical database. */
+export function provePortabilityPostgres(consumer: string, connectionString: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import {randomUUID} from "node:crypto";
+import pg from "pg";
+import {captureCompatiblePostgresRows,restoreCompatiblePostgresRows} from "@openlup/platform/portability";
+const client=new pg.Client({connectionString:process.argv[2]});await client.connect();
+const id=randomUUID(),key="installed-transfer:"+id,catalogueId="owned-canonical-install";
+async function transaction(readOnly,work){await client.query(readOnly?"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY":"BEGIN");try{const result=await work(client);await client.query("COMMIT");return result;}catch(error){await client.query("ROLLBACK");throw error;}}
+try{
+ const ledger=await client.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position");
+ const acl=await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname");
+ const payload='{"large":9007199254740993}';
+ await client.query("INSERT INTO public.outbox_events(id,aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,attempts) VALUES($1,'synthetic',$1,'synthetic.transfer',$2,$3::jsonb,'processing',3)",[id,key,payload]);
+ const before=(await client.query("SELECT to_jsonb(t)::text AS value FROM public.outbox_events t WHERE id=$1",[id])).rows;
+ const packet=await captureCompatiblePostgresRows({source:{withSnapshot:work=>transaction(true,work)},sourceId:"owned-installed-source",catalogueId,tables:["outbox_events"],maximumRows:1000,maximumBytes:4194304});
+ const input={target:{withTransaction:work=>transaction(false,work)},catalogueId,packet};
+ assert.equal((await restoreCompatiblePostgresRows(input)).inserted,0);
+ // Owned fixture loss: recover the exact retained row without resetting its
+ // in-flight status, attempts, original key or precision-bearing payload.
+ await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);
+ assert.equal((await restoreCompatiblePostgresRows(input)).inserted,1);
+ assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.outbox_events t WHERE id=$1",[id])).rows,before);
+ const retained=(await client.query("SELECT xmin::text AS version FROM public.outbox_events WHERE id=$1",[id])).rows;
+ assert.equal((await restoreCompatiblePostgresRows(input)).inserted,0);
+ assert.deepEqual((await client.query("SELECT xmin::text AS version FROM public.outbox_events WHERE id=$1",[id])).rows,retained);
+ await client.query("UPDATE public.outbox_events SET attempts=4 WHERE id=$1",[id]);
+ await assert.rejects(restoreCompatiblePostgresRows(input),{code:"target_conflict"});
+ assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows,ledger.rows);
+ assert.deepEqual((await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows,acl.rows);
+ console.log("Portability installed canonical selected-row recovery PASS");
+}finally{await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);await client.end();}
+`, [connectionString]);
+}
+
 /** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
 function proveNativeCommunicationsPostgres(consumer: string): void {
   const started = performance.now();
@@ -1217,6 +1659,8 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
       process.exit(0);
     `,connectionString],root,isolatedConsumerEnv());
     proveNativeCommunicationsOperations(consumer,connectionString);
+    proveOperationsPostgres(consumer,connectionString);
+    provePortabilityPostgres(consumer,connectionString);
   } finally {docker(["rm","--force",name]);}
   console.log(`Native communications installed proof PASS (PostgreSQL 16, complete canonical catalogue; ${Math.round(performance.now()-started)} ms including setup/cleanup)`);
 }
@@ -1534,8 +1978,13 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
+    proveMarketingServerConsumer(consumer);
+    compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
+    proveOperationsConsumer(consumer);
+    provePortabilityConsumer(consumer);
+    proveLifecycleConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
@@ -1561,6 +2010,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
     compileConsumer(consumer, [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES], compiler);
+    compileOperationsConsumer(consumer, compiler);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");

@@ -10,8 +10,12 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.28.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0280) before selecting optional services. Experimental
+For the prepared `0.29.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0290) before selecting optional services. Experimental
+M13 marketing uses browser-safe `./marketing`, type-only browser-safe
+`./marketing/contracts`, and Node-only `./marketing/server` and
+`./marketing/server/postgres`. Marketing contributions and bindings remain
+inert and default-off. Experimental
 account/support APIs use `./account-support` and the type-only
 `./account-support/contracts`; reference bindings remain inert and default-off.
 Apply the M12 support-authority forwards after complete same-rail predecessors
@@ -50,7 +54,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.27.0` tarball. Preparation and offline
+Size comparison uses the published `0.28.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -66,10 +70,43 @@ timestamp used in the webhook's idempotency key.
 
 ## Package surface
 
+The experimental Node-only `./lifecycle` entry plans and applies explicit
+application-file snapshots. It preserves unmanaged files and local edits in
+upstream-unchanged files, refuses divergent changed files before writes, and
+resumes exact completed replacements after interruption. The caller holds an
+exclusive maintenance window and supplies schema-range evidence; this entry
+runs no database migration, npm install or deployment. Read the
+[file-ownership boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
+and [disposable app recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade).
+
+The same entry exports `inspectLegacyPostgresInstallRoles`, a read-only query
+through a caller-owned PostgreSQL handle. Its
+`legacy-fresh-bootstrap-role-prerequisites` report observes finite immutable
+legacy bootstrap role conditions; `rolePrerequisitesMet` does not establish
+install readiness, schema/ACL correctness or provider support. See the
+[legacy role boundary](../../docs/platform/DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation).
+
+The experimental Node-only `./portability` entry copies a bounded, explicitly
+complete immutable/quiesced object inventory and captures/restores selected
+compatible PostgreSQL rows through injected transaction handles. Private
+filesystem objects publish bytes and metadata together, bind an explicit access
+label to the filesystem owner's private policy and resume by verified readback.
+Row replay preserves exact JSON/numeric/time values, refuses conflicts and every
+enabled user INSERT trigger, and copies no schema, migration ledger or grants.
+The host qualifies the canonical catalogue, credentials and source completeness.
+These helpers activate no executor and do not supply managed identity mapping,
+live changed-row catch-up or hosted old-worker fencing. Read the
+[transfer boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+and the retained [M14 obligations](../../docs/platform/plans/oss-m14-operations-portability.md).
+The provider-owned HTTP counterexample exercises an existing adapter's cached
+bearer; its local fixture establishes no hosted revocation guarantee.
+
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
+| `./lifecycle` | Experimental Node file-snapshot planning/apply and read-only legacy PostgreSQL role prerequisites; no install-readiness claim, optional SDK or activation |
+| `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
 | `./scheduler` | Transport-neutral scheduled jobs (`ScheduledJob`, the job registry, the lease-aware runner and the authenticated HTTP cron entry), path-declared jobs from configuration, the node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
@@ -93,7 +130,12 @@ timestamp used in the webhook's idempotency key.
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
+| `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
+| `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
+| `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
+| `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
+| `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -114,15 +156,15 @@ schemas. The marketing runtime entry configures the shared Zod instance in
 jitless mode before constructing schemas, preserving CSP-safe initialization
 for direct imports as well as reference facades, like the pricing, catalog and
 communications entries. The type-only `./marketing/contracts` entry has no
-runtime initialization. The rich prelaunch DTO, case submit and transition contracts remain application-owned
-and are intentionally excluded from this package. The shared
+runtime initialization. The rich prelaunch DTO and case submit/transition schemas remain application-owned
+and are excluded from the browser entries. The shared
 `acquisitionOpaqueReferenceSchema` lets those retained contracts reuse the exact
-reference syntax. There is no marketing server entry or automatic route binding.
+reference syntax. No entry registers a route automatically.
 
 `./marketing/contracts` exports only types. Explicit acquisition DTO shapes are
 checked against the runtime schema inference by an executed TypeScript equality
 witness. Reachable case ports expose list, get, active count and close; the app
-extends that port with its retired methods. Evidence ports retain survey submission,
+uses the server-only compatibility port for its retired methods. Evidence ports retain survey submission,
 survey listing and consent application. Port types are also forwarded through
 the runtime entry, following the commerce boundary. Both entries forward research schemas or types from the compatibility
 owner, `@openlup/core/marketing/research`; runtime schemas retain object identity.
@@ -133,7 +175,105 @@ The source and built entries have browser graph proofs. The root test runner
 selects `test/marketing/`; the installed consumer checks both public entries,
 compiles typed usage and refuses deep imports. Kiosk and research reference
 contracts/ports continue to consume the core export. The app owns its admin
-response client and all server composition.
+response client and host composition.
+
+`./marketing/server` owns acquisition case handlers, list/count and prelaunch
+list/detail factories, survey evidence submit/list and consent application,
+research submit/admin handlers and managed survey orchestration without loading
+`pg`. Select `./marketing/server/postgres` for the two PostgreSQL port factories
+after installing the existing optional `pg` peer. Hosts inject the BFF responder,
+authorization and binding resolvers. Direct case reads receive the host bundle
+predicate at their original guard; prelaunch and evidence dispatch stays in the
+host. Notification HTML and subject are injected separately, preserving
+HTML rendering before the subject clock read. The reference owns retired
+route refusals, raw signed consent ingress and notification copy. PostgreSQL
+SQL, role selection and transaction/pool handling remain unchanged. The
+server-only compatibility command types do not expose retired admission schemas.
+
+Analytics facts share these browser-safe entries. `createNoopAnalytics` implements
+Core's existing analytics port; deployment and advertising defaults remain inert.
+`AnalyticsEventMap<StepName>` retains the host's literal step vocabulary, with
+`string` as the neutral default. Private transport ownership fields and envelopes
+remain host extensions. Types are forwarded type-only by `./marketing/contracts`.
+
+`createAnalyticsDataLayer` owns loader readiness per instance and accepts the host's
+browser/storage access, consent key and change event, `consentSignalNames`, event
+prefix, container reader and deployment callback. `consentSignalNames` supplies
+one `analytics` wire name and the ordered `advertising` wire names. Without it,
+no consent command is pushed and optional event admission returns false, even
+with browser access, a container and stored consent; deployment attempts remain
+independent. Consent commands seed default before update and
+use array-like arguments; advertising grants read marketing consent at push time.
+Revocation denies every signal. Sinks are attempted independently with failure
+isolation and no replay of observations made before consent. Admission booleans
+mean synchronous local acceptance only, never delivery or business acknowledgement.
+
+`createAnalyticsRoutePolicy` requires public paths, redirect sources and all
+sensitive-path sets. Its optional-route predicate preserves broad eligibility;
+deployment URL sanitization admits exact public paths and safe campaign values.
+`projectPaidPurchase` consumes only structural paid-recap facts, preserving
+allocation/grouping, the item cap and ordered suppression reasons without an
+ambient currency policy. `selectMarketingHistoricalConsentTime` selects exact
+native chronology only after host authorization, without changing the local
+grant. The reference retains its narrower checkout-kind admission and all wire
+names. [Purchase equivalence](../../src/checkout/machine/purchasePayloadEquivalence.test.ts)
+and the package analytics witnesses pin these boundaries.
+
+`createAnalyticsContextHandler` in `./marketing/server` accepts a required BFF
+responder, enable reader, persistence resolver, access-token reader, trusted-subject
+resolver, capability mint/hash functions, historical cookie name and `clientIdField`.
+The host supplies the client-id wire field name through `clientIdField`; the strict
+request also keeps `granted` and `explicitGrant`. Grants require a client
+id and existing revoked contexts require an explicit new grant for replacement.
+Only token hashes reach persistence. Enrollment uses only the server-verified
+subject, and invalid bearer grants refuse before writes. Cookie attributes and
+method/flag/origin/schema refusal order are preserved. The host owns flag and
+RPC names, gateway authority, route mounting and observability. Persistence
+operations must reject on failure; null persistence refuses as unavailable.
+There is no default persistence, portable SQL or reference route for this handler.
+An `active` result is a local context fact, never delivery, and telemetry context
+failure never gates commerce. The [context witness](test/marketing/analyticsContext.test.ts)
+exercises the factory through synthetic host bindings.
+
+`./marketing` also provides browser-safe JSON-LD serialization and graph builders,
+route URL/hreflang helpers, an ordered head descriptor and plain contact/legal
+projections. Applications supply identity, origin, routes, locales, images and
+content; the descriptor is plain data for a host head manager. The type-only
+`./marketing/contracts` entry exports shared organization facts and contact,
+legal-document and privacy-processor shapes, also forwarded as types by the
+runtime entry. The package supplies no document wording, processor inventory or
+content policy. The [marketing recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-seo-and-content-slots)
+owns the mechanics and installed-artifact proof.
+
+## Marketing composition
+
+`./composition` exports `createMarketingContribution`, an inert descriptor for
+the `marketing` capability's `./marketing`, `./marketing/contracts` and
+`./marketing/server` entries, with a runtime dependency on `identity/contracts`
+for obligation validation.
+Supply already-bound operations and host schema requirements. Ports, routes and
+triggers share the supplied functions; null ports remain required for Core
+readiness, and handlers retain only registration descriptors. Duplicate handler,
+schedule or route identities refuse. Construction invokes no callable and
+installs no worker, route or schedule. See the
+[composition contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
+for the host admission boundary.
+
+`./marketing/server` also exports `createMarketingPrivacyContributor` and
+`createMarketingPrivacyBindings`. Explicit enablement and both complete owner
+ports select one contributor; its `exportPersonalData`, `assessErasure` and
+`eraseOrRetain` callables can be passed directly to `createMarketingContribution`.
+Missing ownership makes coverage unavailable and erasure unresolved. Identity
+owns assessment ordering, subscription vetoes, receipt replay and transaction
+rollback; the marketing fence runs only during `eraseOrRetain`. Provider request
+acceptance never proves deletion. The reference leaves marketing unselected,
+so its marketing privacy coverage remains an open gap. See the
+[privacy composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition).
+
+The contributor and binding declarations use identity contract types and local
+structural interfaces compatible with identity's `PersonalDataContributor`.
+They do not reference identity's main entry; `./marketing/server` compiles without
+`pg` or `@types/pg`. Select `./marketing/server/postgres` explicitly for those ports.
 
 ## Commerce contracts
 
@@ -1176,3 +1316,21 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+## Operations and diagnostics
+
+The experimental `./operations` entry contains browser-safe operational schemas,
+alert projections and `createOperationsClients`, which binds an existing BFF
+requester. `./operations/contracts` contains DTOs and narrow ports only.
+`./operations/server` contains settings read/update, pipeline read, alert overview,
+control-plane handlers and the existing watchdog delivery mechanism. Authorization,
+SQL execution, evidence evaluation and alert transport are supplied by the host;
+importing these entries registers no route, schedule or provider.
+
+`runControlPlaneWatchdogTick` evaluates persisted neutral job failures and records
+an idempotent heartbeat unless `checkOnly` is true. The richer watchdog accepts a
+typed evaluator; the public reference binds its maintained domain evaluator.
+Settings preserve scalar values, and pipeline reads preserve the existing tester
+and email projection. Identity membership and tracking effects keep their owners.
+See the [operations architecture](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+for refusal behavior, SQL prerequisites and the bounded preview scope.

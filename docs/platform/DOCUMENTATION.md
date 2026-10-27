@@ -69,11 +69,57 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Application lifecycle source, owner-local witnesses and its API report route
+to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
+The package README remains the short import entry, the package reference owns
+the disposable recipe, and database/runtime owners retain their separate
+compatibility and admission duties. Generated navigation adds no upgrade,
+installation or provider claim.
+
+The lifecycle legacy PostgreSQL role helper, its package witness and actual
+PostgreSQL witness route to the
+[finite legacy role-observation owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation).
+Its report is role-prerequisite evidence, never install readiness. The package
+reference owns the invocation; runtime guidance keeps installation and grant
+admission separate. Shared lifecycle API documentation retains both boundaries.
+
+The app-file witness's owned child Node process is named in the existing closed
+public execution inventory; this records its CLI carrier without adding a job.
+
+Portability source, package witnesses, the compatible-row PostgreSQL witness and
+its API report route to the
+[transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
+Data guidance retains canonical import-trigger/identity limitations; runtime
+guidance retains effect-time fencing and host capability ownership. Navigation
+and selected-row/local-object evidence do not close the full M14 store outcome.
+
+Operations source, owner-local witnesses, the unchanged control-plane SQL
+projection and the three operations API reports route to the
+[operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+The package README is the short import entry point; the public M14 module record
+retains programme scope and lane records retain candidate evidence. Navigation
+adds no activation or hosted-provider claim.
+
+
 The plain Vitest worker-policy witness is a public tooling source in the
 publication catalogue; its embedded child CLI is also a declared execution
 entrypoint, like the existing process witnesses. Register new tracked test paths there before final
 policy/inventory checks; those checks compare Git's tracked paths, so an
 untracked test alone cannot establish complete publication evidence.
+
+Marketing analytics source and its neutral witnesses belong to the platform
+runtime-boundary owner. Reference analytics and purchase bindings retain their
+host policy; runtime guidance explains local admission, consent ordering and the
+reference checkout-kind restriction. Publication inventory includes the package
+facts and the frozen reference purchase transcript; generated navigation carries
+no delivery or activation claim.
+
+The server-only analytics context handler and its package witness share that
+runtime-boundary owner. Package and architecture guidance explain its required
+host ports and absence of default persistence or a reference route; runtime
+guidance owns refusal ordering, verified-subject enrollment and the local meaning
+of `active`. Publication inventory includes these sources without claiming
+portable context SQL, activation or delivery.
 
 The M10 control re-pin moves pending inert fixtures to `20261024`, adds native
 X/Y, and folds preview replay into N2 under `scripts/fixtures/reviewed-m10/`.
@@ -105,6 +151,12 @@ recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFER
 which the publication catalogue includes in the public source tree rather than
 the npm artifact. Detailed recipe links point there directly; existing identity,
 runtime and package ownership routes remain unchanged.
+
+Marketing's PostgreSQL export barrel and generated server API reports are public
+source outputs in the publication catalogue. The package README and
+[server composition recipe](PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition)
+own the separate handler and optional-peer adapter entries; the contributor
+guide owns their existing boundary, cold-consumer and PostgreSQL proof checks.
 
 Subscription source, contract witnesses and generated subscription API reports
 route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).

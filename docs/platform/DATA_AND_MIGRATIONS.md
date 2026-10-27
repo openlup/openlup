@@ -19,6 +19,32 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Compatible data transfer
+
+The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
+transports data into an already qualified canonical target. It does not restore
+managed internals, source roles/grants or `platform_schema_migrations`. Source
+and target transaction capabilities remain host-owned; an opaque catalogue label
+does not prove that an installation is compatible. Identical typed rows replay,
+and changed retained rows refuse rather than becoming business status updates.
+
+Historical insertion is not generally inert. `clients` insertion invokes
+`customer_subject_capture_lifecycle_trigger`, generating new history; cycle
+insertion invokes `subscription_delivery_alignment_guard_cycle_insert`, which
+can consume admission or settle alignment. Order/item totals also use user
+INSERT triggers. The first utility refuses all enabled user INSERT triggers,
+including named constraints; it does not disable them, alter replication role,
+forge admission or rewrite migration history. A full-store import therefore
+still needs domain-owned import-safe routes or an approved canonical pre-data /
+post-data installation design. Preprovisioned referenced parents and the exact
+supported selected rows are prerequisites, not complete-store parity.
+
+Managed `clients.auth_user_id` and native `clients.principal_id` need explicit
+identity mapping. OIDC derives the principal from exact issuer/subject; email
+equality cannot relink it. Dependent memberships, privacy receipts, history and
+credential/session disposition remain part of the full
+[M14 transfer outcome](plans/oss-m14-operations-portability.md).
+
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:
@@ -912,6 +938,32 @@ cover admission and arrival alignment. These checks do not establish
 installation-path parity, a complete installed late-delivery journey or a
 stable upgrade guarantee.
 
+## Legacy fresh-bootstrap role observation
+
+The experimental `@openlup/platform/lifecycle` export
+`inspectLegacyPostgresInstallRoles(db, request)` makes one fixed parameterized
+SELECT through a caller-owned query handle. On PostgreSQL 16+, it observes
+database/session identities, selected role flags and incident membership edges
+in one statement snapshot. Memberships are inventory, not transitive ACL proof.
+Driver failures are redacted rather than exposing connection diagnostics.
+
+Its scope is `legacy-fresh-bootstrap-role-prerequisites`. A true
+`rolePrerequisitesMet` requires the declared migration login to match both
+`current_user` and `session_user`, the legacy superuser/shared runtime-login
+conditions, installer-managed mode, and absent bootstrap roles. SET ROLE is not
+an actual login. This result does not prove schema inventory, installation
+completion, object ACLs, pooling, import safety, provider support or freedom from
+later concurrent changes. It executes no DDL and changes no immutable SQL.
+
+The existing [PostgreSQL witness](../../tests/postgres/m14InstallQualification.test.ts)
+observes a positive result inside a read-only transaction, actual ordinary-login
+and SET ROLE refusals, and role flags/memberships. It executes the immutable
+acquisition bootstrap to prove restricted-login 42501 refusal before schema/role
+writes, and the immutable actor bootstrap to prove a pre-existing safe role
+collision (42710) before auth writes. This finite observation does not make a
+qualified installer or portable installation claim; those decisions remain
+separate from both this probe and application-file upgrades.
+
 ## Compatibility lifecycle
 
 Managed commerce forwards scope saved-preference writes to a server-proved
@@ -1368,6 +1420,11 @@ local behavior evidence; committed-chain replay and delivery checks remain
 separate requirements.
 
 
+The application-file lifecycle primitive checks caller-supplied schema ranges
+without reading or changing the database. Keep that file-ownership reconciliation
+separate from the actual expand/backfill/contract evidence below; its successful
+apply does not prove old/new SQL compatibility or authorize a migration.
+
 Every production-shaped schema change follows this order:
 
 1. **Expand** with an additive, backwards-compatible schema change.
@@ -1760,3 +1817,21 @@ forwards; neither descriptor claims storage or fiscal parity.
 The seller-revision forwards are introduced by this change as described in the
 [compatibility lifecycle](#compatibility-lifecycle). Default service activation
 remains later work.
+
+The operations package carries an unchanged projection of native forward
+`20260814010000_platform_control_plane.sql` at manifest position 28. Its sparse
+`OPERATIONS_MIGRATIONS` descriptor is not an install chain: install the complete
+canonical native prefix, including prior job-ledger objects. Existing invoker
+routines require explicit EXECUTE and underlying relation privileges, and a
+current row in `platform_control_operators`. That allowlist does not grant identity
+membership or domain write authority. The installed consumer proves the selected
+runtime role can write controls/heartbeats while a neighboring subscription write
+refuses; managed verification remains unclaimed.
+
+The projection's whole-file SHA-256 is
+`b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`.
+Its existing persisted channel enum accounts for exactly one `ui-12` count.
+The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
+only this exact package path, digest and 0-to-1 tuple with its matching baseline
+key. This preserves canonical bytes without admitting other package SQL,
+changing scanner patterns or raising any existing count.

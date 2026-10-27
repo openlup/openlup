@@ -222,6 +222,93 @@ export type AcquisitionSurveyListResponse = z.infer<typeof acquisitionSurveyList
 export type AcquisitionNewsletterConsentEvent = z.infer<typeof acquisitionNewsletterConsentEventSchema>;
 export type AcquisitionNewsletterConsentResponse = z.infer<typeof acquisitionNewsletterConsentResponseSchema>;
 ```
+## dist/marketing/analytics/dataLayer.d.ts
+
+```ts
+import type { AnalyticsSinkAttemptMask, AnalyticsSinkAdmission, AnalyticsCookieConsent, AnalyticsDataLayerOptions } from "../contracts/analytics.js";
+export type { AnalyticsSinkAttemptMask, AnalyticsSinkAdmission, AnalyticsCookieConsent, AnalyticsBrowserWindow, AnalyticsDataLayerOptions } from "../contracts/analytics.js";
+import type { AnalyticsEventMap, AnalyticsEventName } from "./noop.js";
+/** Each instance owns loader state; the host supplies browser and deployment policy. */
+export declare function createAnalyticsDataLayer<StepName extends string = string>(options?: AnalyticsDataLayerOptions<StepName>): {
+    readCookieConsent: () => AnalyticsCookieConsent | null;
+    hasAnalyticsConsent: (consent?: AnalyticsCookieConsent | null) => boolean;
+    configuredContainerId: () => string | null;
+    subscribeToAnalyticsConsent: (listener: () => void) => () => void;
+    isAnalyticsLoaderReady: () => boolean;
+    subscribeToAnalyticsLoaderReadiness: (listener: () => void) => () => void;
+    markAnalyticsLoaderReady: () => void;
+    resetAnalyticsLoaderReadiness: () => void;
+    pushAnalyticsConsentDefault: () => void;
+    pushAnalyticsConsentUpdate: (granted: boolean) => void;
+    pushAnalyticsEvent: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]) => boolean;
+    emitAnalyticsEvent: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K], attempts?: AnalyticsSinkAttemptMask) => AnalyticsSinkAdmission;
+};
+```
+## dist/marketing/analytics/noop.d.ts
+
+```ts
+import type { AnalyticsEventMap, AnalyticsEventName } from "../contracts/analytics.js";
+export type { AnalyticsStepName, AnalyticsCheckoutItem, AnalyticsPurchaseItem, AnalyticsCheckoutMode, AnalyticsPaymentWaitOutcome, AnalyticsEventMap, AnalyticsEventName } from "../contracts/analytics.js";
+import type { AnalyticsPort } from "@openlup/core/platform-runtime";
+export declare function initializeDeploymentAnalytics(): void;
+export declare function trackDeploymentEvent<K extends AnalyticsEventName>(_event: K, _properties: AnalyticsEventMap[K]): boolean;
+export declare function syncAdvertisingConsent(): void;
+export declare function trackAdvertisingPurchase(_payload: AnalyticsEventMap["purchase"]): boolean;
+/** Inert composition satisfies the existing platform runtime port. */
+export declare function createNoopAnalytics(): AnalyticsPort;
+```
+## dist/marketing/analytics/purchaseFacts.d.ts
+
+```ts
+import type { PurchaseOrder, PurchaseSuppressionReason } from "../contracts/analytics.js";
+export type { PurchaseOrder, PurchaseSuppressionReason } from "../contracts/analytics.js";
+import type { AnalyticsEventMap } from "./noop.js";
+export declare function projectPaidPurchase(recap: PurchaseOrder, suppressPurchase?: (reason: PurchaseSuppressionReason) => null): AnalyticsEventMap["purchase"] | null;
+```
+## dist/marketing/analytics/routePolicy.d.ts
+
+```ts
+import type { AnalyticsRoutePolicyInput } from "../contracts/analytics.js";
+export type { AnalyticsRoutePolicyInput } from "../contracts/analytics.js";
+export declare function normalizeAnalyticsPathname(pathname: string): string;
+/** Route manifests and sensitive paths are explicit host policy. */
+export declare function createAnalyticsRoutePolicy(input: AnalyticsRoutePolicyInput): {
+    isSensitiveAnalyticsPath: (pathname: string) => boolean;
+    isOptionalAnalyticsRouteEligible: (pathname: string) => boolean;
+    isDeploymentAnalyticsRouteEligible: (pathname: string, additionalPublicPaths?: ReadonlySet<string>) => boolean;
+    sanitizeDeploymentAnalyticsUrl: (rawUrl: string, currentOrigin: string, additionalPublicPaths?: ReadonlySet<string>) => string | null;
+};
+```
+## dist/marketing/consentEvidence.d.ts
+
+```ts
+import type { MarketingHistoricalConsentCommand, MarketingHistoricalConsentState, MarketingHistoricalConsentResult } from "./contracts/analytics.js";
+export type { MarketingHistoricalConsentCommand, MarketingHistoricalConsentState, MarketingHistoricalConsentResult } from "./contracts/analytics.js";
+/** Transport chronology after authorization; never changes the local consent grant. */
+export declare function selectMarketingHistoricalConsentTime(input: {
+    command: MarketingHistoricalConsentCommand;
+    state: MarketingHistoricalConsentState;
+    now: Date;
+}): MarketingHistoricalConsentResult;
+```
+## dist/marketing/contactLegal.d.ts
+
+```ts
+import type { ContactContent, LegalDocumentContent } from "./contracts/contactLegal.js";
+export declare function contactContent(facts: ContactContent): {
+    supportEmail: string;
+    companyLines: string[];
+};
+export declare function legalDocumentContent(content: LegalDocumentContent): {
+    lastUpdated?: string | undefined;
+    title: string;
+    intro: string;
+    sections: {
+        title: string;
+        body: string;
+    }[];
+};
+```
 ## dist/marketing/contracts/acquisition.d.ts
 
 ```ts
@@ -367,6 +454,211 @@ export interface AcquisitionEvidencePort {
     close(): Promise<void>;
 }
 ```
+## dist/marketing/contracts/analytics.d.ts
+
+```ts
+/** The host supplies its own literal step vocabulary. */
+export type AnalyticsStepName<StepName extends string = string> = StepName;
+export interface AnalyticsCheckoutItem {
+    item_id: string;
+    quantity: number;
+}
+export interface AnalyticsPurchaseItem extends AnalyticsCheckoutItem {
+    item_variant?: string;
+    price: number;
+    discount: number;
+}
+export type AnalyticsCheckoutMode = "one_time" | "subscription";
+/** No answer describes an ended wait, without asserting payment failure. */
+export type AnalyticsPaymentWaitOutcome = "confirmed" | "refused" | "no_answer";
+export interface AnalyticsEventMap<StepName extends string = string> {
+    page_view: {
+        page_path: string;
+    };
+    configurator_start: {
+        entry_view: "hero" | "configurator";
+    };
+    configurator_step_view: {
+        step_number: number;
+        step_name: AnalyticsStepName<StepName>;
+    };
+    begin_checkout: {
+        checkout_mode: AnalyticsCheckoutMode;
+        items: AnalyticsCheckoutItem[];
+    };
+    purchase: {
+        transaction_id: string;
+        currency: string;
+        value: number;
+        shipping: number;
+        tax: number;
+        checkout_mode: AnalyticsCheckoutMode;
+        items: AnalyticsPurchaseItem[];
+    };
+    payment_wait_start: {
+        checkoutMode: AnalyticsCheckoutMode;
+    };
+    payment_wait_end: {
+        outcome: AnalyticsPaymentWaitOutcome;
+        checkoutMode: AnalyticsCheckoutMode;
+    };
+    configurator_draft_restored: {
+        draft_context: "public";
+    };
+    configurator_draft_save_failed: {
+        draft_context: "public";
+        reason: "unavailable" | "quota" | "conflict";
+    };
+    configurator_draft_reset: {
+        draft_context: "public";
+    };
+}
+export type AnalyticsEventName = keyof AnalyticsEventMap;
+export interface AnalyticsSinkAttemptMask {
+    deployment: boolean;
+    optional: boolean;
+}
+/** Synchronous local acceptance only; never transport delivery or business acknowledgement. */
+export interface AnalyticsSinkAdmission {
+    deployment: boolean;
+    optional: boolean;
+}
+export interface AnalyticsCookieConsent {
+    necessary: boolean;
+    functional: boolean;
+    analytics: boolean;
+    marketing: boolean;
+}
+export type AnalyticsBrowserWindow = Pick<Window, "localStorage" | "addEventListener" | "removeEventListener"> & {
+    dataLayer?: unknown[];
+};
+export interface AnalyticsDataLayerOptions<StepName extends string = string> {
+    consentStorageKey?: string;
+    consentChangeEvent?: string;
+    /** Host wire names, analytics first then advertising in supplied order. Omission disables consent commands and optional event admission. */
+    consentSignalNames?: {
+        analytics: string;
+        advertising: readonly string[];
+    };
+    eventPrefix?: string;
+    readContainerId?: () => string | null;
+    trackDeploymentEvent?: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]) => boolean;
+    getWindow?: () => AnalyticsBrowserWindow | undefined;
+}
+export interface AnalyticsRoutePolicyInput {
+    publicPaths: readonly string[];
+    redirectSources: readonly string[];
+    privatePathPrefixes: readonly string[];
+    privateAuthPaths: readonly string[];
+    capabilityPathPrefixes: readonly string[];
+}
+/** Only paid recap facts read by the projection; money remains the host's truth. */
+export interface PurchaseOrder {
+    orderId: string;
+    status: string;
+    paymentStatus: string | null;
+    checkoutKind: "one_time" | "subscription_initial" | "subscription_renewal" | null;
+    moneyReconciled: boolean;
+    items: Array<{
+        sku: string | null;
+        variantCode: string | null;
+        quantity: number;
+        catalogTotalGross: number;
+        effectiveNet: number;
+        vatRateBps: number;
+    }>;
+    totals: {
+        tax: {
+            amountMinor: number;
+        };
+        total: {
+            amountMinor: number;
+            currency: string;
+        };
+    };
+}
+export type PurchaseSuppressionReason = "order_not_paid" | "payment_not_succeeded" | "checkout_kind_unsupported" | "money_unreconciled" | "items_empty" | "sku_missing" | "quantity_invalid" | "line_money_invalid" | "net_discount_invalid" | "item_limit_exceeded" | "shipping_net_invalid";
+export interface MarketingHistoricalConsentCommand {
+    consentedAt: string | null;
+    listId: string | null;
+}
+/** Native state literals are compatibility inputs supplied by the host adapter. */
+export interface MarketingHistoricalConsentState {
+    consent: "SUBSCRIBED" | "UNSUBSCRIBED" | "NEVER_SUBSCRIBED" | "unknown";
+    nativeConsentAt?: string | null;
+    suppressions: Array<{
+        reason: "UNSUBSCRIBE" | "SPAM_REPORT" | "USER_SUPPRESSED" | "HARD_BOUNCE" | "INVALID_EMAIL" | "unknown";
+        listId: string | null;
+    }>;
+}
+export type MarketingHistoricalConsentResult = {
+    kind: "ready";
+    providerConsentedAt: string;
+} | {
+    kind: "defer";
+    retryAt: string;
+} | {
+    kind: "hold";
+    reason: string;
+};
+```
+## dist/marketing/contracts/contactLegal.d.ts
+
+```ts
+export interface OrganizationFacts {
+    name: string;
+    legalName: string;
+    url: string;
+    logo: {
+        url: string;
+        contentUrl: string;
+        width: number;
+        height: number;
+    };
+    email: string;
+    vatID: string;
+    taxID: string;
+    areaServed: string;
+    sameAs: string[];
+    contactPoint: {
+        email: string;
+        contactType: string;
+        availableLanguage: string[];
+    };
+    address: {
+        streetAddress: string;
+        addressLocality: string;
+        postalCode: string;
+        addressRegion: string;
+        addressCountry: string;
+    };
+}
+export interface ContactContent {
+    organization: OrganizationFacts;
+    supportEmail: string;
+    addressLine: string;
+    registrationIdentifiers: {
+        label: string;
+        value: string;
+    }[];
+    registrationAuthority?: string;
+}
+export interface LegalDocumentContent {
+    title: string;
+    intro: string;
+    sections: {
+        title: string;
+        body: string;
+    }[];
+    lastUpdated?: string;
+}
+export interface PrivacyProcessorDisclosure {
+    processorName: string;
+    purpose: string;
+    dataCategories: string[];
+    details?: string;
+}
+```
 ## dist/marketing/index.d.ts
 
 ```ts
@@ -375,6 +667,17 @@ export * from "./acquisitionEvidenceSchemas.js";
 export * from "@openlup/core/marketing/research";
 export * from "./prelaunchAcquisitionSchemas.js";
 export type * from "./contracts/acquisitionPorts.js";
+export * from "./analytics/noop.js";
+export * from "./analytics/dataLayer.js";
+export * from "./analytics/routePolicy.js";
+export * from "./analytics/purchaseFacts.js";
+export * from "./consentEvidence.js";
+export * from "./seo/serializeJsonLd.js";
+export * from "./seo/urls.js";
+export * from "./seo/metadata.js";
+export * from "./seo/jsonLd.js";
+export type * from "./contracts/contactLegal.js";
+export * from "./contactLegal.js";
 ```
 ## dist/marketing/prelaunchAcquisitionSchemas.d.ts
 
@@ -495,6 +798,235 @@ export type PrelaunchAcquisitionDetailRequest = z.infer<typeof prelaunchAcquisit
 export type PrelaunchAcquisitionLead = z.infer<typeof prelaunchAcquisitionLeadSchema>;
 export type PrelaunchAcquisitionListResponse = z.infer<typeof prelaunchAcquisitionListResponseSchema>;
 export type PrelaunchAcquisitionDetailResponse = z.infer<typeof prelaunchAcquisitionDetailResponseSchema>;
+```
+## dist/marketing/seo/jsonLd.d.ts
+
+```ts
+import type { OrganizationFacts } from "../contracts/contactLegal.js";
+export type JsonLdNode = Record<string, unknown> & {
+    "@context"?: string;
+    "@id"?: string;
+};
+export declare function jsonLdGraph(...nodes: JsonLdNode[]): {
+    "@context": string;
+    "@graph": {
+        [x: string]: unknown;
+        "@id"?: string;
+    }[];
+};
+export declare function entityIds(origin: string): {
+    organization: string;
+    website: string;
+    brand: string;
+};
+export declare function organizationLd(origin: string, type: "Organization" | "OnlineStore", facts: OrganizationFacts): {
+    "@context": string;
+    "@id": string;
+    "@type": "Organization" | "OnlineStore";
+    name: string;
+    legalName: string;
+    url: string;
+    logo: {
+        "@type": string;
+        url: string;
+        contentUrl: string;
+        width: number;
+        height: number;
+    };
+    email: string;
+    vatID: string;
+    taxID: string;
+    areaServed: string;
+    sameAs: string[];
+    contactPoint: {
+        "@type": string;
+        email: string;
+        contactType: string;
+        availableLanguage: string[];
+    };
+    address: {
+        "@type": string;
+        streetAddress: string;
+        addressLocality: string;
+        postalCode: string;
+        addressRegion: string;
+        addressCountry: string;
+    };
+};
+export declare function brandLd(origin: string, name: string, url: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    url: string;
+};
+export declare function websiteLd(origin: string, name: string, url: string, inLanguage: string[]): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    url: string;
+    inLanguage: string[];
+    publisher: {
+        "@id": string;
+    };
+};
+export declare function contactPageLd(origin: string, pageUrl: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    url: string;
+    publisher: {
+        "@id": string;
+    };
+    mainEntity: {
+        "@id": string;
+    };
+};
+export interface NetContent {
+    unscaled: number;
+    scale: number;
+    unit: string;
+}
+export declare function schemaWeight(netContent: NetContent): {
+    "@type": string;
+    value: number;
+    unitCode: string;
+};
+export interface ProductFacts {
+    url: string;
+    name: string;
+    inLanguage: string;
+    brandName: string;
+    category?: string;
+    images: string[];
+    sku?: string;
+    gtin13?: string;
+    netContent?: NetContent;
+}
+export declare function productLd(origin: string, product: ProductFacts): {
+    url: string;
+    weight?: {
+        "@type": string;
+        value: number;
+        unitCode: string;
+    } | undefined;
+    gtin13?: string | undefined;
+    sku?: string | undefined;
+    image: string[];
+    category?: string | undefined;
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    inLanguage: string;
+    brand: {
+        "@id": string;
+        "@type": string;
+        name: string;
+    };
+    manufacturer: {
+        "@id": string;
+    };
+};
+export declare function faqPageLd(faqs: {
+    question: string;
+    answer: string;
+}[], pageUrl: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    mainEntity: {
+        "@type": string;
+        name: string;
+        acceptedAnswer: {
+            "@type": string;
+            text: string;
+        };
+    }[];
+};
+export declare function breadcrumbLd(items: {
+    name: string;
+    url?: string;
+}[], pageUrl: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    itemListElement: {
+        item?: string | undefined;
+        "@type": string;
+        position: number;
+        name: string;
+    }[];
+};
+```
+## dist/marketing/seo/metadata.d.ts
+
+```ts
+import { type JsonLdNode } from "./jsonLd.js";
+import { type SiteRoute } from "./urls.js";
+export type HeadTag = {
+    kind: "meta";
+    name: string;
+    content: string;
+} | {
+    kind: "meta";
+    property: string;
+    content: string;
+} | {
+    kind: "link";
+    rel: "canonical" | "alternate";
+    href: string;
+    hrefLang?: string;
+};
+export interface HeadFacts {
+    origin: string;
+    route: SiteRoute;
+    routes: readonly SiteRoute[];
+    xDefaultLocale: string;
+    htmlLang: string;
+    title: string;
+    description: string;
+    siteName: string;
+    ogImage: string;
+    ogImageWidth: number;
+    ogImageHeight: number;
+    ogLocale: string;
+    alternateOgLocale?: string;
+    twitterImage: string;
+    twitterHandle: string;
+    noindex?: boolean;
+    jsonLd?: JsonLdNode | JsonLdNode[];
+}
+export declare function buildHeadDescriptor(facts: HeadFacts): {
+    htmlLang: string;
+    title: string;
+    tags: HeadTag[];
+    jsonLd: string | null;
+};
+```
+## dist/marketing/seo/serializeJsonLd.d.ts
+
+```ts
+export declare function serializeJsonLd(value: object): string;
+```
+## dist/marketing/seo/urls.d.ts
+
+```ts
+export interface SiteRoute {
+    id: string;
+    locale: string;
+    canonicalPath: string;
+    alternateRouteId?: string;
+}
+export interface HreflangLink {
+    hrefLang: string;
+    href: string;
+}
+export declare function normalizeSitePath(pathname: string): string;
+export declare function absoluteSiteUrl(origin: string, pathname: string): string;
+export declare function canonicalUrlForRoute(origin: string, route: SiteRoute): string;
+export declare function hreflangLinksForRoute(origin: string, route: SiteRoute, routes: readonly SiteRoute[], xDefaultLocale: string): HreflangLink[];
 ```
 ## dist/marketing/validation.d.ts
 

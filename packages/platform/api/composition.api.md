@@ -343,6 +343,7 @@ export { createFulfillmentContribution } from "./fulfillmentContribution.js";
 export { createSubscriptionContribution } from "./subscriptionContribution.js";
 export { createCommerceContribution } from "./commerceContribution.js";
 export { createAccountSupportContribution } from "./accountSupportContribution.js";
+export { createMarketingContribution } from "./marketingContribution.js";
 ```
 ## dist/composition/inventoryContribution.d.ts
 
@@ -360,6 +361,31 @@ export declare function createInventoryContribution(input: {
         [k: string]: ((...args: never[]) => unknown) | null;
     };
     routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
+```
+## dist/composition/marketingContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Describe existing selected marketing callables; never install another executor. */
+export declare function createMarketingContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    marketing: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    handlers: Contribution["handlers"];
+    schedules: Contribution["schedules"];
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+    triggers: {
         [k: string]: (...args: never[]) => unknown;
     };
 };

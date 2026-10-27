@@ -154,6 +154,40 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The lifecycle slice uses existing build/API/package/cold-consumer commands.
+Owner-local tests cover file conflicts, path boundaries and process interruption;
+the installed consumer adds the public export, custom app files, crash/resume
+and a no-op falsifier. Range admission remains caller evidence, separate from
+actual PostgreSQL compatibility. No new runner or required job is added.
+Its owned child Node witness is registered by exact path in the existing public
+execution inventory; the classifier and all other entries remain unchanged.
+
+The same lifecycle selection retains the read-only legacy PostgreSQL role
+observer's package and actual database witnesses. The installed consumer checks
+its public query/report types, finite prerequisite result, superuser refusal and
+redacted error, with a false-admission falsifier. These checks create no installer
+or role grants and do not turn a prerequisite report into installation readiness.
+
+The portability package witnesses cover private bytes, access/version/integrity
+refusals and interrupted resume. The root
+[`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
+canonical PostgreSQL clusters and compares complete selected rows, replay,
+conflict rollback and unchanged migration ledger/ACLs. The existing cold consumer
+also executes the declared installed entry and selected-row recovery using its
+existing native fixture. These reuse current discovery and runners; loopback
+and Docker availability are prerequisites. Local synthetic proof does not
+certify full-store transfer or hosted effect fencing.
+
+The operations slice uses the existing platform build, API, package and installed
+consumer commands. Its owner-local witnesses cover browser closure and preserved
+watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
+executes the operations adapter as an explicitly granted invoker role, with a
+forbidden neighboring write, durable replay/conflict and a second-process restart.
+This extends the existing proof rather than adding a runner or required job.
+The existing size/import-map inventories also name the operations browser and
+server entries, and the identity profile keeps its exact browser-only closure.
+
+
 The inventory [binding](tests/platform/inventory/inventoryBindings.test.ts) and
 [installed-consumer](tests/platform/inventory/inventoryConsumer.test.ts) witnesses
 cover native ATP source-key selection/refusal, managed injected-reader precedence
@@ -1427,11 +1461,55 @@ The source routes remain unchanged pending P7.
 
 ### Commands and lint rules
 
-The platform module graph declares marketing with an isolated contracts entry
-and no cross-module platform edges. Its runtime entry may forward the existing
-public core research export; contracts forward only core types and local DTO
-shapes, including reachable acquisition ports and portable prelaunch types. Retired application admission contracts are excluded from both public
-entries. Package boundary checks validate that graph with the other modules.
+The platform module graph declares browser marketing with an isolated contracts
+entry and no cross-module platform edges. Its runtime entry may forward the
+existing public core research export; contracts forward only core types and
+local DTO shapes, including reachable acquisition ports, portable prelaunch
+types and shared organization/contact/legal/privacy content slots. Retired admission schemas are excluded from both browser entries. The
+separate `marketing/server` entry admits marketing and identity-contract values,
+plus HTTP, BFF, marketing-contract and communications-contract type
+edges. Its two PostgreSQL
+files alone admit the existing pg peer and are exported through
+`marketing/server/postgres`. Package boundary checks validate that graph with the
+other modules and prevent the handler entry from reaching PostgreSQL adapters or
+`pg`. The installed consumer imports and compiles `marketing/server` without
+optional peers, exercising a historical count and a conflict refusal through
+injected bindings. It proves the `/postgres` missing-peer import refusal before
+selecting pg, then checks the adapter factories and their connection refusal.
+
+Marketing analytics facts use the same isolated runtime/contracts graph. The
+reference keeps host policy and wire literals in thin bindings; its purchase
+projection has a frozen base transcript. Neutral package witnesses cover inert
+analytics, route refusal/sanitization, paid allocation, consent chronology and
+independent sink admission. Local acceptance booleans do not prove delivery.
+
+The analytics context witness in `packages/platform/test/marketing/` exercises
+the server factory with synthetic persistence, capability and identity bindings.
+It preserves consent capability issuance/replacement, strict admission and
+verified-subject enrollment, with a missing-store refusal at the injected seam.
+The `./marketing/server` release surface selects it, and root discovery includes
+it with the package tests. It needs no reference route or live persistence;
+telemetry context failure never gates commerce and `active` proves only a local
+context fact.
+
+The marketing privacy graph test admits the obligation schema only through
+`identity/contracts/index.js`; both value and type imports of `identity/index.js`
+and internal-file shortcuts refuse. Contributor ports and return types are local
+structural interfaces using identity contract types. The
+existing installed server witness also checks both privacy factories and
+default-off null callables without invoking an owner or creating a case. Its
+strict declaration compilation covers the privacy and acquisition ports without
+selecting identity's server type closure; a runtime import without `pg` alone cannot prove
+declaration independence. Keep these proofs distinct and retain the optional-peer
+absence assertions. K5 contributor, binding and composition witnesses exercise
+unavailable partial ownership, identity refusal/veto ordering, rollback and
+receipt replay rather than duplicating the provider erasure worker.
+
+The existing marketing contract checker also compiles exact structural equality
+checks between both privacy factory results and identity's `PersonalDataContributor`.
+It uses the platform's ES2022 library declarations to check imported production
+source while retaining an ES2020 target and adding no newer test APIs. This extends
+an existing case; K5 remains 16 cases across contributor, binding and composition.
 
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
@@ -1446,6 +1524,11 @@ guards are internal links in that bounded chain. Published Tree CI invokes the
 build, sharded required root tests, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
+
+Keep historical source/config backups outside the checkout's tool traversal.
+Git-ignore alone prevents neither executable `eslint.config.*` discovery nor
+linting an archived test import. Preserve archival byte/hash provenance in task
+evidence; retain the scope and semantics of real test fixtures.
 
 `npm run lint` runs ESLint over the tree, including the import boundaries in
 [eslint.config.js](eslint.config.js): a package under `packages/` imports
@@ -1597,6 +1680,17 @@ Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox an
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 #### Choose a location and proof
+
+Acquisition server characterization belongs under
+`packages/platform/test/marketing/server/`. The cross-boundary
+`tests/postgres/acquisitionEvidenceParity.test.ts` witness uses the existing
+container helper, applies the hash-checked migration-manifest prefix and calls
+package ports through a login granted only the acquisition runtime role. Docker
+absence throws as missing proof. The fixture owner is used only for setup, state
+inspection and the donor's append-only trigger proof. Port operations and
+separate SQL privilege-denial assertions use the runtime role, retaining all 11
+cases. The reference retains retirement, admin-auth binding and notification-copy
+checks.
 
 | Test | Placement and execution |
 |---|---|
@@ -1757,14 +1851,24 @@ Keep documentation falsifiers independently discoverable for routing, impact, ba
 ### Package, policy and release checks
 
 The marketing cold-consumer witness imports both exact public subpaths without
-optional peers, compiles their DTO, acquisition-port and research-port usage, checks core schema
-identity and refuses a deep import. Root discovery includes the package's
+optional peers, compiles their DTO, acquisition-port, research-port and content-slot
+usage, checks core schema identity and refuses a deep import. Its marketing runtime
+usage exercises JSON-LD serialization, graph deduplication and ordered head data;
+synthetic package and reference adapter cases cover hostile script values,
+contact/legal projections and host head commits. Root discovery includes the package's
 marketing schema, type-equality and source/built browser graph tests. The
 reference equivalence transcript pins pre-extraction outputs and ordered issues;
 retained application contract suites remain part of the focused proof. Portable
 prelaunch goldens preserve their own reference regexes, strictness, ordered issues
 and coercing defaults. Compiler proof covers acquisition port signatures and
 bidirectional fit of the extended reference case port to its base-equivalent shape.
+
+Marketing smoke selection includes analytics defaults, route policy, purchase
+facts, consent evidence and sink failure isolation. The installed consumer exercises
+inert runtime imports and compiles structural recap/consent inputs plus a literal
+host step union. Both complete browser graphs remain free of server imports,
+and the contracts runtime stays empty. Reference purchase characterization pins
+ordered refusals and both item-cap boundaries before and after rebinding.
 
 `npm run packages:check -- --manifest-only` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
@@ -1835,16 +1939,24 @@ and that registry carrier; existing counts stay unchanged. Each landing PR
 (P3b, P5, F17) adds only its own rail keys with the files and exact pinned counts.
 Every present baseline key for an allowance path must match all its pinned
 category counts exactly, including during regeneration; absent files cannot
-justify new keys. `reviewedPinnedIntroductions` in the wrapper is a closed
-list of exactly 13 paths: six inert managed SQL fixtures, their six future
+justify new keys. `reviewedPinnedIntroductions` in the wrapper retains those 13 C94 paths and
+15 tuples: six inert managed SQL fixtures, their six future
 `supabase/migrations/` copies, and `config/reviewed-platform-forwards.json`.
+M14 adds exactly one unchanged package SQL carrier,
+`packages/platform/sql/20260814010000_platform_control_plane.sql`, whole-file
+SHA-256 `b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`,
+with tuple `ui-12` 0 to 1, for a total of 14 paths and 16 tuples. Its one new
+baseline key records that exact count; all earlier counts and scanner pins stay
+unchanged. The asset preserves the canonical native forward's persisted channel
+enum. Renaming that wire value breaks compatibility; omitting the asset breaks
+the installed consumer. The existing exact pin is the smaller adequate route.
 Each SQL entry pins the whole-file SHA-256 and exact category/before/after counts;
 the registry entry pins its exact SQL COMMENT text, so unrelated registry edits
 do not invalidate the pin. The filter applies on any base to measured-base
 increases and parent-baseline raises, including `--write-baseline`. Candidate
 counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
 changed bytes, paths, categories or counts refuse, as do native, TypeScript,
-package and docs entries. An unrelated increase remains a failure in the same run.
+docs and every other package SQL entry. An unrelated increase remains a failure in the same run.
 Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
 the coordinator's control read. Neutral replacements reduce the debt; rail-path
 entries can be retired after the F17 PR lands and the base carries their counts.
@@ -2458,6 +2570,23 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 A/C: ignored historical configs and source copies entered lint
+  traversal → keep archival copies outside the checkout, following
+  [commands and lint rules](#commands-and-lint-rules).
+
+- 2026-10-27, M14 filesystem transfer: character counts and default UTF-8 key
+  hashing lost admitted string identity → use explicit representation at byte
+  and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+  and one real copy/resume witness covering both cases.
+
+- 2026-10-26, M14 operations neutrality: package/root green missed a cheap
+  source-carrier gate → run unchanged neutrality before the broad gate and
+  collect remaining diagnostic failures before changing the candidate.
+
+- 2026-10-26, M14 operations: package-local green missed existing closed size,
+  nested-module and identity-profile inventories → trace exact consumer entries
+  and run their focused selectors before the broad gate; preserve refusal checks.
 
 - 2026-10-25, M11 stock reader: owner-only proofs hid caller and name-resolution
   failures → pin SECURITY DEFINER paths to `pg_catalog, pg_temp`, qualify
