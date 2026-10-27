@@ -192,7 +192,7 @@ describe("package source boundary", () => {
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
   }, 30_000);
 
-  it.each(["composition", "commerce"])("typechecks the %s declarations without pg and references no data-module declarations", (entry) => {
+  it.each(["composition", "commerce", "portability"])("typechecks the %s declarations without pg and references no data-module declarations", (entry) => {
     const options: ts.CompilerOptions = {
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
       strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,

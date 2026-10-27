@@ -7,14 +7,20 @@ stable-framework acceptance.
 ## Outcome and authority
 
 The accountable maintainer authorized M14 implementation and independent review,
-with Codex coordinating named workstreams and bounded subagents. The first
-external delivery endpoint is reviewed, appropriately verified, stacked **draft
-pull requests**. That grant includes scoped local work, signed commits and draft
-submission. It does not authorize ready conversion, merge-queue arming, merge,
-package publication, provider activation, account/settings/credential operations,
-real-store cutover or production deployment. Required API/security/control reads
-and native evidence remain applicable. Technical review is delegated and does
-not assert personal maintainer reading of every diff.
+with Codex coordinating named workstreams and bounded subagents. The original
+external endpoint of reviewed, appropriately verified, stacked **draft pull
+requests** is historical; that initial grant covered scoped local work, signed
+commits and draft submission.
+
+The direct human amendment of 27 October 2026 (message
+`01a17c90-a079-7f02-b102-a9e35d770649`) authorizes this same M14 C2 programme
+through push, PR, ready conversion, required source checks and native admission,
+merge queue, required group checks and confirmed merge. The finite implementation
+and proof scope is unchanged. Package publication, provider activation, live
+provisioning/cutover, deployment and account/settings/credential operations remain
+excluded. Required API/security/control reads and native evidence still apply.
+Technical review is delegated and does not assert personal human reading of
+every diff.
 
 The module preserves operational behavior while supplying public lifecycle
 capabilities for an existing synthetic store: compatible install/upgrade,
@@ -127,11 +133,49 @@ broker and native sibling-held lock rules; no new gate or runner is installed.
 
 ## Measurements and completion evidence
 
-Current package headroom, module test baseline/used budget, hosted timing and
-recovery measurements are not yet established by this record. Measure existing
-artifact caps and required test costs before expansion and cumulatively at
-useful candidates. A measured crossing takes its competent maintainer budget
-route; another package/agent does not create additional budget.
+### Test ledger
+
+Counts describe configured required cases collected by the existing Vitest
+`list --json` command, including expanded parameterized cases. They are separate
+from executed results and hosted elapsed time. The public baseline is
+`80d27906a6d4bc679c011871948e88d185bb1c63`; A's first candidate is
+`1caa0197053db4446edc374561205aec2314488c`.
+
+| Candidate / evidence | Configured delta | Executed result |
+| --- | --- | --- |
+| A actual selected baseline/current collections | Boundary 2,383 → 2,467: +84 from 28 new source files × three existing guards. Package operations: 88 cases, comprising 78 copied characterization cases plus 10 new cases; the root characterization remains. Selected confirmed increase **at least +172**, not a whole-root net. Other dynamic inventories also grow; comparable whole-root configured delta remains pending. | Focused 15 files / 104 cases passed. The mandatory root run on `1caa0197` observed 21,386 PASS / 6 FAIL / 2 skipped in 563s; metadata/reference-inventory repairs and a new exact candidate are required. This is not a +104 configured delta or a passing full receipt. |
+| B first source slice on stable `84344611` | Current selected collection: 2,590 cases (boundary 2,480; new runtime files 25; cold consumer 85). Confirmed selected addition **+39**: 13 boundary cases (four new files × three existing guards, plus one no-pg declaration case), 25 cases in files absent from the predecessor, and one added named cold-consumer case. No boundary cases removed; prior cold-case declarations remain. This is not a whole-root delta. | Early four files / 25 new selected-row, object/filesystem and loopback cases passed. Integration then passed five files / 110 cases: those 25 plus one new installed-copy falsifier and 84 existing cold-consumer cases. Package boundary passed 2,480 cases. Three affected replacement-inventory cases passed. Full installed native PostgreSQL/candidate verification remains pending. |
+
+A's actual collection artifacts are identified by SHA-256:
+baseline `bd4888539b759020b21c9a1c0304da0fd5df9154c40e2819af908accfaadb954`,
+current `67aee3b05eacda966e1642013dcefed5a84fa7e1c129ab2e1c0c1ce36db072bb`,
+delta `4c0bc2cdd24ef02984c1620e8404c9e72cd23f78384b38c9c4d2958f5ff7f0c2`.
+B's historical pre-move collection on `84344611` is
+`ef29cb498975078dcb84446e021559beb01cc903c497e4d7d6404a9da87d7e67`;
+its historical source-attributed delta record is
+`17d2aa7fceda89c7559e8534ed55ca5a867837ac1cd48d98902809f3852237bb`.
+The historical boundary baseline is A’s actual 2,467-case collection above;
+the `84344611` replacement changed no inputs of that selected collection. Compare Node boundary name
+**multisets**, preserving repeated truncated display labels; the older collection
+omits `projectName`, while B records `node`. Runtime-file absence and the one
+added cold-case declaration are checked against the exact predecessor. A and B
+therefore establish at least +211 selected cases over the public baseline;
+additional dynamic root inventories keep the whole-root increase unmeasured here.
+These are measured selected local evidence identities, not whole-root counts or
+hosted receipts. The unchanged source/path move preserves B’s historical +39
+attribution; exact `97c239ef` configured counts remain pending. Its preliminary
+affected boundary/cold execution passed 2,593 cases in 33.16s. No telemetry-only
+baseline install or extra run is required; current main integration and mandatory
+proof still follow their actual owners. Comparable whole-root configured delta and hosted timing remain
+**UNKNOWN**. PROC28.8's +100-case / +30-second target applies
+after post-C6 cleanup; it is not a new pre-C6 acceptance gate or a waiver of
+current checks, caps or test selection. Do not delete characterization early.
+
+Current final package headroom and installation-specific recovery measurements
+remain owed at the respective candidate. Measure existing artifact caps and
+required test costs cumulatively at useful candidates. A measured crossing takes
+its competent maintainer budget route; another package/agent does not create
+additional budget.
 
 Final module acceptance retains complete existing-store transfer/recovery,
 upgrade and applicable recipes, including missing install/handover seams above.
