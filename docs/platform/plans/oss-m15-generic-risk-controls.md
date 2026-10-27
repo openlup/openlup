@@ -385,3 +385,17 @@ CD-M15-6a, which applies only to an exceeded measured full-stack cap.
 No lockfile delta, so no reinstall. Smallest adequate solution: preserve the
 existing registrations and regenerate outputs without a new runtime mechanism.
 Logs and retained package artifacts: `.context/scratch/m15-main406/` per tree.
+
+R1 candidate `22725549`: API regeneration and both documentation commands pass
+with no generated-byte delta. Final post-merge policy uses the current main pin
+and has five obligations, zero unanswered. Two-thread ast-grep, lint (zero
+errors, 33 warnings), all workspace API checks, 23/23 risk tests (four files,
+`--maxWorkers=2`), `git diff --check`, and official `packages:check` pass.
+Root has no standalone API script; the supported workspace API commands run
+Core, Outbox and Platform. Package artifacts and exact measurements are retained
+in the scratch directory above. No lockfile or dependency changes occurred.
+
+Self-retro: the parent maxima preserve M14's byte allocation and M15's file
+allocation. Existing generators produced identical output; no additional
+mechanism or unrelated repair was needed. Package preparation is serialized
+with API/lint builds to avoid sharing mutable outputs.
