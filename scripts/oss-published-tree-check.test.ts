@@ -1079,6 +1079,26 @@ if (stage === 'start' || stage === 'test') {
       }
       const log = join(directory, "calls.jsonl");
       const clockArgs: string[] = [];
+      if (scenario.startsWith("socket-error-")) {
+        // Inject only this fixture's socket errno; run the shipped port selector unchanged.
+        const socket = join(directory, "socket-error.mjs");
+        writeFileSync(socket, `import net from 'node:net';
+import { EventEmitter } from 'node:events';
+import { appendFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+net.createServer = () => {
+  const server = new EventEmitter();
+  server.listen = (port, host) => {
+    appendFileSync(${JSON.stringify(log)}, JSON.stringify({ stage: 'bind', args: [host, String(port)], input: '' }) + '\\n');
+    queueMicrotask(() => server.emit('error', Object.assign(new Error('synthetic loopback bind failure'), { code: ${JSON.stringify(scenario.slice("socket-error-".length))} })));
+    return server;
+  };
+  return server;
+};
+syncBuiltinESMExports();
+`);
+        clockArgs.push("--import", socket);
+      }
       if (["ghcr-outage", "dockerhub-fallback"].includes(scenario)) {
         // Replace only the shared pull clock before the shipped runner loads.
         const clock = join(directory, "retry-clock.mjs");
@@ -1103,6 +1123,21 @@ imageIo.sleep = async (ms) => {
       check(result, calls, directory);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }
+  it.each(["EPERM", "EACCES", "EADDRINUSE"])("reports owned port probe %s without starting the stack", code => {
+    observe(`socket-error-${code}`, (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(calls.some(({ stage }) => ["services", "pull", "start", "test", "stop"].includes(stage))).toBe(false);
+      const probes = calls.filter(({ stage }) => stage === "bind");
+      if (code === "EADDRINUSE") {
+        expect(probes).toHaveLength(50 * 7);
+        expect(result.stderr).toContain("no free port block for the owned managed baseline");
+      } else {
+        expect(probes).toHaveLength(7);
+        expect(result.stderr).toContain(`cannot probe owned managed baseline port 127.0.0.1:${probes[0]!.args[1]}: ${code}`);
+        expect(result.stderr).not.toContain("no free port block");
+      }
+    });
+  });
   it("replays the ordered chain in one transaction and runs every SQL file unchanged before own cleanup", () => {
     observe("pass", (result, calls) => {
       expect(result.status, result.stderr).toBe(0);

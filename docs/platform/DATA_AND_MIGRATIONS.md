@@ -288,7 +288,9 @@ runs once under the existing session advisory lock after exact-prefix validation
 and before status, dry-run or pending SQL. It can refuse changed host/login facts;
 it shares the source's existing database capability, not a sandbox or per-unit
 provisioning boundary. Sources omitting it retain their existing queries and
-execution. The later qualified source owns its finite read-only checks.
+execution. With a hook present, the preceding lock/hash and ledger-existence
+functions bind to `pg_catalog` before admission; release uses the same bound
+lock identity. The later qualified source owns its finite read-only checks.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
