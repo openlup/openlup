@@ -9,6 +9,70 @@ This page holds the longer module recipes kept out of the packed README so the
 package's documentation stays under its packed size cap. The
 [package README](../../packages/platform/README.md) remains the package entry point.
 
+## Application file upgrade
+
+This development-preview recipe uses the experimental `@openlup/platform/lifecycle`
+export from the selected candidate or release that actually contains it. Work
+in an existing disposable application outside the platform checkout, with Node
+24 and that application's own exact package pins and authority. Keep real
+brand, content, policy and provider composition outside the managed inventory.
+
+For an app whose existing `generated/entry.mjs` contains exactly
+`export const revision = 1;` followed by a newline, run from the app root:
+
+```js
+import { realpath } from "node:fs/promises";
+import { planAppUpgrade, applyAppUpgrade } from "@openlup/platform/lifecycle";
+
+const from = {
+  version: "example-N-1",
+  schema: { min: 1, max: 2 },
+  files: { "generated/entry.mjs": "export const revision = 1;\n" },
+};
+const to = {
+  version: "example-N",
+  schema: { min: 1, max: 2 },
+  files: { "generated/entry.mjs": "export const revision = 2;\n" },
+};
+const input = { root: await realpath(process.cwd()), from, to, schemaVersion: 2 };
+console.log(await planAppUpgrade(input)); // Read-only: inspect actions/conflicts.
+// State-changing: hold the app's exclusive maintenance window before applying.
+await applyAppUpgrade(input);
+```
+
+The ordinal `2` is caller-supplied example evidence, not a database probe or an
+OpenLup schema version. Observe the actual database and compatibility policy
+separately. Keep immutable predecessor/candidate snapshots for interrupted
+resume; repeat apply with those same snapshots. A divergent managed edit refuses
+before writes and requires reconciliation; upstream-unchanged and unlisted files
+remain application-owned. Do not infer dependency, migration/backfill or
+deployment completion from file apply. Read the
+[ownership and recovery limits](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
+before using the primitive beyond this disposable app.
+
+## Legacy PostgreSQL role prerequisites
+
+From an authorized disposable PostgreSQL 16+ session, pass its existing query
+handle to the same experimental lifecycle entry:
+
+```js
+import { inspectLegacyPostgresInstallRoles } from "@openlup/platform/lifecycle";
+
+const report = await inspectLegacyPostgresInstallRoles(db, {
+  migrationLogin: "example_migration",
+  runtimeLogin: "example_runtime",
+  roleMode: "operator-provisioned",
+});
+console.log(report.scope, report.rolePrerequisitesMet, report.blockers);
+```
+
+This example reports the immutable legacy bootstrap's separate-login and
+operator-provisioned-mode refusals; it provisions nothing. Both actual session
+identities must match the declared migration login. Read the
+[finite role-observation boundary](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
+before interpreting any result. A true prerequisite report does not certify an
+installed database, runtime ACLs or a qualified provider.
+
 ## Marketing server composition
 
 Use `@openlup/platform/marketing` for browser-safe validators and

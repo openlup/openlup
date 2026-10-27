@@ -363,3 +363,25 @@ Self-retro: existing JSON registrations and generators resolved five shared
 conflicts without changing module behavior. The clean-package gate required
 committing the candidate before packing; retain its exact artifact for the
 measurement instead of introducing a second pack or a new measurement tool.
+
+### M14 #401 / #406 local stack maintenance — 2026-10-27
+
+Direct maintainer continuation authorizes local non-fast-forward DCO-signed
+merges main → R1 → R2 → R3, regeneration, focused checks with two workers,
+and package checks in R1/R3. No rebase, force-push, push, full verify, counted
+admission, activation or release. Existing draft endpoint remains unchanged.
+Current main/policy pin: `35ee4227babaa2fe16f88110af52e61d242b3296`;
+the code review base remains separate. Current CONTRIBUTING additions cover
+lifecycle proof, archive traversal and tmpfs PostgreSQL fixtures; prior task
+history and review budgets remain intact.
+
+R1 has three conflict files: architecture, package exports and release gates.
+Retain both complete lifecycle/risk sections and registrations; M14 lifecycle
+and tmpfs source/test bytes remain main's exact bytes and risk source/test
+bytes remain R1's. Per-cap maxima give packed 2,029,568, unpacked 9,447,424,
+files 2,712, code gzip 1,743,872 and code files 2,656; docs/browser caps stay
+unchanged. These are parent reconciliation, separate from conditional
+CD-M15-6a, which applies only to an exceeded measured full-stack cap.
+No lockfile delta, so no reinstall. Smallest adequate solution: preserve the
+existing registrations and regenerate outputs without a new runtime mechanism.
+Logs and retained package artifacts: `.context/scratch/m15-main406/` per tree.

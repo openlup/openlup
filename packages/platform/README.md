@@ -70,6 +70,22 @@ timestamp used in the webhook's idempotency key.
 
 ## Package surface
 
+The experimental Node-only `./lifecycle` entry plans and applies explicit
+application-file snapshots. It preserves unmanaged files and local edits in
+upstream-unchanged files, refuses divergent changed files before writes, and
+resumes exact completed replacements after interruption. The caller holds an
+exclusive maintenance window and supplies schema-range evidence; this entry
+runs no database migration, npm install or deployment. Read the
+[file-ownership boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
+and [disposable app recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade).
+
+The same entry exports `inspectLegacyPostgresInstallRoles`, a read-only query
+through a caller-owned PostgreSQL handle. Its
+`legacy-fresh-bootstrap-role-prerequisites` report observes finite immutable
+legacy bootstrap role conditions; `rolePrerequisitesMet` does not establish
+install readiness, schema/ACL correctness or provider support. See the
+[legacy role boundary](../../docs/platform/DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation).
+
 The experimental Node-only `./portability` entry copies a bounded, explicitly
 complete immutable/quiesced object inventory and captures/restores selected
 compatible PostgreSQL rows through injected transaction handles. Private
@@ -89,6 +105,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 
 | Export | Contents |
 | --- | --- |
+| `./lifecycle` | Experimental Node file-snapshot planning/apply and read-only legacy PostgreSQL role prerequisites; no install-readiness claim, optional SDK or activation |
 | `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
