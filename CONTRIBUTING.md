@@ -154,6 +154,16 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The portability package witnesses cover private bytes, access/version/integrity
+refusals and interrupted resume. The root
+[`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
+canonical PostgreSQL clusters and compares complete selected rows, replay,
+conflict rollback and unchanged migration ledger/ACLs. The existing cold consumer
+also executes the declared installed entry and selected-row recovery using its
+existing native fixture. These reuse current discovery and runners; loopback
+and Docker availability are prerequisites. Local synthetic proof does not
+certify full-store transfer or hosted effect fencing.
+
 The operations slice uses the existing platform build, API, package and installed
 consumer commands. Its owner-local witnesses cover browser closure and preserved
 watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
@@ -2552,6 +2562,11 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 filesystem transfer: character counts and default UTF-8 key
+  hashing lost admitted string identity → use explicit representation at byte
+  and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+  and one real copy/resume witness covering both cases.
 
 - 2026-10-26, M14 operations neutrality: package/root green missed a cheap
   source-carrier gate → run unchanged neutrality before the broad gate and

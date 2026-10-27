@@ -323,6 +323,47 @@ Self-retro: the existing pack gate's clean-package requirement dictated the
 commit/check order. A signed candidate followed by an evidence-only amendment
 kept that control intact without a bypass, new schema or duplicate test. No
 formal rethink or additional process change was needed.
+
+### M14 #400 stack integration — 2026-10-27
+
+Direct maintainer grant: integrate fetched main into R1, then local R1 into R2
+and R2 into R3 with non-fast-forward DCO-signed merges. No rebase or push.
+If the full stack exceeds a platform cap, CD-M15-6a authorizes only exceeded
+caps to be sized at 102% of that measurement, bytes rounded up to 5,000 and
+files up to an integer, in R1 and cascaded. Other caps stay unchanged.
+Acceptance: regenerated API/navigation, requested focused checks with two
+Vitest workers in each worktree, package checks in R1/R3 and a measured R3
+artifact table against caps. Full verify, counted admission and delivery remain
+with the coordinator; these local observations grant no readiness or release.
+
+Main/instruction freshness pin: `a03d920eec32bfb3d0de90b9a12535cc57f88d53`;
+review base remains the candidate fork point, separately from this policy pin.
+The current instruction delta adds M14 transfer proof and the filesystem
+identity lesson. Five conflict files: doc routing, architecture, generated source
+map, package exports and release gates. Preserve both risk and portability
+registrations/contracts; main is authoritative for portability. Resolve generated
+source map through the generator. Each cap is the maximum of the two parents,
+which retains the existing CD-M15-6 values. No lockfile delta or reinstall.
+Smallest adequate solution: union the existing registrations and regenerate;
+no runtime changes, new helpers or controls. Focused execution logs are under
+ignored `.context/scratch/m15-main400/` in each worktree.
+
+R1 merge candidate: `c722a154`. API update, documentation policy and
+`--docs-update`, two-thread ast-grep, lint (zero errors, 33 warnings), workspace
+API checks and 23/23 risk tests pass. Root has no `api:check`/`api:update` script,
+so the supported workspace commands run all three packages. Official
+`packages:check -- --out .context/scratch/m15-main400/packs` passes for all three
+packages with no findings. Existing `measurePack` on the retained platform
+tarball records packed 1,948,811; unpacked 9,108,271; files 2,659; code gzip
+1,669,304; code files 2,604; docs gzip 65,158; docs files 5. Every cap is met.
+This evidence-only follow-up changes no packed input. Full-stack measurement
+remains R3's next acceptance step. No external write occurred.
+
+Self-retro: existing JSON registrations and generators resolved five shared
+conflicts without changing module behavior. The clean-package gate required
+committing the candidate before packing; retain its exact artifact for the
+measurement instead of introducing a second pack or a new measurement tool.
+
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
@@ -747,6 +788,29 @@ necessary, avoiding manual output edits. The initial policy probe's old base
 resolved after the merge commit; retain that distinction when interpreting a
 mid-merge policy result. No extra mechanism or successor work was added.
 
+### R2 M14 #400 cascade — 2026-10-27
+
+Current direct local grant and policy pin are recorded in the M14 #400 stack
+integration section above; this continuation supersedes prior cap exclusions
+only through CD-M15-6a. Merge local R1 `c722a154` into R2, preserving both
+architecture additions and complete task histories (the two conflict files).
+M14 source comes from main unchanged; R2 runtime remains unchanged. Regenerate
+API/navigation and execute the requested focused checks with two workers.
+No package-lock delta or reinstall; no push, counted admission or full verify.
+
+R2 integration candidate `73a0e110`: all requested focused checks pass—two-thread
+ast-grep, lint (zero errors, 33 warnings), all workspace API checks and 42/42
+risk tests in five files with `--maxWorkers=2`. API regeneration and both
+documentation policy commands pass with no generated-byte changes. This final
+merge adds only R1's non-packed evidence to the checked tree; its sole conflict
+is the task record append point, preserving both histories. Package inputs,
+runtime and tests are identical to the focused-check candidate. Logs remain in
+`.context/scratch/m15-main400/`. Full verify/admission remain deferred.
+
+Self-retro: the shared task record's append point causes evidence-only merge
+conflicts; retaining whole sections preserves the audit history with no runtime
+repair, helper or new tracking mechanism. No further improvement is justified.
+
 ## Approved R3 boundary — 2026-10-27
 
 Outcome: a bounded M03-compatible risk privacy contributor, explicit unavailable
@@ -1105,3 +1169,15 @@ conflict without touching source behavior. Regeneration required no byte changes
 reusing the existing measurement functions and matching official tarball
 integrity supplied exact evidence without changing caps or adding a mechanism.
 No useful further process change or successor work was identified.
+
+### R3 M14 #400 cascade — 2026-10-27
+
+Direct local grant and current instruction pin are recorded in the M14 #400
+stack integration section above. Merge local R2 `764f4664` into R3 without
+rebasing or pushing. Two conflict files: architecture and this task record;
+preserve R3 privacy and all predecessor/M14 text. M14 transfer sources remain
+main's exact bytes; R3 risk behavior remains unchanged. Regenerate API/navigation,
+run the requested focused checks with two workers, then commit before the
+package gate and measure the retained full-stack tarball against every cap.
+CD-M15-6a is conditional on actual exceeded caps. No package-lock delta or
+reinstall. Full verify, counted native review and delivery stay with coordinator.

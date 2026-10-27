@@ -692,6 +692,16 @@ The `@openlup/platform` docs-gzip cap was raised to 72 KiB (73,728 B) on
 (63,226 B against 57,344 B). Its code-gzip, tarball, unpacked, file and
 browser-entry caps stay unchanged.
 
+The `@openlup/platform` code-gzip cap was raised from 1,648,000 B to the measured
+minimum of 1,650,631 B (+2,631 B) on 2026-10-27 with bounded M14 B budget reads.
+The initial read approved 1,650,493 B; the necessary Unicode descriptor
+publication/readback repair adds exactly 128 B, and preserving distinct admitted
+string keys through JSON-encoded filesystem locators adds exactly 10 B. The four-file portability
+implementation still produces twelve packed source, JavaScript and declaration
+files. This exact minimum allocates no additional forecast growth. Its tarball,
+unpacked, file, docs, browser-entry and released-baseline limits are unchanged by
+this decision; every later candidate still requires an actual package measurement.
+
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
 measurements above. On the release-set path only, a candidate more than 30%
