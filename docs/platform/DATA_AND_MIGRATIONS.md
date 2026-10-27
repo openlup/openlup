@@ -19,6 +19,32 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Compatible data transfer
+
+The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
+transports data into an already qualified canonical target. It does not restore
+managed internals, source roles/grants or `platform_schema_migrations`. Source
+and target transaction capabilities remain host-owned; an opaque catalogue label
+does not prove that an installation is compatible. Identical typed rows replay,
+and changed retained rows refuse rather than becoming business status updates.
+
+Historical insertion is not generally inert. `clients` insertion invokes
+`customer_subject_capture_lifecycle_trigger`, generating new history; cycle
+insertion invokes `subscription_delivery_alignment_guard_cycle_insert`, which
+can consume admission or settle alignment. Order/item totals also use user
+INSERT triggers. The first utility refuses all enabled user INSERT triggers,
+including named constraints; it does not disable them, alter replication role,
+forge admission or rewrite migration history. A full-store import therefore
+still needs domain-owned import-safe routes or an approved canonical pre-data /
+post-data installation design. Preprovisioned referenced parents and the exact
+supported selected rows are prerequisites, not complete-store parity.
+
+Managed `clients.auth_user_id` and native `clients.principal_id` need explicit
+identity mapping. OIDC derives the principal from exact issuer/subject; email
+equality cannot relink it. Dependent memberships, privacy receipts, history and
+credential/session disposition remain part of the full
+[M14 transfer outcome](plans/oss-m14-operations-portability.md).
+
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:

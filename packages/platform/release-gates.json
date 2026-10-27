@@ -705,11 +705,24 @@
       ],
       "entrypoint": "dist/marketing/server/postgres/index.d.ts",
       "snapshot": "api/marketing-server-postgres.api.md"
+    },
+    "./portability": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/portability/objects.test.ts",
+        "test/portability/filesystemObjects.test.ts",
+        "test/payments/tpay/effectAuthority.test.ts"
+      ],
+      "entrypoint": "dist/portability/index.d.ts",
+      "snapshot": "api/portability.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1648000,
+      "maxPackedBytes": 1650493,
       "maxFiles": 2574
     },
     "docs": {

@@ -154,6 +154,16 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The portability package witnesses cover private bytes, access/version/integrity
+refusals and interrupted resume. The root
+[`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
+canonical PostgreSQL clusters and compares complete selected rows, replay,
+conflict rollback and unchanged migration ledger/ACLs. The existing cold consumer
+also executes the declared installed entry and selected-row recovery using its
+existing native fixture. These reuse current discovery and runners; loopback
+and Docker availability are prerequisites. Local synthetic proof does not
+certify full-store transfer or hosted effect fencing.
+
 The operations slice uses the existing platform build, API, package and installed
 consumer commands. Its owner-local witnesses cover browser closure and preserved
 watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also

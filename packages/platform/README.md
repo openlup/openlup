@@ -70,10 +70,26 @@ timestamp used in the webhook's idempotency key.
 
 ## Package surface
 
+The experimental Node-only `./portability` entry copies a bounded, explicitly
+complete immutable/quiesced object inventory and captures/restores selected
+compatible PostgreSQL rows through injected transaction handles. Private
+filesystem objects publish bytes and metadata together, bind an explicit access
+label to the filesystem owner's private policy and resume by verified readback.
+Row replay preserves exact JSON/numeric/time values, refuses conflicts and every
+enabled user INSERT trigger, and copies no schema, migration ledger or grants.
+The host qualifies the canonical catalogue, credentials and source completeness.
+These helpers activate no executor and do not supply managed identity mapping,
+live changed-row catch-up or hosted old-worker fencing. Read the
+[transfer boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+and the retained [M14 obligations](../../docs/platform/plans/oss-m14-operations-portability.md).
+The provider-owned HTTP counterexample exercises an existing adapter's cached
+bearer; its local fixture establishes no hosted revocation guarantee.
+
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
+| `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
 | `./scheduler` | Transport-neutral scheduled jobs (`ScheduledJob`, the job registry, the lease-aware runner and the authenticated HTTP cron entry), path-declared jobs from configuration, the node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
