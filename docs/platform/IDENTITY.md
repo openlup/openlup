@@ -826,6 +826,17 @@ opaque payloads and reports those fields as unavailable; it excludes challenge
 hashes, provider metadata, credentials and provider tokens. Each contributor
 reports its own coverage rather than claiming a complete platform export.
 
+Hosts may register `createRiskPrivacyContributor` from `risk/server` in this
+existing registry and require contributor ID `risk`. The bounded contributor
+declares assessment/evidence/hash, blocklist, review/hold-link, case-event and
+replay obligations through injected read and policy ports. Missing ownership or
+policy remains unresolved and blocks identity erasure. Explicit retention keeps
+the risk facts; identity's `ERASED` receipt therefore does not mean all risk data
+was deleted. Export names unavailable resources and refuses credentials. No
+retention period, managed erasure capability or provider operation is added.
+The [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts) owns the exact
+coverage and deferred host portability boundary; reference mounting is unchanged.
+
 The direct forward `20261018190000_identity_privacy_erasures` adds a single retained
 pseudonymous receipt table. The same transaction performs identity cleanup and
 inserts the receipt with contributor versions and dispositions, without storing

@@ -6,3 +6,5 @@ export * from "./managedRiskOrderPaid.js";
 export * from "./sql.js";
 export * from "./riskAdminCasesHandler.js";
 export * from "./bindings.js";
+export * from "./privacyContributor.js";
+export * from "./privacyBindings.js";

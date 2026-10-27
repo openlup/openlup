@@ -2113,3 +2113,30 @@ requires injected schema readiness, preserves host actor mapping and exposes no
 default routes. The neutral [admin witness](../../packages/platform/test/risk/adminHandlers.test.ts)
 and [composition witness](../../server/runtime/public-reference/m15RiskBinding.test.ts)
 are authored falsifiers; execution status belongs to the task record.
+
+`createRiskPrivacyContributor` adds a bounded structural M03 contributor through
+`risk/server`. Register it explicitly in the existing identity contributor registry
+with `risk` required. Its five logical resources cover assessments (including
+evidence and subject hashes), blocklist entries, review cases (including hold
+links), case events (including actor links and notes), and idempotency facts.
+Native replay fingerprints remain covered even without a separate replay table.
+The host supplies read-only subject mapping and a per-resource retention policy;
+missing owners, incomplete declarations, foreign ownership or an unsupported
+erasure disposition remain unresolved. No retention period is supplied by the
+platform. Risk rows, audit, replay and linked holds are never deleted here.
+
+The read port returns one result per resource, explicitly available or unavailable;
+empty known resources use an available empty result. Partial or malformed result
+inventories refuse export. Unavailable resources are omitted from data and named
+in coverage; nested credentials refuse through M03's document validator. Export
+coverage describes readable data, independently of policy coverage. A complete
+policy may explicitly retain unreadable resources; missing policy never permits
+erasure. Policy text and adapter diagnostics are not echoed into receipts.
+
+`createRiskPrivacyBinding` returns this contributor for host registry composition.
+Portability is deferred by default; an optional opaque host value is carried
+unchanged without invocation, transfer/restore validation or an M14 import.
+No reference route or R2 binding is changed. Identity retains authorization,
+transaction rollback and receipt replay, including its managed erasure refusal.
+See [identity personal data](IDENTITY.md#identity-personal-data) for the
+orchestration and completion limits.
