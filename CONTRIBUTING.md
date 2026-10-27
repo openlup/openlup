@@ -1677,6 +1677,16 @@ npm --workspace @openlup/core run ci
 
 Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
 
+Disposable PostgreSQL fixtures mount `/var/lib/postgresql/data` as `tmpfs`.
+This covers the PostgreSQL image's declared data volume before container
+creation, so an interrupted worker cannot leave an anonymous data volume.
+Normal and failed-start teardown still removes the owned container with
+`docker rm -f -v`; other anonymous mounts are removed too. A worker killed
+with `SIGKILL` can still leave a container, including one in `Created` state:
+temporary data storage prevents the volume leak, but does not reap containers.
+The container-helper regression checks exact owned container and volume IDs
+for normal teardown and port-bind failure, without relying on global counts.
+
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 #### Choose a location and proof

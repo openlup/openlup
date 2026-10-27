@@ -157,7 +157,7 @@ export async function main(args = process.argv.slice(2)) {
       // Require a cached image; this runner does not fetch an image or install a tool.
       const image = "postgres:16"; must("docker", ["image", "inspect", image]);
       const password = randomBytes(24).toString("hex");
-      const containerId = must("docker", ["run", "--pull=never", "--detach", "--label", `com.openlup.identity.run=${runId}`, "--name", project,
+      const containerId = must("docker", ["run", "--pull=never", "--detach", "--tmpfs", "/var/lib/postgresql/data", "--label", `com.openlup.identity.run=${runId}`, "--name", project,
         "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image]);
       owned = { containerId, label: "com.openlup.identity.run", value: runId };
       const container = inspect(containerId); assertContainerOwnership(container, owned); ids.push(owned);
@@ -217,7 +217,15 @@ export async function main(args = process.argv.slice(2)) {
       const current = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`]).split("\n").filter(Boolean);
       if (current.some(id => !ids.some(entry => entry.containerId.startsWith(id)))) throw new Error("Managed cleanup cannot establish complete ownership; run directory retained");
       must("supabase", ["stop", "--workdir", directory, "--no-backup"]);
-    } else if (owned) must("docker", ["rm", "-f", owned.containerId]);
+    } else if (bundle === "node-postgres") {
+      // A failed start may have created a container without returning its ID.
+      const partial = must("docker", ["ps", "-aq", "--filter", `label=com.openlup.identity.run=${runId}`]).split("\n").filter(Boolean);
+      for (const id of partial) {
+        const container = inspect(id);
+        assertContainerOwnership(container, { containerId: container.Id, label: "com.openlup.identity.run", value: runId });
+        must("docker", ["rm", "-f", "-v", container.Id]);
+      }
+    }
     rmSync(directory, { recursive: true });
   }
 }

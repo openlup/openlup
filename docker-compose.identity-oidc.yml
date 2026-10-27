@@ -14,6 +14,8 @@ services:
   database:
     image: postgres:16
     pull_policy: never
+    tmpfs:
+      - /var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: ${OIDC_DATABASE_PASSWORD:?runner required}
     ports:
