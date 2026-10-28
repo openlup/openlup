@@ -73,7 +73,44 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
   (c.relkind OPERATOR(pg_catalog.=) 'r'::pg_catalog."char"
     AND c.relpersistence OPERATOR(pg_catalog.=) 'p'::pg_catalog."char"
     AND (owner.rolsuper OR owner.rolname OPERATOR(pg_catalog.=) current_user)
-    AND NOT c.relrowsecurity AND NOT c.relhasrules
+    AND NOT c.relrowsecurity AND NOT c.relhasrules AND NOT c.relhastriggers
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_type t ON t.oid OPERATOR(pg_catalog.=) a.atttypid
+      JOIN pg_catalog.pg_namespace tn ON tn.oid OPERATOR(pg_catalog.=) t.typnamespace
+      WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
+        AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2 AND NOT a.attisdropped
+        AND (a.attgenerated OPERATOR(pg_catalog.<>) ''::pg_catalog."char"
+          OR tn.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+      WHERE ((d.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_attrdef'::pg_catalog.regclass
+          AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef ad
+            WHERE ad.oid OPERATOR(pg_catalog.=) d.objid AND ad.adrelid OPERATOR(pg_catalog.=) c.oid))
+        OR (d.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_constraint'::pg_catalog.regclass
+          AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint co
+            WHERE co.oid OPERATOR(pg_catalog.=) d.objid AND co.conrelid OPERATOR(pg_catalog.=) c.oid)))
+        AND ((d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_proc'::pg_catalog.regclass
+          AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace pn
+            ON pn.oid OPERATOR(pg_catalog.=) p.pronamespace
+            WHERE p.oid OPERATOR(pg_catalog.=) d.refobjid
+              AND pn.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
+          OR (d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_operator'::pg_catalog.regclass
+            AND EXISTS (SELECT 1 FROM pg_catalog.pg_operator op JOIN pg_catalog.pg_namespace onsp
+              ON onsp.oid OPERATOR(pg_catalog.=) op.oprnamespace
+              WHERE op.oid OPERATOR(pg_catalog.=) d.refobjid
+                AND onsp.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))))
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint co
+      WHERE co.conrelid OPERATOR(pg_catalog.=) c.oid
+        AND co.contype OPERATOR(pg_catalog.<>) ALL(ARRAY['p','u','c']::pg_catalog."char"[]))
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_index i
+      JOIN pg_catalog.pg_class ic ON ic.oid OPERATOR(pg_catalog.=) i.indexrelid
+      JOIN pg_catalog.pg_am am ON am.oid OPERATOR(pg_catalog.=) ic.relam
+      JOIN pg_catalog.pg_opclass oc ON oc.oid OPERATOR(pg_catalog.=) i.indclass[0]
+      JOIN pg_catalog.pg_namespace ons ON ons.oid OPERATOR(pg_catalog.=) oc.opcnamespace
+      WHERE i.indrelid OPERATOR(pg_catalog.=) c.oid
+        AND (i.indexprs IS NOT NULL OR i.indpred IS NOT NULL
+          OR i.indnkeyatts OPERATOR(pg_catalog.<>) 1::pg_catalog.int2
+          OR am.amname OPERATOR(pg_catalog.<>) 'btree'::pg_catalog.name
+          OR ons.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
     AND (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute a
       WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
         AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2 AND NOT a.attisdropped
@@ -134,6 +171,9 @@ export function createPostgresMigrationRunner(
           await client.query("BEGIN");
           try {
             await client.query(unit.sql);
+          // The migration may have created the ledger, or another session may
+          // have changed it since the prefix read. Keep this lock to COMMIT.
+          if (!await lockAdmittedLedger(client)) throw new Error("platform migration ledger relation is missing before write");
             await client.query(
               `INSERT INTO ${LEDGER} (catalog_path, sha256, position) VALUES ($1, $2, $3)`,
               [unit.catalogPath, unit.sha256, unit.position],
@@ -231,20 +271,10 @@ async function readAppliedPrefix(
   // READ COMMITTED gives the post-lock identity check a fresh catalog snapshot.
   await client.query("BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY");
   try {
-    const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
-    if (observed.length === 0) {
+    if (!await lockAdmittedLedger(client)) {
       await whileLocked?.([]);
       await client.query("COMMIT");
       return [];
-    }
-    const identity = observed[0]!;
-    if (observed.length !== 1 || typeof identity.ledger_oid !== "string" || identity.ledger_safe !== true) {
-      throw new Error("platform migration ledger relation is not safe to read");
-    }
-    await client.query(`LOCK TABLE ONLY ${LEDGER} IN ACCESS SHARE MODE`);
-    const locked = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
-    if (locked.length !== 1 || locked[0]!.ledger_oid !== identity.ledger_oid || locked[0]!.ledger_safe !== true) {
-      throw new Error("platform migration ledger relation changed before read");
     }
     // ONLY excludes inherited or foreign children, which are not ledger storage.
     const result = await client.query<LedgerRow>(
@@ -266,6 +296,21 @@ async function readAppliedPrefix(
     await client.query("ROLLBACK").catch(() => {});
     throw error;
   }
+}
+
+async function lockAdmittedLedger(client: PoolClient): Promise<boolean> {
+  const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
+  if (observed.length === 0) return false;
+  const identity = observed[0]!;
+  if (observed.length !== 1 || typeof identity.ledger_oid !== "string" || identity.ledger_safe !== true) {
+    throw new Error("platform migration ledger relation is not safe to read");
+  }
+  await client.query(`LOCK TABLE ONLY ${LEDGER} IN ACCESS SHARE MODE`);
+  const locked = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
+  if (locked.length !== 1 || locked[0]!.ledger_oid !== identity.ledger_oid || locked[0]!.ledger_safe !== true) {
+    throw new Error("platform migration ledger relation changed before read");
+  }
+  return true;
 }
 
 async function assertObjectInventory(

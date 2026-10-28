@@ -136,8 +136,9 @@ and shape before reading applied rows. It keeps the validated relation stable
 through complete inventory projection and reads only rows belonging to the
 ledger itself. These checks apply to legacy and qualified sources. Legacy
 bootstrap ownership remains accepted; qualified session admission still
-requires its declared migration owner. Each migration retains its individual
-transaction and exact-prefix/replay behavior.
+requires its declared migration owner. Each applied unit is recorded after a
+fresh ledger check within that unit's transaction. Individual migration
+transactions and exact-prefix/replay behavior remain.
 
 Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and

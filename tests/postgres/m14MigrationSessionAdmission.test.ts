@@ -28,6 +28,8 @@ beforeAll(async () => {
   await admin.query(`CREATE SCHEMA migration_read_probe;
     CREATE FUNCTION migration_read_probe.mark() RETURNS pg_catalog.text LANGUAGE plpgsql VOLATILE AS $$
     BEGIN PERFORM pg_catalog.pg_advisory_lock(73120491::pg_catalog.int8); RETURN 'synthetic'; END $$;
+    CREATE FUNCTION migration_read_probe.mark_insert() RETURNS trigger LANGUAGE plpgsql VOLATILE AS $$
+    BEGIN PERFORM migration_read_probe.mark(); RETURN NEW; END $$;
     CREATE FUNCTION migration_read_probe.hashtextextended(pg_catalog.text, pg_catalog.int4)
       RETURNS pg_catalog.int8 LANGUAGE plpgsql VOLATILE AS $$
     BEGIN PERFORM migration_read_probe.mark(); RETURN 0; END $$;
@@ -142,6 +144,13 @@ const hostileLayouts = [
     CREATE POLICY synthetic_read ON public.platform_schema_migrations USING (migration_read_probe.mark() IS NOT NULL)`],
   ["rewrite rule", `${ledgerDefinition}; CREATE RULE synthetic_insert AS ON INSERT TO public.platform_schema_migrations
     DO ALSO SELECT migration_read_probe.mark()`],
+  ["insert trigger", `${ledgerDefinition}; CREATE TRIGGER synthetic_insert BEFORE INSERT ON public.platform_schema_migrations
+    FOR EACH ROW EXECUTE FUNCTION migration_read_probe.mark_insert()`],
+  ["extra default", `CREATE TABLE public.platform_schema_migrations
+    (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4,
+      extra pg_catalog.text DEFAULT migration_read_probe.mark())`],
+  ["check expression", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations
+    ADD CONSTRAINT synthetic_check CHECK (migration_read_probe.mark() IS NOT NULL)`],
 ] as const;
 
 async function resetLedger(sql: string): Promise<void> {
@@ -261,6 +270,34 @@ it.each(methods)("rechecks the locked ledger identity before %s after concurrent
     try {
       await expect(operate(fixtureRunner(racingPool, true), method))
         .rejects.toThrow("platform migration ledger relation changed before read");
+      expect(await invocationCount()).toBe(0);
+    } finally { await pool.end(); }
+  }
+});
+
+it("rechecks the ledger under the migration transaction before a pending insert", async () => {
+  for (const [layout, replacement] of hostileLayouts.filter(([name]) => name === "view" || name === "insert trigger")) {
+    await resetLedger(ledgerDefinition);
+    await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+    const pool = probePool();
+    const replacingPool = {
+      async connect() {
+        const client = await pool.connect();
+        return {
+          async query(sql: string, values?: unknown[]) {
+            const result = await client.query(sql, values);
+            if (sql === migrations[1]!.content) {
+              await admin.query(`DROP TABLE public.platform_schema_migrations; ${replacement}`);
+            }
+            return result;
+          },
+          release: client.release.bind(client),
+        };
+      },
+    } as unknown as Pool;
+    try {
+      await expect(fixtureRunner(replacingPool, true).apply(), layout)
+        .rejects.toThrow("platform migration ledger relation is not safe to read");
       expect(await invocationCount()).toBe(0);
     } finally { await pool.end(); }
   }

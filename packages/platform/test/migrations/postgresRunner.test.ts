@@ -191,7 +191,8 @@ describe("PostgreSQL migration runner", () => {
     expect(s.query.mock.calls).toEqual([
       [acquireSql, [lockName]], ...readQueries(false),
       ...bodies.flatMap((sql, index) => [
-        ["BEGIN"], [sql], [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
+        ["BEGIN"], [sql], [identitySql], [readLockSql], [identitySql],
+        [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
       ]),
       ...readQueries(), [releaseSql, [lockName]],
     ]);

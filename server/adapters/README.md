@@ -130,8 +130,8 @@ The reference [migration binding](postgres/migrationRunner.ts) delegates ledger
 validation and row reads to `@openlup/platform/migrations`. Its mock witness
 models the ledger read separately from each migration transaction. Legacy
 bootstrap ownership remains accepted; qualified selection retains its stricter
-session-owner and role-graph admission. Qualified inventory shares the
-validated ledger observation. The
+session-owner and role-graph admission. In the runner, qualified inventory
+shares the validated ledger observation. The
 [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 defines the shared behavior.
 

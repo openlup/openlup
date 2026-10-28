@@ -156,7 +156,8 @@ its users or operators can observe.
 
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the production package runner to check ledger admission, stable reads,
-complete inventory projection and compatibility for status, dry-run and apply.
+write admission, complete inventory projection and compatibility for status,
+dry-run and apply.
 It covers refused layouts and bootstrap-owned ledger reads from a distinct
 migration login. Run it with
 `npm test -- tests/postgres/m14MigrationSessionAdmission.test.ts` before the
