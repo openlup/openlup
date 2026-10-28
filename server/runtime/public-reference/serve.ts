@@ -1,5 +1,6 @@
 import type { createM09InvoicingReferenceBinding } from "./m09InvoicingBinding.js";
 import type { CommunicationsReferenceMount } from "./communications.js";
+import type { createM14OperationsReferenceBinding } from "./m14OperationsBinding.js";
 import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
 import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
 import { createReferenceBffDispatcher } from "../bffDispatch.js";
@@ -47,6 +48,8 @@ export type PublicReferenceServerOptions = {
   distDir?: string;
   env?: NodeJS.ProcessEnv;
   communications?: CommunicationsReferenceMount;
+  /** Selected portable operations default; host-owned ports and admin authority. */
+  operations?: ReturnType<typeof createM14OperationsReferenceBinding>;
   /** Inert host admission seam; no invoice routes, cron or worker are mounted. */
   invoicing?: Pick<ReturnType<typeof createM09InvoicingReferenceBinding>, "readiness">;
   identity?: ReferenceIdentityAdmission & { profile?: IdentityReferenceProfile; authOrigin?: string };
@@ -126,6 +129,7 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
   const current = runtime(options);
   if (identityRuntime && identityRuntime.bundle !== (current.env.PLATFORM_BUNDLE ?? "node-supabase")) throw new Error("Identity candidate bundle does not match the reference host");
   const profileName = current.env.OPENLUP_REFERENCE_PROFILE;
+  if (options.operations && (profileName || identityRuntime)) throw new Error("Operations reference requires its own host composition");
   if (profileName && !["subscription", "identity", "communications"].includes(profileName)) throw new Error("Unknown public reference profile");
   const communications=profileName==="communications"?options.communications:undefined;
   if(profileName==="communications"&&!communications)throw new Error("Communications reference requires startup admission");
@@ -138,6 +142,15 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
   return createServer((request, res) => {
     const pathname = requestPath(request);
     if (!pathname) return response(res, 404, "Not found\n", { "content-type": "text/plain; charset=utf-8" });
+    const operationsRead = pathname === "/api/bff/admin/platform/alerts" ? options.operations?.alerts
+      : pathname === "/api/bff/admin/platform/pipeline" ? options.operations?.pipeline : undefined;
+    if (operationsRead) {
+      for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
+      void adaptRequest(request, pathname, false, 32768).then(req => operationsRead(req, decorateResponse(res))).catch(() => {
+        if (!res.headersSent) response(res, 503, "Operations unavailable\n"); else res.destroy();
+      });
+      return;
+    }
     if(communications&&(pathname.startsWith("/api/")||pathname===communications.page)) {
       try{communications.admission.assertCurrent();}catch{return response(res,503,"Communications admission stale\n");}
       if(request.headers.host!==new URL(communications.origin).host)return response(res,403,"Reference host mismatch\n");

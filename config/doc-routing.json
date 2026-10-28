@@ -653,7 +653,9 @@
         "packages/platform/src/operations/**",
         "packages/platform/test/operations/**",
         "packages/platform/api/operations*.api.md",
-        "packages/platform/sql/20260814010000_platform_control_plane.sql"
+        "packages/platform/sql/20260814010000_platform_control_plane.sql",
+        "server/runtime/public-reference/m14OperationsBinding.ts",
+        "server/runtime/public-reference/m14OperationsBinding.test.ts"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#operations-and-diagnostics"
