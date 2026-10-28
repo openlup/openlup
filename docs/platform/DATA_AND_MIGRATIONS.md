@@ -342,6 +342,9 @@ competing canonical manifest or add package SQL paths to the legacy plan. The
 current source checkpoint carries v2: its legacy selection still has the exact
 88 issued units and inventory
 `cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`.
+The reader also recognizes a future version 3 with a separately selected
+restricted-bootstrap plan and two fixed role-mode inventories. Reader support
+does not introduce that plan into the active version-2 manifest.
 
 A qualified plan has a new actual position-zero baseline, the two fixed
 actor/acquisition bootstrap replacements and the fixed runtime tail after the
@@ -457,6 +460,12 @@ retain six exact bound units, including the
 [runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
 now selected as the final qualified tail. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
+The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) prepares
+five further fixed identities for a separate approval. Its inert fixture bytes
+are not approved or active; the six issued rows and current 91-unit manifest
+remain unchanged. The future generation reuses the issued completion tail and
+requires two new fixed role-mode inventories. Its migration login is a trusted
+administrator retaining ADMIN membership, not an isolated principal.
 All six approval rows and their byte identities remain unchanged. The tail grants
 the existing runtime group context INSERT on its four columns, UPDATE on its
 three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.

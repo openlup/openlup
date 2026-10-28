@@ -186,6 +186,16 @@ not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
 
+The restricted-bootstrap reader preparation adds five fixed `qa_` identities
+to the existing classifier and approval reader without changing the active
+schema-2 manifest or six issued approval rows. Its schema-3 parser requires a
+separate 91-unit generation, the issued runtime-completion tail and exactly two
+fixed role-mode inventory digests. The manifest and admission witnesses reject
+missing/reordered tails, wrong-generation paths, malformed modes, issued-prefix
+repins and partial approval sets. The five fixture files are inert source bytes;
+their later approval and active SQL must land in separate checkpoints. No new
+test command or CI job is introduced by reader preparation.
+
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;
 the installed consumer adds the public export, custom app files, crash/resume
