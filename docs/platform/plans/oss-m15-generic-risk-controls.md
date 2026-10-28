@@ -941,3 +941,34 @@ M14 source/release metadata and R2 risk delegation remain intact. The changed
 lockfile requires npm ci. Regenerate with the existing commands, run the
 requested focused checks with two workers, and commit with DCO sign-off.
 Exact-predecessor policy runs after the merge commit establishes ancestry.
+
+### Current-main draft stack maintenance — 2026-10-28
+
+Direct maintainer continuation authorizes local non-fast-forward DCO merges
+main → R1 → R2 → R3, existing API/navigation regeneration, focused checks with
+two workers and package checks in R1/R3. No rebase, force-push or push. Existing
+review histories and budgets remain intact; full verification and counted native
+review/admission remain coordinator obligations. CD-M15-6a applies in R1 only
+if a full-stack platform cap is exceeded: ceil(measured × 1.02 / 5,000) × 5,000
+for bytes, ceil(measured × 1.02) for files, followed by a local cascade.
+
+Fresh main/instruction pin: `4ff46904029c1cb9b388ed6c1cf07ac53b0296fd`;
+the code review base remains separate. Starting heads: R1 `3d32517c`,
+R2 `b2d2c83a`, R3 `bb047540`. Applicable instruction owners are unchanged
+since the previous `fea0854a` integration. R1 merges without textual conflicts;
+main's only new tree delta is its release-gate fixture repair. Preserve that
+repair exactly, alongside the existing M14 content and all M15 risk content.
+Every shared numeric platform cap equals the maximum of both parents, with
+no changed value. The lockfile is unchanged, so no npm ci. The smallest adequate
+solution uses the existing merge and generators without a runtime change or
+new mechanism. Logs and retained artifacts: `.context/scratch/m15-main-4ff46904/`
+per worktree. Completion results follow after the full-stack measurement.
+
+### R2 current-main cascade — 2026-10-28
+
+Merge local R1 `5affb9c4` under the direct grant above. The only textual
+conflict is the task-record append point; preserve both complete histories.
+Risk delegation and all M14 content remain unchanged. No lockfile delta or
+cap change. Regenerate using the existing commands, run focused checks with
+two workers, then make the local DCO merge. Run final documentation policy
+against the exact R1 predecessor after commit establishes its ancestry.
