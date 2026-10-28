@@ -2097,17 +2097,22 @@ transfer obligations; this bounded slice does not complete that programme.
 The maintained [portable reference binding](../../server/runtime/public-reference/m14OperationsBinding.ts)
 composes that retained evaluator and job catalogue with host-supplied evidence,
 ledger, heartbeat and report ports. Its default sink captures each invocation's
-alert ID, dedupe key, severity and time in memory. `delivery: "captured"` and
-`provider: "local_capture"` identify a local receipt; `notified` counts those
-receipts and establishes no network delivery. An explicitly selected sink remains
-an adapter, and its failures/backoff remain visible in the kernel result.
+alert ID, dedupe key, severity and time in memory. `delivery: "captured"`
+identifies an in-memory observation, not notification delivery: `notified` stays
+zero, and capture records no notification attempt or delivery cadence in the
+host ledger. A later selected sink can attempt delivery immediately. An explicitly
+selected sink remains an adapter, and its failures/backoff remain visible in the kernel result.
 Check-only evaluation neither records heartbeat nor writes notifications/alerts.
 Missing evidence yields a bounded unavailable result; absent heartbeat keeps
 the existing overview health unknown. Raw domain payloads stay with the ledger.
 
 Alert and pipeline reads retain their existing typed handlers and administrator
-authorization before port access. The binding applies the existing observed-route
-wrapper so safe request references correlate response headers/errors with logs.
+authorization before port access. The Node host also runs the existing BFF
+dispatcher and admin preflight, with exact configured Host admission before body
+reading. The binding applies the existing observed-route wrapper so safe request
+references correlate response headers/errors with logs. The existing pipeline
+route is classified as a mutation by public deployment policy and remains refused;
+the alert overview is the available admin readback on this host.
 Request bodies, authorization values, query contents and upstream exception prose
 are excluded from those logs. Unsafe caller references are replaced by the
 existing request-ID policy. This callable composition mounts no routes or jobs

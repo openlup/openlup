@@ -68,16 +68,26 @@ Policy/navigation, inventory, neutrality, structural checks, redacted history/de
 secret scans and package manifest checks passed at the working boundary.
 Lint passed with zero errors; all five published-tree type projects passed with
 zero unresolved edges and zero consumer-side errors. The affected regression
-selection passed 155 tests across 18 files in 2.10 seconds, including the nine
-composed-default cases and existing host, watchdog, operations and route logging
-witnesses. This is working proof, not canonical final verification or coverage.
-The policy revision was refreshed again at this boundary and remains unchanged.
+selection first passed 155 tests across 18 files in 2.10 seconds, including the
+nine initial composed-default cases and existing host, watchdog, operations and
+route logging witnesses. The repaired selection passed 156 tests across 18 files,
+including ten composed-default cases, with zero lint errors and zero published-tree
+typecheck findings. This is working proof, not canonical final verification or coverage.
 The stabilized API/security-composition read was accepted on 28 October against
 the exact packet tree `29152af67a6052318ccc574d27b61401a2835dd8`.
-The signed implementation commit precedes the main integration; two fresh FULL
-reviews and canonical verification remain pending.
-Native repair cycles consumed: none;
-queue retries: none. No native session has been prepared.
+The signed implementation commit precedes the main integration. Two fresh FULL
+reviews of the integrated tree found four material issues: the pipeline policy
+classification, missing dispatcher preflight, missing Host admission and a local
+capture receipt that advanced persistent delivery cadence. The uncommitted repair
+preserves pipeline refusal, uses existing preflight and exact Host admission,
+and keeps captured observations out of notification state. It requires a renewed
+security/API read before sign-off and fresh FULL review of the repaired tree.
+Canonical verification remains pending. The native session recorded the two
+failed initial reports on the integrated tree; no repaired candidate is prepared.
+Native repair cycles consumed: none; queue retries: none. At this working boundary,
+the separately refreshed policy revision is
+`527c7c0deca500a04b28aa98e8b744b15347527c`; its changed instructions and
+carry-over interaction require fresh inspection before the next prepare.
 No delivery or completion is claimed.
 
 Two cheap neutrality attempts exposed provider-named literals in a portable
@@ -98,3 +108,7 @@ record the rethink before its repair after two failed cheap attempts. Use npm's
 local binary environment for its test wrapper. Admission observations measured
 120.287 seconds before focused build/tests, 962.004 before lint and 180.319
 before the first broader-test launch. These waits justified no concurrent work.
+After #415 landed, regenerating source navigation resolved the sole merge conflict;
+the first full review exposed a capture-as-delivery mistake that the focused tests
+had accepted. Lesson: receipt-shaped local capture → separate observation from
+notification state and test immediate later delivery on the same ledger.

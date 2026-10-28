@@ -63,12 +63,13 @@ with the selected installation's evidence, alert ledger/readback, pipeline,
 administrator authorization and heartbeat ports. Call `runWatchdog` from the
 host's existing trusted scheduler; bind `alerts` and `pipeline` to the existing
 admin read routes when selected. Construction starts no listener or timer.
-The default delivery mode is local capture, with per-tick receipts returned in
-`captured`. It performs no network request and is not hosted delivery/readback.
+The default delivery mode is local capture, with per-tick observations returned
+in `captured`. It performs no network request, records no notification attempt or
+delivery cadence, and leaves `notified` at zero. It is not hosted delivery/readback.
 `checkOnly` returns evaluation without alert, notification or heartbeat writes.
 
 The [composed witness](../../server/runtime/public-reference/m14OperationsBinding.test.ts)
-executes domain/job evaluation, capture, report projections, repeat throttling,
+executes domain/job evaluation, capture, alert readback, selected-sink backoff,
 failure backoff, unknown liveness, authorization and safe correlated logs with
 in-memory host ports. It does not qualify a database adapter, installed npm
 default or remote log drain. Missing remote log/delivery observations remain
@@ -378,7 +379,10 @@ substituting a different business behaviour.
 The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
 also accepts an explicitly constructed operations binding on its ordinary
 reference host. That selection mounts only the existing alert and pipeline
-admin read paths; it retains the binding's authorization and safe route logs.
+admin read paths; it requires `APP_BASE_URL` for exact Host admission and runs
+the existing BFF dispatcher/admin preflight before either handler. The pipeline
+path retains its public mutation-policy refusal; the alert path supplies admin
+readback with the binding's authorization and safe route logs.
 It refuses combination with another reference profile or identity admission.
 The watchdog remains a trusted scheduler callable and gets no public cron route.
 Omitting the selection preserves the static reference's existing route surface.

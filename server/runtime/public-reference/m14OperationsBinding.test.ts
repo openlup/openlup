@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseObservabilityEvidencePort as createEvidencePort } from "../../adapters/supabase/platform/observabilityEvidencePort.js";
 import { createPublicReferenceServer } from "./serve.js";
+import { request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
 import { JOB_CATALOG } from "../../../src/domains/platform/jobCatalog.js";
 import type { ObservabilitySnapshot, OpenAlert } from "../../../src/domains/platform/observabilityContracts.js";
@@ -20,13 +21,12 @@ describe("portable operations reference default", () => {
     const f = await fixture();
     const unchanged = structuredClone(f.snapshot);
     const result = await f.binding.runWatchdog();
-    expect(result).toMatchObject({ ok: true, health: "firing", notified: 1, delivery: "captured", heartbeatRecorded: true });
+    expect(result).toMatchObject({ ok: true, health: "firing", notified: 0, delivery: "captured", heartbeatRecorded: true });
     if (!result.ok) throw new Error("watchdog failed");
     expect(result.captured.map(row => row.dedupeKey)).toEqual(["subscription_cycle_unattempted"]);
     expect(result.decisions.map(row => row.dedupeKey).sort()).toEqual(["job_missed:outbox-dispatch", "subscription_cycle_unattempted"]);
     expect(result.captured).toEqual(expect.arrayContaining([expect.objectContaining({ alertId: expect.any(String), capturedAt: now.toISOString() })]));
-    expect(f.notifications).toHaveLength(2);
-    expect(f.notifications.filter(row => row.status === "sent")).toEqual([{ channel: "webhook", status: "sent", provider: "local_capture" }]);
+    expect(f.notifications).toEqual([]);
     expect(f.snapshot).toEqual(unchanged);
 
     const alerts = response();
@@ -39,36 +39,45 @@ describe("portable operations reference default", () => {
     expect(alerts.res.setHeader).toHaveBeenCalledWith("x-request-id", canary);
     const pipeline = response();
     await f.binding.pipeline(request(), pipeline.res);
-    expect(pipeline.body()).toMatchObject({ ok: true, data: {
-      emailSendCount: 4, emailEvents: [{ event_type: "opened" }],
-      testers: [{ id: "cohort-1", status: "packing", email_sequence_step: 2, email_sequence_paused: false }],
-    } });
+    expect(pipeline.body()).toMatchObject({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE" } });
+    expect(f.readPipeline).not.toHaveBeenCalled();
     expect(logs()).toEqual(expect.arrayContaining([
       expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/alerts", status: 200 }),
-      expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/pipeline", status: 200 }),
+      expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/pipeline", status: 503 }),
     ]));
-    expect(await f.binding.runWatchdog()).toMatchObject({ notified: 0, throttledNotifications: 2, captured: [] });
-    expect(f.notifications).toHaveLength(2);
+    expect(await f.binding.runWatchdog()).toMatchObject({ notified: 0, captured: [expect.objectContaining({ dedupeKey: "subscription_cycle_unattempted" })] });
+    expect(f.notifications).toEqual([]);
   });
 
   it("serves the selected default's existing read routes through the real portable Node host", async () => {
     const f = await fixture();
     await f.binding.runWatchdog();
-    const server = createPublicReferenceServer({ operations: f.binding, env: {} });
+    const env = { APP_BASE_URL: "http://operations.example", PLATFORM_BUNDLE: "node-postgres", OPERATOR_IDENTITY_AUDIENCE: "synthetic-audience" };
+    const server = createPublicReferenceServer({ operations: f.binding, env, operationsAdminAuth: {
+      humanAuthFactory: () => ({
+        authorize: async (token, restrictions) => token === "valid-token" && restrictions?.allowedRoles?.includes("admin")
+          ? { ok: true, principalId: "operator-1", role: "admin", isMachineActor: false }
+          : { ok: false, code: "UNAUTHORIZED", message: "Operator authentication required" },
+        close: async () => {},
+      }),
+    } });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
-      for (const name of ["alerts", "pipeline"]) {
-        const result = await fetch(`${origin}/api/bff/admin/platform/${name}`, { headers: { "x-request-id": canary } });
-        expect(result.status).toBe(200);
-        expect(result.headers.get("x-request-id")).toBe(canary);
-        expect(await result.json()).toMatchObject({ ok: true });
-      }
+      const alerts = await httpRead(origin, "/api/bff/admin/platform/alerts", { authorization: "Bearer valid-token", "x-request-id": canary });
+      expect(alerts.status).toBe(200);
+      expect(alerts.headers["x-request-id"]).toBe(canary);
+      expect(alerts.body).toMatchObject({ ok: true });
+      expect((await httpRead(origin, "/api/bff/admin/platform/pipeline", { authorization: "Bearer valid-token" })).status).toBe(503);
+      expect(f.readPipeline).not.toHaveBeenCalled();
       f.authorizeAdmin.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "Admin required" });
-      expect((await fetch(`${origin}/api/bff/admin/platform/alerts`)).status).toBe(403);
-      expect((await fetch(`${origin}/api/cron/platform-watchdog`)).status).toBe(404);
-      expect(logs().filter(row => row.status === 200)).toHaveLength(2);
-      expect(() => createPublicReferenceServer({ operations: f.binding, env: { OPENLUP_REFERENCE_PROFILE: "subscription" } })).toThrow("own host composition");
+      expect((await httpRead(origin, "/api/bff/admin/platform/alerts", { authorization: "Bearer valid-token" })).status).toBe(403);
+      expect((await httpRead(origin, "/api/bff/admin/platform/alerts")).status).toBe(401);
+      f.authorizeAdmin.mockResolvedValue({ ok: true });
+      expect((await httpRead(origin, "/api/bff/admin/platform/alerts", { host: "wrong.example", authorization: "Bearer valid-token" })).status).toBe(403);
+      expect((await httpRead(origin, "/api/cron/platform-watchdog")).status).toBe(404);
+      expect(logs().filter(row => row.status === 200)).toHaveLength(1);
+      expect(() => createPublicReferenceServer({ operations: f.binding, env: { ...env, OPENLUP_REFERENCE_PROFILE: "subscription" } })).toThrow("own host composition");
     } finally {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }
@@ -100,7 +109,7 @@ describe("portable operations reference default", () => {
     expect(f.writes()).toBe(0);
     expect(f.recordHeartbeat).not.toHaveBeenCalled();
     f.recordHeartbeat.mockResolvedValueOnce(false);
-    expect(await f.binding.runWatchdog()).toMatchObject({ heartbeatRecorded: false, notified: 1 });
+    expect(await f.binding.runWatchdog()).toMatchObject({ heartbeatRecorded: false, notified: 0, captured: [expect.objectContaining({ dedupeKey: "subscription_cycle_unattempted" })] });
     const res = response();
     await f.binding.alerts(request(), res.res);
     expect(res.body()).toMatchObject({ data: { health: "unknown" } });
@@ -116,37 +125,45 @@ describe("portable operations reference default", () => {
     expect(f.notifications.filter(row => row.status === "failed")).toHaveLength(1);
   });
 
+  it("does not let local capture throttle a later selected delivery on the same ledger", async () => {
+    const f = await fixture();
+    expect(await f.binding.runWatchdog()).toMatchObject({ notified: 0, delivery: "captured" });
+    expect(f.notifications).toEqual([]);
+    const send = vi.fn(async () => ({ channel: "webhook" as const, status: "sent" as const }));
+    const selected = await fixture({ ledgerPort: f.ledgerPort, sinkPort: { send } });
+    expect(await selected.binding.runWatchdog()).toMatchObject({ notified: 1, delivery: "adapter" });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(f.notifications.filter(row => row.status === "sent")).toHaveLength(1);
+  });
+
   it("refuses unauthorized reads before ports or query parsing and logs the refusal", async () => {
     const f = await fixture();
     f.authorizeAdmin.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "Admin required" });
-    for (const handler of [f.binding.alerts, f.binding.pipeline]) {
+    for (const [handler, code] of [[f.binding.alerts, "FORBIDDEN"], [f.binding.pipeline, "UPSTREAM_UNAVAILABLE"]] as const) {
       const res = response();
       await handler(request({ query: { unexpected: "value" } }), res.res);
-      expect(res.body()).toMatchObject({ ok: false, error: { code: "FORBIDDEN" }, meta: { requestId: canary } });
+      expect(res.body()).toMatchObject({ ok: false, error: { code } });
     }
     expect(f.readPipeline).not.toHaveBeenCalled();
     expect(f.listLiveAlerts).not.toHaveBeenCalled();
-    expect(logs().map(row => row.status)).toEqual([403, 403]);
+    expect(logs().map(row => row.status)).toEqual([403, 503]);
   });
 
-  it("refuses unsupported methods and malformed report queries without owner reads", async () => {
+  it("refuses the pipeline route under the retained deployment policy before owner reads", async () => {
     const f = await fixture();
     const method = response();
     await f.binding.pipeline(request({ method: "POST" }), method.res);
-    expect(method.body()).toMatchObject({ error: { code: "METHOD_NOT_ALLOWED" } });
+    expect(method.body()).toMatchObject({ error: { code: "UPSTREAM_UNAVAILABLE" } });
     expect(f.authorizeAdmin).not.toHaveBeenCalled();
-    const query = response();
-    await f.binding.pipeline(request({ query: { extra: "value" } }), query.res);
-    expect(query.body()).toMatchObject({ error: { code: "BAD_REQUEST" } });
     expect(f.readPipeline).not.toHaveBeenCalled();
   });
 
   it("keeps unsafe caller references, request content and upstream prose out of correlated error logs", async () => {
     const f = await fixture();
     const privateText = "synthetic-person@example.invalid private request content";
-    f.readPipeline.mockRejectedValueOnce(new Error(privateText));
+    f.listLiveAlerts.mockRejectedValueOnce(new Error(privateText));
     const res = response();
-    await f.binding.pipeline(request({
+    await f.binding.alerts(request({
       headers: { authorization: `Bearer ${privateText}`, "x-request-id": privateText },
       body: { customer: privateText }, url: `/private?contact=${privateText}`,
     }), res.res);
@@ -157,12 +174,8 @@ describe("portable operations reference default", () => {
     expect(JSON.stringify([body, logs()])).not.toContain(privateText);
   });
 
-  it("refuses malformed projections and safely handles throwing authorization", async () => {
+  it("safely handles throwing authorization", async () => {
     const f = await fixture();
-    f.readPipeline.mockResolvedValueOnce({ ...pipelineReport(), emailSendCount: -1 });
-    const invalid = response();
-    await f.binding.pipeline(request(), invalid.res);
-    expect(invalid.body()).toMatchObject({ error: { code: "INVALID_RESPONSE" } });
     f.authorizeAdmin.mockRejectedValueOnce(new Error("synthetic private auth detail"));
     const unavailable = response();
     await f.binding.alerts(request(), unavailable.res);
@@ -214,7 +227,23 @@ async function fixture(overrides: Partial<Parameters<typeof createM14OperationsR
     alertsReadPort: { listLiveAlerts, readWatchdogHeartbeat: async () => heartbeat },
     pipelinePort: { readPipeline }, authorizeAdmin, recordHeartbeat, now: () => now, ...overrides,
   });
-  return { binding, snapshot, collectSnapshot, notifications, writes: () => writeCount, recordHeartbeat, authorizeAdmin, readPipeline, listLiveAlerts };
+  return { binding, ledgerPort, snapshot, collectSnapshot, notifications, writes: () => writeCount, recordHeartbeat, authorizeAdmin, readPipeline, listLiveAlerts };
+}
+
+async function httpRead(origin: string, path: string, headers: Record<string, string> = {}) {
+  const target = new URL(origin);
+  return new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Record<string, unknown> }>((resolve, reject) => {
+    const req = httpRequest({ host: target.hostname, port: target.port, path, headers: { host: "operations.example", ...headers } }, res => {
+      const chunks: Buffer[] = [];
+      res.on("data", chunk => chunks.push(Buffer.from(chunk)));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        resolve({ status: res.statusCode ?? 0, headers: res.headers, body: raw.startsWith("{") ? JSON.parse(raw) : {} });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 function pipelineReport() {

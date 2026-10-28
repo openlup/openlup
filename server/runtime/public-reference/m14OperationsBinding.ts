@@ -23,8 +23,8 @@ export function createM14OperationsReferenceBinding(input: {
   now?: () => Date;
 }) {
   const now = input.now ?? (() => new Date());
-  function observedRead(route: string, handler: (req: HttpRequest, res: HttpResponse) => Promise<void>) {
-    return withObservedRoute({ route, domain: "platform", surface: "admin", risk: "read" }, async (req, res) => {
+  function observedRead(route: string, risk: "read" | "mutation", handler: (req: HttpRequest, res: HttpResponse) => Promise<void>) {
+    return withObservedRoute({ route, domain: "platform", surface: "admin", risk }, async (req, res) => {
       try { await handler(req, res); }
       catch { sendBffError(res, "UPSTREAM_UNAVAILABLE", "Operations read unavailable"); }
     });
@@ -40,12 +40,20 @@ export function createM14OperationsReferenceBinding(input: {
       const sinkPort: AlertSinkPort = input.sinkPort ?? {
         async send(decision, alert) {
           captured.push({ alertId: alert.id, dedupeKey: decision.dedupeKey, severity: decision.severity, capturedAt: checkedAt.toISOString() });
-          return { channel: "webhook", status: "sent", provider: "local_capture" };
+          return { channel: "webhook", status: "skipped", provider: "local_capture", error: "local_capture_only" };
         },
+      };
+      // Capture is an observation, not a notification attempt. Preserve alert
+      // upserts/resolution while leaving a later selected sink's cadence untouched.
+      const ledgerPort: AlertLedgerPort = input.sinkPort ? input.ledgerPort : {
+        listOpenAlerts: () => input.ledgerPort.listOpenAlerts(),
+        upsertOpenAlert: (decision, at) => input.ledgerPort.upsertOpenAlert(decision, at),
+        resolveAlert: (key, at) => input.ledgerPort.resolveAlert(key, at),
+        recordNotification: async () => {},
       };
       try {
         const result = await runPlatformWatchdog({
-          evidencePort: input.evidencePort, ledgerPort: input.ledgerPort, sinkPort,
+          evidencePort: input.evidencePort, ledgerPort, sinkPort,
           catalog: input.catalog ?? JOB_CATALOG, now: checkedAt, checkOnly,
         });
         const heartbeatRecorded = !checkOnly && await input.recordHeartbeat(checkedAt);
@@ -54,12 +62,12 @@ export function createM14OperationsReferenceBinding(input: {
         return { ok: false as const, error: "operations_watchdog_unavailable" as const };
       }
     },
-    alerts: observedRead("/api/bff/admin/platform/alerts", async (req, res) => {
+    alerts: observedRead("/api/bff/admin/platform/alerts", "read", async (req, res) => {
       await createAdminAlertsOverviewHandler({
         readPort: input.alertsReadPort, authorizeAdmin: () => input.authorizeAdmin(req), now,
       })(req, res);
     }),
-    pipeline: observedRead("/api/bff/admin/platform/pipeline", createAdminPipelineReadHandler({
+    pipeline: observedRead("/api/bff/admin/platform/pipeline", "mutation", createAdminPipelineReadHandler({
       pipelinePort: input.pipelinePort, authorizeAdmin: input.authorizeAdmin,
     })),
   };
