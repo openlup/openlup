@@ -4,6 +4,7 @@
 // Source preparation: requires landed canonical91 plus the separately integrated
 // connected capture/restore APIs. No physical clone or owner runtime fallback.
 import assert from "node:assert/strict";
+import { readProcessEnvironment } from "../../server/_lib/observability/runtimeProvenance.js";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { chownSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
@@ -99,15 +100,15 @@ async function census(db: Pool) {
   return rows;
 }
 async function installation(side: string) {
-  const name = `m14-effects-${side}-${owner}`, resource = await runPostgresContainer({ name, password: "synthetic-m14-fixture" });
+  const name = `m14-effects-${side}-${owner}`, resource = await runPostgresContainer({ name, password: "synthetic-only" });
   databases.push(resource); assert(await waitForPostgresTcpReady(resource.connectionString));
   const bootstrap = pool(resource.connectionString);
   // Exact existing connected-transfer qualified fixture principals/flags. This
   // is owned disposable setup, not a new production role/grant/profile model.
-  await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-m14-fixture';
+  await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only';
     ALTER DATABASE postgres OWNER TO transfer_owner;
-    CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-m14-fixture';
-    CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-m14-fixture'`);
+    CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only';
+    CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only'`);
   const url = (login: string, migration = false) => {
     const value = new URL(resource.connectionString); value.username = login;
     if (migration) value.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
@@ -183,7 +184,8 @@ function retire(id: string) {
 }
 
 try {
-  if (process.env.DOCKER_HOST) assert.match(process.env.DOCKER_HOST, /^(unix:\/\/|npipe:\/\/)/, "remote Docker endpoint excluded");
+  const dockerHost = readProcessEnvironment().DOCKER_HOST;
+  if (dockerHost) assert.match(dockerHost, /^(unix:\/\/|npipe:\/\/)/, "remote Docker endpoint excluded");
   const context = JSON.parse(docker(["context", "inspect"]))[0];
   assert.match(context.Endpoints.docker.Host, /^(unix:\/\/|npipe:\/\/)/, "local Docker authority required");
   docker(["image", "inspect", image]); // Missing local image refuses; no pull fallback.
@@ -193,7 +195,7 @@ try {
   const providerId = launch("provider", ["--network-alias", "provider", "--publish", "127.0.0.1::8080",
     "--mount", `type=bind,src=${ledger},dst=/ledger`,
     "--mount", `type=bind,src=${join(root, "tests/postgres/fixtures/m14EffectProvider.mjs")},dst=/fixture.mjs,readonly`,
-    "--env", `M14_FIXTURE_CONTROL=${control}`, image, "node", "/fixture.mjs"]);
+    image, "node", "/fixture.mjs", control]);
   const binding = inspect(providerId).NetworkSettings.Ports["8080/tcp"][0];
   assert.equal(binding.HostIp, "127.0.0.1"); providerUrl = `http://127.0.0.1:${binding.HostPort}`;
   await until(async () => { try { return await state(); } catch { return null; } }, value => value !== null);
@@ -561,7 +563,7 @@ try {
     wholeStoreRtoMs: null,
     acceptedRecoveryElapsedMs: times.acceptedEffectsRecovered - times.interruptionStart,
     recoveryPoint: "Final source graph and objects/tmp captured after terminal retirement; two independent accepted effects reconciled, retained pending/cleanup and one uncertain dispatch obligation preserved. No zero-RPO or all-store readiness claim.",
-    actualProvider: "synthetic fixture only; no TPay/OmniPack or hosted guarantee" };
+    actualProvider: "synthetic fixture only; no external-provider or hosted guarantee" };
 } catch (error) { failure = error; report = { outcome: "INCOMPLETE", timesMs: times, sourceWritesFrozen,
   filesystemPublished, graphPublished, targetRecoveryWritesStarted, targetWritesActivated,
   selectedProfileReadyRtoMs: null, wholeStoreRtoMs: null }; }

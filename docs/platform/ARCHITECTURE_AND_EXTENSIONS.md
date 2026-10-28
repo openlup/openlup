@@ -2179,7 +2179,9 @@ combines the existing canonical graph/private-media transfer with three dispatch
 processes and one actual [application process](../../tests/postgres/fixtures/m14ApplicationActor.ts).
 Its [fixture composition](../../tests/postgres/m14ApplicationCohort.ts) uses the
 existing review binding, restricted runtime, real raw HTTP/store operations and
-natural media timer. The independent [provider ledger](../../tests/postgres/fixtures/m14EffectProvider.mjs)
+natural media timer. Host configuration reads reuse the existing environment
+boundary; the standalone synthetic provider receives its fixture control as an
+explicit child argument. The independent [provider ledger](../../tests/postgres/fixtures/m14EffectProvider.mjs)
 retains accepted effects when a response is lost; target G1 recovery must use
 verified observations before ordinary dispatch resumes. The one unresolved
 operation remains visible and fenced while the fourth declared duty can proceed.

@@ -2725,9 +2725,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
   and one real copy/resume witness covering both cases.
 
-- 2026-10-26, M14 operations neutrality: package/root green missed a cheap
-  source-carrier gate → run unchanged neutrality before the broad gate and
-  collect remaining diagnostic failures before changing the candidate.
+- 2026-10-28, M14 source-carrier neutrality: package/root green missed the cheap
+  gate again → apply the existing working-tree neutrality order in
+  [Deliver a change](#deliver-a-change) and its
+  [required commands](#required-and-raw-checks) before review and broad proof;
+  collect remaining cheap diagnostics before changing the candidate.
 
 - 2026-10-26, M14 operations: package-local green missed existing closed size,
   nested-module and identity-profile inventories → trace exact consumer entries

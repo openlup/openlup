@@ -2,6 +2,7 @@
 // canonical 91-unit and transfer predecessors have actually been integrated.
 // This fixture creates neither databases nor roles, SQL units or grants.
 import assert from "node:assert/strict";
+import { readProcessEnvironment } from "../../server/_lib/observability/runtimeProvenance.js";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
@@ -65,7 +66,8 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
   }
   const uid = process.getuid?.(), gid = process.getgid?.();
   assert(uid !== undefined && gid !== undefined);
-  if (process.env.DOCKER_HOST) assert.match(process.env.DOCKER_HOST, /^(unix:\/\/|npipe:\/\/)/);
+  const dockerHost = readProcessEnvironment().DOCKER_HOST;
+  if (dockerHost) assert.match(dockerHost, /^(unix:\/\/|npipe:\/\/)/);
   assert.match(JSON.parse(docker(["context", "inspect"]))[0].Endpoints.docker.Host, /^(unix:\/\/|npipe:\/\/)/);
   docker(["image", "inspect", input.image]); // Already local: no pull/build route.
   const network = JSON.parse(docker(["network", "inspect", input.network]))[0];

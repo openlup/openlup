@@ -1,11 +1,11 @@
 // Owned disposable synthetic provider. This is neither a production service nor
-// an implementation of TPay/OmniPack revocation, search or retention semantics.
+// an implementation of real-provider revocation, search or retention semantics.
 import { createServer } from "node:http";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const file = "/ledger/effects.json";
-const control = process.env.M14_FIXTURE_CONTROL;
+const control = process.argv[2];
 if (!control) throw new Error("fixture_control_required");
 let state = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { version: 1, oauthCalls: 0, requests: [] };
 if (state.version !== 1 || !Array.isArray(state.requests)) throw new Error("fixture_ledger_invalid");
