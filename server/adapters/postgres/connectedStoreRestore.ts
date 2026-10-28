@@ -67,13 +67,12 @@ export async function restoreConnectedNativeStore(input: {
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
     const manifest = expectedManifest(installation);
     const expectedLedger = [manifest.baseline, ...manifest.forward];
-    if (expectedLedger.length !== 91 || packet.compatible.catalogueId !== manifest.objectInventorySha256
+    if (packet.compatible.catalogueId !== manifest.objectInventorySha256
       || fresh.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
-    if (JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
-    const inventory = await qualifiedPostgresCatalogPayload(client, installation, migrationLock);
-    if (digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    if (ledger.rows.length !== expectedLedger.length
+      || JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
     const ledgerBefore = (await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
     const keyIdentity = await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key");
     // Lock the whole public/app census, including excluded tables. Unknown data
@@ -83,6 +82,9 @@ export async function restoreConnectedNativeStore(input: {
       WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
     for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
+    // Inspect definitions after table locks, before any retained-data mutation.
+    const inventory = await qualifiedPostgresCatalogPayload(client, installation, migrationLock);
+    if (digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a

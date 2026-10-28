@@ -25,6 +25,7 @@ const containers: PostgresContainer[] = [], pools: Pool[] = [], ports: { close()
 const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
 const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
+const selectedUnits = [selected.baseline, ...selected.forward];
 type Installation = { owner: Pool; runtime: Pool; restore: Pool; runtimeUrl: string };
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
@@ -50,7 +51,9 @@ async function installation(label: string): Promise<Installation> {
   };
   const owner = pool(url(selection.migrationLogin, true));
   const runner = createPostgresMigrationRunner({ connectionString: url(selection.migrationLogin) }, { installation: selection, poolFactory: () => owner });
-  expect((await runner.apply()).applied).toHaveLength(91);
+  expect((await runner.apply()).applied).toEqual(selectedUnits.map(unit => unit.file));
+  expect((await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
+    .toEqual(selectedUnits.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
   expect((await runner.status()).pending).toEqual([]);
   return { owner, runtime: pool(url(selection.runtimeLogin)), restore: pool(url(selection.restoreLogin!)), runtimeUrl: url(selection.runtimeLogin) };
 }
@@ -213,6 +216,27 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   return copy;
 }
 
+it("refuses a changed known trigger body and an unknown INSERT trigger before importing rows", async () => {
+  const before = await census(target.owner);
+  const original = (await target.owner.query<{ definition: string }>(
+    "SELECT pg_catalog.pg_get_functiondef('public.fulfillment_emit_shipment_exception_notification()'::regprocedure) AS definition")).rows[0]!.definition;
+  try {
+    // Keeping the admitted trigger name must not admit another function body.
+    await target.owner.query(`CREATE OR REPLACE FUNCTION public.fulfillment_emit_shipment_exception_notification()
+      RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_catalog AS $$
+      BEGIN RAISE EXCEPTION 'unreviewed_trigger_executed' USING ERRCODE='P0001'; END; $$`);
+    await expect(restore()).rejects.toMatchObject({ code: "schema_conflict" });
+    expect(await census(target.owner)).toEqual(before);
+  } finally { await target.owner.query(original); }
+  try {
+    await target.owner.query(`CREATE TRIGGER retained_transfer_unapproved AFTER INSERT ON public.commerce_order_holds
+      FOR EACH ROW EXECUTE FUNCTION public.fulfillment_emit_shipment_exception_notification()`);
+    await expect(restore()).rejects.toMatchObject({ code: "schema_conflict" });
+    expect(await census(target.owner)).toEqual(before);
+  } finally { await target.owner.query("DROP TRIGGER IF EXISTS retained_transfer_unapproved ON public.commerce_order_holds"); }
+  expect(await census(target.owner)).toEqual(before);
+});
+
 it("refuses private business omission and nonpristine targets, then preserves the connected retained graph, pruned history and exact replay under actual roles", async () => {
   const sourceBefore = await census(source.owner), targetBefore = await census(target.owner);
   const ledger = (await target.owner.query("SELECT to_jsonb(m)::text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
@@ -225,9 +249,22 @@ it("refuses private business omission and nonpristine targets, then preserves th
   await target.owner.query("UPDATE public.commerce_settings SET value_minor=41 WHERE key='shipping_flat_minor'");
   await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
   expect((await target.owner.query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows[0].value_minor).toBe(41);
+  const retainedNotification = packet.compatible.tables.find(table => table.table === "outbox_events")!.rows.find(row => {
+    const value = JSON.parse(row) as { event_type: string; idempotency_key: string };
+    return value.event_type === "commerce.shipment.exception" && value.idempotency_key === `shipment_exception:${retainedHold}`;
+  });
+  if (!retainedNotification) throw new Error("Retained source obligation fixture missing");
   const setting = pristine.owned.find(table => table.table === "commerce_settings")!.rows[0]!;
   await target.owner.query(`UPDATE public.commerce_settings t SET value_minor=p.value_minor,value_text=p.value_text,updated_at=p.updated_at
     FROM jsonb_populate_record(NULL::public.commerce_settings,$1::jsonb) p WHERE t.key=p.key`, [setting]);
+  await target.owner.query("INSERT INTO public.outbox_events SELECT (pg_catalog.jsonb_populate_record(NULL::public.outbox_events,$1::jsonb)).*", [retainedNotification]);
+  try {
+    await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
+    expect((await target.owner.query("SELECT pg_catalog.to_jsonb(o)::text AS value FROM public.outbox_events o")).rows)
+      .toEqual([{ value: retainedNotification }]);
+  } finally {
+    await target.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.exception' AND idempotency_key=$1", [`shipment_exception:${retainedHold}`]);
+  }
   if (!media) throw new Error("Connected media fixture missing");
   const mediaInput = { root: media.targetRoot, census: media.census, ...mediaLimits,
     objects: createOrderReviewMediaTransferReader({ root: media.sourceRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes }),

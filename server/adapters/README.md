@@ -43,12 +43,20 @@ writer. The current profile observes cluster identity through
 `pg_control_system` as the existing superuser migration login. It does not
 qualify a restricted installer or a managed host. Pristine-row equality is a
 precondition inside the target transaction, not independent freshness evidence.
-The target rechecks the selected canonical catalogue and ledger, locks tables,
+The target rechecks the selected canonical catalogue and ledger. The complete
+ledger path, checksum and position sequence follows the selected manifest rather
+than a fixed unit count or tail pin. It locks tables,
 uses the existing retained client/cycle routines and compatible-row admission,
 and restores exactly seven factory settings tables. It preserves deferred
 constraints and source alignment policy last. A named historical hold-trigger
 correction removes only the fully checked notification inserted in that
 transaction when its deterministic source notification was already pruned.
+The [explicit connected-native trigger decision](../../docs/platform/plans/oss-m14-existing-store-transfer.md#connected-native-candidate-explicit-trigger-boundary-2026-10-28)
+bounds these seven existing triggers separately from the generic transport,
+which still refuses every enabled user INSERT trigger. Complete qualified
+definitions, functions and roles are checked after table locks and before import;
+a known name alone never establishes safe behavior. A retained source event or
+pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
 
