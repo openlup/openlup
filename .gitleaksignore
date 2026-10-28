@@ -21,3 +21,7 @@ bca9f16ced27bfeb5d7be2d6e0179f59b246c90f:server/adapters/postgres/checkoutRecove
 # with a deliberately low-entropy fixture on the final tree; this exact finding
 # covers only the immutable earlier commit and is not a credential.
 180e76e81511e8a62b0b8815edc790d80febc25b:server/adapters/postgres/subscriptionActivation.test.ts:generic-api-key:57
+# M14 H1: explicit synthetic test data for a newly created loopback-only
+# disposable PostgreSQL fixture. This exact historical finding is not an
+# external-service credential; retain full-history scanning for all other findings.
+761b1cdfe078ece5739ec0bb37f4298e114012ed:tests/postgres/runM14EffectHandover.ts:generic-api-key:102

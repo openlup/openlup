@@ -1,5 +1,61 @@
 # M14 Node runtime drain task
 
+## Independent runtime and handler-witness delivery, 2026-10-28
+
+Outcome: keep the local listener usable by already admitted scheduler callbacks
+through drain, and preserve the existing control-plane handler characterization
+at its neutral package boundary. This finite correction combines the frozen
+runtime author patch with the four-file handler-witness author packet; it adds
+no provider, deployment, migration, package version or publishing change.
+
+- Base and freshly fetched instruction revision:
+  `535349050419abe5122bd74fa6766c58947be3dd`. The same dedicated worktree and
+  `codex/oss-m14-composed-shutdown` branch continue without reset or rebase.
+  Earlier source, failed installation and discriminating red/green evidence
+  below remain intact. This worktree has no earlier native review session.
+- Scope is exactly nine paths: the runtime source, its composition test and
+  generated composition API report; the operations handler test; the package
+  README and existing shutdown changelog fragment; runtime and architecture
+  owners; this existing task record. Shared owners' paragraphs merge normally.
+  Source/test/API bytes of the frozen runtime correction remain unchanged.
+- Effective authority: the maintainer's standing M14 delivery grant covers
+  local work, DCO, two fresh independent full reviews, canonical full proof,
+  neutral PR/receipt/source-and-group checks and merge. Source preparation used
+  Codex context `01a18357-930d-7c91-8f01-64ada285415e`. Programme supervisor
+  `01a17909-94d4-7cc0-b40f-9a8782a0986f` now owns direct execution and delivery.
+  All source-author and coordination contexts and previous reviewers are excluded from
+  independent review. Required supervisor reading of one stabilized exact
+  source/API/owner/artifact packet still precedes DCO. Release dispatch,
+  publication, settings, credentials, deployment and production remain excluded.
+- Acceptance: preserve the actual HTTP-bridge predecessor failure and corrected
+  drain/idempotence/refusal/failure-cleanup tests; execute the combined host,
+  scheduler and operations selection (65 + 20 cases). The handler's two existing
+  package cases remain intact; its additional neutral cases preserve request,
+  injected authorization, replay, result and upstream-error boundaries. This
+  synthetic characterization qualifies no deployed authentication or store.
+- Proof plan: cheap AST, public policy/navigation/inventory checks first, then
+  strict prerequisite builds, affected types/API, combined cases, lint and actual
+  three-package fixed-cap measurements. Serialize output-producing phases.
+  After the stabilized supervisor read, commit and obtain two new cold full
+  reviews, including the smallest-adequate-solution perspective, then run the
+  unchanged `node scripts/verify-local.mjs --pgtap` on the clean candidate.
+  Retain all actual session findings/counters/expiry and terminal command logs;
+  no old proof stamp is copied. Wait for the current private full slot's actual
+  release before the public heavy phases. Mandatory source/group CI still runs.
+- Simplicity pre-check: defer listener cleanup behind the existing drain promise
+  and extend the existing package test. A second lifecycle abstraction, timeout
+  or duplicate host suite would add maintenance without closing another accepted
+  boundary. No useful additional process change is needed.
+- Working proof: the combined selection passed 85/85. Direct supervisor
+  execution then passed prerequisite builds, lint (zero errors, 33 existing
+  warnings), AST, policy/navigation, inventory, five-project types, API and
+  actual three-package content/browser/cap measurements. Platform measured
+  1,929,179 packed / 8,980,401 unpacked / 1,662,287 code-gzip bytes, with
+  2,574 code and 2,628 total files, within unchanged limits. These are
+  pre-DCO observations; independent native and clean-candidate full proof
+  remain required. Small independent preparation phases use the broker;
+  full runs and mutable outputs remain serialized.
+
 ## Composed HTTP shutdown continuation, 2026-10-28
 
 The authorized correction keeps the local HTTP listener available until every
