@@ -1,5 +1,66 @@
 # M14 C: application lifecycle task
 
+## 2026-10-28 continuation: executable application upgrade proof
+
+The earlier C+D candidate was delivered in [#401](https://github.com/openlup/openlup/pull/401)
+and released in set 0.30.0. Its dated working notes and review history below are
+retained; they do not describe the current candidate. This continuation supplies
+the already-approved M14 acceptance missing from the initial app-file example.
+
+The accountable maintainer instructed the active M14 supervisor to complete M14
+through C6. That reconciles the earlier draft-only boundary and authorizes ordinary
+local implementation, independent review and native PR delivery through merge.
+It grants no production promotion, real-store cutover, new accounts/settings or
+credentials, publication dispatch, stable-framework claim or M19 work. The active
+author/supervisor is Codex context `01a17909-94d4-7cc0-b40f-9a8782a0986f`.
+Code base and separately fetched policy pin are
+`4ff46904029c1cb9b388ed6c1cf07ac53b0296fd`; root policy paths are unchanged since
+the 0.30.0 preparation. This is a distinct post-delivery proof candidate, with
+its own append-only native history; earlier candidate limits are not reset.
+
+Finite scope: extend the existing cold native PostgreSQL scenario with two
+executable releases of one outside-workspace application, using the installed
+operations and lifecycle entries. The canonical migration runner observes its
+complete actual ledger and object inventory before fixture grants; that observed
+88-unit count supplies the schema ordinal. Both app releases use this unchanged
+schema and selected package set. A real restricted application login writes and
+reads control state. Managed-file conflict and incompatible range refuse before
+writes; a SIGKILL after an actual rename interrupts execution; exact resume runs
+the new release; compatible code rollback leaves durable data unchanged. Adopter
+theme and unmanaged brand remain. No new runner, database matrix, runtime API,
+migration, dependency, package cap, version, fixture bypass or database rollback
+mechanism is added. Explicit disposable application grants are not a claim about
+the qualified-install role profile.
+
+Working evidence before DCO: own Node 24.21.0/npm 11.19.0 installation from lock,
+AST, policy/navigation, inventory, full lint, five-project typecheck, all three
+package API checks and actual working-tree artifact/browser selection pass.
+The latter executed 21 selected assertions; 25 unrelated assertions were filtered.
+The new consumer also passed the complete existing cold installed/native route
+against preserved, verified published 0.30.0 artifacts from
+`fea0854a1a5a27c1a48f8c2c9078c618f47f66a3` in 29.692 seconds. Its actual app
+1.0.0→1.1.0 result records schema 88, login `m14_upgrade_runtime`, revision 2,
+SIGKILL/resume and code-only rollback. This working trial is not exact-candidate
+final proof. Raw commands, exits and streams remain in the owned task scratch.
+Policy's first unanswered routing-owner failure is retained and resolved by the
+substantive ownership explanation; no gate or baseline was weakened.
+
+Simplicity pre-check: reuse the existing installed consumer, native database,
+canonical schema observer and gateway type adapter rather than a scaffolder,
+synthetic migration or parallel upgrade framework. Preliminary read-only source
+fit caught a plain driver's timestamp decoder mismatch; composing the existing
+installed gateway overrides fixes the application readback. This is not counted
+native review. Exact committed candidate review by two fresh independent FULL
+reviewers, one considering a simpler solution, and required clean-tree full
+verification remain owed. Review cycles, findings and 24-hour expiry follow the
+existing native mechanism. No PR or completion claim is created by these notes.
+
+Self-retro: checking the real application connection against the existing
+operations proof caught the timestamp mismatch before behavioral execution;
+the unchanged-schema path proves compatibility without inventing a backfill.
+
+## Earlier C+D candidate working record (2026-10-27)
+
 Status: Unicode identity repair after the second candidate evaluation
 (2026-10-27). Native cycle 1/3 remains intact: the three CDR0 cards are closed,
 and CDR1-A-1/CDR1-S-1 remain open until fresh review. Current red/green, rebuilt

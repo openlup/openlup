@@ -170,7 +170,14 @@ The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;
 the installed consumer adds the public export, custom app files, crash/resume
 and a no-op falsifier. Range admission remains caller evidence, separate from
-actual PostgreSQL compatibility. No new runner or required job is added.
+actual PostgreSQL compatibility. The existing native cold scenario also invokes
+the [versioned application witness](scripts/packages/application-upgrade-proof.ts):
+the canonical runner first observes its complete ledger and object inventory,
+then two executable app releases use the same schema and installed packages
+through an explicitly granted application login. Real control writes/readback,
+interrupted file replacement/resume and compatible code rollback preserve durable
+data and adopter files. This proves no database migration or hosted profile.
+No new runner, container matrix or required job is added.
 Its owned child Node witness is registered by exact path in the existing public
 execution inventory; the classifier and all other entries remain unchanged.
 
@@ -2631,6 +2638,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-28, M14 installed application upgrade: a plain PostgreSQL driver
+  decodes timestamps differently from the selected operations adapter → compose
+  the existing gateway type overrides in the actual application connection.
 
 - 2026-10-27, M14 qualified-runtime witness: generic lane escaped its reference
   binding → compose the existing named diagnostic lane and privacy unit of work,

@@ -7,6 +7,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "server/adapters/s3/objectStorageConformance.test.ts",
   "scripts/packages/outbox-consumer-proof.ts", "scripts/packages/outbox-disposable-postgres.ts", "scripts/packages/pack-manifest-input.ts", "scripts/packages/required-package-gates.ts", "scripts/packages/required-package-gates.test.ts",
   "scripts/packages/platform-cold-consumer.ts",
+  "scripts/packages/application-upgrade-proof.ts",
   "packages/core/scripts/api-contract.ts", "packages/core/scripts/core-package-consumer-smoke.ts",
   "packages/core/scripts/documentation-contract.ts", "packages/core/scripts/refuse-publish.ts",
   "packages/core/scripts/release-bundle.ts", "packages/core/scripts/release-check.ts", "packages/core/scripts/release-npm-checks.ts",

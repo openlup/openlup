@@ -97,6 +97,10 @@ The package README remains the short import entry, the package reference owns
 the disposable recipe, and database/runtime owners retain their separate
 compatibility and admission duties. Generated navigation adds no upgrade,
 installation or provider claim.
+The installed versioned-application witness routes to that same file-upgrade
+owner. Its existing native cold scenario observes the canonical database before
+fixture grants and exercises real operations through an application login;
+the database owner retains schema compatibility and qualified-role acceptance.
 
 The lifecycle legacy PostgreSQL role helper, its package witness and actual
 PostgreSQL witness route to the

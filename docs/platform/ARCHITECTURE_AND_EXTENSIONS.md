@@ -2143,6 +2143,21 @@ results establish proof; authored witnesses alone do not. The
 [neutral disposable recipe](PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade)
 uses this boundary without claiming a complete npm or database upgrade service.
 
+The [installed application witness](../../scripts/packages/application-upgrade-proof.ts)
+adds two executable versions of a disposable control application to that cold
+consumer's existing native PostgreSQL scenario. Before the application fixture
+grants, the canonical runner observes the complete installed migration ledger
+and object inventory; its applied count supplies the caller's schema ordinal.
+Both application versions use that same schema and installed package set. Their
+own restricted login executes real control writes and reads through the installed
+operations adapter. The witness retains customized and unmanaged files, refuses
+a divergent managed file before writes, interrupts an actual replacement,
+resumes and runs the new application, then rolls compatible application code
+back while retaining durable data. The application fixture's explicit grants
+are separate from qualified-install role acceptance. This scenario neither
+upgrades the database nor qualifies another schema, host or OpenLup version;
+an authored witness establishes no passing execution result.
+
 The same lifecycle entry exports the injected-query
 `inspectLegacyPostgresInstallRoles` helper. Its fixed read-only observation is
 limited to `legacy-fresh-bootstrap-role-prerequisites` and
