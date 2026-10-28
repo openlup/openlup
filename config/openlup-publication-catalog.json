@@ -25814,6 +25814,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/m14ApplicationActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/m14EffectActor.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/m14EffectProvider.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
       "class": "public-output"
     },
@@ -25883,6 +25895,10 @@
     },
     {
       "path": "tests/postgres/m05CatalogComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ApplicationCohort.ts",
       "class": "public-output"
     },
     {
@@ -25999,6 +26015,10 @@
     },
     {
       "path": "tests/postgres/runIdentityEnvelopeConformance.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runM14EffectHandover.ts",
       "class": "public-output"
     },
     {

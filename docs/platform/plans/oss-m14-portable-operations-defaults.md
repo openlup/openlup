@@ -22,10 +22,13 @@ browser use, release dispatch, npm publication, deployment, settings and product
 remain outside authority. Any required stabilized API/control/budget read precedes
 DCO; independent native review and final verification follow it.
 
-The dedicated branch is `codex/oss-m14-portable-ops-defaults`. Initial code base
-and separately refreshed policy pin are both
-`bb65598632c07e89654a1e663219e62a33f06dd3`. No previous task's review budget or
-verification stamp is reused.
+The dedicated branch is `codex/oss-m14-portable-ops-defaults`. Its initial code
+base and pre-read policy pin were `bb65598632c07e89654a1e663219e62a33f06dd3`.
+Before counted review, `origin/main` advanced to
+`56322b88eafa1a3518ce573e718c67ccd3631c3a` through #415 and touched the
+documentation inventory paths. The signed branch integrates that base; generated
+source navigation includes both sets of additions. No previous task's review
+budget or verification stamp is reused.
 
 ## Acceptance and proof plan
 
@@ -71,7 +74,8 @@ witnesses. This is working proof, not canonical final verification or coverage.
 The policy revision was refreshed again at this boundary and remains unchanged.
 The stabilized API/security-composition read was accepted on 28 October against
 the exact packet tree `29152af67a6052318ccc574d27b61401a2835dd8`.
-DCO, two fresh FULL reviews and canonical verification remain pending.
+The signed implementation commit precedes the main integration; two fresh FULL
+reviews and canonical verification remain pending.
 Native repair cycles consumed: none;
 queue retries: none. No native session has been prepared.
 No delivery or completion is claimed.

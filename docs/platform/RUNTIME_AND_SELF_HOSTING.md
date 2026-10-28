@@ -13,6 +13,22 @@ drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
 cannot activate the target and must not pause active subscription state. The
 local synthetic HTTP probe establishes its fixture semantics only.
 
+The [native handover fixture](../../tests/postgres/runM14EffectHandover.ts)
+uses actual restricted-runtime dispatch and review HTTP/storage composition in
+four owned local processes. It observes the binding's startup and natural30s
+interval, admits raw bodies before the same-grant held finalize, and releases
+real filesystem operations after network exclusion. The host then removes the
+exact processes. Because a severed client socket can leave a server transaction,
+its disposable migration owner may terminate only previously observed actor
+backends whose PID, start time, database, principal and actual boot-bound
+application name still match. Unknown clients or reused identities refuse;
+there is no terminate-by-user/prefix, database restart or lease/time manipulation.
+The coordinator closes its source mutation clients before the final read-only
+capture and permits no later source business write, gate release or recreation.
+Target composition follows verified graph and complete private-root publication.
+This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
+adopter ACLs, provider qualification and whole-store RTO remain separate.
+
 For a graceful Node shutdown, await the host's cached `stop()` promise before
 disposing callback dependencies. The scheduler fences its current registrations
 synchronously and drains admitted callbacks through lock release. The host keeps
