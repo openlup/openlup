@@ -424,10 +424,11 @@ pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain five issued bound units and the approved-but-unintroduced completion
-fixture without installing it. Reader preparation landed before the exact sixth
-approval row; the five issued rows and their byte identities remain unchanged.
-The approved tail grants
+retain six exact bound units, including the
+[runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
+now selected as the final qualified tail. Reader preparation landed before the
+sixth approval row, and that approval landed before this SQL introduction.
+All six approval rows and their byte identities remain unchanged. The tail grants
 the existing runtime group context INSERT on its four columns, UPDATE on its
 three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.
 Its local guard requires an unswitched installer owning both targets, the
@@ -446,12 +447,16 @@ actual main, append the exact sixth hash in a pin-only change. Only after that
 approval is actual main may a feature introduce the identical active SQL and
 append its selected manifest row. Keep all trusted co-location checks intact.
 
-The active schema-2 manifest remains unchanged: legacy 88 units and the two
-restore-bound qualified 90-unit inventories. A later separately introduced
-completion unit must append after the complete retained-import prefix and remain
-the final qualified tail. It needs newly measured complete inventories for both
-selected binding shapes; this control preparation supplies neither. Historical
-E-only 89-unit expectations and issued F90 expectations retain their attribution.
+The active schema-2 manifest preserves legacy 88 units and appends only the exact
+completion after the entire qualified F90 prefix, selecting 91 units. Its two
+restore-bound inventories were measured independently on clean PostgreSQL16
+references with migration/bootstrap aliased and distinct. The historical F90
+expectations and raw evidence remain retained; reference measurements do not
+establish production status/apply/replay or normal-runtime qualification. The
+existing four-case production-composition witness checks both shapes in the two
+existing role modes. It also exercises the actual normal-runtime preparation lane
+and review receipt commands, with receipt mutation, context key and neighboring
+privilege refusals. Historical E-only 89-unit expectations retain their attribution.
 There is no optional `withRestoreForward` field or new selection mode.
 Prior source approval establishes no installation, managed-host, publication or
 activation evidence.
@@ -1106,6 +1111,16 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The runtime-completion forward follows the entire qualified F90 prefix, preserving
+all issued identities while selecting 91 units and two newly measured restore-bound
+inventories. It completes the existing normal-runtime preparation context writes
+and review replay-receipt reads/appends. Its column grants exclude context key
+updates, and receipt UPDATE/DELETE/TRUNCATE remain denied. Apply the complete
+selected catalogue through the existing executor and ledger; this exact grant
+completion does not authorize owner fallback, legacy relabelling or a new role mode.
+The production-composition witness includes actual restricted-runtime commands
+and refusals; reference inventory derivation alone does not qualify those commands.
 
 The existing qualified target/separate-restore witness connects the native G17
 observation host binding through actual restricted R. Bootstrap setup seeds the

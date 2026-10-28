@@ -1559,67 +1559,68 @@ root tests. Run the changed witness itself before the broad gate; a passing
 composition sibling does not replace its fixture. Existing selector reuse
 closes the cause without duplicating the whole qualified catalogue.
 
-### Runtime completion prior controls, 28 October 2026
+### Runtime completion, 28 October 2026
 
-Outcome: prepare only the exact sixth prior-approval pin, with its fixture
-approved but unintroduced. This necessary recovery continues the approved M14
-through C6 programme and ordinary reviewed delivery through confirmed merge.
-Publication, activation, live provisioning/cutover, deployment, credentials and
-settings remain excluded. Root appoints this sole implementation contributor
+Outcome: introduce the exact separately approved runtime-completion SQL and
+ordinary qualified 91 tail with two real reference inventories. This necessary
+recovery remains within the approved M14 through C6 programme and ordinary
+reviewed delivery through confirmed merge. Root appoints the sole contributor
 and supervises technical read, DCO, submission and merge; all source authors
 remain excluded from independent review. No new programme or budget is created.
+Publication, activation, live provisioning/cutover, deployment, credentials and
+settings remain excluded. No additional role mode or installation matrix is added.
 
-The FIRST reader-only checkpoint landed as PR410, main commit
-`8da4af5a712e22a6fc7b4ba0507e425fdbfe0115`. Root confirmed two fresh FULL
-reviews, canonical full 14/14 PASS in 696.383 seconds, source/group 12/12 PASS
-and confirmed merge. That evidence belongs to reader head
-`21b3b12ad6f448a19db39c26aae36918f49a46af`, not this changed pin candidate.
-The original native session remains append-only and unchanged; root will later
-prepare the changed checkpoint in that same history without resetting cycles.
+Reader support landed as PR410, main commit 8da4af5a; the exact sixth pin landed as
+PR411, main `1ef786beaa6c883c5f550923d33b319b0f642d0c`, with two fresh FULL
+reviews and actual source/group 12/12 PASS. Their native and full-proof histories
+remain attributed to their own trees, with the original session append-only.
+Root prepares this changed third checkpoint in that same history; no reset.
+Current code base is `1ef786beaa6c883c5f550923d33b319b0f642d0c`.
+Separately verified policy is `1ef786beaa6c883c5f550923d33b319b0f642d0c`.
+The former G1 stack pin remains unset; no freshness merge is needed.
 
-Current code base is `8da4af5a712e22a6fc7b4ba0507e425fdbfe0115`.
-Separately verified current policy is
-`8da4af5a712e22a6fc7b4ba0507e425fdbfe0115`.
-The former G1 stack pin is unset for this checkpoint because reader support is
-already on actual main. Historical 333/G1 inputs, diagnostics, first failures,
-full chronology and delivered-reader evidence remain in existing task evidence.
-
-The only registry delta appends
-q2_20261028100000_runtime_capability_completion.sql with SHA-256
+The canonical 53-line SQL equals its approved inert fixture byte-for-byte:
+q2_20261028100000_runtime_capability_completion.sql, SHA-256
 `ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e`.
-Its unchanged 53-line fixture is approved but unintroduced. It binds only the
-demonstrated context grants and receipt SELECT/INSERT, with the existing
-installer-ownership/runtime-binding guard and trusted preflight. No active SQL,
-manifest, runtime API, role, ownership, RLS, trigger or npm asset changes here.
-The first five approval rows, all issued SQL/fixtures, legacy88, F90 and both
-selected inventories retain their exact bytes and positions.
+It grants context INSERT on four columns, UPDATE on three non-key columns and
+DELETE, plus review-command receipt SELECT/INSERT. Existing installer ownership,
+runtime binding and trusted preflight remain required; no receipt mutation,
+TRUNCATE, ownership, role, RLS, trigger or production API change is introduced.
+All six prior pins, five issued SQL units and fixtures retain their exact bytes.
+
+The manifest preserves legacy 88/cfe3 and every F90 prefix identity/position,
+then appends only this exact unit at position 90. Its two genuine withRestore
+expectations came from independent sequential PostgreSQL16 references: actual
+migration/bootstrap aliased and distinct, installer-managed with restore present.
+The first actual measurement exited 0 in 5.670 seconds; root checked both raw
+payloads, exact 91 ledgers, unchanged 90 prefix and successful owned cleanup.
+The old F90 expectations and all raw measurement evidence remain historical;
+these two measurements are not production target/runtime qualification.
 
 The trusted-old-reader diagnostic accepted five rows and rejected six before
-its no-SQL return. Reader support therefore landed first; this exact pin-only
-approval must land next, before identical active SQL and manifest91 with its
-own real inventory/runtime proofs. Trusted guards/callers stay intact. Neither
-pin approval nor fixture integrity establishes installation or qualification.
-No cap, numeric reserve, dependency, package file or allowance is added.
+its no-SQL return. Delivery therefore required reader, pin, then active SQL in
+that order on actual main. Guards, readers, admission, runner and projectors stay
+unchanged. An alleged escape issue was refuted by actual byte inspection before
+execution; no operative repair, runtime failure or native cycle resulted.
 
-This pin candidate passed policy/navigation, inventory, manifest, AST and
-whitespace; fixed-reader/admission regressions passed 24/24 in 8.23 seconds.
-Required lint/build prerequisites passed with zero errors/33 existing warnings;
-five type projects, all three APIs and three working packs passed, including
-all 17 platform browser checks. Inputs stayed frozen; actual child tools and
-unset stack pin were checked. No PostgreSQL, installed, cold or full ran here.
+Working proof passed policy/navigation/inventory/manifest/AST, 71/71 controls,
+lint/build prerequisites (33 existing warnings), five type projects, three APIs
+and working packs. Four production cases passed in 46.49 seconds with normal-R
+preparation, receipts/refusals and 91 inventories; retained legacy/prefix-race/
+baseline/session/preparation passed 31/31. The first duplicate-fixture failure
+was repaired in test only. Docker preflight skipped four before authorized
+transport recovery; all owned PostgreSQL cleanup and broker release completed.
 
-Platform file headroom remains zero: 2,574 code and 2,628 total files at their
-unchanged caps. This root-only pin has no package-file delta. Every claimed
-working result must be attributed to this candidate; reader results above
-remain historical. The finite batch preserves first failures and releases its
-broker/process allocation immediately at terminal results.
+Platform pack is byte-identical to the prior artifact: 2574 code/2628 total
+files, zero file headroom; all 17 browser checks passed. No npm asset or reserve
+was added. Package APIs, metadata, caps and release machinery stay unchanged.
+Remaining: root's stabilized final API/control/notes/budget/recovery read before
+DCO, two fresh FULL reviews in the existing history, canonical full and actual
+source/group admission/checks before reviewed merge.
+Before installation, source recovery reverts this unissued tail and manifest
+selection. After application, preserve the ledger and use a reviewed corrective
+forward; never edit issued SQL or delete ledger rows. No adopter database changed.
 
-Remaining: root's stabilized API/control/notes/budget/recovery read before DCO,
-two fresh FULL reviews in the existing history, canonical full verification and
-actual source/group admission/checks before reviewed merge. Active SQL waits
-for this exact pin on main. Before activation, source recovery can revert only
-this unintroduced pin/status checkpoint; no database or ledger needs rollback.
-
-Retro: landing the supported reader first preserved trusted admission. Keeping
-this next change to one exact prior pin avoids premature SQL, inventory or
-package-budget work and preserves the delivered reader's evidence attribution.
+Retro: isolate the named predecessor in a future-append fixture when SQL arrives;
+existing assertions suffice. Inspect actual hex before proposing a repair from
+presentation escaping; that concern added no runtime defect.

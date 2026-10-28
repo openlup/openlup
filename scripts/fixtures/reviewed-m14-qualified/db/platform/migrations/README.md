@@ -1,13 +1,15 @@
 # Qualified installation approval fixtures
 
-The five issued inert files retain the exact whole bytes bound in
+The six inert files retain the exact whole bytes bound in
 [`qualifiedInstallations`](../../../../../../config/reviewed-platform-forwards.json).
-The sixth runtime-completion fixture is approved but unintroduced; its exact
-whole-file digest is now bound by the sixth prior-approval row.
+The sixth runtime-completion fixture equals its separately introduced canonical
+SQL, bound by the unchanged sixth prior-approval row.
 They are not an installation chain, a package SQL export or a migration source.
-Reader preparation landed before this sixth approval row. The five issued rows
-and canonical schema-2 manifest's legacy 88-unit and restore-bound qualified
-90-unit selections remain unchanged. Trusted admission parses a changed registry
+Reader preparation landed before this sixth approval row, which landed before
+active SQL. All six approval rows and the canonical manifest's legacy 88-unit
+selection and complete F90 prefix remain unchanged; qualified selection now
+appends only the exact completion as unit 91 with two measured withRestore
+inventories. Trusted admission parses a changed registry
 using main's reader before its no-SQL return, so reader support must land first.
 Only after the exact sixth approval lands may the SQL feature introduce the
 identical file and append its selected row.

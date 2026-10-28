@@ -1210,6 +1210,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
