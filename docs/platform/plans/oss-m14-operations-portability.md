@@ -283,3 +283,36 @@ Self-retro: repeated integration transcripts obscured the current source/release
 boundary. One current record with pinned history preserves failures and authority
 without making old measurements look like proof of the repaired transfer tree.
 No implementation, test, review or delivery result was created by compaction.
+
+### Qualified owner path hardening (F5)
+
+Status: local control preparation; delivery awaits the applicable maintainer
+read. The bounded outcome is to pin name resolution in the owner-executed
+acquisition and retained-import paths of the current qualified-v2 installation.
+Preserve its issued 91-unit prefix and six approval rows; introduce only one
+separately reviewed forward with exact function and file identities. Both
+declared role modes retain their ordinary behavior.
+
+Bart Roszkowski is the accountable owner. The active supervisor may prepare,
+verify, commit, submit and merge this parcel after the required read and native
+review. Release dispatch, npm publication, deployment, settings, credentials
+and adopter activation remain separate owner actions. The corrected package
+release is outside this parcel.
+
+Acceptance requires the forward to change only the fixed owner-executed
+definitions, keep selected metadata, migration ledger and object inventory
+coherent, and pass real PostgreSQL negative and ordinary behavior proof on
+both affected paths and role modes. Existing source controls and package gates
+remain binding. First deliver the fixed forward reader as a separate control
+change, then bind the exact forward and prove the qualified chain. Adjacent M14
+work may require a signed main integration and renewed review. Execution
+evidence and a short self-retro will be recorded here at completion.
+
+Control-preparation checkpoint: the focused manifest/admission selection passed
+26/26; policy, inventory, neutrality, UI neutrality, structural rules, lint and
+redacted staged-diff scanning passed. This is reader evidence only; it is not
+installation or runtime proof. The required security-control read precedes DCO.
+Self-retro for this stopped run: the existing fixed six-row reader required an
+explicit seventh-tail preparation before any forward bytes could be admitted.
+Using its existing approval list and exact preimages kept that control change
+bounded and left the active installation untouched.

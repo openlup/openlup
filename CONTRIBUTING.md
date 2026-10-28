@@ -166,6 +166,12 @@ cannot duplicate its fixture. These structural checks are not live inventory
 qualification. Reader support and the exact sixth-pin approval landed separately
 before SQL introduction; qualified 91 preserves legacy 88 and the entire F90 prefix.
 The SQL feature still needs its own runtime and inventory evidence. The
+prepared reader additionally reserves one qualified owner-path forward after
+the runtime-completion tail. Its fixed function preimages and exact forward
+bytes require approval before SQL introduction; the control witness refuses
+changed bodies, extra definitions and an earlier position. This preparation
+does not add the forward to the selected 91-unit plan.
+The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
 is visible to a second actual migration login, which refuses under the held

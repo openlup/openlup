@@ -8,11 +8,11 @@ import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { git as readGit } from "./agent-review-session.mjs";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.js";
 import {
-  QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE,
+  QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE,
 } from "./platform-migration-manifest.js";
 import {
-  assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward,
-  readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type ReviewedForwardRegistry,
+  assertCoLocatedForwardApproval, assertForwardApproval, assertQualifiedOwnerPathForward, assertReviewedPlatformForward,
+  readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, sqlStatements, type ReviewedForwardRegistry,
 } from "./reviewed-platform-forward.js";
 
 // Observe both trusted entry points without replacing their actual Git/SQL checks.
@@ -59,6 +59,47 @@ it("reads only the fixed ordered qualified identities with exact digest fields",
     change(changed);
     expect(() => readReviewedForwardRegistry(Buffer.from(encode(changed)))).toThrow(/qualified installation approval/);
   }
+});
+
+it("pins the appended owner definitions to the issued preimages and exact path-only replacement", () => {
+  const signatures = [
+    "acquisition_private.keyed_digest(text,jsonb)",
+    "acquisition_private.case_projection(uuid)",
+    "acquisition_private.refuse_append_only_mutation()",
+    "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamptz)",
+    "public.acquisition_case_operator_list_v1(uuid,timestamptz,uuid,integer)",
+    "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamptz)",
+    "public.acquisition_case_active_count_v1()",
+    "public.customer_subject_capture_lifecycle()",
+    "public.subscription_delivery_alignment_guard_cycle_insert()",
+  ];
+  const sources = [QUALIFIED_ACQUISITION_FILE, QUALIFIED_IMPORT_FILE].map(path => readFileSync(path));
+  const prior = sources.flatMap(source => sqlStatements(source.toString("utf8")));
+  const statements = signatures.map(signature => {
+    const name = signature.slice(0, signature.indexOf("("));
+    const statement = prior.find(value => value.startsWith(`CREATE FUNCTION ${name}(`) || value.startsWith(`CREATE OR REPLACE FUNCTION ${name}(`));
+    if (!statement) throw new Error(`missing issued source for ${name}`);
+    return statement;
+  });
+  const after = statements.map(statement => statement.replace(/^CREATE FUNCTION /u, "CREATE OR REPLACE FUNCTION ")
+    .replace(/SET search_path = pg_catalog(\s+AS\b)/u, "SET search_path = pg_catalog, pg_temp$1"));
+  const bytes = Buffer.from(`${after.join("\n\n")}\n`);
+  const binding = { path: QUALIFIED_OWNER_PATH_FILE, sha256: sqlSha256(bytes), functions: signatures.map((signature, index) => ({
+    signature, beforeSha256: sqlSha256(statements[index]!), afterSha256: sqlSha256(after[index]!),
+  })) };
+  const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
+  const approved = { ...registry, qualifiedInstallations: [...registry.qualifiedInstallations!, binding] };
+  expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
+  expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
+  const wrongBody = Buffer.from(bytes.toString("utf8").replace("RAISE EXCEPTION 'acquisition_append_only'", "RAISE EXCEPTION 'changed'"));
+  expect(() => assertQualifiedOwnerPathForward({ ...binding, sha256: sqlSha256(wrongBody) }, wrongBody, sources)).toThrow("function identity or preimage drifted");
+  const extra = Buffer.from(`${bytes}SELECT 1;\n`);
+  expect(() => assertQualifiedOwnerPathForward({ ...binding, sha256: sqlSha256(extra) }, extra, sources)).toThrow("missing or extra definition");
+  const wrongPreimage = structuredClone(binding);
+  wrongPreimage.functions[0]!.beforeSha256 = "a".repeat(64);
+  expect(() => assertQualifiedOwnerPathForward(wrongPreimage, bytes, sources)).toThrow("preimage drifted");
+  const reordered = { ...approved, qualifiedInstallations: [...approved.qualifiedInstallations].reverse() };
+  expect(() => readReviewedForwardRegistry(Buffer.from(encode(reordered)))).toThrow("qualified installation approval");
 });
 
 it("preserves issued fixture bindings while preparing the unapproved sixth identity", () => {

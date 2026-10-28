@@ -11,6 +11,7 @@ import {
   QUALIFIED_IMPORT_FILE,
   QUALIFIED_RUNTIME_FILE,
   QUALIFIED_RUNTIME_COMPLETION_FILE,
+  QUALIFIED_OWNER_PATH_FILE,
   readPlatformMigrations,
   selectPlatformMigrationManifest,
   sha256,
@@ -135,6 +136,25 @@ describe("canonical qualified migration selection", () => {
     const reordered = structuredClone(completed);
     [reordered.qualified.forward[0], reordered.qualified.forward[1]] = [reordered.qualified.forward[1]!, reordered.qualified.forward[0]!];
     expect(evaluatePlatformMigrationManifestHistory(previous, reordered, [completion.file])).toContain("qualified migration manifest must preserve the previous prefix");
+  });
+
+  it("allows an appended owner path forward only after the issued completion tail", () => {
+    if (raw.schemaVersion !== 2) throw new Error("canonical fixture requires schema 2");
+    const content = "-- synthetic owner path forward\nSELECT 1;\n";
+    const entry = { file: QUALIFIED_OWNER_PATH_FILE, sha256: sha256(content) };
+    const next = structuredClone(raw);
+    next.qualified.forward.push(entry);
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations, { file: entry.file, content }];
+    expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(raw, next, [entry.file])).toEqual([]);
+    expect(selectPlatformMigrationManifest(next, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }).forward.at(-1)).toEqual(entry);
+    const early = structuredClone(next);
+    const last = early.qualified.forward.length - 1;
+    [early.qualified.forward[last], early.qualified.forward[last - 1]] = [early.qualified.forward[last - 1]!, early.qualified.forward[last]!];
+    expect(evaluatePlatformMigrationManifest({ manifest: early, migrations })).toContain("qualified owner path forward must be the final tail after runtime completion");
+    const legacy = structuredClone(next);
+    legacy.forward.push(entry);
+    expect(evaluatePlatformMigrationManifest({ manifest: legacy, migrations }).length).toBeGreaterThan(0);
   });
 
   it("rejects omitted/reordered shared units, unqualified bootstrap reuse and early sealing", () => {
