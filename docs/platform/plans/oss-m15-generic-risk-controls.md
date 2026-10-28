@@ -1645,3 +1645,56 @@ M14 content, R2 delegation and R3 privacy source remain unchanged; no lockfile
 delta or cap change. Use existing generators and focused checks with two workers,
 then make the local DCO merge and run the official full-stack package gate.
 The exact predecessor becomes the final documentation comparison after commit.
+
+### Current-main maintenance results — 2026-10-28
+
+Local DCO merge candidates: R1 `5affb9c4`, R2 `c2c1c31c`, R3 `4c19091e`.
+R1 had no textual conflict. R2/R3 resolved only the shared task-record append
+point; every section of both parent histories is preserved. Main's new release
+gate test is byte-identical in each tree, and each tree's risk source, package
+tests and risk API snapshots match its starting head. Lockfiles and all platform
+caps are unchanged. No npm ci, rebase, force-push, push or external write occurred.
+
+| Requested check | R1 | R2 | R3 |
+| --- | --- | --- | --- |
+| Ast-grep scan, two threads | PASS | PASS | PASS |
+| Lint | PASS; 0 errors, 33 warnings | PASS; 0 errors, 33 warnings | PASS; 0 errors, 33 warnings |
+| Workspace API checks | PASS | PASS | PASS |
+| Risk tests, two workers | 23/23 PASS | 42/42 PASS | 58/58 PASS |
+| Platform API update; policy; docs-update | PASS; no generated delta | PASS; no generated delta | PASS; no generated delta |
+| Final documentation policy | PASS; 5 obligations | PASS; 8 obligations | PASS; 3 obligations |
+| Official packages:check | PASS; 3 packages, no findings | Not requested | PASS; 3 packages, no findings |
+
+All commands use Node 24.21.0 and npm 11.19.0. Root has no standalone
+api:check/api:update scripts: use the supported workspace API checks and platform
+API updater. Final upper-tree policy checks use their exact committed predecessor.
+Logs and retained official tarballs are under the scratch path recorded above.
+R3's official retained artifact is bound to merge candidate `4c19091e`; its
+integrity is
+`sha512-kziihAVV0UuEq5qKNW7SbQN3oK1xKdIgPXalzCzo7/8IqGyvJTv2iXwoB8OhFNjmJx7UqCxkYqLlD+J2NaxK2A==`.
+This completion record changes no packed inputs. Existing measurePack and
+checkPackBudget functions read the retained official tarball:
+
+| Full-stack platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,961,324 | 2,029,568 | 68,244 |
+| Unpacked bytes | 9,161,816 | 9,447,424 | 285,608 |
+| Files | 2,680 | 2,712 | 32 |
+| Code gzip bytes | 1,687,466 | 1,743,872 | 56,406 |
+| Code files | 2,625 | 2,656 | 31 |
+| Docs gzip bytes | 60,493 | 73,728 | 13,235 |
+| Docs files | 5 | 10 | 5 |
+
+Every cap is met, including the browser caps checked by the official gate.
+CD-M15-6a is not triggered; no 102% rounding, cap adjustment, changed allocation
+reason or second cascade is needed. Existing CD-M15-6 measurements remain
+historical. Full verification, counted native review/admission and remote
+delivery remain coordinator obligations; existing review histories and budgets
+are not reset or refreshed by these local observations.
+
+Self-retro: the existing generators produced identical bytes and no cap repair
+was necessary. An initial whole-record substring assertion was too strong for
+interleaved append histories; checking each original section instead proved
+preservation without duplicating the record. Focused lint took 31–39 seconds
+per tree. Keep final package evidence tied to the retained official artifact;
+no new mechanism or successor work is justified.
