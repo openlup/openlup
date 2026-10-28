@@ -146,8 +146,13 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
-The package runner validates the migration ledger's catalog identity, ownership
-and shape before reading applied rows. It keeps the validated relation stable
+The package runner admits the migration ledger only when its system-catalog
+shape matches the canonical baseline ledger: a permanent heap table with the
+expected owner, columns, defaults, constraints and indexes, without partition
+or inheritance links, triggers, rules, row policies or extended statistics.
+The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
+major with different catalog expression trees is refused until separately qualified.
+It checks this before reading applied rows, keeps the admitted relation stable
 through complete inventory projection and reads only rows belonging to the
 ledger itself. These checks apply to legacy and qualified sources. Legacy
 bootstrap ownership remains accepted; qualified session admission still

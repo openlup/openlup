@@ -68,87 +68,80 @@ type AppliedLedger = { oid: string | null; applied: readonly PlannedMigration[] 
 type AdvisoryUnlockRow = { unlocked: unknown };
 const ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
 const RELEASE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
-// Observe only built-in catalog values before touching the named relation. A
-// bootstrap superuser may own a legacy ledger read by a different migration login.
+// The expected catalog projection is pinned to the ledger CREATE TABLE in
+// db/platform/migrations/00000000000000_platform_baseline.sql. The raw catalog
+// expression trees keep operator, function, type and constant identities; only
+// source locations are normalized. PostgreSQL 16 and 17 produce this same shape.
+const EXPECTED_LEDGER_CATALOG_SHAPE = {
+  "relation": ["r","p",false,"0",false,false,false,false,true,3,"d",false,false,"heap",null],
+  "columns": [[1,"catalog_path","25",-1,"100",true,"","",false,false,0,false,"x","",null,null],[2,"sha256","25",-1,"100",true,"","",false,false,0,false,"x","",null,null],[3,"position","23",-1,"0",true,"","",false,false,0,false,"p","",null,null],[4,"executed_at","1184",-1,"0",true,"","",true,false,0,false,"p","",null,null]],
+  "defaults": [[4,"{FUNCEXPR :funcid 2648 :funcresulttype 1184 :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid 0 :args <> :location ?}"]],
+  "constraints": [["platform_schema_migrations_catalog_path_check","c",false,false,true,false,true,0,[1],"{OPEXPR :opno 641 :opfuncid 1254 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({VAR :varno 1 :varattno 1 :vartype 25 :vartypmod -1 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location ?} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location ? :constvalue 59 [ 236 0 0 0 94 100 98 47 112 108 97 116 102 111 114 109 47 109 105 103 114 97 116 105 111 110 115 47 91 65 45 90 97 45 122 48 45 57 93 91 65 45 90 97 45 122 48 45 57 95 45 93 42 92 46 115 113 108 36 ]}) :location ?}",null],["platform_schema_migrations_pkey","p",false,false,true,true,true,0,[1],null,"platform_schema_migrations_pkey"],["platform_schema_migrations_position_check","c",false,false,true,false,true,0,[3],"{OPEXPR :opno 525 :opfuncid 150 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location ?} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location ? :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location ?}",null],["platform_schema_migrations_position_key","u",false,false,true,true,true,0,[3],null,"platform_schema_migrations_position_key"],["platform_schema_migrations_sha256_check","c",false,false,true,false,true,0,[2],"{OPEXPR :opno 641 :opfuncid 1254 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({VAR :varno 1 :varattno 2 :vartype 25 :vartypmod -1 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location ?} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location ? :constvalue 18 [ 72 0 0 0 94 91 48 45 57 97 45 102 93 123 54 52 125 36 ]}) :location ?}",null]],
+  "indexes": [["platform_schema_migrations_pkey","i","p","btree",null,true,true,false,true,false,true,false,true,true,false,false,1,1,"1","3126","100","0",null,null],["platform_schema_migrations_position_key","i","p","btree",null,true,false,false,true,false,true,false,true,true,false,false,1,1,"3","1978","0","0",null,null]],
+  "counts": [0,0,0,0,0,0],
+};
+const expectedLedgerShapeJson = JSON.stringify(EXPECTED_LEDGER_CATALOG_SHAPE).replaceAll("'", "''");
+// All observations use system catalogs and built-in functions/operators before
+// the named relation is locked or read. The second observation runs after lock.
 const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
-  (c.relkind OPERATOR(pg_catalog.=) 'r'::pg_catalog."char"
-    AND c.relpersistence OPERATOR(pg_catalog.=) 'p'::pg_catalog."char"
-    AND (owner.rolsuper OR owner.rolname OPERATOR(pg_catalog.=) current_user)
-    AND NOT c.relrowsecurity AND NOT c.relhasrules AND NOT c.relhastriggers
-    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
-      JOIN pg_catalog.pg_type t ON t.oid OPERATOR(pg_catalog.=) a.atttypid
-      JOIN pg_catalog.pg_namespace tn ON tn.oid OPERATOR(pg_catalog.=) t.typnamespace
-      WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
-        AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2 AND NOT a.attisdropped
-        AND (a.attgenerated OPERATOR(pg_catalog.<>) ''::pg_catalog."char"
-          OR tn.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name
-          OR NOT (a.attname OPERATOR(pg_catalog.=) ANY(ARRAY['catalog_path','sha256','position']::pg_catalog.name[])
-            OR (a.attname OPERATOR(pg_catalog.=) 'executed_at'::pg_catalog.name
-              AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.timestamptz'::pg_catalog.regtype))))
-    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
-      WHERE ((d.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_attrdef'::pg_catalog.regclass
-          AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef ad
-            WHERE ad.oid OPERATOR(pg_catalog.=) d.objid AND ad.adrelid OPERATOR(pg_catalog.=) c.oid))
-        OR (d.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_constraint'::pg_catalog.regclass
-          AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint co
-            WHERE co.oid OPERATOR(pg_catalog.=) d.objid AND co.conrelid OPERATOR(pg_catalog.=) c.oid)))
-        AND ((d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_proc'::pg_catalog.regclass
-          AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace pn
-            ON pn.oid OPERATOR(pg_catalog.=) p.pronamespace
-            WHERE p.oid OPERATOR(pg_catalog.=) d.refobjid
-              AND pn.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
-          OR (d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_operator'::pg_catalog.regclass
-            AND EXISTS (SELECT 1 FROM pg_catalog.pg_operator op JOIN pg_catalog.pg_namespace onsp
-              ON onsp.oid OPERATOR(pg_catalog.=) op.oprnamespace
-              WHERE op.oid OPERATOR(pg_catalog.=) d.refobjid
-                AND onsp.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
-          OR (d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_type'::pg_catalog.regclass
-            AND EXISTS (SELECT 1 FROM pg_catalog.pg_type dt JOIN pg_catalog.pg_namespace dns
-              ON dns.oid OPERATOR(pg_catalog.=) dt.typnamespace
-              WHERE dt.oid OPERATOR(pg_catalog.=) d.refobjid
-                AND dns.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))))
-    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef ad
-      JOIN pg_catalog.pg_attribute a ON a.attrelid OPERATOR(pg_catalog.=) ad.adrelid
-        AND a.attnum OPERATOR(pg_catalog.=) ad.adnum
-      WHERE ad.adrelid OPERATOR(pg_catalog.=) c.oid
-        AND CASE WHEN a.attname OPERATOR(pg_catalog.=) 'executed_at'::pg_catalog.name
-            AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.timestamptz'::pg_catalog.regtype
-          THEN pg_catalog.regexp_match(ad.adbin::pg_catalog.text,
-            pg_catalog.format('^[{]FUNCEXPR :funcid %s :funcresulttype %s :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid 0 :args <> :location [0-9]+[}]$',
-              'pg_catalog.statement_timestamp()'::pg_catalog.regprocedure::pg_catalog.oid,
-              'pg_catalog.timestamptz'::pg_catalog.regtype::pg_catalog.oid)) IS NULL
-          ELSE true END)
-    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint co
-      WHERE co.conrelid OPERATOR(pg_catalog.=) c.oid
-        AND CASE WHEN co.contype OPERATOR(pg_catalog.=) 'c'::pg_catalog."char"
-          AND co.conname OPERATOR(pg_catalog.=) ANY(ARRAY[
-            'platform_schema_migrations_catalog_path_check',
-            'platform_schema_migrations_sha256_check',
-            'platform_schema_migrations_position_check']::pg_catalog.name[])
-          THEN co.conbin IS NULL OR co.conbin::pg_catalog.text OPERATOR(pg_catalog.~~) '%FUNCEXPR%'::pg_catalog.text
-          ELSE co.contype OPERATOR(pg_catalog.<>) ALL(ARRAY['p','u']::pg_catalog."char"[]) END)
-    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_index i
-      JOIN pg_catalog.pg_class ic ON ic.oid OPERATOR(pg_catalog.=) i.indexrelid
-      JOIN pg_catalog.pg_am am ON am.oid OPERATOR(pg_catalog.=) ic.relam
-      JOIN pg_catalog.pg_opclass oc ON oc.oid OPERATOR(pg_catalog.=) i.indclass[0]
-      JOIN pg_catalog.pg_namespace ons ON ons.oid OPERATOR(pg_catalog.=) oc.opcnamespace
-      WHERE i.indrelid OPERATOR(pg_catalog.=) c.oid
-        AND (i.indexprs IS NOT NULL OR i.indpred IS NOT NULL
-          OR i.indnkeyatts OPERATOR(pg_catalog.<>) 1::pg_catalog.int2
-          OR am.amname OPERATOR(pg_catalog.<>) 'btree'::pg_catalog.name
-          OR ons.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
-    AND (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute a
-      WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
-        AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2 AND NOT a.attisdropped
-        AND a.attgenerated OPERATOR(pg_catalog.=) ''::pg_catalog."char"
-        AND ((a.attname OPERATOR(pg_catalog.=) ANY(ARRAY['catalog_path','sha256']::pg_catalog.name[])
-            AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.text'::pg_catalog.regtype)
-          OR (a.attname OPERATOR(pg_catalog.=) 'position'::pg_catalog.name
-            AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.int4'::pg_catalog.regtype)))
-      OPERATOR(pg_catalog.=) 3::pg_catalog.int8) AS ledger_safe
+  ((owner.rolsuper OR owner.rolname OPERATOR(pg_catalog.=) current_user)
+    AND pg_catalog.jsonb_build_object(
+      'relation', pg_catalog.jsonb_build_array(c.relkind, c.relpersistence, c.relispartition,
+        c.reloftype, c.relrowsecurity, c.relforcerowsecurity, c.relhasrules,
+        c.relhastriggers, c.relhasindex, c.relchecks, c.relreplident,
+        c.relhassubclass, c.relisshared, am.amname, c.reloptions),
+      'columns', (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(
+        a.attnum, a.attname, a.atttypid, a.atttypmod, a.attcollation, a.attnotnull,
+        a.attgenerated, a.attidentity, a.atthasdef, a.attisdropped, a.attinhcount,
+        a.atthasmissing, a.attstorage, a.attcompression, a.attoptions, a.attfdwoptions)
+        ORDER BY a.attnum), '[]'::pg_catalog.jsonb)
+        FROM pg_catalog.pg_attribute a WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
+          AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2),
+      'defaults', (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(
+        d.adnum, pg_catalog.regexp_replace(d.adbin::pg_catalog.text,
+          ':location -?[0-9]+'::pg_catalog.text, ':location ?'::pg_catalog.text, 'g'::pg_catalog.text))
+        ORDER BY d.adnum), '[]'::pg_catalog.jsonb)
+        FROM pg_catalog.pg_attrdef d WHERE d.adrelid OPERATOR(pg_catalog.=) c.oid),
+      'constraints', (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(
+        co.conname, co.contype, co.condeferrable, co.condeferred, co.convalidated,
+        co.connoinherit, co.conislocal, co.coninhcount, co.conkey,
+        CASE WHEN co.conbin IS NULL THEN NULL ELSE pg_catalog.regexp_replace(co.conbin::pg_catalog.text,
+          ':location -?[0-9]+'::pg_catalog.text, ':location ?'::pg_catalog.text, 'g'::pg_catalog.text) END,
+        ci.relname) ORDER BY co.conname), '[]'::pg_catalog.jsonb)
+        FROM pg_catalog.pg_constraint co
+        LEFT JOIN pg_catalog.pg_class ci ON ci.oid OPERATOR(pg_catalog.=) co.conindid
+        WHERE co.conrelid OPERATOR(pg_catalog.=) c.oid),
+      'indexes', (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(
+        ic.relname, ic.relkind, ic.relpersistence, iam.amname, ic.reloptions,
+        i.indisunique, i.indisprimary, i.indisexclusion, i.indimmediate,
+        i.indisclustered, i.indisvalid, i.indcheckxmin, i.indisready, i.indislive,
+        i.indisreplident, i.indnullsnotdistinct, i.indnatts, i.indnkeyatts,
+        i.indkey::pg_catalog.text, i.indclass::pg_catalog.text,
+        i.indcollation::pg_catalog.text, i.indoption::pg_catalog.text,
+        i.indexprs::pg_catalog.text, i.indpred::pg_catalog.text)
+        ORDER BY ic.relname), '[]'::pg_catalog.jsonb)
+        FROM pg_catalog.pg_index i
+        JOIN pg_catalog.pg_class ic ON ic.oid OPERATOR(pg_catalog.=) i.indexrelid
+        LEFT JOIN pg_catalog.pg_am iam ON iam.oid OPERATOR(pg_catalog.=) ic.relam
+        WHERE i.indrelid OPERATOR(pg_catalog.=) c.oid),
+      'counts', pg_catalog.jsonb_build_array(
+        (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits h
+          WHERE h.inhrelid OPERATOR(pg_catalog.=) c.oid),
+        (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits h
+          WHERE h.inhparent OPERATOR(pg_catalog.=) c.oid),
+        (SELECT pg_catalog.count(*) FROM pg_catalog.pg_trigger t
+          WHERE t.tgrelid OPERATOR(pg_catalog.=) c.oid),
+        (SELECT pg_catalog.count(*) FROM pg_catalog.pg_rewrite r
+          WHERE r.ev_class OPERATOR(pg_catalog.=) c.oid),
+        (SELECT pg_catalog.count(*) FROM pg_catalog.pg_policy p
+          WHERE p.polrelid OPERATOR(pg_catalog.=) c.oid),
+        (SELECT pg_catalog.count(*) FROM pg_catalog.pg_statistic_ext s
+          WHERE s.stxrelid OPERATOR(pg_catalog.=) c.oid)))
+      OPERATOR(pg_catalog.=) '${expectedLedgerShapeJson}'::pg_catalog.jsonb) AS ledger_safe
   FROM pg_catalog.pg_class c
   JOIN pg_catalog.pg_namespace n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace
   JOIN pg_catalog.pg_roles owner ON owner.oid OPERATOR(pg_catalog.=) c.relowner
+  LEFT JOIN pg_catalog.pg_am am ON am.oid OPERATOR(pg_catalog.=) c.relam
   WHERE n.nspname OPERATOR(pg_catalog.=) 'public'::pg_catalog.name
     AND c.relname OPERATOR(pg_catalog.=) 'platform_schema_migrations'::pg_catalog.name`;
 

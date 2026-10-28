@@ -30,6 +30,10 @@ beforeAll(async () => {
     BEGIN PERFORM pg_catalog.pg_advisory_lock(73120491::pg_catalog.int8); RETURN 'synthetic'; END $$;
     CREATE FUNCTION migration_read_probe.mark_insert() RETURNS trigger LANGUAGE plpgsql VOLATILE AS $$
     BEGIN PERFORM migration_read_probe.mark(); RETURN NEW; END $$;
+    CREATE FUNCTION migration_read_probe.mark_timestamp() RETURNS pg_catalog.timestamptz LANGUAGE plpgsql VOLATILE AS $$
+    BEGIN PERFORM migration_read_probe.mark(); RETURN pg_catalog.statement_timestamp(); END $$;
+    CREATE FUNCTION migration_read_probe.mark_position(value pg_catalog.int4) RETURNS pg_catalog.int4 LANGUAGE plpgsql IMMUTABLE AS $$
+    BEGIN PERFORM migration_read_probe.mark(); RETURN value; END $$;
     CREATE FUNCTION migration_read_probe.hashtextextended(pg_catalog.text, pg_catalog.int4)
       RETURNS pg_catalog.int8 LANGUAGE plpgsql VOLATILE AS $$
     BEGIN PERFORM migration_read_probe.mark(); RETURN 0; END $$;
@@ -132,31 +136,92 @@ it("refuses a second owner under the actual lock after a first installer committ
 
 const methods = ["status", "dry-run", "apply"] as const;
 type Method = typeof methods[number];
-const ledgerDefinition = "CREATE TABLE public.platform_schema_migrations (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4)";
+const ledgerDefinition = migrations[0]!.content.match(/CREATE TABLE public\.platform_schema_migrations \([\s\S]*?\n\);/)?.[0];
+if (!ledgerDefinition) throw new Error("canonical baseline ledger definition missing");
+const minimalLedgerDefinition = "CREATE TABLE public.platform_schema_migrations (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4)";
 const hostileLayouts = [
   ["view", `CREATE VIEW public.platform_schema_migrations AS SELECT migration_read_probe.mark() AS catalog_path,
     'synthetic'::pg_catalog.text AS sha256, 0::pg_catalog.int4 AS position`],
   ["domain column", `CREATE DOMAIN public.synthetic_ledger_text AS pg_catalog.text
     CHECK (migration_read_probe.mark() IS NOT NULL);
     CREATE TABLE public.platform_schema_migrations (catalog_path public.synthetic_ledger_text, sha256 pg_catalog.text, position pg_catalog.int4)`],
-  ["different unprivileged owner", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations OWNER TO synthetic_ledger_owner`],
-  ["row policy", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations ENABLE ROW LEVEL SECURITY;
+  ["different unprivileged owner", `${minimalLedgerDefinition}; ALTER TABLE public.platform_schema_migrations OWNER TO synthetic_ledger_owner`],
+  ["row policy", `${minimalLedgerDefinition}; ALTER TABLE public.platform_schema_migrations ENABLE ROW LEVEL SECURITY;
     CREATE POLICY synthetic_read ON public.platform_schema_migrations USING (migration_read_probe.mark() IS NOT NULL)`],
-  ["rewrite rule", `${ledgerDefinition}; CREATE RULE synthetic_insert AS ON INSERT TO public.platform_schema_migrations
+  ["rewrite rule", `${minimalLedgerDefinition}; CREATE RULE synthetic_insert AS ON INSERT TO public.platform_schema_migrations
     DO ALSO SELECT migration_read_probe.mark()`],
-  ["insert trigger", `${ledgerDefinition}; CREATE TRIGGER synthetic_insert BEFORE INSERT ON public.platform_schema_migrations
+  ["insert trigger", `${minimalLedgerDefinition}; CREATE TRIGGER synthetic_insert BEFORE INSERT ON public.platform_schema_migrations
     FOR EACH ROW EXECUTE FUNCTION migration_read_probe.mark_insert()`],
   ["extra default", `CREATE TABLE public.platform_schema_migrations
     (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4,
       extra pg_catalog.text DEFAULT migration_read_probe.mark())`],
-  ["check expression", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations
+  ["check expression", `${minimalLedgerDefinition}; ALTER TABLE public.platform_schema_migrations
     ADD CONSTRAINT synthetic_check CHECK (migration_read_probe.mark() IS NOT NULL)`],
   ["built-in default", `CREATE TABLE public.platform_schema_migrations
     (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4,
       extra pg_catalog.text DEFAULT pg_catalog.set_config('application_name','synthetic-default',false))`],
-  ["built-in check", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations
+  ["built-in check", `${minimalLedgerDefinition}; ALTER TABLE public.platform_schema_migrations
     ADD CONSTRAINT platform_schema_migrations_position_check
     CHECK (pg_catalog.set_config('application_name','synthetic-check',false) IS NOT NULL)`],
+] as const;
+
+// Each case starts from the exact ledger CREATE TABLE in the canonical baseline
+// and changes one catalog-shape dimension. Replacement kinds cannot retain its
+// row, but must still be refused by the same metadata-only admission.
+const shapeDeviations = [
+  ["partition leaf", `CREATE TABLE public.synthetic_partition_parent
+    (catalog_path pg_catalog.text NOT NULL, sha256 pg_catalog.text NOT NULL,
+      position pg_catalog.int4 NOT NULL, executed_at pg_catalog.timestamptz NOT NULL
+        DEFAULT pg_catalog.statement_timestamp())
+    PARTITION BY LIST (migration_read_probe.mark_position(position));
+    ALTER TABLE public.synthetic_partition_parent ATTACH PARTITION public.platform_schema_migrations
+      FOR VALUES IN (0, 1)`],
+  ["inheritance parent", `CREATE TABLE public.synthetic_ledger_child () INHERITS (public.platform_schema_migrations)`],
+  ["inheritance child", `CREATE TABLE public.synthetic_ledger_parent (position pg_catalog.int4);
+    ALTER TABLE public.platform_schema_migrations INHERIT public.synthetic_ledger_parent`],
+  ["domain column", `CREATE DOMAIN public.synthetic_ledger_text AS pg_catalog.text;
+    ALTER TABLE public.platform_schema_migrations ALTER COLUMN sha256 TYPE public.synthetic_ledger_text`],
+  ["function default", `ALTER TABLE public.platform_schema_migrations ALTER COLUMN executed_at
+    SET DEFAULT migration_read_probe.mark_timestamp()`],
+  ["generated column", `ALTER TABLE public.platform_schema_migrations ADD COLUMN synthetic_generated pg_catalog.int4
+    GENERATED ALWAYS AS (migration_read_probe.mark_position(position)) STORED`],
+  ["identity column", `ALTER TABLE public.platform_schema_migrations ADD COLUMN synthetic_identity pg_catalog.int4
+    GENERATED ALWAYS AS IDENTITY`],
+  ["renamed column", `ALTER TABLE public.platform_schema_migrations RENAME COLUMN sha256 TO fingerprint`],
+  ["function check", `ALTER TABLE public.platform_schema_migrations
+    ADD CONSTRAINT synthetic_check CHECK (migration_read_probe.mark() IS NOT NULL)`],
+  ["custom collation", `CREATE COLLATION public.synthetic_collation (provider = libc, locale = 'C');
+    ALTER TABLE public.platform_schema_migrations ALTER COLUMN sha256 TYPE pg_catalog.text
+      COLLATE public.synthetic_collation`],
+  ["insert trigger", `CREATE TRIGGER synthetic_insert BEFORE INSERT ON public.platform_schema_migrations
+    FOR EACH ROW EXECUTE FUNCTION migration_read_probe.mark_insert()`],
+  ["rewrite rule", `CREATE RULE synthetic_insert AS ON INSERT TO public.platform_schema_migrations
+    DO ALSO SELECT migration_read_probe.mark()`],
+  ["policy and RLS", `ALTER TABLE public.platform_schema_migrations ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY synthetic_read ON public.platform_schema_migrations
+      USING (migration_read_probe.mark() IS NOT NULL)`],
+  ["expression index", `CREATE INDEX synthetic_expression_index ON public.platform_schema_migrations
+    (migration_read_probe.mark_position(position))`],
+  ["expression statistics", `CREATE STATISTICS synthetic_expression_stats
+    ON (migration_read_probe.mark_position(position)) FROM public.platform_schema_migrations`],
+  ["wrong owner", `ALTER TABLE public.platform_schema_migrations OWNER TO synthetic_ledger_owner`],
+  ["unlogged", `ALTER TABLE public.platform_schema_migrations SET UNLOGGED`],
+  ["view", `DROP TABLE public.platform_schema_migrations;
+    CREATE VIEW public.platform_schema_migrations AS SELECT migration_read_probe.mark() AS catalog_path,
+      'synthetic'::pg_catalog.text AS sha256, 0::pg_catalog.int4 AS position,
+      pg_catalog.statement_timestamp() AS executed_at`],
+  ["materialized view", `DROP TABLE public.platform_schema_migrations;
+    CREATE MATERIALIZED VIEW public.platform_schema_migrations AS SELECT migration_read_probe.mark() AS catalog_path,
+      'synthetic'::pg_catalog.text AS sha256, 0::pg_catalog.int4 AS position,
+      pg_catalog.statement_timestamp() AS executed_at WITH NO DATA`],
+  ["foreign table", `DROP TABLE public.platform_schema_migrations;
+    CREATE EXTENSION IF NOT EXISTS postgres_fdw WITH SCHEMA migration_read_probe;
+    DROP SERVER IF EXISTS synthetic_shape_server CASCADE;
+    CREATE SERVER synthetic_shape_server FOREIGN DATA WRAPPER postgres_fdw
+      OPTIONS (host '127.0.0.1', port '1', dbname 'synthetic');
+    CREATE FOREIGN TABLE public.platform_schema_migrations
+      (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4,
+        executed_at pg_catalog.timestamptz) SERVER synthetic_shape_server`],
 ] as const;
 
 async function resetLedger(sql: string): Promise<void> {
@@ -199,6 +264,91 @@ function operate(runner: ReturnType<typeof fixtureRunner>, method: Method) {
   return method === "status" ? runner.status() : runner.apply({ dryRun: method === "dry-run" });
 }
 
+it("admits only the canonical catalog shape across commands and complete qualified inventory", async () => {
+  for (const method of [...methods, "qualified-inventory"] as const) {
+    for (const [deviation, mutation] of shapeDeviations) {
+      await resetLedger(ledgerDefinition);
+      const setup = await admin.connect();
+      try {
+        const prefix = method === "qualified-inventory" ? entries : entries.slice(0, 1);
+        for (let position = 0; position < prefix.length; position += 1) {
+          await setup.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,$3)",
+            [prefix[position]!.file, prefix[position]!.sha256, position]);
+        }
+        await setup.query(mutation);
+        // A setup-time partition check or index build may call the synthetic
+        // marker. Clear only this setup session before measuring runner calls.
+        await setup.query("SELECT pg_catalog.pg_advisory_unlock_all()");
+        if (deviation === "partition leaf" && method !== "qualified-inventory") {
+          await setup.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,1)",
+            [entries[1]!.file, entries[1]!.sha256]);
+          expect(await invocationCount()).toBeGreaterThan(0);
+          await setup.query("DELETE FROM public.platform_schema_migrations WHERE position OPERATOR(pg_catalog.=) 1");
+          await setup.query("SELECT pg_catalog.pg_advisory_unlock_all()");
+        }
+      } finally { setup.release(); }
+      expect(await invocationCount(), `${deviation} setup`).toBe(0);
+      const pool = probePool();
+      let admissions = 0, projections = 0;
+      try {
+        const runner = fixtureRunner(pool, false, () => { admissions += 1; }, async client => {
+          projections += 1;
+          await qualifiedPostgresCatalogPayload(client, {
+            generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
+            bootstrapLogin: "postgres", runtimeLogin: "synthetic_runtime",
+          }, "synthetic-ledger-preflight");
+          return inventory;
+        });
+        const result = await (method === "qualified-inventory" ? runner.status() : operate(runner, method))
+          .then(value => ({ value }), error => ({ error: error.message }));
+        expect({ result, invocations: await invocationCount(), admissions, projections }, `${deviation} / ${method}`)
+          .toEqual({ result: { error: "platform migration ledger relation is not safe to read" },
+            invocations: 0, admissions: 0, projections: 0 });
+        expect((await admin.query("SELECT pg_catalog.to_regclass('public.catalog_products') AS pending_relation")).rows)
+          .toEqual([{ pending_relation: null }]);
+      } finally { await pool.end(); }
+    }
+  }
+
+  await resetLedger(ledgerDefinition);
+  for (let position = 0; position < entries.length; position += 1) {
+    await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,$3)",
+      [entries[position]!.file, entries[position]!.sha256, position]);
+  }
+  const pool = probePool();
+  let projections = 0;
+  try {
+    const runner = fixtureRunner(pool, true, () => {}, async client => {
+      projections += 1;
+      await client.query("SELECT catalog_path,sha256,position FROM ONLY public.platform_schema_migrations ORDER BY position");
+      return inventory;
+    });
+    await expect(runner.status()).resolves.toEqual({ applied: files, pending: [] });
+    await expect(runner.apply({ dryRun: true })).resolves.toEqual({ applied: [] });
+    await expect(runner.apply()).resolves.toEqual({ applied: [] });
+    expect({ projections, invocations: await invocationCount() }).toEqual({ projections: 3, invocations: 0 });
+  } finally { await pool.end(); }
+});
+
+it("keeps a temporary name shadow outside the fixed public ledger identity", async () => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+    [entries[0]!.file, entries[0]!.sha256]);
+  const pool = probePool();
+  try {
+    await expect(pool.query(`CREATE TEMP TABLE public.platform_schema_migrations
+      (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4)`))
+      .rejects.toThrow(/temporary relation.*non-temporary schema/);
+    await pool.query(`CREATE TEMP VIEW platform_schema_migrations AS SELECT
+      migration_read_probe.mark() AS catalog_path, 'synthetic'::pg_catalog.text AS sha256,
+      0::pg_catalog.int4 AS position`);
+    await expect(fixtureRunner(pool, false).status()).resolves.toEqual({
+      applied: files.slice(0, 1), pending: files.slice(1),
+    });
+    expect(await invocationCount()).toBe(0);
+  } finally { await pool.end(); }
+});
+
 it.each(methods)("refuses unsafe ledger layouts before %s reads with zero probe invocations", async method => {
   for (const withHook of [false, true]) {
     for (const [layout, sql] of hostileLayouts) {
@@ -224,9 +374,8 @@ it.each(methods)("refuses unsafe ledger layouts before %s reads with zero probe 
 it.each(methods)("protects complete-ledger inventory projection during %s with zero probe invocations", async method => {
   await resetLedger(ledgerDefinition);
   for (let position = 0; position < entries.length; position += 1) {
-    await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,$3)", [entries[position]!.file, entries[position]!.sha256, position]);
+    await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,$3)", [entries[position]!.file, entries[position]!.sha256, position]);
   }
-  await attachForeignLedgerChild();
   const pool = probePool();
   let protectedProjection = false;
   try {
@@ -252,7 +401,6 @@ it.each(methods)("protects complete-ledger inventory projection during %s with z
     expect(result).toEqual(method === "status" ? { applied: files, pending: [] } : { applied: [] });
   } finally {
     await pool.end();
-    await admin.query("DROP FOREIGN TABLE IF EXISTS public.synthetic_foreign_ledger_child; DROP SERVER synthetic_unreachable_child CASCADE");
   }
 });
 
@@ -288,7 +436,7 @@ it("rechecks the same ledger under the migration transaction before a pending in
   for (const [layout, replacement] of [...hostileLayouts.filter(([name]) => name === "view" || name === "insert trigger"),
     ["safe replacement", ledgerDefinition] as const]) {
     await resetLedger(ledgerDefinition);
-    await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+    await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
     const pool = probePool();
     const replacingPool = {
       async connect() {
@@ -318,7 +466,7 @@ it("rechecks the same ledger under the migration transaction before a pending in
 
 it("refuses a changed applied prefix before a pending migration commits", async () => {
   await resetLedger(ledgerDefinition);
-  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
   const pool = probePool();
   const changingPool = {
     async connect() {
@@ -343,7 +491,7 @@ it("refuses a changed applied prefix before a pending migration commits", async 
 
 it("holds the pending write lock against a concurrent trigger change", async () => {
   await resetLedger(ledgerDefinition);
-  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
   const oid = (await admin.query("SELECT 'public.platform_schema_migrations'::pg_catalog.regclass::pg_catalog.oid AS oid")).rows[0].oid;
   const beforeInsert = signal(), allowInsert = signal();
   const pool = probePool();
@@ -384,16 +532,15 @@ it("holds the pending write lock against a concurrent trigger change", async () 
   }
 });
 
-it.each([false, true])("reads only the genuine ledger, excluding ordinary and foreign children (hook=%s)", async withHook => {
-  await resetLedger(`${ledgerDefinition}; CREATE TABLE public.synthetic_ledger_child () INHERITS (public.platform_schema_migrations);
-    INSERT INTO public.synthetic_ledger_child VALUES ('synthetic-extra', 'synthetic-extra', 100)`);
-  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+it.each([false, true])("refuses a ledger with ordinary and foreign inheritance children (hook=%s)", async withHook => {
+  await resetLedger(`${ledgerDefinition}; CREATE TABLE public.synthetic_ledger_child () INHERITS (public.platform_schema_migrations)`);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
   await attachForeignLedgerChild();
   const pool = probePool();
   try {
     const runner = fixtureRunner(pool, withHook);
-    await expect(runner.status()).resolves.toEqual({ applied: files.slice(0, 1), pending: files.slice(1) });
-    await expect(runner.apply({ dryRun: true })).resolves.toEqual({ applied: files.slice(1) });
+    await expect(runner.status()).rejects.toThrow("platform migration ledger relation is not safe to read");
+    await expect(runner.apply({ dryRun: true })).rejects.toThrow("platform migration ledger relation is not safe to read");
     expect(await invocationCount()).toBe(0);
   } finally {
     await pool.end();
@@ -403,7 +550,7 @@ it.each([false, true])("reads only the genuine ledger, excluding ordinary and fo
 
 it.each([false, true])("preserves bootstrap-owned ledger reads for a distinct migration login (hook=%s)", async withHook => {
   await resetLedger(ledgerDefinition);
-  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
   const runner = fixtureRunner(second, withHook);
   await expect(runner.status()).resolves.toEqual({ applied: files.slice(0, 1), pending: files.slice(1) });
   await expect(runner.apply({ dryRun: true })).resolves.toEqual({ applied: files.slice(1) });
@@ -412,7 +559,7 @@ it.each([false, true])("preserves bootstrap-owned ledger reads for a distinct mi
 
 it("holds the admitted ledger relation lock until its rows have been read", async () => {
   await resetLedger(ledgerDefinition);
-  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
   const oid = (await admin.query("SELECT 'public.platform_schema_migrations'::pg_catalog.regclass::pg_catalog.oid AS oid")).rows[0].oid;
   const beforeRead = signal(), allowRead = signal();
   const pool = probePool();
