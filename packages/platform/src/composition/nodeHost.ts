@@ -120,7 +120,7 @@ export interface ServeNodeResult {
   bundleId: string;
   httpRuntime: HttpRuntimePort;
   registeredJobs: string[];
-  /** Fence timers, drain admitted jobs, then close their lock session; also close the local listener. Safe to call repeatedly. */
+  /** Fence timers, drain admitted jobs, then close the local listener and lock session. Safe to call repeatedly. */
   stop(): Promise<void>;
 }
 
@@ -280,10 +280,13 @@ async function stopNodeHost(
   const server = (httpRuntime as HttpRuntimePort & {
     server?: { close(callback: (error?: Error) => void): void } | null;
   }).server;
-  const listener = server
+  // Admitted jobs may still need the local HTTP compatibility bridge after lock acquisition.
+  // Both cleanup attempts must also run when draining fails.
+  const drained = timers.then(() => {}, () => {});
+  const listener = drained.then(() => server
     ? new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
-    : Promise.resolve();
-  const lock = timers.then(() => advisoryLock?.close(), () => advisoryLock?.close());
+    : undefined);
+  const lock = drained.then(() => advisoryLock?.close());
   const results = await Promise.allSettled([timers, lock, listener]);
   const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
   if (failures.length > 0) throw new AggregateError(failures, "node_host_shutdown_failed");

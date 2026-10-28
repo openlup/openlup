@@ -15,8 +15,11 @@ local synthetic HTTP probe establishes its fixture semantics only.
 
 For a graceful Node shutdown, await the host's cached `stop()` promise before
 disposing callback dependencies. The scheduler fences its current registrations
-synchronously and drains admitted callbacks through lock release; the host
-closes the dedicated lock session after that drain settles. Direct scheduler
+synchronously and drains admitted callbacks through lock release. The host keeps
+the local listener available during that drain, including while an admitted
+callback waits for lock acquisition before its HTTP compatibility request. After
+the drain settles, it attempts listener and dedicated lock-session cleanup even
+if the drain failed; shutdown failures remain aggregated. Direct scheduler
 users must await `stopAll(): Promise<void>`, including when supplying a custom
 implementation. The adapter permits later registrations, so the host remains
 responsible for preventing new work during its own shutdown. See
@@ -30,6 +33,13 @@ watchdog invokes the package persisted-job tick; missing configuration and
 transport failures keep their existing safe error responses. Package imports
 install no routes or schedules. See the
 [operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+
+The [package handler characterization](../../packages/platform/test/operations/controlPlaneHandler.test.ts)
+pins the injected authorization/port boundary used by this reference composition:
+authorization before malformed-body parsing, method/command refusals, replay
+receipts, unchanged heartbeat forwarding and safe invalid-result/upstream errors.
+These synthetic handler cases supply no deployment, session-provider or live-store
+qualification; the host still owns those bindings.
 
 Marketing reference routes compose `@openlup/platform/marketing/server` factories
 with the host BFF responder, authorization and persistence bindings. Case
