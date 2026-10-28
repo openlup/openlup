@@ -223,6 +223,30 @@ existing native fixture. These reuse current discovery and runners; loopback
 and Docker availability are prerequisites. Local synthetic proof does not
 certify full-store transfer or hosted effect fencing.
 
+The prepared [connected-store witness](tests/postgres/connectedStoreTransfer.test.ts)
+extends that proof to a fixed native graph and the application's actual private
+`objects/tmp` layout. It uses two owned canonical installations, a pristine
+target baseline, one migration-owner data transaction and independent row/file
+readback. Source media preparation and target media authorization use the actual
+restricted runtime login; owner setup cannot establish that runtime capability.
+The existing PostgreSQL helper closes every owned pool/store and removes its
+containers, including after setup failure. A privilege refusal before the main
+case is a blocked proof, even when the runner reports the case skipped. Record
+which assertions were not reached; do not replace the selected role or expected
+inventory to obtain a pass. This source uses existing Node discovery and root
+test commands. It does not prove all-writer retirement, managed identity/history
+mapping, effective storage access or external-effect handover.
+
+The [S3 source protocol witness](server/adapters/s3/transferObjectSource.test.ts)
+uses injected command inputs for protocol refusals and a bounded plain Node
+child for actual optional-SDK signing and deserialization. The child supplies
+explicit synthetic credentials and an injected HTTP handler; it makes no
+provider request. This keeps the SDK's Node export conditions independent of
+the test runner's bundler conditions. Its exact test-carrier path joins the
+existing public execution inventory beside the S3 storage conformance carrier;
+the classifier, command selection and gate remain unchanged. This protocol
+proof does not qualify a full source principal, bucket ACL/RLS or hosted storage.
+
 The operations slice uses the existing platform build, API, package and installed
 consumer commands. Its owner-local witnesses cover browser closure and preserved
 watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
