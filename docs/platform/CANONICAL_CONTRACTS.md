@@ -565,9 +565,9 @@ The exact qualified-installation source approvals in
 are control inputs, not installation evidence. The six inert fixtures and the
 legacy-preserving version-2 source catalogue follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
-The reader prepares one future sixth identity for the demonstrated context
-writes and review-receipt reads/appends, while the active registry retains
-exactly its five issued approvals. The sixth fixture remains unapproved.
+The supported reader admits the exact sixth identity for the demonstrated
+context writes and review-receipt reads/appends. The registry retains its five
+issued approvals unchanged and adds the approved-but-unintroduced sixth pin.
 Trusted main parses a changed registry before returning for a no-SQL change,
 so reader support must land before the separate sixth-pin approval, which must
 land before SQL introduction. The proposed installer-ownership/runtime-binding

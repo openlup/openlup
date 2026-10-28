@@ -424,9 +424,10 @@ pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain five issued bound units and an unapproved completion proposal without
-installing them. Reader preparation keeps the actual five-row registry exact.
-The proposed tail grants
+retain five issued bound units and the approved-but-unintroduced completion
+fixture without installing it. Reader preparation landed before the exact sixth
+approval row; the five issued rows and their byte identities remain unchanged.
+The approved tail grants
 the existing runtime group context INSERT on its four columns, UPDATE on its
 three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.
 Its local guard requires an unswitched installer owning both targets, the

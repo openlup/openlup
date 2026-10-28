@@ -1829,6 +1829,10 @@
     {
       "path": "db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql",
       "sha256": "56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "sha256": "ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e"
     }
   ]
 }
