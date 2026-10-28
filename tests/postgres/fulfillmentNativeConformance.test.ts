@@ -9,6 +9,7 @@ import { readSelectedCatalogProjection,selectedCatalogProjectionPayload } from '
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
 import { executor,fixture,manifest,nativeHarness,units } from '../helpers/fulfillmentNative.js';
 import type { FulfillmentObservation } from '@openlup/platform/fulfillment/contracts';
+import { createPostgresFulfillmentObservationLifecycle } from '../../server/adapters/postgres/fulfillmentObservationLifecycle.js';
 function observation(): FulfillmentObservation {
  const at='2026-10-21T12:00:00.000Z';
  return {fact:{schemaVersion:1,mapperVersion:'fixture-v1',factId:'fact:fixture',providerKind:'warehouse-a',fulfillmentReference:'external-fixture',canonicalStatus:'in_transit',provenance:{source:'provider_webhook',authority:'provider_asserted'},occurredAt:at,receivedAt:at,rawEvent:{reference:'evidence:00000000-0000-4000-8000-000000000001',digestAlgorithm:'sha256',digest:'a'.repeat(64)}},eventKind:'order.shipped',eventKey:'fixture-shipped',firstReceivedAt:at,correlation:{orderRef:null,fulfillmentRef:null,externalRef:'external-fixture',orderNumber:null,providerFulfillmentRef:null,parcelRef:null},trackingRefs:[]};
@@ -26,6 +27,46 @@ afterAll(()=>h.stop(prefixContainers,prefixPools), postgresTeardownTimeoutMs);
 const revision={schemaVersion:1,source:'fixture',revision:1};
 const evidence={commandFingerprint:'a'.repeat(64),contactRevision:revision,providerRef:'warehouse-a',carrierRef:null,serviceRef:null};
 const store=()=>createPostgresFulfillmentDispatchStore(executor(h.pool),{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});
+it('native G17 correlates a newly observed external ID and replays its atomic acceptance without resubmission', async () => {
+ const f = await fixture(h.pool), native = store();
+ await h.pool.query("INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref) VALUES($1,$2,'warehouse-a')", [f.shipment, revision]);
+ const claimed = await native.claim({ requestKey: `observation-${f.shipment}`, fulfillmentRef: f.shipment,
+  orderRef: f.order, parcelRef: null, mode: 'live', evidence });
+ if (claimed.kind !== 'claimed') throw new Error('observation fixture claim refused');
+ await native.begin({ dispatchRef: claimed.record.dispatchRef, commandFingerprint: evidence.commandFingerprint });
+ // The restored local row has no provider ID or retained acceptance. The
+ // verified observation carries the immutable native shipment correlation.
+ expect((await native.read(`observation-${f.shipment}`))?.externalRef).toBeNull();
+ const obs = observation(); obs.eventKey = `observation-${f.shipment}`;
+ obs.eventKind = 'shipment.accepted';
+ obs.correlation.fulfillmentRef = f.shipment; obs.correlation.orderRef = f.order;
+ obs.correlation.externalRef = `external-${randomUUID()}`;
+ obs.fact = { ...obs.fact, canonicalStatus: 'provider_received', fulfillmentReference: obs.correlation.externalRef };
+ const keys = { providerAttemptKey: `observed-attempt-${f.shipment}`, labelKey: `observed-receipt-${f.shipment}` };
+ const lifecycle = () => createPostgresFulfillmentObservationLifecycle(executor(h.pool), {
+  providerRef: 'warehouse-a', acceptanceKeys: () => keys,
+ });
+ const spine = createPostgresFulfillmentShipmentSpinePort(executor(h.pool), { portKey: 'fixture-port' });
+ await spine.localPersistence.recordObservation(obs);
+ const ref = await lifecycle().findDispatchRef(obs);
+ expect(ref?.externalRef).toBeNull();
+ await lifecycle().acknowledgeDispatchAcceptance(ref!, obs);
+ await spine.localPersistence.recordStatusEvidence({ fulfillmentRef: f.shipment }, obs);
+ await spine.localPersistence.markProcessed(obs.eventKey, { status: 'processed' });
+ const before = await native.read(`observation-${f.shipment}`);
+ expect(before).toMatchObject({ status: 'created', externalRef: obs.correlation.externalRef });
+ // A new adapter instance and a later receipt time retain the exact local ACK.
+ expect(await spine.localPersistence.recordObservation({ ...obs, firstReceivedAt: '2026-10-27T12:00:00Z' })).toEqual({ replayed: true });
+ await lifecycle().acknowledgeDispatchAcceptance((await lifecycle().findDispatchRef(obs))!, obs);
+ expect(await native.read(`observation-${f.shipment}`)).toEqual(before);
+ expect((await h.pool.query("SELECT external_id FROM public.shipment_external_refs WHERE shipment_id=$1 AND ref_role='dispatch'", [f.shipment])).rows)
+  .toEqual([{ external_id: obs.correlation.externalRef }]);
+ expect((await h.pool.query('SELECT count(*)::integer AS count FROM public.fulfillment_provider_attempts WHERE attempt_key=$1', [keys.providerAttemptKey])).rows)
+  .toEqual([{ count: 1 }]);
+ const conflicting = structuredClone(obs); conflicting.correlation.externalRef = `external-${randomUUID()}`;
+ await expect(lifecycle().findDispatchRef(conflicting)).rejects.toThrow('correlation_conflict');
+ expect(await native.read(`observation-${f.shipment}`)).toEqual(before);
+});
 it('fresh full-catalogue install binds sparse assets, hashes and object inventory, then replays without changing history',async()=>{
  expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76]);
  for(const unit of FULFILLMENT_MIGRATIONS){const bytes=readFileSync(unit.catalogPath);expect(readFileSync(unit.url)).toEqual(bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(unit.sha256);expect(units[unit.position]).toEqual({file:unit.catalogPath,sha256:unit.sha256});}

@@ -1,6 +1,8 @@
 // One disposable installation's production proof; invoked only by its adjacent test.
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { createPostgresFulfillmentDispatchStore, createPostgresFulfillmentShipmentSpinePort } from "@openlup/platform/fulfillment";
+import type { FulfillmentObservation } from "@openlup/platform/fulfillment/contracts";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
@@ -10,11 +12,13 @@ import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
 import { createCustomerDiagnosticHistoryPort } from "../../server/adapters/customerDiagnosticHistory.js";
 import { createPostgresCustomerDiagnosticHistoryTransactionLane } from "../../server/adapters/postgres/dataGateway.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { createPostgresFulfillmentObservationLifecycle } from "../../server/adapters/postgres/fulfillmentObservationLifecycle.js";
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 
-const input: { connectionString: string; selection: QualifiedPostgresInstallation; expectedInventory: string; discriminators: boolean } = JSON.parse(process.argv[2]!);
+const input: { connectionString: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
+  discriminators: boolean } = JSON.parse(process.argv[2]!);
 const { selection } = input;
 const lockName = "openlup:public-platform-migrations:v1";
 const password = "synthetic-proof-only";
@@ -145,6 +149,60 @@ async function proveRetainedRuntime(admin: Pool) {
   }
   assert.deepEqual(await history(), retainedHistory);
   assert.equal(await frozen(), frozenBefore);
+}
+
+async function proveObservationRuntime(bootstrap: Pool): Promise<void> {
+  const runtime = pool(loginUrl(selection.runtimeLogin));
+  const identity = await runtime.query(`SELECT current_user,session_user,rolsuper,rolbypassrls,
+    pg_catalog.pg_get_userbyid(c.relowner)<>current_user AS nonowner
+    FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_class c
+    WHERE r.rolname=current_user AND c.oid='public.fulfillment_dispatch_refs'::regclass`);
+  assert.deepEqual(identity.rows, [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin,
+    rolsuper: false, rolbypassrls: false, nonowner: true }]);
+  const f = await fixture(bootstrap);
+  const revision = { schemaVersion: 1, source: "qualified-native", revision: 1 };
+  const evidence = { commandFingerprint: "c".repeat(64), contactRevision: revision,
+    providerRef: "warehouse-a", carrierRef: null, serviceRef: null };
+  // Setup includes the already-submitted request whose acknowledgement was
+  // lost. The G1 recovery operations themselves use only the actual R login.
+  await bootstrap.query("INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref) VALUES($1,$2,'warehouse-a')", [f.shipment, revision]);
+  const setup = createPostgresFulfillmentDispatchStore(bootstrap, {
+    prepare: async () => ({ disposition: "ready", contactRevision: 1 }), readCandidate: async () => null,
+  });
+  const claimed = await setup.claim({ requestKey: `qualified-g1:${f.shipment}`, fulfillmentRef: f.shipment,
+    orderRef: f.order, parcelRef: null, mode: "live", evidence });
+  assert.equal(claimed.kind, "claimed"); if (claimed.kind !== "claimed") throw new Error("qualified G1 fixture refused");
+  await setup.begin({ dispatchRef: claimed.record.dispatchRef, commandFingerprint: evidence.commandFingerprint });
+  const native = createPostgresFulfillmentDispatchStore(runtime, {
+    prepare: async () => ({ disposition: "ready", contactRevision: 1 }), readCandidate: async () => null,
+  });
+  assert.equal((await native.read(`qualified-g1:${f.shipment}`))!.externalRef, null);
+  const externalRef = `external-${randomUUID()}`;
+  const observation: FulfillmentObservation = { eventKey: `qualified-g1:${f.shipment}`, eventKind: "shipment.accepted",
+    firstReceivedAt: "2026-10-28T07:00:00Z", trackingRefs: [],
+    correlation: { fulfillmentRef: f.shipment, orderRef: f.order, externalRef, parcelRef: null, orderNumber: null, providerFulfillmentRef: null },
+    fact: { schemaVersion: 1, mapperVersion: "synthetic-v1", factId: `accepted:${f.shipment}`, providerKind: "warehouse-a",
+      fulfillmentReference: externalRef, canonicalStatus: "provider_received", occurredAt: "2026-10-28T06:59:00Z", receivedAt: "2026-10-28T07:00:00Z",
+      provenance: { source: "provider_webhook", authority: "provider_asserted" },
+      rawEvent: { reference: `evidence:${randomUUID()}`, digestAlgorithm: "sha256", digest: "d".repeat(64) } } };
+  const spine = createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: "fixture-port" });
+  const keys = { providerAttemptKey: `qualified-accepted:${f.shipment}`, labelKey: `qualified-receipt:${f.shipment}` };
+  const lifecycle = () => createPostgresFulfillmentObservationLifecycle(runtime, { providerRef: "warehouse-a", acceptanceKeys: () => keys });
+  await spine.localPersistence.recordObservation(observation);
+  const ref = await lifecycle().findDispatchRef(observation); assert(ref);
+  await lifecycle().acknowledgeDispatchAcceptance(ref, observation);
+  await spine.localPersistence.recordStatusEvidence(ref, observation);
+  await spine.localPersistence.markProcessed(observation.eventKey, { status: "processed" });
+  const before = await native.read(`qualified-g1:${f.shipment}`);
+  assert.equal(before!.status, "created"); assert.equal(before!.externalRef, externalRef);
+  await lifecycle().acknowledgeDispatchAcceptance((await lifecycle().findDispatchRef(observation))!, observation);
+  assert.deepEqual(await native.read(`qualified-g1:${f.shipment}`), before);
+  assert.deepEqual((await runtime.query("SELECT external_id FROM public.shipment_external_refs WHERE shipment_id=$1 AND ref_role='dispatch'", [f.shipment])).rows, [{ external_id: externalRef }]);
+  assert.deepEqual((await runtime.query("SELECT count(*)::integer AS count FROM public.fulfillment_provider_attempts WHERE attempt_key=$1", [keys.providerAttemptKey])).rows, [{ count: 1 }]);
+  await assert.rejects(lifecycle().findDispatchRef({ ...observation, correlation: { ...observation.correlation, externalRef: `external-${randomUUID()}` } }), /correlation_conflict/u);
+  assert.deepEqual(await native.read(`qualified-g1:${f.shipment}`), before);
+  assert.deepEqual((await runtime.query("SELECT current_user,session_user")).rows,
+    [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin }]);
 }
 
 async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
@@ -321,6 +379,7 @@ async function prove() {
   }
   await proveRetainedRuntime(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
+  if (input.discriminators) await proveObservationRuntime(bootstrap);
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await ledger(), installed);
   if (input.discriminators) {
@@ -399,6 +458,7 @@ async function prove() {
   assert.deepEqual(await ledger(), installed);
   return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
+    nativeObservationRuntimeProved: input.discriminators,
     discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
 }
 

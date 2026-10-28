@@ -665,7 +665,12 @@
         "packages/platform/src/portability/**",
         "packages/platform/test/portability/**",
         "packages/platform/api/portability.api.md",
-        "tests/postgres/portabilityRows.test.ts"
+        "tests/postgres/portabilityRows.test.ts",
+        "server/adapters/postgres/fulfillmentObservationLifecycle.ts",
+        "server/adapters/postgres/fulfillmentObservationLifecycle.test.ts",
+        "tests/postgres/fulfillmentNativeConformance.test.ts",
+        "tests/postgres/m14QualifiedComposition.proof.ts",
+        "tests/postgres/m14QualifiedComposition.test.ts"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#existing-store-transfer-and-recovery"

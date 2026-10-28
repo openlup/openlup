@@ -22,6 +22,16 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
+The [native fulfillment observation lifecycle](postgres/fulfillmentObservationLifecycle.ts)
+binds the existing G17 lookup/ACK pair to native dispatch SQL. It consumes an
+already-verified observation with exact shipment correlation and selected
+provider, rechecks current state and preserves retained acceptance on replay.
+Caller-owned verification and transaction/login authority remain prerequisites;
+this adapter opens no connection, issues no provider request and adds no SQL or
+grant. Its [architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+and [restricted-login proof](../../docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+define the scope.
+
 Acquisition case and research evidence PostgreSQL adapters delegate through
 thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain
 lazy adapter imports after bundle and connection guards, host environment

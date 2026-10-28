@@ -1077,6 +1077,16 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The existing qualified target/separate-restore witness connects the native G17
+observation host binding through actual restricted R. Bootstrap setup seeds the
+owned domain graph and already-submitted request. R performs recovery read,
+observation/status persistence, atomic ACK and exact replay; a conflicting
+external ID refuses without changing the accepted row. The login is nonowner,
+NOSUPERUSER and NOBYPASSRLS, without SET ROLE or recovery owner fallback.
+No catalogue, SQL or grant changes. This proves neither R's new-dispatch
+preparation capability nor whole-store restoration, executor fencing, provider
+search completeness or effect authority.
+
 The E2 predecessor's qualified fresh catalogue replaces the baseline and two bootstrap units,
 then appends runtime sealing after the complete legacy ownership closure. Its
 89-unit plan requires an actual PostgreSQL 16 database-owner SUPERUSER migrator,

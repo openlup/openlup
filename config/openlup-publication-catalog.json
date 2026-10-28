@@ -10322,6 +10322,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/fulfillmentObservationLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/fulfillmentObservationLifecycle.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/fulfillmentShipmentSpine.test.ts",
       "class": "public-output"
     },

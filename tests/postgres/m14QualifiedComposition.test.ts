@@ -53,6 +53,7 @@ for (const profile of profiles) for (const shape of shapes) {
         inventorySha256: shape.sha256, ledgerRows: 90, pendingBefore: 90,
         appliedNow: 90, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
         runtimeLockPrivilegesProved: true,
+        nativeObservationRuntimeProved: profile.name === "target" && shape.name === "separate-restore",
         discriminators: profile.name === "target" && shape.name === "separate-restore",
       });
       console.info(`qualified-production ${profile.name}/${shape.name} ${stdout.trim()}`);
