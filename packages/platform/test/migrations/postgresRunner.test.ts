@@ -201,7 +201,8 @@ describe("PostgreSQL migration runner", () => {
       [{ manifest: s.manifest, migrations: s.migrations }],
       [{ manifest: s.manifest, migrations: s.migrations, objectInventoryPayload: inventory }],
     ]);
-    expect(s.query.mock.invocationCallOrder.at(-2)).toBeLessThan(s.catalogProjectionPayload.mock.invocationCallOrder[0]!);
+    expect(s.query.mock.invocationCallOrder.at(-3)).toBeLessThan(s.catalogProjectionPayload.mock.invocationCallOrder[0]!);
+    expect(s.catalogProjectionPayload.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder.at(-2)!);
     expect(s.catalogProjectionPayload.mock.invocationCallOrder[0]).toBeLessThan(s.evaluate.mock.invocationCallOrder[1]!);
     expect(s.evaluate.mock.invocationCallOrder[1]).toBeLessThan(s.query.mock.invocationCallOrder.at(-1)!);
     s.query.mockClear();
@@ -226,11 +227,11 @@ describe("PostgreSQL migration runner", () => {
     expect(s.rows).toEqual(expectedRows());
   });
 
-  it.each([0, 1, 3])("dry-run reports the pending suffix for prefix length %i without transaction or ledger writes", async (length) => {
+  it.each([0, 1, 3])("dry-run reports the pending suffix for prefix length %i without migration or ledger writes", async (length) => {
     const s = scenario({ rows: expectedRows().slice(0, length) });
     await expect(s.makeRunner().apply({ dryRun: true })).resolves.toEqual({ applied: files.slice(length) });
     expect(s.query.mock.calls).toEqual([
-      [acquireSql, [lockName]], ...readQueries(), [releaseSql, [lockName]],
+      [acquireSql, [lockName]], ...readQueries(), ...(length === 3 ? readQueries() : []), [releaseSql, [lockName]],
     ]);
     expect(s.rows).toEqual(expectedRows().slice(0, length));
     expect(s.catalogProjectionPayload).toHaveBeenCalledTimes(length === 3 ? 1 : 0);
@@ -322,8 +323,8 @@ describe("PostgreSQL migration runner", () => {
     s.evaluate.mockImplementation((input) => input.objectInventoryPayload === undefined ? [] : ["object inventory SHA-256 mismatch"]);
     await expect(s.makeRunner().apply()).rejects.toThrow(/^platform migration inventory rejected: object inventory SHA-256 mismatch$/);
     expect(s.rows).toEqual(expectedRows());
-    expect(s.query.mock.calls.filter(([sql]) => sql === "COMMIT")).toHaveLength(5);
-    expect(s.query).not.toHaveBeenCalledWith("ROLLBACK");
+    expect(s.query.mock.calls.filter(([sql]) => sql === "COMMIT")).toHaveLength(4);
+    expect(s.query.mock.calls.filter(([sql]) => sql === "ROLLBACK")).toHaveLength(1);
   });
 
   it("refuses an incomplete ledger after apply before evaluating inventory", async () => {

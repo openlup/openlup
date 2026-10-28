@@ -155,11 +155,10 @@ its users or operators can observe.
 ## Development-preview checks
 
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
-uses the production package runner for ledger metadata refusal, concurrent
-replacement, relation-lock retention and exclusion of inheritance children.
-Its synthetic function marker remains observable after transaction rollback;
-status, dry-run and apply must leave it untouched. The same fixture preserves
-bootstrap-owned ledger reads from a distinct migration login. Run it with
+uses the production package runner to check ledger admission, stable reads,
+complete inventory projection and compatibility for status, dry-run and apply.
+It covers refused layouts and bootstrap-owned ledger reads from a distinct
+migration login. Run it with
 `npm test -- tests/postgres/m14MigrationSessionAdmission.test.ts` before the
 complete required gates.
 

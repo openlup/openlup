@@ -131,13 +131,11 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
-The package runner observes ledger metadata before reading its rows. It accepts
-only a permanent ordinary table owned by the current role or a bootstrap
-superuser, with built-in `text`, `text`, and `int4` columns for `catalog_path`,
-`sha256`, and `position`. Row security, rewrite rules and generated ledger
-columns refuse. A short read-only transaction locks that relation, rechecks its
-identity and reads only its own rows, excluding inheritance children. These
-checks apply to legacy and qualified sources; qualified session admission still
+The package runner validates the migration ledger's catalog identity, ownership
+and shape before reading applied rows. It keeps the validated relation stable
+through complete inventory projection and reads only rows belonging to the
+ledger itself. These checks apply to legacy and qualified sources. Legacy
+bootstrap ownership remains accepted; qualified session admission still
 requires its declared migration owner. Each migration retains its individual
 transaction and exact-prefix/replay behavior.
 

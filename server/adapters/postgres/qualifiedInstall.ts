@@ -194,9 +194,9 @@ export async function assertQualifiedPostgresSession(client: PoolClient, applied
   await checkedCatalog(client, selection, applied, lockName);
 }
 
-/** A distinct payload format; the issued selected-catalog-v2 payload remains untouched. */
+/** Called under the runner's validated ledger relation lock; the issued legacy payload remains untouched. */
 export async function qualifiedPostgresCatalogPayload(client: PoolClient, selection: QualifiedPostgresInstallation, lockName: string): Promise<string> {
-  const applied = (await client.query<{ file: string; sha256: string; position: number }>("SELECT catalog_path AS file,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
+  const applied = (await client.query<{ file: string; sha256: string; position: number }>("SELECT catalog_path AS file,sha256,position FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   const { rows, protectedNames } = await checkedCatalog(client, selection, applied, lockName);
   const sameRoot = selection.migrationLogin === selection.bootstrapLogin;
   const bindings = new Map<string, string>([

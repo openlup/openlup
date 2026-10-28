@@ -145,8 +145,6 @@ export function createPostgresMigrationRunner(
             throw new Error(`platform migration ${unit.catalogPath} failed: ${errorMessage(error)}`);
           }
         }
-        const complete = await readAppliedPrefix(client, plan.units);
-        if (complete.length !== plan.units.length) throw new Error("platform migration ledger is incomplete after apply");
         await assertObjectInventory(client, plan, options);
         return { applied: appliedNow };
       });
@@ -224,13 +222,18 @@ function loadPlan(root: string, source: PlatformMigrationSource): LoadedPlan {
   return Object.freeze({ manifest, migrations: catalog.migrations, units: Object.freeze(units) });
 }
 
-async function readAppliedPrefix(client: PoolClient, units: readonly PlannedMigration[]): Promise<readonly PlannedMigration[]> {
+async function readAppliedPrefix(
+  client: PoolClient,
+  units: readonly PlannedMigration[],
+  whileLocked?: (applied: readonly PlannedMigration[]) => Promise<void>,
+): Promise<readonly PlannedMigration[]> {
   // A transaction-scoped relation lock prevents replacement after validation.
   // READ COMMITTED gives the post-lock identity check a fresh catalog snapshot.
   await client.query("BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY");
   try {
     const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
     if (observed.length === 0) {
+      await whileLocked?.([]);
       await client.query("COMMIT");
       return [];
     }
@@ -255,8 +258,10 @@ async function readAppliedPrefix(client: PoolClient, units: readonly PlannedMigr
         throw new Error(`platform migration ledger is not the exact manifest prefix at position ${index}`);
       }
     }
+    const applied = units.slice(0, result.rows.length);
+    await whileLocked?.(applied);
     await client.query("COMMIT");
-    return units.slice(0, result.rows.length);
+    return applied;
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
@@ -268,13 +273,18 @@ async function assertObjectInventory(
   plan: LoadedPlan,
   options: PostgresMigrationRunnerOptions,
 ): Promise<void> {
-  const payload = await options.catalogProjectionPayload(client);
-  const errors = options.source.evaluate({
-    manifest: plan.manifest,
-    migrations: plan.migrations,
-    objectInventoryPayload: payload,
+  // The trusted projector can read the ledger too; retain its validated identity
+  // until that complete-catalogue observation has finished.
+  await readAppliedPrefix(client, plan.units, async (applied) => {
+    if (applied.length !== plan.units.length) throw new Error("platform migration ledger is incomplete after apply");
+    const payload = await options.catalogProjectionPayload(client);
+    const errors = options.source.evaluate({
+      manifest: plan.manifest,
+      migrations: plan.migrations,
+      objectInventoryPayload: payload,
+    });
+    if (errors.length > 0) throw new Error(`platform migration inventory rejected: ${errors.join("; ")}`);
   });
-  if (errors.length > 0) throw new Error(`platform migration inventory rejected: ${errors.join("; ")}`);
 }
 
 function errorMessage(error: unknown): string {

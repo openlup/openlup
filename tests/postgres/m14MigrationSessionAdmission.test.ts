@@ -4,6 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresMigrationRunner, type PlatformMigrationSource } from "@openlup/platform/migrations";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
+import { qualifiedPostgresCatalogPayload } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -148,6 +149,15 @@ async function resetLedger(sql: string): Promise<void> {
   await admin.query(sql);
 }
 
+async function attachForeignLedgerChild(): Promise<void> {
+  await admin.query(`CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+    CREATE SERVER synthetic_unreachable_child FOREIGN DATA WRAPPER postgres_fdw
+      OPTIONS (host '127.0.0.1', port '1', dbname 'synthetic');
+    CREATE USER MAPPING FOR CURRENT_USER SERVER synthetic_unreachable_child OPTIONS (user 'synthetic');
+    CREATE FOREIGN TABLE public.synthetic_foreign_ledger_child () INHERITS (public.platform_schema_migrations)
+      SERVER synthetic_unreachable_child OPTIONS (table_name 'synthetic')`);
+}
+
 function probePool(): Pool {
   return new Pool({ connectionString: container!.connectionString, max: 1,
     options: "-c search_path=migration_read_probe,pg_catalog,public" });
@@ -161,10 +171,11 @@ async function invocationCount(): Promise<number> {
       AND objid OPERATOR(pg_catalog.=) 73120491::pg_catalog.oid AND granted`)).rows[0].calls;
 }
 
-function fixtureRunner(pool: Pool, withHook: boolean, onAdmission = () => {}) {
+function fixtureRunner(pool: Pool, withHook: boolean, onAdmission = () => {},
+  projector: (client: PoolClient) => Promise<string> = async () => inventory) {
   return createPostgresMigrationRunner({ connectionString: "owned synthetic pool" }, {
     lockName: "synthetic-ledger-preflight", poolFactory: () => pool,
-    catalogProjectionPayload: async () => inventory,
+    catalogProjectionPayload: projector,
     source: source(withHook ? async () => { onAdmission(); } : undefined),
   });
 }
@@ -189,6 +200,41 @@ it.each(methods)("refuses unsafe ledger layouts before %s reads with zero probe 
           .toEqual([{ pending_relation: null }]);
       } finally { await pool.end(); }
     }
+  }
+});
+
+it.each(methods)("protects complete-ledger inventory projection during %s with zero probe invocations", async method => {
+  await resetLedger(ledgerDefinition);
+  for (let position = 0; position < entries.length; position += 1) {
+    await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,$3)", [entries[position]!.file, entries[position]!.sha256, position]);
+  }
+  await attachForeignLedgerChild();
+  const pool = probePool();
+  let protectedProjection = false;
+  try {
+    const runner = fixtureRunner(pool, true, () => {}, async client => {
+      protectedProjection = (await client.query(`SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks
+        WHERE pid OPERATOR(pg_catalog.=) pg_catalog.pg_backend_pid()
+          AND relation OPERATOR(pg_catalog.=) pg_catalog.to_regclass('public.platform_schema_migrations')
+          AND mode OPERATOR(pg_catalog.=) 'AccessShareLock'::pg_catalog.text AND granted) AS held`)).rows[0].held;
+      // An independent DDL session can replace an unprotected name. Do not wait
+      // on a protected relation; the separate lock-hold witness proves exclusion.
+      if (!protectedProjection) await admin.query(`DROP TABLE public.platform_schema_migrations CASCADE; ${hostileLayouts[0][1]}`);
+      // Exercise the real qualified projector's ledger read. This intentionally
+      // incomplete host fixture then retains its existing search-path refusal;
+      // full qualified-install compatibility has its separate production proof.
+      await expect(qualifiedPostgresCatalogPayload(client, {
+        generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
+        bootstrapLogin: "postgres", runtimeLogin: "synthetic_runtime",
+      }, "synthetic-ledger-preflight")).rejects.toThrow("qualified_profile_requires_canonical_search_path");
+      return inventory;
+    });
+    const result = await operate(runner, method);
+    expect({ protectedProjection, invocations: await invocationCount() }).toEqual({ protectedProjection: true, invocations: 0 });
+    expect(result).toEqual(method === "status" ? { applied: files, pending: [] } : { applied: [] });
+  } finally {
+    await pool.end();
+    await admin.query("DROP FOREIGN TABLE IF EXISTS public.synthetic_foreign_ledger_child; DROP SERVER synthetic_unreachable_child CASCADE");
   }
 });
 
@@ -224,12 +270,7 @@ it.each([false, true])("reads only the genuine ledger, excluding ordinary and fo
   await resetLedger(`${ledgerDefinition}; CREATE TABLE public.synthetic_ledger_child () INHERITS (public.platform_schema_migrations);
     INSERT INTO public.synthetic_ledger_child VALUES ('synthetic-extra', 'synthetic-extra', 100)`);
   await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
-  await admin.query(`CREATE EXTENSION IF NOT EXISTS postgres_fdw;
-    CREATE SERVER synthetic_unreachable_child FOREIGN DATA WRAPPER postgres_fdw
-      OPTIONS (host '127.0.0.1', port '1', dbname 'synthetic');
-    CREATE USER MAPPING FOR CURRENT_USER SERVER synthetic_unreachable_child OPTIONS (user 'synthetic');
-    CREATE FOREIGN TABLE public.synthetic_foreign_ledger_child () INHERITS (public.platform_schema_migrations)
-      SERVER synthetic_unreachable_child OPTIONS (table_name 'synthetic')`);
+  await attachForeignLedgerChild();
   const pool = probePool();
   try {
     const runner = fixtureRunner(pool, withHook);
