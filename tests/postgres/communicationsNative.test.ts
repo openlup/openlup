@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 /** B3: complete canonical fresh/69-upgrade, with real durable effects and refusal plants. */
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +17,7 @@ const email="recipient@example.invalid", at="2026-10-19T10:00:00.000Z", now="202
 const containers: PostgresContainer[]=[], pools: Pool[]=[], stores: { close(): Promise<void> }[]=[];
 let fresh: Pool, upgrade: Pool, prefix: string;
 const nativeFile="db/platform/migrations/20261019200000_communications_native_operations.sql";
-const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
+const manifest=selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8")), "legacy");
 const nativeIndex=manifest.forward.findIndex((entry:{file:string})=>entry.file===nativeFile);
 const env=(index=0)=>({connectionString:containers[index].connectionString});
 const runner=(pool: Pool,root=process.cwd())=>createPostgresMigrationRunner({connectionString:"injected"},{root,poolFactory:()=>pool});

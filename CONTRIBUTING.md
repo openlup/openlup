@@ -180,6 +180,21 @@ its public query/report types, finite prerequisite result, superuser refusal and
 redacted error, with a false-admission falsifier. These checks create no installer
 or role grants and do not turn a prerequisite report into installation readiness.
 
+The [qualified production witness](tests/postgres/m14QualifiedComposition.test.ts)
+checks F's two fixed restore-bound 90-unit inventories through the built package
+entry and real reference binding, then two fresh targets in the other role mode
+with changed principal names. The E2 predecessor retains its four 89-unit shapes
+and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
+shadow-symbol refusals without replacing expected digests.
+Each installation also connects as its actual restricted runtime login to prove
+notification row locking and timestamp-only writes, diagnostic replay locking
+with actual event-update refusal, and privacy receipt locks, reads/inserts and
+populated-row update refusal through the existing production ports. Existing
+native domain, identity and reviewed-batch fixtures explicitly select the legacy plan
+before slicing upgrade prefixes, so the v2 union does not change their issued
+SQL, positions or expected legacy inventory. These cases use the existing root
+Node discovery and container helper; no gate, retry or test deadline changes.
+
 The portability package witnesses cover private bytes, access/version/integrity
 refusals and interrupted resume. The root
 [`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
@@ -2207,9 +2222,12 @@ in the [existing execution inventory](scripts/oss-publication-contract.ts).
 The control-only registration precedes the E2 source: it permits no
 other child path and changes neither entrypoint detection nor fixture rules.
 The adjacent Vitest witness owns each disposable database and the child lifetime
-used to close the production runner's internal pool. This is preparation for
-four fixed-pin reference checks and four other-mode targets, not an observed
-qualification result.
+used to close the production runner's internal pool. E2 supplies four fixed-pin
+89-unit reference checks and four other-mode targets. F selects the two
+restore-bound 90-unit shapes, with two production references and two renamed
+other-mode targets, and exercises actual runtime/restore privileges and retained
+data through that same child. These are prepared witnesses, not observed
+qualification results; no child path or execution-inventory exception is added.
 
 For a notable package change, add a uniquely named
 `packages/<core|outbox|platform>/changes/<programme>-<slice>.md` fragment instead
@@ -2619,6 +2637,13 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 qualified-runtime witness: generic lane escaped its reference
+  binding → compose the existing named diagnostic lane and privacy unit of work,
+  retaining the unchanged confinement test in focused feedback.
+
+- 2026-10-27, M14 qualified-runtime proof: public contract type owner → use its
+  correct existing entry, without adding an export or cast to fix a wrong import.
 
 - 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
   native `σ`/`ς` filename alias → extend the existing preflight equivalence

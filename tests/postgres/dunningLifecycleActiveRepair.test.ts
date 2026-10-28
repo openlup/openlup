@@ -6,13 +6,13 @@ import { dirname, join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const forward = "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql";
 const expectedSha = "8918204df731aade89976953f8434afe08cfcbe84b6382a51728b9d14100e7ea";
 const prefixInventory = "3c7cf9a9193257d64497ea9790f6a90b5b3a15713e0df5ef4638f451a7cff107";
-const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
 const units = [manifest.baseline, ...manifest.forward];
 const index = units.findIndex(unit => unit.file === forward);
 const clientId = "d7100000-0000-4000-8000-000000000001";

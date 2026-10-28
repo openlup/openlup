@@ -184,6 +184,14 @@ has only a pure presentation binding and no activated sender.
 
 ## Public navigation and availability
 
+The direct [migration binding](postgres/migrationRunner.ts) delegates to the
+package executor and keeps legacy as its default. Explicit qualified selection
+adds the reference catalogue, restricted runtime/optional restore principal
+bindings, startup transport and [read-only session admission](postgres/qualifiedInstall.ts).
+Its 89-unit source plan is not installed or hosted qualification; the
+[migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+records its binding shapes and outstanding production proof.
+
 Use [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md)
 for public ownership and extension seams, and the
 [publication catalog](../../config/openlup-publication-catalog.json) for the

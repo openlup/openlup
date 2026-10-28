@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 /** Real portable-store subset. No managed or adopter stock-wait parity claim. */
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -12,7 +13,7 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const AT = "2026-10-20T12:00:00.000Z";
-const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
 const units: { file: string; sha256: string }[] = [manifest.baseline, ...manifest.forward];
 let container: PostgresContainer | undefined, pool: Pool;
 const prefixContainers: PostgresContainer[] = [], prefixPools: Pool[] = [];
