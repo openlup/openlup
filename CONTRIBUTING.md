@@ -157,13 +157,15 @@ its users or operators can observe.
 The migration control witnesses cover legacy/qualified selection and immutable
 history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
 prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
-and the existing source/release checks. The same witnesses retain the unapproved
-sixth runtime-completion fixture, require its future selection after the complete
+and the existing source/release checks. The same witnesses retain the exact
+sixth runtime-completion fixture, require its selection after the complete
 restore-bound prefix and exercise source/group machinery refusal with unchanged
-pins. Reader preparation keeps the issued five-row registry and active 88/90-unit
-plans unchanged. Its supported reader must land before the separate sixth-pin
-approval, which must land before SQL; the later SQL feature still needs its own
-runtime and inventory evidence. The
+pins. The structural append case removes only that named tail from its previous
+plan and supplied migration list before appending it, so the introduced source
+cannot duplicate its fixture. These structural checks are not live inventory
+qualification. Reader support and the exact sixth-pin approval landed separately
+before SQL introduction; qualified 91 preserves legacy 88 and the entire F90 prefix.
+The SQL feature still needs its own runtime and inventory evidence. The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
 is visible to a second actual migration login, which refuses under the held
@@ -194,7 +196,7 @@ redacted error, with a false-admission falsifier. These checks create no install
 or role grants and do not turn a prerequisite report into installation readiness.
 
 The [qualified production witness](tests/postgres/m14QualifiedComposition.test.ts)
-checks F's two fixed restore-bound 90-unit inventories through the built package
+checks the completion's two measured restore-bound 91-unit inventories through the built package
 entry and real reference binding, then two fresh targets in the other role mode
 with changed principal names. The E2 predecessor retains its four 89-unit shapes
 and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
@@ -202,7 +204,10 @@ shadow-symbol refusals without replacing expected digests.
 Each installation also connects as its actual restricted runtime login to prove
 notification row locking and timestamp-only writes, diagnostic replay locking
 with actual event-update refusal, and privacy receipt locks, reads/inserts and
-populated-row update refusal through the existing production ports. Existing
+populated-row update refusal through the existing production ports. The same four
+cases use the normal-runtime preparation binding/lane for context writes and the
+review adapters for receipt command/replay, with receipt mutation and context-key
+refusals; they add no installation matrix or privileged runtime fallback. Existing
 native domain, identity and reviewed-batch fixtures explicitly select the legacy plan
 before slicing upgrade prefixes, so the v2 union does not change their issued
 SQL, positions or expected legacy inventory. These cases use the existing root

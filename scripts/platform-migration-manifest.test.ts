@@ -103,11 +103,14 @@ describe("canonical qualified migration selection", () => {
   it("admits only the exact completion tail after the unchanged restore-bound prefix", () => {
     if (raw.schemaVersion !== 2) throw new Error("canonical fixture requires schema 2");
     const previous = structuredClone(raw);
+    // Isolate the structural pre-completion fixture after the real tail is introduced.
+    previous.qualified.forward = previous.qualified.forward.filter(({ file }) => file !== QUALIFIED_RUNTIME_COMPLETION_FILE);
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`, "utf8");
     const completion = { file: QUALIFIED_RUNTIME_COMPLETION_FILE, sha256: sha256(content) };
     const completed = structuredClone(previous);
     completed.qualified.forward.push(completion);
-    const migrations = [...readPlatformMigrations(process.cwd()).migrations, { file: completion.file, content }];
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => file !== completion.file),
+      { file: completion.file, content }];
     // Structural inputs retain historical hashes; they are not future live inventory evidence.
     expect(evaluatePlatformMigrationManifest({ manifest: completed, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(previous, completed, [completion.file])).toEqual([]);

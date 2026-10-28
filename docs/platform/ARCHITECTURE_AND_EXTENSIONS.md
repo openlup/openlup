@@ -2167,6 +2167,17 @@ defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
 
+The qualified runtime-completion witness uses the existing
+[preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+and its role-free transaction lane for actual restricted-runtime context insert,
+upsert and delete. The same four-case production composition exercises the review
+adapters' confirm, moderation, delete preparation and revoke replay receipts.
+Context key updates, neighboring dispatch deletion and receipt mutation refuse;
+neither setup-owner facts nor a reference inventory substitutes for normal-runtime
+command proof. The separately approved SQL changes only the finite grants described
+by the [migration owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle), with no new
+transfer API, runtime adapter, role compiler or installation executor.
+
 The host-owned [native observation binding](../../server/adapters/postgres/fulfillmentObservationLifecycle.ts)
 implements the existing G17 lookup/acceptance pair using native dispatch SQL.
 Its caller must supply an already-verified observation with the exact shipment

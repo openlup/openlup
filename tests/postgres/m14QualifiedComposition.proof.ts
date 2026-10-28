@@ -9,12 +9,15 @@ import { createPostgresNotificationRecipientsPort } from "@openlup/platform/comm
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork } from "@openlup/platform/identity";
 import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
+import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { createCustomerDiagnosticHistoryPort } from "../../server/adapters/customerDiagnosticHistory.js";
-import { createPostgresCustomerDiagnosticHistoryTransactionLane } from "../../server/adapters/postgres/dataGateway.js";
+import { createPostgresCustomerDiagnosticHistoryTransactionLane, createPostgresFulfillmentTransactionLane } from "../../server/adapters/postgres/dataGateway.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { createPostgresFulfillmentObservationLifecycle } from "../../server/adapters/postgres/fulfillmentObservationLifecycle.js";
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { createM08FulfillmentReferenceBinding } from "../../server/runtime/public-reference/m08FulfillmentBinding.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { profile, request } from "../helpers/fulfillmentComposition.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 
 const input: { connectionString: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
@@ -205,6 +208,109 @@ async function proveObservationRuntime(bootstrap: Pool): Promise<void> {
     [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin }]);
 }
 
+async function proveRuntimeCompletion(bootstrap: Pool): Promise<void> {
+  const runtime = pool(loginUrl(selection.runtimeLogin));
+  const assertRuntime = async (db: PgQueryExecutor): Promise<void> => {
+    assert.deepEqual((await db.query(`SELECT current_user,session_user,r.rolsuper,r.rolbypassrls,
+      NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid = ANY($1::pg_catalog.regclass[])
+        AND (c.relowner=r.oid OR pg_catalog.pg_has_role(r.oid,c.relowner,'USAGE'))) AS nonowner
+      FROM pg_catalog.pg_roles r WHERE r.rolname=current_user`,
+    [["public.fulfillment_dispatch_contexts", "public.commerce_order_review_command_receipts"]])).rows,
+    [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin, rolsuper: false, rolbypassrls: false, nonowner: true }]);
+  };
+  await assertRuntime(runtime);
+  const f = await fixture(bootstrap);
+  const candidate = { ...request(), fulfillmentRef: f.shipment, orderRef: f.order };
+  await bootstrap.query("UPDATE public.fulfillment_shipments SET metadata=$2 WHERE id=$1", [f.shipment, { revision: 1, withheld: false }]);
+  const lane = createPostgresFulfillmentTransactionLane({ connectionString: loginUrl(selection.runtimeLogin) }, { poolFactory: () => runtime });
+  ports.push(lane);
+  let available = true;
+  const binding = createM08FulfillmentReferenceBinding({ enabled: true, transactions: lane,
+    preparation: { readAuthoritative: async (db, ref) => {
+      await assertRuntime(db);
+      const facts = (await db.query("SELECT metadata FROM public.fulfillment_shipments WHERE id=$1", [ref])).rows[0].metadata as { revision: number; withheld: boolean };
+      return { candidate: available ? { ...candidate, contactRevision: { ...candidate.contactRevision, revision: facts.revision } } : null,
+        withheld: facts.withheld };
+    } },
+    services: { selection: candidate.selection, capability: profile(),
+      provider: { prepare: async () => { throw new Error("unused fixture provider"); }, dispatch: async () => { throw new Error("unused fixture provider"); } },
+      readiness: async () => ({ ready: true as const }), listCandidates: async () => [], config: { mode: "live", batchLimit: 1 },
+      keys: { request: value => value.requestKey, mappedAttempt: key => key,
+        acceptance: ref => ({ providerAttemptKey: ref, labelKey: ref }) } },
+    version: "0.30.0", requiredSchema: { version: "fixture", migration: "fixture", objects: [] } });
+  assert.deepEqual(await binding.prepare(f.shipment), { disposition: "ready", contactRevision: 1 });
+  const attribution = { fulfillmentRef: f.shipment, actorUserId: f.client, idempotencyKey: `edit:${f.shipment}` };
+  assert.deepEqual(await binding.editAuthoritative(attribution, async db => {
+    await assertRuntime(db);
+    await db.query("UPDATE public.fulfillment_shipments SET metadata=$2 WHERE id=$1", [f.shipment, { revision: 2, withheld: true }]);
+  }), { disposition: "withheld", contactRevision: 2 });
+  assert.deepEqual((await runtime.query("SELECT contact_revision,provider_ref,withheld FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1", [f.shipment])).rows,
+    [{ contact_revision: { ...candidate.contactRevision, revision: 2 },
+      provider_ref: candidate.selection.providerRef, withheld: true }]);
+  available = false;
+  assert.deepEqual(await binding.prepare(f.shipment), { disposition: "withheld", contactRevision: null });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1", [f.shipment])).rows, []);
+  available = true;
+  assert.deepEqual(await binding.prepare(f.shipment), { disposition: "withheld", contactRevision: 2 });
+  const contextBefore = (await runtime.query("SELECT * FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1", [f.shipment])).rows;
+  for (const sql of ["UPDATE public.fulfillment_dispatch_contexts SET shipment_id=shipment_id WHERE shipment_id=$1",
+    "DELETE FROM public.fulfillment_dispatch_refs WHERE shipment_id=$1"]) {
+    await assert.rejects(runtime.query(sql, [f.shipment]), { code: "42501" });
+  }
+  await assert.rejects(runtime.query("TRUNCATE public.fulfillment_dispatch_contexts"), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1", [f.shipment])).rows, contextBefore);
+
+  // Owner setup supplies authorization and stored-byte facts; actual R executes
+  // the production commands that read and append replay receipts.
+  const grant = `review-grant:${randomUUID()}`, subject = `qualified-review:${f.order}`;
+  await bootstrap.query("INSERT INTO public.subscriber_profiles(subject_reference,revision,fingerprint) VALUES($1,1,$2)", [subject, "e".repeat(64)]);
+  await bootstrap.query(`INSERT INTO public.subscriber_review_access_grants(order_id,kind,grant_reference,expires_at)
+    VALUES($1,'review_request',$2,now()+interval '1 hour')`, [f.order, grant]);
+  await bootstrap.query(`INSERT INTO public.subscriber_retention_intents(idempotency_key,subject_reference,source_reference,access_grant_reference,
+    kind,template_reference,fingerprint,expected_revision,recipient_fingerprint,control_key,status,delivery_reference)
+    VALUES($1,$2,$3,$4,'review_request','fixture-review',$5,1,$5,'review_request','accepted','fixture-delivery')`,
+  [`review:${f.order}`, subject, `order:${f.order}`, grant, "e".repeat(64)]);
+  const reviews = createPostgresOrderReviewLifecyclePort(runtime);
+  const media = createPostgresOrderReviewMediaPort(runtime);
+  const review = await reviews.submit({ grant, rating: 5, comment: "fixture review", fingerprint: digest("5\nfixture review") });
+  const intent = await reviews.createMediaIntent({ grant, contentType: "image/png", byteLength: 8,
+    capabilityDigest: digest(`capability:${f.order}`), commandKey: `intent:${f.order}` });
+  await bootstrap.query(`UPDATE public.commerce_order_review_media SET state='stored',observed_content_type='image/png',
+    observed_byte_length=8,observed_digest=$2 WHERE media_reference=$1`, [intent.media.mediaRef, "b".repeat(64)]);
+  const confirm = { grant, mediaRef: intent.media.mediaRef, digest: "b".repeat(64), commandKey: `confirm:${f.order}` };
+  const confirmed = await reviews.confirmMedia(confirm);
+  assert.equal(confirmed.replayed, false); assert.equal(confirmed.value.state, "confirmed");
+  assert.deepEqual(await reviews.confirmMedia(confirm), { ...confirmed, replayed: true });
+  await assert.rejects(reviews.confirmMedia({ ...confirm, digest: "c".repeat(64) }), { code: "23505", message: "order_review_conflict" });
+  const moderate = { reviewRef: review.value.reviewRef, action: "publish" as const, actorRef: "fixture-admin", idempotencyKey: `moderate:${f.order}` };
+  const moderated = await reviews.moderate(moderate);
+  assert.equal(moderated.value.moderation, "visible");
+  assert.deepEqual(await reviews.moderate(moderate), { ...moderated, replayed: true });
+  const deletion = { actorRef: "fixture-admin", mediaRef: intent.media.mediaRef, idempotencyKey: `delete:${f.order}` };
+  const cleanup = await media.prepareAdminDelete(deletion); assert(cleanup);
+  assert.equal(cleanup.replayed, false); assert.equal(cleanup.media.state, "cleanup_pending");
+  assert.deepEqual(await media.prepareAdminDelete(deletion), { ...cleanup, replayed: true });
+  const revoke = { reviewRef: review.value.reviewRef, actorRef: "fixture-admin", idempotencyKey: `revoke:${f.order}` };
+  assert.deepEqual(await reviews.revoke(revoke), { replayed: false });
+  assert.deepEqual(await reviews.revoke(revoke), { replayed: true });
+  const receiptsBefore = (await runtime.query("SELECT * FROM public.commerce_order_review_command_receipts ORDER BY command_kind,command_key")).rows;
+  assert.deepEqual(receiptsBefore.map(row => row.command_kind), ["media_confirm", "media_delete", "moderate", "review_revoke"]);
+  assert.deepEqual((await runtime.query(`SELECT
+    pg_catalog.has_table_privilege(current_user,'public.commerce_order_review_command_receipts','SELECT') AS receipt_read,
+    pg_catalog.has_table_privilege(current_user,'public.commerce_order_review_command_receipts','INSERT') AS receipt_append,
+    pg_catalog.has_table_privilege(current_user,'public.commerce_order_review_command_receipts','UPDATE') AS receipt_update,
+    pg_catalog.has_table_privilege(current_user,'public.commerce_order_review_command_receipts','DELETE') AS receipt_delete,
+    pg_catalog.has_table_privilege(current_user,'public.commerce_order_review_command_receipts','TRUNCATE') AS receipt_truncate,
+    pg_catalog.has_column_privilege(current_user,'public.fulfillment_dispatch_contexts','shipment_id','UPDATE') AS context_key_update`)).rows,
+  [{ receipt_read: true, receipt_append: true, receipt_update: false, receipt_delete: false, receipt_truncate: false, context_key_update: false }]);
+  for (const sql of ["UPDATE public.commerce_order_review_command_receipts SET result='{}'", "DELETE FROM public.commerce_order_review_command_receipts",
+    "TRUNCATE public.commerce_order_review_command_receipts", "UPDATE public.commerce_order_review_audit SET actor_reference='fixture-forged'"]) {
+    await assert.rejects(runtime.query(sql), { code: "42501" });
+  }
+  assert.deepEqual((await runtime.query("SELECT * FROM public.commerce_order_review_command_receipts ORDER BY command_kind,command_key")).rows, receiptsBefore);
+  await assertRuntime(runtime);
+}
+
 async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
   const operator = "e2000000-0000-4000-8000-000000000001";
   const subject = "e2000000-0000-4000-8000-000000000002";
@@ -309,7 +415,7 @@ async function prove() {
   });
   assert.equal(manifest.objectInventorySha256, input.expectedInventory);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 90);
+  assert.equal(expected.length, 91);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;
   await assert.rejects(createPostgresMigrationRunner({ connectionString: input.connectionString }, { installation: withoutRestore }).status(),
@@ -379,6 +485,7 @@ async function prove() {
   }
   await proveRetainedRuntime(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
+  await proveRuntimeCompletion(bootstrap);
   if (input.discriminators) await proveObservationRuntime(bootstrap);
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await ledger(), installed);
@@ -458,7 +565,7 @@ async function prove() {
   assert.deepEqual(await ledger(), installed);
   return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
-    nativeObservationRuntimeProved: input.discriminators,
+    runtimeCompletionProved: true, nativeObservationRuntimeProved: input.discriminators,
     discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
 }
 
