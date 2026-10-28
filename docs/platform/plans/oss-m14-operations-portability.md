@@ -1561,65 +1561,65 @@ closes the cause without duplicating the whole qualified catalogue.
 
 ### Runtime completion prior controls, 28 October 2026
 
-Outcome: deliver only the FIRST reader-preparation checkpoint for the exact
-future runtime-completion identity. This necessary recovery remains within the
-approved M14 through C6 programme and its ordinary reviewed delivery authority
-through confirmed merge. Publication, activation, live provisioning/cutover,
-deployment, credentials and settings remain excluded.
+Outcome: prepare only the exact sixth prior-approval pin, with its fixture
+approved but unintroduced. This necessary recovery continues the approved M14
+through C6 programme and ordinary reviewed delivery through confirmed merge.
+Publication, activation, live provisioning/cutover, deployment, credentials and
+settings remain excluded. Root appoints this sole implementation contributor
+and supervises technical read, DCO, submission and merge; all source authors
+remain excluded from independent review. No new programme or budget is created.
 
-Root appointed this author as the sole implementation contributor for these
-shared controls. Root supervises technical read, DCO, submission and merge;
-this contributor cannot independently review the candidate. The same task and
-evidence history continues without new review budgets or authority.
+The FIRST reader-only checkpoint landed as PR410, main commit
+`8da4af5a712e22a6fc7b4ba0507e425fdbfe0115`. Root confirmed two fresh FULL
+reviews, canonical full 14/14 PASS in 696.383 seconds, source/group 12/12 PASS
+and confirmed merge. That evidence belongs to reader head
+`21b3b12ad6f448a19db39c26aae36918f49a46af`, not this changed pin candidate.
+The original native session remains append-only and unchanged; root will later
+prepare the changed checkpoint in that same history without resetting cycles.
 
-Code predecessor and explicit stack base:
-`1e173ad9d73c54a1b4dce6f61fd8e10cbd3d5cd8` (G1).
-Separately verified policy revision and historical initial code base:
-`333ac427b4c62b613d90e1257110f0c6f365cd77`.
-A hash-verified external backup preceded the fast-forward and contextual reader
-reapplication. G1 code and metadata remain; no freshness merge was performed.
+Current code base is `8da4af5a712e22a6fc7b4ba0507e425fdbfe0115`.
+Separately verified current policy is
+`8da4af5a712e22a6fc7b4ba0507e425fdbfe0115`.
+The former G1 stack pin is unset for this checkpoint because reader support is
+already on actual main. Historical 333/G1 inputs, diagnostics, first failures,
+full chronology and delivered-reader evidence remain in existing task evidence.
 
-The exact sixth identity is q2_20261028100000_runtime_capability_completion.sql.
-Its inert, unapproved fixture has SHA-256
+The only registry delta appends
+q2_20261028100000_runtime_capability_completion.sql with SHA-256
 `ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e`.
-It proposes only the demonstrated context grants and receipt SELECT/INSERT,
-with installer-ownership/runtime-binding guards and existing trusted preflight.
-No active SQL, runtime API, role, ownership, RLS or trigger change occurs here.
-The actual registry retains exactly five issued rows, byte-for-byte; their SQL,
-fixtures and pins, legacy88, F90 and both selected inventories remain unchanged.
+Its unchanged 53-line fixture is approved but unintroduced. It binds only the
+demonstrated context grants and receipt SELECT/INSERT, with the existing
+installer-ownership/runtime-binding guard and trusted preflight. No active SQL,
+manifest, runtime API, role, ownership, RLS, trigger or npm asset changes here.
+The first five approval rows, all issued SQL/fixtures, legacy88, F90 and both
+selected inventories retain their exact bytes and positions.
 
-A diagnostic using the actual trusted 333 validator and dependency closure
-accepted five registry rows and rejected the proposed six-row registry before
-its no-SQL return. Validator SHA-256:
-`4717bc27be7f92d235d49a9b86bd75662078e9618cf0de55e4e31610b500dc2b`.
-The supported order is reader preparation on main, then the exact sixth-pin-only
-approval on main, then identical active SQL and the manifest91 append with its
-own proofs. Calling a change control-only cannot bypass the old reader.
-Trusted guards/callers remain intact. This diagnostic was not a native review
-failure; native history is uninitialized and no repair cycle was consumed.
+The trusted-old-reader diagnostic accepted five rows and rejected six before
+its no-SQL return. Reader support therefore landed first; this exact pin-only
+approval must land next, before identical active SQL and manifest91 with its
+own real inventory/runtime proofs. Trusted guards/callers stay intact. Neither
+pin approval nor fixture integrity establishes installation or qualification.
+No cap, numeric reserve, dependency, package file or allowance is added.
 
-Current stacked working feedback passed policy/navigation, inventory, manifest,
-AST and whitespace; canonical lint with three build prerequisites passed with
-zero errors/33 existing warnings. Five type projects and all three API checks
-passed without API changes. Current reader-first suites passed 24/24 in 7.14s.
-Three working tarballs passed native byte/file and all 17 platform browser
-checks. Platform measured 1,662,140 code bytes/2,574 code files and 1,928,865
-packed bytes/2,628 total files; both file counts equal unchanged caps.
-This root-only change adds no package file or allowance. Proof inputs stayed
-frozen; only outcome notes followed, with final stack-pinned policy passing.
+This pin candidate passed policy/navigation, inventory, manifest, AST and
+whitespace; fixed-reader/admission regressions passed 24/24 in 8.23 seconds.
+Required lint/build prerequisites passed with zero errors/33 existing warnings;
+five type projects, all three APIs and three working packs passed, including
+all 17 platform browser checks. Inputs stayed frozen; actual child tools and
+unset stack pin were checked. No PostgreSQL, installed, cold or full ran here.
 
-Original combined/reader packets, the prior 24-test attribution, first failures,
-full detailed chronology, diagnostic and exact later pin-only delta remain
-recoverable in ignored task evidence. Owned tool versions/hashes were checked
-in an actual broker child; working allocation/processes were released before
-notes. No standalone PostgreSQL, cold/full, DCO, commit or external write ran.
+Platform file headroom remains zero: 2,574 code and 2,628 total files at their
+unchanged caps. This root-only pin has no package-file delta. Every claimed
+working result must be attributed to this candidate; reader results above
+remain historical. The finite batch preserves first failures and releases its
+broker/process allocation immediately at terminal results.
 
-Remaining: root's final stabilized read, DCO, two fresh FULL native reviews,
-canonical full verification, predecessor actually on main, and required source
-and merge-group admission/checks. Recheck the exact child tool environment
-before full proof. No active database or ledger change needs rollback; before
-later activation, source recovery can revert only this reader preparation.
+Remaining: root's stabilized API/control/notes/budget/recovery read before DCO,
+two fresh FULL reviews in the existing history, canonical full verification and
+actual source/group admission/checks before reviewed merge. Active SQL waits
+for this exact pin on main. Before activation, source recovery can revert only
+this unintroduced pin/status checkpoint; no database or ledger needs rollback.
 
-Retro: candidate-reader tests did not prove admission by an older trusted
-reader. Splitting reader support from later approval data preserves enforcement
-and avoids a failed admission; checking child PATH early avoids late tool drift.
+Retro: landing the supported reader first preserved trusted admission. Keeping
+this next change to one exact prior pin avoids premature SQL, inventory or
+package-budget work and preserves the delivered reader's evidence attribution.
