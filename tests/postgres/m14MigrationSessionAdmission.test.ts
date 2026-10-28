@@ -151,6 +151,12 @@ const hostileLayouts = [
       extra pg_catalog.text DEFAULT migration_read_probe.mark())`],
   ["check expression", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations
     ADD CONSTRAINT synthetic_check CHECK (migration_read_probe.mark() IS NOT NULL)`],
+  ["built-in default", `CREATE TABLE public.platform_schema_migrations
+    (catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4,
+      extra pg_catalog.text DEFAULT pg_catalog.set_config('application_name','synthetic-default',false))`],
+  ["built-in check", `${ledgerDefinition}; ALTER TABLE public.platform_schema_migrations
+    ADD CONSTRAINT platform_schema_migrations_position_check
+    CHECK (pg_catalog.set_config('application_name','synthetic-check',false) IS NOT NULL)`],
 ] as const;
 
 async function resetLedger(sql: string): Promise<void> {
@@ -169,7 +175,7 @@ async function attachForeignLedgerChild(): Promise<void> {
 
 function probePool(): Pool {
   return new Pool({ connectionString: container!.connectionString, max: 1,
-    options: "-c search_path=migration_read_probe,pg_catalog,public" });
+    options: "-c search_path=migration_read_probe,pg_catalog,public -c application_name=m14-preflight" });
 }
 
 async function invocationCount(): Promise<number> {
@@ -205,6 +211,9 @@ it.each(methods)("refuses unsafe ledger layouts before %s reads with zero probe 
         expect({ result, invocations: await invocationCount(), admissions }, layout).toEqual({
           result: { error: "platform migration ledger relation is not safe to read" }, invocations: 0, admissions: 0,
         });
+        if (layout === "built-in default" || layout === "built-in check") {
+          expect((await pool.query("SHOW application_name")).rows).toEqual([{ application_name: "m14-preflight" }]);
+        }
         expect((await admin.query("SELECT pg_catalog.to_regclass('public.catalog_products') AS pending_relation")).rows)
           .toEqual([{ pending_relation: null }]);
       } finally { await pool.end(); }
@@ -275,8 +284,9 @@ it.each(methods)("rechecks the locked ledger identity before %s after concurrent
   }
 });
 
-it("rechecks the ledger under the migration transaction before a pending insert", async () => {
-  for (const [layout, replacement] of hostileLayouts.filter(([name]) => name === "view" || name === "insert trigger")) {
+it("rechecks the same ledger under the migration transaction before a pending insert", async () => {
+  for (const [layout, replacement] of [...hostileLayouts.filter(([name]) => name === "view" || name === "insert trigger"),
+    ["safe replacement", ledgerDefinition] as const]) {
     await resetLedger(ledgerDefinition);
     await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
     const pool = probePool();
@@ -297,9 +307,80 @@ it("rechecks the ledger under the migration transaction before a pending insert"
     } as unknown as Pool;
     try {
       await expect(fixtureRunner(replacingPool, true).apply(), layout)
-        .rejects.toThrow("platform migration ledger relation is not safe to read");
+        .rejects.toThrow(layout === "safe replacement" ? "platform migration ledger changed before write"
+          : "platform migration ledger relation is not safe to read");
       expect(await invocationCount()).toBe(0);
+      expect((await admin.query("SELECT pg_catalog.to_regclass('public.catalog_products') AS pending_relation")).rows)
+        .toEqual([{ pending_relation: null }]);
     } finally { await pool.end(); }
+  }
+});
+
+it("refuses a changed applied prefix before a pending migration commits", async () => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+  const pool = probePool();
+  const changingPool = {
+    async connect() {
+      const client = await pool.connect();
+      return {
+        async query(sql: string, values?: unknown[]) {
+          const result = await client.query(sql, values);
+          if (sql === migrations[1]!.content) await admin.query("DELETE FROM public.platform_schema_migrations");
+          return result;
+        },
+        release: client.release.bind(client),
+      };
+    },
+  } as unknown as Pool;
+  try {
+    await expect(fixtureRunner(changingPool, true).apply()).rejects.toThrow("platform migration ledger changed before write");
+    expect(await invocationCount()).toBe(0);
+    expect((await admin.query("SELECT pg_catalog.to_regclass('public.catalog_products') AS pending_relation")).rows)
+      .toEqual([{ pending_relation: null }]);
+  } finally { await pool.end(); }
+});
+
+it("holds the pending write lock against a concurrent trigger change", async () => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
+  const oid = (await admin.query("SELECT 'public.platform_schema_migrations'::pg_catalog.regclass::pg_catalog.oid AS oid")).rows[0].oid;
+  const beforeInsert = signal(), allowInsert = signal();
+  const pool = probePool();
+  let ledgerReads = 0;
+  const gatedPool = {
+    async connect() {
+      const client = await pool.connect();
+      return {
+        async query(sql: string, values?: unknown[]) {
+          if (sql.startsWith("SELECT catalog_path, sha256, position FROM ONLY") && ++ledgerReads === 2) {
+            beforeInsert.resolve();
+            await allowInsert.promise;
+          }
+          return client.query(sql, values);
+        },
+        release: client.release.bind(client),
+      };
+    },
+  } as unknown as Pool;
+  const ddlPool = new Pool({ connectionString: container!.connectionString, max: 1, options: "-c statement_timeout=5000" });
+  const result = fixtureRunner(gatedPool, true).apply();
+  try {
+    await Promise.race([beforeInsert.promise, result.then(() => { throw new Error("pending write did not reach its gate"); })]);
+    const addTrigger = ddlPool.query(`CREATE TRIGGER synthetic_insert BEFORE INSERT ON public.platform_schema_migrations
+      FOR EACH ROW EXECUTE FUNCTION migration_read_probe.mark_insert()`);
+    await expect.poll(async () => (await admin.query(`SELECT pg_catalog.count(*)::pg_catalog.int4 AS waiting
+      FROM pg_catalog.pg_locks WHERE relation OPERATOR(pg_catalog.=) $1::pg_catalog.oid
+        AND mode OPERATOR(pg_catalog.=) 'ShareRowExclusiveLock'::pg_catalog.text AND NOT granted`, [oid])).rows[0].waiting,
+    { timeout: 3_000 }).toBe(1);
+    await expect(addTrigger).rejects.toMatchObject({ code: "57014" });
+    allowInsert.resolve();
+    await expect(result).resolves.toEqual({ applied: files.slice(1) });
+    expect(await invocationCount()).toBe(0);
+  } finally {
+    allowInsert.resolve();
+    await Promise.allSettled([result]);
+    await Promise.all([pool.end(), ddlPool.end()]);
   }
 });
 

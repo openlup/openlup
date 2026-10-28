@@ -64,6 +64,7 @@ type LoadedPlan = Readonly<{
 }>;
 type LedgerRow = { catalog_path: unknown; sha256: unknown; position: unknown };
 type LedgerIdentityRow = { ledger_oid: unknown; ledger_safe: unknown };
+type AppliedLedger = { oid: string | null; applied: readonly PlannedMigration[] };
 type AdvisoryUnlockRow = { unlocked: unknown };
 const ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
 const RELEASE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
@@ -80,7 +81,10 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
       WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
         AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2 AND NOT a.attisdropped
         AND (a.attgenerated OPERATOR(pg_catalog.<>) ''::pg_catalog."char"
-          OR tn.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
+          OR tn.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name
+          OR NOT (a.attname OPERATOR(pg_catalog.=) ANY(ARRAY['catalog_path','sha256','position']::pg_catalog.name[])
+            OR (a.attname OPERATOR(pg_catalog.=) 'executed_at'::pg_catalog.name
+              AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.timestamptz'::pg_catalog.regtype))))
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
       WHERE ((d.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_attrdef'::pg_catalog.regclass
           AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef ad
@@ -97,10 +101,32 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
             AND EXISTS (SELECT 1 FROM pg_catalog.pg_operator op JOIN pg_catalog.pg_namespace onsp
               ON onsp.oid OPERATOR(pg_catalog.=) op.oprnamespace
               WHERE op.oid OPERATOR(pg_catalog.=) d.refobjid
-                AND onsp.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))))
+                AND onsp.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))
+          OR (d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_type'::pg_catalog.regclass
+            AND EXISTS (SELECT 1 FROM pg_catalog.pg_type dt JOIN pg_catalog.pg_namespace dns
+              ON dns.oid OPERATOR(pg_catalog.=) dt.typnamespace
+              WHERE dt.oid OPERATOR(pg_catalog.=) d.refobjid
+                AND dns.nspname OPERATOR(pg_catalog.<>) 'pg_catalog'::pg_catalog.name))))
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef ad
+      JOIN pg_catalog.pg_attribute a ON a.attrelid OPERATOR(pg_catalog.=) ad.adrelid
+        AND a.attnum OPERATOR(pg_catalog.=) ad.adnum
+      WHERE ad.adrelid OPERATOR(pg_catalog.=) c.oid
+        AND CASE WHEN a.attname OPERATOR(pg_catalog.=) 'executed_at'::pg_catalog.name
+            AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.timestamptz'::pg_catalog.regtype
+          THEN pg_catalog.regexp_match(ad.adbin::pg_catalog.text,
+            pg_catalog.format('^[{]FUNCEXPR :funcid %s :funcresulttype %s :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid 0 :args <> :location [0-9]+[}]$',
+              'pg_catalog.statement_timestamp()'::pg_catalog.regprocedure::pg_catalog.oid,
+              'pg_catalog.timestamptz'::pg_catalog.regtype::pg_catalog.oid)) IS NULL
+          ELSE true END)
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint co
       WHERE co.conrelid OPERATOR(pg_catalog.=) c.oid
-        AND co.contype OPERATOR(pg_catalog.<>) ALL(ARRAY['p','u','c']::pg_catalog."char"[]))
+        AND CASE WHEN co.contype OPERATOR(pg_catalog.=) 'c'::pg_catalog."char"
+          AND co.conname OPERATOR(pg_catalog.=) ANY(ARRAY[
+            'platform_schema_migrations_catalog_path_check',
+            'platform_schema_migrations_sha256_check',
+            'platform_schema_migrations_position_check']::pg_catalog.name[])
+          THEN co.conbin IS NULL OR co.conbin::pg_catalog.text OPERATOR(pg_catalog.~~) '%FUNCEXPR%'::pg_catalog.text
+          ELSE co.contype OPERATOR(pg_catalog.<>) ALL(ARRAY['p','u']::pg_catalog."char"[]) END)
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_index i
       JOIN pg_catalog.pg_class ic ON ic.oid OPERATOR(pg_catalog.=) i.indexrelid
       JOIN pg_catalog.pg_am am ON am.oid OPERATOR(pg_catalog.=) ic.relam
@@ -145,7 +171,7 @@ export function createPostgresMigrationRunner(
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const applied = await readAppliedPrefix(client, plan.units);
+        const { applied } = await readAppliedPrefix(client, plan.units);
         await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
@@ -159,21 +185,27 @@ export function createPostgresMigrationRunner(
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const already = await readAppliedPrefix(client, plan.units);
-        await options.source.assertSession?.(client, already.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
-        const pending = plan.units.slice(already.length);
+        const initial = await readAppliedPrefix(client, plan.units);
+        await options.source.assertSession?.(client, initial.applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        const pending = plan.units.slice(initial.applied.length);
         if (opts?.dryRun) {
           if (pending.length === 0) await assertObjectInventory(client, plan, options);
           return { applied: pending.map((unit) => unit.catalogPath) };
         }
         const appliedNow: string[] = [];
+        let expectedOid = initial.oid;
         for (const unit of pending) {
-          await client.query("BEGIN");
+          await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
           try {
             await client.query(unit.sql);
-          // The migration may have created the ledger, or another session may
-          // have changed it since the prefix read. Keep this lock to COMMIT.
-          if (!await lockAdmittedLedger(client)) throw new Error("platform migration ledger relation is missing before write");
+            // Validate the same prefix after the unit SQL, under the lock that
+            // remains in force through the ledger insert and COMMIT.
+            const beforeWrite = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
+            if (beforeWrite.oid === null || (expectedOid !== null && beforeWrite.oid !== expectedOid)
+              || beforeWrite.applied.length !== unit.position) {
+              throw new Error("platform migration ledger changed before write");
+            }
+            expectedOid = beforeWrite.oid;
             await client.query(
               `INSERT INTO ${LEDGER} (catalog_path, sha256, position) VALUES ($1, $2, $3)`,
               [unit.catalogPath, unit.sha256, unit.position],
@@ -266,51 +298,52 @@ async function readAppliedPrefix(
   client: PoolClient,
   units: readonly PlannedMigration[],
   whileLocked?: (applied: readonly PlannedMigration[]) => Promise<void>,
-): Promise<readonly PlannedMigration[]> {
+): Promise<AppliedLedger> {
   // A transaction-scoped relation lock prevents replacement after validation.
   // READ COMMITTED gives the post-lock identity check a fresh catalog snapshot.
   await client.query("BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY");
   try {
-    if (!await lockAdmittedLedger(client)) {
-      await whileLocked?.([]);
-      await client.query("COMMIT");
-      return [];
-    }
-    // ONLY excludes inherited or foreign children, which are not ledger storage.
-    const result = await client.query<LedgerRow>(
-      `SELECT catalog_path, sha256, position FROM ONLY ${LEDGER} ORDER BY position`,
-    );
-    if (result.rows.length > units.length) throw new Error("platform migration ledger contains an extra row");
-    for (let index = 0; index < result.rows.length; index += 1) {
-      const row = result.rows[index]!;
-      const unit = units[index]!;
-      if (row.catalog_path !== unit.catalogPath || row.sha256 !== unit.sha256 || row.position !== unit.position) {
-        throw new Error(`platform migration ledger is not the exact manifest prefix at position ${index}`);
-      }
-    }
-    const applied = units.slice(0, result.rows.length);
-    await whileLocked?.(applied);
+    const ledger = await readLockedPrefix(client, units, "ACCESS SHARE");
+    await whileLocked?.(ledger.applied);
     await client.query("COMMIT");
-    return applied;
+    return ledger;
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
   }
 }
 
-async function lockAdmittedLedger(client: PoolClient): Promise<boolean> {
+async function readLockedPrefix(client: PoolClient, units: readonly PlannedMigration[], mode: "ACCESS SHARE" | "SHARE ROW EXCLUSIVE"): Promise<AppliedLedger> {
+  const oid = await lockAdmittedLedger(client, mode);
+  if (oid === null) return { oid: null, applied: [] };
+  // ONLY excludes inherited or foreign children, which are not ledger storage.
+  const result = await client.query<LedgerRow>(
+    `SELECT catalog_path, sha256, position FROM ONLY ${LEDGER} ORDER BY position`,
+  );
+  if (result.rows.length > units.length) throw new Error("platform migration ledger contains an extra row");
+  for (let index = 0; index < result.rows.length; index += 1) {
+    const row = result.rows[index]!;
+    const unit = units[index]!;
+    if (row.catalog_path !== unit.catalogPath || row.sha256 !== unit.sha256 || row.position !== unit.position) {
+      throw new Error(`platform migration ledger is not the exact manifest prefix at position ${index}`);
+    }
+  }
+  return { oid, applied: units.slice(0, result.rows.length) };
+}
+
+async function lockAdmittedLedger(client: PoolClient, mode: "ACCESS SHARE" | "SHARE ROW EXCLUSIVE"): Promise<string | null> {
   const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
-  if (observed.length === 0) return false;
+  if (observed.length === 0) return null;
   const identity = observed[0]!;
   if (observed.length !== 1 || typeof identity.ledger_oid !== "string" || identity.ledger_safe !== true) {
     throw new Error("platform migration ledger relation is not safe to read");
   }
-  await client.query(`LOCK TABLE ONLY ${LEDGER} IN ACCESS SHARE MODE`);
+  await client.query(`LOCK TABLE ONLY ${LEDGER} IN ${mode} MODE`);
   const locked = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
   if (locked.length !== 1 || locked[0]!.ledger_oid !== identity.ledger_oid || locked[0]!.ledger_safe !== true) {
     throw new Error("platform migration ledger relation changed before read");
   }
-  return true;
+  return identity.ledger_oid;
 }
 
 async function assertObjectInventory(

@@ -16,6 +16,8 @@ const identitySql = expect.stringContaining("SELECT c.oid::pg_catalog.text AS le
 const isIdentitySql = (sql: string) => sql.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,");
 const readBeginSql = "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY";
 const readLockSql = "LOCK TABLE ONLY public.platform_schema_migrations IN ACCESS SHARE MODE";
+const writeBeginSql = "BEGIN ISOLATION LEVEL READ COMMITTED";
+const writeLockSql = "LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE";
 const ledgerSql = "SELECT catalog_path, sha256, position FROM ONLY public.platform_schema_migrations ORDER BY position";
 const insertSql = "INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ($1, $2, $3)";
 const readQueries = (present = true, validPrefix = true) => [
@@ -58,9 +60,9 @@ function scenario(input: {
     if (sql === acquireSql) return { rows: [{}] };
     if (sql === releaseSql) return { rows: input.unlockRows ?? [{ unlocked: true }] };
     if (isIdentitySql(sql)) return { rows: present ? [{ ledger_oid: "20001", ledger_safe: true }] : [] };
-    if (sql === readBeginSql || sql === readLockSql) return { rows: [] };
+    if (sql === readBeginSql || sql === readLockSql || sql === writeLockSql) return { rows: [] };
     if (sql === ledgerSql) return { rows: rows.map((row) => ({ ...row })) };
-    if (sql === "BEGIN") snapshot = { present, rows: rows.map((row) => ({ ...row })) };
+    if (sql === writeBeginSql) snapshot = { present, rows: rows.map((row) => ({ ...row })) };
     else if (sql === "COMMIT") snapshot = undefined;
     else if (sql === "ROLLBACK") {
       if (snapshot) {
@@ -191,7 +193,7 @@ describe("PostgreSQL migration runner", () => {
     expect(s.query.mock.calls).toEqual([
       [acquireSql, [lockName]], ...readQueries(false),
       ...bodies.flatMap((sql, index) => [
-        ["BEGIN"], [sql], [identitySql], [readLockSql], [identitySql],
+        [writeBeginSql], [sql], [identitySql], [writeLockSql], [identitySql], [ledgerSql],
         [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
       ]),
       ...readQueries(), [releaseSql, [lockName]],
@@ -297,7 +299,7 @@ describe("PostgreSQL migration runner", () => {
   it("rejects extra ledger rows even when the known prefix is intact", async () => {
     const s = scenario({ rows: [...expectedRows(), { catalog_path: "migrations/extra.sql", sha256: "extra", position: 3 }] });
     await expect(s.makeRunner().apply()).rejects.toThrow(/^platform migration ledger contains an extra row$/);
-    expect(s.query).not.toHaveBeenCalledWith("BEGIN");
+    expect(s.query).not.toHaveBeenCalledWith(writeBeginSql);
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
     expect(s.release).toHaveBeenCalledWith(false);
   });
@@ -315,7 +317,7 @@ describe("PostgreSQL migration runner", () => {
     );
     expect(s.catalogProjectionPayload).toHaveBeenCalledExactlyOnceWith(s.client);
     expect(s.evaluate).toHaveBeenLastCalledWith({ manifest: s.manifest, migrations: s.migrations, objectInventoryPayload: payload });
-    expect(s.query).not.toHaveBeenCalledWith("BEGIN");
+    expect(s.query).not.toHaveBeenCalledWith(writeBeginSql);
     expect(s.release).toHaveBeenCalledWith(false);
   });
 
@@ -328,10 +330,11 @@ describe("PostgreSQL migration runner", () => {
     expect(s.query.mock.calls.filter(([sql]) => sql === "ROLLBACK")).toHaveLength(1);
   });
 
-  it("refuses an incomplete ledger after apply before evaluating inventory", async () => {
+  it("refuses a missing prior prefix before recording the next unit", async () => {
     const s = scenario({ ignoreInserts: true });
-    await expect(s.makeRunner().apply()).rejects.toThrow(/^platform migration ledger is incomplete after apply$/);
+    await expect(s.makeRunner().apply()).rejects.toThrow(`platform migration ${files[1]} failed: platform migration ledger changed before write`);
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
+    expect(s.query).not.toHaveBeenCalledWith(bodies[2]);
     expect(s.query).toHaveBeenLastCalledWith(releaseSql, [lockName]);
     expect(s.release).toHaveBeenCalledWith(false);
   });
@@ -364,7 +367,7 @@ describe("PostgreSQL migration runner", () => {
 
   it("releases the lock after a transaction-start failure without attempting rollback", async () => {
     const failure = new Error("transaction unavailable");
-    const s = scenario({ fail: (sql) => sql === "BEGIN" ? failure : undefined });
+    const s = scenario({ fail: (sql) => sql === writeBeginSql ? failure : undefined });
     await expect(s.makeRunner().apply()).rejects.toBe(failure);
     expect(s.query).not.toHaveBeenCalledWith("ROLLBACK");
     expect(s.query).toHaveBeenLastCalledWith(releaseSql, [lockName]);
