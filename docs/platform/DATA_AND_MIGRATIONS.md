@@ -28,6 +28,21 @@ and target transaction capabilities remain host-owned; an opaque catalogue label
 does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
+The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
+captures the connected73-table graph and the application's complete private
+`objects/tmp` tree only after its finite source writers and observed server
+backends retire. Its migration-owner capture is read-only; actual source and
+target domain commands use the qualified restricted runtime. The existing
+canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
+uploads, partial bytes, cleanup obligations and leases without copying schema,
+roles, private installation-key payloads or migration history. Database and
+filesystem publication are separate; both must finish before target recovery
+or application startup. Source `submitting` rows remain unchanged through import;
+only afterward may the existing runtime transition retain uncertainty and G1
+accept verified external facts. No source normalization, forced expiry, proven
+absence or complete upload is manufactured. This finite composition does not
+qualify an adopter's complete writer inventory or managed-history mapping.
+
 Historical insertion is not generally inert. `clients` insertion invokes
 `customer_subject_capture_lifecycle_trigger`, generating new history; cycle
 insertion invokes `subscription_delivery_alignment_guard_cycle_insert`, which
