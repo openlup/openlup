@@ -167,7 +167,8 @@ qualification. Reader support and the exact sixth-pin approval landed separately
 before SQL introduction; qualified 91 preserves legacy 88 and the entire F90 prefix.
 The SQL feature still needs its own runtime and inventory evidence. The
 prepared reader additionally reserves one qualified owner-path forward after
-the runtime-completion tail. Its fixed function preimages and exact forward
+the runtime-completion tail, at approval position seven before the five
+restricted-bootstrap positions. Its fixed function preimages and exact forward
 bytes require approval before SQL introduction; the control witness refuses
 changed bodies, extra definitions and an earlier position. This preparation
 does not add the forward to the selected 91-unit plan.
@@ -179,6 +180,16 @@ lock before pending SQL and preserves the ledger. This generic hook proof does
 not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
+
+The restricted-bootstrap reader preparation adds five fixed `qa_` identities
+to the existing classifier and approval reader without changing the active
+schema-2 manifest or six issued approval rows. Its schema-3 parser requires a
+separate 91-unit generation, the issued runtime-completion tail and exactly two
+fixed role-mode inventory digests. The manifest and admission witnesses reject
+missing/reordered tails, wrong-generation paths, malformed modes, issued-prefix
+repins and partial approval sets. The five fixture files are inert source bytes;
+their later approval and active SQL must land in separate checkpoints. No new
+test command or CI job is introduced by reader preparation.
 
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;

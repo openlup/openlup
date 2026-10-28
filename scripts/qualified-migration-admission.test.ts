@@ -8,6 +8,7 @@ import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { git as readGit } from "./agent-review-session.mjs";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.js";
 import {
+  ADMIN_ACQUISITION_FILE, ADMIN_ACTOR_FILE, ADMIN_BASELINE_FILE, ADMIN_IMPORT_FILE, ADMIN_RUNTIME_FILE,
   QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE,
 } from "./platform-migration-manifest.js";
 import {
@@ -23,7 +24,19 @@ vi.mock("./reviewed-platform-forward.js", async (importOriginal) => {
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-const paths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE];
+const paths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE,
+  QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
+const signatures = [
+  "acquisition_private.keyed_digest(text,jsonb)",
+  "acquisition_private.case_projection(uuid)",
+  "acquisition_private.refuse_append_only_mutation()",
+  "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamptz)",
+  "public.acquisition_case_operator_list_v1(uuid,timestamptz,uuid,integer)",
+  "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamptz)",
+  "public.acquisition_case_active_count_v1()",
+  "public.customer_subject_capture_lifecycle()",
+  "public.subscription_delivery_alignment_guard_cycle_insert()",
+];
 const bodies = paths.map((_path, index) => Buffer.from(`CREATE TABLE public.qualified_fixture_${index}(id integer);\n`));
 const encode = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -41,18 +54,24 @@ function fixture() {
   put(REVIEWED_FORWARD_PATH, encode(registry));
   put("scripts/platform-migration-manifest.ts", "// existing control fixture\n");
   const base = commit("existing controls");
-  const approved = { ...registry, qualifiedInstallations: paths.map((path, index) => ({ path, sha256: sqlSha256(bodies[index]!) })) };
+  const approved = { ...registry, qualifiedInstallations: paths.map((path, index) => index === 6
+    ? { path, sha256: sqlSha256(bodies[index]!), functions: signatures.map(signature => ({ signature, beforeSha256: "a".repeat(64), afterSha256: "b".repeat(64) })) }
+    : { path, sha256: sqlSha256(bodies[index]!) }) };
   return { root, put, commit, git, base, approved };
 }
 
 it("reads only the fixed ordered qualified identities with exact digest fields", () => {
   const f = fixture();
-  for (const length of [4, 5, 6]) expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, length) })))).not.toThrow();
+  for (const length of [4, 5, 6, 7, 12]) expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, length) })))).not.toThrow();
+  for (const length of [8, 9, 10, 11]) expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, length) })))).toThrow(/qualified installation approval/);
   for (const change of [
     (value: typeof f.approved) => { value.qualifiedInstallations[0]!.path = "db/platform/migrations/q2_arbitrary.sql"; },
     (value: typeof f.approved) => { value.qualifiedInstallations[0]!.sha256 = "invalid"; },
     (value: typeof f.approved) => { value.qualifiedInstallations.reverse(); },
     (value: typeof f.approved) => { value.qualifiedInstallations[5]!.path = "db/platform/migrations/q2_20261028100000_other_runtime.sql"; },
+    (value: typeof f.approved) => { value.qualifiedInstallations[6]!.path = "db/platform/migrations/qa_00000000000001_wrong_baseline.sql"; },
+    (value: typeof f.approved) => { value.qualifiedInstallations.splice(6, 1); },
+    (value: typeof f.approved) => { [value.qualifiedInstallations[6], value.qualifiedInstallations[7]] = [value.qualifiedInstallations[7]!, value.qualifiedInstallations[6]!]; },
     (value: typeof f.approved) => { value.qualifiedInstallations.push({ path: "db/platform/migrations/q2_20261028100001_extra.sql", sha256: "a".repeat(64) }); },
   ]) {
     const changed = structuredClone(f.approved);
@@ -62,17 +81,6 @@ it("reads only the fixed ordered qualified identities with exact digest fields",
 });
 
 it("pins the appended owner definitions to the issued preimages and exact path-only replacement", () => {
-  const signatures = [
-    "acquisition_private.keyed_digest(text,jsonb)",
-    "acquisition_private.case_projection(uuid)",
-    "acquisition_private.refuse_append_only_mutation()",
-    "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamptz)",
-    "public.acquisition_case_operator_list_v1(uuid,timestamptz,uuid,integer)",
-    "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamptz)",
-    "public.acquisition_case_active_count_v1()",
-    "public.customer_subject_capture_lifecycle()",
-    "public.subscription_delivery_alignment_guard_cycle_insert()",
-  ];
   const sources = [QUALIFIED_ACQUISITION_FILE, QUALIFIED_IMPORT_FILE].map(path => readFileSync(path));
   const prior = sources.flatMap(source => sqlStatements(source.toString("utf8")));
   const statements = signatures.map(signature => {
@@ -87,14 +95,29 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   const binding = { path: QUALIFIED_OWNER_PATH_FILE, sha256: sqlSha256(bytes), functions: signatures.map((signature, index) => ({
     signature, beforeSha256: sqlSha256(statements[index]!), afterSha256: sqlSha256(after[index]!),
   })) };
-  const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-  const approved = { ...registry, qualifiedInstallations: [...registry.qualifiedInstallations!, binding] };
+  const f = fixture();
+  const approved = { ...f.approved, qualifiedInstallations: [...f.approved.qualifiedInstallations.slice(0, 6), binding, ...f.approved.qualifiedInstallations.slice(7)] };
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
   expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
   const wrongBody = Buffer.from(bytes.toString("utf8").replace("RAISE EXCEPTION 'acquisition_append_only'", "RAISE EXCEPTION 'changed'"));
   expect(() => assertQualifiedOwnerPathForward({ ...binding, sha256: sqlSha256(wrongBody) }, wrongBody, sources)).toThrow("function identity or preimage drifted");
+  const wrongAttribute = Buffer.from(bytes.toString("utf8").replace("SECURITY DEFINER", "SECURITY INVOKER"));
+  expect(wrongAttribute.equals(bytes)).toBe(false);
+  const alteredAttributeBinding = structuredClone(binding);
+  alteredAttributeBinding.sha256 = sqlSha256(wrongAttribute);
+  sqlStatements(wrongAttribute.toString("utf8")).forEach((statement, index) => {
+    alteredAttributeBinding.functions[index]!.afterSha256 = sqlSha256(statement);
+  });
+  expect(() => assertQualifiedOwnerPathForward(alteredAttributeBinding, wrongAttribute, sources)).toThrow("changes more than the pinned name-resolution attribute");
   const extra = Buffer.from(`${bytes}SELECT 1;\n`);
   expect(() => assertQualifiedOwnerPathForward({ ...binding, sha256: sqlSha256(extra) }, extra, sources)).toThrow("missing or extra definition");
+  for (const forbidden of [
+    "GRANT EXECUTE ON FUNCTION public.acquisition_case_active_count_v1() TO PUBLIC;",
+    "ALTER FUNCTION public.acquisition_case_active_count_v1() OWNER TO public;",
+  ]) {
+    const changed = Buffer.from(`${bytes}\n${forbidden}\n`);
+    expect(() => assertQualifiedOwnerPathForward({ ...binding, sha256: sqlSha256(changed) }, changed, sources)).toThrow("missing or extra definition");
+  }
   const wrongPreimage = structuredClone(binding);
   wrongPreimage.functions[0]!.beforeSha256 = "a".repeat(64);
   expect(() => assertQualifiedOwnerPathForward(wrongPreimage, bytes, sources)).toThrow("preimage drifted");
@@ -102,7 +125,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(reordered)))).toThrow("qualified installation approval");
 });
 
-it("preserves issued fixture bindings while preparing the unapproved sixth identity", () => {
+it("preserves six issued identities while preparing five inert restricted bytes", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
   const issued = registry.qualifiedInstallations!;
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
@@ -113,6 +136,16 @@ it("preserves issued fixture bindings while preparing the unapproved sixth ident
   // Fixture integrity does not approve this future pin in the active registry.
   const completion = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`);
   expect(sqlSha256(completion)).toBe("ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e");
+  const pendingHashes = [
+    "a19f78b5e948f96d5bdca6cc14159230cf5197c5ff7fe94f7fc10f26e585a710",
+    "afbba5c95206a579325239a315772095ba47e608b21c8b26d5bbac16a2e0aaa9",
+    "cf5e75a272b81f03b31f529600b1ccd2c974681b20a94bc8ff7159be504364d9",
+    "7083a206e7cedfbb87d009d35234360975d9247b80ccd99a6478d89a12e95cb7",
+    "708aacc8bb3fdeb4d89a5e221914161a56fda790138b3032f349508a800bf72c",
+  ];
+  for (const [index, path] of paths.slice(7).entries()) {
+    expect(sqlSha256(readFileSync(`scripts/fixtures/reviewed-m14-qualified/${path}`))).toBe(pendingHashes[index]);
+  }
 });
 
 it("accepts exact separately approved bytes at source and their unique release introduction", () => {
@@ -152,6 +185,8 @@ it.each([
   ["merge_group", false, QUALIFIED_BASELINE_FILE], ["merge_group", true, QUALIFIED_BASELINE_FILE],
   ["pull_request", false, QUALIFIED_RUNTIME_COMPLETION_FILE], ["pull_request", true, QUALIFIED_RUNTIME_COMPLETION_FILE],
   ["merge_group", false, QUALIFIED_RUNTIME_COMPLETION_FILE], ["merge_group", true, QUALIFIED_RUNTIME_COMPLETION_FILE],
+  ["pull_request", false, ADMIN_BASELINE_FILE], ["pull_request", true, ADMIN_BASELINE_FILE],
+  ["merge_group", false, ADMIN_IMPORT_FILE], ["merge_group", true, ADMIN_IMPORT_FILE],
 ] as const)("trusted %s admission checks unchanged qualified pins with machinery change=%s for %s", async (eventName, changesMachinery, path) => {
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
@@ -227,7 +262,7 @@ it("does not let a later exact pin repair an unapproved SQL introduction", () =>
   expect(() => assertReviewedPlatformForward(f.root, f.base, later, paths[0]!, bodies[0]!, true)).toThrow("approved separately");
 });
 
-it("refuses control-only changes to issued pins while allowing preparation for unintroduced bytes", () => {
+it("refuses control-only changes to issued pins, including unintroduced bytes", () => {
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
   const control = f.commit("approve exact qualified bytes");
@@ -241,7 +276,7 @@ it("refuses control-only changes to issued pins while allowing preparation for u
   const pending = structuredClone(f.approved);
   pending.qualifiedInstallations[1]!.sha256 = "b".repeat(64);
   f.put(REVIEWED_FORWARD_PATH, encode(pending));
-  const preparation = f.commit("prepare still-unintroduced actor bytes");
-  expect(() => assertCoLocatedForwardApproval(f.root, feature, preparation)).not.toThrow();
+  const preparation = f.commit("attempt repin of still-unintroduced actor bytes");
+  expect(() => assertCoLocatedForwardApproval(f.root, feature, preparation)).toThrow("issued qualified installation approvals are immutable");
   expect(() => assertCoLocatedForwardApproval(f.root, f.base, control)).not.toThrow();
 });

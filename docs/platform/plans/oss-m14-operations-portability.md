@@ -135,6 +135,10 @@ canonical catalog resolution, exact ledger prefix and selected object inventory
 must pass under the existing lock. No alias, projector/expectation override,
 SET ROLE substitute or fixture grant can qualify the offered runtime.
 
+The separate [restricted-bootstrap task](oss-m14-restricted-bootstrap.md) prepares
+a fresh non-superuser installation generation and its own proof. Reader and
+inert fixture preparation do not qualify that generation; M14 remains open.
+
 F's fixed import routines retain 13 client and eight cycle fields, precision,
 history/frozen terms and exact-row replay; conflicting rows refuse with `23505`,
 and non-origin replication refuses with `55000`. Ordinary runtime lifecycle and
@@ -286,8 +290,8 @@ No implementation, test, review or delivery result was created by compaction.
 
 ### Qualified owner path hardening (F5)
 
-Status: local control preparation; delivery awaits the applicable maintainer
-read. The bounded outcome is to pin name resolution in the owner-executed
+Status: integrated control preparation; delivery awaits a renewed maintainer
+read after the restricted-bootstrap reader landed. The bounded outcome is to pin name resolution in the owner-executed
 acquisition and retained-import paths of the current qualified-v2 installation.
 Preserve its issued 91-unit prefix and six approval rows; introduce only one
 separately reviewed forward with exact function and file identities. Both
@@ -308,11 +312,17 @@ change, then bind the exact forward and prove the qualified chain. Adjacent M14
 work may require a signed main integration and renewed review. Execution
 evidence and a short self-retro will be recorded here at completion.
 
-Control-preparation checkpoint: the focused manifest/admission selection passed
-26/26; policy, inventory, neutrality, UI neutrality, structural rules, lint and
-redacted staged-diff scanning passed. This is reader evidence only; it is not
-installation or runtime proof. The required security-control read precedes DCO.
-Self-retro for this stopped run: the existing fixed six-row reader required an
-explicit seventh-tail preparation before any forward bytes could be admitted.
-Using its existing approval list and exact preimages kept that control change
-bounded and left the active installation untouched.
+Control-preparation checkpoint: the pre-integration tree passed 26 focused
+tests, native review by two fresh reviewers and canonical verification with
+pgTAP. Main then added the restricted-bootstrap reader on overlapping control
+paths. Its required signed integration caused three textual conflicts; the
+resolved working tree keeps the six active approvals and the 91-unit selected
+qualified plan. The pending qualified forward takes approval position seven,
+before the five restricted-bootstrap reservations. It has no active
+SQL or pin in this control preparation. The integrated control needs its own
+maintainer read before DCO, review and verification.
+
+Self-retro for this stopped run: the pre-integration proof could not carry over
+the overlapping reader landing. Resolving its fixed approval order in one
+control change preserves the existing qualification boundary; the integrated
+tree needs fresh evidence before delivery.
