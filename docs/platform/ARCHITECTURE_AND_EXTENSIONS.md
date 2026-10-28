@@ -2059,6 +2059,13 @@ The [control-plane handler](../../packages/platform/src/operations/server/contro
 checks injected admin authorization before a typed read or mutation, validates
 requests and results, maps replay conflicts to `CONFLICT`, and keeps raw SQL
 errors out of responses. The host binds the existing request-reference callback.
+Its [package characterization](../../packages/platform/test/operations/controlPlaneHandler.test.ts)
+also pins authorization before malformed-body parsing, unsupported methods without
+port work, injected operator-field refusal and strict request/result validation.
+JSON key normalization and replay receipts retain their exact port boundary;
+heartbeat evidence is forwarded unchanged. Invalid results and upstream failures
+retain safe responses without exposing private error details. These synthetic
+handler cases do not qualify a deployed authorization or persistence binding.
 The [SQL executor adapter](../../packages/platform/src/operations/server/controlPlaneStore.ts)
 uses the existing fixed invoker-rights routines, hashes the complete command and
 retains receipt identity on replay. Its capability-local operator allowlist is

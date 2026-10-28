@@ -63,13 +63,31 @@ type LoadedPlan = Readonly<{
   units: readonly PlannedMigration[];
 }>;
 type LedgerRow = { catalog_path: unknown; sha256: unknown; position: unknown };
-type LedgerExistenceRow = { ledger_exists: unknown };
+type LedgerIdentityRow = { ledger_oid: unknown; ledger_safe: unknown };
 type AdvisoryUnlockRow = { unlocked: unknown };
-const ACQUIRE_MIGRATION_LOCK = "SELECT pg_advisory_lock(hashtextextended($1, 0))";
-const RELEASE_MIGRATION_LOCK = "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked";
 const ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
 const RELEASE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
-const CATALOG_BOUND_LEDGER_EXISTENCE = "SELECT pg_catalog.to_regclass($1::pg_catalog.text) IS NOT NULL AS ledger_exists";
+// Observe only built-in catalog values before touching the named relation. A
+// bootstrap superuser may own a legacy ledger read by a different migration login.
+const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
+  (c.relkind OPERATOR(pg_catalog.=) 'r'::pg_catalog."char"
+    AND c.relpersistence OPERATOR(pg_catalog.=) 'p'::pg_catalog."char"
+    AND (owner.rolsuper OR owner.rolname OPERATOR(pg_catalog.=) current_user)
+    AND NOT c.relrowsecurity AND NOT c.relhasrules
+    AND (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
+        AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2 AND NOT a.attisdropped
+        AND a.attgenerated OPERATOR(pg_catalog.=) ''::pg_catalog."char"
+        AND ((a.attname OPERATOR(pg_catalog.=) ANY(ARRAY['catalog_path','sha256']::pg_catalog.name[])
+            AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.text'::pg_catalog.regtype)
+          OR (a.attname OPERATOR(pg_catalog.=) 'position'::pg_catalog.name
+            AND a.atttypid OPERATOR(pg_catalog.=) 'pg_catalog.int4'::pg_catalog.regtype)))
+      OPERATOR(pg_catalog.=) 3::pg_catalog.int8) AS ledger_safe
+  FROM pg_catalog.pg_class c
+  JOIN pg_catalog.pg_namespace n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace
+  JOIN pg_catalog.pg_roles owner ON owner.oid OPERATOR(pg_catalog.=) c.relowner
+  WHERE n.nspname OPERATOR(pg_catalog.=) 'public'::pg_catalog.name
+    AND c.relname OPERATOR(pg_catalog.=) 'platform_schema_migrations'::pg_catalog.name`;
 
 export function createPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
@@ -89,9 +107,8 @@ export function createPostgresMigrationRunner(
     async status(): Promise<{ pending: string[]; applied: string[] }> {
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
-      const catalogBoundSession = options.source.assertSession !== undefined;
-      return withMigrationSession(await getPool(), options.lockName, catalogBoundSession, async (client) => {
-        const applied = await readAppliedPrefix(client, plan.units, catalogBoundSession);
+      return withMigrationSession(await getPool(), options.lockName, async (client) => {
+        const applied = await readAppliedPrefix(client, plan.units);
         await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
@@ -104,9 +121,8 @@ export function createPostgresMigrationRunner(
     async apply(opts?: { dryRun?: boolean }): Promise<{ applied: string[] }> {
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
-      const catalogBoundSession = options.source.assertSession !== undefined;
-      return withMigrationSession(await getPool(), options.lockName, catalogBoundSession, async (client) => {
-        const already = await readAppliedPrefix(client, plan.units, catalogBoundSession);
+      return withMigrationSession(await getPool(), options.lockName, async (client) => {
+        const already = await readAppliedPrefix(client, plan.units);
         await options.source.assertSession?.(client, already.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         const pending = plan.units.slice(already.length);
         if (opts?.dryRun) {
@@ -129,7 +145,7 @@ export function createPostgresMigrationRunner(
             throw new Error(`platform migration ${unit.catalogPath} failed: ${errorMessage(error)}`);
           }
         }
-        const complete = await readAppliedPrefix(client, plan.units, catalogBoundSession);
+        const complete = await readAppliedPrefix(client, plan.units);
         if (complete.length !== plan.units.length) throw new Error("platform migration ledger is incomplete after apply");
         await assertObjectInventory(client, plan, options);
         return { applied: appliedNow };
@@ -141,7 +157,6 @@ export function createPostgresMigrationRunner(
 async function withMigrationSession<T>(
   pool: Pool,
   lockName: string,
-  catalogBoundSession: boolean,
   operation: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
@@ -150,7 +165,7 @@ async function withMigrationSession<T>(
   let operationFailure: unknown;
   let result!: T;
   try {
-    await client.query(catalogBoundSession ? ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK : ACQUIRE_MIGRATION_LOCK, [lockName]);
+    await client.query(ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK, [lockName]);
     locked = true;
     result = await operation(client);
   } catch (error) {
@@ -161,7 +176,7 @@ async function withMigrationSession<T>(
   let unlockFailure: unknown;
   if (locked) {
     try {
-      const unlocked = await client.query<AdvisoryUnlockRow>(catalogBoundSession ? RELEASE_CATALOG_BOUND_MIGRATION_LOCK : RELEASE_MIGRATION_LOCK, [lockName]);
+      const unlocked = await client.query<AdvisoryUnlockRow>(RELEASE_CATALOG_BOUND_MIGRATION_LOCK, [lockName]);
       if (unlocked.rows[0]?.unlocked !== true) throw new Error("PostgreSQL did not release the advisory lock");
     } catch (error) {
       unlockFailure = error;
@@ -209,24 +224,43 @@ function loadPlan(root: string, source: PlatformMigrationSource): LoadedPlan {
   return Object.freeze({ manifest, migrations: catalog.migrations, units: Object.freeze(units) });
 }
 
-async function readAppliedPrefix(client: PoolClient, units: readonly PlannedMigration[], catalogBoundSession: boolean): Promise<readonly PlannedMigration[]> {
-  const exists = await client.query<LedgerExistenceRow>(
-    catalogBoundSession ? CATALOG_BOUND_LEDGER_EXISTENCE : "SELECT to_regclass($1) IS NOT NULL AS ledger_exists",
-    [LEDGER],
-  );
-  if (exists.rows[0]?.ledger_exists !== true) return [];
-  const result = await client.query<LedgerRow>(
-    `SELECT catalog_path, sha256, position FROM ${LEDGER} ORDER BY position`,
-  );
-  if (result.rows.length > units.length) throw new Error("platform migration ledger contains an extra row");
-  for (let index = 0; index < result.rows.length; index += 1) {
-    const row = result.rows[index]!;
-    const unit = units[index]!;
-    if (row.catalog_path !== unit.catalogPath || row.sha256 !== unit.sha256 || row.position !== unit.position) {
-      throw new Error(`platform migration ledger is not the exact manifest prefix at position ${index}`);
+async function readAppliedPrefix(client: PoolClient, units: readonly PlannedMigration[]): Promise<readonly PlannedMigration[]> {
+  // A transaction-scoped relation lock prevents replacement after validation.
+  // READ COMMITTED gives the post-lock identity check a fresh catalog snapshot.
+  await client.query("BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY");
+  try {
+    const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
+    if (observed.length === 0) {
+      await client.query("COMMIT");
+      return [];
     }
+    const identity = observed[0]!;
+    if (observed.length !== 1 || typeof identity.ledger_oid !== "string" || identity.ledger_safe !== true) {
+      throw new Error("platform migration ledger relation is not safe to read");
+    }
+    await client.query(`LOCK TABLE ONLY ${LEDGER} IN ACCESS SHARE MODE`);
+    const locked = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
+    if (locked.length !== 1 || locked[0]!.ledger_oid !== identity.ledger_oid || locked[0]!.ledger_safe !== true) {
+      throw new Error("platform migration ledger relation changed before read");
+    }
+    // ONLY excludes inherited or foreign children, which are not ledger storage.
+    const result = await client.query<LedgerRow>(
+      `SELECT catalog_path, sha256, position FROM ONLY ${LEDGER} ORDER BY position`,
+    );
+    if (result.rows.length > units.length) throw new Error("platform migration ledger contains an extra row");
+    for (let index = 0; index < result.rows.length; index += 1) {
+      const row = result.rows[index]!;
+      const unit = units[index]!;
+      if (row.catalog_path !== unit.catalogPath || row.sha256 !== unit.sha256 || row.position !== unit.position) {
+        throw new Error(`platform migration ledger is not the exact manifest prefix at position ${index}`);
+      }
+    }
+    await client.query("COMMIT");
+    return units.slice(0, result.rows.length);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
   }
-  return units.slice(0, result.rows.length);
 }
 
 async function assertObjectInventory(

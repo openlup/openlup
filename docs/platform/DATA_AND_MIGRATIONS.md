@@ -131,6 +131,16 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+The package runner observes ledger metadata before reading its rows. It accepts
+only a permanent ordinary table owned by the current role or a bootstrap
+superuser, with built-in `text`, `text`, and `int4` columns for `catalog_path`,
+`sha256`, and `position`. Row security, rewrite rules and generated ledger
+columns refuse. A short read-only transaction locks that relation, rechecks its
+identity and reads only its own rows, excluding inheritance children. These
+checks apply to legacy and qualified sources; qualified session admission still
+requires its declared migration owner. Each migration retains its individual
+transaction and exact-prefix/replay behavior.
+
 Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and
 `20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.

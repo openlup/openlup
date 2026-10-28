@@ -22,6 +22,14 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
+The reference [migration binding](postgres/migrationRunner.ts) delegates ledger
+metadata validation and row reads to `@openlup/platform/migrations`. Its mock
+witness models the short read-only transaction separately from each migration
+transaction. Legacy bootstrap ownership remains accepted; qualified selection
+retains its stricter session-owner and role-graph admission. The
+[migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+defines the shared behavior.
+
 The [native fulfillment observation lifecycle](postgres/fulfillmentObservationLifecycle.ts)
 binds the existing G17 lookup/ACK pair to native dispatch SQL. It consumes an
 already-verified observation with exact shipment correlation and selected
