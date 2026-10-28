@@ -202,7 +202,7 @@ it("does not let a later exact pin repair an unapproved SQL introduction", () =>
   expect(() => assertReviewedPlatformForward(f.root, f.base, later, paths[0]!, bodies[0]!, true)).toThrow("approved separately");
 });
 
-it("refuses control-only changes to issued pins while allowing preparation for unintroduced bytes", () => {
+it("refuses control-only changes to issued pins, including unintroduced bytes", () => {
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
   const control = f.commit("approve exact qualified bytes");
@@ -216,7 +216,7 @@ it("refuses control-only changes to issued pins while allowing preparation for u
   const pending = structuredClone(f.approved);
   pending.qualifiedInstallations[1]!.sha256 = "b".repeat(64);
   f.put(REVIEWED_FORWARD_PATH, encode(pending));
-  const preparation = f.commit("prepare still-unintroduced actor bytes");
-  expect(() => assertCoLocatedForwardApproval(f.root, feature, preparation)).not.toThrow();
+  const preparation = f.commit("attempt repin of still-unintroduced actor bytes");
+  expect(() => assertCoLocatedForwardApproval(f.root, feature, preparation)).toThrow("issued qualified installation approvals are immutable");
   expect(() => assertCoLocatedForwardApproval(f.root, f.base, control)).not.toThrow();
 });

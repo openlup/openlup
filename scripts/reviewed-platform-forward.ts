@@ -785,7 +785,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
     if (previousData?.qualifiedInstallations !== undefined || currentData?.qualifiedInstallations !== undefined) {
       const previous = readForwardRegistry(before, true), current = readReviewedForwardRegistry(after);
       for (const [index, entry] of (previous.qualifiedInstallations ?? []).entries()) {
-        if (blob(root, base, entry.path) && canonical(current.qualifiedInstallations?.[index]) !== canonical(entry)) {
+        if (canonical(current.qualifiedInstallations?.[index]) !== canonical(entry)) {
           throw new Error("issued qualified installation approvals are immutable");
         }
       }
