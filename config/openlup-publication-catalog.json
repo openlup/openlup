@@ -8918,6 +8918,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/application-upgrade-proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/changelog-fragments.test.ts",
       "class": "public-output"
     },

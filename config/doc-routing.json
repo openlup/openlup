@@ -677,6 +677,7 @@
         "packages/platform/src/lifecycle/appUpgrade.ts",
         "packages/platform/src/lifecycle/index.ts",
         "packages/platform/test/lifecycle/appUpgrade.test.ts",
+        "scripts/packages/application-upgrade-proof.ts",
         "packages/platform/api/lifecycle.api.md"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
