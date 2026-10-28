@@ -85,7 +85,7 @@ catalogue includes the real-session witness; generated navigation establishes
 no current test result or complete store-transfer claim.
 
 The migration session hook, union/history controls, exact qualified approval
-inputs and five inert fixtures retain the
+inputs, five issued inert fixtures and unapproved sixth proposal retain the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The package entry and contributor witness descriptions link to that boundary;
 publication inventory includes the four control witnesses/fragment and inert

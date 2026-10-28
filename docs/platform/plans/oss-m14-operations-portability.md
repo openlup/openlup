@@ -1558,3 +1558,68 @@ Self-retro: the affected standalone witness exposes this setup failure in
 root tests. Run the changed witness itself before the broad gate; a passing
 composition sibling does not replace its fixture. Existing selector reuse
 closes the cause without duplicating the whole qualified catalogue.
+
+### Runtime completion prior controls, 28 October 2026
+
+Outcome: deliver only the FIRST reader-preparation checkpoint for the exact
+future runtime-completion identity. This necessary recovery remains within the
+approved M14 through C6 programme and its ordinary reviewed delivery authority
+through confirmed merge. Publication, activation, live provisioning/cutover,
+deployment, credentials and settings remain excluded.
+
+Root appointed this author as the sole implementation contributor for these
+shared controls. Root supervises technical read, DCO, submission and merge;
+this contributor cannot independently review the candidate. The same task and
+evidence history continues without new review budgets or authority.
+
+Code predecessor and explicit stack base:
+`1e173ad9d73c54a1b4dce6f61fd8e10cbd3d5cd8` (G1).
+Separately verified policy revision and historical initial code base:
+`333ac427b4c62b613d90e1257110f0c6f365cd77`.
+A hash-verified external backup preceded the fast-forward and contextual reader
+reapplication. G1 code and metadata remain; no freshness merge was performed.
+
+The exact sixth identity is q2_20261028100000_runtime_capability_completion.sql.
+Its inert, unapproved fixture has SHA-256
+`ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e`.
+It proposes only the demonstrated context grants and receipt SELECT/INSERT,
+with installer-ownership/runtime-binding guards and existing trusted preflight.
+No active SQL, runtime API, role, ownership, RLS or trigger change occurs here.
+The actual registry retains exactly five issued rows, byte-for-byte; their SQL,
+fixtures and pins, legacy88, F90 and both selected inventories remain unchanged.
+
+A diagnostic using the actual trusted 333 validator and dependency closure
+accepted five registry rows and rejected the proposed six-row registry before
+its no-SQL return. Validator SHA-256:
+`4717bc27be7f92d235d49a9b86bd75662078e9618cf0de55e4e31610b500dc2b`.
+The supported order is reader preparation on main, then the exact sixth-pin-only
+approval on main, then identical active SQL and the manifest91 append with its
+own proofs. Calling a change control-only cannot bypass the old reader.
+Trusted guards/callers remain intact. This diagnostic was not a native review
+failure; native history is uninitialized and no repair cycle was consumed.
+
+Current stacked working feedback passed policy/navigation, inventory, manifest,
+AST and whitespace; canonical lint with three build prerequisites passed with
+zero errors/33 existing warnings. Five type projects and all three API checks
+passed without API changes. Current reader-first suites passed 24/24 in 7.14s.
+Three working tarballs passed native byte/file and all 17 platform browser
+checks. Platform measured 1,662,140 code bytes/2,574 code files and 1,928,865
+packed bytes/2,628 total files; both file counts equal unchanged caps.
+This root-only change adds no package file or allowance. Proof inputs stayed
+frozen; only outcome notes followed, with final stack-pinned policy passing.
+
+Original combined/reader packets, the prior 24-test attribution, first failures,
+full detailed chronology, diagnostic and exact later pin-only delta remain
+recoverable in ignored task evidence. Owned tool versions/hashes were checked
+in an actual broker child; working allocation/processes were released before
+notes. No standalone PostgreSQL, cold/full, DCO, commit or external write ran.
+
+Remaining: root's final stabilized read, DCO, two fresh FULL native reviews,
+canonical full verification, predecessor actually on main, and required source
+and merge-group admission/checks. Recheck the exact child tool environment
+before full proof. No active database or ledger change needs rollback; before
+later activation, source recovery can revert only this reader preparation.
+
+Retro: candidate-reader tests did not prove admission by an older trusted
+reader. Splitting reader support from later approval data preserves enforcement
+and avoids a failed admission; checking child PATH early avoids late tool drift.

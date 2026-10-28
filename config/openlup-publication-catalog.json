@@ -8750,6 +8750,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },

@@ -417,14 +417,43 @@ separately from historical grant spellings or inherited CLI defaults.
 ### Co-located SQL and approval pins
 
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
-for four bootstrap units and an optional retained-import unit. Even expand-only
+for four bootstrap units, an optional retained-import unit and the exact runtime
+completion tail. Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain the five bound units without installing them. Their source approval is
-not installation, managed-host, publication or activation evidence.
+retain five issued bound units and an unapproved completion proposal without
+installing them. Reader preparation keeps the actual five-row registry exact.
+The proposed tail grants
+the existing runtime group context INSERT on its four columns, UPDATE on its
+three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.
+Its local guard requires an unswitched installer owning both targets, the
+existing restricted runtime/group binding and a declared role mode. The complete
+role graph still belongs to the trusted source's preflight; the common tail
+adds no SUPERUSER requirement or alternate installer. A future non-superuser
+profile still needs its own qualification.
+
+Delivery uses three separately landed checkpoints. First prepare the exact
+sixth identity's reader/order support, inert fixture and refusals without
+changing the five approval rows. Trusted main parses a changed registry before
+the no-active-SQL return, so co-locating an expanded reader and sixth registry
+row is incompatible with that existing reader. Calling the change control-only
+does not bypass this parser constraint. After reader preparation is
+actual main, append the exact sixth hash in a pin-only change. Only after that
+approval is actual main may a feature introduce the identical active SQL and
+append its selected manifest row. Keep all trusted co-location checks intact.
+
+The active schema-2 manifest remains unchanged: legacy 88 units and the two
+restore-bound qualified 90-unit inventories. A later separately introduced
+completion unit must append after the complete retained-import prefix and remain
+the final qualified tail. It needs newly measured complete inventories for both
+selected binding shapes; this control preparation supplies neither. Historical
+E-only 89-unit expectations and issued F90 expectations retain their attribution.
+There is no optional `withRestoreForward` field or new selection mode.
+Prior source approval establishes no installation, managed-host, publication or
+activation evidence.
 
 A PR introducing SQL in a class already admitted by its trusted comparison-base
 policy may also carry that SQL's pins. Only bindings for files introduced by
