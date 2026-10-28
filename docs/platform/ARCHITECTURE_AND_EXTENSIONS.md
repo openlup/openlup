@@ -2174,6 +2174,34 @@ defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
 
+The [local handover witness](../../tests/postgres/runM14EffectHandover.ts)
+combines the existing canonical graph/private-media transfer with three dispatch
+processes and one actual [application process](../../tests/postgres/fixtures/m14ApplicationActor.ts).
+Its [fixture composition](../../tests/postgres/m14ApplicationCohort.ts) uses the
+existing review binding, restricted runtime, real raw HTTP/store operations and
+natural media timer. Host configuration reads reuse the existing environment
+boundary; the standalone synthetic provider receives its fixture control as an
+explicit child argument. The independent [provider ledger](../../tests/postgres/fixtures/m14EffectProvider.mjs)
+retains accepted effects when a response is lost; target G1 recovery must use
+verified observations before ordinary dispatch resumes. The one unresolved
+operation remains visible and fenced while the fourth declared duty can proceed.
+Each child reserves an exact owned container name before Docker startup.
+Cleanup resolves that name and checks its ID and owner/role labels even when
+OCI startup fails before returning an ID; other names are not cleanup targets.
+A passing run reports readiness only for that finite profile; contributor
+guidance owns its opt-in invocation and retained proof requirements.
+
+The finite fixture retires four exact processes plus their observed PostgreSQL
+backends, then freezes its coordinator before final graph and full `objects/tmp`
+capture. Network exclusion alone does not seal local file writers. Target
+recovery and application composition wait for both canonical publications;
+physical clones and restored claim tokens are not that boundary. The
+[runtime owner](RUNTIME_AND_SELF_HOSTING.md#runtime-model) defines the fixture's
+resource retirement and host limits, and the
+[data owner](DATA_AND_MIGRATIONS.md#compatible-data-transfer) preserves interrupted
+state and lossless rows. It adds no production fencing API, role model, scheduler,
+host framework or all-adopter writer-completeness guarantee.
+
 The qualified runtime-completion witness uses the existing
 [preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 and its role-free transaction lane for actual restricted-runtime context insert,
