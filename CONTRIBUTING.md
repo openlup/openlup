@@ -247,6 +247,28 @@ inventory to obtain a pass. This source uses existing Node discovery and root
 test commands. It does not prove all-writer retirement, managed identity/history
 mapping, effective storage access or external-effect handover.
 
+The local [handover entry](tests/postgres/runM14EffectHandover.ts) is an opt-in
+one-shot fixture, not a required job or serving runtime. In its allocated local
+slot, use Node24.21.0, own installed/built dependencies, local Docker and an
+already-local immutable Node24.21.0 image:
+`node --import tsx tests/postgres/runM14EffectHandover.ts sha256:<local-image-id>`.
+The host's existing esbuild API emits one ESM for the application child; plain
+Node in Linux loads audited existing JS dependencies without a host-native tsx
+binary, Linux install or image build. Retain the real metafile, source/output
+identities, R sessions, four process IDs, exact backend retirement, final graph/
+file census, target publication/recovery and cleanup output. Marker files are
+separate from the real media root. Its four executable carriers are declared
+in the existing execution inventory; the cohort helper is a regular module.
+The fixture establishes its new private scratch root with the current UID/GID
+before creating descendants and rereads the actual loopback port after provider
+restart. Reserve child container names before launch; a failed OCI start must
+still remove the exact created child after checking ownership, while preserving
+other named resources. Its passing result covers only the declared graph/media/process profile:
+two accepted effects recovered, one uncertain operation fenced and one ordinary
+duty dispatched/replayed. Source checks, a predecessor pilot and file presence
+cannot establish that result. No new role/grant model, deadline, matrix or global
+readiness claim is introduced; prerequisite delivery/admission remains required.
+
 The [S3 source protocol witness](server/adapters/s3/transferObjectSource.test.ts)
 uses injected command inputs for protocol refusals and a bounded plain Node
 child for actual optional-SDK signing and deserialization. The child supplies
@@ -2684,6 +2706,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-28, M14 handover cleanup proof: assumptions about failure metadata or
+  network damage hid an actual created-container leak → test exact container
+  disappearance and preservation of other owned resources directly.
+
 - 2026-10-28, M14 installed application upgrade: a plain PostgreSQL driver
   decodes timestamps differently from the selected operations adapter → compose
   the existing gateway type overrides in the actual application connection.
@@ -2709,9 +2735,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
   and one real copy/resume witness covering both cases.
 
-- 2026-10-26, M14 operations neutrality: package/root green missed a cheap
-  source-carrier gate → run unchanged neutrality before the broad gate and
-  collect remaining diagnostic failures before changing the candidate.
+- 2026-10-28, M14 source-carrier neutrality: package/root green missed the cheap
+  gate again → apply the existing working-tree neutrality order in
+  [Deliver a change](#deliver-a-change) and its
+  [required commands](#required-and-raw-checks) before review and broad proof;
+  collect remaining cheap diagnostics before changing the candidate.
 
 - 2026-10-26, M14 operations: package-local green missed existing closed size,
   nested-module and identity-profile inventories → trace exact consumer entries
