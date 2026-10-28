@@ -78,16 +78,21 @@ the exact packet tree `29152af67a6052318ccc574d27b61401a2835dd8`.
 The signed implementation commit precedes the main integration. Two fresh FULL
 reviews of the integrated tree found four material issues: the pipeline policy
 classification, missing dispatcher preflight, missing Host admission and a local
-capture receipt that advanced persistent delivery cadence. The uncommitted repair
+capture receipt that advanced persistent delivery cadence. The signed repair
 preserves pipeline refusal, uses existing preflight and exact Host admission,
-and keeps captured observations out of notification state. It requires a renewed
-security/API read before sign-off and fresh FULL review of the repaired tree.
-Canonical verification remains pending. The native session recorded the two
-failed initial reports on the integrated tree; no repaired candidate is prepared.
+and keeps captured observations out of notification state. The renewed
+security/API read accepted exact repair tree
+`e6039a310fcfcd0975954ef0c83d01122383575c` before sign-off, with a
+fresh-review condition covering all four open cards and Host/preflight interaction.
+After #416, the publication catalogue conflict was resolved by retaining both
+sorted rows; no operations security/API source changed in that main merge.
+Fresh FULL review and canonical verification remain pending. The native session
+recorded the two failed initial reports; no repaired candidate is prepared.
 Native repair cycles consumed: none; queue retries: none. At this working boundary,
 the separately refreshed policy revision is
-`527c7c0deca500a04b28aa98e8b744b15347527c`; its changed instructions and
-carry-over interaction require fresh inspection before the next prepare.
+`527c7c0deca500a04b28aa98e8b744b15347527c`; its changed instructions were
+inspected and its overlapping catalogue/documentation paths integrated before
+the next prepare.
 No delivery or completion is claimed.
 
 Two cheap neutrality attempts exposed provider-named literals in a portable

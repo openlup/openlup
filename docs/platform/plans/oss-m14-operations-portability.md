@@ -135,6 +135,10 @@ canonical catalog resolution, exact ledger prefix and selected object inventory
 must pass under the existing lock. No alias, projector/expectation override,
 SET ROLE substitute or fixture grant can qualify the offered runtime.
 
+The separate [restricted-bootstrap task](oss-m14-restricted-bootstrap.md) prepares
+a fresh non-superuser installation generation and its own proof. Reader and
+inert fixture preparation do not qualify that generation; M14 remains open.
+
 F's fixed import routines retain 13 client and eight cycle fields, precision,
 history/frozen terms and exact-row replay; conflicting rows refuse with `23505`,
 and non-origin replication refuses with `55000`. Ordinary runtime lifecycle and
