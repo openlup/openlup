@@ -427,3 +427,27 @@ is checked against the maximum of both parents; no value changes. Lockfile
 is unchanged, so no npm ci. The smallest adequate resolution is the existing
 registration union and generators, without a helper or runtime edit.
 Logs and retained artifacts use `.context/scratch/m15-main-current/` per tree.
+
+### M14 qualification and 0.30.0 stack maintenance — 2026-10-28
+
+Direct maintainer continuation: maintain the existing R1/R2/R3 draft stack by
+local `--no-ff` merges, generated-output reconciliation and focused checks with
+two Vitest workers; package checks in R1/R3. No rebase, force-push, push, remote
+PR mutation, arming, activation or release. CD-M15-6a applies only if a measured
+full-stack platform cap is exceeded: 102% rounded up to 5,000 bytes or one file,
+first in R1, then cascaded. Existing review history and budgets are retained;
+full verify and counted review remain later coordinator obligations.
+
+Freshly fetched main/instruction pin:
+`fea0854a1a5a27c1a48f8c2c9078c618f47f66a3`; the code review base is separate.
+The relevant instruction delta documents qualified-runtime proof and its review
+lessons. R1 starts at `2319e024`; R2 at `727280a4`; R3 at `60b0cfb8`.
+Main merges into R1 without textual conflicts. Preserve M14 qualification,
+installation inventories, 0.30.0 versions and released changelog history; retain
+M15 risk source, exports, witnesses and pending fragments. All platform numeric
+caps equal the maximum of their parent values, with no cap adjustment yet.
+The lockfile changes for the released set, so run `npm ci` in each tree.
+Regenerate APIs and navigation through existing commands; no runtime edit or
+new mechanism is needed. Evidence is retained per tree under ignored
+`.context/scratch/m15-main-fea0854a/`. Completion results and self-retro follow
+in this existing record after the final full-stack measurement.
