@@ -10,6 +10,7 @@ import {
   QUALIFIED_BASELINE_FILE,
   QUALIFIED_IMPORT_FILE,
   QUALIFIED_RUNTIME_FILE,
+  QUALIFIED_RUNTIME_COMPLETION_FILE,
   readPlatformMigrations,
   selectPlatformMigrationManifest,
   sha256,
@@ -97,6 +98,40 @@ describe("canonical qualified migration selection", () => {
     const corrupt = migrations.map(entry => entry.file === QUALIFIED_ACTOR_FILE ? { ...entry, content: `${entry.content}SELECT 2;` } : entry);
     expect(evaluatePlatformMigrationManifest({ manifest, migrations: corrupt })).toContain(`platform migration manifest: SHA-256 mismatch for ${QUALIFIED_ACTOR_FILE}`);
     expect(evaluatePlatformMigrationManifest({ manifest, migrations: [...migrations, { file: "db/platform/migrations/q2_unapproved.sql", content: "SELECT 1;" }] })).toContain("platform migration manifest: unmanifested catalog file db/platform/migrations/q2_unapproved.sql");
+  });
+
+  it("admits only the exact completion tail after the unchanged restore-bound prefix", () => {
+    if (raw.schemaVersion !== 2) throw new Error("canonical fixture requires schema 2");
+    const previous = structuredClone(raw);
+    const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`, "utf8");
+    const completion = { file: QUALIFIED_RUNTIME_COMPLETION_FILE, sha256: sha256(content) };
+    const completed = structuredClone(previous);
+    completed.qualified.forward.push(completion);
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations, { file: completion.file, content }];
+    // Structural inputs retain historical hashes; they are not future live inventory evidence.
+    expect(evaluatePlatformMigrationManifest({ manifest: completed, migrations })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(previous, completed, [completion.file])).toEqual([]);
+    expect(completed.qualified.forward.slice(0, -1)).toEqual(previous.qualified.forward);
+    expect(selectPlatformMigrationManifest(completed, "legacy")).toEqual(legacy);
+    for (const migrationIsBootstrap of [true, false]) {
+      const selected = selectPlatformMigrationManifest(completed, "qualified-v2", { migrationIsBootstrap, hasRestore: true });
+      expect(selected.forward.at(-1)).toEqual(completion);
+      expect(selected.forward.slice(0, -1)).toEqual(previous.qualified.forward);
+      expect(() => selectPlatformMigrationManifest(completed, "qualified-v2", { migrationIsBootstrap, hasRestore: false })).toThrow("explicit restore login binding");
+    }
+    for (const change of [
+      (value: typeof completed) => { value.qualified.forward.splice(value.qualified.forward.length - 2, 0, value.qualified.forward.pop()!); },
+      (value: typeof completed) => { value.qualified.forward = value.qualified.forward.filter(({ file }) => file !== QUALIFIED_IMPORT_FILE); },
+      (value: typeof completed) => { value.forward.push(completion); },
+      (value: typeof completed) => { value.qualified.forward.at(-1)!.file = "db/platform/migrations/q2_20261028100000_other_runtime.sql"; },
+    ]) {
+      const changed = structuredClone(completed);
+      change(changed);
+      expect(evaluatePlatformMigrationManifest({ manifest: changed, migrations }).length).toBeGreaterThan(0);
+    }
+    const reordered = structuredClone(completed);
+    [reordered.qualified.forward[0], reordered.qualified.forward[1]] = [reordered.qualified.forward[1]!, reordered.qualified.forward[0]!];
+    expect(evaluatePlatformMigrationManifestHistory(previous, reordered, [completion.file])).toContain("qualified migration manifest must preserve the previous prefix");
   });
 
   it("rejects omitted/reordered shared units, unqualified bootstrap reuse and early sealing", () => {

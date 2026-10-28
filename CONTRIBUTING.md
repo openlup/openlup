@@ -157,7 +157,13 @@ its users or operators can observe.
 The migration control witnesses cover legacy/qualified selection and immutable
 history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
 prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
-and the existing source/release checks. The
+and the existing source/release checks. The same witnesses retain the unapproved
+sixth runtime-completion fixture, require its future selection after the complete
+restore-bound prefix and exercise source/group machinery refusal with unchanged
+pins. Reader preparation keeps the issued five-row registry and active 88/90-unit
+plans unchanged. Its supported reader must land before the separate sixth-pin
+approval, which must land before SQL; the later SQL feature still needs its own
+runtime and inventory evidence. The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
 is visible to a second actual migration login, which refuses under the held
