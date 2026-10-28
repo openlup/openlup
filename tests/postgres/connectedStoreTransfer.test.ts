@@ -275,6 +275,8 @@ it("refuses private business omission and nonpristine targets without deleting e
   expect(await census(target.owner)).toEqual(targetBefore);
 });
 
+// Three real restore outcomes, full graph censuses and post-replay runtime
+// checks share one bounded hosted integration deadline; retry remains zero.
 it("preserves the connected retained graph, pruned history and exact replay under actual roles", async () => {
   const sourceBefore = await census(source.owner), targetBefore = await census(target.owner);
   const ledger = (await target.owner.query("SELECT to_jsonb(m)::text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
@@ -338,4 +340,4 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   await arrival();
   expect((await target.owner.query("SELECT next_cycle_at::text FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows).toEqual(schedule);
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
-});
+}, 30_000);
