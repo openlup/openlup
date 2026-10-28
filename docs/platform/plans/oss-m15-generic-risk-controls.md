@@ -1549,3 +1549,59 @@ M14 source/release metadata, R2 delegation and R3 privacy remain unchanged.
 The released-set lockfile changes, requiring npm ci. Regenerate through the
 existing commands; run focused checks with two workers and the official package
 check. Apply CD-M15-6a in R1 only if this full-stack artifact exceeds a cap.
+
+### Qualification/release maintenance result — 2026-10-28
+
+Local DCO merge candidates: R1 `3d32517c`, R2 `b2d2c83a`, R3 `59f8bab3`.
+R1 has no textual conflict; R2/R3 each resolve only the task-record append
+conflict by retaining both complete histories. All three prior task records
+remain complete substrings, and each tree's risk source, package tests and API
+snapshots are byte-identical to its starting head. M14 qualification/release
+source and metadata remain authoritative; all platform caps retain the per-cap
+parent maximum. No rebase, force-push, push or external mutation occurred.
+
+| Requested check | R1 | R2 | R3 |
+| --- | --- | --- | --- |
+| Ast-grep scan, two threads | PASS | PASS | PASS |
+| Lint | PASS; 0 errors, 33 existing warnings | PASS; 0 errors, 33 existing warnings | PASS; 0 errors, 33 existing warnings |
+| All workspace API checks | PASS | PASS | PASS |
+| Risk tests, two workers | 23/23 PASS | 42/42 PASS | 58/58 PASS |
+| Platform API update; policy; navigation regeneration | PASS; no generated delta | PASS; no generated delta | PASS; no generated delta |
+| Final policy, exact predecessor for upper trees | PASS; 5 obligations | PASS; 8 obligations | PASS; 3 obligations |
+| Official package check, all three packages | PASS; no findings | Not requested | PASS; no findings |
+
+Each changed lockfile received npm ci. Generators and checks ran serially using
+Node 24.21.0/npm 11.19.0; R1's initial install used the ambient Node 24.22.1/npm
+11.19.1 before the pinned binaries were selected. No install changed tracked
+lockfile bytes. Logs and retained official tarballs remain under the ignored
+`.context/scratch/m15-main-fea0854a/` in each applicable worktree.
+
+The official R3 retained artifact binds merge candidate `59f8bab3`; this
+completion addition changes only the non-packed task record. Its integrity is
+`sha512-kziihAVV0UuEq5qKNW7SbQN3oK1xKdIgPXalzCzo7/8IqGyvJTv2iXwoB8OhFNjmJx7UqCxkYqLlD+J2NaxK2A==`.
+Existing measurePack/checkPackBudget functions read that retained tarball:
+
+| Full-stack platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,961,324 | 2,029,568 | 68,244 |
+| Unpacked bytes | 9,161,816 | 9,447,424 | 285,608 |
+| Files | 2,680 | 2,712 | 32 |
+| Code gzip bytes | 1,687,466 | 1,743,872 | 56,406 |
+| Code files | 2,625 | 2,656 | 31 |
+| Docs gzip bytes | 60,493 | 73,728 | 13,235 |
+| Docs files | 5 | 10 | 5 |
+
+No cap is exceeded, including browser allowances checked by packages:check.
+CD-M15-6a is therefore not triggered: no 102% rounding, cap change, revised
+allocation reason or second cascade. Historical CD-M15-6 measurements stay
+historical. R1 measures 1,954,894 packed bytes, 9,128,334 unpacked bytes, 2,668
+files, 1,680,824 code gzip bytes, 2,613 code files, 60,124 docs gzip bytes and
+five docs files. Full verify-local, counted review/admission, arming, release
+and remote delivery remain later coordinator obligations with existing histories
+and budgets intact.
+
+Self-retro: no runtime defect or cap repair was needed. The two append conflicts
+were resolved by preserving complete histories, and existing generators needed
+no manual byte changes. Checking the exact upper predecessor after committing
+avoided the earlier run's ancestry-probe refusal. No additional process or
+successor work is justified.
