@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The exact-shipment native G17 host binding and its local unit/native witnesses
+route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
+The [data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) defines its
+actual restricted-login recovery proof. This source routing does not establish
+whole-store transfer, host exclusion, provider qualification or new-dispatch
+runtime capability.
+
 The Node host and scheduler shutdown source, API reports and disposable
 PostgreSQL drain witness belong to the platform package's
 [scheduled jobs boundary](../../packages/platform/README.md#scheduled-jobs).
@@ -78,7 +85,7 @@ catalogue includes the real-session witness; generated navigation establishes
 no current test result or complete store-transfer claim.
 
 The migration session hook, union/history controls, exact qualified approval
-inputs and five inert fixtures retain the
+inputs, five issued inert fixtures and unapproved sixth proposal retain the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The package entry and contributor witness descriptions link to that boundary;
 publication inventory includes the four control witnesses/fragment and inert
@@ -90,6 +97,10 @@ The package README remains the short import entry, the package reference owns
 the disposable recipe, and database/runtime owners retain their separate
 compatibility and admission duties. Generated navigation adds no upgrade,
 installation or provider claim.
+The installed versioned-application witness routes to that same file-upgrade
+owner. Its existing native cold scenario observes the canonical database before
+fixture grants and exercises real operations through an application login;
+the database owner retains schema compatibility and qualified-role acceptance.
 
 The lifecycle legacy PostgreSQL role helper, its package witness and actual
 PostgreSQL witness route to the

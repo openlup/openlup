@@ -9,10 +9,11 @@ export const QUALIFIED_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20260810
 export const QUALIFIED_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20260816140000_acquisition_case_foundation.sql`;
 export const QUALIFIED_RUNTIME_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261026130000_runtime_capabilities.sql`;
 export const QUALIFIED_IMPORT_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261026140000_retained_client_subscription_import.sql`;
+export const QUALIFIED_RUNTIME_COMPLETION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261028100000_runtime_capability_completion.sql`;
 const LEGACY_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260810180001_self_host_actor_auth.sql`;
 const LEGACY_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260816140000_acquisition_case_foundation.sql`;
 const QUALIFIED_AFTER_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20261026120000_account_support_operator_authority.sql`;
-const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE]);
+const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE]);
 const PLATFORM_FILE_RE = /^db\/platform\/migrations\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/;
 export type AddedMigration = { file: string; content: string };
 export type PlatformMigrationManifestEntry = { file: string; sha256: string };
@@ -106,7 +107,7 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
   if (errors.length) return errors;
   const current = raw as PlatformMigrationManifest & { schemaVersion: 2 };
   const replacements = new Map([[QUALIFIED_ACTOR_FILE, LEGACY_ACTOR_FILE], [QUALIFIED_ACQUISITION_FILE, LEGACY_ACQUISITION_FILE]]);
-  const shared = current.qualified.forward.filter(({ file }) => file !== QUALIFIED_RUNTIME_FILE && file !== QUALIFIED_IMPORT_FILE);
+  const shared = current.qualified.forward.filter(({ file }) => file !== QUALIFIED_RUNTIME_FILE && file !== QUALIFIED_IMPORT_FILE && file !== QUALIFIED_RUNTIME_COMPLETION_FILE);
   if (shared.length !== current.forward.length || shared.some((entry, index) => {
     const legacyEntry = current.forward[index]!;
     return replacements.has(entry.file) ? replacements.get(entry.file) !== legacyEntry.file : JSON.stringify(entry) !== JSON.stringify(legacyEntry);
@@ -119,6 +120,8 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
   if (afterPosition < 0 || runtimePosition <= afterPosition) errors.push("qualified runtime capabilities must follow the complete ownership closure");
   const importPosition = current.qualified.forward.findIndex(({ file }) => file === QUALIFIED_IMPORT_FILE);
   if (importPosition >= 0 && importPosition <= runtimePosition) errors.push("qualified retained import must follow runtime role sealing");
+  const completionPosition = current.qualified.forward.findIndex(({ file }) => file === QUALIFIED_RUNTIME_COMPLETION_FILE);
+  if (completionPosition >= 0 && (importPosition < 0 || completionPosition <= importPosition || completionPosition !== current.qualified.forward.length - 1)) errors.push("qualified runtime completion must be the final tail after retained import");
   return errors;
 }
 

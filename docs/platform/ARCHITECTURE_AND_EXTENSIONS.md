@@ -2059,6 +2059,13 @@ The [control-plane handler](../../packages/platform/src/operations/server/contro
 checks injected admin authorization before a typed read or mutation, validates
 requests and results, maps replay conflicts to `CONFLICT`, and keeps raw SQL
 errors out of responses. The host binds the existing request-reference callback.
+Its [package characterization](../../packages/platform/test/operations/controlPlaneHandler.test.ts)
+also pins authorization before malformed-body parsing, unsupported methods without
+port work, injected operator-field refusal and strict request/result validation.
+JSON key normalization and replay receipts retain their exact port boundary;
+heartbeat evidence is forwarded unchanged. Invalid results and upstream failures
+retain safe responses without exposing private error details. These synthetic
+handler cases do not qualify a deployed authorization or persistence binding.
 The [SQL executor adapter](../../packages/platform/src/operations/server/controlPlaneStore.ts)
 uses the existing fixed invoker-rights routines, hashes the complete command and
 retains receipt identity on replay. Its capability-local operator allowlist is
@@ -2143,6 +2150,21 @@ results establish proof; authored witnesses alone do not. The
 [neutral disposable recipe](PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade)
 uses this boundary without claiming a complete npm or database upgrade service.
 
+The [installed application witness](../../scripts/packages/application-upgrade-proof.ts)
+adds two executable versions of a disposable control application to that cold
+consumer's existing native PostgreSQL scenario. Before the application fixture
+grants, the canonical runner observes the complete installed migration ledger
+and object inventory; its applied count supplies the caller's schema ordinal.
+Both application versions use that same schema and installed package set. Their
+own restricted login executes real control writes and reads through the installed
+operations adapter. The witness retains customized and unmanaged files, refuses
+a divergent managed file before writes, interrupts an actual replacement,
+resumes and runs the new application, then rolls compatible application code
+back while retaining durable data. The application fixture's explicit grants
+are separate from qualified-install role acceptance. This scenario neither
+upgrades the database nor qualifies another schema, host or OpenLup version;
+an authored witness establishes no passing execution result.
+
 The same lifecycle entry exports the injected-query
 `inspectLegacyPostgresInstallRoles` helper. Its fixed read-only observation is
 limited to `legacy-fresh-bootstrap-role-prerequisites` and
@@ -2151,6 +2173,26 @@ readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstr
 defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
+
+The qualified runtime-completion witness uses the existing
+[preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+and its role-free transaction lane for actual restricted-runtime context insert,
+upsert and delete. The same four-case production composition exercises the review
+adapters' confirm, moderation, delete preparation and revoke replay receipts.
+Context key updates, neighboring dispatch deletion and receipt mutation refuse;
+neither setup-owner facts nor a reference inventory substitutes for normal-runtime
+command proof. The separately approved SQL changes only the finite grants described
+by the [migration owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle), with no new
+transfer API, runtime adapter, role compiler or installation executor.
+
+The host-owned [native observation binding](../../server/adapters/postgres/fulfillmentObservationLifecycle.ts)
+implements the existing G17 lookup/acceptance pair using native dispatch SQL.
+Its caller must supply an already-verified observation with the exact shipment
+UUID. Selected provider and supplied direct order/parcel/external identities
+must agree. It rereads the current row before atomic ACK and preserves the
+exact retained acceptance on replay. It creates no connection, grant, provider
+request, absence inference or package export. Host verification, evidence
+retention and transaction/login authority remain explicit caller duties.
 
 The experimental Node-only
 [`@openlup/platform/portability`](../../packages/platform/src/portability/index.ts)

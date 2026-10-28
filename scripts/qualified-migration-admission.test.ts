@@ -8,7 +8,7 @@ import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { git as readGit } from "./agent-review-session.mjs";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.js";
 import {
-  QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_RUNTIME_FILE,
+  QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE,
 } from "./platform-migration-manifest.js";
 import {
   assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward,
@@ -23,7 +23,7 @@ vi.mock("./reviewed-platform-forward.js", async (importOriginal) => {
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-const paths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE];
+const paths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE];
 const bodies = paths.map((_path, index) => Buffer.from(`CREATE TABLE public.qualified_fixture_${index}(id integer);\n`));
 const encode = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -47,16 +47,31 @@ function fixture() {
 
 it("reads only the fixed ordered qualified identities with exact digest fields", () => {
   const f = fixture();
-  expect(() => readReviewedForwardRegistry(Buffer.from(encode(f.approved)))).not.toThrow();
+  for (const length of [4, 5, 6]) expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, length) })))).not.toThrow();
   for (const change of [
     (value: typeof f.approved) => { value.qualifiedInstallations[0]!.path = "db/platform/migrations/q2_arbitrary.sql"; },
     (value: typeof f.approved) => { value.qualifiedInstallations[0]!.sha256 = "invalid"; },
     (value: typeof f.approved) => { value.qualifiedInstallations.reverse(); },
+    (value: typeof f.approved) => { value.qualifiedInstallations[5]!.path = "db/platform/migrations/q2_20261028100000_other_runtime.sql"; },
+    (value: typeof f.approved) => { value.qualifiedInstallations.push({ path: "db/platform/migrations/q2_20261028100001_extra.sql", sha256: "a".repeat(64) }); },
   ]) {
     const changed = structuredClone(f.approved);
     change(changed);
     expect(() => readReviewedForwardRegistry(Buffer.from(encode(changed)))).toThrow(/qualified installation approval/);
   }
+});
+
+it("preserves issued fixture bindings while preparing the unapproved sixth identity", () => {
+  const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
+  const issued = registry.qualifiedInstallations!;
+  expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
+  for (const entry of registry.qualifiedInstallations!) {
+    const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${entry.path}`);
+    expect(sqlSha256(bytes), entry.path).toBe(entry.sha256);
+  }
+  // Fixture integrity does not approve this future pin in the active registry.
+  const completion = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`);
+  expect(sqlSha256(completion)).toBe("ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e");
 });
 
 it("accepts exact separately approved bytes at source and their unique release introduction", () => {
@@ -92,13 +107,15 @@ it("refuses machinery changes alongside new qualified SQL with unchanged pins", 
 });
 
 it.each([
-  ["pull_request", false], ["pull_request", true],
-  ["merge_group", false], ["merge_group", true],
-] as const)("trusted %s admission checks unchanged qualified pins with machinery change=%s", async (eventName, changesMachinery) => {
+  ["pull_request", false, QUALIFIED_BASELINE_FILE], ["pull_request", true, QUALIFIED_BASELINE_FILE],
+  ["merge_group", false, QUALIFIED_BASELINE_FILE], ["merge_group", true, QUALIFIED_BASELINE_FILE],
+  ["pull_request", false, QUALIFIED_RUNTIME_COMPLETION_FILE], ["pull_request", true, QUALIFIED_RUNTIME_COMPLETION_FILE],
+  ["merge_group", false, QUALIFIED_RUNTIME_COMPLETION_FILE], ["merge_group", true, QUALIFIED_RUNTIME_COMPLETION_FILE],
+] as const)("trusted %s admission checks unchanged qualified pins with machinery change=%s for %s", async (eventName, changesMachinery, path) => {
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
   const control = f.commit("approve exact qualified bytes before feature");
-  f.put(paths[0]!, bodies[0]!);
+  f.put(path, bodies[paths.indexOf(path)]!);
   if (changesMachinery) f.put("scripts/platform-migration-manifest.ts", "// changed machinery\n");
   const head = f.commit("introduce qualified SQL with unchanged prior pins");
   expect(f.git("diff", "--name-only", control, head)).not.toContain(REVIEWED_FORWARD_PATH);
@@ -135,6 +152,29 @@ it.each([
       ...(!changesMachinery && eventName === "merge_group" ? [[f.root, control, groupHead, control]] : []),
     ]);
   } finally { log.mockRestore(); }
+});
+
+it("requires prior exact approval for the sixth completion unit and refuses later repinning", () => {
+  const f = fixture();
+  const path = QUALIFIED_RUNTIME_COMPLETION_FILE, bytes = bodies[5]!;
+  f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
+  f.put(path, bytes);
+  const coLocated = f.commit("co-located completion pin and SQL");
+  expect(() => assertCoLocatedForwardApproval(f.root, f.base, coLocated)).toThrow("separate exact approval");
+  // Rebuild the same synthetic fixture with a genuinely separate approval commit.
+  const separate = fixture();
+  separate.put(REVIEWED_FORWARD_PATH, encode(separate.approved));
+  const control = separate.commit("approve completion bytes first");
+  separate.put(path, bytes);
+  const feature = separate.commit("introduce exact approved completion");
+  expect(() => assertAdmittedPlatformForward(separate.root, control, feature, path, bytes)).not.toThrow();
+  expect(() => assertReviewedPlatformForward(separate.root, separate.base, feature, path, bytes, true)).not.toThrow();
+  expect(() => assertReviewedPlatformForward(separate.root, control, feature, path, Buffer.concat([bytes, Buffer.from(" ")]))).toThrow("exact approved bytes");
+  const repinned = structuredClone(separate.approved);
+  repinned.qualifiedInstallations[5]!.sha256 = "a".repeat(64);
+  separate.put(REVIEWED_FORWARD_PATH, encode(repinned));
+  const later = separate.commit("attempt issued completion repin");
+  expect(() => assertCoLocatedForwardApproval(separate.root, feature, later)).toThrow("issued qualified installation approvals are immutable");
 });
 
 it("does not let a later exact pin repair an unapproved SQL introduction", () => {

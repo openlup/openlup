@@ -20,7 +20,121 @@ and interfaces should describe the reusable capability first, then name the
 current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
+## Native retained-store transfer preparation
+
+The experimental [source capture](postgres/connectedStoreCapture.ts) and
+[target restore](postgres/connectedStoreRestore.ts) compose one finite native
+profile prepared for the selected 91-unit qualified-v2 installation with restore
+binding. The finite native 91-unit witness passed with two owned installations
+and actual restricted runtime media access, using the superuser migration owner
+for administrative restore;
+the earlier 90-unit attempt stopped during source runtime media confirmation.
+The fixed 73-table graph preserves PostgreSQL JSON text, including bigint and
+timestamp precision. Capture observes one actual read-only repeatable-read
+transaction and checks all non-system user schemas. Unknown nonempty business
+tables, including acquisition-private business data, refuse rather than being
+omitted. Migration history and the private installation key have separate
+target-owned dispositions; neither is copied. The key payload is never read,
+hashed or logged by transfer.
+
+The host supplies the actual migration owner connection, a freshly installed
+inactive target and its pristine capture, and excludes every source and target
+writer. The current profile observes cluster identity through
+`pg_control_system` as the existing superuser migration login. It does not
+qualify a restricted installer or a managed host. Pristine-row equality is a
+precondition inside the target transaction, not independent freshness evidence.
+The target rechecks the selected canonical catalogue and ledger. The complete
+ledger path, checksum and position sequence follows the selected manifest rather
+than a fixed unit count or tail pin. It locks tables,
+uses the existing retained client/cycle routines and compatible-row admission,
+and restores exactly seven factory settings tables. It preserves deferred
+constraints and source alignment policy last. A named historical hold-trigger
+correction removes only the fully checked notification inserted in that
+transaction when its deterministic source notification was already pruned.
+The [explicit connected-native trigger decision](../../docs/platform/plans/oss-m14-existing-store-transfer.md#connected-native-candidate-explicit-trigger-boundary-2026-10-28)
+bounds these seven existing triggers separately from the generic transport,
+which still refuses every enabled user INSERT trigger. Complete qualified
+definitions, functions and roles are checked after table locks and before import;
+a known name alone never establishes safe behavior. A retained source event or
+pre-existing target obligation is ineligible for compensation.
+Every other row delta rolls back. Restore login privileges, trigger definitions,
+grants and migration history remain unchanged.
+
+The [filesystem census](filesystem/orderReviewMediaTransferInventory.ts) and
+[reader](filesystem/orderReviewMediaTransferReader.ts) include both the actual
+`objects/<key>` tree and reconstructible `tmp/<writer-hash>-part` files. They
+retain partial uploads, cleanup files and unreferenced bytes for reconciliation;
+they do not turn those states into absence or successful delivery. The reader
+checks actual owner UID, private modes, single links and file continuity while
+hashing bounded bytes. Its `posix-owner-mode` label describes these observed
+checks, not additional filesystem ACLs, domain grants or HTTP authorization.
+
+[Filesystem restore](filesystem/orderReviewMediaTransferRestore.ts) prepares
+and verifies the complete private tree in a sibling directory, syncs files and
+directories, then renames it once into the absent runtime path. An exact
+existing tree permits replay; a divergent tree refuses without overwrite. A
+killed preparation can leave a private sibling artifact for the host to clean;
+it does not publish partial runtime files. Source and target must stay under
+the actual host's writer exclusion. Database and filesystem publication are
+separate operations: the target remains inactive until both are verified.
+Copying does not reset leases, complete cleanup or manufacture domain facts.
+
+The colocated filesystem tests exercise the actual runtime layout and refusal/
+replay boundaries. The prepared [connected PostgreSQL witness](../../tests/postgres/connectedStoreTransfer.test.ts)
+adds two canonical installations, actual restricted-role media access and an
+independent whole-row census; its presence is not a passing installation result.
+The [transfer architecture](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery),
+[data owner](../../docs/platform/DATA_AND_MIGRATIONS.md#compatible-data-transfer)
+and [M14 programme](../../docs/platform/plans/oss-m14-operations-portability.md)
+retain the separate managed identity/history, effective access, all-writer
+retirement and external-effect recovery obligations. These adapters neither
+establish that global fence nor activate a target executor.
+
+## S3 object source preparation
+
+The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an
+explicitly selected SDK client; it constructs no client, credential chain or
+environment binding. Imports and construction make no requests. Selected reads
+use only ListObjectsV2 and GetObject. A bounded census follows continuation
+tokens to an observed terminal page, reads every listed object's bounded bytes,
+then repeats the listing. Duplicate keys, repeated/missing cursors, unexpected
+common prefixes, byte disagreement and changed listing facts refuse. The host
+must still prove full-namespace read authority and hold actual writer exclusion;
+two matching principal-visible listings do not establish either fact.
+
+Logical versions hash content and captured returned metadata. They are not ETag,
+native version IDs or proof of conditional GET support. The adapter retains
+returned user metadata, content type/encoding/disposition/language, cache
+control, expiry representations and website redirect without supplying defaults.
+Declared missing metadata and observed nonzero tags refuse. Native version
+history, ACLs, tags and provider-private metadata remain outside this export;
+the selected profile cannot qualify them by omission. The fixed
+`authenticated-source-read` classification means only that authenticated GET
+succeeded. Bucket policy, public access, RLS and domain access require their
+independent owner facts and probes before any complete-store claim.
+
+Only a recognized NoSuchKey means absence. NoSuchBucket and ambiguous 404/NotFound
+responses remain unavailable; authentication denial, cancellation, truncated
+bytes and version/integrity conflicts retain separate existing error codes.
+The prepared [protocol tests](s3/transferObjectSource.test.ts) include actual SDK
+deserialization/signing with explicit synthetic credentials and an injected HTTP
+handler in a plain Node child so the optional SDK uses its actual Node export
+conditions. This exact test carrier is registered in the existing
+[public execution inventory](../../scripts/oss-publication-contract.ts);
+registration adds no command, job or provider capability. That source is not a passing local-storage or managed-provider
+qualification; no live source or credential operation is implied.
+
 ## Owns
+
+The [native fulfillment observation lifecycle](postgres/fulfillmentObservationLifecycle.ts)
+binds the existing G17 lookup/ACK pair to native dispatch SQL. It consumes an
+already-verified observation with exact shipment correlation and selected
+provider, rechecks current state and preserves retained acceptance on replay.
+Caller-owned verification and transaction/login authority remain prerequisites;
+this adapter opens no connection, issues no provider request and adds no SQL or
+grant. Its [architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+and [restricted-login proof](../../docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+define the scope.
 
 Acquisition case and research evidence PostgreSQL adapters delegate through
 thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain

@@ -1,12 +1,19 @@
 # Qualified installation approval fixtures
 
-These five inert files retain the exact whole bytes bound in
+The six inert files retain the exact whole bytes bound in
 [`qualifiedInstallations`](../../../../../../config/reviewed-platform-forwards.json).
+The sixth runtime-completion fixture equals its separately introduced canonical
+SQL, bound by the unchanged sixth prior-approval row.
 They are not an installation chain, a package SQL export or a migration source.
-This control change keeps the canonical legacy v1 manifest unchanged and installs
-no qualified SQL. A later feature must introduce these exact approved files
-through the separately landed controls; observed installation hashes cannot
-replace their prior source approval.
+Reader preparation landed before this sixth approval row, which landed before
+active SQL. All six approval rows and the canonical manifest's legacy 88-unit
+selection and complete F90 prefix remain unchanged; qualified selection now
+appends only the exact completion as unit 91 with two measured withRestore
+inventories. Trusted admission parses a changed registry
+using main's reader before its no-SQL return, so reader support must land first.
+Only after the exact sixth approval lands may the SQL feature introduce the
+identical file and append its selected row.
+Observed installation hashes cannot replace prior source approval.
 
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 explains generation selection and ledger identity. These fixtures do not prove

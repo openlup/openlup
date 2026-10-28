@@ -417,14 +417,49 @@ separately from historical grant spellings or inherited CLI defaults.
 ### Co-located SQL and approval pins
 
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
-for four bootstrap units and an optional retained-import unit. Even expand-only
+for four bootstrap units, an optional retained-import unit and the exact runtime
+completion tail. Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain the five bound units without installing them. Their source approval is
-not installation, managed-host, publication or activation evidence.
+retain six exact bound units, including the
+[runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
+now selected as the final qualified tail. Reader preparation landed before the
+sixth approval row, and that approval landed before this SQL introduction.
+All six approval rows and their byte identities remain unchanged. The tail grants
+the existing runtime group context INSERT on its four columns, UPDATE on its
+three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.
+Its local guard requires an unswitched installer owning both targets, the
+existing restricted runtime/group binding and a declared role mode. The complete
+role graph still belongs to the trusted source's preflight; the common tail
+adds no SUPERUSER requirement or alternate installer. A future non-superuser
+profile still needs its own qualification.
+
+Delivery uses three separately landed checkpoints. First prepare the exact
+sixth identity's reader/order support, inert fixture and refusals without
+changing the five approval rows. Trusted main parses a changed registry before
+the no-active-SQL return, so co-locating an expanded reader and sixth registry
+row is incompatible with that existing reader. Calling the change control-only
+does not bypass this parser constraint. After reader preparation is
+actual main, append the exact sixth hash in a pin-only change. Only after that
+approval is actual main may a feature introduce the identical active SQL and
+append its selected manifest row. Keep all trusted co-location checks intact.
+
+The active schema-2 manifest preserves legacy 88 units and appends only the exact
+completion after the entire qualified F90 prefix, selecting 91 units. Its two
+restore-bound inventories were measured independently on clean PostgreSQL16
+references with migration/bootstrap aliased and distinct. The historical F90
+expectations and raw evidence remain retained; reference measurements do not
+establish production status/apply/replay or normal-runtime qualification. The
+existing four-case production-composition witness checks both shapes in the two
+existing role modes. It also exercises the actual normal-runtime preparation lane
+and review receipt commands, with receipt mutation, context key and neighboring
+privilege refusals. Historical E-only 89-unit expectations retain their attribution.
+There is no optional `withRestoreForward` field or new selection mode.
+Prior source approval establishes no installation, managed-host, publication or
+activation evidence.
 
 A PR introducing SQL in a class already admitted by its trusted comparison-base
 policy may also carry that SQL's pins. Only bindings for files introduced by
@@ -1076,6 +1111,26 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The runtime-completion forward follows the entire qualified F90 prefix, preserving
+all issued identities while selecting 91 units and two newly measured restore-bound
+inventories. It completes the existing normal-runtime preparation context writes
+and review replay-receipt reads/appends. Its column grants exclude context key
+updates, and receipt UPDATE/DELETE/TRUNCATE remain denied. Apply the complete
+selected catalogue through the existing executor and ledger; this exact grant
+completion does not authorize owner fallback, legacy relabelling or a new role mode.
+The production-composition witness includes actual restricted-runtime commands
+and refusals; reference inventory derivation alone does not qualify those commands.
+
+The existing qualified target/separate-restore witness connects the native G17
+observation host binding through actual restricted R. Bootstrap setup seeds the
+owned domain graph and already-submitted request. R performs recovery read,
+observation/status persistence, atomic ACK and exact replay; a conflicting
+external ID refuses without changing the accepted row. The login is nonowner,
+NOSUPERUSER and NOBYPASSRLS, without SET ROLE or recovery owner fallback.
+No catalogue, SQL or grant changes. This proves neither R's new-dispatch
+preparation capability nor whole-store restoration, executor fencing, provider
+search completeness or effect authority.
 
 The E2 predecessor's qualified fresh catalogue replaces the baseline and two bootstrap units,
 then appends runtime sealing after the complete legacy ownership closure. Its

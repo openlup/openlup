@@ -115,28 +115,43 @@ const BEHAVIOUR: Record<string, (gate: Gate) => Promise<void>> = {
     for (const ref of ["refs/openlup-release/main", "refs/remotes/origin/main", "refs/heads/main"]) git(fixture.clone, ["update-ref", ref, fixture.mainTip]);
   },
   "publication audit owners match fresh main before a tag can be written": async (gate) => {
-    for (const path of AUDIT_OWNERS) for (const state of ["changed", "missing", "missing-target"]) {
-      git(fixture.origin, ["read-tree", fixture.mainTip]);
-      if (state === "changed") {
-        const blob = git(fixture.origin, ["hash-object", "-w", "--stdin"], `updated audit owner ${path}\n`);
-        git(fixture.origin, ["update-index", "--cacheinfo", `100644,${blob},${path}`]);
-      } else git(fixture.origin, ["update-index", "--index-info"], `0 ${"0".repeat(40)}\t${path}\n`);
-      const altered = git(fixture.origin, ["commit-tree", git(fixture.origin, ["write-tree"]), "-p", fixture.mainTip, "-m", `${state} ${path}`]);
-      const main = state === "missing-target" ? git(fixture.origin, ["commit-tree", `${fixture.mainTip}^{tree}`, "-p", altered, "-m", "restore audit owner"]) : altered;
-      const target = state === "missing-target" ? altered : fixture.mainTip;
-      git(fixture.origin, ["update-ref", "refs/heads/main", main]);
-      try {
+    // Build the nine real histories in one Git process and transfer their objects once.
+    // Each assertion below still fetches the remote's changing main ref itself.
+    const scenarios = AUDIT_OWNERS.flatMap((path) => ["changed", "missing", "missing-target"].map((state) => ({ path, state })));
+    let mark = 0;
+    const stream: string[] = [];
+    const commits: Array<{ main: number; target: number | string }> = [];
+    const inline = (path: string, content: string) => `M 100644 inline ${path}\ndata ${Buffer.byteLength(content)}\n${content}`;
+    const commit = (parent: string, message: string, edit: string) => {
+      const id = ++mark;
+      stream.push(`commit refs/openlup-audit/${id}\nmark :${id}\ncommitter fixture <fixture@example.invalid> 0 +0000\ndata ${Buffer.byteLength(message)}\n${message}\nfrom ${parent}\n${edit}\n`);
+      return id;
+    };
+    for (const { path, state } of scenarios) {
+      const altered = commit(fixture.mainTip, `${state} ${path}`, state === "changed" ? inline(path, `updated audit owner ${path}\n`) : `D ${path}\n`);
+      const main = state === "missing-target" ? commit(`:${altered}`, "restore audit owner", inline(path, `audit owner ${path}\n`)) : altered;
+      commits.push({ main, target: state === "missing-target" ? altered : fixture.mainTip });
+    }
+    stream.push(...Array.from({ length: mark }, (_, index) => `get-mark :${index + 1}\n`));
+    const hashes = git(fixture.origin, ["fast-import", "--quiet"], stream.join("")).split("\n");
+    git(fixture.clone, ["fetch", "--quiet", "origin", "+refs/openlup-audit/*:refs/openlup-audit/*"]);
+    try {
+      for (const [index, { path, state }] of scenarios.entries()) {
+        const prepared = commits[index]!;
+        const main = hashes[prepared.main - 1]!;
+        const target = typeof prepared.target === "number" ? hashes[prepared.target - 1]! : prepared.target;
+        git(fixture.origin, ["update-ref", "refs/heads/main", main]);
         expect(() => gate.assertOnFreshMain(fixture.clone, target), `${path} ${state}`).toThrow(`${path} at ${target} does not match the publication audit on fresh main ${main}`);
         const untouched = tagApi();
         await expect(gate.createReleaseTag(fixture.clone, target, "core", "0.12.0", "app-token", untouched), `${path} ${state}`).rejects.toThrow(/publication audit/u);
         expect(untouched.calls, "no API write before matching the publication audit").toEqual([]);
         if (state !== "missing") expect(gate.assertOnFreshMain(fixture.clone, main), "the current reviewed controls pass").toBe(main);
         else expect(() => gate.assertOnFreshMain(fixture.clone, main), "missing on both sides still refuses").toThrow(/publication audit/u);
-      } finally {
-        git(fixture.origin, ["update-ref", "refs/heads/main", fixture.mainTip]);
-        git(fixture.origin, ["read-tree", fixture.mainTip]);
-        git(fixture.clone, ["fetch", "--quiet", "origin", "+refs/heads/main:refs/openlup-release/main"]);
       }
+    } finally {
+      git(fixture.origin, ["update-ref", "refs/heads/main", fixture.mainTip]);
+      git(fixture.origin, ["read-tree", fixture.mainTip]);
+      git(fixture.clone, ["fetch", "--quiet", "origin", "+refs/heads/main:refs/openlup-release/main"]);
     }
   },
   "required contexts: GitHub Actions ran each one and every latest run succeeded": async (gate) => {
@@ -249,10 +264,15 @@ describe("release gate controls", () => {
   beforeAll(() => { fixture = createFixture(); });
   afterAll(() => { rmSync(fixture.scratch, { recursive: true, force: true }); });
 
-  // Give each control its own timeout budget while preserving every real Git check.
-  it.each(Object.entries(BEHAVIOUR))("hold on the committed module: %s", async (name, holds) => {
-    await expect(holds(committed), name).resolves.toBeUndefined();
-  });
+  for (const [name, holds] of Object.entries(BEHAVIOUR)) {
+    // Publication audit: five quiet runs on 2026-10-27 had mean 2.956 s / p95 3.072 s.
+    // Full test:scoped contention previously reached 11.3 s; retain margin for real Git:
+    // ceil(max(3 * 3.072, 11.3 * 1.5)) = 17 s. Other cases retain the default timeout.
+    const timeout = name === "publication audit owners match fresh main before a tag can be written" ? 17_000 : undefined;
+    it(`hold on the committed module: ${name}`, async () => {
+      await expect(holds(committed), name).resolves.toBeUndefined();
+    }, timeout);
+  }
 
   it.each(Object.entries(STRUCTURE))("hold on the committed module: %s", (name, holds) => {
     expect(holds(SOURCE), name).toBe(true);

@@ -483,7 +483,7 @@ export interface ServeNodeResult {
     bundleId: string;
     httpRuntime: HttpRuntimePort;
     registeredJobs: string[];
-    /** Fence timers, drain admitted jobs, then close their lock session; also close the local listener. Safe to call repeatedly. */
+    /** Fence timers, drain admitted jobs, then close the local listener and lock session. Safe to call repeatedly. */
     stop(): Promise<void>;
 }
 export interface NodeHost {
