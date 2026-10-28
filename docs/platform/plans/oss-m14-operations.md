@@ -1,39 +1,40 @@
 # M14 operations and diagnostics
 
-Status: bounded first-slice candidate in progress (2026-10-26). This record is
-local evidence through candidate freeze; native review/final command outputs and
-the eventual draft PR retain the exact committed identity and completion proof.
-The [module record](oss-m14-operations-portability.md) owns the wider M14 outcome.
+Status: development-preview source delivered in [#397](https://github.com/openlup/openlup/pull/397)
+and included in package set 0.30.0. This is the bounded A record; the
+[module record](oss-m14-operations-portability.md) owns current whole-M14 status,
+the remaining D32 acceptance and subsequent source-only work. Neither this slice
+nor the published set establishes M14/C6 completion or supported hosting.
 
-Outcome: package existing settings/pipeline-read/alert overview, watchdog delivery
-and control-plane behavior and bind the public reference, preserving outcomes.
+## Outcome, scope and authority
 
-Scope: `packages/platform/src/operations/**`, owner-local tests, exact operations
-exports/API reports, unchanged SQL projection and required public/reference
-bindings, owner documentation, inventory and navigation. Exclude identity
-membership, tracking effects, domain command/data/effect engines and new generic
-orchestration. The rich domain evaluator stays maintained public reference
-source and is the actual default passed to the package's typed watchdog kernel.
-Its remaining generic/default portability obligations stay within M14.
+Package existing settings/pipeline-read/alert overview, watchdog delivery and
+control-plane behavior and bind the public reference without changing outcomes.
+Scope is `packages/platform/src/operations/**`, owner-local tests, exact operations
+exports/API reports, unchanged SQL projection, required reference bindings and
+owner documentation. Identity membership, tracking effects, domain command/data/
+effect engines and new generic orchestration remain excluded. The rich domain
+evaluator remains public reference source and the actual default passed to the
+typed watchdog kernel; its generic/default portability obligations remain in M14.
 
-Authority: the human-authorized coordinator may implement locally, obtain its own
-dependencies, test, delegate bounded native agents and prepare signed commits.
-Master M14 granted the operations/contracts/server API, additions-only shared-file
-integration for this bottom draft, exact unchanged SQL asset projection and the
-listed surgical reference forwards. Master and this lane may exchange scoped
-task messages. Push/linear stacked draft submission waits for the master's final
-base/commit/PR handoff. No ready/merge/queue/release/provider activation,
-provisioning/settings/credentials/live-store/production authority. Native review
-is delegated technical review; it does not assert personal maintainer diff read.
+The original human-authorized lane covered local work, own dependencies, bounded
+agents, tests and signed preparation, then stacked draft submission after the
+master's exact handoff. The later programme grant extended ordinary reviewed
+PR delivery through required source/native/group checks and confirmed merge.
+It did not grant release dispatch, provider activation, provisioning, accounts,
+settings, credentials, real-store or production actions. Delegated technical
+reads do not assert personal human reading of each diff. Current authority and
+remaining human gates are retained by the module record.
 
-Isolation: `/private/tmp/openlup-m14-operations`, `codex/oss-m14-operations`.
-Code base and freshly fetched policy revision:
-`80d27906a6d4bc679c011871948e88d185bb1c63`.
-Author/coordinator context `01a17945-61c0-73f3-853e-733016c8eb33`; master-authored
-public module overview context `01a17909-94d4-7cc0-b40f-9a8782a0986f`. The bounded
-fit agent was read-only and is not counted review. No native review cycle has
-been consumed at this freeze. Early owner-read feedback required a neutral host
-channel generic; the reference enum and persisted/emitted values stay unchanged.
+Original isolation was `/private/tmp/openlup-m14-operations`, branch
+`codex/oss-m14-operations`, initial code/policy pin
+`80d27906a6d4bc679c011871948e88d185bb1c63`. Actual author/coordinator context
+`01a17945-61c0-73f3-853e-733016c8eb33` and master
+`01a17909-94d4-7cc0-b40f-9a8782a0986f` remain author/coordination exclusions
+from independent review. This source-only compaction uses separately supplied
+fresh policy `535349050419abe5122bd74fa6766c58947be3dd`; it changes no review base.
+
+## Placement, SQL and acceptance
 
 Placement/API: default platform subpaths suffice; no independent lifecycle,
 incompatible peer, install-cost or runtime split justifies another npm package.
@@ -63,73 +64,44 @@ no mocked SQL result certifies native/hosted behavior. Preserve request referenc
 and safe error responses. Required native review is two fresh independent full
 reviews, at least one considering the smallest adequate solution.
 
-Execution/proof through freeze:
-
-- Own install used pinned Node 24.21.0/npm 11.19.0. Two 55-second pressure waits
-  timed out; one longer broker wait admitted after 133 seconds. Heavy commands
-  use `openlup:m14:heavy` and leave other work/processes and broker limits alone.
-- Core/outbox/platform build and focused structural scan passed. Initial
-  package/reference characterization: 24 files, 164 tests passed. Exact package
-  selector collection, package-boundary witnesses and actual published-tree
-  typecheck passed (zero unresolved edges and consumer errors).
-- Lint rejected a copied package test reaching root evaluator source. Kept the
-  existing root characterization witness unchanged and used neutral typed
-  injected evidence in package-local tests; no boundary rule was weakened.
-  Full lint then passed with zero errors (33 existing warnings), followed by
-  15 focused files / 103 tests passed. The subsequent neutral host-channel
-  correction passed build/API, 15 files / 104 tests, public typecheck (zero debt)
-  and full lint with the same existing warnings.
-- Working-tree pack preview before channel correction (not committed proof): 1,842,683 packed bytes,
-  8,603,846 unpacked bytes, 2,490 files; code gzip 1,587,019 bytes/2,436 files,
-  docs gzip 54,053 bytes/5 files. Existing caps passed. Browser measurements:
-  root 27,852 gzip bytes, contracts 20 bytes; new entry caps 30,720 and 32.
-  No existing cap is raised. The prior S1 baseline comes from its exact unchanged
-  package tree through this base; it is not represented as a fresh local run.
-- The first pack attempt failed writing the sandbox-read-only global npm cache;
-  the successful preview used a task-local cache without changing global state.
-- Remaining mandatory evidence at freeze: final policy/navigation/API/metadata,
-  stabilized sensitive API/notes/budget read before DCO, exact committed native
-  reviews and full local verification including the installed real-PG proof.
-  Authored proof is not an executed result. Final outputs belong to the native
-  session/PR evidence so tracked candidate bytes stay frozen during verification.
-
-Self-retro: early owner read caught a vendor-bound generic channel enum; a
-properly typed host channel removes it without runtime renaming or a registry.
-Package-local lint caught an unnecessary copied dependency on the
-rich reference evaluator. Keeping the unchanged root characterization and
-injecting neutral typed evidence removes that duplication while preserving
-behavior. Environmental pressure/cache failures required bounded recovery;
-no new runner, broker bypass or extra verification obligation was added.
-
 ## Current integration and finite file allocation
 
-The actual human owner authorized three additional native repair cycles solely
-for necessary M13 integration, repairs, fresh review and full A verification.
-The existing session preserves cycle 3 and its evidence, with the allowed count
-extended from 3 to 6. The endpoint remains stacked draft pull requests; readiness,
-queue, merge, release and provider activation remain outside this grant. The
-coordinator permits the A branch push and draft submission after complete required
-proof and a fresh exact preflight; no additional publication permission is needed.
+This section is historical execution evidence. The [full 26–27 October record](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations.md)
+retains exact commands, measurements, failures, authority and recovery notes.
+The bounded fit agent was advisory, never counted native review. Two fresh
+independent FULL reviews, one considering the smallest adequate solution, and
+exact committed full verification were required; source observations do not
+substitute for native reports or a final stamp.
 
-Before this budget-note change, the 0.29.0 main-integrated A pack preview contained
-2,553 code files and 2,607 total files: 84 operations files (28 TypeScript sources,
-JavaScript outputs and declarations) plus 2,469 other code files. Its bytes measure
-1,906,704 packed, 8,896,258 unpacked, 1,635,652 code gzip and 63,913 documentation gzip. These are
-working-tree measurements, not committed full verification or a release result.
+Material history retained:
 
-The module coordinator granted code/total file limits of 2,574/2,628. Main's nine
-new production TypeScript files add 27 packaged files; the 21-file A–D reservation
-remains unchanged. The 21 files
-above the measured A closure are allocated only to the seven already-authored
-B/C/D production TypeScript files (4/2/1) using the same three-file packaging
-pattern. This source-derived forecast does not claim actual B–D pack proof and
-allocates nothing for further E/F assets or later modules. Each stacked
-candidate's actual pack and full native gate remain required; additional files
-or byte-limit crossings need another bounded read. Integrated main's code,
-documentation and total byte caps (including its 73,728-byte docs-gzip limit),
-documentation-file caps and browser caps remain unchanged. B–D byte costs still
-require their actual pack results. Removing
-or merging contracts solely for six fewer files would add unnecessary API,
-ownership and proof churn; this finite allocation preserves the existing source
-and witnesses. The read is delegated technical budget review, not a claim that
-the human personally read the diff. Full verification remains owed.
+- Two 55-second pressure waits expired; longer admission took 133 seconds.
+  The global npm-cache write failed; task-local cache recovered without a global
+  change. Neither refusal was a native repair cycle or permission to bypass the
+  shared broker.
+- Lint rejected a copied package test importing the rich root evaluator. Keeping
+  the unchanged root characterization and injecting neutral typed evidence into
+  package tests removed the cause. Neutral host-channel typing preserved the
+  reference enum and persisted/emitted values. Later focused proof passed
+  15 files/104 tests, builds/API, public typecheck and lint (33 existing warnings).
+- The human authorized exactly three additional native repair cycles for M13
+  integration, repairs, fresh review and full A proof: existing cycle 3 remained
+  in the same history and the limit became 6. This owner continuation did not
+  reset findings, counters, expiry or delivery authority.
+- The 0.29.0 main-integrated preview measured 2553 code/2607 total files, including
+  84 operations files; 1,906,704 packed, 8,896,258 unpacked, 1,635,652 code-gzip
+  and 63,913 docs-gzip bytes. These were working-tree observations, not a release.
+  The approved 2574/2628 file limits reserved exactly 21 files for the seven
+  already-authored B/C/D production TypeScript files (4/2/1), each source/JS/
+  declaration. No E/F or future allocation followed. Byte/docs/browser limits
+  were unchanged; each actual candidate still needed its measured pack and gate.
+
+Native history and final PR evidence retain their exact identities. Evidence
+expires 24 hours after the earliest counted PASS for its candidate; changed
+source needs the applicable review and proof. Queue rebuild recovery is at most
+two retries and grants no new native cycles.
+
+Self-retro: owner read caught a vendor-bound generic channel, and lint caught an
+unnecessary copied dependency. Existing typed injection preserved behavior with
+less duplication. This compaction links immutable chronology instead of treating
+old working notes as current proof; the edit does not renew the original A proof.

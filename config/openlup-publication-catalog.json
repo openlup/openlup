@@ -9866,6 +9866,30 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferInventory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferInventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferReader.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferRestore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/gusCeidg/invoiceDataLookupClient.test.ts",
       "class": "public-output"
     },
@@ -10286,6 +10310,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreRestore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/customerCommunicationPreferences.test.ts",
       "class": "public-output"
     },
@@ -10619,6 +10651,14 @@
     },
     {
       "path": "server/adapters/s3/objectStorageConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/transferObjectSource.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/transferObjectSource.ts",
       "class": "public-output"
     },
     {
@@ -25735,6 +25775,10 @@
     },
     {
       "path": "tests/postgres/communicationsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransfer.test.ts",
       "class": "public-output"
     },
     {
