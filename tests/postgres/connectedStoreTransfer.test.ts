@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import * as jose from "jose";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort } from "@openlup/platform/identity";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
@@ -27,6 +27,7 @@ const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", r
 const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
 const selectedUnits = [selected.baseline, ...selected.forward];
 type Installation = { owner: Pool; runtime: Pool; restore: Pool; runtimeUrl: string };
+let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
 let identity: Awaited<ReturnType<typeof identityFixture>>;
@@ -137,8 +138,7 @@ async function mediaFixture() {
 
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("Connected transfer proof requires owned disposable PostgreSQL");
-  source = await installation("source"); target = await installation("target");
-  pristine = await capture(target.owner, "owned-pristine-target");
+  source = await installation("source");
   identity = await identityFixture();
   graph = await fixture(source.owner);
   const retainedGraph = await fixture(source.owner);
@@ -182,6 +182,11 @@ beforeAll(async () => {
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
   packet = await capture(source.owner, "owned-existing-source");
+}, postgresSetupTimeoutMs);
+// Each case owns a fresh qualified target and can run without another case.
+beforeEach(async () => {
+  target = await installation(`target-${++targetNumber}`);
+  pristine = await capture(target.owner, "owned-pristine-target");
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
   try { await closePostgres(containers, pools, ports.map(port => () => port.close())); }
@@ -237,26 +242,28 @@ it("refuses a changed known trigger body and an unknown INSERT trigger before im
   expect(await census(target.owner)).toEqual(before);
 });
 
-it("refuses private business omission and nonpristine targets, then preserves the connected retained graph, pruned history and exact replay under actual roles", async () => {
-  const sourceBefore = await census(source.owner), targetBefore = await census(target.owner);
-  const ledger = (await target.owner.query("SELECT to_jsonb(m)::text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
-  const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
+it("refuses private business omission and nonpristine targets without deleting existing obligations", async () => {
+  const targetBefore = await census(target.owner);
   // An actual canonical private BUSINESS row must not disappear as if private
   // meant credentials. Its key fingerprint is synthetic; no key payload is read.
   await source.owner.query(`INSERT INTO acquisition_private.rate_limit_windows VALUES('requester',decode(repeat('ab',32),'hex'),now(),1,now())`);
   try { await expect(capture(source.owner, "source-with-private-business")).rejects.toMatchObject({ code: "unsupported_table", table: "acquisition_private.rate_limit_windows" }); }
   finally { await source.owner.query("DELETE FROM acquisition_private.rate_limit_windows WHERE key_kind='requester' AND key_fingerprint=decode(repeat('ab',32),'hex')"); }
+  const setting = pristine.owned.find(table => table.table === "commerce_settings")!.rows
+    .find(row => (JSON.parse(row) as { key: string }).key === "shipping_flat_minor")!;
   await target.owner.query("UPDATE public.commerce_settings SET value_minor=41 WHERE key='shipping_flat_minor'");
-  await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
-  expect((await target.owner.query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows[0].value_minor).toBe(41);
+  try {
+    await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
+    expect((await target.owner.query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows[0].value_minor).toBe(41);
+  } finally {
+    await target.owner.query(`UPDATE public.commerce_settings t SET value_minor=p.value_minor,value_text=p.value_text,updated_at=p.updated_at
+      FROM jsonb_populate_record(NULL::public.commerce_settings,$1::jsonb) p WHERE t.key=p.key`, [setting]);
+  }
   const retainedNotification = packet.compatible.tables.find(table => table.table === "outbox_events")!.rows.find(row => {
     const value = JSON.parse(row) as { event_type: string; idempotency_key: string };
     return value.event_type === "commerce.shipment.exception" && value.idempotency_key === `shipment_exception:${retainedHold}`;
   });
   if (!retainedNotification) throw new Error("Retained source obligation fixture missing");
-  const setting = pristine.owned.find(table => table.table === "commerce_settings")!.rows[0]!;
-  await target.owner.query(`UPDATE public.commerce_settings t SET value_minor=p.value_minor,value_text=p.value_text,updated_at=p.updated_at
-    FROM jsonb_populate_record(NULL::public.commerce_settings,$1::jsonb) p WHERE t.key=p.key`, [setting]);
   await target.owner.query("INSERT INTO public.outbox_events SELECT (pg_catalog.jsonb_populate_record(NULL::public.outbox_events,$1::jsonb)).*", [retainedNotification]);
   try {
     await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
@@ -265,6 +272,13 @@ it("refuses private business omission and nonpristine targets, then preserves th
   } finally {
     await target.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.exception' AND idempotency_key=$1", [`shipment_exception:${retainedHold}`]);
   }
+  expect(await census(target.owner)).toEqual(targetBefore);
+});
+
+it("preserves the connected retained graph, pruned history and exact replay under actual roles", async () => {
+  const sourceBefore = await census(source.owner), targetBefore = await census(target.owner);
+  const ledger = (await target.owner.query("SELECT to_jsonb(m)::text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
+  const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
   if (!media) throw new Error("Connected media fixture missing");
   const mediaInput = { root: media.targetRoot, census: media.census, ...mediaLimits,
     objects: createOrderReviewMediaTransferReader({ root: media.sourceRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes }),

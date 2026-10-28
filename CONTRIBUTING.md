@@ -251,7 +251,9 @@ separate from the real media root. Its four executable carriers are declared
 in the existing execution inventory; the cohort helper is a regular module.
 The fixture establishes its new private scratch root with the current UID/GID
 before creating descendants and rereads the actual loopback port after provider
-restart. Its passing result covers only the declared graph/media/process profile:
+restart. Reserve child container names before launch; a failed OCI start must
+still remove the exact created child after checking ownership, while preserving
+other named resources. Its passing result covers only the declared graph/media/process profile:
 two accepted effects recovered, one uncertain operation fenced and one ordinary
 duty dispatched/replayed. Source checks, a predecessor pilot and file presence
 cannot establish that result. No new role/grant model, deadline, matrix or global
@@ -2693,6 +2695,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-28, M14 handover cleanup proof: assumptions about failure metadata or
+  network damage hid an actual created-container leak → test exact container
+  disappearance and preservation of other owned resources directly.
 
 - 2026-10-28, M14 installed application upgrade: a plain PostgreSQL driver
   decodes timestamps differently from the selected operations adapter → compose

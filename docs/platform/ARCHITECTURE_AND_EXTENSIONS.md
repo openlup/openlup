@@ -2183,6 +2183,9 @@ natural media timer. The independent [provider ledger](../../tests/postgres/fixt
 retains accepted effects when a response is lost; target G1 recovery must use
 verified observations before ordinary dispatch resumes. The one unresolved
 operation remains visible and fenced while the fourth declared duty can proceed.
+Each child reserves an exact owned container name before Docker startup.
+Cleanup resolves that name and checks its ID and owner/role labels even when
+OCI startup fails before returning an ID; other names are not cleanup targets.
 A passing run reports readiness only for that finite profile; contributor
 guidance owns its opt-in invocation and retained proof requirements.
 

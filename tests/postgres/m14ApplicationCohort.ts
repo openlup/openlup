@@ -129,11 +129,13 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
   } };
   const lifecycle = createPostgresOrderReviewLifecyclePort(executor(runtime));
   const media = createPostgresOrderReviewMediaPort(executor(runtime), types);
-  let id: string | undefined, partialRequest: ClientRequest | undefined, retired = false, runtimeClosed = false;
+  const actorName = `m14-application-${input.owner}-${randomUUID()}`;
+  let id: string | undefined, partialRequest: ClientRequest | undefined, retired = false, runtimeClosed = false, launchAttempted = false;
   async function closeRuntime() { if (!runtimeClosed) { runtimeClosed = true; await runtime.end(); } }
   function ownedActorIdentity() {
     assert(id); const info = inspect(id);
     assert.equal(info.Id, id); assert.equal(info.Config.Labels[ownerLabel], input.owner);
+    assert.equal(info.Name, `/${actorName}`);
     assert.equal(info.Config.Labels[roleLabel], "application");
     return info;
   }
@@ -152,7 +154,12 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
     return info;
   }
   function retire() {
-    ownedActorIdentity(); docker(["rm", "--force", "--volumes", id!]);
+    const found = docker(["ps", "--all", "--no-trunc", "--filter", `name=^/${actorName}$`, "--format", "{{.ID}}"]);
+    if (!found) { assert.equal(id, undefined, "Previously observed application unexpectedly absent"); retired = true; return; }
+    assert.match(found, /^[0-9a-f]{64}$/);
+    if (id) assert.equal(found, id);
+    id = found;
+    ownedActorIdentity(); docker(["rm", "--force", "--volumes", id]);
     assert.equal(docker(["ps", "--all", "--no-trunc", "--filter", `id=${id}`, "--format", "{{.ID}}"]), "");
     retired = true;
   }
@@ -204,7 +211,10 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
       startupDelete: { actorRef: "m14-fixture-admin", mediaRef: startup.media.mediaRef } };
     writeFileSync(join(directory, "input.json"), JSON.stringify(actorInput), { mode: 0o600 });
     const mounts = ["packages", "node_modules"].flatMap(path => ["--mount", `type=bind,src=${join(worktree, path)},dst=/workspace/${path},readonly`]);
-    id = docker(["run", "--detach", "--pull=never", "--restart=no", "--read-only", "--cap-drop=ALL",
+    // The reserved name remains discoverable if Docker creates the container
+    // and then refuses OCI startup before returning its ID.
+    launchAttempted = true;
+    id = docker(["run", "--detach", "--name", actorName, "--pull=never", "--restart=no", "--read-only", "--cap-drop=ALL",
       "--security-opt=no-new-privileges", "--user", `${uid}:${gid}`, "--cpus=1", "--memory=256m", "--pids-limit=64",
       "--label", `${ownerLabel}=${input.owner}`, "--label", `${roleLabel}=application`,
       "--network", network.Name, "--publish", "127.0.0.1::8080", "--workdir", "/workspace", ...mounts,
@@ -372,7 +382,7 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
       async cleanup() { try { if (!retired) retire(); } finally { partialRequest?.destroy(); await closeRuntime(); } },
     };
   } catch (error) {
-    try { if (id && !retired) retire(); } finally { await closeRuntime(); }
+    try { if (launchAttempted && !retired) retire(); } finally { await closeRuntime(); }
     throw error;
   }
 }

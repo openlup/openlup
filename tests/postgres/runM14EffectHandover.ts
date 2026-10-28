@@ -62,7 +62,7 @@ chownSync(scratch, fixtureUid, fixtureGid);
 console.log(JSON.stringify({ evidenceDirectory: scratch, stage: "owned-fixture-preflight" }));
 const objects = join(scratch, "source-objects"), ledger = join(scratch, "provider-ledger");
 mkdirSync(objects, { mode: 0o700 }); mkdirSync(ledger, { mode: 0o700 });
-const containers: { id: string; role: "executor" | "provider" }[] = [];
+const containers: { name: string; id?: string; role: "executor" | "provider" }[] = [];
 const databases: PostgresContainer[] = [], pools: Pool[] = [];
 const times: Record<string, number> = {}, started = performance.now();
 const mark = (name: string) => { times[name] = Math.round(performance.now() - started); };
@@ -164,10 +164,15 @@ function status(directory: string): { boot: string; uid: number; gid: number; ph
 }
 function launch(role: "provider" | "executor", args: string[]) {
   if (role === "executor") assert(!sourceWritesFrozen, "Source recreation is closed after retirement");
-  const id = docker(["run", "--detach", "--pull=never", "--restart=no", "--read-only", "--cap-drop=ALL",
+  // Reserve the exact identity before Docker can create a container but fail
+  // OCI startup without returning its ID. Cleanup still requires both labels.
+  const item: (typeof containers)[number] = { name: `m14-${role}-${owner}-${randomUUID()}`, role };
+  containers.push(item);
+  writeFileSync(join(scratch, "owned-containers.json"), JSON.stringify({ owner, label, roleLabel, network, containers }, null, 2));
+  const id = docker(["run", "--detach", "--name", item.name, "--pull=never", "--restart=no", "--read-only", "--cap-drop=ALL",
     "--security-opt=no-new-privileges", "--user", fixtureUser, "--cpus=1", "--memory=256m", "--pids-limit=64",
     "--label", `${label}=${owner}`, "--label", `${roleLabel}=${role}`, "--network", network!, "--env", "NODE_PG_FORCE_NATIVE=", ...args]);
-  assert.match(id, /^[0-9a-f]{64}$/); containers.push({ id, role });
+  assert.match(id, /^[0-9a-f]{64}$/); item.id = id;
   writeFileSync(join(scratch, "owned-containers.json"), JSON.stringify({ owner, label, roleLabel, network, containers }, null, 2));
   const info = isolated(id, role); assert.deepEqual(Object.keys(info.NetworkSettings.Networks), [network!]); return id;
 }
@@ -565,8 +570,14 @@ finally {
   try { await targetApplication?.close(); } catch { cleanup.push("target-application-binding"); }
   try { await application?.cleanup(); } catch { cleanup.push("source-application-cohort"); }
   for (const item of [...containers].reverse()) {
-    try { owned(item.id, item.role); docker(["rm", "--force", "--volumes", item.id]); }
-    catch { cleanup.push(`container:${item.id}`); }
+    try {
+      const found = docker(["ps", "--all", "--no-trunc", "--filter", `name=^/${item.name}$`, "--format", "{{.ID}}"]);
+      if (!found) { assert.equal(item.id, undefined, "Previously observed owned container unexpectedly absent"); continue; }
+      assert.match(found, /^[0-9a-f]{64}$/);
+      if (item.id) assert.equal(found, item.id);
+      const info = owned(found, item.role); assert.equal(info.Name, `/${item.name}`);
+      docker(["rm", "--force", "--volumes", found]);
+    } catch { cleanup.push(`container:${item.name}`); }
   }
   try { await closePostgres(databases, pools); } catch { cleanup.push("owned-postgres"); }
   if (network) {
