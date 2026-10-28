@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The exact-shipment native G17 host binding and its local unit/native witnesses
+route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
+The [data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) defines its
+actual restricted-login recovery proof. This source routing does not establish
+whole-store transfer, host exclusion, provider qualification or new-dispatch
+runtime capability.
+
 The Node host and scheduler shutdown source, API reports and disposable
 PostgreSQL drain witness belong to the platform package's
 [scheduled jobs boundary](../../packages/platform/README.md#scheduled-jobs).

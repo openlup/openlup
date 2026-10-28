@@ -1675,6 +1675,11 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
+The existing qualified target/separate-restore witness connects the native G17
+observation host binding through its actual restricted runtime login. Setup
+prepares an already-submitted request; recovery read/ACK, observation/status,
+replay and conflicting-ID refusal use R. See [Compatibility lifecycle](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle). No new grant, install shape or provider qualification is added.
+
 Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Start with the affected behavior, then complete [required and raw checks](#required-and-raw-checks). Focused tests do not replace required package, lint, policy or verification gates.
 
 #### Run and inspect

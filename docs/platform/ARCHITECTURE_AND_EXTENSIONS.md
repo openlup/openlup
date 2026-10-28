@@ -2167,6 +2167,15 @@ defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
 
+The host-owned [native observation binding](../../server/adapters/postgres/fulfillmentObservationLifecycle.ts)
+implements the existing G17 lookup/acceptance pair using native dispatch SQL.
+Its caller must supply an already-verified observation with the exact shipment
+UUID. Selected provider and supplied direct order/parcel/external identities
+must agree. It rereads the current row before atomic ACK and preserves the
+exact retained acceptance on replay. It creates no connection, grant, provider
+request, absence inference or package export. Host verification, evidence
+retention and transaction/login authority remain explicit caller duties.
+
 The experimental Node-only
 [`@openlup/platform/portability`](../../packages/platform/src/portability/index.ts)
 entry moves bounded data through explicit host capabilities. It imports only its
