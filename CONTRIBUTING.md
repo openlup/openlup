@@ -237,6 +237,26 @@ inventory to obtain a pass. This source uses existing Node discovery and root
 test commands. It does not prove all-writer retirement, managed identity/history
 mapping, effective storage access or external-effect handover.
 
+The local [handover entry](tests/postgres/runM14EffectHandover.ts) is an opt-in
+one-shot fixture, not a required job or serving runtime. In its allocated local
+slot, use Node24.21.0, own installed/built dependencies, local Docker and an
+already-local immutable Node24.21.0 image:
+`node --import tsx tests/postgres/runM14EffectHandover.ts sha256:<local-image-id>`.
+The host's existing esbuild API emits one ESM for the application child; plain
+Node in Linux loads audited existing JS dependencies without a host-native tsx
+binary, Linux install or image build. Retain the real metafile, source/output
+identities, R sessions, four process IDs, exact backend retirement, final graph/
+file census, target publication/recovery and cleanup output. Marker files are
+separate from the real media root. Its four executable carriers are declared
+in the existing execution inventory; the cohort helper is a regular module.
+The fixture establishes its new private scratch root with the current UID/GID
+before creating descendants and rereads the actual loopback port after provider
+restart. Its passing result covers only the declared graph/media/process profile:
+two accepted effects recovered, one uncertain operation fenced and one ordinary
+duty dispatched/replayed. Source checks, a predecessor pilot and file presence
+cannot establish that result. No new role/grant model, deadline, matrix or global
+readiness claim is introduced; prerequisite delivery/admission remains required.
+
 The [S3 source protocol witness](server/adapters/s3/transferObjectSource.test.ts)
 uses injected command inputs for protocol refusals and a bounded plain Node
 child for actual optional-SDK signing and deserialization. The child supplies

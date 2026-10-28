@@ -670,7 +670,12 @@
         "server/adapters/postgres/fulfillmentObservationLifecycle.test.ts",
         "tests/postgres/fulfillmentNativeConformance.test.ts",
         "tests/postgres/m14QualifiedComposition.proof.ts",
-        "tests/postgres/m14QualifiedComposition.test.ts"
+        "tests/postgres/m14QualifiedComposition.test.ts",
+        "tests/postgres/runM14EffectHandover.ts",
+        "tests/postgres/m14ApplicationCohort.ts",
+        "tests/postgres/fixtures/m14EffectActor.mjs",
+        "tests/postgres/fixtures/m14EffectProvider.mjs",
+        "tests/postgres/fixtures/m14ApplicationActor.ts"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#existing-store-transfer-and-recovery"
