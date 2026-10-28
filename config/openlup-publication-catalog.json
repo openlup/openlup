@@ -1398,6 +1398,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-restricted-bootstrap.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-runtime-drain-task.md",
       "class": "public-output"
     },
@@ -8755,6 +8759,26 @@
     },
     {
       "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20261026140000_retained_client_subscription_import.sql",
       "class": "public-output"
     },
     {

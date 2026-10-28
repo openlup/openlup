@@ -8,6 +8,7 @@ import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { git as readGit } from "./agent-review-session.mjs";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.js";
 import {
+  ADMIN_ACQUISITION_FILE, ADMIN_ACTOR_FILE, ADMIN_BASELINE_FILE, ADMIN_IMPORT_FILE, ADMIN_RUNTIME_FILE,
   QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE,
 } from "./platform-migration-manifest.js";
 import {
@@ -23,7 +24,8 @@ vi.mock("./reviewed-platform-forward.js", async (importOriginal) => {
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-const paths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE];
+const paths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE,
+  ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
 const bodies = paths.map((_path, index) => Buffer.from(`CREATE TABLE public.qualified_fixture_${index}(id integer);\n`));
 const encode = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -47,12 +49,14 @@ function fixture() {
 
 it("reads only the fixed ordered qualified identities with exact digest fields", () => {
   const f = fixture();
-  for (const length of [4, 5, 6]) expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, length) })))).not.toThrow();
+  for (const length of [4, 5, 6, 11]) expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, length) })))).not.toThrow();
+  expect(() => readReviewedForwardRegistry(Buffer.from(encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, 10) })))).toThrow(/qualified installation approval/);
   for (const change of [
     (value: typeof f.approved) => { value.qualifiedInstallations[0]!.path = "db/platform/migrations/q2_arbitrary.sql"; },
     (value: typeof f.approved) => { value.qualifiedInstallations[0]!.sha256 = "invalid"; },
     (value: typeof f.approved) => { value.qualifiedInstallations.reverse(); },
     (value: typeof f.approved) => { value.qualifiedInstallations[5]!.path = "db/platform/migrations/q2_20261028100000_other_runtime.sql"; },
+    (value: typeof f.approved) => { value.qualifiedInstallations[6]!.path = "db/platform/migrations/qa_00000000000001_wrong_baseline.sql"; },
     (value: typeof f.approved) => { value.qualifiedInstallations.push({ path: "db/platform/migrations/q2_20261028100001_extra.sql", sha256: "a".repeat(64) }); },
   ]) {
     const changed = structuredClone(f.approved);
@@ -61,7 +65,7 @@ it("reads only the fixed ordered qualified identities with exact digest fields",
   }
 });
 
-it("preserves issued fixture bindings while preparing the unapproved sixth identity", () => {
+it("preserves six issued identities while preparing five inert restricted bytes", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
   const issued = registry.qualifiedInstallations!;
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
@@ -72,6 +76,16 @@ it("preserves issued fixture bindings while preparing the unapproved sixth ident
   // Fixture integrity does not approve this future pin in the active registry.
   const completion = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`);
   expect(sqlSha256(completion)).toBe("ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e");
+  const pendingHashes = [
+    "a19f78b5e948f96d5bdca6cc14159230cf5197c5ff7fe94f7fc10f26e585a710",
+    "afbba5c95206a579325239a315772095ba47e608b21c8b26d5bbac16a2e0aaa9",
+    "cf5e75a272b81f03b31f529600b1ccd2c974681b20a94bc8ff7159be504364d9",
+    "7083a206e7cedfbb87d009d35234360975d9247b80ccd99a6478d89a12e95cb7",
+    "708aacc8bb3fdeb4d89a5e221914161a56fda790138b3032f349508a800bf72c",
+  ];
+  for (const [index, path] of paths.slice(6).entries()) {
+    expect(sqlSha256(readFileSync(`scripts/fixtures/reviewed-m14-qualified/${path}`))).toBe(pendingHashes[index]);
+  }
 });
 
 it("accepts exact separately approved bytes at source and their unique release introduction", () => {
@@ -111,6 +125,8 @@ it.each([
   ["merge_group", false, QUALIFIED_BASELINE_FILE], ["merge_group", true, QUALIFIED_BASELINE_FILE],
   ["pull_request", false, QUALIFIED_RUNTIME_COMPLETION_FILE], ["pull_request", true, QUALIFIED_RUNTIME_COMPLETION_FILE],
   ["merge_group", false, QUALIFIED_RUNTIME_COMPLETION_FILE], ["merge_group", true, QUALIFIED_RUNTIME_COMPLETION_FILE],
+  ["pull_request", false, ADMIN_BASELINE_FILE], ["pull_request", true, ADMIN_BASELINE_FILE],
+  ["merge_group", false, ADMIN_IMPORT_FILE], ["merge_group", true, ADMIN_IMPORT_FILE],
 ] as const)("trusted %s admission checks unchanged qualified pins with machinery change=%s for %s", async (eventName, changesMachinery, path) => {
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
