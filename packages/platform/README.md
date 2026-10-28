@@ -768,8 +768,11 @@ current registrations synchronously, then waits for callbacks already admitted,
 including pending lock acquisition and unlock. Await it before disposing their
 resources; custom scheduler implementations must return that drain promise.
 Later registrations remain supported. The Node host caches its `stop()` promise,
-closes its listener and retains the dedicated PostgreSQL lock session until the
-drain settles, including failure cleanup.
+keeps its listener and dedicated PostgreSQL lock session available until the
+drain settles, then attempts both cleanup operations even after a drain failure.
+This lets an admitted HTTP-bridge callback finish its local request after a
+pending lock acquisition. The [composed HTTP witness](test/composition/nodeHost.test.ts)
+uses a real local listener and bridge request across that shutdown boundary.
 
 The PostgreSQL lock adapter also reserves each numeric advisory key locally
 before acquisition. This prevents reentry on the same session, including pending
@@ -1352,6 +1355,10 @@ requester. `./operations/contracts` contains DTOs and narrow ports only.
 control-plane handlers and the existing watchdog delivery mechanism. Authorization,
 SQL execution, evidence evaluation and alert transport are supplied by the host;
 importing these entries registers no route, schedule or provider.
+
+The [package-local control-plane witness](test/operations/controlPlaneHandler.test.ts)
+preserves the injected handler's request, authorization, replay and error boundaries,
+including authorization before malformed-body parsing.
 
 `runControlPlaneWatchdogTick` evaluates persisted neutral job failures and records
 an idempotent heartbeat unless `checkOnly` is true. The richer watchdog accepts a
