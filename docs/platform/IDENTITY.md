@@ -435,6 +435,11 @@ contribution through `createIdentityContribution` with the bundle-specific
 It uses the readiness module field (`PackageManifest.module`) directly.
 
 ## Conformance and outstanding evidence
+
+Native privacy and operator-upgrade fixtures select the unchanged legacy plan
+through the canonical manifest reader before constructing their upgrade
+prefixes. The qualified v2 catalogue therefore does not replace their issued
+identity SQL, ledger positions or legacy inventory expectations.
 Email-trust unit witnesses are `managedIdentityVerifier.test.ts`,
 `emailTrustPolicy.test.ts`, `reconcileAccountForPrincipal.test.ts`,
 `reconcileAccountHandler.test.ts` and `identityReadiness.test.ts` in the

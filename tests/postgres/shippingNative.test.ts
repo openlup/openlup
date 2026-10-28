@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +14,7 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, docke
 
 const file = "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
 const version = "20261021200000_shipping_flat_rate_seed";
-const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
 const seedIndex = manifest.forward.findIndex((entry: { file: string }) => entry.file === file);
 const seed = SHIPPING_MIGRATIONS.find(entry => entry.id === version)!;
 const containers: PostgresContainer[] = [], pools: Pool[] = [];

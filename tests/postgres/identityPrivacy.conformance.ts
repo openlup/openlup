@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,7 +22,7 @@ export function registerIdentityPrivacyConformance(): void {
     const runner = (i: number, root = process.cwd()) => createPostgresMigrationRunner({ connectionString: containers[i].connectionString }, { root, poolFactory: () => pools[i] });
     beforeAll(async () => {
       if (!await dockerAvailable()) throw new Error("Identity privacy conformance requires Docker PostgreSQL");
-      current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+      current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
       const index = current.forward.findIndex(entry => entry.file === privacyPath);
       expect(index).toBeGreaterThan(0);
       const before = { ...current, forward: current.forward.slice(0, index), objectInventorySha256: "4dc4c0b7a83a4a49a085bf2c243d1e4223daa287912828261ee89c46d1a60627" };

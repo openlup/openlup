@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 /** Real-database fixture only. Missing Docker is a failure, never a passing skip. */
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -26,7 +27,7 @@ async function operatorInvitationDatabase() {
       pools.push(new Pool({ connectionString: container.connectionString }));
     }
     const [fresh, upgrade] = pools;
-    const current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+    const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
     // The predecessor run proves ordered path/hash/position continuity. Its old
     // object inventory is unavailable; only the completed current chain checks
     // the real selected-catalog projection against the committed inventory hash.

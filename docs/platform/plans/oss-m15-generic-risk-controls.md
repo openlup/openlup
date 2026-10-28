@@ -1507,3 +1507,45 @@ merge commit existed. Use the ordinary pre-commit comparison and the exact
 predecessor after committing; this avoids invalid ancestry probes while
 retaining the checker and full history. Registration union plus existing
 generators remained sufficient; no new mechanism or successor was added.
+
+### M14 qualification and 0.30.0 stack maintenance — 2026-10-28
+
+Direct maintainer continuation: maintain the existing R1/R2/R3 draft stack by
+local `--no-ff` merges, generated-output reconciliation and focused checks with
+two Vitest workers; package checks in R1/R3. No rebase, force-push, push, remote
+PR mutation, arming, activation or release. CD-M15-6a applies only if a measured
+full-stack platform cap is exceeded: 102% rounded up to 5,000 bytes or one file,
+first in R1, then cascaded. Existing review history and budgets are retained;
+full verify and counted review remain later coordinator obligations.
+
+Freshly fetched main/instruction pin:
+`fea0854a1a5a27c1a48f8c2c9078c618f47f66a3`; the code review base is separate.
+The relevant instruction delta documents qualified-runtime proof and its review
+lessons. R1 starts at `2319e024`; R2 at `727280a4`; R3 at `60b0cfb8`.
+Main merges into R1 without textual conflicts. Preserve M14 qualification,
+installation inventories, 0.30.0 versions and released changelog history; retain
+M15 risk source, exports, witnesses and pending fragments. All platform numeric
+caps equal the maximum of their parent values, with no cap adjustment yet.
+The lockfile changes for the released set, so run `npm ci` in each tree.
+Regenerate APIs and navigation through existing commands; no runtime edit or
+new mechanism is needed. Evidence is retained per tree under ignored
+`.context/scratch/m15-main-fea0854a/`. Completion results and self-retro follow
+in this existing record after the final full-stack measurement.
+
+### R2 qualification/release cascade — 2026-10-28
+
+Merge local R1 `3d32517c` under the direct local grant above. Resolve only the
+task-record append conflict by preserving the complete R1 and R2 sections.
+M14 source/release metadata and R2 risk delegation remain intact. The changed
+lockfile requires npm ci. Regenerate with the existing commands, run the
+requested focused checks with two workers, and commit with DCO sign-off.
+Exact-predecessor policy runs after the merge commit establishes ancestry.
+
+### R3 qualification/release cascade — 2026-10-28
+
+Merge local R2 `b2d2c83a` under the direct local grant above. The sole conflict
+is the task-record append point; preserve all predecessor and R3 history.
+M14 source/release metadata, R2 delegation and R3 privacy remain unchanged.
+The released-set lockfile changes, requiring npm ci. Regenerate through the
+existing commands; run focused checks with two workers and the official package
+check. Apply CD-M15-6a in R1 only if this full-stack artifact exceeds a cap.
