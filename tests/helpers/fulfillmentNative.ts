@@ -1,9 +1,10 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool, type PoolClient } from 'pg';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { closePostgres, dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from './postgresContainer.js';
-export const manifest=JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8'));
+export const manifest=selectPlatformMigrationManifest(JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8')), 'legacy');
 export const units: { file:string;sha256:string }[]=[manifest.baseline,...manifest.forward];
 export const executor=(db: Pool | PoolClient) => ({query:(sql:string,values?:unknown[]) => db.query(sql,values)});
 export function nativeHarness(label:string) {

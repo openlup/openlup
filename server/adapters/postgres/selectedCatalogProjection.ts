@@ -2,8 +2,8 @@
 // migration runner.
 //
 // WHERE THIS CAME FROM: it was the one live fragment of the parked
-// `scripts/oss-phase2-schema-*` receipt axis. The bytes below are a verbatim move,
-// not a rewrite: `config/platform-migration-manifest.json` stores sha256 of the
+// `scripts/oss-phase2-schema-*` receipt axis. The projection format is retained;
+// lookup names are bound to pg_catalog. `config/platform-migration-manifest.json` stores sha256 of the
 // payload this file emits, and `migrationRunner.assertObjectInventory` refuses to
 // serve a database whose live projection serializes to anything else. The exact
 // format is pinned in server/adapters/postgres/migrationRunner.test.ts.
@@ -45,75 +45,75 @@ export type ValidatedProjection = R<{ objects: readonly ProjectedObject[]; aclGr
 type CatalogRow = { kind: CatalogKind; schema: string | null; name: string; arguments: string[];
   definition: string | null; attributes: string };
 const compareCodeUnits = (left: string, right: string): number => left === right ? 0 : left < right ? -1 : 1;
-const ROUTINE_IDENTITY_ARGUMENTS_SQL = "ARRAY(SELECT pg_catalog.format_type(input_type,NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS input_arguments(input_type,ordinal) ORDER BY ordinal)";
-const USER_TYPE_SELECTION_SQL = "(t.typtype IN ('d','e','r','m','b') AND t.typrelid=0 OR t.typtype='c' AND EXISTS (SELECT 1 FROM pg_class type_relation WHERE type_relation.oid=t.typrelid AND type_relation.relkind='c'))";
+const ROUTINE_IDENTITY_ARGUMENTS_SQL = "ARRAY(SELECT pg_catalog.format_type(input_type,NULL) FROM pg_catalog.unnest(p.proargtypes::pg_catalog.oid[]) WITH ORDINALITY AS input_arguments(input_type,ordinal) ORDER BY ordinal)";
+const USER_TYPE_SELECTION_SQL = "(t.typtype OPERATOR(pg_catalog.=) ANY(ARRAY['d','e','r','m','b']::pg_catalog.\"char\"[]) AND t.typrelid OPERATOR(pg_catalog.=) 0 OR t.typtype OPERATOR(pg_catalog.=) 'c' AND EXISTS (SELECT 1 FROM pg_catalog.pg_class type_relation WHERE type_relation.oid OPERATOR(pg_catalog.=) t.typrelid AND type_relation.relkind OPERATOR(pg_catalog.=) 'c'))";
 const userSchemaPredicate = (column: string): string =>
-  `LEFT(${column},3)<>'pg_' AND ${column}<>'information_schema'`;
+  `pg_catalog.left(${column},3) OPERATOR(pg_catalog.<>) 'pg_' AND ${column} OPERATOR(pg_catalog.<>) 'information_schema'`;
 const CATALOG_SQL = String.raw`
 WITH ns AS (
  SELECT oid,nspname FROM pg_catalog.pg_namespace WHERE ${userSchemaPredicate("nspname")}
 ), objects AS (
- SELECT 'schema' kind,NULL::text schema,n.nspname name,ARRAY[]::text[] arguments,NULL::text definition,
-   jsonb_build_object('owner',pg_get_userbyid(x.nspowner),'aclStored',x.nspacl IS NOT NULL,
-     'description',obj_description(n.oid,'pg_namespace'))::text attributes
- FROM ns n JOIN pg_namespace x ON x.oid=n.oid
- UNION ALL SELECT 'function',n.nspname,p.proname,${ROUTINE_IDENTITY_ARGUMENTS_SQL},pg_get_functiondef(p.oid),
-   jsonb_build_object('kind',p.prokind,'owner',pg_get_userbyid(p.proowner),'securityDefiner',p.prosecdef,
-     'volatility',p.provolatile,'aclStored',p.proacl IS NOT NULL,'description',obj_description(p.oid,'pg_proc'))::text
- FROM pg_proc p JOIN ns n ON n.oid=p.pronamespace
- UNION ALL SELECT 'relation',n.nspname,c.relname,ARRAY[]::text[],CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid,true) ELSE NULL END,
-   jsonb_build_object('kind',c.relkind,'owner',pg_get_userbyid(c.relowner),'rls',c.relrowsecurity,
-     'forceRls',c.relforcerowsecurity,'aclStored',c.relacl IS NOT NULL,'description',obj_description(c.oid,'pg_class'))::text
- FROM pg_class c JOIN ns n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','S','f')
- UNION ALL SELECT 'column',n.nspname,a.attname,ARRAY[c.relname],pg_get_expr(d.adbin,d.adrelid),
-   jsonb_build_object('ordinal',a.attnum,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
+ SELECT 'schema' kind,NULL::pg_catalog.text schema,n.nspname name,ARRAY[]::pg_catalog.text[] arguments,NULL::pg_catalog.text definition,
+   pg_catalog.jsonb_build_object('owner',pg_catalog.pg_get_userbyid(x.nspowner),'aclStored',x.nspacl IS NOT NULL,
+     'description',pg_catalog.obj_description(n.oid,'pg_namespace'))::pg_catalog.text attributes
+ FROM ns n JOIN pg_catalog.pg_namespace x ON x.oid OPERATOR(pg_catalog.=) n.oid
+ UNION ALL SELECT 'function',n.nspname,p.proname,${ROUTINE_IDENTITY_ARGUMENTS_SQL},pg_catalog.pg_get_functiondef(p.oid),
+   pg_catalog.jsonb_build_object('kind',p.prokind,'owner',pg_catalog.pg_get_userbyid(p.proowner),'securityDefiner',p.prosecdef,
+     'volatility',p.provolatile,'aclStored',p.proacl IS NOT NULL,'description',pg_catalog.obj_description(p.oid,'pg_proc'))::pg_catalog.text
+ FROM pg_catalog.pg_proc p JOIN ns n ON n.oid OPERATOR(pg_catalog.=) p.pronamespace
+ UNION ALL SELECT 'relation',n.nspname,c.relname,ARRAY[]::pg_catalog.text[],CASE WHEN c.relkind OPERATOR(pg_catalog.=) ANY(ARRAY['v','m']::pg_catalog."char"[]) THEN pg_catalog.pg_get_viewdef(c.oid,true) ELSE NULL END,
+   pg_catalog.jsonb_build_object('kind',c.relkind,'owner',pg_catalog.pg_get_userbyid(c.relowner),'rls',c.relrowsecurity,
+     'forceRls',c.relforcerowsecurity,'aclStored',c.relacl IS NOT NULL,'description',pg_catalog.obj_description(c.oid,'pg_class'))::pg_catalog.text
+ FROM pg_catalog.pg_class c JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace WHERE c.relkind OPERATOR(pg_catalog.=) ANY(ARRAY['r','p','v','m','S','f']::pg_catalog."char"[])
+ UNION ALL SELECT 'column',n.nspname,a.attname,ARRAY[c.relname],pg_catalog.pg_get_expr(d.adbin,d.adrelid),
+   pg_catalog.jsonb_build_object('ordinal',a.attnum,'type',pg_catalog.format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
      'identity',a.attidentity,'generated',a.attgenerated,'aclStored',a.attacl IS NOT NULL,
-     'description',col_description(a.attrelid,a.attnum))::text
- FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN ns n ON n.oid=c.relnamespace
- LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
- WHERE a.attnum>0 AND NOT a.attisdropped AND c.relkind IN ('r','p','v','m','f')
- UNION ALL SELECT 'index',n.nspname,i.relname,ARRAY[t.relname],pg_get_indexdef(i.oid),
-   jsonb_build_object('valid',x.indisvalid,'unique',x.indisunique,'primary',x.indisprimary,
-     'description',obj_description(i.oid,'pg_class'))::text
- FROM pg_index x JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_class t ON t.oid=x.indrelid JOIN ns n ON n.oid=i.relnamespace
- UNION ALL SELECT 'constraint',n.nspname,k.conname,ARRAY[c.relname],pg_get_constraintdef(k.oid,true),
-   jsonb_build_object('type',k.contype,'validated',k.convalidated,'deferrable',k.condeferrable,
-     'deferred',k.condeferred,'description',obj_description(k.oid,'pg_constraint'))::text
- FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN ns n ON n.oid=c.relnamespace
- UNION ALL SELECT 'trigger',n.nspname,t.tgname,ARRAY[c.relname],pg_get_triggerdef(t.oid,true),
-   jsonb_build_object('enabled',t.tgenabled,'function',t.tgfoid::regprocedure::text,
-     'description',obj_description(t.oid,'pg_trigger'))::text
- FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN ns n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal
- UNION ALL SELECT 'policy',n.nspname,p.polname,ARRAY[c.relname],concat_ws('|',p.polcmd,pg_get_expr(p.polqual,p.polrelid),pg_get_expr(p.polwithcheck,p.polrelid)),
-   jsonb_build_object('permissive',p.polpermissive,'roles',ARRAY(SELECT principal FROM (SELECT CASE WHEN policy_role.role_oid=0 THEN 'PUBLIC' ELSE policy_role_name.rolname END principal FROM unnest(p.polroles) policy_role(role_oid) LEFT JOIN pg_roles policy_role_name ON policy_role_name.oid=policy_role.role_oid) normalized_policy_roles ORDER BY principal COLLATE "C"),'description',obj_description(p.oid,'pg_policy'))::text
- FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN ns n ON n.oid=c.relnamespace
- UNION ALL SELECT 'type',n.nspname,t.typname,ARRAY[]::text[],CASE WHEN t.typtype='c' THEN (SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'collation',CASE WHEN a.attcollation=0 THEN NULL ELSE a.attcollation::regcollation::text END) ORDER BY a.attnum)::text FROM pg_attribute a WHERE a.attrelid=t.typrelid AND a.attnum>0 AND NOT a.attisdropped) ELSE pg_get_expr(t.typdefaultbin,0) END,
-   jsonb_build_object('kind',t.typtype,'category',t.typcategory,'notNull',t.typnotnull,'base',t.typbasetype::regtype::text,'owner',pg_get_userbyid(t.typowner),'input',t.typinput::regprocedure::text,'output',t.typoutput::regprocedure::text,'receive',t.typreceive::regprocedure::text,'send',t.typsend::regprocedure::text,'typmodIn',t.typmodin::regprocedure::text,'typmodOut',t.typmodout::regprocedure::text,'analyze',t.typanalyze::regprocedure::text,'subscript',t.typsubscript::regprocedure::text,'collation',CASE WHEN t.typcollation=0 THEN NULL ELSE t.typcollation::regcollation::text END,'element',t.typelem::regtype::text,'array',t.typarray::regtype::text,'aclStored',t.typacl IS NOT NULL,'description',obj_description(t.oid,'pg_type'))::text
- FROM pg_type t JOIN ns n ON n.oid=t.typnamespace WHERE ${USER_TYPE_SELECTION_SQL}
- UNION ALL SELECT 'extension',NULL::text,e.extname,ARRAY[]::text[],NULL::text,
-   jsonb_build_object('version',e.extversion,'schema',n.nspname,'owner',pg_get_userbyid(e.extowner),
-     'description',obj_description(e.oid,'pg_extension'))::text
- FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace
- UNION ALL SELECT 'role',NULL::text,r.rolname,ARRAY[]::text[],NULL::text,
-   jsonb_build_object('login',r.rolcanlogin,'inherit',r.rolinherit,'superuser',r.rolsuper,
+     'description',pg_catalog.col_description(a.attrelid,a.attnum))::pg_catalog.text
+ FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid OPERATOR(pg_catalog.=) a.attrelid JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace
+ LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid OPERATOR(pg_catalog.=) a.attrelid AND d.adnum OPERATOR(pg_catalog.=) a.attnum
+ WHERE a.attnum OPERATOR(pg_catalog.>) 0 AND NOT a.attisdropped AND c.relkind OPERATOR(pg_catalog.=) ANY(ARRAY['r','p','v','m','f']::pg_catalog."char"[])
+ UNION ALL SELECT 'index',n.nspname,i.relname,ARRAY[t.relname],pg_catalog.pg_get_indexdef(i.oid),
+   pg_catalog.jsonb_build_object('valid',x.indisvalid,'unique',x.indisunique,'primary',x.indisprimary,
+     'description',pg_catalog.obj_description(i.oid,'pg_class'))::pg_catalog.text
+ FROM pg_catalog.pg_index x JOIN pg_catalog.pg_class i ON i.oid OPERATOR(pg_catalog.=) x.indexrelid JOIN pg_catalog.pg_class t ON t.oid OPERATOR(pg_catalog.=) x.indrelid JOIN ns n ON n.oid OPERATOR(pg_catalog.=) i.relnamespace
+ UNION ALL SELECT 'constraint',n.nspname,k.conname,ARRAY[c.relname],pg_catalog.pg_get_constraintdef(k.oid,true),
+   pg_catalog.jsonb_build_object('type',k.contype,'validated',k.convalidated,'deferrable',k.condeferrable,
+     'deferred',k.condeferred,'description',pg_catalog.obj_description(k.oid,'pg_constraint'))::pg_catalog.text
+ FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid OPERATOR(pg_catalog.=) k.conrelid JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace
+ UNION ALL SELECT 'trigger',n.nspname,t.tgname,ARRAY[c.relname],pg_catalog.pg_get_triggerdef(t.oid,true),
+   pg_catalog.jsonb_build_object('enabled',t.tgenabled,'function',t.tgfoid::pg_catalog.regprocedure::pg_catalog.text,
+     'description',pg_catalog.obj_description(t.oid,'pg_trigger'))::pg_catalog.text
+ FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid OPERATOR(pg_catalog.=) t.tgrelid JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace WHERE NOT t.tgisinternal
+ UNION ALL SELECT 'policy',n.nspname,p.polname,ARRAY[c.relname],pg_catalog.concat_ws('|',p.polcmd,pg_catalog.pg_get_expr(p.polqual,p.polrelid),pg_catalog.pg_get_expr(p.polwithcheck,p.polrelid)),
+   pg_catalog.jsonb_build_object('permissive',p.polpermissive,'roles',ARRAY(SELECT principal FROM (SELECT CASE WHEN policy_role.role_oid OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE policy_role_name.rolname END principal FROM pg_catalog.unnest(p.polroles) policy_role(role_oid) LEFT JOIN pg_catalog.pg_roles policy_role_name ON policy_role_name.oid OPERATOR(pg_catalog.=) policy_role.role_oid) normalized_policy_roles ORDER BY principal COLLATE pg_catalog."C"),'description',pg_catalog.obj_description(p.oid,'pg_policy'))::pg_catalog.text
+ FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid OPERATOR(pg_catalog.=) p.polrelid JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace
+ UNION ALL SELECT 'type',n.nspname,t.typname,ARRAY[]::pg_catalog.text[],CASE WHEN t.typtype OPERATOR(pg_catalog.=) 'c' THEN (SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('name',a.attname,'type',pg_catalog.format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'collation',CASE WHEN a.attcollation OPERATOR(pg_catalog.=) 0 THEN NULL ELSE a.attcollation::pg_catalog.regcollation::pg_catalog.text END) ORDER BY a.attnum)::pg_catalog.text FROM pg_catalog.pg_attribute a WHERE a.attrelid OPERATOR(pg_catalog.=) t.typrelid AND a.attnum OPERATOR(pg_catalog.>) 0 AND NOT a.attisdropped) ELSE pg_catalog.pg_get_expr(t.typdefaultbin,0) END,
+   pg_catalog.jsonb_build_object('kind',t.typtype,'category',t.typcategory,'notNull',t.typnotnull,'base',t.typbasetype::pg_catalog.regtype::pg_catalog.text,'owner',pg_catalog.pg_get_userbyid(t.typowner),'input',t.typinput::pg_catalog.regprocedure::pg_catalog.text,'output',t.typoutput::pg_catalog.regprocedure::pg_catalog.text,'receive',t.typreceive::pg_catalog.regprocedure::pg_catalog.text,'send',t.typsend::pg_catalog.regprocedure::pg_catalog.text,'typmodIn',t.typmodin::pg_catalog.regprocedure::pg_catalog.text,'typmodOut',t.typmodout::pg_catalog.regprocedure::pg_catalog.text,'analyze',t.typanalyze::pg_catalog.regprocedure::pg_catalog.text,'subscript',t.typsubscript::pg_catalog.regprocedure::pg_catalog.text,'collation',CASE WHEN t.typcollation OPERATOR(pg_catalog.=) 0 THEN NULL ELSE t.typcollation::pg_catalog.regcollation::pg_catalog.text END,'element',t.typelem::pg_catalog.regtype::pg_catalog.text,'array',t.typarray::pg_catalog.regtype::pg_catalog.text,'aclStored',t.typacl IS NOT NULL,'description',pg_catalog.obj_description(t.oid,'pg_type'))::pg_catalog.text
+ FROM pg_catalog.pg_type t JOIN ns n ON n.oid OPERATOR(pg_catalog.=) t.typnamespace WHERE ${USER_TYPE_SELECTION_SQL}
+ UNION ALL SELECT 'extension',NULL::pg_catalog.text,e.extname,ARRAY[]::pg_catalog.text[],NULL::pg_catalog.text,
+   pg_catalog.jsonb_build_object('version',e.extversion,'schema',n.nspname,'owner',pg_catalog.pg_get_userbyid(e.extowner),
+     'description',pg_catalog.obj_description(e.oid,'pg_extension'))::pg_catalog.text
+ FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid OPERATOR(pg_catalog.=) e.extnamespace
+ UNION ALL SELECT 'role',NULL::pg_catalog.text,r.rolname,ARRAY[]::pg_catalog.text[],NULL::pg_catalog.text,
+   pg_catalog.jsonb_build_object('login',r.rolcanlogin,'inherit',r.rolinherit,'superuser',r.rolsuper,
      'createRole',r.rolcreaterole,'createDb',r.rolcreatedb,'replication',r.rolreplication,
-     'bypassRls',r.rolbypassrls,'connectionLimit',r.rolconnlimit,'validUntil',CASE WHEN r.rolvaliduntil IS NULL THEN NULL WHEN r.rolvaliduntil='infinity'::timestamptz THEN 'infinity' ELSE to_char(r.rolvaliduntil AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END,'description',shobj_description(r.oid,'pg_authid'))::text
- FROM pg_roles r
+     'bypassRls',r.rolbypassrls,'connectionLimit',r.rolconnlimit,'validUntil',CASE WHEN r.rolvaliduntil IS NULL THEN NULL WHEN r.rolvaliduntil OPERATOR(pg_catalog.=) 'infinity'::pg_catalog.timestamptz THEN 'infinity' ELSE pg_catalog.to_char(pg_catalog.timezone('UTC',r.rolvaliduntil),'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END,'description',pg_catalog.shobj_description(r.oid,'pg_authid'))::pg_catalog.text
+ FROM pg_catalog.pg_roles r
 ), acl_sources AS (
- SELECT 'schema'::text target_class,jsonb_build_object('kind','schema','schema',NULL,'name',n.nspname,'arguments','[]'::jsonb) target,NULL::text target_schema,n.nspname target_name,ARRAY[]::text[] target_arguments,n.nspowner owner_oid,n.nspacl acl,'n'::"char" default_code FROM pg_namespace n JOIN ns ON ns.oid=n.oid
- UNION ALL SELECT 'routine',jsonb_build_object('kind','function','schema',n.nspname,'name',p.proname,'arguments',to_jsonb(${ROUTINE_IDENTITY_ARGUMENTS_SQL})),n.nspname,p.proname,${ROUTINE_IDENTITY_ARGUMENTS_SQL},p.proowner,p.proacl,'f'::"char" FROM pg_proc p JOIN ns n ON n.oid=p.pronamespace
- UNION ALL SELECT CASE WHEN c.relkind='S' THEN 'sequence' ELSE 'relation' END,jsonb_build_object('kind','relation','schema',n.nspname,'name',c.relname,'arguments','[]'::jsonb),n.nspname,c.relname,ARRAY[]::text[],c.relowner,c.relacl,CASE WHEN c.relkind='S' THEN 's'::"char" ELSE 'r'::"char" END FROM pg_class c JOIN ns n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','S','f')
- UNION ALL SELECT 'column',jsonb_build_object('kind','column','schema',n.nspname,'name',a.attname,'arguments',jsonb_build_array(c.relname)),n.nspname,a.attname,ARRAY[c.relname],c.relowner,a.attacl,NULL::"char" FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN ns n ON n.oid=c.relnamespace WHERE a.attnum>0 AND NOT a.attisdropped AND c.relkind IN ('r','p','v','m','f') AND a.attacl IS NOT NULL
- UNION ALL SELECT 'type',jsonb_build_object('kind','type','schema',n.nspname,'name',t.typname,'arguments','[]'::jsonb),n.nspname,t.typname,ARRAY[]::text[],t.typowner,t.typacl,'T'::"char" FROM pg_type t JOIN ns n ON n.oid=t.typnamespace WHERE ${USER_TYPE_SELECTION_SQL}
+ SELECT 'schema'::pg_catalog.text target_class,pg_catalog.jsonb_build_object('kind','schema','schema',NULL,'name',n.nspname,'arguments','[]'::pg_catalog.jsonb) target,NULL::pg_catalog.text target_schema,n.nspname target_name,ARRAY[]::pg_catalog.text[] target_arguments,n.nspowner owner_oid,n.nspacl acl,'n'::pg_catalog."char" default_code FROM pg_catalog.pg_namespace n JOIN ns ON ns.oid OPERATOR(pg_catalog.=) n.oid
+ UNION ALL SELECT 'routine',pg_catalog.jsonb_build_object('kind','function','schema',n.nspname,'name',p.proname,'arguments',pg_catalog.to_jsonb(${ROUTINE_IDENTITY_ARGUMENTS_SQL})),n.nspname,p.proname,${ROUTINE_IDENTITY_ARGUMENTS_SQL},p.proowner,p.proacl,'f'::pg_catalog."char" FROM pg_catalog.pg_proc p JOIN ns n ON n.oid OPERATOR(pg_catalog.=) p.pronamespace
+ UNION ALL SELECT CASE WHEN c.relkind OPERATOR(pg_catalog.=) 'S' THEN 'sequence' ELSE 'relation' END,pg_catalog.jsonb_build_object('kind','relation','schema',n.nspname,'name',c.relname,'arguments','[]'::pg_catalog.jsonb),n.nspname,c.relname,ARRAY[]::pg_catalog.text[],c.relowner,c.relacl,CASE WHEN c.relkind OPERATOR(pg_catalog.=) 'S' THEN 's'::pg_catalog."char" ELSE 'r'::pg_catalog."char" END FROM pg_catalog.pg_class c JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace WHERE c.relkind OPERATOR(pg_catalog.=) ANY(ARRAY['r','p','v','m','S','f']::pg_catalog."char"[])
+ UNION ALL SELECT 'column',pg_catalog.jsonb_build_object('kind','column','schema',n.nspname,'name',a.attname,'arguments',pg_catalog.jsonb_build_array(c.relname)),n.nspname,a.attname,ARRAY[c.relname],c.relowner,a.attacl,NULL::pg_catalog."char" FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid OPERATOR(pg_catalog.=) a.attrelid JOIN ns n ON n.oid OPERATOR(pg_catalog.=) c.relnamespace WHERE a.attnum OPERATOR(pg_catalog.>) 0 AND NOT a.attisdropped AND c.relkind OPERATOR(pg_catalog.=) ANY(ARRAY['r','p','v','m','f']::pg_catalog."char"[]) AND a.attacl IS NOT NULL
+ UNION ALL SELECT 'type',pg_catalog.jsonb_build_object('kind','type','schema',n.nspname,'name',t.typname,'arguments','[]'::pg_catalog.jsonb),n.nspname,t.typname,ARRAY[]::pg_catalog.text[],t.typowner,t.typacl,'T'::pg_catalog."char" FROM pg_catalog.pg_type t JOIN ns n ON n.oid OPERATOR(pg_catalog.=) t.typnamespace WHERE ${USER_TYPE_SELECTION_SQL}
 ), acl_rows AS (
- SELECT 'acl-grant'::text kind,s.target_schema schema,s.target_name name,ARRAY[s.target_class]||s.target_arguments||ARRAY[CASE WHEN x.grantor=0 THEN 'PUBLIC' ELSE grantor.rolname END,CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE grantee.rolname END,lower(x.privilege_type),x.is_grantable::text,CASE WHEN s.acl IS NULL THEN 'built-in-default' ELSE 'stored' END] arguments,NULL::text definition,jsonb_build_object('targetClass',s.target_class,'targetIdentity',s.target,'grantor',CASE WHEN x.grantor=0 THEN 'PUBLIC' ELSE grantor.rolname END,'grantee',CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE grantee.rolname END,'privilege',lower(x.privilege_type),'isGrantable',x.is_grantable,'aclOrigin',CASE WHEN s.acl IS NULL THEN 'built-in-default' ELSE 'stored' END)::text attributes
- FROM acl_sources s CROSS JOIN LATERAL aclexplode(CASE WHEN s.acl IS NULL THEN acldefault(s.default_code,s.owner_oid) ELSE s.acl END) x LEFT JOIN pg_roles grantor ON grantor.oid=x.grantor LEFT JOIN pg_roles grantee ON grantee.oid=x.grantee WHERE s.acl IS NOT NULL OR x.grantee<>s.owner_oid
+ SELECT 'acl-grant'::pg_catalog.text kind,s.target_schema schema,s.target_name name,ARRAY[s.target_class] OPERATOR(pg_catalog.||) s.target_arguments OPERATOR(pg_catalog.||) ARRAY[CASE WHEN x.grantor OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantor.rolname END,CASE WHEN x.grantee OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantee.rolname END,pg_catalog.lower(x.privilege_type),x.is_grantable::pg_catalog.text,CASE WHEN s.acl IS NULL THEN 'built-in-default' ELSE 'stored' END] arguments,NULL::pg_catalog.text definition,pg_catalog.jsonb_build_object('targetClass',s.target_class,'targetIdentity',s.target,'grantor',CASE WHEN x.grantor OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantor.rolname END,'grantee',CASE WHEN x.grantee OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantee.rolname END,'privilege',pg_catalog.lower(x.privilege_type),'isGrantable',x.is_grantable,'aclOrigin',CASE WHEN s.acl IS NULL THEN 'built-in-default' ELSE 'stored' END)::pg_catalog.text attributes
+ FROM acl_sources s CROSS JOIN LATERAL pg_catalog.aclexplode(CASE WHEN s.acl IS NULL THEN pg_catalog.acldefault(s.default_code,s.owner_oid) ELSE s.acl END) x LEFT JOIN pg_catalog.pg_roles grantor ON grantor.oid OPERATOR(pg_catalog.=) x.grantor LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid OPERATOR(pg_catalog.=) x.grantee WHERE s.acl IS NOT NULL OR x.grantee OPERATOR(pg_catalog.<>) s.owner_oid
 ), default_rows AS (
- SELECT 'default-privilege'::text kind,n.nspname schema,owner_role.rolname name,ARRAY[CASE d.defaclobjtype WHEN 'n' THEN 'schema' WHEN 'f' THEN 'routine' WHEN 'r' THEN 'relation' WHEN 'S' THEN 'sequence' WHEN 'T' THEN 'type' END,CASE WHEN x.grantor=0 THEN 'PUBLIC' ELSE grantor.rolname END,CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE grantee.rolname END,lower(x.privilege_type),x.is_grantable::text] arguments,NULL::text definition,jsonb_build_object('ownerRole',owner_role.rolname,'schema',n.nspname,'objectClass',CASE d.defaclobjtype WHEN 'n' THEN 'schema' WHEN 'f' THEN 'routine' WHEN 'r' THEN 'relation' WHEN 'S' THEN 'sequence' WHEN 'T' THEN 'type' END,'grantor',CASE WHEN x.grantor=0 THEN 'PUBLIC' ELSE grantor.rolname END,'grantee',CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE grantee.rolname END,'privilege',lower(x.privilege_type),'isGrantable',x.is_grantable)::text attributes
- FROM pg_default_acl d JOIN pg_roles owner_role ON owner_role.oid=d.defaclrole LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace CROSS JOIN LATERAL aclexplode(d.defaclacl) x LEFT JOIN pg_roles grantor ON grantor.oid=x.grantor LEFT JOIN pg_roles grantee ON grantee.oid=x.grantee WHERE d.defaclnamespace=0 OR n.oid IN (SELECT oid FROM ns)
+ SELECT 'default-privilege'::pg_catalog.text kind,n.nspname schema,owner_role.rolname name,ARRAY[CASE WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'n' THEN 'schema' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'f' THEN 'routine' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'r' THEN 'relation' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'S' THEN 'sequence' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'T' THEN 'type' END,CASE WHEN x.grantor OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantor.rolname END,CASE WHEN x.grantee OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantee.rolname END,pg_catalog.lower(x.privilege_type),x.is_grantable::pg_catalog.text] arguments,NULL::pg_catalog.text definition,pg_catalog.jsonb_build_object('ownerRole',owner_role.rolname,'schema',n.nspname,'objectClass',CASE WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'n' THEN 'schema' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'f' THEN 'routine' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'r' THEN 'relation' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'S' THEN 'sequence' WHEN d.defaclobjtype OPERATOR(pg_catalog.=) 'T' THEN 'type' END,'grantor',CASE WHEN x.grantor OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantor.rolname END,'grantee',CASE WHEN x.grantee OPERATOR(pg_catalog.=) 0 THEN 'PUBLIC' ELSE grantee.rolname END,'privilege',pg_catalog.lower(x.privilege_type),'isGrantable',x.is_grantable)::pg_catalog.text attributes
+ FROM pg_catalog.pg_default_acl d JOIN pg_catalog.pg_roles owner_role ON owner_role.oid OPERATOR(pg_catalog.=) d.defaclrole LEFT JOIN pg_catalog.pg_namespace n ON n.oid OPERATOR(pg_catalog.=) d.defaclnamespace CROSS JOIN LATERAL pg_catalog.aclexplode(d.defaclacl) x LEFT JOIN pg_catalog.pg_roles grantor ON grantor.oid OPERATOR(pg_catalog.=) x.grantor LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid OPERATOR(pg_catalog.=) x.grantee WHERE d.defaclnamespace OPERATOR(pg_catalog.=) 0 OR n.oid OPERATOR(pg_catalog.=) ANY (SELECT oid FROM ns)
 ), membership_rows AS (
- SELECT 'role-membership'::text kind,NULL::text schema,granted.rolname name,ARRAY[member.rolname,grantor.rolname,m.admin_option::text,COALESCE((to_jsonb(m)->>'inherit_option')::boolean,true)::text,COALESCE((to_jsonb(m)->>'set_option')::boolean,true)::text] arguments,NULL::text definition,jsonb_build_object('grantedRole',granted.rolname,'memberRole',member.rolname,'grantorRole',grantor.rolname,'adminOption',m.admin_option,'inheritOption',COALESCE((to_jsonb(m)->>'inherit_option')::boolean,true),'setOption',COALESCE((to_jsonb(m)->>'set_option')::boolean,true))::text attributes
- FROM pg_auth_members m JOIN pg_roles granted ON granted.oid=m.roleid JOIN pg_roles member ON member.oid=m.member JOIN pg_roles grantor ON grantor.oid=m.grantor
+ SELECT 'role-membership'::pg_catalog.text kind,NULL::pg_catalog.text schema,granted.rolname name,ARRAY[member.rolname,grantor.rolname,m.admin_option::pg_catalog.text,COALESCE((pg_catalog.to_jsonb(m) OPERATOR(pg_catalog.->>) 'inherit_option')::pg_catalog.bool,true)::pg_catalog.text,COALESCE((pg_catalog.to_jsonb(m) OPERATOR(pg_catalog.->>) 'set_option')::pg_catalog.bool,true)::pg_catalog.text] arguments,NULL::pg_catalog.text definition,pg_catalog.jsonb_build_object('grantedRole',granted.rolname,'memberRole',member.rolname,'grantorRole',grantor.rolname,'adminOption',m.admin_option,'inheritOption',COALESCE((pg_catalog.to_jsonb(m) OPERATOR(pg_catalog.->>) 'inherit_option')::pg_catalog.bool,true),'setOption',COALESCE((pg_catalog.to_jsonb(m) OPERATOR(pg_catalog.->>) 'set_option')::pg_catalog.bool,true))::pg_catalog.text attributes
+ FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid OPERATOR(pg_catalog.=) m.roleid JOIN pg_catalog.pg_roles member ON member.oid OPERATOR(pg_catalog.=) m.member JOIN pg_catalog.pg_roles grantor ON grantor.oid OPERATOR(pg_catalog.=) m.grantor
 ) SELECT kind,schema,name,arguments,definition,attributes FROM (SELECT * FROM objects UNION ALL SELECT * FROM acl_rows UNION ALL SELECT * FROM default_rows UNION ALL SELECT * FROM membership_rows) catalog ORDER BY kind,schema NULLS FIRST,name,arguments`;
 const CATALOG_QUERY_NAME = "oss-phase2-selected-catalog-v2";
 const sha = (value: string): Sha256 => createHash("sha256").update(value).digest("hex") as Sha256;
@@ -260,4 +260,15 @@ export function selectedCatalogProjectionPayload(value: ValidatedProjection): st
   return stable({ objects: value.objects, aclGrants: value.aclGrants,
     defaultPrivileges: value.defaultPrivileges, roleMemberships: value.roleMemberships,
     roles: value.roles, ownerships: value.ownerships });
+}
+
+/** Qualified installation retains these raw fields until declared principals are validated. */
+export async function readSelectedCatalogRowsForQualifiedInstall(client: ClientBase): Promise<readonly CatalogRow[]> {
+  const result = await client.query<CatalogRow>({ name: "openlup-qualified-catalog-rows-v1", text: CATALOG_SQL });
+  return result.rows;
+}
+
+/** Reuse the existing row consistency checks after the qualified field-only transformation. */
+export function selectedCatalogRowsPayloadForQualifiedInstall(rows: readonly CatalogRow[]): string {
+  return selectedCatalogProjectionPayload(projectionFromRows(rows));
 }

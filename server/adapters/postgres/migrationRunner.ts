@@ -12,26 +12,50 @@ import {
 } from "@openlup/platform/migrations";
 import {
   evaluatePlatformMigrationManifest,
+  evaluateSelectedPlatformMigrationManifest,
   readPlatformMigrationManifest,
   readPlatformMigrations,
+  selectPlatformMigrationManifest,
+  type PlatformMigrationGeneration,
+  type PlatformMigrationManifest,
 } from "../../../scripts/platform-migration-manifest.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "./selectedCatalogProjection.js";
+import { assertQualifiedPostgresSelection, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload,
+  qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
 
 export { resolvePostgresMigrationRunnerEnv, type PostgresMigrationRunnerEnv } from "@openlup/platform/migrations";
 
 const MIGRATION_LOCK_NAME = "openlup:public-platform-migrations:v1";
 
-const PLATFORM_MIGRATION_SOURCE: PlatformMigrationSource = {
-  readMigrations: readPlatformMigrations,
-  readManifest: readPlatformMigrationManifest,
-  evaluate: evaluatePlatformMigrationManifest,
-};
+function platformMigrationSource(installation: { generation: "legacy" } | QualifiedPostgresInstallation): PlatformMigrationSource {
+  const generation: PlatformMigrationGeneration = installation.generation;
+  const read = (root: string) => {
+    const catalog = readPlatformMigrations(root);
+    const raw = readPlatformMigrationManifest(root);
+    const errors = [...catalog.errors, ...(raw === null ? ["platform migration manifest is missing"] : evaluatePlatformMigrationManifest({ manifest: raw, migrations: catalog.migrations }))];
+    if (errors.length) return { migrations: [], errors, manifest: null };
+    const manifest = selectPlatformMigrationManifest(raw as PlatformMigrationManifest, generation, installation.generation === "qualified-v2"
+      ? { migrationIsBootstrap: installation.migrationLogin === installation.bootstrapLogin, hasRestore: installation.restoreLogin !== undefined } : undefined);
+    const selected = new Set([manifest.baseline.file, ...manifest.forward.map(({ file }) => file)]);
+    return { migrations: catalog.migrations.filter(({ file }) => selected.has(file)), errors, manifest };
+  };
+  return {
+    readMigrations: root => read(root),
+    readManifest: root => read(root).manifest,
+    evaluate: input => evaluateSelectedPlatformMigrationManifest(input, generation),
+    assertSession: installation.generation === "qualified-v2"
+      ? (client: PoolClient, applied: readonly { file: string; sha256: string; position: number }[]) => assertQualifiedPostgresSession(client, applied, installation, MIGRATION_LOCK_NAME)
+      : undefined,
+  };
+}
 
 export interface PostgresMigrationRunnerOptions {
   /** Test-only repository root; production is fixed to process.cwd(). */
   root?: string;
   poolFactory?: PlatformMigrationRunnerOptions["poolFactory"];
-  /** Test-only catalog projector seam; production always uses selected-catalog-v2. */
+  /** Legacy is unchanged by default; qualified fresh installation is an explicit selection. */
+  installation?: { generation: "legacy" } | QualifiedPostgresInstallation;
+  /** Test-only catalog projector seam; production uses the selected generation's canonical payload. */
   catalogProjectionPayload?: (client: PoolClient) => Promise<string>;
 }
 
@@ -43,11 +67,25 @@ export function createPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
   options: PostgresMigrationRunnerOptions = {},
 ): MigrationRunnerPort {
+  const installation: { generation: "legacy" } | QualifiedPostgresInstallation = options.installation === undefined ? { generation: "legacy" } : options.installation;
+  if (!installation || typeof installation !== "object" || Array.isArray(installation)) throw new Error("invalid platform migration generation selection");
+  if (installation.generation !== "legacy" && installation.generation !== "qualified-v2") throw new Error("unknown platform migration generation");
+  if (installation.generation === "legacy" && Object.keys(installation).some(key => key !== "generation")) throw new Error("legacy migrations refuse qualified installation fields");
+  if (installation.generation === "qualified-v2") assertQualifiedPostgresSelection(installation);
   return createPlatformMigrationRunner(env, {
     lockName: MIGRATION_LOCK_NAME,
-    source: PLATFORM_MIGRATION_SOURCE,
-    catalogProjectionPayload: options.catalogProjectionPayload ?? canonicalCatalogProjectionPayload,
+    source: platformMigrationSource(installation),
+    catalogProjectionPayload: options.catalogProjectionPayload ?? (installation.generation === "legacy"
+      ? canonicalCatalogProjectionPayload : client => qualifiedPostgresCatalogPayload(client, installation, MIGRATION_LOCK_NAME)),
     root: options.root,
-    poolFactory: options.poolFactory,
+    poolFactory: options.poolFactory ?? (installation.generation === "qualified-v2" ? async binding => {
+      let url: URL;
+      try { url = new URL(binding.connectionString); } catch { throw new Error("qualified migrations require a PostgreSQL connection URL"); }
+      if (!["postgres:", "postgresql:"].includes(url.protocol) || url.searchParams.has("options")) throw new Error("qualified migrations refuse arbitrary connection startup options");
+      url.searchParams.set("options", qualifiedPostgresStartupOptions(installation));
+      const pg = await import("pg");
+      const PoolCtor = pg.default?.Pool ?? pg.Pool;
+      return new PoolCtor({ connectionString: url.toString() });
+    } : undefined),
   });
 }

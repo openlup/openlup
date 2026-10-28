@@ -2,6 +2,8 @@
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",
+  "packages/platform/test/lifecycle/appUpgrade.test.ts",
+  "tests/postgres/nodeHostRuntimeDrain.test.ts",
   "server/adapters/s3/objectStorageConformance.test.ts",
   "scripts/packages/outbox-consumer-proof.ts", "scripts/packages/outbox-disposable-postgres.ts", "scripts/packages/pack-manifest-input.ts", "scripts/packages/required-package-gates.ts", "scripts/packages/required-package-gates.test.ts",
   "scripts/packages/platform-cold-consumer.ts",
@@ -33,6 +35,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "server/runtime/public-reference/serve.ts",
   "tests/postgres/runIdentityEnvelopeConformance.mjs",
   "tests/postgres/runOidcIdentityConformance.mjs",
+  "tests/postgres/m14QualifiedComposition.proof.ts",
   "tests/identity/runAcceptance.mjs", "tests/identity/acceptance.conformance.ts", "server/runtime/auth/capturedIdentityMailbox.test.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",

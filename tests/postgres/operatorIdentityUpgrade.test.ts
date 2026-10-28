@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 /** Real complete-catalogue proof. Missing database infrastructure is a failure. */
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,7 +20,7 @@ let current: { baseline: { file: string; sha256: string }; forward: { file: stri
 const runner = (index: number, selectedRoot = process.cwd()) => createPostgresMigrationRunner({ connectionString: containers[index].connectionString }, { root: selectedRoot, poolFactory: () => pools[index] });
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error('Operator identity conformance requires Docker PostgreSQL');
-  current = JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8'));
+  current = selectPlatformMigrationManifest(JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8')), 'legacy');
   const challengeIndex = current.forward.findIndex(entry => entry.file === 'db/platform/migrations/20261018180000_identity_operator_challenges.sql');
   expect(challengeIndex).toBeGreaterThan(0);
   for (const name of ['fresh', 'upgrade']) {

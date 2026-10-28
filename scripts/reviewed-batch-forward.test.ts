@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "./platform-migration-manifest.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -335,7 +336,7 @@ function correctionFixture() {
   }
   // M09 changes only the managed rail. Keep a valid portable baseline/manifest
   // without copying and revalidating every unrelated portable forward.
-  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
   put(manifest.baseline.file, readFileSync(manifest.baseline.file));
   put("config/platform-migration-manifest.json", JSON.stringify({ ...manifest, forward: [] }));
   const previous = structuredClone(registry);
@@ -1170,7 +1171,7 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
   // the fixture copies every committed migration and the live manifest.
   const twinPath = `packages/platform/sql/${support[0]!.path.split("/").at(-1)}`;
   for (const path of [...support.map(pin => pin.path), twinPath]) rmSync(join(f.root, path), { force: true });
-  const baseManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  const baseManifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
   baseManifest.forward = baseManifest.forward.filter((row: { file: string }) => !support.some(pin => pin.path === row.file));
   f.put("config/platform-migration-manifest.json", JSON.stringify(baseManifest));
   const without = structuredClone(registry); delete without.supportAuthorityForwards;

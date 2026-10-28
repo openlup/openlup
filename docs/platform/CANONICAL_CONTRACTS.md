@@ -551,6 +551,32 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The qualified retained-import selection requires an actual restore login and one
+of the two fixed 90-unit inventories for its migration/bootstrap shape. The
+manifest appends only the exact separately approved import SQL after qualified
+runtime sealing; legacy selection remains the issued 88-unit catalogue. The
+two reference-derived digests are expectations, not target observations or
+qualification. Production status/apply/replay and runtime/restore privilege
+witnesses remain required under the
+[data compatibility lifecycle](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).
+
+The exact qualified-installation source approvals in
+[`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
+are control inputs, not installation evidence. The five inert fixtures and the
+legacy-preserving version-2 source catalogue follow the
+[migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+Introducing approved SQL still requires the separately landed control route;
+these pins grant no activation or managed-host compatibility.
+
+The reference qualified selection declares actual migration/bootstrap/runtime
+and optional restore principals; omitted selection remains legacy. The E2
+predecessor's E-only 89-unit inventories distinguish the four binding shapes;
+the retained-import plan selects only the two restore-bound shapes. Qualified projection
+normalizes declared principal fields only after session and role checks; the
+legacy 88-unit identities and inventory remain unchanged. These source bindings
+still require production and installed qualification, as described by the
+migration owner above.
+
 The account-support reference capability manifest declares default-off,
 explicit-host registration and an empty route list. It is descriptive metadata,
 not permission to mount an account API or advertise checkout continuation.

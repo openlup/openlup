@@ -692,6 +692,54 @@ The `@openlup/platform` docs-gzip cap was raised to 72 KiB (73,728 B) on
 (63,226 B against 57,344 B). Its code-gzip, tarball, unpacked, file and
 browser-entry caps stay unchanged.
 
+The `@openlup/platform` code-gzip cap was raised from 1,648,000 B to the measured
+minimum of 1,650,631 B (+2,631 B) on 2026-10-27 with bounded M14 B budget reads.
+The initial read approved 1,650,493 B; the necessary Unicode descriptor
+publication/readback repair adds exactly 128 B, and preserving distinct admitted
+string keys through JSON-encoded filesystem locators adds exactly 10 B. The four-file portability
+implementation still produces twelve packed source, JavaScript and declaration
+files. This exact minimum allocates no additional forecast growth. Its tarball,
+unpacked, file, docs, browser-entry and released-baseline limits are unchanged by
+this decision; every later candidate still requires an actual package measurement.
+
+The bounded M14 C technical budget read on 2026-10-27 approves only the measured
+application-file lifecycle minima: code-gzip 1,650,631 → 1,656,258 B (+5,627 B),
+tarball 1,925,000 → 1,928,766 B (+3,766 B), and unpacked 8,970,000 →
+8,981,253 B (+11,253 B). The two production files produce six packed source,
+JavaScript and declaration files, including the exact directory-entry ownership
+repair. File, docs, browser-entry and released-baseline limits, package versions
+and locks are unchanged. This allocates no later runtime or qualification growth.
+These are working-tree observations; the approved gate bytes and final candidate
+still require actual remeasurement, since metadata edits can affect tarball size.
+That read covered the C-only artifact and is historical for the combined delivery.
+The bounded combined C+D technical read on 2026-10-27 approves actual measured
+minima of code-gzip 1,659,891 B (+3,633 B from the C-only cap), tarball 1,932,480 B
+(+3,714 B) and unpacked 8,995,279 B (+14,026 B). Cumulative increases from B's
+1,650,631 / 1,925,000 / 8,970,000 B limits are 9,260 / 7,480 / 25,279 B.
+D's unchanged finite read-only legacy role observer adds three packed source,
+JavaScript and declaration files through the same lifecycle entry. Actual code
+files 2574 and total files 2628 meet their unchanged caps exactly; docs gzip
+64,992 B and five files fit 73,728 B and ten files. No file/docs/browser cap,
+released 0.28.0 baseline, version or lock changes, future runtime/installation
+allowance, SDK, DDL or new runner follow. Exact metadata edits require actual
+approved-input remeasurement; this technical read is not final review or proof.
+
+After the C+D directory-prefix and catalog-binding repair, the actual working
+artifact measured code gzip 1,660,249 B, tarball 1,932,801 B and unpacked
+8,996,893 B. On 2026-10-27 the owner explicitly requested an appropriate reserve
+for future sessions. The active supervisor chose 5% above those three measured
+values, rounded up to KiB with `ceil(measured * 1.05 / 1024) * 1024`, producing
+fixed caps of 1,743,872 B, 2,029,568 B and 9,447,424 B respectively. These are
+computed values under that grant, not a quote of numbers supplied by the owner.
+The earlier exact-minimum C+D allocation remains historical. This decision
+changes only those three byte limits: code/total file caps 2574/2628, docs
+73,728 B/ten files, all browser limits, the released 0.28.0 baseline, versions
+and locks remain unchanged. The reserve is bounded by these fixed values;
+future sessions receive no automatic percentage increase, limit adjustment,
+programme scope, compatibility claim or release authority. Every subsequent
+candidate still needs its actual native artifact and size checks, including
+remeasurement after these metadata edits.
+
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
 measurements above. On the release-set path only, a candidate more than 30%

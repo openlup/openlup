@@ -10,8 +10,8 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.29.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0290) before selecting optional services. Experimental
+For the prepared `0.30.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0300) before selecting optional services. Experimental
 M13 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -54,7 +54,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.28.0` tarball. Preparation and offline
+Size comparison uses the published `0.29.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -68,12 +68,52 @@ alongside seconds/fractions, compact offsets and local timestamps. Calendar
 validation still rejects impossible dates; validation never rewrites the raw
 timestamp used in the webhook's idempotency key.
 
+The experimental migration source may supply `assertSession` to observe host
+facts once under the existing advisory lock, after exact ledger-prefix admission
+and before status, dry-run or pending SQL. Sources without it retain current
+execution. The [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and [runner witness](test/migrations/postgresRunner.test.ts) define that boundary;
+this callback does not provision or qualify a hosted installation.
+
 ## Package surface
+
+The experimental Node-only `./lifecycle` entry plans and applies explicit
+application-file snapshots. It preserves unmanaged files and local edits in
+upstream-unchanged files, refuses divergent changed files before writes, and
+resumes exact completed replacements after interruption. The caller holds an
+exclusive maintenance window and supplies schema-range evidence; this entry
+runs no database migration, npm install or deployment. Read the
+[file-ownership boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
+and [disposable app recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade).
+
+The same entry exports `inspectLegacyPostgresInstallRoles`, a read-only query
+through a caller-owned PostgreSQL handle. Its
+`legacy-fresh-bootstrap-role-prerequisites` report observes finite immutable
+legacy bootstrap role conditions; `rolePrerequisitesMet` does not establish
+install readiness, schema/ACL correctness or provider support. See the
+[legacy role boundary](../../docs/platform/DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation).
+
+The experimental Node-only `./portability` entry copies a bounded, explicitly
+complete immutable/quiesced object inventory and captures/restores selected
+compatible PostgreSQL rows through injected transaction handles. Private
+filesystem objects publish bytes and metadata together, bind an explicit access
+label to the filesystem owner's private policy and resume by verified readback.
+Row replay preserves exact JSON/numeric/time values, refuses conflicts and every
+enabled user INSERT trigger, and copies no schema, migration ledger or grants.
+The host qualifies the canonical catalogue, credentials and source completeness.
+These helpers activate no executor and do not supply managed identity mapping,
+live changed-row catch-up or hosted old-worker fencing. Read the
+[transfer boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+and the retained [M14 obligations](../../docs/platform/plans/oss-m14-operations-portability.md).
+The provider-owned HTTP counterexample exercises an existing adapter's cached
+bearer; its local fixture establishes no hosted revocation guarantee.
 
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
+| `./lifecycle` | Experimental Node file-snapshot planning/apply and read-only legacy PostgreSQL role prerequisites; no install-readiness claim, optional SDK or activation |
+| `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
 | `./scheduler` | Transport-neutral scheduled jobs (`ScheduledJob`, the job registry, the lease-aware runner and the authenticated HTTP cron entry), path-declared jobs from configuration, the node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
@@ -722,6 +762,25 @@ both exported helpers and their signatures: `calculateIncludedVat` delegates to
 ## Scheduled jobs
 
 A job is `{ id, schedule, lease?, run(context) }` with a UTC cron expression. Domains and packages contribute jobs to `createScheduledJobRegistry`, which refuses duplicate ids and ships empty. The Node host runs registry jobs on its own timers and calls `run` directly, with no HTTP request and no secret. `createScheduledJobHttpEntry` mounts the same job behind the cron guard for a hosted cron. A job that declares `lease` runs only after the injected job-lease port grants it; a lease held elsewhere skips the run, and a finish the port refuses fails the run. `scheduledJobsFromContribution` turns a contribution's cadence schedules into jobs and refuses a cadence that no cron expression matches exactly; a contribution run that reports a failed outcome fails the job.
+
+`NodeSchedulerAdapter.stopAll()` returns `Promise<void>`. It fences and stops the
+current registrations synchronously, then waits for callbacks already admitted,
+including pending lock acquisition and unlock. Await it before disposing their
+resources; custom scheduler implementations must return that drain promise.
+Later registrations remain supported. The Node host caches its `stop()` promise,
+closes its listener and retains the dedicated PostgreSQL lock session until the
+drain settles, including failure cleanup.
+
+The PostgreSQL lock adapter also reserves each numeric advisory key locally
+before acquisition. This prevents reentry on the same session, including pending
+acquisitions and colliding job IDs. Failed acquisition releases the reservation;
+failed unlock retains it until session disposal. The
+[disposable PostgreSQL witness](../../tests/postgres/nodeHostRuntimeDrain.test.ts)
+checks same-session exclusion and replacement-host admission after drain.
+This graceful-stop contract does not fence an old host at external provider I/O
+or settle an effect accepted before an acknowledgement; the
+[transfer boundary](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+retains those separate duties.
 
 ## Bundle readiness
 

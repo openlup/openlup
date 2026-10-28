@@ -1190,6 +1190,26 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -1354,11 +1374,27 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-existing-store-transfer.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-install-qualification.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-lifecycle-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
     {
       "path": "docs/platform/plans/oss-m14-operations.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-runtime-drain-task.md",
       "class": "public-output"
     },
     {
@@ -2466,6 +2502,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/lifecycle.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/marketing-contracts.api.md",
       "class": "public-output"
     },
@@ -2511,6 +2551,10 @@
     },
     {
       "path": "packages/platform/api/payments.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/portability.api.md",
       "class": "public-output"
     },
     {
@@ -5118,6 +5162,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/appUpgrade.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/postgresInstallQualification.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/acquisitionCaseSchemas.ts",
       "class": "public-output"
     },
@@ -5651,6 +5707,22 @@
     },
     {
       "path": "packages/platform/src/payments/verifiedIngress.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/filesystemObjects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/objects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/portability/postgresRows.ts",
       "class": "public-output"
     },
     {
@@ -7442,6 +7514,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/lifecycle/appUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/analyticsContext.test.ts",
       "class": "public-output"
     },
@@ -7730,6 +7810,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/tpay/effectAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/tpay/factory.test.ts",
       "class": "public-output"
     },
@@ -7803,6 +7887,14 @@
     },
     {
       "path": "packages/platform/test/payments/verifyHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/portability/filesystemObjects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/portability/objects.test.ts",
       "class": "public-output"
     },
     {
@@ -8634,6 +8726,30 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -8934,6 +9050,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/platform-migration-manifest.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/platform-migration-manifest.ts",
       "class": "public-output"
     },
@@ -9011,6 +9131,10 @@
     },
     {
       "path": "scripts/public-reference/verify-subscription.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/qualified-migration-admission.test.ts",
       "class": "public-output"
     },
     {
@@ -10327,6 +10451,14 @@
     },
     {
       "path": "server/adapters/postgres/promotionClaims.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/qualifiedInstall.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/qualifiedInstall.ts",
       "class": "public-output"
     },
     {
@@ -25678,11 +25810,39 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14InstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedComposition.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedSession.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/newPurchaseStockManaged.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/newPurchaseStockNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
       "class": "public-output"
     },
     {
@@ -25730,6 +25890,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/portabilityRows.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/postgresContainer.test.ts",
       "class": "public-output"
     },
@@ -25739,6 +25903,10 @@
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
       "class": "public-output"
     },
     {

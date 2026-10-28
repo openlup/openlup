@@ -154,6 +154,57 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The migration control witnesses cover legacy/qualified selection and immutable
+history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
+prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
+and the existing source/release checks. The
+[native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
+uses the existing runner and container helper: an interrupted canonical prefix
+is visible to a second actual migration login, which refuses under the held
+lock before pending SQL and preserves the ledger. This generic hook proof does
+not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
+own the separate control-before-installation boundary.
+
+The lifecycle slice uses existing build/API/package/cold-consumer commands.
+Owner-local tests cover file conflicts, path boundaries and process interruption;
+the installed consumer adds the public export, custom app files, crash/resume
+and a no-op falsifier. Range admission remains caller evidence, separate from
+actual PostgreSQL compatibility. No new runner or required job is added.
+Its owned child Node witness is registered by exact path in the existing public
+execution inventory; the classifier and all other entries remain unchanged.
+
+The same lifecycle selection retains the read-only legacy PostgreSQL role
+observer's package and actual database witnesses. The installed consumer checks
+its public query/report types, finite prerequisite result, superuser refusal and
+redacted error, with a false-admission falsifier. These checks create no installer
+or role grants and do not turn a prerequisite report into installation readiness.
+
+The [qualified production witness](tests/postgres/m14QualifiedComposition.test.ts)
+checks F's two fixed restore-bound 90-unit inventories through the built package
+entry and real reference binding, then two fresh targets in the other role mode
+with changed principal names. The E2 predecessor retains its four 89-unit shapes
+and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
+shadow-symbol refusals without replacing expected digests.
+Each installation also connects as its actual restricted runtime login to prove
+notification row locking and timestamp-only writes, diagnostic replay locking
+with actual event-update refusal, and privacy receipt locks, reads/inserts and
+populated-row update refusal through the existing production ports. Existing
+native domain, identity and reviewed-batch fixtures explicitly select the legacy plan
+before slicing upgrade prefixes, so the v2 union does not change their issued
+SQL, positions or expected legacy inventory. These cases use the existing root
+Node discovery and container helper; no gate, retry or test deadline changes.
+
+The portability package witnesses cover private bytes, access/version/integrity
+refusals and interrupted resume. The root
+[`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
+canonical PostgreSQL clusters and compares complete selected rows, replay,
+conflict rollback and unchanged migration ledger/ACLs. The existing cold consumer
+also executes the declared installed entry and selected-row recovery using its
+existing native fixture. These reuse current discovery and runners; loopback
+and Docker availability are prerequisites. Local synthetic proof does not
+certify full-store transfer or hosted effect fencing.
+
 The operations slice uses the existing platform build, API, package and installed
 consumer commands. Its owner-local witnesses cover browser closure and preserved
 watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
@@ -1501,6 +1552,11 @@ build, sharded required root tests, DCO check, and publication checks from this 
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
+Keep historical source/config backups outside the checkout's tool traversal.
+Git-ignore alone prevents neither executable `eslint.config.*` discovery nor
+linting an archived test import. Preserve archival byte/hash provenance in task
+evidence; retain the scope and semantics of real test fixtures.
+
 `npm run lint` runs ESLint over the tree, including the import boundaries in
 [eslint.config.js](eslint.config.js): a package under `packages/` imports
 nothing outside its own directory, other code reaches a package only through
@@ -1647,6 +1703,23 @@ npm --workspace @openlup/core run ci
 ```
 
 Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
+
+Disposable PostgreSQL fixtures mount `/var/lib/postgresql/data` as `tmpfs`.
+This covers the PostgreSQL image's declared data volume before container
+creation, so an interrupted worker cannot leave an anonymous data volume.
+Normal and failed-start teardown still removes the owned container with
+`docker rm -f -v`; other anonymous mounts are removed too. A worker killed
+with `SIGKILL` can still leave a container, including one in `Created` state:
+temporary data storage prevents the volume leak, but does not reap containers.
+The container-helper regression checks exact owned container and volume IDs
+for normal teardown and port-bind failure, without relying on global counts.
+
+For the Node scheduler drain boundary, run
+`npm test -- --run tests/postgres/nodeHostRuntimeDrain.test.ts`. Its dedicated
+PostgreSQL sessions prove same-session exclusion and replacement-host admission
+only after the original callback drains. Missing Docker or PostgreSQL fails the
+witness rather than skipping it; this focused run does not replace the required
+package, coverage or full verification gates.
 
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
@@ -2133,6 +2206,18 @@ A new or renamed path needs its authored row in
 nested directories and other extensions refuse. The catalogue remains an
 explicit classification and execution inventory, not a generated list.
 
+The bounded qualified-installation witness declares its exact future child path
+in the [existing execution inventory](scripts/oss-publication-contract.ts).
+The control-only registration precedes the E2 source: it permits no
+other child path and changes neither entrypoint detection nor fixture rules.
+The adjacent Vitest witness owns each disposable database and the child lifetime
+used to close the production runner's internal pool. E2 supplies four fixed-pin
+89-unit reference checks and four other-mode targets. F selects the two
+restore-bound 90-unit shapes, with two production references and two renamed
+other-mode targets, and exercises actual runtime/restore privileges and retained
+data through that same child. These are prepared witnesses, not observed
+qualification results; no child path or execution-inventory exception is added.
+
 For a notable package change, add a uniquely named
 `packages/<core|outbox|platform>/changes/<programme>-<slice>.md` fragment instead
 of editing CHANGELOG. Use ordinary bullets, optional `###` subsections, useful
@@ -2541,6 +2626,27 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 qualified-runtime witness: generic lane escaped its reference
+  binding → compose the existing named diagnostic lane and privacy unit of work,
+  retaining the unchanged confinement test in focused feedback.
+
+- 2026-10-27, M14 qualified-runtime proof: public contract type owner → use its
+  correct existing entry, without adding an export or cast to fix a wrong import.
+
+- 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
+  native `σ`/`ς` filename alias → extend the existing preflight equivalence
+  while preserving prior refusals, and prove the observed collision before
+  writes alongside exact-spelling replay.
+
+- 2026-10-27, M14 A/C: ignored historical configs and source copies entered lint
+  traversal → keep archival copies outside the checkout, following
+  [commands and lint rules](#commands-and-lint-rules).
+
+- 2026-10-27, M14 filesystem transfer: character counts and default UTF-8 key
+  hashing lost admitted string identity → use explicit representation at byte
+  and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+  and one real copy/resume witness covering both cases.
 
 - 2026-10-26, M14 operations neutrality: package/root green missed a cheap
   source-carrier gate → run unchanged neutrality before the broad gate and
