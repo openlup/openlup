@@ -4,7 +4,7 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## PostgreSQL connection recipe
 
-For the current qualified-v2 PostgreSQL 16 preview profile, bind connections by
+For the `qualified-v2` and `qualified-admin` PostgreSQL 16 preview profiles, bind connections by
 their work, even when HTTP and timers share one Node host:
 
 | Work | Connection and existing seam |
@@ -41,8 +41,10 @@ uses the real 91-unit selected installation, pooled request work and restricted
 runtime lock sessions. Its deterministic backend-switch/reset cases use real
 PostgreSQL sessions, not a PgBouncer deployment; they prove observed-violation
 refusal before the job body. This is local PG16 evidence, not hosted Neon/RDS
-qualification. Restricted-bootstrap qualification will reuse the same recipe
-once available.
+qualification. The separate [restricted-bootstrap witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
+uses the same consumer seams with both fixed role modes and a non-superuser
+trusted migration administrator. Its local session-switch refusal is not a
+PgBouncer deployment or hosted endpoint qualification.
 
 ## Runtime model
 

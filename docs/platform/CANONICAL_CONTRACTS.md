@@ -589,10 +589,11 @@ stay outside active SQL and the schema-2 manifest; their two owner-body files
 carry the same pinned name-resolution attributes as the issued forward. This
 approval does not install the future 91-unit restricted plan, establish either
 role-mode inventory or grant a release or hosted compatibility claim.
-Four corrected `qb_` fixture identities follow at approval positions 13–16
-as one exact-byte append. The preceding twelve approvals remain fixed. The
-`qb_` files remain inert; the future restricted plan selects them only after
-this separate approval and still needs its own installation qualification.
+Four corrected `qb_` identities follow at approval positions 13–16 as one
+exact-byte append. The preceding twelve approvals remain fixed. The active
+restricted plan selects those four files with the approved `qa_` baseline only
+after the separate approval. Its local PG16 qualification covers both role
+modes; this does not qualify a hosted installation or release.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2

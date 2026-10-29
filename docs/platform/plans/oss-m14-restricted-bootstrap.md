@@ -1,8 +1,8 @@
 # M14 restricted PostgreSQL bootstrap
 
-Status: development-preview task, open. The first reader and five-byte approval
-checkpoints landed. This separate checkpoint approves four corrected
-installation identities before active SQL. Audience:
+Status: development-preview task, open. Reader and exact-byte approval
+checkpoints landed; this checkpoint introduces the restricted 91-unit selection
+and local qualification. Audience:
 contributors preparing a fresh PostgreSQL 16 installation. This task is a
 bounded part of M14; it does not close M14 or qualify a hosted provider.
 This task grants no installation support for a published package set.
@@ -77,13 +77,18 @@ other transfer, recovery and adoption obligations.
    `05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9`.
    The future restricted plan selects the existing `qa_` baseline plus these
    four replacements; neither set is active in the reader checkpoint.
-4. This separate approval checkpoint appends those four exact identities. A
+4. The separate approval checkpoint appended those four exact identities. A
    disposable PostgreSQL 16 parse-and-apply witness of the exact proposed bytes
    passed in both role modes before approval. The fixtures remain inert.
-5. Active SQL and the explicit 91-unit generation follow that new approval.
-   Qualify both role modes and actual connection consumers before claiming the
-   local outcome. Sensitive API and security-control changes require a
-   stabilized maintainer read before DCO sign-off.
+5. This active checkpoint selects the exact approved `qa_` baseline and four
+   `qb_` units, with the unchanged issued completion tail. Fixed inventories
+   are `c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7`
+   for installer-managed and `807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d`
+   for operator-provisioned mode. The [local PG16 witness](../../../tests/postgres/m14QualifiedAdminComposition.test.ts)
+   exercises actual non-superuser migration sessions, interruption/resume,
+   replay, runtime and restore consumers, connection roles and refusal probes.
+   Sensitive API and security-control changes require a stabilized maintainer
+   read before DCO sign-off. No hosted or connected-restore claim follows.
 
 The smallest adequate implementation extends the finite manifest reader and
 existing runner. A second installer, generic role compiler or approval store

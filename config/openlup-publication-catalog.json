@@ -1218,6 +1218,26 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -25963,6 +25983,14 @@
     },
     {
       "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedAdminComposition.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedAdminComposition.test.ts",
       "class": "public-output"
     },
     {
