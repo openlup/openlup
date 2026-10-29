@@ -1149,18 +1149,29 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 
 The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 `openlup/openlup` on pushes to `main` that change a derivation input, and on manual
-dispatch from `main`. The workflow lists the six derivation input paths explicitly.
+dispatch from `main`. The workflow lists the seven derivation input paths explicitly.
 Its read-only plan job derives only repository/tag pairs and validates the four Supabase
 bootstrap service tags with the pgTAP job's
 single pinned CLI and rendered reference Supabase config, then checks the exclusion list read directly from `scripts/public-ci-pgtap.mjs`
 for uncovered runtime images. Exclusions remove long-running services, but not
 the enabled GoTrue, Realtime and Storage API schema-init jobs. Those three images,
-the database image and `pg_prove` from that CLI binary are mirrored. For CLI
-2.122.0, setup-cli exposes the npm Node launcher; derivation follows its symlink
-and resolves the platform binary package (or its `SUPABASE_CLI_BINARY_OVERRIDE`)
-before inspecting registry and `pg_prove` strings. Bare overrides resolve through
-PATH and refuse if absent; paths containing `/` (or `\` on Windows) are read directly. Standalone
-binaries work directly.
+the database image and `pg_prove` from that CLI binary are mirrored. Both installing CI jobs use
+[`scripts/install-supabase-cli-ci.sh`](scripts/install-supabase-cli-ci.sh) with the
+pgTAP workflow's literal 2.122.0 pin. It downloads the native release asset by
+reviewed API asset ID and verifies its committed SHA-256 before extracting or
+executing it. Unknown versions/platforms and checksum mismatches refuse. Linux
+amd64 is the CI platform; macOS arm64 is available for local proof. From the
+checkout, run `cli_bin="$(bash scripts/install-supabase-cli-ci.sh 2.122.0)"`, then
+`export PATH="$cli_bin:$PATH"`. The installer always allocates a fresh private
+0700 directory with `mktemp -d`, under `RUNNER_TEMP` when set, otherwise `TMPDIR`
+when set, otherwise the system default. It downloads, installs and verifies there,
+then prints the absolute bin directory on stdout and, when set, appends it to
+`GITHUB_PATH`. There is no explicit install-destination option.
+Derivation reads the executable found on PATH directly for registry and
+`pg_prove` strings; it requires this native installation. The installer removes
+the downloaded archive after verification and its new directory on failure.
+Successful installations remain available to callers. It sets no image registry
+override.
 Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
 derivation. The inventory also binds the exact five derived CLI repository/tag
 pairs to reviewed SHA-256 index digests. A missing, extra or changed pair refuses
@@ -1328,7 +1339,7 @@ failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
 The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
 job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
-fails the job. The pinned Supabase setup action leaves the registry override
+fails the job. The native CLI installer leaves the registry override
 unset for CLI 2.122.0, whose Compose backend defaults to ECR; pgTAP explicitly
 selects the first successfully pre-pulled registry as described above.
 `install-proof` retains its Docker Hub service, which is pulled before steps run.

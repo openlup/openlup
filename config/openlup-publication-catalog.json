@@ -9054,6 +9054,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/install-supabase-cli-ci.sh",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/install-supabase-cli-ci.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/local-bff-soak-aggregation.ts",
       "class": "public-output"
     },

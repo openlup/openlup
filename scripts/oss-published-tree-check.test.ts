@@ -88,7 +88,7 @@ describe("CI image mirror workflow controls", () => {
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]`);
+    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, scripts/install-supabase-cli-ci.sh, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]`);
     expect(permissionBlocks(source)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
     expect([...(source.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z-]+):$/gmu)].map((match) => match[1])).toEqual(["plan", "mirror"]);
     // Inspect every run form, including a step beginning with `- run:` and folded blocks.
@@ -112,12 +112,13 @@ describe("CI image mirror workflow controls", () => {
       expect(job).toContain('with: {ref: "${{ github.sha }}", persist-credentials: false}');
       expect(job).toContain("with: {node-version: 24.21.0, package-manager-cache: false}");
       const actions = [...job.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]]);
-      expect(actions).toEqual(name === "plan" ? [...firstPartyActions, ["supabase/setup-cli", "45a513f8c64c0bc8e0e3dfe572b5c95be85f6359"]] : firstPartyActions);
+      expect(actions).toEqual(firstPartyActions);
     }
     const plan = workflowJob("plan", source), writer = workflowJob("mirror", source);
     expect(plan).toContain('outputs: {images: "${{ steps.plan.outputs.images }}"}');
     expect(plan).toContain('run: node scripts/ci-image-mirror.mjs pin >> "$GITHUB_OUTPUT"');
-    expect(plan).toContain('with: {version: "${{ steps.pin.outputs.version }}"}');
+    expect(plan).toContain('env: {SUPABASE_CLI_VERSION: "${{ steps.pin.outputs.version }}"}');
+    expect(plan).toContain('run: bash scripts/install-supabase-cli-ci.sh "$SUPABASE_CLI_VERSION"');
     expect(plan).toContain('images=$(node scripts/ci-image-mirror.mjs plan)');
     expect(plan).toContain(`printf 'images=%s\\n' "$images" >> "$GITHUB_OUTPUT"`);
     expect(plan).not.toMatch(/GHCR_TOKEN|github\.token/u);
@@ -313,8 +314,10 @@ describe("complete public CI", () => {
     }
   });
   it("uses the pinned local CLI and checks neutrality against the event base", () => {
-    expect(workflow).toContain("supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359");
-    expect(workflow).toContain("version: 2.122.0");
+    expect(workflow).not.toContain("supabase/setup-cli");
+    const installer = workflowJob("pgtap").split("      - name: Install verified native Supabase CLI\n")[1]?.split(/(?=^ {6}- )/mu)[0];
+    expect(installer).toContain("if: steps.reused.outputs.reuse != 'true'");
+    expect(installer).toContain("run: bash scripts/install-supabase-cli-ci.sh 2.122.0");
     expect(workflow).toContain("run: node scripts/public-ci-pgtap.mjs");
     expect(workflow).toContain("github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before");
     expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
@@ -391,7 +394,7 @@ describe("complete public CI", () => {
 `);
     expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "bash scripts/install-supabase-cli-ci.sh 2.122.0", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",

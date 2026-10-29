@@ -1,11 +1,10 @@
 // Read-only planning and digest-preserving copies. No dependency install or Docker daemon required.
 import { execFileSync } from "node:child_process";
-import { arch, platform, env as processEnvironment } from "node:process";
+import { env as processEnvironment } from "node:process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const MIRROR_REGISTRY = "ghcr.io/openlup";
@@ -19,10 +18,10 @@ const plannedRepositories = [...cliRepositories, "supabase/pg_prove"];
 export function cliPin(workflow) {
   // Accept the repository's literal step format only; refuse expressions, duplicate steps or pins.
   const steps = workflow.split(/^ {6}- /mu).slice(1);
-  const setups = steps.filter((step) => /(?:^uses: |^ {8}uses: )supabase\/setup-cli@/mu.test(step));
-  const pins = setups[0]?.match(/^ {10}version: [0-9]+\.[0-9]+\.[0-9]+$/gmu) ?? [];
-  if (setups.length !== 1 || pins.length !== 1) throw new Error("expected exactly one literal Supabase CLI pin in published-tree-ci.yml");
-  return pins[0].trim().slice("version: ".length);
+  const installs = steps.filter((step) => step.includes("scripts/install-supabase-cli-ci.sh"));
+  const pins = installs[0]?.match(/^(?:run: | {8}run: )bash scripts\/install-supabase-cli-ci\.sh ([0-9]+\.[0-9]+\.[0-9]+)$/gmu) ?? [];
+  if (installs.length !== 1 || pins.length !== 1) throw new Error("expected exactly one literal Supabase CLI pin in published-tree-ci.yml");
+  return pins[0].trim().split(" ").at(-1);
 }
 
 export function cliImages(services, binary, pgtapSource) {
@@ -173,27 +172,7 @@ export function deriveCliImages(root, directory) {
       writeFileSync(join(directory, "supabase/config.toml"), config);
     }
     const services = JSON.parse(command("supabase", ["services", "--workdir", directory, "-o", "json"]));
-    let executable = realpathSync(command("which", ["supabase"]).trim());
-    if (executable.endsWith(".js")) {
-      // setup-cli v3 installs the npm launcher. Match CLI 2.122.0's bin.ts
-      // resolution from that launcher's location, including its explicit override.
-      const require = createRequire(executable);
-      const suffix = `${platform === "win32" ? "windows" : platform}-${arch}`;
-      let packagePath;
-      if (!processEnvironment.SUPABASE_CLI_BINARY_OVERRIDE) {
-        try { packagePath = require.resolve(`@supabase/cli-${suffix}/package.json`); } catch (error) {
-          if (platform !== "linux" || error.code !== "MODULE_NOT_FOUND") throw error;
-          packagePath = require.resolve(`@supabase/cli-${suffix}-musl/package.json`);
-        }
-      }
-      executable = processEnvironment.SUPABASE_CLI_BINARY_OVERRIDE
-        || join(dirname(packagePath), "bin", platform === "win32" ? "supabase.exe" : "supabase");
-      if (!executable.includes("/") && (platform !== "win32" || !executable.includes("\\"))) {
-        try { executable = command("which", ["--", executable]).replace(/\r?\n$/, ""); } catch {
-          throw new Error(`SUPABASE_CLI_BINARY_OVERRIDE not found on PATH: ${executable}`);
-        }
-      }
-    }
+    const executable = command("which", ["supabase"]).trim();
     const binary = readFileSync(executable).toString("latin1");
     const pgtapSource = readFileSync(join(root, "scripts/public-ci-pgtap.mjs"), "utf8");
     return cliImages(services, binary, pgtapSource);

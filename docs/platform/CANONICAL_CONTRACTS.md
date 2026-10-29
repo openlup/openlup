@@ -729,7 +729,14 @@ upstream repositories, tags, index digests and ordered public-registry sources
 for the owned and CLI mirror inputs. It records the install-proof database,
 disposable test default, managed-batch database and five CLI digest pins. Supabase
 CLI images are independently derived as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
-reference config. The pgTAP runner's exclusions constrain long-running services;
+reference config. Both CI installation jobs use the repository's
+[native installer](../../scripts/install-supabase-cli-ci.sh), with reviewed
+release asset IDs and SHA-256 pins. Unsupported versions/platforms and checksum
+mismatches refuse before installation; derivation scans the executable on PATH.
+Each installation uses a fresh private temporary directory; only after checksum
+and installed-version verification does the installer expose its absolute bin
+directory on stdout and, when set, through `GITHUB_PATH`.
+The pgTAP runner's exclusions constrain long-running services;
 they never remove enabled GoTrue, Realtime or Storage API schema-init images.
 The derived set contains those three images, Postgres and the binary's `pg_prove`.
 An exclusion change leaving an uncovered runtime image refuses derivation.

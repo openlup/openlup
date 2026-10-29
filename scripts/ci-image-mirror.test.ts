@@ -1,8 +1,8 @@
 import type { OwnedCiImage } from "./ci-image-mirror.mjs";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, relative } from "node:path";
-import { arch, platform, env as processEnvironment } from "node:process";
+import { join } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { describe, expect, it, vi } from "vitest";
 import { cliImages, cliPin, deriveCliImages, inspect, mirrorImage, mirrorImages, ownedImages, pinnedCliImages, plannedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
 import { execFileSync } from "node:child_process";
@@ -11,7 +11,7 @@ vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 
 const digest = `sha256:${"a".repeat(64)}`;
 const different = `sha256:${"b".repeat(64)}`;
-const pin = "      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359\n        with:\n          version: 2.122.0\n";
+const pin = "      - name: Install verified native Supabase CLI\n        run: bash scripts/install-supabase-cli-ci.sh 2.122.0\n";
 const services = ["supabase/postgres", "supabase/gotrue", "supabase/realtime", "supabase/storage-api"]
   .map((name) => ({ name, local: "1.2.3" }));
 const binary = "public.ecr.aws supabase/pg_prove:3.36\0supabase/pg_prove:3.36\0";
@@ -31,53 +31,24 @@ function assertSingleOwner(source: string) {
 }
 
 describe("CI image derivation and digest preservation", () => {
-  it.each(["native", "npm", "npm-override", "npm-relative-override", "npm-path-override", "npm-path-space-override", ...(platform === "win32" ? [] : ["npm-path-backslash-override"]), "npm-path-missing", "npm-missing", "npm-registry-drift"])("inspects the executed binary for a %s installation", async (installation) => {
-    const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-    const which = actual.execFileSync("which", ["which"], { encoding: "utf8" }).trim();
+  it.each(["native", "symlink", "registry-drift"])("inspects the PATH executable for %s", (installation) => {
     const directory = mkdtempSync(join(tmpdir(), "cli-install-layout-"));
     const executable = join(directory, "supabase");
-    const native = join(directory, "native");
-    const overrideName = `${basename(directory)}${installation === "npm-path-backslash-override" ? "\\override" : "-override"}${installation === "npm-path-space-override" ? " " : ""}`;
-    const cwdOverride = join(process.cwd(), overrideName);
-    vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", "");
     try {
-      writeFileSync(native, binary);
-      if (installation === "native") symlinkSync(native, executable);
-      else {
-        const launcher = join(directory, "node_modules/supabase/dist/supabase.js");
-        mkdirSync(join(directory, "node_modules/supabase/dist"), { recursive: true });
-        // setup-cli v3 exposes this symlinked Node launcher, not the ELF/Mach-O binary.
-        writeFileSync(launcher, '#!/usr/bin/env node\nimport { spawn } from "node:child_process";\n');
-        symlinkSync(launcher, executable);
-        if (installation === "npm-override") vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", native);
-        else if (installation === "npm-relative-override") vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", relative(process.cwd(), native));
-        else if (installation === "npm-path-override" || installation === "npm-path-space-override" || installation === "npm-path-backslash-override" || installation === "npm-path-missing") {
-          // A valid but different cwd binary must never win over the launcher's PATH lookup.
-          writeFileSync(cwdOverride, binary.replaceAll("3.36", "9.99"), { mode: 0o755 });
-          if (installation !== "npm-path-missing") writeFileSync(join(directory, overrideName), binary, { mode: 0o755 });
-          vi.stubEnv("PATH", directory);
-          vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", overrideName);
-        }
-        else if (installation !== "npm-missing") {
-          const packageDirectory = join(directory, `node_modules/@supabase/cli-${platform}-${arch}`);
-          mkdirSync(join(packageDirectory, "bin"), { recursive: true });
-          writeFileSync(join(packageDirectory, "package.json"), '{}');
-          writeFileSync(join(packageDirectory, "bin/supabase"), installation === "npm-registry-drift" ? binary.replace("public.ecr.aws", "other") : binary);
-        }
-      }
+      const content = installation === "registry-drift" ? binary.replace("public.ecr.aws", "other") : binary;
+      if (installation === "symlink") {
+        writeFileSync(join(directory, "native"), content);
+        symlinkSync(join(directory, "native"), executable);
+      } else writeFileSync(executable, content);
       vi.mocked(execFileSync).mockImplementation((file, args) => {
-        if (file === "which") return args?.[0] === "supabase" ? executable : actual.execFileSync(which, args, { encoding: "utf8" });
+        if (file === "which") return executable;
         if (args?.[0] === "services") return JSON.stringify(services);
         throw new Error(`unexpected command: ${file}`);
       });
-      if (installation === "npm-missing") expect(() => deriveCliImages(process.cwd(), directory)).toThrow("Cannot find module");
-      else if (installation === "npm-path-missing") expect(() => deriveCliImages(process.cwd(), directory)).toThrow(`SUPABASE_CLI_BINARY_OVERRIDE not found on PATH: ${overrideName}`);
-      else if (installation === "npm-registry-drift") expect(() => deriveCliImages(process.cwd(), directory)).toThrow("upstream registry changed");
+      if (installation === "registry-drift") expect(() => deriveCliImages(process.cwd(), directory)).toThrow("upstream registry changed");
       else expect(deriveCliImages(process.cwd(), directory)).toEqual(cliImages(services, binary, pgtapSource));
     } finally {
-      vi.unstubAllEnvs();
       vi.mocked(execFileSync).mockReset();
-      rmSync(cwdOverride, { force: true });
       rmSync(directory, { recursive: true, force: true });
     }
   });
@@ -93,8 +64,9 @@ describe("CI image derivation and digest preservation", () => {
   it("reads exactly one literal CLI pin, including the actual pgTAP workflow", () => {
     expect(cliPin(pin)).toBe("2.122.0");
     expect(cliPin(readFileSync(".github/workflows/published-tree-ci.yml", "utf8"))).toMatch(/^\d+\.\d+\.\d+$/u);
-    expect(cliPin(pin.replace("- uses:", "- name: Setup\n        uses:"))).toBe("2.122.0");
-    for (const invalid of ["", pin + pin, pin + pin.replace("- uses:", "- name: Setup\n        uses:"), pin.replace("version: 2.122.0", "version: latest"), pin.replace("version: 2.122.0", "version: 2.122.0\n          version: 2.122.0")]) {
+    expect(cliPin(pin.replace("- name: Install verified native Supabase CLI\n        run:", "- run:"))).toBe("2.122.0");
+    for (const invalid of ["", pin + pin, pin.replace("2.122.0", "latest"), pin.replace("2.122.0", "${VERSION}"),
+      pin.replace("2.122.0", "2.122.0 extra"), pin.replace("        run:", "        run: |\n          ")]) {
       expect(() => cliPin(invalid)).toThrow("exactly one literal");
     }
   });

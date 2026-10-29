@@ -1,7 +1,9 @@
 # Supabase CLI pin update
 
-Status: hosted pgTAP derivation repair and requested local proof complete;
-uncommitted handoff to Claude; development preview. Earlier evidence is retained.
+Status: native CI installer directory simplification complete with local proof;
+uncommitted handoff to Claude; development preview. Earlier handoff retains its
+inherited actionlint diagnostic.
+Earlier proof below describes prior candidates.
 
 Outcome: one Supabase CLI 2.122.0 pin across active CI, disposable SQL runners,
 tests and current contributor instructions, with exact image tags and verified
@@ -344,7 +346,7 @@ missing upstream-registry strings before any Docker pull.
 
 The pinned action source installs `supabase@2.122.0` using npm into a temporary
 prefix and exposes `node_modules/.bin`. Its launcher resolves the native binary
-from `@supabase/cli-<platform>-<arch>` (Linux also tries the musl package), or
+from its platform-specific npm package (Linux also tries the musl package), or
 honors `SUPABASE_CLI_BINARY_OVERRIDE`. Standalone archive installs expose the
 native executable directly. The repair follows the real launcher path and the
 same resolution rules; the existing registry/tag/exclusion refusals, digest
@@ -442,3 +444,240 @@ Logs: `/private/tmp/openlup-ci-fix/backslash-*.log`. The red run waited for the
 tooling lane; the green run had zero queue wait. Self-retro: extending the
 existing fixture reproduced this separator boundary without another resolver
 or test harness. No review session, delivery or shared-resource cleanup occurred.
+
+
+## Native CI installer scope amendment (2026-10-29)
+
+Approved intent: replace the npm-based CI installation with the checksum-verified
+native release archive for the same latest stable CLI, expected 2.122.0. Remove
+the launcher/package resolver and its installation-layout cases, preserving the
+reviewed image digest binding. This removes the source of the neutrality
+ratchet increase without changing rules, exceptions or string spelling.
+This existing task record remains the combined intent and plan; no separate
+specification is required by the contribution-shape owner.
+
+Assigned candidate: branch `claude/supabase-cli-bump`, clean HEAD `7fc417f7`.
+Current policy fetched from origin/main is
+`b5451b24c2dbb753f54965226d9c40972d70f356`; the applicable instruction owners
+were compared and read separately from the unchanged code review base.
+Bart authorizes local edits and proof only. Codex implements; Claude owns all
+commit, PR and native-review work. No commit, push, workflow dispatch, hosted
+Supabase, staging/production or Homebrew operation is authorized. Prior native
+review state and retry limits are not recreated or reset by this amendment.
+
+Smallest complete scope: one fresh repository installer with explicit version,
+platform, release asset ID and committed SHA-256 pins; both installing workflow
+jobs reuse it. All current CI runners are Linux amd64; include macOS arm64 only
+for the requested temporary local proof. Unsupported versions/platforms refuse.
+Download and independently hash each admitted archive, checking release API
+metadata and checksums.txt before recording its pin. Keep extraction and cleanup
+in owned temporary directories; append the chosen install directory to
+GITHUB_PATH. No npm launcher or alternative binary override is needed.
+
+Execution: first verify latest stable release and archive identities. Add the
+installer and workflow calls, reduce derivation to reading the executable on
+PATH, and adjust affected tests and current contributor/contract guidance.
+Preserve all five CLI image digests, upstream fallback order, exclusion checks
+and rendered TOML unless the actual native CLI proves a concrete incompatibility.
+No history/evidence record or unrelated active pin is changed.
+
+Acceptance: neutrality against the fork point exits 0 without PR-attributable
+increases; publication policy/docs regeneration includes this plan; affected full
+Vitest files, published-tree typecheck, lint and available actionlint pass.
+Run raw local pgTAP using this installer's temporary native CLI and reproduce
+hosted derivation in a Linux amd64 container if feasible. Heavy commands run
+serially via ai-resource-gate with a 3600-second queue timeout. Report actual
+image tags, registries, digest/config consequences and any missing proof.
+
+Risk and simplicity pre-check: changing the installation trust boundary needs
+checksum-corruption and unsupported-input refusal witnesses. A single shell
+installer and direct PATH scan remove package layout and override resolution;
+no extra dependency, abstraction, mirror publication or neutrality exception is
+needed. Finish with uncommitted changes, evidence and the requested <=30-line
+summary; independent committed review and delivery remain Claude's later gates.
+
+
+### Native installer completion and handoff
+
+The fresh release API still identifies v2.122.0 as latest stable, release
+421737738, not draft/prerelease. Fresh downloads of Linux amd64 asset 668850237,
+macOS arm64 asset 668849778 and checksums asset 668849747 match the API digests
+and the checksum file's versioned aliases in the earlier table. The new installer
+uses those archive IDs and hashes directly. Both CI install jobs now reuse it;
+the mirror workflow also watches the installer as a derivation input. The
+publication catalogue and closed execution inventory register the new script.
+The temporary host install is `/private/tmp/openlup-native-cli/bin`; Homebrew
+remains 2.120.0. The old npm-layout resolver and override cases are removed.
+The earlier task explanation now describes its retired package layout without
+repeating the obsolete package coordinate; prior commands/results are retained.
+
+The native executable's rendered services and tagged upstream Dockerfile confirm
+the previously recorded stack tags. Postgres 17.11.0.006, GoTrue v2.197.0,
+Realtime v2.147.1, Storage API v1.84.19 and pg_prove 3.36 bind to all five existing
+reviewed index digests. Other defaults remain the release/image evidence table
+above, including PostgREST v16.5, meta v0.100.0, Studio
+2026.10.19-sha-b375769, edge v1.77.8, Logflare 1.50.15, Supavisor 2.9.13,
+Mailpit v1.31.3, imgproxy v3.26.0, Vector 0.58.0-alpine and Kong 2.8.1.
+No inventory digest, mirror publication or TOML change is needed by this
+installation amendment. The tagged registry resolver defaults to ECR with
+GHCR/Docker Hub fallback. The installer sets no registry override; pgTAP keeps
+its explicit verified mirror/GHCR/ECR/Docker Hub acquisition and exact local
+aliases. The successful stack used verified upstream GHCR digest references.
+
+Evidence is under `/private/tmp/openlup-native-cli/`. All heavy phases ran
+serially through ai-resource-gate with a 3600-second queue timeout, two CPU
+tokens and 4096 MB; code/config/docs/test input hashes stayed frozen throughout.
+Only this execution record was completed afterwards.
+
+- Affected complete Vitest files: exit 0, four files / 260 tests passed, 44.37
+  seconds in Vitest; `affected-vitest-final.log`. The final request waited 128
+  seconds for the gate's aged-request reservation. Installer tests exercise real
+  archive hashing/extraction with fixture pins, corruption before execution or
+  replacement, version mismatch, unsupported inputs and GITHUB_PATH updates.
+- `npm run lint`: exit 0, zero errors / 33 existing warnings, 30.3 seconds.
+- `npm run oss:published-tree -- --typecheck`: exit 0, all five projects,
+  zero unresolved edges / consumer-side errors, 25.7 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0 with this installer's native CLI;
+  226 SQL files / 5199 assertions passed, baseline/forward replay and owned
+  cleanup completed, 33.8 seconds. The rendered TOML started unchanged.
+- Linux amd64 container: exit 0, 38.5 seconds, Node 24.21.0. The actual installer
+  fetched asset 668850237, verified the committed archive checksum, reported
+  CLI 2.122.0 and updated GITHUB_PATH. Derivation exactly matches macOS output;
+  all five inventory digest bindings pass. The installed ELF member hashes to
+  cb6a371c6ca17c3d2e2fc382348762f570cef2cb94a6da3c69735925adb7a0d0.
+  The disposable container installed curl/CA certificates and was removed on
+  exit; no foreign resources were removed.
+- Neutrality at fork point d1800393caad3b101173f8c100625d1c974c451f: exit 0,
+  zero increases. No scanner, baseline, exception or split-string change.
+- Policy and `--docs-update`: exit 0, five obligations / zero unanswered; no
+  navigation byte delta. These use a disposable validation checkout with the
+  new installer/test tracked; the task index remains untouched. The plan is
+  included. Structural scan, context freshness, Bash syntax and whitespace
+  checks also exit 0. Final policy/neutrality include this completion record.
+
+Known limitation: actionlint 1.7.12 exits 1 on the unchanged published-tree
+workflow line 194, `job.services.postgres.ports[5432]` (numeric property access).
+The assigned HEAD reproduces the identical diagnostic; the changed mirror
+workflow alone passes (exit 0). This pre-existing finding is reported for
+Claude/owner triage rather than expanding this installer amendment. Final
+handoff policy remains b5451b24c2dbb753f54965226d9c40972d70f356 after a fresh
+fetch, with no applicable instruction delta.
+
+Failed attempts: the initial affected run exited 1 (243 passing / 17 failing):
+one stale workflow-command assertion plus 16 sandbox-blocked loopback probes.
+The assertion was corrected and the permitted rerun passed. Initial neutrality
+caught two direct test-environment reads and one retired package coordinate in
+the active task explanation; the tests now use the existing environment-import
+convention and the explanation describes the retired layout without that name.
+The first policy attempts exited 1 because the new files were absent from the
+task's unstaged Git index; ambient alternate-index variables are intentionally
+ignored by the checker. A disposable real validation checkout supplied the
+complete inventory without changing that control or the task index. An initial
+host-version probe lacked the temporary state directory and refused a default
+home write; the isolated-state probe confirmed 2.120.0 without changing it.
+
+No hosted CI rerun, Linux full-stack run, cold image-layer transfer or counted
+committed review is claimed. No commit, push, PR comment, workflow dispatch,
+hosted Supabase, staging/production or Homebrew change occurred. Claude owns
+subsequent commit/review/PR work; inherited actionlint triage remains separate.
+
+Self-retro: the installer removes launcher-layout and override complexity while
+preserving image trust and fallback behavior. The existing workflow-command
+assertion caught its new executable step before broad checks. Policy validation
+should begin in the disposable tracked checkout for new files: the checker's
+explicit refusal of ambient Git redirects made the alternate-index attempt
+ineffective. The only material shared-machine delay was the 128-second queue
+wait; no gate or resource ownership rule was bypassed. No successor is opened.
+
+
+## Installer directory security repair
+
+The owner requested this bounded local repair with all prior uncommitted changes
+and earlier task wording preserved; commit/push and pattern-based process kills
+remain excluded. Policy was freshly fetched at
+`b5451b24c2dbb753f54965226d9c40972d70f356`, unchanged from the prior handoff.
+The default install directory now uses `mktemp -d`, like the download/extraction
+directory, under RUNNER_TEMP, TMPDIR or system temporary storage. Existing explicit
+destinations refuse foreign ownership, group/world write permissions and symbolic
+links before downloading; permissions are checked again before installation.
+New explicit directories are created with a private umask. Contributor guidance
+now explains this boundary.
+
+Repair proof: the complete installer test file passed all 15 tests (exit 0),
+including foreign ownership, group/world-writable pre-existing destinations and
+two fresh default installations for each temporary-directory selection. Both
+work-directory allocations are fresh and cleaned up, and the pre-existing writable
+legacy destination remains untouched. Bash syntax, structural suppression scan,
+neutrality against `d1800393caad3b101173f8c100625d1c974c451f`, policy/navigation
+and whitespace checks passed (exit 0 each). Policy reported five obligations and
+zero unanswered, with no generated navigation change. As before, policy uses a
+disposable validation checkout to include the untracked installer/test without
+changing the task index. Logs: `/private/tmp/openlup-cli-directory-fix/`.
+All heavy checks ran serially through ai-resource-gate with a 3600-second queue
+timeout, two CPU tokens and 4096 MB. No commit, push or counted review occurred.
+
+Self-retro: retaining the existing mktemp work-directory seam and adding direct
+ownership/mode checks fixed the reachable shared-directory failure without a new
+dependency. No failed test or repair retry was needed. The initial policy fetch
+could not write shared Git metadata in the sandbox; its authorized retry passed.
+
+## Installer directory simplification
+
+The owner now requests removal of the explicit destination option, preserving
+all other uncommitted changes. Local edits and the listed verification are
+authorized; no commit, push, counted native review, pattern kills or external
+mutation is authorized. The separately fetched policy pin remains
+`b5451b24c2dbb753f54965226d9c40972d70f356`, with no applicable instruction delta.
+The code base and Claude's later delivery responsibility remain unchanged.
+
+The installer uses one fresh `mktemp -d` directory under RUNNER_TEMP, TMPDIR or
+the system default. It checks the archive before extraction, checks the installed
+executable's version, removes the archive and only then exposes the absolute bin
+directory through stdout and optional GITHUB_PATH. Failure removes the new
+directory. Removing caller-supplied destinations also removes their validation
+and the second download directory. Contributor and canonical guidance are updated;
+workflow and pgTAP callers already use PATH and pass no destination.
+
+Acceptance: destination-validation tests are removed; unsupported-version/platform,
+checksum and binary-version refusals remain. Two runs must allocate distinct
+0700 directories under the selected root, with RUNNER_TEMP precedence, TMPDIR
+fallback and system-default coverage. Verify stdout for local callers without
+GITHUB_PATH. Run complete installer and published-tree workflow test files,
+Bash syntax, neutrality against `d1800393caad3b101173f8c100625d1c974c451f`,
+publication policy/navigation and diff whitespace checks, plus the real local
+pgTAP runner using this installer. Heavy phases run serially via ai-resource-gate.
+No SQL, image pins, registry fallback or other task changes are in this amendment.
+
+
+### Simplification completion evidence
+
+Evidence: `/private/tmp/openlup-cli-simplify/`. Complete installer and published-tree
+workflow test files passed together: exit 0, 12 installer tests and 97 workflow
+tests (109 total), 44.02 seconds in Vitest. The real installer fetched and verified
+CLI 2.122.0 into its own fresh 0700 directory; the pgTAP wrapper used exactly the
+absolute directory returned on stdout. `node scripts/public-ci-pgtap.mjs` exited 0:
+226 files / 5,199 assertions, transactional managed replay and owned-stack cleanup.
+Both heavy phases ran serially through ai-resource-gate with a 3600-second queue
+timeout, two CPU tokens and 4096 MB. No image pins, migration bytes or registry
+acquisition behavior changed.
+
+Bash syntax, the structural suppression scan, agent-context freshness, neutrality
+against `d1800393caad3b101173f8c100625d1c974c451f` and `git diff --check` exit 0.
+Policy plus navigation regeneration exits 0: five obligations, zero unanswered,
+no generated navigation delta. A disposable validation checkout includes the
+untracked installer/test in its real index; the task's index remains untouched.
+Final policy and neutrality are repeated after this execution record is updated.
+
+Failed attempts: the first policy run exited 1 because the disposable local clone
+inherited an older local main as origin/main, causing unrelated documentation
+obligations. Binding that validation-only ref to the actual freshly fetched policy
+revision restored the task's real fork-point comparison and passed. No source
+control, baseline or obligation was weakened. The sandboxed policy fetch initially
+refused shared Git metadata access; its permitted retry exited 0.
+
+Self-retro: one fresh private directory removes destination validation and a
+second allocation while preserving checksum/version refusals and failure cleanup.
+A validation clone must carry the source checkout's actual origin/main identity
+before evaluating documentation impact. No further process or successor work is
+needed. No commit, push, counted review, pattern kill or external mutation occurred;
+Claude retains later review/delivery responsibility and prior unrelated evidence.
