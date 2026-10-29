@@ -337,8 +337,17 @@ Each actual fresh reviewer supplies a report in this shape:
 
 ```json
 { "reviewer": "<observed review context id>", "cold": true, "verdict": "PASS",
-  "tree": "<reviewed tree>", "findings": [], "closes": [] }
+  "tree": "<reviewed tree>", "documentation": "<sections and related claims checked; result>",
+  "findings": [], "closes": [] }
 ```
+
+New `record` calls require a nonempty `documentation` string, at most 4096
+characters. It summarizes actual canonical-section, secondary-example and
+no-impact assessment, also for documentation-only changes; the supervisor must
+check its meaning. A blocked review may state what prevents that assessment and
+must report the corresponding material finding. Earlier already-recorded v2
+reports stay valid without history rewrite, a new prepare or changed expiry.
+There is no new receipt version, reviewer floor or author form.
 
 `verdict` is `PASS` or `FAIL`. Findings have stable `id`, `summary` and `material`
 fields. A report on the current or a later candidate closes a finding through

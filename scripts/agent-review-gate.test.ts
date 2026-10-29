@@ -25,7 +25,7 @@ async function fixture(prefix = 'native-review-v2-') {
     const request = join(scratch, 'intent.json'); await writeFile(request, JSON.stringify({ intent })); await cli('prepare', request);
     const session = JSON.parse(await readFile(statePath, 'utf8'));
     const path = join(scratch, 'report.json');
-    await writeFile(path, JSON.stringify({ reviewer: 'cold-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [] }));
+    await writeFile(path, JSON.stringify({ reviewer: 'cold-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
     await cli('record', path); return JSON.parse(await readFile(statePath, 'utf8'));
   }
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -67,7 +67,7 @@ describe('six real Git witnesses', () => {
     const main = scenario === 'unlanded predecessor' ? f.base : f.head;
     let clock = 1000;
     let session = prepareCandidate(null, { ...candidate, base, intent, authorSessionId: 'author' }, clock);
-    session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [] }, clock);
+    session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }, clock);
     const receipt = receiptSummary(session, 12, clock);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: candidate.head } };
     const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, author_association: 'CONTRIBUTOR', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes('/collaborators/') ? { permission: 'admin' } : { object: { sha: main } }) };
@@ -179,10 +179,10 @@ describe('six real Git witnesses', () => {
       await f.cli('prepare', join(f.scratch, 'intent.json'));
       expect(JSON.parse(await readFile(f.statePath, 'utf8'))).toEqual(next);
       const path = join(f.scratch, 'integration-report.json');
-      await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-1', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [] }));
+      await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-1', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
       await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
-      await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-2', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [] }));
+      await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-2', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
       await expect(f.cli('verify')).resolves.toBe(0);
     }
@@ -201,7 +201,7 @@ describe('six real Git witnesses', () => {
     expect(session.candidate).not.toHaveProperty('integration');
     await expect(sessionMain(['verify'], { cwd: f.cwd, env })).rejects.toThrow('independent PASS');
     const path = join(f.scratch, 'full-stack-report.json');
-    await writeFile(path, JSON.stringify({ reviewer: 'full-stack-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [] }));
+    await writeFile(path, JSON.stringify({ reviewer: 'full-stack-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
     await sessionMain(['record', path], { cwd: f.cwd, env });
     await expect(sessionMain(['verify'], { cwd: f.cwd, env })).resolves.toBe(0);
   });
@@ -221,7 +221,7 @@ describe('six real Git witnesses', () => {
     await writeFile(request, JSON.stringify({ authorSessionId: 'author', intent }));
     await expect(sessionMain(['prepare', request], { cwd: f.cwd, env })).resolves.toBe(0);
     let session = JSON.parse(await readFile(f.statePath, 'utf8'));
-    session = recordReport(session, { reviewer: 'stack-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [] }, Date.now());
+    session = recordReport(session, { reviewer: 'stack-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }, Date.now());
     const run = vi.fn(async () => 0);
     await expect(verifyCandidateCommand({ cwd: f.cwd, session, env, command: 'stack-check', run })).resolves.toBe(0);
     expect(run).toHaveBeenCalledTimes(1);
@@ -247,7 +247,7 @@ describe('six real Git witnesses', () => {
   it('hosted wait admits in one fake API poll and verify-command runs only its stub command', async () => {
     const f = await fixture(); const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} });
     const now = Date.now(); let session = prepareCandidate(null, { ...candidate, intent, authorSessionId: 'author' }, now);
-    session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [] }, now);
+    session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }, now);
     const receipt = receiptSummary(session, 12, now);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: f.head } };
     const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/collaborators/') ? { permission: 'admin' } : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, author_association: 'CONTRIBUTOR', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : { object: { sha: f.base } }) };

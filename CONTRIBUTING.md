@@ -154,6 +154,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The existing policy/self-check also validates ordinary local Markdown file links
+and fragments, beyond mapped owner anchors. Source ownership is narrowed by
+module/contract section so an unrelated README edit does not settle an affected
+contract. The [documentation maintenance rules](docs/platform/DOCUMENTATION.md#impact)
+define scoped no-impact answers and review of related examples. New native
+reports include the short documentation assessment described under
+[native review](#native-review-and-accountability); prior recorded reports retain
+their history and expiry. These checks add no job, reviewer floor or gate budget.
+
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the production package runner to check ledger admission, stable reads,
 write admission, complete inventory projection and compatibility for status,
@@ -2732,6 +2741,18 @@ manual. Explain material deviations, evidence and remaining limitations. Review
 must assess correctness, approved scope and whether unnecessary complexity adds
 maintenance cost; findings need a concrete mechanism and effect, not a quota.
 
+Each newly recorded native report must include a concise `documentation` string
+(up to 4096 characters): identify the canonical sections checked, relevant
+secondary instructions/examples and the assessment of no-impact reasoning.
+For documentation-only edits, compare consequential claims with the selected
+source/contracts rather than assuming no source delta means no risk. Search
+related documentation for changed public exports, options and commands. Explain
+why no related update is needed where that is the result; a bare “OK” does not
+satisfy the review contract. The supervisor assesses substance, not just presence.
+Existing recorded version-2 reports remain valid without rewriting history or
+resetting cycles, findings or expiry; the requirement applies at new `record`
+calls. Risk floors and the receipt format are unchanged.
+
 Include the affected documentation owners and what changed in their explanations.
 For a scoped no-impact record, challenge its reasoning as well as its fresh
 fingerprint: a hash identifies the delta and its owner, not semantic correctness.
@@ -2791,6 +2812,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, documentation routing: duplicating a capability inventory in
+  ownership selectors → route to its canonical section and specialize the
+  neutral contracts, without introducing another registry or scanner exception.
 
 - 2026-10-29, disposable Docker cleanup: same-module mocks hid per-project
   state and queued-signal failures → prove lifecycle invariants through actual
