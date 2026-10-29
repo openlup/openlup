@@ -290,6 +290,15 @@ actual managed data alongside all-null settlement items and resolving their
 disposition from actual source erasure evidence under its own read before
 hosted acceptance; W4's temporary receipt relation does not qualify that leg.
 
+Cycle-5 native prepare on `d0d48a05` refused because `origin/main` at
+`9195f281` conflicts in `DATA_AND_MIGRATIONS.md`. A forced, uncommitted merge
+has parents `d0d48a05` and `9195f281`. Its single manual resolution keeps
+main's detailed native catch-up description and this parcel's separate finite
+managed-profile paragraph. Excluding this task record, the old-base change
+patch ID is `68ef72ee6c1607f8e4b909cee7984b0fe9ecbfcb` and the merged
+change patch ID is `6bdddd77bba3607f694854f4334524b115b14f87`.
+CD-M14-30 therefore requires a maintainer read before DCO of this merge.
+
 Rows with one direct subject parent (`commerce_payments`, order items, invoice
 outboxes, subscription lines, payment external refs) use
 that parent; subject-free catalog/pricing and Storage buckets are explicit

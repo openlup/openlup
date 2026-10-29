@@ -2,6 +2,7 @@
 import ts from "typescript";
 import { disposableLabelArgs } from "../disposable-docker.mjs";
 import { buildSync } from "esbuild";
+import { MARKET_PACK_CONSUMER_PROOF } from "./market-pack-consumer-proof.ts";
 import { createRequire, stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
@@ -19,6 +20,10 @@ import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts"
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
 export const NON_ADAPTER_ENTRIES = [
+  "company-identity",
+  "company-identity/contracts",
+  "company-identity/server",
+  "market-packs",
   "lifecycle",
   "portability",
   "operations",
@@ -1989,6 +1994,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
+    consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);

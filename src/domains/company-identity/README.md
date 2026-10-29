@@ -45,6 +45,17 @@ The two declared purposes — `checkout_invoice` and
 consequence is larger. Hosts still own that policy and must interpret the
 status, returned data and source evidence for their chosen composition.
 
+## Package preservation candidate
+
+The experimental `@openlup/platform/company-identity` schema entry and
+`company-identity/server` engine preserve this implementation, including registry
+extensions, provider ordering and the process-shared cache. National identifier
+and legal-name rules are explicit package inputs; this reference retains its own
+existing values and implementation. Its contracts entry
+is type-only. This reference still uses its existing bodies and ambient bindings;
+R1 changes no caller. Replaceable compatibility policy and delegation follow
+separately. See the [R1 task record](../../../docs/platform/plans/oss-m16-r1-market-import.md).
+
 ## Ports and seams
 
 - Engine: `packages/core/src/company-identity/`, exposed as
