@@ -8,10 +8,12 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.31.0` set republishes this kernel unchanged alongside the
-platform runtime and migration-admission updates. Upgrade all packages
-together and read [the set notes](CHANGELOG.md#0310); core introduces no API or
-schema migration. Size comparison uses the published `0.30.0` tarball; older releases
+The prepared `0.32.0` set includes the Node-only offline `openlup-context`
+command and a packaged `AGENT_CONTEXT.md`, alongside documentation
+clarifications and the platform risk controls. The kernel API and subscription
+runtime behavior are unchanged. Upgrade all packages together and read
+[the set notes](CHANGELOG.md#0320); core introduces no schema migration.
+Size comparison uses the published `0.31.0` tarball; older releases
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
@@ -168,6 +170,37 @@ is optional source guidance to select at a deliberate revision and compare with
 your installed contract; later guide changes do not alter this version or install
 application controls. Existing tests and the unchanged wiring example do not
 certify a complete module absorption or deployed adoption.
+
+## Agent context lookup
+
+After installing core, run the local executable from the application root:
+
+```sh
+./node_modules/.bin/openlup-context search "subscription renewal"
+```
+
+This MVP indexes English documentation. Translate Polish or other natural-language
+tasks into concise English domain terms, or search an exact public symbol;
+freeform Polish queries may miss relevant guidance.
+
+The command searches documentation in the installed OpenLup packages offline and
+returns file-and-line citations. Add `--code` for a bounded local application
+source scan that may be incomplete; use direct `rg` when needed. Add `--json`
+for structured results. It never downloads packages or starts a
+service. Its Node-only launcher is isolated from the I/O-free kernel exports and
+adds no runtime dependency.
+
+Read a known path or symbol directly. Use the lookup to locate an unfamiliar
+package seam, then inspect the cited owner and follow its exports, callers and
+tests for cross-package work. A ranked result does not establish complete
+contract coverage.
+
+Each package's root `AGENT_CONTEXT.md` contains small excerpts of canonical
+repository guidance, with source paths, line ranges and excerpt digests. Read
+the package version from its installed `package.json` and check the cited source
+before changing a contract; a result locates
+evidence, and does not grant application policy or execution authority. The
+snapshot and command do not establish a registry release or stable support.
 
 ## Local verification from source
 

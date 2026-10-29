@@ -331,7 +331,11 @@ export function readDocumentationState(root: string, candidatePaths?: Iterable<s
   for (const surface of surfaces) {
     if (!available.has(surface.doc)) throw new Error(`documentation: missing owner ${surface.doc} for ${surface.id}`);
     documentationSection(readFileSync(join(root, surface.doc), "utf8"), surface.anchor);
-    for (const selector of surface.paths) if (!paths.some((path) => matchesDocumentationSelector(path, selector))) throw new Error(`documentation: dead selector ${selector} in ${surface.id}`);
+    // Set preparation consumes every pending fragment; its owner route remains valid while empty.
+    for (const selector of surface.paths) {
+      const matched = paths.some((path) => matchesDocumentationSelector(path, selector));
+      if (!matched && selector !== "packages/*/changes/*.md") throw new Error(`documentation: dead selector ${selector} in ${surface.id}`);
+    }
   }
   for (const domain of coreDomains) {
     if (!surfaces.some((surface) => surface.paths.some((selector) => selector === `src/domains/${domain}/**` || selector === `server/domains/${domain}/**`)))

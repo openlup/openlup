@@ -154,6 +154,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The installed `openlup-context` command uses the tracked core
+[launcher](packages/core/src/openlup-context.js) and compiled
+retrieval code. The public execution catalogue binds that exact executable
+inventory and its package scripts/bin digest; the launcher does not admit
+additional executable paths. This offline command adds no runtime dependency,
+package or service. `npm run oss:published-tree -- --policy` also checks that
+the committed agent excerpts still match their canonical owner sections.
+Changes to its executable surface, publication controls or
+package gate budgets require the applicable maintainer read before sign-off;
+passing the inventory check does not establish that read or authorize release.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected
@@ -1995,8 +2006,14 @@ Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
-Ordinary local worker defaults are 75%, coverage 50%; the wrapper lowers them
-under contention. Plain local runs inside `verify-command` or an active resource
+Ordinary local workers default to 37.5% of cores (6 of 16 on the measured
+host) from the config; `--maxWorkers` also accepts a percentage. Vitest reads
+the `VITEST_MAX_WORKERS` environment variable as an integer and lets it override
+both, so the `npm test` wrapper first resolves any percentage in it, its own or
+the caller's, the way Vitest resolves a config percentage: available cores times
+the whole-number part of the percent, rounded, at least one. Through the
+wrapper, coverage defaults to 50% of cores, or 40% under contention; a direct
+`vitest --coverage` run uses the 37.5% config default. Plain local runs inside `verify-command` or an active resource
 broker instead default to at most four workers and the host's core count. A
 positive broker CPU-token count further caps workers at one less than that
 count, with a minimum of one, leaving capacity for the main process and child

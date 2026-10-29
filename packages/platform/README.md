@@ -17,8 +17,8 @@ start with the installed package's README, CHANGELOG and declarations, and consu
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
 
-For the prepared `0.31.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0310) before selecting optional services. Experimental
+For the prepared `0.32.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0320) before selecting optional services. Experimental
 M13 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -61,7 +61,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.30.0` tarball. Preparation and offline
+Size comparison uses the published `0.31.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -84,6 +84,17 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+## Installed agent context
+
+The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical
+platform guidance. Source paths, line ranges and excerpt digests identify its
+provenance. Read the version from the installed `package.json` and check the
+cited source before relying on an excerpt.
+Core's installed `openlup-context` command discovers this snapshot locally and
+returns file-and-line citations offline. Shipping this documentation adds no
+runtime dependency, service or activation, and grants no host policy or execution
+authority. A snapshot does not establish publication, compatibility or support.
 
 ## Package surface
 

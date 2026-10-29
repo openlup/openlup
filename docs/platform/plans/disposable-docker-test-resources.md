@@ -1,8 +1,9 @@
 # Disposable Docker test resources reclaim themselves
 
 Status: approved 2026-10-29 (owner decisions D1–D7 below); merge cut-line
-landed in #432. Activation (D2) is recorded under "Activation evidence"; the
-worker-cap measurement (D3) follows.
+landed in #432. Activation (D2) landed in #435 and is recorded under
+"Activation evidence"; the worker-cap measurement and decision (D3) are under
+"Worker-cap evidence (D3)". No start limiter ships.
 
 ## Outcome and boundary
 
@@ -433,7 +434,9 @@ accordingly). The coordinator relayed the resulting decisions to this task:
   unexpected entry appears, stop and report.
 - **D3. Yes.** Accept the measured worker-cap default under the decision rule
   above. The start limiter ships only if no worker cap meets the bar. The 6 h
-  and 18-run caps apply.
+  and 18-run caps apply. The coordinator, under this delegation, chose the
+  measured 6-worker cell over the speed-only reading; see "Worker-cap evidence
+  (D3)".
 - **D4. Yes.** Delivery grant: local work, commits (OpenLup identity), push, PR
   and merge after the required gates and OpenLup's native counted review.
   Production and credentials stay excluded.
@@ -566,4 +569,72 @@ tests pin the new `remove` default and the `report` fallback for an
 unrecognised mode. If the Docker VM clock runs ahead of the host, the zero-floor
 sweep still keeps a just-created container as too young; the next host sweep
 reclaims it after 60 s.
+
+## Worker-cap evidence (D3)
+
+Measured on 2026-10-29 between 13:20Z and 14:24Z on the maintainer host: 16
+cores; OrbStack Docker 29.8.2 with 16 CPUs and 15.7 GiB; `power.pause_in_sleep`
+off. Code: `origin/main` `4ec36fde` with the host sweep in `report`. Every cell
+was admitted through the host broker's `docker-heavy` lane (14 CPU tokens, no
+queue wait). Ten unlabeled containers of another project idled throughout.
+Sixteen of the 18 allowed runs were used, about 65 minutes of machine time.
+
+Every run exited 0. No file failed or timed out, no hook timed out, and no
+container was left after exit. Times are Vitest's own; "containers" is the peak
+of run-labelled containers sampled every 2 s; "memory" is the peak sum of
+`docker stats` container memory sampled every 10 s; "p95" is `docker version`
+latency sampled every 5 s; "load" is the peak host 1-minute load.
+
+| Scope | Workers | Sample 1 | Sample 2 | Containers | Memory | p95 | Load |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `tests/postgres` (62 files) | 12 (75%) | 103 s | 108 s | 19–20 | 2.4–2.9 GiB | 29–43 ms | 12–16 |
+| `tests/postgres` | 8 | 96 s | 97 s | 15–17 | 2.4 GiB | 27–29 ms | 9–11 |
+| `tests/postgres` | 6 (37.5%) | 93 s | 93 s | 14–15 | 2.4 GiB | 25 ms | 8–10 |
+| `tests/postgres` | 4 | 113 s | 113 s | 9 | 1.8 GiB | 22–23 ms | 6–7 |
+| two concurrent subset runs | 12 each | 140 s | 140 s | 40 | 4.8 GiB | 55 ms | 22 |
+| two concurrent subset runs | 6 each | 119 s | 120 s | 29 | 3.3 GiB | 39 ms | 14 |
+| whole `npm test` (2174 files) | 12 (75%) | 404 s | 406 s | 12–15 | 1.9 GiB | 41–48 ms | 54–57 |
+| whole `npm test` | 6 (37.5%) | 415 s | 409 s | 7–8 | 1.7 GiB | 23–25 ms | 19–26 |
+
+Every cell met the reliability bar, so no start limiter ships. Read literally,
+the speed-only rule keeps 75%: no cell was 10% faster on both whole-suite
+samples, and 6 workers was 1–3% slower there. The coordinator, under the
+owner's D3 delegation, chose the 6-worker cell because the outcome also requires
+that a local run not overload the shared machine. Against 75% (12 workers), 6
+workers:
+
+- halves the peak host load of a whole-suite run (57 to 26) for about 2% more
+  time;
+- is faster on the Docker-heavy subset (93 s against 103–108 s);
+- is faster when two runs overlap (about 120 s against 140 s each), with less
+  container memory (3.3 GiB against 4.8 GiB). Overlap is the normal case when
+  several sessions share one host.
+
+The default is stated as a percentage so it scales with other hosts: 37.5%,
+which Vitest 4.1 resolves to 6 of this host's 16 cores (it reads the integer
+percent, 37, and rounds 5.92 to 6). (50% would give 8 workers
+here; at 8 only the subset was measured, 96–97 s.) Through the wrapper,
+coverage keeps its 50% default, or 40% under contention. Explicit
+`VITEST_MAX_WORKERS` and `OPENLUP_VITEST_MAX_WORKERS` pins and the broker
+verification defaults are unchanged. CI sets no plain local cap, and its
+coverage shards keep their own worker counts, so hosted CI is unaffected. The
+wrapper's former high-load lowering of plain runs to 50% was removed, since it
+would now raise them above the 37.5% default. `scripts/run-vitest.test.ts` pins
+the default by loading `vitest.config.ts` through Vite's loader; it fails with
+75%.
+
+**Scope addition: wrapper env percentages are resolved to integer workers.**
+Native review of this change found, and a read-only run on this host
+confirmed, that Vitest 4.1 reads `VITEST_MAX_WORKERS` with `Number.parseInt`
+and lets it override the config and `--maxWorkers`. The wrapper's coverage
+`"50%"` and `"40%"` therefore meant 50 and 40 workers, and a caller's `"37.5%"`
+meant 37. The same percentages from the config or the CLI resolved to 8 and 6.
+That is the overload this task exists to remove, so the coordinator folded the
+fix into the same change (`scripts/run-vitest.mjs`, `scripts/run-vitest.test.ts`,
+`CONTRIBUTING.md`, the config comment). The wrapper now resolves any
+`VITEST_MAX_WORKERS` percentage as Vitest resolves one from config: the
+integer percent of available cores, rounded, at least one. Integer pins pass
+through unchanged. `scripts/run-vitest.test.ts` covers 50%, 40%, 37.5%, an
+integer pin and the coverage default; on the previous wrapper it fails with
+`expected '50%' to be '8'`.
 

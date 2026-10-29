@@ -1,6 +1,6 @@
 {
   "name": "@openlup/core",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Neutral D2C subscription and bundle commerce kernels; a development preview with no stable API.",
   "license": "Apache-2.0",
   "repository": {
@@ -19,7 +19,11 @@
     "tag": "preview"
   },
   "sideEffects": false,
+  "bin": {
+    "openlup-context": "./src/openlup-context.js"
+  },
   "files": [
+    "AGENT_CONTEXT.md",
     "dist/**",
     "src/**",
     "AGENTS.md",
