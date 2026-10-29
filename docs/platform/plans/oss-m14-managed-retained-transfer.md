@@ -140,6 +140,16 @@ private-store readback in the managed PG16 witness. This material repair awaits
 a new maintainer read before DCO and fresh full review; cycle 0 evidence and
 the open finding remain in the native session history.
 
+After the accepted repair commit, native `prepare` refused source-review
+carry-over because main advanced to `d1800393caad3b101173f8c100625d1c974c451f`.
+The forced main merge was conflict-free; its exact mechanical `merge-tree`
+result is `3f81a34eca5df4820bf5148f9c641ddfa2d4eed1`, with parents
+`9fc0d5702679153bdc47254dd1f8a166f86d6779` and `d1800393caad3b101173f8c100625d1c974c451f`.
+Excluding this task record, the stable parcel patch ID is
+`1700f302b525e44c3edcc5c9abb1921ac825c329` against both the old
+`c31cc19` base and new main. The only extra parcel edit in the merge is this
+lineage note. Full native review remains required on the merged tree.
+
 Self-retro at this stop: the first actual managed extraction revealed a pending
 welcome outbox item and email timeline that synthetic projection alone missed;
 using the pinned local stack made the missing duty observable. A short finite

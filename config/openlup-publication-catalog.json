@@ -2,10 +2,6 @@
   "schemaVersion": 3,
   "publicPaths": [
     {
-      "path": ".agent-protocol.yml",
-      "class": "public-output"
-    },
-    {
       "path": ".dockerignore",
       "class": "public-output"
     },
