@@ -2241,6 +2241,9 @@ neither setup-owner facts nor a reference inventory substitutes for normal-runti
 command proof. The separately approved SQL changes only the finite grants described
 by the [migration owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle), with no new
 transfer API, runtime adapter, role compiler or installation executor.
+The same qualified production composition now includes the separately approved
+owner-path forward and checks its installed settings and restricted runtime and
+restore behavior in both role modes. The transfer graph and API are unchanged.
 
 That selected installation witness also exercises pooled request reads and
 session-affine scheduler locks under the restricted runtime login. Real backend

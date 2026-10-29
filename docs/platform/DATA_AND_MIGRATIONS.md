@@ -486,24 +486,24 @@ separately from historical grant spellings or inherited CLI defaults.
 ### Co-located SQL and approval pins
 
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
-for four bootstrap units, an optional retained-import unit and the exact runtime
-completion tail. Even expand-only
+for four bootstrap units, an optional retained-import unit, the runtime
+completion tail and the owner-path forward. Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain six exact bound units, including the
+retain seven exact bound units, including the
 [runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
-now selected as the final qualified tail. Reader preparation landed before the
+selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) prepares
 five further fixed identities for a separate approval. Its inert fixture bytes
-are not approved or active; the six issued rows and current 91-unit manifest
+are not approved or active; the seven issued rows and current 92-unit manifest
 remain unchanged. The future generation reuses the issued completion tail and
 requires two new fixed role-mode inventories. Its migration login is a trusted
 administrator retaining ADMIN membership, not an isolated principal.
-All six approval rows and their byte identities remain unchanged. The tail grants
+All six earlier approval rows and their byte identities remain unchanged. The runtime-completion tail grants
 the existing runtime group context INSERT on its four columns, UPDATE on its
 three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.
 Its local guard requires an unswitched installer owning both targets, the
@@ -512,13 +512,12 @@ role graph still belongs to the trusted source's preflight; the common tail
 adds no SUPERUSER requirement or alternate installer. A future non-superuser
 profile still needs its own qualification.
 
-The prepared reader reserves one later qualified owner-path forward after that
-completion tail, at approval position seven before the five reserved
-restricted-bootstrap positions. Its approval binds the exact file and nine function
-preimages and definitions before the SQL is introduced. The forward may only
-pin name resolution on those definitions; the current selected plan remains
-91 units until the separately approved forward is added. Earlier qualified
-units and their approvals remain immutable.
+The reader reserves the qualified owner-path forward after runtime completion,
+at approval position seven before the five reserved restricted-bootstrap
+positions. Its prior approval binds the exact file and nine function preimages
+and definitions. The active forward pins name resolution on those definitions;
+the selected plan has 92 units. Earlier qualified units and their approvals
+remain immutable.
 
 Delivery uses three separately landed checkpoints. First prepare the exact
 sixth identity's reader/order support, inert fixture and refusals without
@@ -530,8 +529,8 @@ actual main, append the exact sixth hash in a pin-only change. Only after that
 approval is actual main may a feature introduce the identical active SQL and
 append its selected manifest row. Keep all trusted co-location checks intact.
 
-The active schema-2 manifest preserves legacy 88 units and appends only the exact
-completion after the entire qualified F90 prefix, selecting 91 units. Its two
+The active schema-2 manifest preserves legacy 88 units and the issued qualified
+91-unit prefix, then appends the exact owner-path forward as unit 92. Its two
 restore-bound inventories were measured independently on clean PostgreSQL16
 references with migration/bootstrap aliased and distinct. The historical F90
 expectations and raw evidence remain retained; reference measurements do not
@@ -1196,8 +1195,9 @@ separate from both this probe and application-file upgrades.
 ## Compatibility lifecycle
 
 The runtime-completion forward follows the entire qualified F90 prefix, preserving
-all issued identities while selecting 91 units and two newly measured restore-bound
-inventories. It completes the existing normal-runtime preparation context writes
+all earlier issued identities. The owner-path forward follows it as unit 92,
+with two newly measured restore-bound inventories. Runtime completion provides
+the existing normal-runtime preparation context writes
 and review replay-receipt reads/appends. Its column grants exclude context key
 updates, and receipt UPDATE/DELETE/TRUNCATE remain denied. Apply the complete
 selected catalogue through the existing executor and ledger; this exact grant

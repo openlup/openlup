@@ -176,14 +176,15 @@ pins. The structural append case removes only that named tail from its previous
 plan and supplied migration list before appending it, so the introduced source
 cannot duplicate its fixture. These structural checks are not live inventory
 qualification. Reader support and the exact sixth-pin approval landed separately
-before SQL introduction; qualified 91 preserves legacy 88 and the entire F90 prefix.
-The SQL feature still needs its own runtime and inventory evidence. The
-prepared reader additionally reserves one qualified owner-path forward after
+before SQL introduction; the issued qualified 91 preserves legacy 88 and the
+entire F90 prefix. The active owner-path forward follows that issued prefix as
+qualified unit 92, with its two installed inventories measured in the production
+composition witness. The reader reserves it after
 the runtime-completion tail, at approval position seven before the five
 restricted-bootstrap positions. Its fixed function preimages and exact forward
-bytes are approved before SQL introduction; the control witness refuses
-changed bodies, extra definitions and an earlier position. This preparation
-does not add the forward to the selected 91-unit plan.
+bytes were approved before SQL introduction; the control witness refuses
+changed bodies, extra definitions and an earlier position. The active SQL is
+byte-identical to that approved fixture.
 The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
@@ -195,7 +196,7 @@ own the separate control-before-installation boundary.
 
 The restricted-bootstrap reader preparation adds five fixed `qa_` identities
 to the existing classifier and approval reader without changing the active
-schema-2 manifest or six issued approval rows. Its schema-3 parser requires a
+schema-2 manifest or the then-six issued approval rows. Its schema-3 parser requires a
 separate 91-unit generation, the issued runtime-completion tail and exactly two
 fixed role-mode inventory digests. The manifest and admission witnesses reject
 missing/reordered tails, wrong-generation paths, malformed modes, issued-prefix
@@ -225,8 +226,9 @@ redacted error, with a false-admission falsifier. These checks create no install
 or role grants and do not turn a prerequisite report into installation readiness.
 
 The [qualified production witness](tests/postgres/m14QualifiedComposition.test.ts)
-checks the completion's two measured restore-bound 91-unit inventories through the built package
-entry and real reference binding, then two fresh targets in the other role mode
+checks the owner-path forward's two measured restore-bound 92-unit inventories
+through the built package entry and real reference binding, then two fresh
+targets in the other role mode
 with changed principal names. The E2 predecessor retains its four 89-unit shapes
 and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
 shadow-symbol refusals without replacing expected digests.
