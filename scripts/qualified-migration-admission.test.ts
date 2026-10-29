@@ -102,7 +102,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
   expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-  expect(registry.qualifiedInstallations).toHaveLength(12);
+  expect(registry.qualifiedInstallations).toHaveLength(16);
   expect(registry.qualifiedInstallations![6]).toEqual(binding);
   const reviewedBytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_OWNER_PATH_FILE}`);
   expect(reviewedBytes).toEqual(bytes);
@@ -133,10 +133,10 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(reordered)))).toThrow("qualified installation approval");
 });
 
-it("preserves the issued qualified identities and pins all five restricted replacements", () => {
+it("preserves the first twelve issued identities and pins all four revised replacements", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
   const issued = registry.qualifiedInstallations!;
-  expect(issued).toHaveLength(12);
+  expect(issued).toHaveLength(16);
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
   for (const entry of registry.qualifiedInstallations!) {
     const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${entry.path}`);
@@ -159,9 +159,9 @@ it("preserves the issued qualified identities and pins all five restricted repla
   }
 });
 
-it("keeps the four revised restricted fixtures inert, exact, and separate from issued approvals", () => {
+it("keeps the four revised restricted fixtures inert and exact after separate approval", () => {
   const issued = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH)).qualifiedInstallations!;
-  expect(issued).toHaveLength(12);
+  expect(issued).toHaveLength(16);
   const revised = [REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE];
   const prior = [ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
   const hashes = [
@@ -174,6 +174,7 @@ it("keeps the four revised restricted fixtures inert, exact, and separate from i
     const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${path}`, "utf8");
     const old = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${prior[index]}`, "utf8");
     expect(sqlSha256(bytes)).toBe(hashes[index]);
+    expect(issued[index + 12]).toEqual({ path, sha256: hashes[index] });
     expect(bytes).toBe(old.replaceAll("<> CASE WHEN v_mode = 'installer-managed' THEN 1 ELSE 2 END",
       "<> (CASE WHEN v_mode = 'installer-managed' THEN 1 ELSE 2 END)")
       .replaceAll(" + CASE WHEN v_runtime_group THEN 1 ELSE 0 END", " + (CASE WHEN v_runtime_group THEN 1 ELSE 0 END)")

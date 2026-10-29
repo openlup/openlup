@@ -1,8 +1,8 @@
 # M14 restricted PostgreSQL bootstrap
 
 Status: development-preview task, open. The first reader and five-byte approval
-checkpoints landed. This additional reader checkpoint prepares four corrected
-installation identities before their separate approval and active SQL. Audience:
+checkpoints landed. This separate checkpoint approves four corrected
+installation identities before active SQL. Audience:
 contributors preparing a fresh PostgreSQL 16 installation. This task is a
 bounded part of M14; it does not close M14 or qualify a hosted provider.
 This task grants no installation support for a published package set.
@@ -76,10 +76,10 @@ other transfer, recovery and adoption obligations.
    `04bb75899f7850f997c79474194d63bd22dfdd20ce8ab88c0aaff6409712a56b`,
    `05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9`.
    The future restricted plan selects the existing `qa_` baseline plus these
-   four replacements; neither set is active in this reader checkpoint.
-4. A separate approval checkpoint appends those four exact identities. Its
-   packet requires a disposable PostgreSQL 16 parse-and-apply witness of the
-   exact proposed bytes in both role modes before approval.
+   four replacements; neither set is active in the reader checkpoint.
+4. This separate approval checkpoint appends those four exact identities. A
+   disposable PostgreSQL 16 parse-and-apply witness of the exact proposed bytes
+   passed in both role modes before approval. The fixtures remain inert.
 5. Active SQL and the explicit 91-unit generation follow that new approval.
    Qualify both role modes and actual connection consumers before claiming the
    local outcome. Sensitive API and security-control changes require a

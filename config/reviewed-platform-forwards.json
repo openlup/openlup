@@ -1904,6 +1904,22 @@
     {
       "path": "db/platform/migrations/qa_20261026140000_retained_client_subscription_import.sql",
       "sha256": "09be0b6f7caedf8a16d1de574e74856d6eda26863f759af184ee4ba2d63e6cae"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+      "sha256": "3290eaabbc0c7ec946c837d42023e2534abfea71ad09369ac4ee06ed1c18503e"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+      "sha256": "e7ea29581b2c960c217b6a13d7474f13c7ea98a735339a264607ceecc0d351f2"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+      "sha256": "04bb75899f7850f997c79474194d63bd22dfdd20ce8ab88c0aaff6409712a56b"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+      "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
     }
   ]
 }
