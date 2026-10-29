@@ -468,7 +468,20 @@ with --policy --docs-update. M15's narrower routing requires two new R1 owner
 sections: existing company/money guidance is moved intact into those sections,
 and only their R1 source/test/API selectors are added to documentation routing.
 
-Integration evidence and both package measurements are recorded below when complete.
+Local signed merge: 167455e4762be181ded0ef412e50c68dc573d230. Focused
+ast-grep PASS; lint PASS (zero errors, 33 existing warnings); platform API check
+PASS; UI neutrality PASS; Gitleaks PASS with 1,056 commits scanned and no leaks;
+branch neutrality PASS with zero increases against main. Focused Vitest at two
+workers ran 28 files / 3,150 cases in 45.17 seconds: 3,149 PASS, with only the
+known platform cap case failing (code files 2,661/2,656 and total 2,716/2,712).
+The cap-only result is left for the explicitly pending coordinator decision;
+no behavior witness fails and no cap is changed. Git comparisons confirm both
+R1 runtime/witness directories match 5f221ac8 and M15 risk source/test/SQL match
+main. An initial pre-merge policy run saw the old fork plus main's ownership
+transition; after the local merge, only four fresh R1 no-impact answers remain
+(adapters, ownership, graph configuration and tooling). This evidence commit
+refreshes those delta-bound trailers; policy is checked again before push.
+Both package measurements follow after the pushed integration head.
 Self-retro: integration must preserve scoped documentation ownership as well as
 module inventories; regenerating output exposes missing owner selectors early.
 
