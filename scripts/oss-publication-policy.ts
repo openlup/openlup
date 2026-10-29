@@ -52,7 +52,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("guard:public-reference-site-routes", "node scripts/site-routes.mjs --public-reference"),
   publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint ."),
   publicCommand("prelint", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build"),
-  publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
+  publicCommand("oss:published-tree", "node scripts/agent-context/generate.mjs --check && node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("release:bump", "node --experimental-strip-types scripts/packages/release-bump.ts"),
   publicCommand("pretest", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build"),
@@ -61,7 +61,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
-  { path: "packages/core/package.json", digest: "sha256-2880595670a09c961ad3366588800d97e303f2fff4f111ec2ac18a1defd86c02" },
+  { path: "packages/core/package.json", digest: "sha256-0a01b40d765409dc9810d29839ecd6a82345ac8095d47e74e997dffa53f0e615" },
   { path: "packages/outbox/package.json", digest: "sha256-60beaa6303f13fa5c3568e227d571f1b6013260dd260578670896eaf0d613319" },
   { path: "packages/platform/package.json", digest: "sha256-bfaffff4f0b6c74137b213fa6ea8e726528b762a22910cda32895857287c75b9" },
   { path: "packages/ui/package.json", digest: "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b" },

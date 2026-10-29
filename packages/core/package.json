@@ -19,7 +19,11 @@
     "tag": "preview"
   },
   "sideEffects": false,
+  "bin": {
+    "openlup-context": "./src/openlup-context.js"
+  },
   "files": [
+    "AGENT_CONTEXT.md",
     "dist/**",
     "src/**",
     "AGENTS.md",
