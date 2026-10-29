@@ -200,6 +200,25 @@ describe("production documentation owner routes", () => {
 });
 
 describe("public documentation routing", () => {
+  it("keeps the pending fragment owner when the family is empty without relaxing dead-selector checks", () => {
+    const { root, surfaces } = fixture();
+    const pending = { id: "pending-fragments", when: "Package changelog fragments", paths: ["packages/*/changes/*.md"], doc: OWNER, anchor: "#canonical" };
+    write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces: [...surfaces, pending] }));
+    expect(() => readDocumentationState(root)).not.toThrow();
+
+    const fragment = "packages/core/changes/next.md";
+    write(root, fragment, "- Next release note.\n");
+    expect(readDocumentationState(root).ownersByPath.get(fragment)?.unit).toBe("pending-fragments");
+    rmSync(join(root, fragment));
+
+    for (const selector of ["packages/*/change/*.md", "src/absent/**"]) {
+      write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces: [...surfaces, { ...pending, paths: [selector] }] }));
+      expect(() => readDocumentationState(root)).toThrow(`documentation: dead selector ${selector} in pending-fragments`);
+    }
+    write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces: [...surfaces, pending] }));
+    write(root, "new/unowned.ts", "export const unowned = true;\n");
+    expect(() => readDocumentationState(root)).toThrow(/unknown path new\/unowned.ts/u);
+  });
   it("resolves specific workflow sections and treats reachability as a separate gate", () => {
     const { root, surfaces } = fixture();
     surfaces.push({ id: "workflow", when: "The specific workflow", paths: [SOURCE], doc: OWNER, anchor: "#other" });
