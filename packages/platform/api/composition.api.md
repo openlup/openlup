@@ -344,6 +344,7 @@ export { createSubscriptionContribution } from "./subscriptionContribution.js";
 export { createCommerceContribution } from "./commerceContribution.js";
 export { createAccountSupportContribution } from "./accountSupportContribution.js";
 export { createMarketingContribution } from "./marketingContribution.js";
+export { createRiskContribution } from "./riskContribution.js";
 ```
 ## dist/composition/inventoryContribution.d.ts
 
@@ -496,6 +497,29 @@ export interface NodeHost {
 }
 export declare function createNodeHost(deps: NodeHostDependencies): NodeHost;
 export {};
+```
+## dist/composition/riskContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Risk supplies the incumbent commerce risk slot, never another event handler. */
+export declare function createRiskContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    assessPaidOrder: ((...args: never[]) => unknown) | null;
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        "@openlup/platform/risk:assessPaidOrder": (...args: never[]) => unknown;
+    } | {
+        "@openlup/platform/risk:assessPaidOrder"?: undefined;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+    triggers: {};
+};
 ```
 ## dist/composition/shippingContribution.d.ts
 

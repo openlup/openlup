@@ -2210,6 +2210,25 @@ control unit, which also contains other modules' objects. Follow the
 it is not a standalone installation history. See the
 [R1 record](plans/oss-m15-generic-risk-controls.md) for scope and evidence.
 
+R2 completes the separate delegation phase described above: reference schemas,
+ports, hashing, assessor and both persistence adapters now use the same package
+implementations. `risk/server` additionally exposes the unchanged admin handler
+factories with injected HTTP/BFF types, responder and trusted authorization, plus
+`createRiskBindings` for list/detail/decision callables and the incumbent outbox
+risk slot. Its new graph edges are value-only to browser risk schemas and
+type-only to HTTP/BFF. The reference wrapper retains request-context responses;
+client and UI remain application source with their captured behavior.
+
+`createRiskContribution` in `@openlup/platform/composition` describes the risk
+callable and explicitly selected admin routes. Its handlers and schedules are
+always empty, so commerce remains the sole paid-event executor. It declares the
+existing pure commerce projection dependency. The
+[default-off reference recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
+requires injected schema readiness, preserves host actor mapping and exposes no
+default routes. The neutral [admin witness](../../packages/platform/test/risk/adminHandlers.test.ts)
+and [composition witness](../../server/runtime/public-reference/m15RiskBinding.test.ts)
+are authored falsifiers; execution status belongs to the task record.
+
 ## Application file upgrades
 
 The experimental Node-only

@@ -16,9 +16,9 @@ Provider-neutral fraud, risk, blocklist, and manual-review control plane.
   reusable evaluator. No Supabase, provider, BFF, UI, or `api/*` imports.
 - `types.ts` - compatibility shim to the current risk vocabulary in
   `@openlup/core/risk`.
-- `contracts.ts` - Zod request/response schemas for BFF and persistence
-  boundaries.
-- `ports.ts` - provider-neutral read/write ports used by server handlers.
+- `contracts.ts` - compatibility exports of `@openlup/platform/risk` schemas and
+  inferred types for BFF and persistence boundaries.
+- `ports.ts` - type-only compatibility exports from `@openlup/platform/risk/contracts`.
 - `riskClient.ts` - hidden admin BFF client for the manual review queue.
 
 ## Where the code lives
@@ -30,9 +30,12 @@ Provider-neutral fraud, risk, blocklist, and manual-review control plane.
   public-API or support promise. A scoring or reason-code change belongs there.
 - Shared/frontend: `src/domains/risk/`. `core/evaluator.ts`, `core/rules.ts`,
   `core/types.ts` and `types.ts` are re-export shims over the engine;
-  `contracts.ts`, `ports.ts` and `riskClient.ts` are local.
-- Server: handlers behind `ports.ts`, with the store adapters under
-  `server/adapters/`.
+  `contracts.ts` and `ports.ts` delegate to the platform entries; `riskClient.ts`
+  remains reference source.
+- Server: `@openlup/platform/risk/server` owns hashing, paid-order assessment
+  and the managed/native store factories. The former `server/domains/risk/` and
+  `server/adapters/` paths delegate to those factories with unchanged logic.
+  The reference retains its BFF responder and client/UI.
 
 Use the public [architecture and extension boundary](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md)
 and [publication catalog](../../../config/openlup-publication-catalog.json)
