@@ -1996,7 +1996,8 @@ Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
 Ordinary local workers default to 37.5% of cores (6 of 16 on the measured
-host), coverage to 50%; the wrapper lowers coverage to 40% under contention. Plain local runs inside `verify-command` or an active resource
+host). Coverage through the `npm test` wrapper defaults to 50%, or 40% under
+contention; a direct `vitest --coverage` run uses the 37.5% config default. Plain local runs inside `verify-command` or an active resource
 broker instead default to at most four workers and the host's core count. A
 positive broker CPU-token count further caps workers at one less than that
 count, with a minimum of one, leaving capacity for the main process and child
