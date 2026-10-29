@@ -479,3 +479,19 @@ reference and package factories intentionally shared one owner. Checking it
 early exposed the pre-existing independent-engine assumption. The additional
 domain import lint check exposed a simpler location for the reference rule
 object without a new module or neutrality-count increase.
+
+### R3 predecessor fix3 integration
+
+R2 advanced to `8278ab56835423efde7a0cd2b2280e477810a664` (tree
+`f763d380ba48d25b843349bccda57817cb0d1ddd`). Sign-off merge `6e650dc2`
+had one conflict in this shared record: the predecessor text is verbatim,
+followed by the intact R3 section. The other three predecessor paths merged
+without conflict; no R2 production source, package API or frozen test changed.
+All 44 R2 witness blobs match that head and the quote witness still matches
+test-only `0a29474a`. Focused Vitest passed 46 files / 3,152 cases with two
+workers. Package-size policy passed 46/47; its single real-pack failure contains
+only the existing code-file 2,613/2,574 and total-file 2,667/2,628 cap findings.
+Five-project typecheck (zero consumer-side errors), lint, ast-grep, platform API,
+publication policy (eight answered obligations), zero-increase neutrality,
+gitleaks and DCO pass. No PG-relevant path changed, so the prior real-PG 6/6
+proof was retained. Full draft verification remains held for the lead.
