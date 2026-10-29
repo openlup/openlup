@@ -192,6 +192,19 @@ requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
 transactions and exact-prefix/replay behavior remain.
 
+Risk's Node-only `RISK_MIGRATIONS` descriptor projects the unchanged
+`20260813230000_post_order_control.sql` catalogue unit, including its co-located
+return/control objects. The package asset preserves the canonical SHA-256
+`f24ff3ee3c1022f73162db03b8900c93614d3d6d4c6375cf4aad8a3c0f3360a7`.
+It adds no installation-chain file, managed forward or reviewed-forward class.
+Install the full canonical catalogue and verify its installed prefix and live
+object inventory; this sparse asset is not an install chain. Managed risk keeps
+its existing frozen baseline functions, grants and RLS. Native risk uses invoker
+functions and host-provisioned permissions, with no production role/grant model
+introduced by this unit. The [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
+records the intentional differences preserved by the contribution.
+
+
 Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and
 `20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
@@ -491,6 +504,18 @@ that upgrade path. See [package architecture](ARCHITECTURE_AND_EXTENSIONS.md#ver
 for the shared set and shipment boundary.
 
 ## Database test fixtures and witnesses
+
+Disposable Docker fixtures carry `dev.disposable=1`, their owner PID and start
+in host-clock epoch seconds, short hostname, Linux PID namespace and OpenLup run
+ID. Only a same-host, same-namespace owner proved dead (or a recycled PID whose
+start differs by more than two seconds) is reclaimable after a 60-second floor.
+Uncertain ownership and unlabeled resources are retained. The root test lifecycle
+runs one host sweep: `OPENLUP_DISPOSABLE_REAP=remove` by default, `report` or `off`;
+CI disables the host sweep. Teardown and interrupted wrappers remove only their
+own fresh run ID through the same liveness rule without the age floor, including
+on CI.
+Supabase CLI and compose runners stop their own stacks once on interruption;
+after SIGKILL those stacks still need reviewed manual cleanup.
 
 A selected test may supply neutral settlement, format, provider, location and
 stock rows in its own transaction. Concurrency connections need the same declared

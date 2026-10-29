@@ -444,6 +444,175 @@ The added key is explicitly submitted for the coordinator budget read above;
 no previously allocated cap is increased.
 Self-retro: the focused selection missed the package tooling tests that enumerate module directories and browser entries; include scripts/packages/{eslint-import-map,package-size-policy}.test.ts whenever subpaths or module directories are added.
 
+## Main integration and measurement (coordinator GO)
+
+On 2026-10-29 the coordinator authorized merging main into R1 (no rebase),
+resolving module inventories as unions, regenerating artifacts, running the
+listed cheap gates, signing/pushing the integration and measuring R1 and the
+full M16 packages stack. Current policy/main pin:
+`8046797ace978e148556c30767d8ed231a0dd6e3`; the code comparison base becomes
+that main revision after the merge. The freshly read AGENTS/CONTRIBUTING and
+Documentation maintenance rules include M15's scoped ownership and #433's
+link/command checks. No native prepare/review/receipt/ready/verify-local/arming
+or cap allocation is authorized in this phase. PR #431 stays a draft.
+
+Five conflicts are resolved by union: generated publication catalogue rows;
+release gate browser keys (main risk unchanged, identity contracts 20 retained);
+package-boundary sanctioned entries; lint graph sanctioned server splits; and
+cold consumer imports/proofs (both risk workflows and the market proof retained).
+Main's caps, risk source/tests/SQL and existing browser budgets are unchanged.
+R1 behavior and all company/money witness files remain unchanged. API reports
+are regenerated from a fresh core/platform build. The catalogue is regenerated
+with the existing constructor from both sets of descriptors, and navigation
+with --policy --docs-update. M15's narrower routing requires two new R1 owner
+sections: existing company/money guidance is moved intact into those sections,
+and only their R1 source/test/API selectors are added to documentation routing.
+
+Local signed merge: 167455e4762be181ded0ef412e50c68dc573d230. Focused
+ast-grep PASS; lint PASS (zero errors, 33 existing warnings); platform API check
+PASS; UI neutrality PASS; Gitleaks PASS with 1,056 commits scanned and no leaks;
+branch neutrality PASS with zero increases against main. Focused Vitest at two
+workers ran 28 files / 3,150 cases in 45.17 seconds: 3,149 PASS, with only the
+known platform cap case failing (code files 2,661/2,656 and total 2,716/2,712).
+The cap-only result is left for the explicitly pending coordinator decision;
+no behavior witness fails and no cap is changed. Git comparisons confirm both
+R1 runtime/witness directories match 5f221ac8 and M15 risk source/test/SQL match
+main. An initial pre-merge policy run saw the old fork plus main's ownership
+transition; after the local merge, only four fresh R1 no-impact answers remain
+(adapters, ownership, graph configuration and tooling). This evidence commit
+refreshes those delta-bound trailers; policy is checked again before push.
+Publication policy then PASSed with 10 obligations and zero unanswered. The
+integration and evidence were pushed as b1c0fd8fc15ba9ab6c36ef826cc3466a967fecf4;
+PR #431 remained a draft with auto-merge disabled.
+
+Measurements use actual platform tarballs and the existing measurePack and
+checkPackBudget tooling, with main's unchanged current caps. R1-only is packed
+at that pushed integration head. The full stack starts at the same head in a
+disposable detached worktree. R2 head, read through ls-remote:
+`8278ab56835423efde7a0cd2b2280e477810a664`; R3 PR #436 head:
+`257c5f8e70db56bd3919030f1bfa3ceaf8510ca3`. Both descend from R1
+`5f221ac8c23c6084b3fc8d5b179c72652c066457`. Their packages-only diffs against
+that R1 base are byte-identical; R3's incremental package diff over R2 is empty.
+The R2 patch did not apply cleanly to the relocated README section, so the
+permitted scratch merge fallback combined both heads. README resolution retains
+all R2 descriptor documentation beside the R1 market section; unrelated
+non-package conflicts retain the integrated version because this experiment
+measures package inputs only. R2 descriptor source, witness and fragment match
+their branch byte-for-byte. R1 and the full stack have identical cap objects.
+No R2/R3 branch was changed. The detached worktree was removed after packing.
+
+| Metric | Main cap | R1-only | Full M16 stack |
+| --- | ---: | ---: | ---: |
+| Total files | 2,712 | **2,716 (exceeds by 4)** | **2,719 (exceeds by 7)** |
+| Code files | 2,656 | **2,661 (exceeds by 5)** | **2,664 (exceeds by 8)** |
+| Docs files | 10 | 5 | 5 |
+| Packed bytes | 2,029,568 | 1,989,426 | 1,990,053 |
+| Unpacked bytes | 9,447,424 | 9,275,165 | 9,277,408 |
+| Code gzip bytes | 1,743,872 | 1,714,330 | 1,714,663 |
+| Docs gzip bytes | 73,728 | 60,391 | 60,562 |
+
+R1 tarball SHA-256:
+`1c77d6927a59604674716da121f9b7ab02c18c34c08069f7c1514de05d70232a`.
+Full-stack tarball SHA-256:
+`0c507e13fa309f62de2d93f7df438707599313933d4379f67943ad96d584e181`.
+Local measurement JSON, tarballs, patches and stack provenance remain in this
+task's scratch directory. This final task-record-only commit changes no package
+input, so the measured package bytes remain those of the delivered integration.
+No cap is changed: the coordinator owns the CD-M15-6a decision after reading
+these numbers. Work stops here, without any native review, preparation, receipt,
+ready transition, verification or arming.
+Self-retro: integration must preserve scoped documentation ownership as well as
+module inventories; regenerating output exposes missing owner selectors early.
+
+## Authorized delivery and CD-M16-16 cap allocation
+
+The owner's direct 2026-10-29 continuation installs this task's active Codex
+supervisor as the R1 author/delivery supervisor under the M16 PROC-27 module
+merge grant, after M15 landing. The coordinator is the owner's delegate under
+master §1.0; CD-M16-1 through 16 and the recorded GO bind this continuation.
+The grant now includes DCO commit/push, two fresh native reviews, official local
+verification, PR body/readiness, receipt posting, arming and the bounded direct
+enqueue fallback. Stop at actual queue confirmation or merge. This supersedes
+the earlier draft-only stops; no release, activation, adopter change or unrelated
+scope is added. This same thread is the sole implementation/supervisor context;
+its CODEX_THREAD_ID is used by native prepare and retained in ignored evidence.
+No reviewer context has implemented or supervised this candidate. Initial native
+review has not yet been prepared; no native cycles or reviewer contexts have
+been consumed in this task. Preserve any subsequently discovered session history.
+
+Current fetched policy revision is
+`8046797ace978e148556c30767d8ed231a0dd6e3`, separately from the candidate
+identity; R1 is independent with OPENLUP_STACK_BASE unset. The assigned arming
+runbook is read in full. Its snapshot predates #433: current rules additionally
+require each actual native report's documentation assessment. The live native
+scripts match main and implement that requirement. Pinned Node 24.21.0,
+npm 11.19.0, Gitleaks 8.30.1, Docker and Supabase CLI 2.98.2 are available.
+No openlup-dev installation is found, so the public native verify-local route
+applies. Task evidence after candidate freeze stays in ignored scratch or PR
+records; no tracked after-review bookkeeping edit is planned.
+
+CD-M16-16 records the coordinator's maintainer/budget read and authorizes only
+platform file caps: total 2,712 → 2,774 and code 2,656 → 2,718. Derivation:
+ceil(2,719 × 1.02) = 2,774; ceil(2,664 × 1.02) = 2,718. Byte caps, docs caps,
+browser budgets (including identity contracts 20) and all other gates stay
+unchanged. The exact supplied reason is:
+
+M16 company-identity + market-packs subpaths; measured full M16 stack on M15 main (integration f05668d6) at 2,719 total / 2,664 code files; ×1.02 rounded up (CD-M15-6a rule, CD-M16-16)
+
+The current JSON and M15's original cap commit have no cap-reason member; retain
+the derivation as pack.capReason metadata alongside these caps and in this task
+record. No parser/scanner/control is changed. The committed-package checker
+requires clean package inputs, so run the focused real-pack witness and other
+working-tree checks, make the DCO cap commit, then run packages:check before
+pushing. Working-tree cap checks: package-size-policy 48/48 PASS, including
+the real platform pack; policy/docs-update PASS (10 obligations, zero unanswered);
+neutrality PASS (zero increases); lint PASS (zero errors, 33 existing warnings).
+All required checks and final official verification still apply.
+
+The smallest adequate alternative considered was keeping market defaults in the
+package behind a neutrality allowance. The coordinator refused that allowance;
+with none, the injected rules/fallback seam is the smallest neutral route.
+Review criteria retain unchanged engine/cache/money order and effects, explicit
+policy inputs, reference callers unchanged, full C1 mapping with no R1 proof gap,
+zero neutrality increases, identity browser budget 20 and the approved file caps.
+Policy extraction, caller swap, R2/R3 pack homes and core widening stay excluded.
+Three native repair cycles are available; do not use continue. After two
+nonconverging evaluations, follow the existing regroup rule before further work.
+
+Self-retro: cap approval follows measured full-stack evidence; reserve the final
+tracked authority/criteria packet before native review so bookkeeping cannot
+invalidate the verified tree. Later execution observations remain in scratch.
+
+## Native repair cycle 1: PostgreSQL fixture lifecycle
+
+Both initial fresh native review executions completed on cap candidate
+26f33955d1369c8e532310ddfd9012d8112843cb. The session retains one material
+finding, M16-R1-PG-LIFECYCLE: the directory fixture's literal 120-second setup
+budget could expire during the helper's permitted 300-second cold pull, and
+unbounded pool closes could prevent container removal. The second independent
+report established no additional finding. This is one completed candidate
+evaluation, not two repair cycles. Actual context identities/reports and their
+execution observations are retained in ignored native-session evidence.
+
+Repair only the new fixture lifecycle: use existing postgresSetupTimeoutMs and
+postgresTeardownTimeoutMs, and closePostgres(container, [reader, owner]). The
+existing helper bounds the shared close phase and attempts container removal
+after failure or stall. All six test titles, SQL, role/refusal assertions and
+package behavior remain unchanged. No helper, runner, timeout constant or new
+mechanism is changed. Focused real-PG and existing cheap checks precede the DCO
+repair commit; two new fresh contexts must review this committed tree and close
+the material finding explicitly. Initial reports remain in history and do not
+count as current-tree approval. The intent and 44-path scope are unchanged. Repair checks: focused real-PG
+6/6 PASS (1.94 seconds); focused ast-grep PASS; lint PASS (zero errors, 33
+existing warnings); neutrality PASS (zero increases). The changed fixture delta
+requires a fresh tests no-impact trailer, supplied in the repair commit and
+checked before re-preparation. No package runtime or artifact input changes.
+
+Self-retro: use the canonical integration fixture lifecycle from the outset;
+a passing warm-image run does not establish safe cold acquisition or bounded
+teardown. This repair applies the existing rule rather than adding another
+cleanup mechanism or changing any preservation assertion.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness

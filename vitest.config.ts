@@ -1,9 +1,17 @@
 import { defaultExclude, defineConfig } from "vitest/config";
 import { defaultClientConditions, defaultServerConditions } from "vite";
 import react from "@vitejs/plugin-react";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { env as processEnvironment } from "node:process";
 import path from "path";
 import { flatTestTimeoutMs, type DurationSections } from "./scripts/ci-vitest-duration-keys.ts";
+
+// The wrapper pins only its own child; a nested invocation gets a new identity.
+const disposableRunKey = Symbol.for("openlup.disposable.run");
+process[disposableRunKey] ??= processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER ?? randomUUID();
+processEnvironment.OPENLUP_DISPOSABLE_RUN = process[disposableRunKey];
+delete processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER;
 
 const isCoverageRun = process.argv.includes("--coverage");
 const isCoverageShard = process.env.VITEST_COVERAGE_SHARD === "1";
@@ -76,6 +84,7 @@ export default defineConfig({
     // Environment routing lives in projects below. A Node-project test needing
     // DOM opts in with @vitest-environment jsdom; see the canonical testing guide.
     globals: true,
+    globalSetup: ["./tests/setup/disposable-docker.ts"],
     // Only this config runs in the Vitest main process. Workers are forked with their
     // own argv (`[node, workers/forks.js]`), so a setup file cannot see `--coverage`
     // for itself — `src/test/setup.ts` reads this to widen the testing-library async

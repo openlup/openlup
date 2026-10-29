@@ -1,5 +1,7 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import ts from "typescript";
+import { disposableLabelArgs } from "../disposable-docker.mjs";
+import { buildSync } from "esbuild";
 import { MARKET_PACK_CONSUMER_PROOF } from "./market-pack-consumer-proof.ts";
 import { MARKET_DESCRIPTOR_CONSUMER_PROOF } from "./market-descriptor-consumer-proof.ts";
 import { REFERENCE_DELEGATION_CONSUMER_PROOF, REFERENCE_DELEGATION_TYPES } from "./reference-delegation-consumer-proof.ts";
@@ -17,6 +19,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
 
+export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
+
 export const NON_ADAPTER_ENTRIES = [
   "company-identity",
   "company-identity/contracts",
@@ -26,6 +30,8 @@ export const NON_ADAPTER_ENTRIES = [
   "portability",
   "operations",
   "operations/contracts",
+  "risk",
+  "risk/contracts",
   "account-support",
   "account-support/contracts",
   "marketing",
@@ -63,6 +69,7 @@ export const NON_ADAPTER_ENTRIES = [
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
   "operations/server",
+  "risk/server",
   "marketing/server/postgres",
   "blob",
   "catalog",
@@ -1661,7 +1668,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
   const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
   try {
     // Complete catalogue fingerprints use the repository harness's PostgreSQL 16 profile.
-    docker(["run","--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust","postgres:16"]);
+    docker(["run",...disposableLabelArgs(),"--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust","postgres:16"]);
     const port = docker(["port",name,"5432/tcp"]).split(":").at(-1)!;
     const connectionString = `postgresql://postgres@127.0.0.1:${port}/postgres`;
     // Host TCP readiness, through the same repository harness as the real-PG witness.
@@ -2003,12 +2010,14 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     compileReferenceDelegationTypes(consumer, compiler);
+    for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     consumerNode(consumer, MARKET_DESCRIPTOR_CONSUMER_PROOF);
     consumerNode(consumer, REFERENCE_DELEGATION_CONSUMER_PROOF);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
+    proveRiskConsumer(consumer);
     compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
@@ -2137,3 +2146,97 @@ console.log("R2_SCENARIOS="+JSON.stringify(results));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) runPlatformColdConsumer();
+
+/** M15 preliminary packed paid-order trial: useful assessment, refusal and no pg runtime peer. */
+export function proveRiskConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as contracts from "@openlup/platform/risk/contracts";
+import { adminRiskCasesListRequestSchema } from "@openlup/platform/risk";
+import { createOrderPaidRiskAssessmentPort, createPostgresRiskControlPorts, riskSubjectHash } from "@openlup/platform/risk/server";
+assert.deepEqual(Object.keys(contracts),[]);
+assert.deepEqual(adminRiskCasesListRequestSchema.parse({}),{page:1,pageSize:25});
+const writes=[];
+const order={id:"order-a",clientId:null,subtotalCents:900,discountCents:0,shippingCents:0,shippingDiscountCents:0,taxCents:0,totalCents:900,currency:"XTS",mode:"one_time",metadata:{}};
+const deps={mode:"shadow",evidencePort:{readOrder:async()=>order,readSucceededPaymentIntent:async()=>({id:"payment-a",amountCents:900,currency:"XTS"})},blocklistPort:{checkExactBlocklist:async()=>({blocked:false,reasonCodes:[]})},assessmentPort:{assessPaidOrder:async request=>{writes.push(request);return {assessmentId:"assessment-a",caseId:null,holdId:null,decision:"allow",holdOpened:false,replayed:false};}}};
+const input={orderUuid:"order-a",outboxEventId:"event-a",signal:new AbortController().signal};
+assert.deepEqual(await createOrderPaidRiskAssessmentPort(deps).assessPaidOrder(input),{kind:"allow",detail:{assessmentId:"assessment-a"}});
+assert.equal(writes[0].idempotencyKey,"risk:event-a:order-a");
+assert.equal(writes[0].subjectRefs[0].subjectHash,riskSubjectHash("order","order-a"));
+assert.deepEqual(await createOrderPaidRiskAssessmentPort({...deps,evidencePort:{...deps.evidencePort,readSucceededPaymentIntent:async()=>null}}).assessPaidOrder(input),{kind:"retryable",reason:"risk_payment_intent_not_ready"});
+assert.equal(writes.length,1);
+assert.equal(typeof createPostgresRiskControlPorts,"function");
+await assert.rejects(import("@openlup/platform/dist/risk/server/orderPaidRiskPort.js"),error=>error.code==="ERR_PACKAGE_PATH_NOT_EXPORTED");
+`);
+}
+
+
+/** Consume R2 from the existing disposable installed-artifact harness. */
+export function proveRiskWorkflowConsumer(consumer: string, compiler: string, proof: typeof RISK_WORKFLOW_PROOFS[number]): void {
+  if (proof === "admin") {
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createBffResponder } from "@openlup/platform/bff";
+import { createRiskBindings, createSupabaseRiskAdminPort } from "@openlup/platform/risk/server";
+const caseId="11111111-1111-4111-8111-111111111111", actor="22222222-2222-4222-8222-222222222222", at="2026-01-01T00:00:00.000Z";
+const row={id:caseId,assessment_id:"33333333-3333-4333-8333-333333333333",status:"approved",severity:"high",decision:"manual_review",risk_score:60,reason_codes:[],order_id:null,client_id:null,payment_intent_id:null,hold_id:null,opened_at:at,updated_at:at};
+const calls=[];
+const client={from(table){const b={select(){return b;},eq(){return b;},order(){return b;},range:async()=>({data:[],error:null}),maybeSingle:async()=>({data:table==="risk_manual_review_cases"?row:{subject_refs:[],evidence:{sanitized:true},matched_rules:[]},error:null})};return b;},rpc:async(name,args)=>{calls.push([name,args]);return {data:{replayed:true},error:null};}};
+const bound=createRiskBindings({respond:createBffResponder(),authorizeAdmin:async()=>({ok:true,userId:actor}),mutationsEnabled:()=>true,adminPort:createSupabaseRiskAdminPort(client),assessmentPort:{assessPaidOrder:async()=>({kind:"allow"})}});
+let status=200,body;
+const res={setHeader(){},status(value){status=value;return res;},json(value){body=value;return res;}};
+await bound.decision({method:"POST",query:{},body:{caseId,decision:"note",idempotencyKey:"synthetic-decision",note:" Synthetic note "}},res);
+assert.equal(status,200);assert.equal(body.ok,true);assert.equal(body.data.replayed,false);
+assert.equal(body.data.case.status,"approved");assert.deepEqual(body.data.case.actionEligibility.approve,{allowed:false,reason:"case_closed"});
+assert.deepEqual(body.data.case.actionEligibility.note,{allowed:true,reason:null});
+assert.deepEqual(calls,[["risk_resolve_manual_review_case",{p_idempotency_key:"synthetic-decision",p_case_id:caseId,p_decision:"note",p_actor_user_id:actor,p_note:"Synthetic note",p_metadata:{}}]]);
+`);
+    return;
+  }
+  if (proof === "isolation") {
+    for (const name of ["risk", "risk/contracts"]) {
+      const result = buildSync({ entryPoints: [join(consumer, `node_modules/@openlup/platform/dist/${name}/index.js`)],
+        platform: "browser", bundle: true, format: "esm", write: false, metafile: true, treeShaking: false });
+      assert(!Object.keys(result.metafile!.inputs).some(path => path.includes("/server/") || path.includes("node:crypto")));
+      if (name.endsWith("contracts")) assert.equal(result.outputFiles![0].text.trim(), "");
+    }
+    assert.throws(() => buildSync({ entryPoints: [join(consumer, "node_modules/@openlup/platform/dist/risk/server/index.js")],
+      platform: "browser", bundle: true, write: false, logLevel: "silent" }), /node:crypto/);
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+for (const path of ["bindings", "riskAdminCasesHandler"]) {
+  await assert.rejects(import("@openlup/platform/dist/risk/server/"+path+".js"), error=>error.code==="ERR_PACKAGE_PATH_NOT_EXPORTED");
+}
+await assert.rejects(import("pg"),error=>error.code==="ERR_MODULE_NOT_FOUND");
+`);
+    return;
+  }
+  const file = join(consumer, "risk-workflow-consumer.ts");
+  writeFileSync(file, `
+import { createRiskBindings, type RiskAdminAuthorization } from "@openlup/platform/risk/server";
+import { createOutboxDispatchRegistry } from "@openlup/platform/commerce/server";
+import { createRiskContribution } from "@openlup/platform/composition";
+import type { RiskAdminWritePort } from "@openlup/platform/risk/contracts";
+import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
+declare const deps: Parameters<typeof createRiskBindings>[0];
+declare const req: HttpRequest, res: HttpResponse;
+const bound = createRiskBindings(deps);
+const handled: Promise<void> = bound.decision(req, res);
+const slot: Pick<Parameters<typeof createOutboxDispatchRegistry>[0], "riskPort" | "riskEnabled"> = bound.outboxRisk;
+const trusted: RiskAdminAuthorization = { ok: true, userId: "synthetic-actor" };
+// @ts-expect-error successful authorization must provide the trusted actor
+const untrusted: RiskAdminAuthorization = { ok: true };
+// @ts-expect-error write ports require actor injection
+const missingActor: Parameters<RiskAdminWritePort["decideCase"]>[0] = { caseId: "synthetic-case", decision: "note", idempotencyKey: "synthetic-decision" };
+// @ts-expect-error a handler requires its injected BFF responder
+createRiskBindings({ authorizeAdmin: deps.authorizeAdmin, adminPort: deps.adminPort, assessmentPort: deps.assessmentPort, mutationsEnabled: deps.mutationsEnabled });
+const contribution = createRiskContribution({ version: "0.0.0", requiredSchema: { version: "synthetic", migration: "synthetic", objects: [] }, assessPaidOrder: bound.outboxRisk.riskPort.assessPaidOrder, routes: [{ id: "synthetic-route", handle: bound.list }] });
+void [handled, slot, trusted, untrusted, missingActor, contribution];
+`);
+  const configuration = join(consumer, "risk-workflow-tsconfig.json");
+  writeFileSync(configuration, JSON.stringify({ compilerOptions: {
+    target: "ES2022", module: proof === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: proof,
+    strict: true, skipLibCheck: true, noEmit: true, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")],
+  }, files: [file] }));
+  process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+}

@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createSupabaseAddressCanonLookupPort } from "../../server/adapters/supabase/address-canon/addressCanonLookup.js";
 import { PgGatewayClient } from "@openlup/platform/data";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const TABLES = ["address_canon_sources", "address_canon_localities", "address_canon_streets", "address_canon_postal_localities"];
 const A = "16000000-0000-4000-8000-000000000001";
@@ -52,12 +52,8 @@ beforeAll(async () => {
       ('16000000-0000-4000-8000-000000000013','gus_teryt','${B}','Other Road','other road',true);`);
   const connection = new URL(container.connectionString); connection.username = "market_fixture";
   reader = new Pool({ connectionString: connection.toString() });
-}, 120_000);
-afterAll(async () => {
-  const closed = await Promise.allSettled([reader?.end(), owner?.end()]);
-  await container?.remove();
-  for (const result of closed) if (result.status === "rejected") throw result.reason;
-});
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, [reader, owner]); }, postgresTeardownTimeoutMs);
 async function asRole<T>(role: "authenticated" | "anon" | "service_role", run: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await reader.connect();
   try { await client.query("BEGIN"); await client.query(`SET LOCAL ROLE ${role}`); return await run(client); }

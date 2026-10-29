@@ -693,6 +693,15 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Risk's browser module has no server edge. `risk/server` consumes risk contracts as types
+and the public pure commerce money projection; its data executor dependency
+is type-only through the public data entry. The type-only `risk/contracts`
+entry contains no runtime imports, loaders, Zod or server dependencies.
+The Node entry also consumes M03's `identity/contracts` entry for privacy
+document/obligation validation and types. Identity server and internal modules
+remain forbidden, and the risk browser module receives no identity edge.
+
+
 The browser-safe `@openlup/platform/commerce` entry exports only schemas, pure
 helpers and ports. Its graph never imports `commerce/server`; a browser bundle
 and source-boundary witness enforce the split. The Node-only server entry
@@ -2164,6 +2173,101 @@ existing behavior assertions. The existing
 typed calls, authorization/input/output refusals and the real native invoker role,
 including durable replay/conflict, checkOnly and a second-process restart.
 Its executed result, rather than this source description, establishes proof.
+
+## Risk contracts
+
+The development-preview risk contribution retains the existing Core evaluator,
+rules, thresholds and reason vocabulary at `@openlup/core/risk`. The isolated
+[platform schemas](../../packages/platform/src/risk/schemas.ts) retain strict
+objects, coercion/defaults and CSP-safe `jitless` initialization. The
+[type-only contracts](../../packages/platform/src/risk/contracts/index.ts)
+match their inferred output types. The
+[Node entry](../../packages/platform/src/risk/server/index.ts) exposes the existing
+paid-order assessor, hashing and structural persistence factories; it loads no
+provider SDK or pg runtime. Native declarations use the existing data executor
+type (the data entry retains its optional peer type requirements).
+
+The managed evidence client also needs host-provisioned commerce order/payment
+reads; the frozen baseline risk RPC grants alone do not grant those reads.
+Hosts own client construction, runtime selection, trusted authorization and
+actor mapping, hash secret and mode. Mere existence of a native operator row
+is not application authorization. No route, executor, worker, schedule or flag
+is selected by importing these entries. Reference client/UI and implementations
+remain in place until the separate delegation phase. Privacy integration and
+operational transfer composition are separate obligations.
+
+The assessor reads canonical order money and successful payment evidence,
+hashes its existing subject references, leaves uncollected signals at zero and
+persists `risk:<outbox-event>:<order>` with a newly generated occurrence timestamp.
+Missing payment retries; missing order, invalid money and idempotency conflicts
+retain their fatal classifications. Do not infer a universal allow from shadow:
+review/block can make the existing fulfillment consumer acknowledge without
+dispatch even when SQL creates no hold.
+
+The [SQL preservation witness](../../tests/postgres/riskControl.conformance.test.ts)
+keeps both rails distinct. Native shadow non-allow creates a case without a hold;
+managed shadow creates neither. Native assessment fingerprints omit timestamp
+and evidence; managed fingerprints include them, so a retry at a new timestamp
+can conflict. Managed requires succeeded payment; native SQL accepts a paid
+order without an intent while its adapter still requires settled evidence.
+Native decisions after closure refuse except notes; managed decisions can change
+a closed case. Managed admin readback returns `replayed: false`, even for a SQL
+replay; native preserves the SQL replay field. Native blocklist lookup uses active
+rows and their reasons; managed additionally applies starts/expiry times and
+projects `exact_blocklist_match`. These are characterization facts, not corrected
+policy. Any correction needs its own behavior-change approval.
+
+`RISK_MIGRATIONS` is an unchanged sparse asset projection of the native post-order
+control unit, which also contains other modules' objects. Follow the
+[catalogue contract](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories);
+it is not a standalone installation history. See the
+[R1 record](plans/oss-m15-generic-risk-controls.md) for scope and evidence.
+
+R2 completes the separate delegation phase described above: reference schemas,
+ports, hashing, assessor and both persistence adapters now use the same package
+implementations. `risk/server` additionally exposes the unchanged admin handler
+factories with injected HTTP/BFF types, responder and trusted authorization, plus
+`createRiskBindings` for list/detail/decision callables and the incumbent outbox
+risk slot. Its new graph edges are value-only to browser risk schemas and
+type-only to HTTP/BFF. The reference wrapper retains request-context responses;
+client and UI remain application source with their captured behavior.
+
+`createRiskContribution` in `@openlup/platform/composition` describes the risk
+callable and explicitly selected admin routes. Its handlers and schedules are
+always empty, so commerce remains the sole paid-event executor. It declares the
+existing pure commerce projection dependency. The
+[default-off reference recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
+requires injected schema readiness, preserves host actor mapping and exposes no
+default routes. The neutral [admin witness](../../packages/platform/test/risk/adminHandlers.test.ts)
+and [composition witness](../../server/runtime/public-reference/m15RiskBinding.test.ts)
+are authored falsifiers; execution status belongs to the task record.
+
+`createRiskPrivacyContributor` adds a bounded structural M03 contributor through
+`risk/server`. Register it explicitly in the existing identity contributor registry
+with `risk` required. Its five logical resources cover assessments (including
+evidence and subject hashes), blocklist entries, review cases (including hold
+links), case events (including actor links and notes), and idempotency facts.
+Native replay fingerprints remain covered even without a separate replay table.
+The host supplies read-only subject mapping and a per-resource retention policy;
+missing owners, incomplete declarations, foreign ownership or an unsupported
+erasure disposition remain unresolved. No retention period is supplied by the
+platform. Risk rows, audit, replay and linked holds are never deleted here.
+
+The read port returns one result per resource, explicitly available or unavailable;
+empty known resources use an available empty result. Partial or malformed result
+inventories refuse export. Unavailable resources are omitted from data and named
+in coverage; nested credentials refuse through M03's document validator. Export
+coverage describes readable data, independently of policy coverage. A complete
+policy may explicitly retain unreadable resources; missing policy never permits
+erasure. Policy text and adapter diagnostics are not echoed into receipts.
+
+`createRiskPrivacyBinding` returns this contributor for host registry composition.
+Portability is deferred by default; an optional opaque host value is carried
+unchanged without invocation, transfer/restore validation or an M14 import.
+No reference route or R2 binding is changed. Identity retains authorization,
+transaction rollback and receipt replay, including its managed erasure refusal.
+See [identity personal data](IDENTITY.md#identity-personal-data) for the
+orchestration and completion limits.
 
 ## Application file upgrades
 

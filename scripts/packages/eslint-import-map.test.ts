@@ -483,7 +483,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     };
     const entries = readdirSync(platformSource, { withFileTypes: true });
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
-    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server", "operations/server", "company-identity/server"].sort());
+    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server", "operations/server", "risk/server", "company-identity/server"].sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
       for (const target of [...values, ...types]) {
         const [owner, ...entry] = target.split("/");
@@ -617,6 +617,20 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
         expect(await moduleMessages(config, source(specifier), browserFile), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce"'));
       }
     }
+  });
+
+  it("admits only the risk privacy contracts edge into identity", async () => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
+    expect(graph["risk/server"]).toEqual({ values: ["commerce", "risk", "identity/contracts"], types: ["risk/contracts", "data", "http", "bff"] });
+    const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
+    const file = "packages/platform/src/risk/server/probe.ts";
+    expect(await moduleMessages(config, source("../../identity/contracts/index.js"), file)).toEqual([]);
+    for (const specifier of ["../../identity/index.js", "../../identity/privacyPorts.js", "../../identity/contracts/privacy.js"]) {
+      expect(await moduleMessages(config, source(specifier), file), specifier).toContainEqual(expect.stringContaining('packages/platform module "risk/server"'));
+    }
+    expect(await moduleMessages(config, 'import type { PersonalDataContributor } from "../../identity/index.js";', file)).toContainEqual(expect.stringContaining('packages/platform module "risk/server"'));
+    expect(await moduleMessages(config, source("../identity/contracts/index.js"), "packages/platform/src/risk/probe.ts")).toContainEqual(expect.stringContaining('packages/platform module "risk"'));
   });
 
   it("admits the marketing Node-entry edge and refuses reverse marketing imports", async () => {
