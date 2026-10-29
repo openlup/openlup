@@ -11,7 +11,7 @@ const product = {
   id: "product-example", slug: "example", segment: "example",
   primarySku: { sku: "opaque:example", productSlug: "example", variantId: "variant-example", netWeightGrams: 1 },
   variants: [{ sku: "opaque:example", productSlug: "example", variantId: "variant-example", netWeightGrams: 1 }],
-} as CatalogProduct;
+} as unknown as CatalogProduct;
 const catalogReadPort: CatalogReadPort = {
   async listProducts() { return [product]; },
   async getProductBySlug(slug) { return slug === product.slug ? product : null; },
