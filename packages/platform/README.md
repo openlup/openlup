@@ -70,8 +70,11 @@ timestamp used in the webhook's idempotency key.
 
 The experimental migration source may supply `assertSession` to observe host
 facts once under the existing advisory lock, after exact ledger-prefix admission
-and before status, dry-run or pending SQL. Sources without it retain current
-execution. The [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and before status, dry-run or pending SQL. Every source uses catalog-bound locks
+and admits only the canonical baseline ledger catalog shape before reading its
+exact prefix. A pending unit locks an installed ledger before its first catalog
+read in that transaction and preserves the connection's isolation setting. The
+[migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
 

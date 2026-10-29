@@ -1,6 +1,7 @@
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { assertQualifiedPostgresSession, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -67,6 +68,64 @@ it("admits the actual restricted, fixed operator-provisioned graph under the hel
     expect(await snapshot(client)).toEqual(before);
   });
 });
+
+const methods = ["status", "dry-run", "apply"] as const;
+const moments = ["before-facts", "after-facts"] as const;
+it.each(moments.flatMap(moment => methods.map(method => ({ moment, method }))))(
+  "keeps the qualified fresh catalog observation consistent for $method ($moment)", async ({ moment, method }) => {
+    const url = new URL(container!.connectionString);
+    url.searchParams.set("options", "-c openlup.qualified.runtime_login=qualified_runtime -c openlup.qualified.restore_login=qualified_restore -c openlup.qualified.role_mode=operator-provisioned");
+    const runnerPool = new Pool({ connectionString: url.toString(), max: 1 });
+    let factsAbsent = false, selectedReached = false, selectedLedger = false, selectedConstraint = false;
+    const createLedger = async () => admin.query(`CREATE FUNCTION public.synthetic_race_marker() RETURNS pg_catalog.text
+      LANGUAGE plpgsql VOLATILE AS $$ BEGIN PERFORM pg_catalog.pg_advisory_lock(73120492::pg_catalog.int8); RETURN 'synthetic'; END $$;
+      CREATE TABLE public.platform_schema_migrations (
+        catalog_path pg_catalog.text, sha256 pg_catalog.text, position pg_catalog.int4,
+        CONSTRAINT synthetic_race_check CHECK (public.synthetic_race_marker() IS NOT NULL))`);
+    const racingPool = {
+      async connect() {
+        const client = await runnerPool.connect();
+        return {
+          async query(command: string | { name?: string; text: string }, values?: unknown[]) {
+            const result = await client.query(command as string, values);
+            if (command === "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" && moment === "before-facts") {
+              await createLedger();
+            }
+            if (typeof command === "string" && command.includes("AS ledger_exists")) {
+              factsAbsent = result.rows[0]?.ledger_exists === false;
+              if (moment === "after-facts") await createLedger();
+            }
+            if (typeof command !== "string" && command.name === "openlup-qualified-catalog-rows-v1") {
+              selectedReached = true;
+              selectedLedger = result.rows.some(row => row.kind === "relation" && row.name === "platform_schema_migrations");
+              selectedConstraint = result.rows.some(row => row.kind === "constraint" && row.name === "synthetic_race_check");
+            }
+            return result;
+          },
+          release: client.release.bind(client),
+        };
+      },
+    } as unknown as Pool;
+    const runner = createPostgresMigrationRunner({ connectionString: container!.connectionString }, {
+      installation: selection, poolFactory: () => racingPool,
+    });
+    try {
+      const result = method === "status" ? runner.status() : runner.apply({ dryRun: method === "dry-run" });
+      if (moment === "before-facts") await expect(result).rejects.toThrow("platform migration ledger changed before read");
+      else if (method === "apply") await expect(result).rejects.toThrow();
+      else await expect(result).resolves.toBeDefined();
+      expect({ factsAbsent, selectedReached, selectedLedger, selectedConstraint }).toEqual(moment === "before-facts"
+        ? { factsAbsent: false, selectedReached: false, selectedLedger: false, selectedConstraint: false }
+        : { factsAbsent: true, selectedReached: true, selectedLedger: false, selectedConstraint: false });
+      expect((await admin.query(`SELECT pg_catalog.count(*)::pg_catalog.int4 AS calls FROM pg_catalog.pg_locks
+        WHERE locktype OPERATOR(pg_catalog.=) 'advisory'::pg_catalog.text
+          AND objid OPERATOR(pg_catalog.=) 73120492::pg_catalog.oid AND granted`)).rows[0].calls).toBe(0);
+    } finally {
+      await runnerPool.end();
+      await admin.query("DROP TABLE IF EXISTS public.platform_schema_migrations; DROP FUNCTION IF EXISTS public.synthetic_race_marker()");
+    }
+  },
+);
 
 it.each(["anon", "authenticated", "platform_acquisition_runtime"])("refuses database CREATE reachable through SET ROLE %s even without inheritance", async target => {
   await admin.query(`GRANT CREATE ON DATABASE postgres TO ${target}`);
