@@ -141,6 +141,8 @@ export async function mapManagedIdentityForConnectedRestore(input: {
         ? ["membershipState", "revokedAt", "revokedBy", "revocationReason"] : ["membershipState", "revokedAt", "revokedBy"])
       || oldValue.membershipState !== "active" || oldValue.role !== target.role
       || newValue.membershipState !== "revoked" || newValue.revokedAt !== target.membership_revoked_at
+      || typeof target.membership_revoked_by !== "string"
+      || target.membership_revoked_by.toLowerCase() !== row.actor_admin_id.toLowerCase()
       || newValue.revokedBy !== row.actor_admin_id || (newValue.revocationReason ?? null) !== target.membership_revocation_reason) {
       fail("target_conflict", "platform_human_membership_audit_events");
     }
@@ -175,6 +177,13 @@ export async function mapManagedIdentityForConnectedRestore(input: {
       if (!row.email.endsWith("@identity.invalid") || !erasedClientIds.has(String(row.id).toLowerCase()) || row.auth_user_id !== null
         || row.first_name !== null || row.last_name !== null || row.phone !== null || row.country !== null) fail("invalid_input");
     } else if (erasedClientIds.has(String(row.id).toLowerCase())) fail("invalid_input");
+  }
+  for (const row of source.adminUsers) {
+    const erased = erasedPrincipalIds.has(mapped(row.id));
+    const redacted = typeof row.email === "string" && row.email.startsWith("erased+")
+      && row.email.endsWith("@identity.invalid");
+    if (erased ? !redacted || row.membership_state !== "revoked" || row.membership_revocation_reason !== null
+      : redacted) fail("invalid_input");
   }
   if (clients.some(row => row.principal_id !== null && erasedPrincipalIds.has(String(row.principal_id)))) fail("invalid_input");
   const lifecycle = source.lifecycleEvents.map(row => {

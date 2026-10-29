@@ -2,7 +2,8 @@
 
 Status: development-preview task record; phase 2 authorized by CD-M14-19 and
 the two clarifications resolved by CD-M14-21 (29 October 2026). M14/D32 remains
-open; stop at maintainer NEEDS_READ before DCO for the new API/control.
+open. The coordinator's maintainer API/security-control read accepted staged
+tree `e8d14d9c6a98fd80435ccc1f564dfb3c15681578` before DCO.
 
 ## Outcome, scope and authority
 
@@ -158,3 +159,15 @@ configuration check, without a service or audit archive table in item 7. The
 source-audit UUID serves as the native row ID and explicit source reference;
 item 8 still owns full-row retention. No delivery qualification is claimed
 before read, review and final verification.
+
+Initial native review found two mapped-state conflicts in the accepted API:
+`D32-AUDIT-REVOKER-CONFLICT` (membership revoker differed from audit actor)
+and `B1` (an erased operator could retain active membership and live email).
+The first repair compares the revoker fields and requires erased operators to
+be revoked, redacted and reason-free; a redacted operator without a receipt also
+refuses. The real-PG fixture now proves those refusals and the valid redacted
+operator mapping. Its first run failed because a test helper looked only at the
+compatible table list; it now reads the existing owned list too, and the suite
+passes 5/5. These repairs enforce the accepted conflict and erasure criteria;
+they add no new transfer semantics or control. Final native review and the
+canonical gate remain outstanding.

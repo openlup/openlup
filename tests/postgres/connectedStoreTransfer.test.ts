@@ -457,6 +457,10 @@ it("maps a representative managed identity projection through the qualified rest
     { ...evidence, clients: [{ ...evidence.clients[0], preferences: { hidden: true } }, evidence.clients[1]] },
     { ...evidence, adminUsers: [{ ...evidence.adminUsers[0], is_machine_actor: true }, evidence.adminUsers[1]] },
     { ...evidence, erasures: [{ ...evidence.erasures[0], principal_id: liveManagedId }] },
+    { ...evidence, erasures: [...evidence.erasures, { ...evidence.erasures[0], erasure_id: randomUUID(),
+      idempotency_key: randomUUID(), client_id: null, principal_id: adminManagedId }] },
+    { ...evidence, adminUsers: evidence.adminUsers.map(row => row.id === revokedManagedId
+      ? { ...row, email: `erased+${revokedManagedId}@identity.invalid` } : row) },
     { ...evidence, issuer: "https://issuer.example.invalid/managed#alias" },
     { ...evidence, revokeAudit: [{ ...evidence.revokeAudit[0], actor_admin_id: randomUUID() }] },
     { ...evidence, revokeAudit: [{ ...evidence.revokeAudit[0], unexpected_field: "unsafe" }] },
@@ -464,6 +468,24 @@ it("maps a representative managed identity projection through the qualified rest
   ];
   for (const candidate of invalid) await expect(mapManagedIdentityForConnectedRestore({ source: candidate, freshTarget: pristine, targetOwner: target.owner }))
     .rejects.toMatchObject({ code: "invalid_input" });
+  const redactedOperator = { ...evidence,
+    adminUsers: evidence.adminUsers.map(row => row.id === revokedManagedId
+      ? { ...row, email: `erased+${revokedManagedId}@identity.invalid`, membership_revocation_reason: null } : row),
+    revokeAudit: [{ ...evidence.revokeAudit[0], new_value: { membershipState: "revoked", revokedAt, revokedBy: adminManagedId } }],
+    erasures: [...evidence.erasures, { ...evidence.erasures[0], erasure_id: randomUUID(),
+      idempotency_key: randomUUID(), client_id: null, principal_id: revokedManagedId }],
+  };
+  const redactedMapping = await mapManagedIdentityForConnectedRestore({ source: redactedOperator,
+    freshTarget: pristine, targetOwner: target.owner });
+  const mappedRows = (table: string) => (redactedMapping.packet.compatible.tables.find(entry => entry.table === table)
+    ?? redactedMapping.packet.owned.find(entry => entry.table === table))!.rows
+    .map(row => JSON.parse(row) as Record<string, unknown>);
+  expect(mappedRows("platform_human_principals")).toContainEqual(expect.objectContaining({
+    principal_id: deriveOidcPrincipalId(issuer, revokedManagedId), email: `erased+${revokedManagedId}@identity.invalid` }));
+  expect(mappedRows("platform_human_memberships")).toContainEqual(expect.objectContaining({
+    principal_id: deriveOidcPrincipalId(issuer, revokedManagedId), membership_state: "revoked", membership_revocation_reason: null }));
+  expect(mappedRows("identity_privacy_erasures")).toContainEqual(expect.objectContaining({
+    principal_id: deriveOidcPrincipalId(issuer, revokedManagedId), client_id: null }));
   for (const field of [
     { old_value: { ...(evidence.revokeAudit[0]!.old_value as Record<string, unknown>), role: "admin" } },
     { new_value: { ...(evidence.revokeAudit[0]!.new_value as Record<string, unknown>), revokedBy: liveManagedId } },
@@ -471,6 +493,11 @@ it("maps a representative managed identity projection through the qualified rest
     { new_value: { ...(evidence.revokeAudit[0]!.new_value as Record<string, unknown>), revocationReason: "different" } },
   ]) await expect(mapManagedIdentityForConnectedRestore({ source: { ...evidence,
     revokeAudit: [{ ...evidence.revokeAudit[0], ...field }] }, freshTarget: pristine, targetOwner: target.owner }))
+    .rejects.toMatchObject({ code: "target_conflict", table: "platform_human_membership_audit_events" });
+  await expect(mapManagedIdentityForConnectedRestore({ source: { ...evidence,
+    adminUsers: evidence.adminUsers.map(row => row.id === revokedManagedId
+      ? { ...row, membership_revoked_by: revokedManagedId } : row) },
+  freshTarget: pristine, targetOwner: target.owner }))
     .rejects.toMatchObject({ code: "target_conflict", table: "platform_human_membership_audit_events" });
   await expect(mapManagedIdentityForConnectedRestore({ source: { ...evidence, clients: [linkedSource,
     { ...linkedSource, id: randomUUID(), email: "other@example.invalid" }, erasedSource] },
