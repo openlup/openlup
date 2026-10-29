@@ -1749,3 +1749,68 @@ is this task-record append point; preserve both complete histories. Privacy
 source, risk delegation and M14 content remain unchanged. Lockfile changes
 require npm ci. Regenerate APIs/navigation, run focused checks with two workers,
 then commit the local DCO merge and measure the official full-stack tarball.
+
+### Draft stack maintenance results — 2026-10-29
+
+Signed local integration: R1 `0790e968`, R2 merge `73f354c3` plus scoped
+documentation-impact follow-up `38add2a7`, R3 merge `bc641a40` plus
+impact-evidence cascade `5d900dac`. The additional R3 cascade resolves only
+the task-record append point, retaining both histories. Every commit carries
+the instructed Bart Roszkowski DCO trailer. No rebase, force-push, push or
+remote mutation occurred. The 0.31.0 lockfile required npm ci in every tree.
+
+Risk source, package tests and existing M15 reference bindings are byte-identical
+to their respective starting heads. M14 package source matches current main;
+upper trees retain only their existing M15 composition additions. Regeneration
+updates risk/server API documentation to reflect the merged shared query/HTTP
+comments; it changes no risk signature or algorithm. The source map retains
+both modules' ownership.
+
+| Requested check | R1 | R2 | R3 |
+| --- | --- | --- | --- |
+| Ast-grep scan | PASS | PASS | PASS |
+| Lint | PASS; 0 errors, 33 warnings | PASS; 0 errors, 33 warnings | PASS; 0 errors, 33 warnings |
+| Workspace API checks | PASS | PASS | PASS |
+| Risk tests, maxWorkers=2 | 23/23 PASS | 42/42 PASS | 58/58 PASS |
+| Platform API update and docs-update | PASS | PASS | PASS |
+| Final documentation policy | PASS; 5 obligations | PASS; 8 obligations | PASS; 3 obligations |
+| Official packages:check | PASS; 3 packages, no findings | Not requested | PASS; 3 packages, no findings |
+
+Checks/builds use Node 24.21.0 and npm 11.19.0. The root has no standalone
+API check; the supported workspace scripts check Core, Outbox and Platform.
+Upper-tree final documentation policy uses the exact committed predecessor.
+The initial R1 policy detected stale navigation, repaired by docs-update.
+R2 exact-predecessor policy detected a stale tooling digest, repaired with a
+scoped explanation after reading the actual harness delta. A DCO command
+initially refused the symbolic HEAD endpoint; the full-digest invocation passes.
+No check, cap, timeout or control was relaxed.
+
+R3's retained official platform artifact is bound to `5d900dac`; its integrity:
+`sha512-UGHEBGJsy0Xvxdl+ntPMA5g4FqPdHhN9HqPmF6VH/u7mFDMIdmcN4McW5TTvK43rQVh3T8zcMmmIJMYpqwXD+A==`.
+This completion record changes no packed input. Existing measurePack and
+checkPackBudget read that exact tarball:
+
+| Full-stack platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,968,897 | 2,029,568 | 60,671 |
+| Unpacked bytes | 9,194,595 | 9,447,424 | 252,829 |
+| Files | 2,680 | 2,712 | 32 |
+| Code gzip bytes | 1,697,305 | 1,743,872 | 46,567 |
+| Code files | 2,625 | 2,656 | 31 |
+| Docs gzip bytes | 59,223 | 73,728 | 14,505 |
+| Docs files | 5 | 10 | 5 |
+
+Every platform cap, including the browser-entry caps, is met. Parent-max
+reconciliation leaves all cap values unchanged. CD-M15-6a is not triggered:
+no 102% rounding, cap repair or cap-repair cascade is needed. Original
+CD-M15-6 measurements remain historical. Full verification, counted native
+review/admission and remote delivery remain coordinator obligations; this run
+does not refresh their evidence, expiry or budgets. Logs and exact retained
+artifacts remain under `.context/scratch/m15-main-8faa3232/` per tree.
+
+Self-retro: existing merge/generator routes preserved both modules without
+a runtime repair or new mechanism. Lint took 35–46 seconds in the upper trees.
+Exact-predecessor policy exposed one stale digest that the pre-commit broad
+comparison did not; retaining that comparison and scoped evidence closed it
+without changing controls. Resolve DCO endpoints to full digests before invocation.
+No formal rethink, optional follow-up or successor work was needed.
