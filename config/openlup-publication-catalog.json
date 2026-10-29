@@ -1366,6 +1366,14 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/neutral-postgres-pgtap-intent.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/neutral-postgres-pgtap.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/oss-a1-communications-adapters.md",
       "class": "public-output"
     },
