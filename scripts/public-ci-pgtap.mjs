@@ -139,8 +139,10 @@ async function main() {
   let cleanupFailed = false;
   let testStatus = 1;
   const cleanup = ownedStackCleanup(options => {
-    const result = run("supabase", ["stop", "--workdir", directory, "--no-backup"], { ...cliOptions, ...options() });
-    if (result.error || result.status !== 0) { cleanupFailed = true; throw new Error("Owned stack cleanup failed"); }
+    let result;
+    try { result = run("supabase", ["stop", "--workdir", directory, "--no-backup"], { ...cliOptions, ...options() }); }
+    catch (error) { cleanupFailed = true; console.error(`Owned stack cleanup failed: ${error instanceof Error ? error.message : String(error)}`); throw error; }
+    if (result.status !== 0) { cleanupFailed = true; console.error(`Owned stack cleanup failed: ${result.stderr}`); throw new Error("Owned stack cleanup failed"); }
   });
   // Preserve the runner's existing unbounded CLI/test calls; only cleanup is budgeted.
   const command = async (executable, args, options = {}) => cleanup.command(executable, args, { cwd: root, timeout: 0, ...options });
@@ -212,7 +214,8 @@ async function main() {
     process.stderr.write(result.stderr);
     testStatus = result.status ?? 1;
   } finally {
-    await cleanup.finish();
+    // A cleanup failure is logged and fails the exit code without replacing the original error.
+    try { await cleanup.finish(); } catch { cleanupFailed = true; }
   }
   process.exitCode = cleanupFailed ? 1 : testStatus;
 }

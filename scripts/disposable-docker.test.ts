@@ -28,6 +28,7 @@ describe("disposable owner classification", () => {
     ["daemon timeout", {}, { ps: () => error("ETIMEDOUT") }, "keep", "probe_failed"],
     ["missing marker", { "dev.disposable": undefined }, {}, "keep", "not_disposable"],
     ["non-1 marker", { "dev.disposable": "true" }, {}, "keep", "not_disposable"],
+    ["Supabase CLI project", { "com.supabase.cli.project": "openlup-ci-0000" }, {}, "keep", "supabase_project"],
     ["foreign host", { "dev.disposable.host": "elsewhere" }, {}, "keep", "host_mismatch"],
     ["missing pidns", { "dev.disposable.pidns": undefined }, {}, "keep", "pidns_mismatch_or_missing"],
     ["foreign pidns", { "dev.disposable.pidns": "pid:[43]" }, {}, "keep", "pidns_mismatch_or_missing"],

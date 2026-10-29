@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { disposableLabelArgs, sweep } from "../../scripts/disposable-docker.mjs";
-import { defaultPostgresImage, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+import { defaultPostgresImage, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer } from "../helpers/postgresContainer.js";
 
 const exec = promisify(execFile);
 const docker = async (args: string[]) => (await exec("docker", args, { timeout: 30_000, killSignal: "SIGKILL" })).stdout.trim();
@@ -79,7 +79,15 @@ afterAll(async () => {
   await Promise.all([...ids].map(id => docker(["rm", "-f", "-v", id]).catch(() => {})));
 }, postgresTeardownTimeoutMs);
 
-describe("real disposable Docker ownership", () => {
+// The interrupt witness runs this file in a nested wrapper with only this case,
+// which holds one helper container until the wrapper's process group is signalled.
+const interruptFixture = process.env.OPENLUP_DISPOSABLE_INTERRUPT_FIXTURE === "1";
+it.runIf(interruptFixture)("interrupt fixture holds a helper container", async () => {
+  await runPostgresContainer({ name: `openlup-reap-interrupt-${randomUUID()}`, password: "disposable", image });
+  await new Promise(() => {});
+}, postgresSetupTimeoutMs);
+
+describe.skipIf(interruptFixture)("real disposable Docker ownership", () => {
   for (const kind of ["run", "create"] as const) it(`reclaims a SIGKILLed ${kind} owner and proves the pre-sweep leak`, async context => {
     if (!available) { context.skip("Docker socket unavailable; real reclaim proof not executed"); return; }
     const { child, id } = await owner(kind);
@@ -114,6 +122,31 @@ describe("real disposable Docker ownership", () => {
     expect(decisions.some(row => row.id === parent.id)).toBe(false);
     expect((await inspect(parent.id)).Id).toBe(parent.id);
     await stop(parent.child);
+  }, postgresSetupTimeoutMs);
+  for (const signal of ["SIGINT", "SIGTERM"] as const) it(`leaves no run-labelled container after a group ${signal} during a start`, async context => {
+    if (!available) { context.skip("Docker socket unavailable; real reclaim proof not executed"); return; }
+    // A detached wrapper leads its own process group; its workers share it, so the
+    // run's containers are identified by owner pgid without touching other runs.
+    const wrapper = spawn(process.execPath, ["scripts/run-vitest.mjs", "run", "tests/postgres/disposableDockerReap.test.ts", "-t", "interrupt fixture", "--maxWorkers=1"],
+      { detached: true, env: { ...process.env, OPENLUP_DISPOSABLE_REAP: "off", OPENLUP_DISPOSABLE_INTERRUPT_FIXTURE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    children.add(wrapper);
+    let err = ""; wrapper.stdout!.resume(); wrapper.stderr!.on("data", data => { err += data; });
+    const exited = once(wrapper, "exit");
+    const deadline = performance.now() + 120_000;
+    let run: string | undefined;
+    while (!run && performance.now() < deadline && wrapper.exitCode === null) {
+      for (const line of (await docker(["ps", "-a", "--no-trunc", "--filter", "label=dev.disposable=1", "--format",
+        '{{.ID}} {{.Label "dev.disposable.owner_pid"}} {{.Label "dev.disposable.run"}}'])).split("\n").filter(Boolean)) {
+        const [id, pid, label] = line.split(" ");
+        try { if ((await exec("ps", ["-o", "pgid=", "-p", pid])).stdout.trim() === String(wrapper.pid)) { ids.add(id); run = label; } } catch { /* Exited or foreign. */ }
+      }
+      if (!run) await new Promise(wake => setTimeout(wake, 200));
+    }
+    expect(run, `no container from the wrapper's process group: ${err}`).toBeDefined();
+    process.kill(-wrapper.pid!, signal);
+    const [code] = await exited;
+    expect(code).toBe(signal === "SIGINT" ? 130 : 143);
+    expect(await docker(["ps", "-a", "-q", "--filter", `label=dev.disposable.run=${run}`])).toBe("");
   }, postgresSetupTimeoutMs);
   it("retains a young dead owner's container under the default age floor", async context => {
     if (!available) { context.skip("Docker socket unavailable; real reclaim proof not executed"); return; }

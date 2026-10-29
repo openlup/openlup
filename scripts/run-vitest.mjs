@@ -146,7 +146,10 @@ function interrupt(signal) {
 const onInt = () => interrupt("SIGINT"), onTerm = () => interrupt("SIGTERM");
 process.on("SIGINT", onInt); process.on("SIGTERM", onTerm);
 async function reapRun() {
-  swept ??= sweep({ mode: "remove", selector: `dev.disposable.run=${disposableRun}` });
+  // Every owner in this run has exited by now (interrupted workers too), so the
+  // age floor would only retain fresh dead-owner containers; liveness still keeps
+  // a surviving descendant's container.
+  swept ??= sweep({ mode: "remove", selector: `dev.disposable.run=${disposableRun}`, minAgeSeconds: 0 });
   await swept;
 }
 const dispatchSignals = () => new Promise(resolve => setImmediate(resolve));

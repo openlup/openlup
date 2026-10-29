@@ -45,6 +45,8 @@ export function classify(container, probe, now, { minAgeSeconds = 60 } = {}) {
   try {
     const labels = container.Config?.Labels;
     if (labels?.["dev.disposable"] !== "1") return keep("not_disposable");
+    // Parity with the shared shell reaper: Supabase CLI stacks stay a reviewed manual removal.
+    if (labels["com.supabase.cli.project"] !== undefined) return keep("supabase_project");
     if (labels["dev.disposable.host"] !== probe.hostname()) return keep("host_mismatch");
     if (probe.platform === "linux" && (!labels["dev.disposable.pidns"] || labels["dev.disposable.pidns"] !== probe.pidns())) return keep("pidns_mismatch_or_missing");
     const created = typeof container.Created === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u.test(container.Created) ? Date.parse(container.Created) / 1000 : NaN;

@@ -527,8 +527,10 @@ Evidence (Node 24.21.0, Docker 29.8.2 under OrbStack, this host):
 | E1, E3 | `scripts/disposable-docker.test.ts`: 33 passed. This includes the real `ps` parse under pl_PL, en_GB and C, and Node `owner_start` within 2 s. |
 | E2, E4 nested | `tests/postgres/disposableDockerReap.test.ts`, real daemon: 5 of 5 passed in 6.7 s. Covered: SIGKILLed `run` owner and `Created`-state owner, each left behind before the sweep and then removed; a live owner kept under a concurrent `remove` sweep, plus unlabeled and foreign-host survivors; a nested run's sweep leaving the parent run; a young dead owner kept by the 60 s floor. |
 | E3 clock | The host-to-VM creation offset was 87 ms on this run. A sleep/wake measurement was not taken; it only affects the 60 s floor. |
+| E4 interrupt | Native review cycle 0 (both reviewers) reproduced a leak: the run-scoped sweep kept the 60 s floor, so a container started just before a group SIGINT stayed. Repair: the wrapper's post-exit sweep uses no age floor; liveness still applies. `disposableDockerReap.test.ts` now signals a detached wrapper's process group (SIGINT and SIGTERM) while an env-gated fixture case holds a helper container; it fails without the repair and passes with it. |
 | E4, E5, E6 | `scripts/disposable-run-lifecycle.test.ts`, `scripts/run-vitest.test.ts`: real Vitest project loaders with fake Docker; one id and one sweep per run; SIGINT, SIGTERM, child signal, success and queued-signal cases; a hung fake Docker returns within budget. |
 | E7 | `scripts/owned-stack-cleanup.test.ts`: once-only cleanup across signal and `finally`, including a queued SIGTERM. No real Supabase or compose stack was started for this proof. |
 | E8 | 7 files, 84 passed, including `postgresContainer*` and the S3 conformance on the real daemon. A second focused set passed 402 tests: publication check, image pull, identity, OIDC and wrapper suites. |
+| Parity | `classify` keeps containers labelled `com.supabase.cli.project`, matching the shared shell reaper (cycle 0 advice). |
 | E9 | Pending: lint, typecheck, `verify-local`, native counted review. |
 
