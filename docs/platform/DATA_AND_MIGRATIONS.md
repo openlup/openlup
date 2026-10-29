@@ -497,12 +497,15 @@ retain seven exact bound units, including the
 [runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
 selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
-The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) prepares
-five further fixed identities for a separate approval. Its inert fixture bytes
-are not approved or active; the seven issued rows and current 92-unit manifest
-remain unchanged. The future generation reuses the issued completion tail and
-requires two new fixed role-mode inventories. Its migration login is a trusted
-administrator retaining ADMIN membership, not an isolated principal.
+The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) adds
+five further fixed identities in a separate approval checkpoint at positions
+8–12. Its inert fixture bytes carry the landed owner-path name-resolution
+attributes, but no `qa_` SQL or schema-3 plan is active in this checkpoint;
+the seven earlier rows and current 92-unit qualified manifest remain unchanged.
+The future 91-unit restricted generation reuses the issued completion tail,
+selects its own five replacements rather than the qualified owner-path forward,
+and requires two new fixed role-mode inventories. Its migration login is a
+trusted administrator retaining ADMIN membership, not an isolated principal.
 All six earlier approval rows and their byte identities remain unchanged. The runtime-completion tail grants
 the existing runtime group context INSERT on its four columns, UPDATE on its
 three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.

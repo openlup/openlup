@@ -100,7 +100,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
   expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-  expect(registry.qualifiedInstallations).toHaveLength(7);
+  expect(registry.qualifiedInstallations).toHaveLength(12);
   expect(registry.qualifiedInstallations![6]).toEqual(binding);
   const reviewedBytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_OWNER_PATH_FILE}`);
   expect(reviewedBytes).toEqual(bytes);
@@ -131,9 +131,10 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(reordered)))).toThrow("qualified installation approval");
 });
 
-it("preserves six issued identities and the reviewed owner forward while preparing five restricted bytes", () => {
+it("preserves the issued qualified identities and pins all five restricted replacements", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
   const issued = registry.qualifiedInstallations!;
+  expect(issued).toHaveLength(12);
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
   for (const entry of registry.qualifiedInstallations!) {
     const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${entry.path}`);
@@ -142,15 +143,39 @@ it("preserves six issued identities and the reviewed owner forward while prepari
   // The issued completion identity stays pinned across the new approval.
   const completion = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`);
   expect(sqlSha256(completion)).toBe("ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e");
-  const pendingHashes = [
+  const restrictedHashes = [
     "a19f78b5e948f96d5bdca6cc14159230cf5197c5ff7fe94f7fc10f26e585a710",
     "afbba5c95206a579325239a315772095ba47e608b21c8b26d5bbac16a2e0aaa9",
-    "cf5e75a272b81f03b31f529600b1ccd2c974681b20a94bc8ff7159be504364d9",
+    "db8e461b3559d0c0c0f7789b61e1f853d327110b9ff0b305e412054454bb6b87",
     "7083a206e7cedfbb87d009d35234360975d9247b80ccd99a6478d89a12e95cb7",
-    "708aacc8bb3fdeb4d89a5e221914161a56fda790138b3032f349508a800bf72c",
+    "09be0b6f7caedf8a16d1de574e74856d6eda26863f759af184ee4ba2d63e6cae",
   ];
   for (const [index, path] of paths.slice(7).entries()) {
-    expect(sqlSha256(readFileSync(`scripts/fixtures/reviewed-m14-qualified/${path}`))).toBe(pendingHashes[index]);
+    const approved = issued[index + 7]!;
+    expect(approved.sha256).toBe(restrictedHashes[index]);
+    expect(sqlSha256(readFileSync(`scripts/fixtures/reviewed-m14-qualified/${path}`))).toBe(restrictedHashes[index]);
+  }
+});
+
+it("keeps every restricted owner body aligned with the issued name-resolution forward", () => {
+  const restricted = [ADMIN_ACQUISITION_FILE, ADMIN_IMPORT_FILE].flatMap(path =>
+    sqlStatements(readFileSync(`scripts/fixtures/reviewed-m14-qualified/${path}`, "utf8")));
+  const definitions = restricted.filter(statement => /^CREATE (?:OR REPLACE )?FUNCTION /u.test(statement));
+  expect(definitions).toHaveLength(11);
+  const hardened = sqlStatements(readFileSync(QUALIFIED_OWNER_PATH_FILE, "utf8"));
+  expect(hardened).toHaveLength(9);
+  for (const forward of hardened) {
+    const name = /^CREATE OR REPLACE FUNCTION ([\w.]+)\(/u.exec(forward)?.[1];
+    expect(name).toBeDefined();
+    const source = definitions.find(statement => statement.startsWith(`CREATE FUNCTION ${name}(`)
+      || statement.startsWith(`CREATE OR REPLACE FUNCTION ${name}(`));
+    expect(source?.replace(/^CREATE FUNCTION /u, "CREATE OR REPLACE FUNCTION ")).toBe(forward);
+  }
+  const importDefinitions = definitions.filter(statement => /^CREATE FUNCTION public\.(?:client_import_retained_row|subscription_cycle_import_retained_row)\(/u.test(statement));
+  expect(importDefinitions).toHaveLength(2);
+  for (const statement of importDefinitions) {
+    expect(statement).toContain("SECURITY DEFINER\nSET search_path = pg_catalog, pg_temp");
+    expect(statement).not.toMatch(/\b(?:INSERT INTO|FROM) (?!public\.)[a-z_][a-z_0-9]*/u);
   }
 });
 

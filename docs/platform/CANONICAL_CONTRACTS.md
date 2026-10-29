@@ -563,7 +563,7 @@ witnesses remain required under the
 
 The exact qualified-installation source approvals in
 [`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
-are control inputs, not installation evidence. The seven inert fixtures and the
+are control inputs, not installation evidence. The seven reviewed fixtures and the
 legacy-preserving version-2 source catalogue follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The supported reader admits the exact sixth identity for the demonstrated
@@ -581,6 +581,14 @@ production runner/projector, npm API and package budgets remain unchanged.
 The complete F90 prefix and historical inventory evidence remain retained.
 Introducing approved SQL still requires the separately landed control route;
 these pins grant no activation or managed-host compatibility.
+
+The separate restricted-bootstrap approval checkpoint extends the fixed list
+from seven to twelve whole-file identities. The seven issued rows, including the
+completion and owner-path forward, remain unchanged. The five `qa_` fixtures
+stay outside active SQL and the schema-2 manifest; their two owner-body files
+carry the same pinned name-resolution attributes as the issued forward. This
+approval does not install the future 91-unit restricted plan, establish either
+role-mode inventory or grant a release or hosted compatibility claim.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2
