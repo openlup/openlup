@@ -22,6 +22,12 @@ tasks into concise English domain terms, or search an exact public symbol;
 freeform Polish queries may miss relevant guidance. `--code` scans a bounded
 set of local source paths and may be incomplete; direct `rg` remains available.
 
+Choose the next lookup from the evidence needed: read a known path or symbol
+directly; use `openlup-context` when the package owner or seam is unclear; then
+open its cited source. For work spanning packages, follow the relevant exports,
+callers and tests until each required contract has a witness. A ranked hit is a
+starting point, not proof that all related constraints were found.
+
 The Node-only, tool-only executable reads the installed packages' local context
 snapshots when invoked. It is not imported by any kernel export and adds no
 runtime dependency. Results locate source evidence; they grant no application

@@ -104,9 +104,51 @@ After catalogue and owner updates, `npm run oss:published-tree -- --policy
 obligations and zero unanswered. Snapshot regeneration after the coordinated
 package README edits passed all three generator tests and the freshness check.
 
+Complex-task dogfooding used a separate offline adopter fixture with packed
+core, outbox and platform `0.31.0`. The seeded application opened receipt
+clients before admission, duplicated scheduler lease ownership, lost invocation
+identity and swallowed failed dispatch outcomes. A held-out verifier checked ten
+HTTP, timer, lease, finish, cleanup, cadence and accepted-effect scenarios;
+the starter failed all ten and the reference passed all ten. The first
+three-arm run was excluded from the command comparison because its manually
+unpacked packages lacked the npm `.bin` link; all arms fell back to direct
+source reads. After restoring the usual executable link and mode and verifying
+`--help`, three fresh `gpt-6.1-sol` agents used identical starter bytes with
+direct search, context-assisted lookup and context plus a short evidence
+procedure. All three repaired the same two application files and passed 10/10
+held-out cases. Their elapsed implementation and smoke-test windows were 34,
+29 and 37 seconds respectively. The context and adaptive agents each invoked
+the locator once, then read the cited installed package sources. One run per
+arm is diagnostic, not a speed or quality estimate. The fixture used runtime
+JavaScript and deterministic fake ports; it does not prove PostgreSQL fencing,
+live provider effects or deployment readiness. Trial reports and verifier are
+under `/private/tmp/openlup-context-complex-20261029/`.
+
+Research and independent Astra counter-review support choosing retrieval by
+the evidence needed, rather than imposing one method on every task.
+[Agent Retrieval Bench](https://arxiv.org/abs/2607.24882) reports different
+retrieval winners across task slices, but its scripted grep is a weak lower
+bound for an adaptive coding agent and file hits do not establish patch
+correctness. [ContextBench](https://arxiv.org/abs/2602.05892) separates explored
+from actually used context; [Repoformer](https://proceedings.mlr.press/v235/wu24a.html)
+studies selective retrieval for code completion, not this adopter task. Current
+[Cursor search guidance](https://cursor.com/docs/agent/tools/search) emphasizes
+local grep, while its earlier
+[semantic-search experiment](https://cursor.com/blog/semsearch) reported gains
+under its own evaluation. These sources make semantic and structural retrieval
+plausible follow-up experiments, not proven requirements for OpenLup. The
+complex trial showed that direct source tracing could recover all required
+constraints and that the locator could find an unfamiliar seam without
+replacing that tracing. The package agent guide now states this small adaptive
+procedure. No graph service, embeddings, complexity classifier or new index was
+added. A later extension needs repeated held-out misses showing a specific
+vocabulary or dependency gap and improvement against adaptive direct search.
+
 Self-retro: direct owner spans kept the offline format small without a second
 ownership inventory. Dogfooding found that one already packed owner guide was
 not searchable; indexing it directly removed the detour without adding another
 snapshot or retrieval service. A missing local ast-grep binary caused an
 unsuccessful registry-resolution attempt; use the supervisor's installed tools
-for final verification. No broader process change is warranted.
+for final verification. The complex fixture's missing `.bin` link invalidated
+its first comparison; checking the executable before cold trials would avoid
+that repeat. No broader process change is warranted.

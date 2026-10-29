@@ -188,6 +188,11 @@ for structured results. It never downloads packages or starts a
 service. Its Node-only launcher is isolated from the I/O-free kernel exports and
 adds no runtime dependency.
 
+Read a known path or symbol directly. Use the lookup to locate an unfamiliar
+package seam, then inspect the cited owner and follow its exports, callers and
+tests for cross-package work. A ranked result does not establish complete
+contract coverage.
+
 Each package's root `AGENT_CONTEXT.md` contains small excerpts of canonical
 repository guidance, with source paths, line ranges and excerpt digests. Read
 the package version from its installed `package.json` and check the cited source
