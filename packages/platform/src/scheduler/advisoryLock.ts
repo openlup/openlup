@@ -163,11 +163,20 @@ export function createEnvAdvisoryLock(
       return client.query<T>(text, values);
     },
   };
-  return createPgAdvisoryLock(querier, () => {
+  const lock = createPgAdvisoryLock(querier, () => {
     closed = true;
     closePromise ??= pending?.then((client) => client.end?.() ?? undefined) ?? Promise.resolve();
     return closePromise;
   });
+  return {
+    ...lock,
+    async tryAcquire(jobId) {
+      // Connection failure precedes every lock statement; preserve its peer or
+      // transport error. Only a failed statement can leave an uncertain grant.
+      if (!closed) await (pending ??= connect(connectionString));
+      return lock.tryAcquire(jobId);
+    },
+  };
 }
 
 async function connectDedicatedClient(connectionString: string): Promise<AdvisoryLockQuerier> {

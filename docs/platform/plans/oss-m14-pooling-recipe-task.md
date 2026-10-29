@@ -1,8 +1,8 @@
 # M14 connection and pooling recipe
 
-Status: review cycle 0 exposed one material actionable-error finding; the
-renewed maintainer read accepted its signed repair. Cycle 1 review and final
-verification remain. M14 remains open.
+Status: cycle 1 full reviews passed, but canonical verification found an
+optional-peer connection-error regression. A scoped repair needs renewed
+pre-DCO read and cycle 2 review. M14 remains open.
 
 ## Outcome and boundary
 
@@ -27,7 +27,7 @@ remain required after that read. No adopter endpoint is in scope.
 
 Policy revision and initial source base:
 `5433b61c19809f749b3c0ffb08b254eafc406f96` (2026-10-29).
-Current policy pin: `3fbd95565ed665c68f3819a9fe27dc14f5bf9c85`.
+Current policy pin: `bafe6fe6833c935ef953a7d8cd0dfc868bc85fac`.
 The maintainer read accepted staged tree
 `e76a3d0325e8f23a7726a8091ddcf3bc392faf30` before DCO.
 The renewed read accepted staged repair tree
@@ -35,6 +35,10 @@ The renewed read accepted staged repair tree
 The signed integration of that source with current main is `d4d47475f1211aa103e592fa51763dc7cf3407d2`.
 It preserved the accepted lock source, witness and API snapshots; main's
 independent owner-path approval remains outside the selected 91-unit plan.
+After cycle 1, main advanced to `bafe6fe6833c935ef953a7d8cd0dfc868bc85fac`.
+Signed clean merge `45b69db66f9527c5de738da843e73d2ea5f386ab` integrated its
+migration-ledger preflight and auto-merged the overlapping data/package docs;
+the lock source and witness remained unchanged by that integration.
 
 ## Acceptance and proof plan
 
@@ -86,10 +90,28 @@ Native cycle 0: one independent FULL PASS and one FULL FAIL on tree
 grant, which lacked the required drain/retire guidance. The repair emits the
 same actionable affinity refusal on that first failed attempt and proves the
 guarded body remains uncalled. The existing sticky refusal and drain stay intact.
-Repair cycle 1 needs two new FULL reviews of the current tree.
-DCO source, merge and repair commits are signed. Full verification/coverage
-and authorized delivery remain. No
+Cycle 1 received two new FULL PASS reports and closed the open finding on tree
+`2e1872d1a20c98e0cfc8e20e1f4cec1c5eee437f`. Canonical verification passed
+policy, inventory, DCO, Gitleaks, install, lint, typecheck, both builds and cold
+package/API gates, then failed its broad test phase: seven optional-peer cases
+for the scheduler's lazy connection now saw an affinity error before any lock
+statement. The scoped repair connects before entering the uncertain-grant path,
+preserving the existing peer/transport error; a failed lock statement still
+refuses with actionable affinity guidance. The owner docs already limit the
+affinity refusal to lock ownership and uncertain acquisition; no public recipe
+change follows from preserving pre-connection errors. A new maintainer read of
+the security/error boundary, then cycle 2 full review and complete verification,
+are required. DCO source, merge and first repair commits are signed; this second
+repair is not signed. Full verification/coverage and authorized delivery remain. No
 submission or release has occurred.
+
+The first post-merge manual integration run used package output built before
+main's migration-runner change, so its new migration witness failed against
+stale code. `npm test -- tests/postgres/m14MigrationSessionAdmission.test.ts`
+rebuilt the packages and passed 27/27; the seven-file integrated affected run
+then passed 145/145 in 57.68 seconds, including the pooling, optional-peer and
+mainline migration-session witnesses. The new tree retains the required current
+qualified-profile proof without changing the selected outcome.
 
 Self-retro: exclusive heavy-window waits were 541 seconds for affected proof and
 661 seconds for lint.
@@ -98,4 +120,7 @@ the late test-generic errors show why test-project typechecking belongs in early
 focused feedback alongside production builds. No acceptance or retry-budget
 change was needed. Native review caught the missing first-error guidance before
 submission; the guarded-callback assertion now proves that refusal reaches the
-first affected job before its body runs.
+first affected job before its body runs. The broad gate exposed the untested
+pre-connection path; the focused proof now pairs optional-peer errors with
+uncertain-statement refusal before another broad run. Rebuilding after the main
+merge was necessary to avoid diagnosing old package output as new source behavior.

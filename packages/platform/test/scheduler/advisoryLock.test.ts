@@ -162,6 +162,22 @@ describe("createEnvAdvisoryLock", () => {
     expect(createEnvAdvisoryLock({ DATABASE_URL: "   " })).toBeNull();
   });
 
+  it("preserves a connection failure before SQL but refuses an uncertain query", async () => {
+    const failure = new Error("connect failed");
+    const failedConnect = vi.fn().mockRejectedValue(failure);
+    const failed = createEnvAdvisoryLock({ DATABASE_URL: "postgres://host/db" }, failedConnect)!;
+    await expect(failed.tryAcquire("probe")).rejects.toBe(failure);
+    expect(failedConnect).toHaveBeenCalledTimes(1);
+
+    const query = vi.fn().mockRejectedValue(new Error("query failed"));
+    const connected = createEnvAdvisoryLock({ DATABASE_URL: "postgres://host/db" },
+      vi.fn().mockResolvedValue({ query } as AdvisoryLockQuerier))!;
+    await expect(connected.tryAcquire("probe")).rejects.toThrow(
+      /OPENLUP_E_ADVISORY_SESSION_AFFINITY.*Drain the host and retire its lock backend/,
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
   it("connects lazily and reuses ONE connection across acquire and release", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ pid: 42, locked: true, held: true, unlocked: true }] });
     const connect = vi.fn().mockResolvedValue({ query } as AdvisoryLockQuerier);
