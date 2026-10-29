@@ -8,10 +8,12 @@ export default async function setup() {
   const run = currentRunId();
   if (!run || runs.has(run)) return;
   const start = (async () => {
-    const mode = processEnvironment.CI === "true" ? "off" : processEnvironment.OPENLUP_DISPOSABLE_REAP ?? "report";
+    const mode = processEnvironment.CI === "true" ? "off" : processEnvironment.OPENLUP_DISPOSABLE_REAP ?? "remove";
     if (mode !== "off") await sweep({ mode: mode === "remove" ? "remove" : "report" });
   })();
   runs.set(run, start);
   await start;
-  return async () => { await sweep({ mode: "remove", selector: `dev.disposable.run=${run}` }); };
+  // Liveness alone guards this run's own containers: a helper child that exited
+  // seconds ago is as dead as one that exited a minute ago.
+  return async () => { await sweep({ mode: "remove", selector: `dev.disposable.run=${run}`, minAgeSeconds: 0 }); };
 }
