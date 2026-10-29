@@ -2107,12 +2107,13 @@ Missing evidence yields a bounded unavailable result; absent heartbeat keeps
 the existing overview health unknown. Raw domain payloads stay with the ledger.
 
 Alert and pipeline reads retain their existing typed handlers and administrator
-authorization before port access. The Node host also runs the existing BFF
-dispatcher and admin preflight, with exact configured Host admission before body
-reading. The binding applies the existing observed-route wrapper so safe request
-references correlate response headers/errors with logs. The existing pipeline
-route is classified as a mutation by public deployment policy and remains refused;
-the alert overview is the available admin readback on this host.
+authorization before port access. The Node host admits the exact configured Host
+before body reading, then places the existing observed-route wrapper around the
+BFF dispatcher and admin preflight. Public deployment policy runs first; alerts
+method refusal then precedes admin preflight, and safe request references
+correlate its response headers/errors with one route log. The existing pipeline
+route is classified as a mutation by public deployment policy and is refused
+before authorization; the alert overview is the available admin readback on this host.
 Request bodies, authorization values, query contents and upstream exception prose
 are excluded from those logs. Unsafe caller references are replaced by the
 existing request-ID policy. This callable composition mounts no routes or jobs

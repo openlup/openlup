@@ -4,6 +4,8 @@ import type { createM14OperationsReferenceBinding } from "./m14OperationsBinding
 import { preflightAdminBffRoute, type AdminAuthBindingOptions } from "../auth/adminAuthBinding.js";
 import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
 import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
+import { withObservedRoute } from "../../_lib/observability/route.js";
+import { sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { createReferenceBffDispatcher } from "../bffDispatch.js";
 import { admitReferenceIdentity, type ReferenceIdentity, type ReferenceIdentityAdmission } from "../auth/referenceIdentity.js";
 import type { admitReferenceOutbox } from "../outbox/candidateAdmission.js";
@@ -152,7 +154,11 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
     if (operationsRead) {
       if (request.headers.host !== operationsHost) return response(res, 403, "Reference host mismatch\n");
       for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
-      void adaptRequest(request, pathname, false, 32768).then(req => dispatch([{ route: pathname, pattern: /^\/api\/bff\/admin\/platform\/(?:alerts|pipeline)$/, params: [], handler: operationsRead }], req, decorateResponse(res))).catch(() => {
+      const observed = withObservedRoute({ route: pathname, domain: "platform", surface: "admin", risk: pathname.endsWith("/pipeline") ? "mutation" : "read" }, async (req, decorated) => {
+        if (req.method !== "GET") return sendMethodNotAllowed(decorated, ["GET"]);
+        await dispatch([{ route: pathname, pattern: /^\/api\/bff\/admin\/platform\/(?:alerts|pipeline)$/, params: [], handler: operationsRead }], req, decorated);
+      });
+      void adaptRequest(request, pathname, false, 32768).then(req => observed(req, decorateResponse(res))).catch(() => {
         if (!res.headersSent) response(res, 503, "Operations unavailable\n"); else res.destroy();
       });
       return;

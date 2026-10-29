@@ -86,9 +86,14 @@ security/API read accepted exact repair tree
 fresh-review condition covering all four open cards and Host/preflight interaction.
 After #416, the publication catalogue conflict was resolved by retaining both
 sorted rows; no operations security/API source changed in that main merge.
-Fresh FULL review and canonical verification remain pending. The native session
-recorded the two failed initial reports; no repaired candidate is prepared.
-Native repair cycles consumed: none; queue retries: none. At this working boundary,
+The second native evaluation on the signed #416-integrated tree received one
+PASS and one FAIL. It closed the four original mechanisms but opened
+M14-OPS-005 (preflight refusal correlation/method order) and M14-OPS-006
+(pipeline policy/auth ordering). The next unsigned repair moves one observed
+wrapper around host dispatch; its HTTP witness passes the discriminating cases.
+This security/logging surface needs another exact-tree maintainer read before
+DCO, then two new FULL reviewers and canonical verification. Native repair
+cycles consumed: one; queue retries: none. At this working boundary,
 the separately refreshed policy revision is
 `527c7c0deca500a04b28aa98e8b744b15347527c`; its changed instructions were
 inspected and its overlapping catalogue/documentation paths integrated before
@@ -117,3 +122,19 @@ After #415 landed, regenerating source navigation resolved the sole merge confli
 the first full review exposed a capture-as-delivery mistake that the focused tests
 had accepted. Lesson: receipt-shaped local capture → separate observation from
 notification state and test immediate later delivery on the same ledger.
+
+Regroup after two completed candidate evaluations: the first found policy,
+preflight, Host and capture defects. The second closed those four original
+mechanisms but found that the dispatcher runs preflight before the inner observed
+wrapper, changing pipeline policy order and losing request references/logs and
+method refusal on unauthenticated reads. The remaining gap belongs to the
+public host's route/observability boundary. The cause is wrapper placement below
+dispatch. The simpler repair is one observed wrapper around host dispatch, with
+the typed handlers beneath it and method refusal inside it; no second dispatcher
+or log path is needed. The discriminating step is a real Node request set:
+pipeline without credentials must refuse by policy before authorization; alerts
+GET without credentials must carry a request reference and one safe log; alerts
+POST must return 405 with Allow; success must log once. The selected operations
+branch still must leave every other admin route's preflight intact. The focused
+composed suite passed all ten cases after the wrapper move. Lesson:
+observing inside dispatch → observe the host boundary that contains dispatch.

@@ -5,7 +5,6 @@ import type { AlertLedgerPort, AlertSinkPort, ObservabilityEvidencePort } from "
 import { createAdminAlertsOverviewHandler, type AdminAlertsReadPort } from "../../domains/platform/adminAlertsHandlers.js";
 import { createAdminPipelineReadHandler } from "../../domains/platform/adminPipelineHandlers.js";
 import { runPlatformWatchdog } from "../../domains/platform/platformWatchdogService.js";
-import { withObservedRoute } from "../../_lib/observability/route.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 
@@ -23,11 +22,11 @@ export function createM14OperationsReferenceBinding(input: {
   now?: () => Date;
 }) {
   const now = input.now ?? (() => new Date());
-  function observedRead(route: string, risk: "read" | "mutation", handler: (req: HttpRequest, res: HttpResponse) => Promise<void>) {
-    return withObservedRoute({ route, domain: "platform", surface: "admin", risk }, async (req, res) => {
+  function boundedRead(handler: (req: HttpRequest, res: HttpResponse) => Promise<void>) {
+    return async (req: HttpRequest, res: HttpResponse) => {
       try { await handler(req, res); }
       catch { sendBffError(res, "UPSTREAM_UNAVAILABLE", "Operations read unavailable"); }
-    });
+    };
   }
 
   return {
@@ -62,12 +61,12 @@ export function createM14OperationsReferenceBinding(input: {
         return { ok: false as const, error: "operations_watchdog_unavailable" as const };
       }
     },
-    alerts: observedRead("/api/bff/admin/platform/alerts", "read", async (req, res) => {
+    alerts: boundedRead(async (req, res) => {
       await createAdminAlertsOverviewHandler({
         readPort: input.alertsReadPort, authorizeAdmin: () => input.authorizeAdmin(req), now,
       })(req, res);
     }),
-    pipeline: observedRead("/api/bff/admin/platform/pipeline", "mutation", createAdminPipelineReadHandler({
+    pipeline: boundedRead(createAdminPipelineReadHandler({
       pipelinePort: input.pipelinePort, authorizeAdmin: input.authorizeAdmin,
     })),
   };

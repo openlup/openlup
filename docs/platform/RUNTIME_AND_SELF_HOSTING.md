@@ -379,10 +379,12 @@ substituting a different business behaviour.
 The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
 also accepts an explicitly constructed operations binding on its ordinary
 reference host. That selection mounts only the existing alert and pipeline
-admin read paths; it requires `APP_BASE_URL` for exact Host admission and runs
-the existing BFF dispatcher/admin preflight before either handler. The pipeline
-path retains its public mutation-policy refusal; the alert path supplies admin
-readback with the binding's authorization and safe route logs.
+admin read paths; it requires `APP_BASE_URL` for exact Host admission. The
+existing observed-route wrapper surrounds the BFF dispatcher/admin preflight,
+so policy refusal precedes authorization, alert method refusal precedes preflight,
+and preflight failures carry safe correlated request logs. The pipeline path
+retains its public mutation-policy refusal; the alert path supplies admin
+readback through its typed handler.
 It refuses combination with another reference profile or identity admission.
 The watchdog remains a trusted scheduler callable and gets no public cron route.
 Omitting the selection preserves the static reference's existing route surface.

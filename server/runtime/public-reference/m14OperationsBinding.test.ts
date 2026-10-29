@@ -17,7 +17,7 @@ describe("portable operations reference default", () => {
   beforeEach(() => { vi.spyOn(console, "log").mockImplementation(() => {}); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it("evaluates real domain evidence, captures locally, reads reports, correlates logs and throttles a repeat", async () => {
+  it("evaluates real domain evidence, captures locally and reads typed reports", async () => {
     const f = await fixture();
     const unchanged = structuredClone(f.snapshot);
     const result = await f.binding.runWatchdog();
@@ -36,15 +36,12 @@ describe("portable operations reference default", () => {
       heartbeat: { stale: false, lastSuccessAt: now.toISOString() },
       alerts: expect.arrayContaining([expect.objectContaining({ dedupeKey: "subscription_cycle_unattempted", lane: "commerce" })]),
     } });
-    expect(alerts.res.setHeader).toHaveBeenCalledWith("x-request-id", canary);
     const pipeline = response();
     await f.binding.pipeline(request(), pipeline.res);
-    expect(pipeline.body()).toMatchObject({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE" } });
-    expect(f.readPipeline).not.toHaveBeenCalled();
-    expect(logs()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/alerts", status: 200 }),
-      expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/pipeline", status: 503 }),
-    ]));
+    expect(pipeline.body()).toMatchObject({ ok: true, data: {
+      emailSendCount: 4, emailEvents: [{ event_type: "opened" }],
+      testers: [{ id: "cohort-1", status: "packing", email_sequence_step: 2, email_sequence_paused: false }],
+    } });
     expect(await f.binding.runWatchdog()).toMatchObject({ notified: 0, captured: [expect.objectContaining({ dedupeKey: "subscription_cycle_unattempted" })] });
     expect(f.notifications).toEqual([]);
   });
@@ -53,28 +50,52 @@ describe("portable operations reference default", () => {
     const f = await fixture();
     await f.binding.runWatchdog();
     const env = { APP_BASE_URL: "http://operations.example", PLATFORM_BUNDLE: "node-postgres", OPERATOR_IDENTITY_AUDIENCE: "synthetic-audience" };
+    const preflightAuthorize = vi.fn(async (token: string | null, restrictions?: { allowedRoles?: readonly ("admin" | "distributor")[] }) => token === "valid-token" && restrictions?.allowedRoles?.includes("admin")
+      ? { ok: true as const, principalId: "operator-1", role: "admin" as const, isMachineActor: false }
+      : { ok: false as const, code: "UNAUTHORIZED" as const, message: "Operator authentication required" });
     const server = createPublicReferenceServer({ operations: f.binding, env, operationsAdminAuth: {
       humanAuthFactory: () => ({
-        authorize: async (token, restrictions) => token === "valid-token" && restrictions?.allowedRoles?.includes("admin")
-          ? { ok: true, principalId: "operator-1", role: "admin", isMachineActor: false }
-          : { ok: false, code: "UNAUTHORIZED", message: "Operator authentication required" },
+        authorize: preflightAuthorize,
         close: async () => {},
       }),
     } });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
+      expect((await httpRead(origin, "/api/bff/admin/platform/pipeline")).status).toBe(503);
+      expect(preflightAuthorize).not.toHaveBeenCalled();
       const alerts = await httpRead(origin, "/api/bff/admin/platform/alerts", { authorization: "Bearer valid-token", "x-request-id": canary });
       expect(alerts.status).toBe(200);
       expect(alerts.headers["x-request-id"]).toBe(canary);
       expect(alerts.body).toMatchObject({ ok: true });
-      expect((await httpRead(origin, "/api/bff/admin/platform/pipeline", { authorization: "Bearer valid-token" })).status).toBe(503);
       expect(f.readPipeline).not.toHaveBeenCalled();
       f.authorizeAdmin.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "Admin required" });
       expect((await httpRead(origin, "/api/bff/admin/platform/alerts", { authorization: "Bearer valid-token" })).status).toBe(403);
-      expect((await httpRead(origin, "/api/bff/admin/platform/alerts")).status).toBe(401);
+      const unauthorized = await httpRead(origin, "/api/bff/admin/platform/alerts", { "x-request-id": canary });
+      expect(unauthorized.status).toBe(401);
+      expect(unauthorized.headers["x-request-id"]).toBe(canary);
+      expect(unauthorized.body).toMatchObject({ meta: { requestId: canary } });
+      const beforeMethod = preflightAuthorize.mock.calls.length;
+      const method = await httpRead(origin, "/api/bff/admin/platform/alerts", {}, "POST");
+      expect(method.status).toBe(405);
+      expect(method.headers.allow).toBe("GET");
+      expect(preflightAuthorize).toHaveBeenCalledTimes(beforeMethod);
       f.authorizeAdmin.mockResolvedValue({ ok: true });
+      const beforeHost = preflightAuthorize.mock.calls.length;
       expect((await httpRead(origin, "/api/bff/admin/platform/alerts", { host: "wrong.example", authorization: "Bearer valid-token" })).status).toBe(403);
+      expect(preflightAuthorize).toHaveBeenCalledTimes(beforeHost);
+      const privateText = "synthetic-person@example.invalid private request content";
+      f.listLiveAlerts.mockRejectedValueOnce(new Error(privateText));
+      const unavailable = await httpRead(origin, `/api/bff/admin/platform/alerts?contact=${encodeURIComponent(privateText)}`, { authorization: "Bearer valid-token", "x-request-id": privateText });
+      expect(unavailable.status).toBe(503);
+      expect(unavailable.headers["x-request-id"]).toMatch(/^[a-f0-9-]{36}$/);
+      expect(unavailable.body).toMatchObject({ meta: { requestId: unavailable.headers["x-request-id"] } });
+      expect(logs()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/alerts", status: 200 }),
+        expect.objectContaining({ request_id: canary, route: "/api/bff/admin/platform/alerts", status: 401 }),
+        expect.objectContaining({ request_id: unavailable.headers["x-request-id"], status: 503, outcome: "error" }),
+      ]));
+      expect(JSON.stringify([unavailable, logs()])).not.toContain(privateText);
       expect((await httpRead(origin, "/api/cron/platform-watchdog")).status).toBe(404);
       expect(logs().filter(row => row.status === 200)).toHaveLength(1);
       expect(() => createPublicReferenceServer({ operations: f.binding, env: { ...env, OPENLUP_REFERENCE_PROFILE: "subscription" } })).toThrow("own host composition");
@@ -139,26 +160,29 @@ describe("portable operations reference default", () => {
   it("refuses unauthorized reads before ports or query parsing and logs the refusal", async () => {
     const f = await fixture();
     f.authorizeAdmin.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "Admin required" });
-    for (const [handler, code] of [[f.binding.alerts, "FORBIDDEN"], [f.binding.pipeline, "UPSTREAM_UNAVAILABLE"]] as const) {
+    for (const [handler, code] of [[f.binding.alerts, "FORBIDDEN"], [f.binding.pipeline, "FORBIDDEN"]] as const) {
       const res = response();
       await handler(request({ query: { unexpected: "value" } }), res.res);
-      expect(res.body()).toMatchObject({ ok: false, error: { code } });
+    expect(res.body()).toMatchObject({ ok: false, error: { code } });
     }
     expect(f.readPipeline).not.toHaveBeenCalled();
     expect(f.listLiveAlerts).not.toHaveBeenCalled();
-    expect(logs().map(row => row.status)).toEqual([403, 503]);
+    expect(logs()).toEqual([]);
   });
 
-  it("refuses the pipeline route under the retained deployment policy before owner reads", async () => {
+  it("refuses unsupported methods and malformed report queries without owner reads", async () => {
     const f = await fixture();
     const method = response();
     await f.binding.pipeline(request({ method: "POST" }), method.res);
-    expect(method.body()).toMatchObject({ error: { code: "UPSTREAM_UNAVAILABLE" } });
+    expect(method.body()).toMatchObject({ error: { code: "METHOD_NOT_ALLOWED" } });
     expect(f.authorizeAdmin).not.toHaveBeenCalled();
+    const query = response();
+    await f.binding.pipeline(request({ query: { extra: "value" } }), query.res);
+    expect(query.body()).toMatchObject({ error: { code: "BAD_REQUEST" } });
     expect(f.readPipeline).not.toHaveBeenCalled();
   });
 
-  it("keeps unsafe caller references, request content and upstream prose out of correlated error logs", async () => {
+  it("keeps upstream prose out of direct handler errors", async () => {
     const f = await fixture();
     const privateText = "synthetic-person@example.invalid private request content";
     f.listLiveAlerts.mockRejectedValueOnce(new Error(privateText));
@@ -167,11 +191,9 @@ describe("portable operations reference default", () => {
       headers: { authorization: `Bearer ${privateText}`, "x-request-id": privateText },
       body: { customer: privateText }, url: `/private?contact=${privateText}`,
     }), res.res);
-    const body = res.body() as { meta: { requestId: string }; error: { code: string } };
+    const body = res.body() as { error: { code: string } };
     expect(body.error.code).toBe("UPSTREAM_UNAVAILABLE");
-    expect(body.meta.requestId).toMatch(/^[a-f0-9-]{36}$/);
-    expect(logs()).toEqual([expect.objectContaining({ request_id: body.meta.requestId, status: 503, outcome: "error", auth_kind: "bearer" })]);
-    expect(JSON.stringify([body, logs()])).not.toContain(privateText);
+    expect(JSON.stringify(body)).not.toContain(privateText);
   });
 
   it("safely handles throwing authorization", async () => {
@@ -179,7 +201,7 @@ describe("portable operations reference default", () => {
     f.authorizeAdmin.mockRejectedValueOnce(new Error("synthetic private auth detail"));
     const unavailable = response();
     await f.binding.alerts(request(), unavailable.res);
-    expect(unavailable.body()).toMatchObject({ error: { code: "UPSTREAM_UNAVAILABLE" }, meta: { requestId: canary } });
+    expect(unavailable.body()).toMatchObject({ error: { code: "UPSTREAM_UNAVAILABLE" } });
     expect(JSON.stringify([unavailable.body(), logs()])).not.toContain("synthetic private auth detail");
   });
 });
@@ -230,10 +252,10 @@ async function fixture(overrides: Partial<Parameters<typeof createM14OperationsR
   return { binding, ledgerPort, snapshot, collectSnapshot, notifications, writes: () => writeCount, recordHeartbeat, authorizeAdmin, readPipeline, listLiveAlerts };
 }
 
-async function httpRead(origin: string, path: string, headers: Record<string, string> = {}) {
+async function httpRead(origin: string, path: string, headers: Record<string, string> = {}, method = "GET") {
   const target = new URL(origin);
   return new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Record<string, unknown> }>((resolve, reject) => {
-    const req = httpRequest({ host: target.hostname, port: target.port, path, headers: { host: "operations.example", ...headers } }, res => {
+    const req = httpRequest({ host: target.hostname, port: target.port, path, method, headers: { host: "operations.example", ...headers } }, res => {
       const chunks: Buffer[] = [];
       res.on("data", chunk => chunks.push(Buffer.from(chunk)));
       res.on("end", () => {
