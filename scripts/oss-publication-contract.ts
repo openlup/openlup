@@ -34,6 +34,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/public-reference/grant-operator.mjs", "scripts/public-reference/setup-subscription.mjs",
   "scripts/public-reference/verify-subscription.mjs",
   "scripts/public-ci-dependencies.mjs", "scripts/public-ci-neutrality.mjs", "scripts/public-ci-pgtap.mjs", "scripts/public-ci-reuse.mjs", "scripts/public-ci-reuse.test.ts",
+  "scripts/disposable-docker.test.ts", "scripts/disposable-run-lifecycle.test.ts",
   "scripts/run-vitest.mjs", "scripts/run-vitest.test.ts", "scripts/site-routes.mjs", "scripts/source-preview-release.test.ts", "scripts/source-preview-release.ts", "scripts/source-release-preparation.ts",
   "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
   "server/runtime/auth/operatorIdentityCommand.ts",

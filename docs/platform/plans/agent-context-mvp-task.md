@@ -174,6 +174,11 @@ scanner change. The next discriminating step is the focused CLI test followed
 by the unmodified neutrality command, then fresh review and the full gate.
 Lesson: a CLI smoke child process that can inherit its environment → omit an
 unneeded override rather than create a new neutrality exception.
+Before reviewing that repair, `main` advanced to `6828103f` with disposable
+Docker resource changes, including a publication-contract path. Native
+preflight refused review carry-over; the required merge was clean and retained
+the context command and the new cleanup controls. This integration supplies no
+new task feature. Its exact tree needs fresh review and final verification.
 
 Research and independent Astra counter-review support choosing retrieval by
 the evidence needed, rather than imposing one method on every task.

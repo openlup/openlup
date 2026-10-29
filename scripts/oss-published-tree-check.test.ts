@@ -1003,7 +1003,7 @@ describe("owned pgTAP command lifecycle", () => {
     try {
       writeFileSync(join(directory, "package.json"), '{"type":"commonjs"}\n');
       for (const folder of ["scripts/public-reference", "config", "supabase/migrations", "supabase/tests", "bin"]) mkdirSync(join(directory, folder), { recursive: true });
-      for (const file of ["public-ci-pgtap.mjs", "ci-image-mirror.mjs", "ci-image-pull.mjs"]) writeFileSync(join(directory, "scripts", file), readFileSync(join(ROOT, "scripts", file)));
+      for (const file of ["public-ci-pgtap.mjs", "ci-image-mirror.mjs", "ci-image-pull.mjs", "owned-stack-cleanup.mjs"]) writeFileSync(join(directory, "scripts", file), readFileSync(join(ROOT, "scripts", file)));
       writeFileSync(join(directory, "scripts/public-reference/subscription-prereqs.sql"), "SELECT 'prerequisites';\n");
       writeFileSync(join(directory, "config/public-reference-subscription-supabase.toml"), readFileSync(join(ROOT, "config/public-reference-subscription-supabase.toml")));
       writeFileSync(join(directory, "config/ci-images.json"), readFileSync(join(ROOT, "config/ci-images.json")));
