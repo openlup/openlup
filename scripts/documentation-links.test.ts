@@ -62,4 +62,91 @@ describe("local documentation links", () => {
     writeFileSync(join(root, "docs", "source.md"), "```md\n[example](absent.md#not-real)\n```\n");
     expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"])).not.toThrow();
   });
+
+  it("ignores exact-run inline code spans, escaped brackets, and indented code", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), [
+      "`` example ` [example](absent.md) ``",
+      "",
+      String.raw`\[example](absent.md)`,
+      "",
+      "    [example](absent.md)",
+      "",
+      "\t[example](absent.md)",
+      "",
+      "[label `code`](folder%20name/target.md)",
+      "- parent",
+      "    - [nested](folder%20name/target.md)",
+    ].join("\n"));
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"])).not.toThrow();
+  });
+
+  it("still rejects a real broken link adjacent to code examples", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), [
+      "`` example ` [example](absent.md) ``",
+      "",
+      String.raw`\[example](absent.md)`,
+      "",
+      "    [example](absent.md)",
+      "",
+      "[real](absent.md)",
+    ].join("\n"));
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"]))
+      .toThrow(/missing local link target.*absent\.md/u);
+  });
+
+  it("distinguishes an indented list example from an actual nested list", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), "    - [example](absent.md)\n");
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"])).not.toThrow();
+    writeFileSync(join(root, "docs", "source.md"), "- Parent\n\n    - [real](absent.md)\n");
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"]))
+      .toThrow(/missing local link target.*absent\.md/u);
+  });
+
+  it("checks broken links inside indented nested-list items", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), "- parent\n    - [nested](absent.md)\n");
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"]))
+      .toThrow(/missing local link target.*absent\.md/u);
+  });
+
+  it("checks paragraph links continued inside a list item after a blank line", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), "- Item\n\n    [real](absent.md)\n");
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"]))
+      .toThrow(/missing local link target.*absent\.md/u);
+  });
+
+  it("does not treat an HTML id inside inline code as a fragment target", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "folder name", "target.md"), "# Target\n\n`<a id=\"code-example\"></a>`\n");
+    writeFileSync(join(root, "docs", "source.md"), "[code example](folder%20name/target.md#code-example)\n");
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"]))
+      .toThrow(/missing local fragment.*code-example/u);
+  });
+
+  it("does not carry list indentation context across a later block", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), [
+      "- Item",
+      "",
+      "# Section",
+      "",
+      "    [heading example](absent.md)",
+      "",
+      "Outside paragraph.",
+      "",
+      "    [paragraph example](absent.md)",
+    ].join("\n"));
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"])).not.toThrow();
+  });
+
+  it("checks an indented link that continues an open paragraph", () => {
+    const root = fixture();
+    writeFileSync(join(root, "docs", "source.md"), "Paragraph\n    [real](absent.md)\n");
+    expect(() => assertLocalDocumentationLinks(root, ["docs/source.md", "docs/folder name/target.md"]))
+      .toThrow(/missing local link target.*absent\.md/u);
+  });
 });

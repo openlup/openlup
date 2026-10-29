@@ -109,9 +109,76 @@ export function markdownHeadings(markdown: string): MarkdownHeading[] {
   return headings;
 }
 
+function hasOddBackslashPrefix(markdown: string, index: number): boolean {
+  let slashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && markdown[cursor] === "\\"; cursor--) slashes++;
+  return slashes % 2 === 1;
+}
+
+function maskInlineCodeSpans(markdown: string): string {
+  // Use UTF-16 offsets to keep String indexes aligned while masking spans.
+  const masked = markdown.split("");
+  for (let index = 0; index < markdown.length;) {
+    if (markdown[index] !== "`" || hasOddBackslashPrefix(markdown, index)) { index++; continue; }
+    let runEnd = index + 1;
+    while (markdown[runEnd] === "`") runEnd++;
+    const runLength = runEnd - index;
+    let close = runEnd;
+    let closeStart = -1;
+    while (close < markdown.length) {
+      if (markdown[close] !== "`") { close++; continue; }
+      let candidateEnd = close + 1;
+      while (markdown[candidateEnd] === "`") candidateEnd++;
+      if (candidateEnd - close === runLength) { closeStart = close; break; }
+      close = candidateEnd;
+    }
+    if (closeStart < 0) { index = runEnd; continue; }
+    for (let cursor = index; cursor < close + runLength; cursor++) if (masked[cursor] !== "\n" && masked[cursor] !== "\r") masked[cursor] = " ";
+    index = close + runLength;
+  }
+  return masked.join("");
+}
+
+function indentationColumns(prefix: string): number {
+  return [...prefix].reduce((columns, character) => character === "\t" ? columns + 4 - columns % 4 : columns + 1, 0);
+}
+
+function maskIndentedCode(markdown: string): string {
+  const lines = markdown.split("\n");
+  let activeCodeIndent: number | null = null;
+  const withoutIndentedCode = lines.map((line, index) => {
+    if (!line.trim()) return line;
+    const prefix = /^[ \t]*/u.exec(line)![0];
+    const indentation = indentationColumns(prefix);
+    if (activeCodeIndent !== null && indentation >= activeCodeIndent) return " ".repeat(line.length);
+    activeCodeIndent = null;
+    if (indentation < 4) return line;
+    if (index > 0 && lines[index - 1]!.trim()) return line;
+    let codeIndent = 4;
+    for (let previous = index - 1; previous >= 0; previous--) {
+      if (!lines[previous]!.trim()) continue;
+      const item = /^[ ]*(?:[-+*]|\d+[.)])[ \t]+\S/u.exec(lines[previous]!);
+      if (!item) {
+        if (/^ {0,3}#{1,6}\s/u.test(lines[previous]!) || indentationColumns(/^[ \t]*/u.exec(lines[previous]!)![0]) === 0) break;
+        continue;
+      }
+      const contentIndent = indentationColumns(item[0].slice(0, -1));
+      if (contentIndent <= indentation) codeIndent = contentIndent + 4;
+      break;
+    }
+    if (indentation >= codeIndent) {
+      activeCodeIndent = codeIndent;
+      return " ".repeat(line.length);
+    }
+    return line;
+  }).join("\n");
+  return withoutIndentedCode;
+}
+
 function documentationLinkTargets(markdown: string): string[] {
-  const visible = unfencedMarkdown(markdown).replace(/<!--[\s\S]*?-->/gu, "")
-    .replace(/(?<!`)`+[^`\n]*`+(?!`)/gu, " ");
+  const withoutIndentedCode = maskIndentedCode(unfencedMarkdown(markdown));
+  const visible = maskInlineCodeSpans(withoutIndentedCode).replace(/<!--[\s\S]*?-->/gu, "")
+    .replace(/(?<!\\)(?:\\\\)*\\\[/gu, "  ");
   const references = new Map<string, string>();
   const withoutDefinitions = visible.replace(/^ {0,3}\[([^\]]+)\]:\s*(?:<([^>]+)>|(\S+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*$/gmu,
     (_definition, label: string, angled: string | undefined, plain: string | undefined) => {
@@ -119,7 +186,7 @@ function documentationLinkTargets(markdown: string): string[] {
       return " ";
     });
   const targets: string[] = [];
-  for (const match of withoutDefinitions.matchAll(/\]\(\s*(<[^>\n]*>|(?:\\.|[^()\s]|\([^)]*\))*)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/gu)) {
+  for (const match of withoutDefinitions.matchAll(/\[(?:\\.|[^\]])*\]\(\s*(<[^>\n]*>|(?:\\.|[^()\s]|\([^)]*\))*)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/gu)) {
     targets.push(match[1]!.replace(/^<|>$/gu, "").replace(/\\([\\`*_{}[\]()#+.!<>|])/gu, "$1"));
   }
   for (const match of withoutDefinitions.matchAll(/\[([^\]]+)\](?:\[([^\]]*)\])?/gu)) {
@@ -132,7 +199,7 @@ function documentationLinkTargets(markdown: string): string[] {
 }
 
 function markdownHtmlIds(markdown: string): Set<string> {
-  const visible = unfencedMarkdown(markdown).replace(/<!--[\s\S]*?-->/gu, "").replace(/(?<!`)`+[^`\n]*`+(?!`)/gu, " ");
+  const visible = maskInlineCodeSpans(maskIndentedCode(unfencedMarkdown(markdown))).replace(/<!--[\s\S]*?-->/gu, "");
   return new Set([...visible.matchAll(/<[a-z][^>]*\bid\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>/giu)]
     .map((match) => match[1] ?? match[2] ?? match[3]!));
 }

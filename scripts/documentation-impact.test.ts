@@ -86,6 +86,15 @@ describe("production documentation owner routes", () => {
     const expected = [
       ["packages/core/src/readiness/schemaProbe.ts", "core-readiness", "#readiness-contract"],
       ["packages/core/src/bundle/contracts.ts", "core-bundle", "#bundle-contracts"],
+      ["packages/core/src/catalog/identifiers.ts", "core-catalog", "#catalog-identifiers"],
+      ["packages/core/src/inventory/atp.ts", "core-inventory", "#inventory-availability"],
+      ["packages/core/src/pricing/pricingBreakdown.ts", "core-pricing", "#price-resolution-and-breakdown"],
+      ["packages/core/src/promo/promoEvaluator.ts", "core-promotions", "#promotion-evaluation-and-adjustments"],
+      ["packages/core/src/fulfillment/facts.ts", "core-fulfillment", "#fulfillment-fact-and-status-contracts"],
+      ["packages/core/src/shipping/shippingResolver.ts", "core-shipping", "#shipping-rule-resolution"],
+      ["packages/core/src/company-identity/contracts.ts", "core-company-identity", "#company-identity-lookup-contracts"],
+      ["packages/core/src/partners/status.ts", "core-partners", "#partner-lifecycle-contracts"],
+      ["packages/core/src/risk/core/evaluator.ts", "core-risk", "#risk-evaluation-contracts"],
       ["packages/core/src/payment/index.ts", "core-payment", "#payment-contracts"],
       ["packages/core/src/testing.ts", "core-testing", "#local-verification-from-source"],
       ["packages/platform/src/scheduler/cronGuard.ts", "platform-scheduler", "#scheduled-jobs"],
@@ -135,6 +144,27 @@ describe("production documentation owner routes", () => {
     write(root, payment.doc, adapterText.replace("## Owns", "## Owns\n\nAn unrelated adapter overview changed."));
     expect(impact(root, sourceBase).failures).toHaveLength(1);
     write(root, payment.doc, adapterText.replace("### Payment execution and reconciliation", "### Payment execution and reconciliation\n\nThe selected adapter preserves the provider-neutral control boundary."));
+    expect(impact(root, sourceBase).failures).toEqual([]);
+  });
+
+  it("requires the catalog section when catalog source changes; inventory text cannot answer it", () => {
+    const { root, base, surfaces } = fixture();
+    const production = JSON.parse(readFileSync(join(process.cwd(), "config/doc-routing.json"), "utf8")) as { surfaces: DocumentationSurface[] };
+    const catalog = production.surfaces.find(row => row.id === "core-catalog")!;
+    const inventory = production.surfaces.find(row => row.id === "core-inventory")!;
+    surfaces.push(catalog, inventory,
+      { id: "package-core-doc", when: "Core package README fixture", paths: [catalog.doc], doc: catalog.doc, anchor: "" });
+    write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
+    const ownerText = "# Core package\n\n## Catalog identifiers\n\nCatalogue identifiers have bounded formats and host-owned membership.\n\n## Inventory availability\n\nAvailability is calculated from supplied stock lines.\n";
+    write(root, catalog.doc, ownerText);
+    const catalogPath = "packages/core/src/catalog/identifiers.ts";
+    write(root, catalogPath, "export const catalogIdentifier = 1;\n");
+    write(root, "packages/core/src/inventory/atp.ts", "export const availability = 1;\n");
+    const sourceBase = commit(root);
+    write(root, catalogPath, "export const catalogIdentifier = 2;\n");
+    write(root, catalog.doc, ownerText.replace("## Inventory availability", "## Inventory availability\n\nThe stock calculation retains the single-location result."));
+    expect(impact(root, sourceBase).failures).toHaveLength(1);
+    write(root, catalog.doc, ownerText.replace("## Catalog identifiers", "## Catalog identifiers\n\nThe identifiers remain open formats; the host read determines membership."));
     expect(impact(root, sourceBase).failures).toEqual([]);
   });
 

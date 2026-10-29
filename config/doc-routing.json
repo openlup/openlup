@@ -816,7 +816,7 @@
         "packages/core/src/catalog/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#commerce-data-contracts"
+      "anchor": "#catalog-identifiers"
     },
     {
       "id": "core-inventory",
@@ -825,7 +825,7 @@
         "packages/core/src/inventory/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#commerce-data-contracts"
+      "anchor": "#inventory-availability"
     },
     {
       "id": "core-pricing",
@@ -834,7 +834,7 @@
         "packages/core/src/pricing/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#commerce-data-contracts"
+      "anchor": "#price-resolution-and-breakdown"
     },
     {
       "id": "core-promotions",
@@ -843,7 +843,7 @@
         "packages/core/src/promo/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#commerce-data-contracts"
+      "anchor": "#promotion-evaluation-and-adjustments"
     },
     {
       "id": "core-fulfillment",
@@ -852,7 +852,7 @@
         "packages/core/src/fulfillment/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#delivery-contracts"
+      "anchor": "#fulfillment-fact-and-status-contracts"
     },
     {
       "id": "core-shipping",
@@ -861,18 +861,16 @@
         "packages/core/src/shipping/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#delivery-contracts"
+      "anchor": "#shipping-rule-resolution"
     },
     {
-      "id": "core-partners-risk",
-      "when": "Core partner identity and risk admission contracts",
+      "id": "core-company-identity",
+      "when": "Company identity contract shapes, lookup purposes, trust levels and source outcomes",
       "paths": [
-        "packages/core/src/company-identity/**",
-        "packages/core/src/partners/**",
-        "packages/core/src/risk/**"
+        "packages/core/src/company-identity/**"
       ],
       "doc": "packages/core/README.md",
-      "anchor": "#partner-and-risk-contracts"
+      "anchor": "#company-identity-lookup-contracts"
     },
     {
       "id": "core-payment",
@@ -1219,6 +1217,24 @@
       ],
       "doc": "server/adapters/README.md",
       "anchor": "#simulators-and-captured-adapters"
+    },
+    {
+      "id": "core-partners",
+      "when": "Partner inquiry lifecycle status and update acknowledgement contracts",
+      "paths": [
+        "packages/core/src/partners/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#partner-lifecycle-contracts"
+    },
+    {
+      "id": "core-risk",
+      "when": "Pure risk-rule matching, scoring and mode-dependent enforcement results",
+      "paths": [
+        "packages/core/src/risk/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#risk-evaluation-contracts"
     }
   ]
 }
