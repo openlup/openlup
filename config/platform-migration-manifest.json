@@ -720,14 +720,18 @@
       {
         "file": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
         "sha256": "ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e"
+      },
+      {
+        "file": "db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
+        "sha256": "33b0bc85b0c0fe55b2beb08fb121e4fdc891f14f9e1ab276563ffa72a88bb7d3"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "feba6f9f401d749b7f9d3eb5b380e5d1e0eaf9e8322164e282ae8ec82ead388d"
+        "withRestore": "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b"
       },
       "separateMigrator": {
-        "withRestore": "6f58dd8ba4b83c5f73e80f25b2319721c505926d6b7a374d6defe4f6d7fc1efb"
+        "withRestore": "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82"
       }
     }
   }

@@ -552,9 +552,9 @@ privileges and complete catalogue installation are described in
 ## Compatibility posture
 
 The qualified retained-import selection requires an actual restore login and one
-of the two independently measured 91-unit inventories for its migration/bootstrap
-shape. The manifest preserves the entire F90 prefix and appends only the exact
-separately approved runtime completion after retained import; legacy selection
+of the two independently measured 92-unit inventories for its migration/bootstrap
+shape. The manifest preserves the entire issued 91-unit prefix and appends the
+separately approved owner-path forward after runtime completion; legacy selection
 remains the issued 88-unit catalogue. The
 two reference-derived digests are expectations, not target observations or
 qualification. Production status/apply/replay and runtime/restore privilege
@@ -568,10 +568,10 @@ legacy-preserving version-2 source catalogue follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The supported reader admits the exact sixth identity for the demonstrated
 context writes and review-receipt reads/appends. The registry retains all six
-prior approvals unchanged; the exact sixth SQL is now the final selected tail.
+prior approvals unchanged; the exact sixth SQL preceded the owner-path tail.
 The seventh approval binds one qualified owner-path forward's exact file and
-function definitions. Its inert fixture is not selected by the 91-unit plan;
-SQL introduction and inventory proof remain separate.
+function definitions. Its active SQL is selected as unit 92, byte-identical to
+the prior inert fixture; the two installed inventories are measured separately.
 Trusted main parses a changed registry before returning for a no-SQL change,
 so reader support must land before the separate sixth-pin approval, which must
 land before SQL introduction. The installer-ownership/runtime-binding guard relies

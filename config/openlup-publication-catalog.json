@@ -1214,6 +1214,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },

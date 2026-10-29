@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createPostgresFulfillmentDispatchStore, createPostgresFulfillmentShipmentSpinePort } from "@openlup/platform/fulfillment";
 import type { FulfillmentObservation } from "@openlup/platform/fulfillment/contracts";
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork } from "@openlup/platform/identity";
@@ -36,6 +36,122 @@ const identifier = (value: string): string => {
   assert.match(value, /^[a-z_][a-z0-9_]*$/u); return `"${value}"`;
 };
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+async function installOwnerPathShadows(client: PoolClient, caller: string): Promise<void> {
+  for (const name of ["installation_key", "cases", "contacts", "address_references", "commands", "audit",
+    "rate_limit_windows", "clients", "subscriptions", "subscription_cycles", "customer_subject_lifecycle_events",
+    "subscription_dunning_cases", "subscription_delivery_alignment_cases", "subscription_delivery_alignment_control",
+    "subscription_delivery_alignment_admission_receipts"]) {
+    await client.query(`CREATE TEMP TABLE ${name}(marker pg_catalog.text)`);
+  }
+  await client.query(`CREATE FUNCTION pg_temp.owner_path_marker() RETURNS pg_catalog.bool
+      LANGUAGE plpgsql VOLATILE AS $$ BEGIN
+        RAISE EXCEPTION 'owner_path_marker:%', current_user USING ERRCODE='P0001';
+      END $$;
+    CREATE DOMAIN pg_temp.uuid AS pg_catalog.uuid CHECK (pg_temp.owner_path_marker());
+    CREATE FUNCTION pg_temp.now() RETURNS pg_catalog.timestamptz
+      LANGUAGE plpgsql VOLATILE AS $$ BEGIN
+        PERFORM pg_temp.owner_path_marker(); RETURN pg_catalog.now();
+      END $$;`);
+  await assert.rejects(client.query("SELECT NULL::pg_temp.uuid"), { code: "P0001", message: `owner_path_marker:${caller}` });
+  await assert.rejects(client.query("SELECT pg_temp.now()"), { code: "P0001", message: `owner_path_marker:${caller}` });
+  assert.deepEqual((await client.query(`SELECT pg_catalog.pg_get_userbyid(c.relowner) AS owner
+    FROM pg_catalog.pg_class c WHERE c.oid='pg_temp.cases'::pg_catalog.regclass`)).rows, [{ owner: caller }]);
+}
+
+async function proveOwnerPathResolution(bootstrap: Pool): Promise<void> {
+  const definitions = [
+    ["acquisition_private", "keyed_digest"], ["acquisition_private", "case_projection"],
+    ["acquisition_private", "refuse_append_only_mutation"], ["public", "acquisition_case_submit_v1"],
+    ["public", "acquisition_case_operator_list_v1"], ["public", "acquisition_case_transition_v1"],
+    ["public", "acquisition_case_active_count_v1"], ["public", "customer_subject_capture_lifecycle"],
+    ["public", "subscription_delivery_alignment_guard_cycle_insert"],
+  ] as const;
+  const settings = await bootstrap.query(`SELECT n.nspname,p.proname,p.proconfig,
+    pg_catalog.pg_get_userbyid(p.proowner) AS owner
+    FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+    WHERE (n.nspname,p.proname) IN
+      (('acquisition_private','keyed_digest'),('acquisition_private','case_projection'),
+       ('acquisition_private','refuse_append_only_mutation'),('public','acquisition_case_submit_v1'),
+       ('public','acquisition_case_operator_list_v1'),('public','acquisition_case_transition_v1'),
+       ('public','acquisition_case_active_count_v1'),('public','customer_subject_capture_lifecycle'),
+       ('public','subscription_delivery_alignment_guard_cycle_insert'))
+    ORDER BY n.nspname,p.proname`);
+  assert.deepEqual(settings.rows.map(({ nspname, proname }) => [nspname, proname]).sort(), [...definitions].map(value => [...value]).sort());
+  for (const row of settings.rows) {
+    assert.deepEqual(row.proconfig, ["search_path=pg_catalog, pg_temp"]);
+    if (row.proname.startsWith("acquisition_") || row.nspname === "acquisition_private") {
+      assert.equal(row.owner, "platform_acquisition_owner");
+    }
+  }
+  const parent = await fixture(bootstrap);
+  const snapshot = async () => {
+    const rows = [];
+    for (const table of ["clients", "subscriptions", "subscription_cycles", "customer_subject_lifecycle_events"]) {
+      rows.push((await bootstrap.query(`SELECT count(*)::pg_catalog.int4 AS rows,
+        coalesce(pg_catalog.md5(pg_catalog.string_agg(xmin::pg_catalog.text || ':' || ctid::pg_catalog.text, ',' ORDER BY ctid)),'empty') AS tuples
+        FROM public.${table}`)).rows[0]);
+    }
+    return rows;
+  };
+  const before = await snapshot();
+  const runtime = pool(loginUrl(selection.runtimeLogin));
+  const caller = await runtime.connect();
+  try {
+    await installOwnerPathShadows(caller, selection.runtimeLogin);
+    for (const [sql, code] of [
+      ["SELECT public.acquisition_case_submit_v1(NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)", "22023"],
+      ["SELECT public.acquisition_case_operator_list_v1(NULL,NULL,NULL,3)", "22023"],
+      ["SELECT public.acquisition_case_transition_v1(NULL,NULL,NULL,NULL,NULL,NULL,NULL)", "22023"],
+    ] as const) {
+      await caller.query("BEGIN");
+      try {
+        await caller.query("SET LOCAL ROLE platform_acquisition_runtime");
+        await assert.rejects(caller.query(sql), { code });
+      } finally { await caller.query("ROLLBACK"); }
+    }
+    await caller.query("BEGIN");
+    try {
+      await caller.query("SET LOCAL ROLE platform_acquisition_runtime");
+      assert.equal(typeof (await caller.query("SELECT public.acquisition_case_active_count_v1() AS count")).rows[0].count, "string");
+    } finally { await caller.query("ROLLBACK"); }
+  } finally { caller.release(); }
+
+  // The same session owns its temporary objects as the restricted caller while
+  // each direct private-body check executes with the installed owner identity.
+  const privateCaller = await bootstrap.connect();
+  try {
+    await privateCaller.query(`SET ROLE ${identifier(selection.runtimeLogin)}`);
+    await installOwnerPathShadows(privateCaller, selection.runtimeLogin);
+    await privateCaller.query("RESET ROLE");
+    await privateCaller.query("BEGIN");
+    try {
+      await privateCaller.query("SET LOCAL ROLE platform_acquisition_owner");
+      assert.equal((await privateCaller.query("SELECT acquisition_private.keyed_digest('owner-path','{}'::pg_catalog.jsonb) AS value")).rows[0].value.length, 32);
+      assert.deepEqual((await privateCaller.query("SELECT acquisition_private.case_projection($1::pg_catalog.uuid) AS value", [randomUUID()])).rows, [{ value: null }]);
+      await assert.rejects(privateCaller.query("TRUNCATE acquisition_private.commands"), { code: "42501", message: "acquisition_append_only" });
+    } finally { await privateCaller.query("ROLLBACK"); }
+  } finally { privateCaller.release(); }
+
+  const restore = pool(loginUrl(selection.restoreLogin!));
+  const restored = await restore.connect();
+  try {
+    await installOwnerPathShadows(restored, selection.restoreLogin!);
+    const clientId = randomUUID();
+    await restored.query("BEGIN");
+    try {
+      assert.equal((await restored.query(`SELECT public.client_import_retained_row(
+        $1::pg_catalog.uuid,'2020-01-02'::pg_catalog.timestamptz,'2020-01-03'::pg_catalog.timestamptz,
+        $2::pg_catalog.text,NULL,NULL,NULL,NULL,'customer',NULL,NULL,'{}'::pg_catalog.jsonb,NULL::pg_catalog.uuid) AS inserted`,
+      [clientId, `${clientId}@example.invalid`])).rows[0].inserted, true);
+      assert.equal((await restored.query(`SELECT public.subscription_cycle_import_retained_row(
+        $1::pg_catalog.uuid,$2::pg_catalog.uuid,'2020-01-02'::pg_catalog.timestamptz,'payment_pending',
+        '2020-01-01'::pg_catalog.timestamptz,'2020-01-01'::pg_catalog.timestamptz,
+        NULL::pg_catalog.uuid,NULL::pg_catalog.text) AS inserted`, [randomUUID(), parent.subscription])).rows[0].inserted, true);
+    } finally { await restored.query("ROLLBACK"); }
+  } finally { restored.release(); }
+  assert.deepEqual(await snapshot(), before);
+}
 
 async function proveRetainedRuntime(admin: Pool) {
   assert.ok(selection.restoreLogin);
@@ -415,7 +531,7 @@ async function prove() {
   });
   assert.equal(manifest.objectInventorySha256, input.expectedInventory);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 91);
+  assert.equal(expected.length, 92);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;
   await assert.rejects(createPostgresMigrationRunner({ connectionString: input.connectionString }, { installation: withoutRestore }).status(),
@@ -484,6 +600,7 @@ async function prove() {
     client.release();
   }
   await proveRetainedRuntime(bootstrap);
+  await proveOwnerPathResolution(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
   await proveRuntimeCompletion(bootstrap);
   if (input.discriminators) await proveObservationRuntime(bootstrap);
@@ -565,7 +682,7 @@ async function prove() {
   assert.deepEqual(await ledger(), installed);
   return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
-    runtimeCompletionProved: true, nativeObservationRuntimeProved: input.discriminators,
+    runtimeCompletionProved: true, ownerPathResolutionProved: true, nativeObservationRuntimeProved: input.discriminators,
     discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
 }
 
