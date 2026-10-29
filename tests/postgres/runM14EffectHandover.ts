@@ -8,7 +8,6 @@ import { readProcessEnvironment } from "../../server/_lib/observability/runtimeP
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { chownSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Pool, TypeOverrides } from "pg";
@@ -19,7 +18,7 @@ import type { FulfillmentDispatchRequest, FulfillmentObservation } from "@openlu
 import { verifyHmacSignature } from "@openlup/platform/http";
 import { createPostgresFulfillmentObservationLifecycle } from "../../server/adapters/postgres/fulfillmentObservationLifecycle.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { qualifiedAdminPostgresStartupOptions, qualifiedPostgresStartupOptions, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 // These canonical APIs belong to the transfer predecessor; do not copy their
 // unpublished implementation or substitute physical dump/restore here.
@@ -27,7 +26,7 @@ import { captureConnectedNativeStore, connectedNativeStoreTables } from "../../s
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferInventory.js";
 import { createOrderReviewMediaTransferReader } from "../../server/adapters/filesystem/orderReviewMediaTransferReader.js";
-import { restoreOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferRestore.js";
+import { stageOrderReviewMediaFilesystem, restoreOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferRestore.js";
 import { OrderReviewMediaObjectStore } from "../../server/adapters/filesystem/orderReviewMediaObjectStore.js";
 import { resolveOrderReviewRuntimeBinding, type OrderReviewRuntimeBinding } from "../../server/runtime/commerce/orderReviewBinding.js";
 import { prepareM14ApplicationCohort, type M14ActorBackend } from "./m14ApplicationCohort.js";
@@ -35,15 +34,18 @@ import { executor, fixture, openCase, schedule } from "../helpers/fulfillmentNat
 import { request } from "../helpers/fulfillmentComposition.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const root = process.cwd(), image = process.argv[2];
-const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
+import { assertCatchupActivation, assertFinalCatchup, catchupCounts, catchupDrain, catchupServing, interruptPool, mediaReferences, preliminaryCatchup, seedCatchup } from "./m14ConnectedCatchup.js";
+
+const root = process.cwd(), image = process.argv[2], catchup = process.argv[3] === "--catch-up";
+if (process.argv.length > (catchup ? 4 : 3)) throw new Error("Unknown handover arguments");
+const selection: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation = { generation: catchup ? "qualified-admin" : "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
 const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8")),
-  "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
+  selection.generation, catchup ? { roleMode: "installer-managed" } : { migrationIsBootstrap: false, hasRestore: true });
 const expectedUnits = [selected.baseline, ...selected.forward];
 const expectedTail = expectedUnits.at(-1);
 assert(expectedTail, "Selected canonical manifest must contain its baseline");
-assert.equal(selected.objectInventorySha256, "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82");
+if (!catchup) assert.equal(selected.objectInventorySha256, "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82");
 assert.equal(connectedNativeStoreTables.length, 73, "Keep the transfer predecessor's finite graph unchanged");
 if (!image || !/^sha256:[0-9a-f]{64}$/.test(image)) throw new Error("Supply one already-local immutable Node24.21.0 image ID; this witness never pulls/builds images");
 if (process.version !== "v24.21.0") throw new Error("M14 witness requires Node24.21.0");
@@ -56,7 +58,9 @@ const owner = randomUUID(), label = "openlup.m14-effect-owner", roleLabel = "ope
 const fixtureUid = process.getuid?.(), fixtureGid = process.getgid?.();
 assert(fixtureUid !== undefined && fixtureGid !== undefined, "explicit POSIX owner profile required");
 const fixtureUser = `${fixtureUid}:${fixtureGid}`;
-const scratch = realpathSync(mkdtempSync(join(tmpdir(), "openlup-m14-effects-")));
+const evidenceParent = join(root, ".context", "scratch", "oss-m14-connected-catchup");
+mkdirSync(evidenceParent, { recursive: true, mode: 0o700 });
+const scratch = realpathSync(mkdtempSync(join(evidenceParent, "journey-")));
 // macOS inherits the parent directory group. Establish this owned fixture
 // profile before creating any private descendants or mounting them in OCI.
 chownSync(scratch, fixtureUid, fixtureGid);
@@ -82,16 +86,34 @@ const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBy
 function pool(connectionString: string) {
   const value = new Pool({ connectionString, types: createPostgresGatewayTypeOverrides(TypeOverrides) }); pools.push(value); return value;
 }
-async function capture(db: Pool, sourceId: string) {
-  return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+async function capture(db: Pool, sourceId: string, restricted = catchup) {
+  // Existing trusted-M capture window from the restricted restore witness.
+  const lease = await db.connect();
+  try {
+    if (restricted) await lease.query("GRANT platform_acquisition_owner TO transfer_owner WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY transfer_owner");
+    return await captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
     source: { async withSnapshot(work) {
-      const client = await db.connect();
+      const client = lease;
       try {
         await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         const value = await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
         await client.query("COMMIT"); return value;
-      } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; } finally { client.release(); }
+      } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; } finally { /* The held capture lease also seals the owner window below. */ }
     } } });
+  } finally {
+    if (restricted) await lease.query("REVOKE platform_acquisition_owner FROM transfer_owner GRANTED BY transfer_owner");
+    lease.release();
+  }
+}
+async function keyIdentity(db: Pool) {
+  const client = await db.connect();
+  try {
+    if (catchup) await client.query("GRANT platform_acquisition_owner TO transfer_owner WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY transfer_owner");
+    return (await client.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
+  } finally {
+    if (catchup) await client.query("REVOKE platform_acquisition_owner FROM transfer_owner GRANTED BY transfer_owner");
+    client.release();
+  }
 }
 async function census(db: Pool) {
   const rows: Record<string, string[]> = {};
@@ -105,25 +127,25 @@ async function installation(side: string) {
   const bootstrap = pool(resource.connectionString);
   // Exact existing connected-transfer qualified fixture principals/flags. This
   // is owned disposable setup, not a new production role/grant/profile model.
-  await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only';
+  await bootstrap.query(`CREATE ROLE transfer_owner LOGIN ${catchup ? "NOINHERIT NOSUPERUSER" : "INHERIT SUPERUSER"} NOCREATEDB ${catchup ? "CREATEROLE" : "NOCREATEROLE"} NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only';
     ALTER DATABASE postgres OWNER TO transfer_owner;
     CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only';
     CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-only'`);
   const url = (login: string, migration = false) => {
     const value = new URL(resource.connectionString); value.username = login;
-    if (migration) value.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
+    if (migration) value.searchParams.set("options", (selection.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(selection) : qualifiedPostgresStartupOptions(selection)));
     return value.toString();
   };
   const migrationUrl = url(selection.migrationLogin, true), ownerPool = pool(migrationUrl);
   const runner = createPostgresMigrationRunner({ connectionString: migrationUrl }, { installation: selection, poolFactory: () => ownerPool });
   assert.deepEqual(await runner.apply(), { applied: expectedUnits.map(unit => unit.file) });
   assert.deepEqual((await runner.status()).pending, []);
-  await bootstrap.end();
+  if (!catchup) await bootstrap.end();
   const runtime = pool(url(selection.runtimeLogin)), restore = pool(url(selection.restoreLogin!));
   for (const [actor, login] of [[runtime, selection.runtimeLogin], [restore, selection.restoreLogin!]] as const) {
     assert.deepEqual((await actor.query("SELECT current_user,session_user")).rows, [{ current_user: login, session_user: login }]);
   }
-  return { name, resource, owner: ownerPool, runtime, restore, migrationUrl, runtimeUrl: url(selection.runtimeLogin) };
+  return { name, resource, owner: ownerPool, bootstrap, runner, runtime, restore, migrationUrl, runtimeUrl: url(selection.runtimeLogin) };
 }
 
 function owned(id: string, role: string) {
@@ -207,6 +229,7 @@ try {
     sourceName: `m14-effects-source-${owner}`, targetName: `m14-effects-target-${owner}` }, null, 2));
   docker(["network", "connect", "--alias", "source-db", network!, sourceId]);
   const pristineTarget = await capture(target.owner, "owned-pristine-target");
+  const targetKeyBefore = await keyIdentity(target.owner);
   const targetLedger = (await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows;
   const sourceActorUrl = new URL(source.runtimeUrl); sourceActorUrl.hostname = "source-db"; sourceActorUrl.port = "5432";
   const fixtures = await Promise.all([fixture(source.owner), fixture(source.owner), fixture(source.owner), fixture(source.owner)]);
@@ -236,6 +259,16 @@ try {
     runtime: { hostConnectionString: source.runtimeUrl, actorConnectionString: sourceActorUrl.toString(),
       login: selection.runtimeLogin, database: "postgres" } });
   mark("applicationStartupAndNaturalIntervalObserved");
+  let preliminary: Awaited<ReturnType<typeof preliminaryCatchup>> | undefined;
+  if (catchup) {
+    const seed = await seedCatchup({ owner: source.owner, runtime: source.runtime, mediaRoot: application.mediaRoot,
+      grant: application.retained.grant, subscription: fixtures[3].subscription, client: fixtures[3].client, order: fixtures[3].order });
+    const provisional = await installation("preliminary");
+    preliminary = await preliminaryCatchup({ owner: source.owner, runtime: source.runtime, mediaRoot: application.mediaRoot,
+      grant: application.retained.grant, scratch, preliminary: { owner: provisional.owner, installation: selection }, capture, seed });
+    await closePostgres(provisional.resource, [provisional.owner, provisional.bootstrap, provisional.runtime, provisional.restore]);
+    mark("preliminaryRefusedAndRolledBackToSource");
+  }
   const actors: { id: string; directory: string; name: string; boot: string; candidate: FulfillmentDispatchRequest }[] = [];
   for (const duty of duties.slice(0, 3)) {
     const { name, candidate, command, evidence } = duty, directory = join(scratch, name);
@@ -267,8 +300,8 @@ try {
     [pending.candidate.fulfillmentRef])).rows, [{ shipment_id: pending.candidate.fulfillmentRef, status: "draft", external_ref: null }]);
   writeFileSync(join(scratch, "source-writer-inventory.json"), JSON.stringify({ dispatch: actors.map(actor => ({ id: actor.id, boot: actor.boot,
     runtimeIdentity: status(actor.directory)?.runtimeIdentity })), application: application.writer,
-    coordinator: { pid: process.pid, writesUntilFreeze: ["seed/provenance", "source R setup and fixture HTTP", "gate releases"],
-      remainingAfterFreeze: "read-only canonical capture/census only" }, admittedBeforeEffects }, null, 2), { mode: 0o600 });
+    coordinator: { pid: process.pid, writesUntilFreeze: ["seed/provenance and preliminary updates/deletions/new rows and objects", "source R setup and fixture HTTP", "gate releases", "installation/DDL through owned setup pools"],
+      remainingAfterFreeze: "read-only canonical capture/census and serving authorization probes only" }, admittedBeforeEffects }, null, 2), { mode: 0o600 });
   writeFileSync(join(actors[0].directory, "release"), "release");
   await until(state, value => value.requests.some(row => row.key === "lost-ack" && row.state === "accepted"));
   writeFileSync(join(actors[1].directory, "release"), "release");
@@ -299,7 +332,7 @@ try {
   const observedDispatchBackends: M14ActorBackend[] = [];
   for (const actor of actors) {
     const applicationName = `m14-dispatch:${actor.boot}`;
-    observedDispatchBackends.push(...(await source.owner.query<Omit<M14ActorBackend, "boot">>(`SELECT pid,
+    observedDispatchBackends.push(...(await (catchup ? source.bootstrap : source.owner).query<Omit<M14ActorBackend, "boot">>(`SELECT pid,
       backend_start::text AS "backendStart",datname AS database,usename AS principal,application_name AS "applicationName"
       FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND application_name=$1`, [applicationName])).rows.map(row => {
       assert.equal(row.database, "postgres"); assert.equal(row.principal, selection.runtimeLogin);
@@ -309,7 +342,7 @@ try {
   }
   const retired = [...actors.map(actor => actor.id), application.id];
   for (const actor of actors) retire(actor.id);
-  const applicationRetirement = await application.fenceAndRetire();
+  const applicationRetirement = await application.fenceAndRetire({ settleMediaBeforeFence: catchup });
   assert.equal(applicationRetirement.id, application.id);
   for (const role of ["executor", "application"]) assert.equal(docker(["ps", "--all", "--no-trunc",
     "--filter", `label=${label}=${owner}`, "--filter", `label=${roleLabel}=${role}`, "--format", "{{.ID}}"]), "");
@@ -323,7 +356,7 @@ try {
   for (const backend of actorBackends) {
     assert.equal(bootBindings.get(backend.applicationName), backend.boot);
     assert.equal(backend.database, "postgres"); assert.equal(backend.principal, selection.runtimeLogin);
-    const result = await source.owner.query<{ terminated: boolean }>(`SELECT pg_catalog.pg_terminate_backend(pid) AS terminated
+    const result = await (catchup ? source.bootstrap : source.owner).query<{ terminated: boolean }>(`SELECT pg_catalog.pg_terminate_backend(pid) AS terminated
       FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2::timestamptz
       AND datname=$3 AND usename=$4 AND application_name=$5`,
     [backend.pid, backend.backendStart, backend.database, backend.principal, backend.applicationName]);
@@ -340,16 +373,18 @@ try {
   // Existing privileged setup sessions and R/RR coordinator clients are closed;
   // the sole temporary source connection below has a read-only default and
   // uses only read-only snapshots/census. Other host operators are excluded.
-  await Promise.all([source.runtime.end(), source.restore.end(), source.owner.end()]);
+  await Promise.all([source.runtime.end(), source.restore.end(), source.owner.end(), ...(catchup ? [source.bootstrap.end()] : [])]);
   assert(source.runtime.ended && source.restore.ended && source.owner.ended);
   sourceWritesFrozen = true;
   mark("sourceCohortRetired");
-  const captureUrl = new URL(source.migrationUrl);
-  captureUrl.searchParams.set("options", `${qualifiedPostgresStartupOptions(selection)} -c default_transaction_read_only=on`);
+  const captureUrl = new URL(catchup ? source.resource.connectionString : source.migrationUrl);
+  captureUrl.searchParams.set("options", catchup ? "-c default_transaction_read_only=on" : `${qualifiedPostgresStartupOptions(selection as QualifiedPostgresInstallation)} -c default_transaction_read_only=on`);
   const sourceReader = pool(captureUrl.toString());
   await until(async () => Number((await sourceReader.query(`SELECT count(*)::integer AS count FROM pg_catalog.pg_stat_activity
     WHERE datname=current_database() AND backend_type='client backend' AND pid<>pg_backend_pid()`)).rows[0].count), count => count === 0);
-  const finalGraph = await capture(sourceReader, "owned-retired-source");
+  const finalGraph = await capture(sourceReader, "owned-retired-source", false);
+  if (preliminary) assertFinalCatchup(preliminary, finalGraph);
+  const finalReferences = catchup ? await mediaReferences(sourceReader) : [];
   const sourceRows = await census(sourceReader);
   const finalMediaStates = (await sourceReader.query("SELECT media_reference,state FROM public.commerce_order_review_media WHERE media_reference=ANY($1::text[]) ORDER BY media_reference",
     [[application.retained.pendingRef, application.retained.incompleteRef, application.retained.cleanupRef]])).rows;
@@ -370,7 +405,7 @@ try {
   }).sort((a, b) => a.key.localeCompare(b.key));
   const capturePoint = { retired, sourceDatabaseSha256: finalGraph.sha256, mediaCensus, markerInventory: objectInventory,
     applicationRetirement, backendRetirement, finalMediaStates, coordinator: { pid: process.pid, sourceWritesFrozen, sourceMutationPoolsClosed: true,
-      sourceCapturePoolClosed: sourceReader.ended, finalCapture: "canonical read-only graph plus complete objects/tmp census" },
+      sourceCapturePoolClosed: sourceReader.ended, sourceAdministrationClosed: source.bootstrap.ended, finalCapture: "canonical read-only graph plus complete objects/tmp census" },
     ownerProfile: { targetProcessUid: process.getuid!(), targetProcessGid: process.getgid!(),
       sourceActors: actors.map(actor => ({ id: actor.id, uid: status(actor.directory)?.uid, gid: status(actor.directory)?.gid })),
       objectRoot: { uid: rootStat.uid, gid: rootStat.gid, mode: "0700" },
@@ -385,21 +420,62 @@ try {
   // These imports preserve all 73 tables/raw JSON rows and the whole private
   // objects/tmp root; no pg_dump/psql clone, schema/grant copy or lease editing.
   const targetMediaRoot = join(scratch, "target-media");
-  const filesystemRestore = await restoreOrderReviewMediaFilesystem({ root: targetMediaRoot, census: mediaCensus, ...mediaLimits,
+  const mediaInput = { census: mediaCensus, ...mediaLimits,
+    objects: createOrderReviewMediaTransferReader({ root: application.mediaRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes }),
+    temporary: createOrderReviewMediaTransferReader({ root: application.mediaRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes, area: "tmp" }) };
+  let objectInterruption = false;
+  if (catchup) {
+    let completedReads = 0;
+    const brokenReader = { async read(key: string, version?: string) {
+      const read = await mediaInput.objects.read(key, version);
+      if (++completedReads === 2) { objectInterruption = true; throw new Error("synthetic object import interruption"); }
+      return read;
+    } };
+    await assert.rejects(stageOrderReviewMediaFilesystem({ ...mediaInput, objects: brokenReader,
+      servingRoot: targetMediaRoot, generationId: "final" }), { code: "unavailable" });
+    assert(objectInterruption);
+    assert(!existsSync(join(scratch, ".openlup-inactive-media-final")));
+  }
+  const filesystemRestore = catchup ? await stageOrderReviewMediaFilesystem({ ...mediaInput,
+    servingRoot: targetMediaRoot, generationId: "final" }) : await restoreOrderReviewMediaFilesystem({ root: targetMediaRoot, census: mediaCensus, ...mediaLimits,
     objects: createOrderReviewMediaTransferReader({ root: application.mediaRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes }),
     temporary: createOrderReviewMediaTransferReader({ root: application.mediaRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes, area: "tmp" }) });
+  const finalMediaRoot = "generationRoot" in filesystemRestore && typeof filesystemRestore.generationRoot === "string" ? filesystemRestore.generationRoot : targetMediaRoot;
   filesystemPublished = true;
   const graphRestore = await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: finalGraph, freshTarget: pristineTarget });
+  assert.deepEqual(await keyIdentity(target.owner), targetKeyBefore);
   graphPublished = true;
   assert.deepEqual(await census(target.owner), sourceRows);
-  assert.deepEqual(await captureOrderReviewMediaFilesystem({ root: targetMediaRoot, ...mediaLimits }), mediaCensus);
+  assert.deepEqual(await captureOrderReviewMediaFilesystem({ root: finalMediaRoot, ...mediaLimits }), mediaCensus);
   assert.deepEqual((await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows, targetLedger);
   mark("canonicalGraphAndFilesystemPublished");
+  let agreement: Awaited<ReturnType<typeof catchupServing>> | undefined;
+  const drain = catchup ? catchupDrain() : undefined;
+  if (catchup) {
+    const sourceProbeUrl = new URL(source.runtimeUrl);
+    sourceProbeUrl.searchParams.set("options", "-c default_transaction_read_only=on");
+    const sourceProbe = pool(sourceProbeUrl.toString());
+    try {
+      agreement = await catchupServing({ source: sourceProbe, target: target.runtime, sourceRoot: application.mediaRoot,
+        targetRoot: finalMediaRoot, grant: application.retained.grant, otherGrant: preliminary!.otherGrant, census: mediaCensus, references: finalReferences });
+    } finally { await sourceProbe.end(); }
+    assert(preliminary);
+    assert.notEqual(preliminary.staged.generationRoot, finalMediaRoot);
+    const changed = mediaCensus.objects.find(row => row.key === preliminary.changes.updated.key);
+    assert.equal(changed?.sha256, preliminary.changes.updated.sha256);
+    assert.equal(changed?.bytes, preliminary.changes.updated.bytes);
+    assert(mediaCensus.objects.some(row => row.key === preliminary.changes.added.key));
+    assert(mediaCensus.temporary.some(row => `tmp/${row.key}` === preliminary.partial.key && row.bytes > 0 && row.bytes < 100));
+    assert(finalReferences.some(row => row.mediaReference === preliminary.partial.ref && row.state === "pending" && row.tempKey === preliminary.partial.key));
+    const deleted = preliminary.media.objects.filter(row => !mediaCensus.objects.some(value => value.key === row.key));
+    assert(deleted.length > 0, "actual in-flight source deletion is absent from final generation");
+    assert.equal((await target.runner.status()).pending.length, 0);
+  }
   const scheduleBefore = await Promise.all(fixtures.map(f => schedule(target.runtime, f.subscription)));
   const mediaRead = createPostgresOrderReviewMediaPort(target.runtime);
   for (const row of finalMediaStates) {
     const authorized = await mediaRead.readAuthorized(application.retained.grant, String(row.media_reference));
-    assert.equal(authorized !== null, row.state === "stored" || row.state === "confirmed", "Actual retained media state governs visibility before runtime reconciliation");
+    assert.equal(authorized !== null, row.state === "confirmed", "Actual retained media state governs customer visibility before runtime reconciliation");
   }
 
   // Restart the independent provider from its own fsynced ledger. Target never
@@ -446,6 +522,8 @@ try {
       await spine.localPersistence.markProcessed(observation.eventKey, { status: "processed" });
     }
   }
+  if (catchup) assert(graphPublished && filesystemPublished && sourceWritesFrozen && agreement && drain,
+    "catchup_recovery_requires_database_objects_acl_drain_and_retirement");
   targetRecoveryWritesStarted = true;
   // A killed old process can leave submitting after its final DB socket failed.
   // Preserve that actual source state through import, then use the existing R
@@ -520,10 +598,27 @@ try {
   const targetMediaPool = pool(target.runtimeUrl);
   assert.deepEqual((await targetMediaPool.query("SELECT current_user,session_user")).rows,
     [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin }]);
-  const targetMediaStore = await OrderReviewMediaObjectStore.create(targetMediaRoot);
+  const targetMediaStore = await OrderReviewMediaObjectStore.create(finalMediaRoot);
+  const targetEnvironment = { ...drain?.env, PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: target.runtimeUrl,
+    ORDER_REVIEW_MEDIA_ROOT: finalMediaRoot };
+  if (catchup) {
+    const activationFacts = { sourceFrozen: sourceWritesFrozen, graphPublished, filesystemPublished,
+      qualified: (await target.runner.status()).pending.length === 0,
+      generation: finalMediaRoot, finalGeneration: join(scratch, ".openlup-inactive-media-final"),
+      serving: agreement?.serving, drain: targetEnvironment,
+      effects: { accepted: acceptedBefore.rows.length, uncertain: beforeActivation.filter(row => row.status === "uncertain").length,
+        pending: beforeActivation.filter(row => row.status === "draft").length } };
+    for (const delta of [{ sourceFrozen: false }, { graphPublished: false }, { filesystemPublished: false },
+      { qualified: false }, { generation: preliminary!.staged.generationRoot }, { serving: undefined },
+      { drain: undefined }, { effects: { accepted: 1, uncertain: 2, pending: 1 } }]) {
+      assert.throws(() => assertCatchupActivation({ ...activationFacts, ...delta }), /catchup_activation_agreement_required/);
+      assert.equal(targetWritesActivated, false);
+    }
+    assertCatchupActivation(activationFacts);
+    assert.equal((await state()).requests.length, 2);
+  }
   targetWritesActivated = true; // compose immediately schedules genuine reconciliation.
-  targetApplication = await resolveOrderReviewRuntimeBinding({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: target.runtimeUrl,
-    ORDER_REVIEW_MEDIA_ROOT: targetMediaRoot }, { store: targetMediaStore, resources: {
+  targetApplication = await resolveOrderReviewRuntimeBinding(targetEnvironment, { store: targetMediaStore, resources: {
     executor: executor(targetMediaPool), close: () => targetMediaPool.end(), transaction: { async run(work) {
       const client = await targetMediaPool.connect();
       try { await client.query("BEGIN"); const value = await work(executor(client)); await client.query("COMMIT"); return value; }
@@ -553,13 +648,42 @@ try {
   const unresolved = afterActivation.filter(row => row.external_ref === null);
   assert.deepEqual(unresolved, [{ shipment_id: fixtures[2].shipment, status: "uncertain", external_ref: null }]);
   assert.deepEqual(await schedule(target.runtime, fixtures[3].subscription), scheduleBefore[3]);
+  if (catchup) {
+    for (const table of ["subscription_renewal_terms", "subscription_renewal_term_lines", "commerce_settlement_intents", "invoicing_duties"]) {
+      const values = (await target.runtime.query(`SELECT pg_catalog.to_jsonb(t)::text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::text`)).rows.map(row => row.value);
+      const expected = [...finalGraph.compatible.tables, ...finalGraph.owned].find(row => row.table === table); assert(expected);
+      assert.deepEqual(values, expected.rows, "ordinary takeover preserves frozen terms, unsettled money and invoice duties");
+    }
+  }
+  if (catchup) {
+    const expected = finalGraph.compatible.tables.find(table => table.table === "outbox_events")!.rows.filter(row => JSON.parse(row).idempotency_key === "catchup-effect-key");
+    assert.equal(expected.length, 1);
+    assert.deepEqual((await target.runtime.query("SELECT pg_catalog.to_jsonb(t)::text AS value FROM public.outbox_events t WHERE idempotency_key='catchup-effect-key'")).rows.map(row => row.value), expected);
+  }
   mark("selectedTargetReady");
   report = { outcome: "LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION", node: process.version, image, owner,
+    journey: catchup ? { format: "openlup.local-connected-catchup.v1", leg: "portable-to-portable",
+      sourceGeneration: selection.generation, targetGeneration: selection.generation,
+      preliminary: preliminary!.report, final: { captureSha256: finalGraph.sha256, counts: catchupCounts(finalGraph),
+        sourceInstallation: finalGraph.observation, targetInstallation: pristineTarget.observation,
+        targetInstallationKeyTuplePreserved: targetKeyBefore, sourceOutsideProfile: finalGraph.outsideProfileCensus,
+        targetOutsideProfile: pristineTarget.outsideProfileCensus,
+        objects: mediaCensus.objects.length, temporary: mediaCensus.temporary.length,
+        objectImportInterrupted: objectInterruption, objectImportResumed: true, agreement, drain,
+        settingsDiscriminator: { updatedRows: 1, deletedRows: 1, addedRows: 1 },
+        objectChanges: {
+          updated: mediaCensus.objects.filter(row => preliminary!.media.objects.some(value => value.key === row.key && value.sha256 !== row.sha256)).length,
+          added: mediaCensus.objects.filter(row => !preliminary!.media.objects.some(value => value.key === row.key)).length,
+          deleted: preliminary!.media.objects.filter(row => !mediaCensus.objects.some(value => value.key === row.key)).length },
+        retainedHistorySidecar: "managed predecessor not selected in this portable-only leg" },
+      refusals: [preliminary!.report.refusal, "retained uncertain dispatch remains fenced"],
+      takeover: targetWritesActivated, rollback: preliminary!.report.rollback,
+      timingsMs: times, hostedQualification: false, olderSnapshotRecovery: false } : undefined,
     catalogue: { units: expectedUnits.length, tail: expectedTail, inventorySha256: selected.objectInventorySha256 },
     capturePoint, filesystemRestore, graphRestore, timesMs: times, recoveredAcceptedEffects: 2,
     unresolved, sourceWritesFrozen, filesystemPublished, graphPublished, targetRecoveryWritesStarted, targetWritesActivated, targetResult, repeatedTargetResult, targetPosts,
     beforeActivation, afterActivation, selectedProfileReadyRtoMs: times.selectedTargetReady - times.interruptionStart,
-    readyScope: "Owned canonical91/73-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R",
+    readyScope: "Owned selected canonical 73-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R",
     wholeStoreRtoMs: null,
     acceptedRecoveryElapsedMs: times.acceptedEffectsRecovered - times.interruptionStart,
     recoveryPoint: "Final source graph and objects/tmp captured after terminal retirement; two independent accepted effects reconciled, retained pending/cleanup and one uncertain dispatch obligation preserved. No zero-RPO or all-store readiness claim.",

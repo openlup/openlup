@@ -798,6 +798,7 @@
         "tests/postgres/m14QualifiedComposition.test.ts",
         "tests/postgres/runM14EffectHandover.ts",
         "tests/postgres/m14ApplicationCohort.ts",
+        "tests/postgres/m14ConnectedCatchup.ts",
         "tests/postgres/fixtures/m14EffectActor.mjs",
         "tests/postgres/fixtures/m14EffectProvider.mjs",
         "tests/postgres/fixtures/m14ApplicationActor.ts"

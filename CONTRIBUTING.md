@@ -329,6 +329,13 @@ one-shot fixture, not a required job or serving runtime. In its allocated local
 slot, use Node24.21.0, own installed/built dependencies, local Docker and an
 already-local immutable Node24.21.0 image:
 `node --import tsx tests/postgres/runM14EffectHandover.ts sha256:<local-image-id>`.
+Add `--catch-up` to that command for the finite local portable-to-portable
+journey on qualified-admin installations. Its private worktree-local report adds
+per-table/object counts, interruption/resume, final-generation agreement,
+refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns the exact boundary; managed history, older-snapshot measurement and hosted
+provider qualification remain separate. The final target is distinct from the
+preliminary copy and remains inactive through the DB/object/access barriers.
 The host's existing esbuild API emits one ESM for the application child; plain
 Node in Linux loads audited existing JS dependencies without a host-native tsx
 binary, Linux install or image build. Retain the real metafile, source/output
@@ -2829,6 +2836,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, M14 connected catch-up: fixture labels for observation authority
+  or media visibility → use the existing bootstrap observer and exact domain
+  SQL states before composing retirement and access expectations.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the

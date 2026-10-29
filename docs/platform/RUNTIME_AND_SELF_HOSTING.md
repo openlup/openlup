@@ -78,7 +78,7 @@ local synthetic HTTP probe establishes its fixture semantics only.
 
 The [native handover fixture](../../tests/postgres/runM14EffectHandover.ts)
 uses actual restricted-runtime dispatch and review HTTP/storage composition in
-four owned local processes. It observes the binding's startup and natural30s
+four owned local processes. Its default crash-boundary mode observes the binding's startup and natural30s
 interval, admits raw bodies before the same-grant held finalize, and releases
 real filesystem operations after network exclusion. The host then removes the
 exact processes. Because a severed client socket can leave a server transaction,
@@ -89,6 +89,13 @@ there is no terminate-by-user/prefix, database restart or lease/time manipulatio
 The coordinator closes its source mutation clients before the final read-only
 capture and permits no later source business write, gate release or recreation.
 Target composition follows verified graph and complete private-root publication.
+The optional `--catch-up` mode drains admitted media I/O before egress exclusion
+and retains a separately admitted partial upload. Its restricted M obtains no
+extra backend-inspection grant: the existing fixture bootstrap administrator
+observes and retires exact source sessions, then closes before final read-only
+capture. The [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns preliminary-generation refusal and the final DB/object/access/drain/effect
+barrier; it is a finite local journey, not an adopter-host fencing service.
 This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
 adopter ACLs, provider qualification and whole-store RTO remain separate.
 

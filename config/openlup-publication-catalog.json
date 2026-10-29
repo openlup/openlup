@@ -1414,6 +1414,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-connected-catchup.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-existing-store-transfer.md",
       "class": "public-output"
     },
@@ -26207,6 +26211,10 @@
     },
     {
       "path": "tests/postgres/m14ApplicationCohort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ConnectedCatchup.ts",
       "class": "public-output"
     },
     {
