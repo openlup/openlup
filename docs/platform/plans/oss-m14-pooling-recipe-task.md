@@ -1,8 +1,9 @@
 # M14 connection and pooling recipe
 
 Status: cycle 1 full reviews passed, but canonical verification found an
-optional-peer connection-error regression. A scoped repair needs renewed
-pre-DCO read and cycle 2 review. M14 remains open.
+optional-peer connection-error regression. The renewed maintainer read accepted
+the signed scoped repair; cycle 2 review and final verification remain. M14
+remains open.
 
 ## Outcome and boundary
 
@@ -32,6 +33,8 @@ The maintainer read accepted staged tree
 `e76a3d0325e8f23a7726a8091ddcf3bc392faf30` before DCO.
 The renewed read accepted staged repair tree
 `e0415638300279165d12ba37f1714ff231e3fd70` before its DCO commit.
+The next read accepted staged pre-connection repair tree
+`0b6d747af4d24a2ee40a77a98e5c29e97f24e6ee` before its DCO commit.
 The signed integration of that source with current main is `d4d47475f1211aa103e592fa51763dc7cf3407d2`.
 It preserved the accepted lock source, witness and API snapshots; main's
 independent owner-path approval remains outside the selected 91-unit plan.
@@ -99,10 +102,10 @@ statement. The scoped repair connects before entering the uncertain-grant path,
 preserving the existing peer/transport error; a failed lock statement still
 refuses with actionable affinity guidance. The owner docs already limit the
 affinity refusal to lock ownership and uncertain acquisition; no public recipe
-change follows from preserving pre-connection errors. A new maintainer read of
-the security/error boundary, then cycle 2 full review and complete verification,
-are required. DCO source, merge and first repair commits are signed; this second
-repair is not signed. Full verification/coverage and authorized delivery remain. No
+change follows from preserving pre-connection errors. The renewed maintainer read
+accepted the security/error boundary. Cycle 2 full review and complete
+verification are required. DCO source, merges and both repair commits are signed.
+Full verification/coverage and authorized delivery remain. No
 submission or release has occurred.
 
 The first post-merge manual integration run used package output built before
