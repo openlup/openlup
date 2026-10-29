@@ -19,6 +19,7 @@ export function acquisitionLegacyDrain(env: Env, now = Date.now()): Decision {
   const seconds = maximum && /^[1-9][0-9]*$/.test(maximum) ? Number(maximum) : NaN;
   if (start === null || !Number.isSafeInteger(seconds) || seconds > 604800 || !Number.isFinite(now)) return { state: "invalid" };
   const maximumEnd = start + seconds * 1000;
+  if (now < start) return { state: "invalid" };
   if (now >= maximumEnd) return { state: "open" };
   if (ended !== undefined && (end === null || end < start)) return { state: "invalid" };
   const deadline = Math.min(end ?? maximumEnd, maximumEnd);

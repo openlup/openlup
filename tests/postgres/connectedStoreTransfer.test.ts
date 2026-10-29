@@ -457,6 +457,7 @@ it("maps a representative managed identity projection through the qualified rest
     { ...evidence, clients: [{ ...evidence.clients[0], preferences: { hidden: true } }, evidence.clients[1]] },
     { ...evidence, adminUsers: [{ ...evidence.adminUsers[0], is_machine_actor: true }, evidence.adminUsers[1]] },
     { ...evidence, erasures: [{ ...evidence.erasures[0], principal_id: liveManagedId }] },
+    { ...evidence, erasures: [{ ...evidence.erasures[0], unsupported_field: "retained-source-only" }] },
     { ...evidence, erasures: [...evidence.erasures, { ...evidence.erasures[0], erasure_id: randomUUID(),
       idempotency_key: randomUUID(), client_id: null, principal_id: adminManagedId }] },
     { ...evidence, adminUsers: evidence.adminUsers.map(row => row.id === revokedManagedId

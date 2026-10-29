@@ -171,3 +171,24 @@ compatible table list; it now reads the existing owned list too, and the suite
 passes 5/5. These repairs enforce the accepted conflict and erasure criteria;
 they add no new transfer semantics or control. Final native review and the
 canonical gate remain outstanding.
+
+Regroup after two completed candidate evaluations (initial tree `e8d14d9c`
+and repair tree `d40cda5e`): the same approved outcome still has three material
+gaps. The first two conflict/erasure findings closed on the repair tree, but
+review then found a future drain start extending refusal beyond its maximum,
+partner transition authorizing before drain refusal, and extra erasure receipt
+fields being silently dropped. The cause is incomplete edge validation at the
+three existing boundaries, not missing transfer machinery. The simpler route is
+to reject a future start as invalid target configuration, move the one transition
+guard ahead of authorization, and require the exact supported receipt fields.
+The next discriminating step is a focused BFF test and real-PG projection test:
+they must show invalid future-start refusal, no auth/port call during drain, and
+unknown receipt-field refusal without altering valid redacted mapping. Lesson:
+boundary edge gaps in a fixed mapper/control → validate the existing input and
+ordering directly before adding another mechanism.
+
+The second repair applies those three checks at the existing seams. The affected
+BFF suites pass 9/9 and the real-PG connected transfer suite passes 5/5 on the
+working tree. A future start is an invalid serving-target configuration, so it
+fails closed with an operator action instead of claiming a drain longer than
+its configured maximum. New native review and final verification remain due.

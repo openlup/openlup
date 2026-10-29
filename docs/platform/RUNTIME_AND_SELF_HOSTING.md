@@ -55,7 +55,8 @@ paths refuse with HTTP 503, `Retry-After` and `acquisition_legacy_drain` while
 the declared interval is active; read paths remain available. Setting
 `OPENLUP_ACQUISITION_DRAIN_ENDED_AT` to a UTC instant at or after start
 explicitly ends the drain when that instant is reached. A later end cannot
-extend the configured maximum. Incomplete or malformed cut-over configuration
+extend the configured maximum. A future start is invalid on a serving target;
+the operator must correct the cut-over instant before activation. Incomplete or malformed cut-over configuration
 fails closed before that maximum. After the drain, commands enter a new
 target-key namespace; the target
 does not compare retained source-keyed receipts. The host must separately prove

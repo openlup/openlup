@@ -161,6 +161,8 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const erasedPrincipalIds = new Set<string>();
   for (const row of source.erasures) {
     if (!validRow(row) || row.contract_version !== "identity.erasure.v1"
+      || !onlyKeys(row, ["erasure_id", "idempotency_key", "client_id", "principal_id", "actor_principal_id",
+        "contract_version", "contributor_versions", "dispositions", "retained_obligations", "completed_at"])
       || row.client_id !== null && (typeof row.client_id !== "string" || !clientIds.has(row.client_id.toLowerCase()))
       || typeof row.actor_principal_id !== "string" || !operatorIds.has(row.actor_principal_id.toLowerCase())) fail("invalid_input");
     if (typeof row.client_id === "string") erasedClientIds.add(row.client_id.toLowerCase());

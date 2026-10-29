@@ -98,6 +98,26 @@ describe("partner acquisition direct BFF", () => {
       request("POST", { id: CASE.caseRef, expectedVersion: 1, status: "contacted" }, {}, TOKEN), transition);
     expect(transition.status).toHaveBeenCalledWith(503);
     expect(adapter.transition).not.toHaveBeenCalled();
+    const unauthenticated = response();
+    const deniedAuth = authOptions(false);
+    await createPartnerAcquisitionTransitionHandler({ env, resolvePort: async () => adapter, authOptions: deniedAuth })(
+      request("POST", { id: CASE.caseRef, expectedVersion: 1, status: "contacted" }), unauthenticated);
+    expect(unauthenticated.status).toHaveBeenCalledWith(503);
+    expect(deniedAuth.checkerFactory).not.toHaveBeenCalled();
+    expect(adapter.transition).not.toHaveBeenCalled();
+  });
+  it("fails closed for a future cut-over start without claiming a long legacy drain", async () => {
+    const adapter = port();
+    const env = { ...ENV, OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() + 86_400_000).toISOString(),
+      OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
+    const res = response();
+    await createPartnerAcquisitionSubmitHandler({ env, resolvePort: async () => adapter })(request("POST", {}), res);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.objectContaining({ details: { reason: "acquisition_cutover_configuration" } }),
+    }));
+    expect(res.setHeader).not.toHaveBeenCalledWith("Retry-After", expect.anything());
+    expect(adapter.submit).not.toHaveBeenCalled();
   });
   it("submits through the mounted neutral port and returns the existing public envelope", async () => {
     const adapter = port();

@@ -91,9 +91,9 @@ export function createPartnerAcquisitionTransitionHandler(options: Options = {})
   const env = options.env ?? process.env;
   return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
+    if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
     const actorRef = await authorize(req, res, env, options.authOptions);
     if (!actorRef) return;
-    if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
     const request = partnerAcquisitionTransitionRequestSchema.safeParse(req.body);
     const idempotencyKey = idempotency(req);
     if (!request.success || !idempotencyKey) return badRequest(res, request.success ? undefined : request.error.flatten());
