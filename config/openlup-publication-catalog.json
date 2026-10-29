@@ -1350,6 +1350,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/documentation-quality-audit.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/early-package-gates.md",
       "class": "platform-documentation"
     },

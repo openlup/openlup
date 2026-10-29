@@ -183,3 +183,10 @@ personal-read note. It changes no sensitive semantic API or publishing/security/
 release control and proposes no gate budget. Two full fresh native reviews remain
 required; no personal maintainer read or native admission is inferred from the
 human's delivery grant. Final verification and PR evidence remain to be executed.
+
+The first inventory run refused the newly public task-record path: its exact
+publication-catalogue entry was missing. That result was collected immediately
+after the initial local commit; no push or counted native review occurred. The
+necessary exact public-output row was added to the existing catalogue, with no
+new classifier, exemption or gate behavior. Required checks are rerun before
+preparing the initial native candidate; no review cycle is reset or waived.
