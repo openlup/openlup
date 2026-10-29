@@ -8550,6 +8550,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/disposable-docker.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-docker.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-run-lifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/documentation-bundle-io.ts",
       "class": "public-output"
     },
@@ -8987,6 +8999,14 @@
     },
     {
       "path": "scripts/oss-source-release-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/owned-stack-cleanup.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/owned-stack-cleanup.test.ts",
       "class": "public-output"
     },
     {
@@ -25858,6 +25878,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/disposableDockerReap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/dunningAttemptReplay.test.ts",
       "class": "public-output"
     },
@@ -26179,6 +26203,10 @@
     },
     {
       "path": "tests/preview/ssg-hydration.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/setup/disposable-docker.ts",
       "class": "public-output"
     },
     {

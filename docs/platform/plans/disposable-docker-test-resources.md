@@ -1,7 +1,8 @@
 # Disposable Docker test resources reclaim themselves
 
-Status: approved 2026-10-29 (owner decisions D1–D7 below); implementation in
-progress on this branch. No push, pull request or Docker mutation yet.
+Status: approved 2026-10-29 (owner decisions D1–D7 below); merge cut-line
+implemented on this branch, delivery under D4 in progress. Activation (D2) and
+the worker-cap measurement (D3) follow the merge.
 
 ## Outcome and boundary
 
@@ -108,8 +109,9 @@ make a live owner look recycled. No locale-dependent token is stored.
 
 - `EPERM`;
 - any parse failure;
-- missing or malformed labels (`owner_pid` not an integer above 1, or
-  `owner_start` missing or not an integer epoch);
+- malformed `owner_pid` (not digits, leading zero, more than nine digits, or
+  at most 1); for a live PID, missing or malformed `owner_start` keeps too.
+  ESRCH proves death without a start-time parse, matching the shared reader;
 - a different host;
 - an age under 60 s;
 - an unanswering daemon;
@@ -160,13 +162,16 @@ the inspected ID only.
    - A root `globalSetup` (a new file in `tests/setup/`) runs one bounded
      dead-owner sweep across the host. It is idempotent per run id, so
      inheritance into both projects causes at most one sweep.
-   - Its teardown runs the run-scoped sweep. Every worker has exited by then,
-     so the run's containers are judged dead and are removed. This closes the
-     `beforeAll`-timeout gap.
+   - Its teardown runs the run-scoped sweep. Vitest closes its worker pool
+     afterwards, so the wrapper also sweeps after every child exit, including
+     success. This closes the late-worker and `beforeAll`-timeout gaps through
+     the same liveness and age rules.
 4. **Wrapper signal safety.** `run-vitest.mjs` installs SIGINT and SIGTERM
    handlers. They forward the signal to the Vitest child, wait for it to exit
    (bounded), then run one run-scoped sweep and exit with the conventional code.
-   The wrapper reads the run id the child received from a value it passes down;
+   The wrapper also sweeps after a successful child exit, because global
+   teardown can observe workers that have not closed yet. It reads the run id
+   the child received from a value it passes down;
    it never uses an inherited one.
 5. **Sweep mode.** `OPENLUP_DISPOSABLE_REAP` takes `report`, `remove` or `off`.
    The run-scoped sweep always removes (only its own run, liveness-checked). The
@@ -251,7 +256,7 @@ the inspected ID only.
 | `ESRCH` | dead |
 | Alive, start within 2 s of `owner_start` | keep |
 | Alive, start more than 2 s from `owner_start` (recycled pid) | dead |
-| `owner_start` missing or malformed | keep |
+| Live PID, `owner_start` missing or malformed | keep |
 | `EPERM` | keep |
 | Unparsable `lstart` or `.Created` | keep |
 | Missing, non-`1` or malformed labels | keep |
@@ -496,6 +501,34 @@ file:
   exited 0 on Node 24.22.1 for the committed tree;
 - every relative link and anchor resolves.
 
-No implementation, test run, measurement or Docker mutation has happened.
-Remaining: implementation under the merge cut-line, delivery, then
-activation under D2 and the measurement under D3.
+Implementation author: a Codex CLI session in this worktree, briefed and
+supervised by this task's Claude supervisor, who verified the result and owns
+commits and delivery. Codex's sandbox could not reach Docker; the supervisor ran
+the real-daemon witnesses from the host shell.
+
+Implementation choices:
+
+- Process-owned Symbol state survives Vitest's separate config/setup module
+  loaders, so both inherited projects share one run id and one host sweep; an
+  inherited `OPENLUP_DISPOSABLE_RUN` is always discarded.
+- Vitest closes its worker pool after global teardown, so the wrapper also runs
+  the run-scoped sweep after every child exit, including success. Both sweeps
+  keep the liveness and age rules. Run-scoped cleanup stays on in CI.
+- One owned-stack helper ([owned-stack-cleanup.mjs](../../../scripts/owned-stack-cleanup.mjs))
+  shares the existing checked cleanup between signals and `finally`, with a 30 s
+  cleanup budget. Long CLI stages run asynchronously so a signal can interrupt
+  them. Existing command timeouts are preserved: 240 s for the identity runners
+  and none for the pgTAP CLI and test stages.
+
+Evidence (Node 24.21.0, Docker 29.8.2 under OrbStack, this host):
+
+| Boundary | Result |
+| --- | --- |
+| E1, E3 | `scripts/disposable-docker.test.ts`: 33 passed. This includes the real `ps` parse under pl_PL, en_GB and C, and Node `owner_start` within 2 s. |
+| E2, E4 nested | `tests/postgres/disposableDockerReap.test.ts`, real daemon: 5 of 5 passed in 6.7 s. Covered: SIGKILLed `run` owner and `Created`-state owner, each left behind before the sweep and then removed; a live owner kept under a concurrent `remove` sweep, plus unlabeled and foreign-host survivors; a nested run's sweep leaving the parent run; a young dead owner kept by the 60 s floor. |
+| E3 clock | The host-to-VM creation offset was 87 ms on this run. A sleep/wake measurement was not taken; it only affects the 60 s floor. |
+| E4, E5, E6 | `scripts/disposable-run-lifecycle.test.ts`, `scripts/run-vitest.test.ts`: real Vitest project loaders with fake Docker; one id and one sweep per run; SIGINT, SIGTERM, child signal, success and queued-signal cases; a hung fake Docker returns within budget. |
+| E7 | `scripts/owned-stack-cleanup.test.ts`: once-only cleanup across signal and `finally`, including a queued SIGTERM. No real Supabase or compose stack was started for this proof. |
+| E8 | 7 files, 84 passed, including `postgresContainer*` and the S3 conformance on the real daemon. A second focused set passed 402 tests: publication check, image pull, identity, OIDC and wrapper suites. |
+| E9 | Pending: lint, typecheck, `verify-local`, native counted review. |
+

@@ -992,6 +992,12 @@ Supabase CLI 2.98.2; its owned migration replay includes the committed identity
 service-role capabilities forward.
 Missing prerequisites fail; neither command silently skips. Each run owns a
 random installation id, allocated ports, build directory and captured mail.
+Identity acceptance and conformance runners stop only their owned CLI or compose
+project on SIGINT/SIGTERM, once across the signal and finally paths, within a
+30-second cleanup budget. The direct PostgreSQL acceptance fixture also carries
+the [disposable owner labels](../../CONTRIBUTING.md#test-scope-and-diagnostics);
+after SIGKILL, CLI and compose stacks still require reviewed manual cleanup.
+
 The direct and OIDC conformance databases store disposable data on `tmpfs`, preventing the image's
 anonymous data-volume allocation even if startup is interrupted. Cleanup
 discovers partial direct containers by the current run's unique owner label,
