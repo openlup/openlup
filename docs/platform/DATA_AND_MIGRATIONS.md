@@ -505,6 +505,17 @@ for the shared set and shipment boundary.
 
 ## Database test fixtures and witnesses
 
+Disposable Docker fixtures carry `dev.disposable=1`, their owner PID and start
+in host-clock epoch seconds, short hostname, Linux PID namespace and OpenLup run
+ID. Only a same-host, same-namespace owner proved dead (or a recycled PID whose
+start differs by more than two seconds) is reclaimable after a 60-second floor.
+Uncertain ownership and unlabeled resources are retained. The root test lifecycle
+runs one host sweep: `OPENLUP_DISPOSABLE_REAP=report` by default, `remove` or `off`;
+CI disables the host sweep. Teardown and interrupted wrappers remove only their
+own fresh run ID through the same liveness and age rules, including on CI.
+Supabase CLI and compose runners stop their own stacks once on interruption;
+after SIGKILL those stacks still need reviewed manual cleanup.
+
 A selected test may supply neutral settlement, format, provider, location and
 stock rows in its own transaction. Concurrency connections need the same declared
 inputs. Those rows model configured examples; they must not replace policy or
