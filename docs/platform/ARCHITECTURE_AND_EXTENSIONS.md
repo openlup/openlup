@@ -2242,6 +2242,13 @@ command proof. The separately approved SQL changes only the finite grants descri
 by the [migration owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle), with no new
 transfer API, runtime adapter, role compiler or installation executor.
 
+That selected installation witness also exercises pooled request reads and
+session-affine scheduler locks under the restricted runtime login. Real backend
+switch/reset cases refuse before job execution and preserve another backend's
+lock on a refused release. The [connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+owns those transport requirements; this local proof adds no source/target
+transfer coverage, hosted qualification or writer-fencing guarantee.
+
 The host-owned [native observation binding](../../server/adapters/postgres/fulfillmentObservationLifecycle.ts)
 implements the existing G17 lookup/acceptance pair using native dispatch SQL.
 Its caller must supply an already-verified observation with the exact shipment

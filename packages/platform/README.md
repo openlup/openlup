@@ -776,8 +776,19 @@ uses a real local listener and bridge request across that shutdown boundary.
 
 The PostgreSQL lock adapter also reserves each numeric advisory key locally
 before acquisition. This prevents reentry on the same session, including pending
-acquisitions and colliding job IDs. Failed acquisition releases the reservation;
-failed unlock retains it until session disposal. The
+acquisitions and colliding job IDs. Contention releases the reservation;
+uncertain acquisition refuses further grants and retains its reservation until
+session disposal. Each acquired key is observed on the same backend in a separate
+statement before the job runs. A changed PID or missing lock ownership refuses
+with `OPENLUP_E_ADVISORY_SESSION_AFFINITY`; release also checks the backend and
+requires an actual unlock. Failed unlock retains the reservation. Use a dedicated
+direct connection or session-mode pooler, never `Pool.query` or transaction
+pooling; a finite check cannot certify a pooler's configuration. Follow the
+[connection recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+when runtime `DATABASE_URL` uses a transaction pooler. The
+[qualified PG16 witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+proves pooled requests, session exclusion and backend-switch/reset refusal before
+the body, plus refusal to unlock another backend's grant. The
 [disposable PostgreSQL witness](../../tests/postgres/nodeHostRuntimeDrain.test.ts)
 checks same-session exclusion and replacement-host admission after drain.
 This graceful-stop contract does not fence an old host at external provider I/O

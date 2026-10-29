@@ -23,7 +23,7 @@ export interface AdvisoryLock {
   close(): Promise<void>;
 }
 
-/** Minimal pg-query surface (a `pg` Pool/Client satisfies this) — keeps `pg` out of the import graph. */
+/** Minimal query surface; the caller must supply a session-affine client, never Pool.query. */
 export interface AdvisoryLockQuerier {
   query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
   end?(): Promise<void>;
@@ -48,43 +48,88 @@ export function advisoryLockKey(jobId: string): number {
  * pg-backed advisory lock. Uses `pg_try_advisory_lock` (session-scoped, non-blocking) on acquire
  * and `pg_advisory_unlock` on release. NOTE: session-scoped locks require the same connection for
  * acquire+release, so the supplied querier should be a single dedicated client/connection, not a
- * pool that hands out a different connection per query.
+ * pool that hands out a different connection per query. Each grant is checked in a separate
+ * statement against the backend PID and pg_locks before protected work is admitted. This detects
+ * observed transport violations; it cannot certify a pooler's future routing configuration.
  */
 export function createPgAdvisoryLock(
   client: AdvisoryLockQuerier,
   closeClient: () => Promise<void> = () => client.end?.() ?? Promise.resolve(),
 ): AdvisoryLock {
   let closePromise: Promise<void> | null = null;
+  let closed = false;
+  let refused = false;
+  let sessionPid: number | undefined;
+  const affinityError = () => new Error(
+    "OPENLUP_E_ADVISORY_SESSION_AFFINITY: session advisory lock ownership is unavailable; use a dedicated direct PostgreSQL connection or a session-mode pooler, never transaction pooling. Drain the host and retire its lock backend before restarting.",
+  );
+  const checkPid = (pid: number | undefined) => {
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0 || (sessionPid !== undefined && sessionPid !== pid)) {
+      refused = true;
+      throw affinityError();
+    }
+    sessionPid = pid;
+  };
   // PostgreSQL grants reentrant session locks. Reserve the actual key locally
   // before querying so pending/held acquisitions, including hash collisions, skip.
   const reserved = new Set<number>();
   return {
     durability: "cluster",
     async tryAcquire(jobId) {
+      if (closed) throw new Error("advisory_lock_closed");
+      if (refused) throw affinityError();
       const key = advisoryLockKey(jobId);
       if (reserved.has(key)) return false;
       reserved.add(key);
       try {
-        const { rows } = await client.query<{ locked: boolean }>(
-          "SELECT pg_try_advisory_lock($1) AS locked",
+        const { rows } = await client.query<{ locked: boolean; pid: number }>(
+          "SELECT pg_catalog.pg_backend_pid() AS pid, pg_catalog.pg_try_advisory_lock($1::bigint) AS locked",
           [key],
         );
+        checkPid(rows[0]?.pid);
         const acquired = rows[0]?.locked === true;
-        if (!acquired) reserved.delete(key);
-        return acquired;
+        if (!acquired) {
+          reserved.delete(key);
+          return false;
+        }
+        const observation = await client.query<{ pid: number; held: boolean }>(
+          `SELECT pg_catalog.pg_backend_pid() AS pid, EXISTS (
+            SELECT 1 FROM pg_catalog.pg_locks
+            WHERE locktype = 'advisory' AND pid = pg_catalog.pg_backend_pid() AND granted
+              AND classid = (($1::bigint >> 32) & 4294967295)::oid
+              AND objid = ($1::bigint & 4294967295)::oid AND objsubid = 1
+          ) AS held`, [key],
+        );
+        checkPid(observation.rows[0]?.pid);
+        if (observation.rows[0]?.held !== true || refused || closed) throw affinityError();
+        return true;
       } catch (error) {
-        reserved.delete(key);
+        // An uncertain grant may still own a session lock. Never reenter it or admit more work.
+        // Do not close here: other already-admitted jobs must drain before session disposal.
+        refused = true;
         throw error;
       }
     },
     async release(jobId) {
       const key = advisoryLockKey(jobId);
-      await client.query("SELECT pg_advisory_unlock($1)", [key]);
+      if (!reserved.has(key)) return;
+      const { rows } = await client.query<{ pid: number; unlocked: boolean }>(
+        `SELECT pg_catalog.pg_backend_pid() AS pid,
+          CASE WHEN pg_catalog.pg_backend_pid() = $2::integer
+            THEN pg_catalog.pg_advisory_unlock($1::bigint) ELSE false END AS unlocked`,
+        [key, sessionPid],
+      );
+      checkPid(rows[0]?.pid);
+      if (rows[0]?.unlocked !== true) {
+        refused = true;
+        throw affinityError();
+      }
       // A failed unlock keeps the reservation: another query on this session
       // could otherwise reenter the still-held PostgreSQL lock.
       reserved.delete(key);
     },
     close() {
+      closed = true;
       closePromise ??= closeClient();
       return closePromise;
     },
