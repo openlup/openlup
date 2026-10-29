@@ -2,8 +2,9 @@
 #
 # Blank issues are disabled on purpose. An unstructured issue costs more to
 # triage than it costs to file, and that asymmetry is what buries a small
-# maintainer team. Every report enters through a form that asks for the two
-# things triage cannot proceed without: a version and a reproduction.
+# maintainer team. Bug reports ask for a version and a reproduction; feature
+# requests ask for the problem, the current workaround, and why it belongs in
+# core. Each form collects the details for its report type.
 #
 # GitHub surfaces `.github/SUPPORT.md` in this chooser on its own. Read it
 # before filing: it states what is supported, and states plainly that there is

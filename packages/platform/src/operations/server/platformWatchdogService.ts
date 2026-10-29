@@ -76,9 +76,11 @@ export async function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, Cat
   notificationThrottleSeconds?: number;
   pagingMinSeverity?: AlertSeverity;
   /**
-   * Dedupe-key prefixes fully muted for this environment (e.g. `job_missed` on a
-   * staging host with no real crons). Muted signals are not recorded, not paged,
-   * and existing open rows for them auto-resolve — keeping the ledger clean.
+   * Dedupe-key prefixes muted for this environment (e.g. `job_missed` on a
+   * staging host with no real crons). Muted signals are not recorded or paged.
+   * After decision processing completes, a mutating run attempts to resolve
+   * existing muted rows during stale-alert reconciliation; errors may leave
+   * rows open. `checkOnly` leaves the ledger unchanged.
    */
   mutedDedupePrefixes?: readonly string[];
   normalizeDecision?: (decision: AlertDecision<Channel>) => AlertDecision<Channel>;

@@ -4,6 +4,16 @@ Status: development-preview task record. The bounded B primitives landed in
 [PR #400](https://github.com/openlup/openlup/pull/400). The separate connected-native
 candidate below is still a source followup; M14/D32 remains incomplete.
 
+Present-tense labels below describe the checkpoint recorded in this lane
+history. The dated grant language records the authority given for that
+checkpoint; it does not establish later task state or authority.
+
+For the later scope split, the [qualification record](oss-m14-install-qualification.md)
+keeps D's implementation to read-only legacy role-prerequisite observation; the
+separate F lane supplies the [retained-row import routes](../DATA_AND_MIGRATIONS.md#compatible-data-transfer).
+Neither the probe nor those narrow routes establishes full-store transfer
+qualification.
+
 ## Approved task and authority
 
 The finite programme outcome is retained managed → portable → portable store

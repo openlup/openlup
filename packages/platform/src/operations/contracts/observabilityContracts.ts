@@ -25,7 +25,7 @@ export type OpenAlert = {
   lastNotificationStatus?: AlertNotificationOutcome["status"] | null;
   /** Earliest time the watchdog may create another delivery-attempt ledger row. */
   nextNotificationAttemptAt?: string | null;
-  /** Consecutive failed webhook attempts; reset by sent/skipped outcomes. */
+  /** Consecutive failed notification attempts; reset by sent/skipped outcomes. */
   notificationFailureCount?: number;
   /** Operator silence window; when set and in the future, paging is suppressed. */
   snoozedUntil?: string | null;

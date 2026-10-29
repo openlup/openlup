@@ -31,13 +31,12 @@ export interface CommerceQuoteBatchHandlerDeps<Request extends CreateQuoteReques
 }
 
 /**
- * Batch quote BFF handler: prices N independent quotes in one request so the
- * configurator stops fanning out one HTTP call per length tile. The injected
- * `quotePort` is expected to share its catalog + active price-list reads across
- * the batch (single `atTime` + memoized catalog), so this is one DB warm-up, not
- * N. Output is identical to calling the single-quote endpoint N times, and order
- * is preserved (`quotes[i]` ⇔ the i-th request). A failure in any quote fails
- * the whole batch, mirroring the single-endpoint error mapping.
+ * For each validated quote entry, resolves optional eligibility and policy and
+ * then calls the injected quote port; entries run concurrently. It returns each
+ * result's quote in request order, and a failed call fails the whole batch. This
+ * handler supplies no shared timestamp or read context; any cross-entry sharing
+ * belongs to the injected port. It returns quote bodies only and does not apply
+ * the separate single-route acceptance or fallback steps.
  */
 export function createCommerceQuoteBatchHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({
   responder, createQuoteBatchRequestSchema, publicCreateQuoteBatchResponseSchema,

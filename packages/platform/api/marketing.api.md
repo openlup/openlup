@@ -228,7 +228,11 @@ export type AcquisitionNewsletterConsentResponse = z.infer<typeof acquisitionNew
 import type { AnalyticsSinkAttemptMask, AnalyticsSinkAdmission, AnalyticsCookieConsent, AnalyticsDataLayerOptions } from "../contracts/analytics.js";
 export type { AnalyticsSinkAttemptMask, AnalyticsSinkAdmission, AnalyticsCookieConsent, AnalyticsBrowserWindow, AnalyticsDataLayerOptions } from "../contracts/analytics.js";
 import type { AnalyticsEventMap, AnalyticsEventName } from "./noop.js";
-/** Each instance owns loader state; the host supplies browser and deployment policy. */
+/**
+ * Each instance owns loader state; the host supplies browser, deployment policy
+ * and consent decisions. Consent updates emit the caller's decision; the host
+ * authorizes it.
+ */
 export declare function createAnalyticsDataLayer<StepName extends string = string>(options?: AnalyticsDataLayerOptions<StepName>): {
     readCookieConsent: () => AnalyticsCookieConsent | null;
     hasAnalyticsConsent: (consent?: AnalyticsCookieConsent | null) => boolean;

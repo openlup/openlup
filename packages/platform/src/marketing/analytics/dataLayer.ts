@@ -5,7 +5,11 @@ import type { AnalyticsEventMap, AnalyticsEventName } from "./noop.js";
 
 type ConsentState = "granted" | "denied";
 
-/** Each instance owns loader state; the host supplies browser and deployment policy. */
+/**
+ * Each instance owns loader state; the host supplies browser, deployment policy
+ * and consent decisions. Consent updates emit the caller's decision; the host
+ * authorizes it.
+ */
 export function createAnalyticsDataLayer<StepName extends string = string>(options: AnalyticsDataLayerOptions<StepName> = {}) {
   const { consentStorageKey = "", consentChangeEvent = "", consentSignalNames, eventPrefix = "",
     readContainerId = () => null, getWindow = () => undefined } = options;

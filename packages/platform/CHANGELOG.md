@@ -10,6 +10,16 @@ in the source repository.
 
 ## [Unreleased]
 
+### Documentation
+
+- Clarify that bundle availability batches nonempty SKU requests once per
+  response, skips the port for empty requests, and leaves query strategy to the
+  injected host port.
+- Clarify pricing batch port responsibilities, caller-keyed offer-cache TTLs
+  without a distinct-key count cap, policy-readiness retry conditions,
+  reference display-only offer use, and the host-owned monitoring check for
+  caller-side policy reasons.
+
 ## [0.31.0]
 
 - Publishable on the npm `latest` dist-tag as `0.31.0`, from tag

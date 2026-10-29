@@ -195,36 +195,19 @@ existing locale/copy exceptions at C5; these public defaults do not overwrite th
   the same transaction; the poller uses `poll_last_attempt_at` only to rotate
   bounded reconciliation batches fairly.
 
-## Email content rules (apply to every domain that composes blocks)
+## Application-owned email content policy
 
-These are brand + deliverability rules for the *content* domains build, not the
-chrome. They hold across `src/domains/*/emails/*` and every Node sender.
+This shared communications contract supplies no brand voice, product education,
+promotion rules, emoji rules, or legal classification. Applications choose their
+copy and presentation and determine the consent and content policy that applies
+to their messages. The reference application may document its own choices in its
+application-owned sources; those choices are not requirements for adopters.
 
-### Education, not promotion, in transactional mail
-A **transactional** email (order draft/paid/canceled/refunded, payment-failed,
-shipment dispatched/delivered, subscription lifecycle) may carry only
-**education or relationship** content: how to feed, what to expect, the
-gut-health story behind the food. It MUST NOT carry promotional content — no
-discount codes, no "use code X", no cross-sell or upsell, no campaign offers.
-
-Why: a discount/offer flips the message's CAN-SPAM *primary purpose* to
-commercial, which (a) changes the legal/consent footing of a mail the customer
-gets without marketing opt-in, and (b) hurts deliverability of the
-transactional stream. Showing the order's OWN totals — including its discount
-line — is fine; that's the receipt, not a new offer.
-
-Offers, codes, and upsells live ONLY in the **consent-gated marketing** stream
-(abandoned-cart, reorder reminder, review, waitlist, back-in-stock) — those carry
-the `marketing_newsletter` consent gate + the unsubscribe footer. A soft, honest
-subscription nudge ("want it to arrive on its own? pause anytime") is allowed
-there because it is consent-gated and makes no false-urgency/price promise.
-
-### Emoji policy
-- **Transactional + "science"/education emails:** zero emoji.
-- **Purely relational emails** (welcome, thank-you): at most ONE on-brand 🐾.
-- Never stack emoji (no `🎉📦😄`); never use emoji as urgency/hype.
-- Internal/operational notifications (admin digests, B2B/feedback alerts) are out
-  of scope — this policy is about customer-facing mail.
+Keep consent and delivery evidence distinct: marketing permissions are evaluated
+by the selected host policy, and accepted, captured, queued, or synchronized
+work does not establish inbox delivery. The package and this domain preserve the
+selected consent checks and effect ordering; they do not certify that a host's
+content or consent policy satisfies a jurisdiction's law.
 
 ## Where the code lives
 - Shared/frontend: `src/domains/communications/`

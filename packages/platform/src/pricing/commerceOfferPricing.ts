@@ -59,9 +59,9 @@ export interface CommerceOfferPricingDeps<Item extends CommerceQuoteCatalogItem,
 }
 
 /**
- * Product-only acquisition projection over the same quote ports used by
- * configurator checkout. It never prices delivery and is never accepted as a
- * checkout expectation; its only consumer is non-transactional "from" copy.
+ * Product-only price projection over injected quote ports. It excludes delivery
+ * and is not a transaction-bound quote or checkout expectation. The current
+ * reference consumes it for non-transactional display copy.
  */
 export async function projectCommerceOfferPricing<Item extends CommerceQuoteCatalogItem, ScopeV1 extends string, ScopeV2 extends string>({
   quoteCatalogReadPort,

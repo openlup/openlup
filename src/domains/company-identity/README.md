@@ -1,12 +1,9 @@
 # company-identity domain
 
-Provider-neutral lookup of a company's registry identity from a tax or registry
+Provider-neutral lookup of a company's identity from a tax or registry
 identifier: the browser asks one question — "who is the business behind this
-number?" — and receives a normalized company record with an explicit statement
-of how much it can be trusted.
-
-⚠️ This README is the whole documentation for this domain. Nothing about it is
-covered by the maintainer canons in the private overlay.
+number?" — and receives a lookup outcome, an optional normalized company record,
+and evidence about the sources consulted.
 
 ## Owns / does not own
 
@@ -16,14 +13,37 @@ covered by the maintainer canons in the private overlay.
   request dedupe, source precedence, or the invoicing that consumes the answer.
   All of those stay server-side, outside browser code.
 
-Verification level is the point of the contract. An answer is
-`registry_verified` (an authoritative registry confirmed it), `provider_verified`
-(a commercial data source did, which is weaker), `manual_unverified` (the user
-typed it and nobody checked), or `invalid` (the identifier failed its format or
-existence check). A caller that ignores this field is treating a typed string as
-a registry fact. The two declared purposes — `checkout_invoice` and
+Interpret the response fields separately: `status` is the lookup outcome,
+`verificationLevel` is the reference service's classification, `company` is the
+resolved record or `null`, and `sources` records each consulted source's own
+outcome. The neutral contract defines these labels; the current reference
+service assigns them using request validity/type, provider outcomes and record
+completeness, not from independent proof of a source's authority. In this
+composition:
+
+- A valid `custom` request is `manual_unverified` whether or not it includes
+  `manualCompany`. With supplied manual data it returns `partial` and a company;
+  without it, it returns `not_found` and `company: null`.
+- In the non-custom provider chain, a complete retained company returns
+  `found` / `registry_verified` when fuller legal-name enrichment is no longer
+  pending, including at the final provider slot after a personal-only Polish
+  NIP lookup. Loop exhaustion returns `partial` / `provider_verified` only for
+  an incomplete retained company; that level does not identify a commercial
+  provider. A static fixture can satisfy the complete-record condition, but
+  fixture labels and reference classifications do not establish a live or
+  authoritative registry response.
+- An unavailable consulted source remains visible in `sources`. The aggregate
+  status is `provider_unavailable` only when no company survives and at least
+  one source was unavailable. A partial or complete surviving company can still
+  determine the aggregate result despite another source's failure. The `invalid`
+  verification level also accompanies no-company outcomes such as `not_found`,
+  `unsupported_country` and `provider_unavailable`; it does not by itself mean
+  the submitted identifier failed validation.
+
+The two declared purposes — `checkout_invoice` and
 `customer_billing_profile` — let an adapter apply stricter policy where the
-consequence is larger.
+consequence is larger. Hosts still own that policy and must interpret the
+status, returned data and source evidence for their chosen composition.
 
 ## Ports and seams
 
@@ -68,9 +88,14 @@ Every key below is server-only.
   `commercial_company_lookup`.
 - The country-specific adapters listed below, if you want them.
 
-A deployment that configures none of this still answers: the lookup returns a
-`manual_unverified` record rather than failing, so a checkout never blocks on a
-registry being unreachable.
+With no explicit mode, the lookup composition falls back to the static fixture
+provider outside a Vercel preview and to the MF VAT provider in preview. A static
+fixture miss has status `not_found`. The reference composition does not use
+`manual_unverified` as a fallback for `pl_nip`; see the response classifications
+above for custom requests and provider-source outcomes. The BFF lookup is also
+feature-gated by `COMMERCE_ACCOUNTING_INVOICE_DATA_LOOKUP_ENABLED` (preview
+enables it by default); checkout behavior depends on its caller and is not
+established by this lookup composition.
 
 ## Known non-neutrality (this deployment)
 

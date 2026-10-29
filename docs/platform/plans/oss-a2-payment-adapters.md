@@ -94,10 +94,12 @@ and verification refusals. The adapter carries donor-filtered source event type,
 refund charge identity and failure provenance as audit facts outside the
 fingerprint; absent donor facts remain absent.
 
-O-P3 account verification/reference binding
-remain separate work. Committed
-native review, broad gates, submission and any release remain with the active
-supervisor; these local checks grant none of that authority.
+At this 2026-10-21 status, O-P3 account verification and reference binding
+remained separate work. The dated O-P3b-2 entry below records bounded
+package/root rebinding on 2026-10-22 only; it does not establish account TEST
+qualification, activation or C5 adopter retirement. Committed native review,
+broad gates, submission and any release remain with the active supervisor;
+these local checks grant none of that authority.
 
 ## O-P2 boundary and named deltas
 

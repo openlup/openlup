@@ -2434,6 +2434,13 @@ An ordinary lockfile update keeps the source-release digest snapshot unchanged;
 PR checks derive live bindings. Only a reviewed release-preparation contribution
 refreshes the committed snapshot before strict release admission.
 
+For public questions and reports, follow the [support guidance](.github/SUPPORT.md)
+and choose the matching form: [bug reports](.github/ISSUE_TEMPLATE/bug_report.yml)
+ask for a version and reproduction, while [feature requests](.github/ISSUE_TEMPLATE/feature_request.yml)
+ask for the problem, current workaround and why it belongs in Core. Send suspected
+vulnerabilities through the private route in [SECURITY.md](SECURITY.md), never a
+public issue.
+
 ### Local contribution handoff
 
 If your agent lacks supported independent-review capability or you lack upstream write

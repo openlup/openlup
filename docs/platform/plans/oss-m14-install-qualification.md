@@ -97,6 +97,16 @@ supersede that proposal without changing legacy 88. Published 0.30.0 does not
 include the newer 91 tail. No managed/no-super/all-writer or provider-support
 completion follows from the finite observer or these source selections.
 
+This dependency analysis records the D checkpoint. For later scope and
+ownership, see [D's read-only role observation](../DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation),
+the separate [qualified installation lifecycle](../DATA_AND_MIGRATIONS.md#compatibility-lifecycle),
+and [F's retained-row routes](../DATA_AND_MIGRATIONS.md#compatible-data-transfer).
+The [B transfer record](oss-m14-existing-store-transfer.md) retains the wider
+transfer and effect-time obligations; these narrow routes do not establish
+full-store or hosting qualification. E's [qualification history](oss-m14-operations-portability.md)
+and C's [application-upgrade history](oss-m14-lifecycle-task.md) retain their separate
+scope and proof records.
+
 ## Execution and evidence
 
 The [immutable full D record](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-install-qualification.md)

@@ -35,10 +35,11 @@ question. Fixing the path is what makes "it reproduces" mean something.
 ## Current status, stated before you rely on it
 
 **No full path is certified, and the platform is not yet declared ready to
-self-host.** The repository measures its own progress toward that, and the
-measurement is public and partial - see `.github/PUBLICATION_COMPLETENESS.md`
-for the commands that decide. Until those report a complete, installable tree,
-treat every install as pre-release and expect breakage.
+self-host.** The repository measures publication completeness separately; see
+`.github/PUBLICATION_COMPLETENESS.md` for the checks and their scope. A complete
+published tree does not establish installability or self-host readiness. Until a
+stable release names the supported BOM and artifacts, treat every install as
+pre-release and expect breakage.
 
 Preview reports may describe a failure in the bounded checks/reference above or
 provide useful evidence about an incomplete platform capability. They are not

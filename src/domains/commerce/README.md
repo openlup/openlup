@@ -1,18 +1,22 @@
 # commerce domain
 
-Core ecommerce engine: cart/basket, recommendation, product compatibility,
-offer availability projection,
-quote, order-draft, checkout runtime saga, OMS read models, payment-status
-bridge, subscription checkout metadata, and idempotency shell. The hidden
-one-time/subscription-initial checkout lives here.
+Reference commerce composition and compatibility surface for cart/basket,
+recommendations, product compatibility, offer availability, quote, order draft,
+checkout, OMS read models, payment status, subscription metadata and
+idempotency. Reusable browser contracts/engines live in
+`@openlup/platform/commerce`; Node-only checkout and OMS handlers live in
+`@openlup/platform/commerce/server`. The hidden one-time/subscription-initial
+checkout is composed through the server entry with reference-owned schemas,
+policy and bindings.
 
 ## Owns / does not own
-- **Owns:** cart, checkout, recommendations, product compatibility, orders,
-  payment orchestration, subscription linkage, discounts, idempotency shell,
-  order-draft outbox event contracts, OMS read models, and the checkout
-  `invoicePreference` contract that writes the final order buyer snapshot.
+- **Owns:** this reference application's browser schemas, clients, composition
+  bindings and local policy/presentation for commerce; its extensions to neutral
+  contracts, including the checkout `invoicePreference` field in the final
+  order buyer snapshot.
 - **Does not own:** product copy (`catalog`), DHL provider details
-  (`fulfillment`/`server/infra`), Supabase/provider adapters, or invoice issuing
+  (`fulfillment`/`server/infra`), reusable package engines and Node handlers
+  described below, Supabase/provider adapters, or invoice issuing
   policy/provider execution (`accounting`).
 
 ## Commerce contracts package boundary

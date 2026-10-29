@@ -65,8 +65,9 @@ export type TransactionalEmailRegistryDeps<Locale extends string = string> = {
   // capability profile owns the notice (none today). Absent only in
   // tests/non-transactional composition.
   deliveredProviderKindReader?: DeliveredEmailProviderKindReader;
-  // Suppresses OUR buyer-facing email for channel-owned orders. Absent only in
-  // tests/non-transactional composition, where it degrades to today's behaviour.
+  /** Live channel-ownership reader for buyer-facing email suppression. Hosts
+   * that need channel ownership enforced must bind it; omission leaves those
+   * handlers unsuppressed. */
   buyerCommsPolicyReader?: OrderBuyerCommsPolicyReader;
 };
 

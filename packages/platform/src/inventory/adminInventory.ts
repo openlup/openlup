@@ -111,7 +111,8 @@ const FORECAST_SQL = `WITH forecast_skus AS (
 const ACTIVE_SUBSCRIPTION_COUNT_SQL = `SELECT count(*)::integer AS active_subscription_count
   FROM public.subscriptions WHERE status = 'active'`;
 
-/** Operator readback over the same public stock and reservation rail used by renewal. */
+/** Operator readback over the same public stock and reservation rail used by renewal.
+ * Direct stock adjustment is refused because native stock is externally observed. */
 export function createPostgresAdminInventoryPort(
   executor: PgQueryExecutor,
   config: { stockMasterProvider: string; providerSchema: z.ZodType<string> },
