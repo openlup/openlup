@@ -89,7 +89,10 @@ self-host, hosted provider or released-package qualification.
 Hosted use remains owned by 10N/10R and their own reads: target identity must
 come from an unprivileged incarnation observation or declared provider identity,
 and one hosted cluster needs serial fresh-catalogue phases with cleanup of
-test-owned roles and databases. Neither is a condition on this local 10A proof.
+test-owned roles and databases. The strict freshness check also needs explicit,
+read-approved provider-object allowances for stock Neon/RDS databases and roles
+(for example `rdsadmin` and `neon_*`) before those targets can be admitted.
+These hosted limits are not conditions on this local 10A proof.
 Main `eb1a0584` was integrated in DCO merge `3bf686c6` after a separate
 accepted read of the adjacent `CONTRIBUTING.md` paragraph resolution. Its
 tree is `2fe026a2fb576cfaab7c0fcc0be58591d5e5b8e9`. The original parcel
@@ -116,9 +119,15 @@ extra schemas, public objects, extensions or user roles. The repaired
 77→88 legacy upgrade and previous application replay; each installation has
 an operator-declared OCI digest and all containers were removed. The old
 receipt belongs to the reviewed tree. A new control read is required before
-signing this repair. Lint passed with zero errors and 33 existing warnings;
+signing this repair; that read has since been accepted. Lint passed with zero
+errors and 33 existing warnings;
 the serialized published-tree typecheck passed with zero unresolved edges and
 zero consumer errors across five projects. Final review remains pending.
+
+The coordinator accepted the cycle-0 repair read at staged tree `06cb3c3e`
+(patch SHA-256 `2e3ddb918400c5ad7129c8d8f9fe03bd2cfb825c3abcc268509059f0a4a33c65`).
+DCO commit `fcb24351` has exactly that tree. The hosted allowance note above
+records the deferred 10N/10R limit from that read; it changes no runner control.
 
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier
