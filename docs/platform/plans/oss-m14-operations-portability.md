@@ -290,8 +290,8 @@ No implementation, test, review or delivery result was created by compaction.
 
 ### Qualified owner path hardening (F5)
 
-Status: integrated control preparation; delivery awaits a renewed maintainer
-read after the restricted-bootstrap reader landed. The bounded outcome is to pin name resolution in the owner-executed
+Status: control preparation landed in [PR #418](https://github.com/openlup/openlup/pull/418);
+exact forward approval is prepared for its separate maintainer read. The bounded outcome is to pin name resolution in the owner-executed
 acquisition and retained-import paths of the current qualified-v2 installation.
 Preserve its issued 91-unit prefix and six approval rows; introduce only one
 separately reviewed forward with exact function and file identities. Both
@@ -326,3 +326,10 @@ Self-retro for this stopped run: the pre-integration proof could not carry over
 the overlapping reader landing. Resolving its fixed approval order in one
 control change preserves the existing qualification boundary; the integrated
 tree needs fresh evidence before delivery.
+
+Control delivery: corrected tree `2dcd783a1a0f1994e237065d3a44cc2a259414a2`
+passed two fresh FULL reviews and canonical verification with pgTAP. Source and
+merge-group checks passed; PR #418 merged as `bc4299bba72aff58159c2739e81a6b69f507b900`.
+The next checkpoint adds only the exact seventh approval and an inert copy of
+its forward bytes for review. The current selected plan remains 91 units; SQL
+introduction and installation proof are the later checkpoint.
