@@ -822,7 +822,8 @@
       "./account-support/contracts": 32,
       "./operations/contracts": 32,
       "./operations": 30720,
-      "./marketing/contracts": 32
+      "./marketing/contracts": 32,
+      "./company-identity/contracts": 20
     }
   }
 }

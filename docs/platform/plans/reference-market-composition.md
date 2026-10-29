@@ -12,8 +12,8 @@ ordinary push and a stacked draft PR only. Native review/prepare/receipt/ready
 and heavy draft verification remain held; no queue, merge, release, activation
 or adopter work is authorized by this continuation.
 
-Current code/stack base: `373481a4e3795ab6f78ce05e19278cdb0f8bc6cd`, R1
-head (draft #431), tree `34cf77d2776751c116e737ef7da8b9aafb790727`.
+Current code/stack base: `5f221ac8c23c6084b3fc8d5b179c72652c066457`, R1
+head (draft #431), tree `c4d7d0daac5a9bc840c43e34f87d6cfaf6dc6ccc`.
 Initial implementation base was `c723bb73c57c65e3a77324c943faf1712d1f0a4c`
 (tree `b785e3e907bd67b306a751702c18749212a52e54`). Instructions were read
 at that head and refreshed at the policy pin below, separately from the code
@@ -242,6 +242,44 @@ Integration checks PASS: platform workspace API check; publication policy with
 five answered obligations; zero-increase neutrality; ast-grep; six focused
 files / 32 cases with two workers. The final stacked DCO range is checked before
 submission. No native or heavy verification was run under the retained hold.
+
+## Companion registration integration
+
+Predecessor `5f221ac8c23c6084b3fc8d5b179c72652c066457` matches its fetched
+remote ref and descends from `373481a4e3795ab6f78ce05e19278cdb0f8bc6cd`.
+Sign-off merge `b7d1b8cbec586e0d3001e2be3213a6ecc9433fe1` completed without
+conflicts. It retains both the predecessor's type-only browser-entry budget and
+module-boundary test registration and this task's descriptor smoke selection.
+No production implementation, API declaration or frozen witness is changed by
+that predecessor update.
+The added companion registration witness itself also matches the predecessor.
+The later one-line handler test repair remains; every assertion is unchanged.
+Fresh instruction pin: `8046797ace978e148556c30767d8ed231a0dd6e3`, separate
+from this code/stack base. The current contribution delta concerns labeled disposable-container cleanup
+defaults; this continuation creates no container or helper change. It does not
+admit heavy verification. This continuation
+runs the two named companion suites and six task suites only after one-minute
+load falls below eight, with a bounded 60-second polling loop. The expected
+real-pack file-cap finding remains coordinator-reserved; no cap is changed.
+Native review, preparation, receipt, ready and draft verification remain held.
+
+Prior tarball byte measurements remain historical: this predecessor adds a
+shipped release-gates entry, while this continuation adds no shipped file.
+
+Continuation evidence: companion admission after 60 seconds at load 7.74;
+ESLint import-map 122/122 PASS, package-size-policy 46/47 with exactly one
+expected real-platform-pack failure containing only code files 2,613 / cap
+2,574 and total files 2,667 / cap 2,628. Every other companion assertion passed,
+including the newly registered browser entry. This is a cap finding, not a
+passing full artifact-budget gate. No cap, timeout or assertion was weakened.
+The six task test files passed 32/32 cases after separate load admission at
+6.57, 193 seconds from the start of the bounded wait. API check, publication
+policy (five answered obligations), zero-increase neutrality and ast-grep PASS.
+All 29 frozen witnesses and both named companion files match the predecessor.
+Owner-driven documentation regeneration produced no tracked output delta.
+Self-retro: separate load admission for each Vitest invocation protected the
+running predecessor verification and kept the expected budget finding distinct
+from registration or behavior regressions. No native/heavy verification ran.
 
 ## R3 reference delegation — fit and quote witness
 
