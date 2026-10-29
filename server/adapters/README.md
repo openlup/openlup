@@ -20,6 +20,23 @@ and interfaces should describe the reusable capability first, then name the
 current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
+## Opt-in reference market composition
+
+[Reference company rules](market-packs/referenceCompanyIdentityRules.ts) import
+existing identifier/name policy and build the strict host schema bundle with the
+package rules seam. [Provider selection](market-packs/referenceCompanyIdentityProviders.ts)
+accepts explicit constructed ports and preserves current order and exception
+mapping; configuration/environment reading and HTTP remain with their owners.
+The [address bundle](market-packs/referenceAddressCanon.ts) reuses existing
+schemas and normalizer without changing SQL, query or mapping behavior.
+The [source recipe](market-packs/marketRecipe.ts) combines explicit language,
+settlement configuration and providers, with an optional directory. It exposes
+manual/unsupported service outcomes and [offline examples](market-packs/companyIdentityExamples.ts)
+without installing routes, translations, ambient state or new providers.
+There is one package handler cache owner; rule/provider identity does not isolate
+cache entries between compositions. This recipe claims no concurrent cache
+partitioning or live directory/registry qualification.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects

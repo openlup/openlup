@@ -1466,6 +1466,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/reference-market-composition.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/subscription-reference-w1.md",
       "class": "platform-documentation"
     },
@@ -5290,6 +5294,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/market-packs/marketDescriptor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/market-packs/settlementProfile.ts",
       "class": "public-output"
     },
@@ -7674,6 +7682,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/market-packs/marketDescriptor.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/market-packs/portFit.test.ts",
       "class": "public-output"
     },
@@ -9138,6 +9150,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/market-descriptor-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/market-pack-consumer-proof.ts",
       "class": "public-output"
     },
@@ -10243,6 +10259,46 @@
     },
     {
       "path": "server/adapters/managed/subscription/subscriptionSweepPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/companyIdentityExamples.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/marketRecipe.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/marketRecipe.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceAddressCanon.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityProviders.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityProviders.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityRules.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceMarketDescriptor.ts",
       "class": "public-output"
     },
     {
@@ -24626,6 +24682,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/i18n/marketResources.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/i18n/marketResources.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/identity-main.tsx",
       "class": "public-output"
     },
@@ -24634,7 +24698,15 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/locales/en/market.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/locales/pl/account.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/locales/pl/market.ts",
       "class": "public-output"
     },
     {

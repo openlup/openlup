@@ -782,7 +782,8 @@
         "test/market-packs/fiscalProfile.test.ts",
         "test/market-packs/formatMinor.test.ts",
         "test/market-packs/portFit.test.ts",
-        "test/market-packs/settlementProfile.test.ts"
+        "test/market-packs/settlementProfile.test.ts",
+        "test/market-packs/marketDescriptor.test.ts"
       ],
       "entrypoint": "dist/market-packs/index.d.ts",
       "snapshot": "api/market-packs.api.md"

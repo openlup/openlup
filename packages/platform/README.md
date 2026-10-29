@@ -12,6 +12,14 @@ Lookup does not write customer data. Identifier normalization/validity and legal
 non-empty values and do not prefer or seek fuller names. The reference
 application retains its existing national rules and callers unchanged.
 
+The same entry exports `MarketDescriptor` and `describeMarket(language, profile)`.
+They describe independent display, settlement, price-list and fiscal inputs;
+no market values, national rules or language defaults are selected. The
+[unmounted reference recipe](../../server/adapters/market-packs/marketRecipe.ts)
+imports application-owned compatibility facts and accepts explicit configuration.
+Its [equivalence and variation tests](../../server/adapters/market-packs/marketRecipe.test.ts)
+separate source composition from an installed or mounted deployment.
+
 Experimental `./market-packs` exposes pure settlement/fiscal record readers,
 profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
 explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts

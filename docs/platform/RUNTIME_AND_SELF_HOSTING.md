@@ -439,6 +439,18 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The [market source recipe](../../server/adapters/market-packs/marketRecipe.ts)
+is opt-in and unmounted. Supply language, configuration and constructed provider
+ports explicitly; directory lookup is optional. The reference descriptor imports
+today's application constants without changing ambient currency initialization.
+Configured settlement, pricing region and fiscal facts remain independent of
+language. The bilingual [message table](../../src/public-reference/i18n/marketResources.ts)
+is data only: it installs no i18n instance, route, fallback or language default.
+Unknown recipe language refuses explicitly; existing callers keep their own
+selection and fallback behavior. Synthetic/unsupported/manual examples prove
+existing service branches without provider IO. This is no foreign fiscal,
+registry, licensed directory or production-host qualification.
+
 The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
 also accepts an explicitly constructed operations binding on its ordinary
 reference host. That selection mounts only the existing alert and pipeline

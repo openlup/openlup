@@ -1,0 +1,217 @@
+# Reference market composition
+
+## Outcome and authority
+
+Prepare opt-in reference rules, address schemas, provider recipe, synthetic
+examples, unmounted bilingual message data and a neutral market descriptor.
+Single writer in the assigned worktree; accountable maintainer Bart Roszkowski
+<dev@openlup.com>. Direct assignment and CD-M16-1..12 authorize implementation,
+checks and staging, then **stop before DCO or commit** for the lead's exact-tree
+API/budget read. Native review, draft delivery and predecessor integration remain
+later lead work. No ready/receipt/queue/merge/release/activation or adopter work.
+
+Code/stack base: `c723bb73c57c65e3a77324c943faf1712d1f0a4c`, provisional R1
+head (draft #431), tree `b785e3e907bd67b306a751702c18749212a52e54`.
+Instructions were read at this head; policy revision is separate from the code
+base. A later R1 change is integrated by the lead through a signed merge.
+No other task worktree/branch is touched. Dependency install with Node 24.21.0
+passed (727 packages); no dependency changes.
+
+Scope excludes caller swaps (R3), market facts/rules in platform (CD-M16-12),
+new package, SQL/migrations, provider HTTP changes, environment reads, caches,
+i18n runtime, route mounting, changed defaults/refusals or persisted state.
+Existing reference implementation changes are missing exports only. Caps,
+suppressions, baselines, allowances and controls remain unchanged.
+
+## Fit probe before implementation
+
+- A1 resolved: R1 has CompanyIdentityRules injection on schema/port/handler.
+  Reuse it, existing identifier helpers and exported name heuristics. Strict host
+  schemas retain regon/vatStatus/address/evidence; core stays narrower. The
+  normalization hook receives pre-core values: lowercase country is significant.
+  The fuller-name comparison stays ungated, continuation alone is gated, and
+  the engine retains the last-provider check. No additional argument is needed.
+- A2 resolved: money readers require fallback currency/region/fiscal facts and
+  formatting requires locale. Defaults stay in existing application owners.
+  Descriptor imports those constants; ambient state stays in platformCurrency.
+- A3 resolved against the exact source: frozen files below include fixture,
+  cache, PG, persisted-state and packed-consumer witnesses. App national-policy
+  tests remain frozen too. Historical R1/donor PASS is not R2 evidence. The
+  design's companyIdentityContracts.test.ts and quoteCurrencyNeutrality.test.ts
+  selectors do not exist here; R1 contracts plus unchanged service/handler
+  witnesses and the R3-owned quote mapping are the actual boundaries.
+  CD-M16-10 admits unmounted data only: no new route/namespace runtime or
+  import of private copy; absent donor route tests are not new R2 obligations.
+- A4 resolved: add descriptor through existing market-packs entry and API
+  snapshot, smoke and installed-consumer cases. No new export key/module graph
+  node/edge; existing exact inventories continue covering the same subpath.
+  CD-M16-12 supersedes the earlier national package entry proposal.
+- A5 resolved: measure cumulative package against unchanged caps; actual
+  allocation after M15 is coordinator-reserved. Forecasts confer no capacity.
+
+Fields/effects: compare full schema outputs/errors and provider transcripts.
+Preserve method -> parse -> shared cache/lookup -> output validation -> responder,
+source order, whole-company replacement and thrown-versus-returned failure.
+R1 remains the sole cache owner: daily key, TTL, insertion cap, manual bypass and
+failed-flight cleanup are unchanged. Directory bundles reuse exact schema objects
+and normalizer with unchanged query/mapping bodies and optional manual shipping.
+Money order stays currency, region, exponent, floor, fiscal; configured facts are
+independent. No draft codec/store/key/allowlist edits: invoice PII stays transient,
+address identities and historical own-currency amounts remain unchanged.
+
+Registered follow-up, **not fixed**: isMoreComplete's fuller-name replacement
+also applies outside the reference jurisdiction (donor parity, CD-M16-10/11).
+Narrowing it is functional work reserved to the owner.
+
+Proof plan: structural/lint/API/policy/neutrality/redacted secret checks first;
+new equivalence/refusal/independent-fact tests and frozen affected witnesses
+with two workers; selected current-object PG only under Docker/load admission;
+existing package measurement and installed-artifact tooling. Missing mandatory
+proof is reported. No native counted review before coordinator GO.
+Simplicity pre-check: reuse imports, schema objects, one explicit provider chain
+and existing money readers; no registry, plugin loader, schema framework, new
+cache or translation runtime is needed.
+
+## Frozen predecessor witnesses
+
+All blobs below remain byte-identical, including imports and expectations.
+
+| File | R1 blob |
+| --- | --- |
+| `packages/platform/test/company-identity/cacheFit.test.ts` | `97464d29a75bdd8855a707c5fbc439543c69c8e9` |
+| `packages/platform/test/company-identity/companyIdentityHandlers.test.ts` | `8d870fd30c21b37ea388659a254fcf5c173b3f98` |
+| `packages/platform/test/company-identity/companyIdentityService.test.ts` | `b03ee633e13b052273d8a0fa908f27d163011092` |
+| `packages/platform/test/company-identity/contracts.test.ts` | `75bd06b7db599f085b1ba6c00e68221681cde550` |
+| `packages/platform/test/company-identity/fixtures.ts` | `3247f97c08c81b8c9c29372e024805759e496cb5` |
+| `packages/platform/test/market-packs/fiscalProfile.test.ts` | `a0aebb430bf047beca03ef363d7d652d2d3482d2` |
+| `packages/platform/test/market-packs/fixtures.ts` | `b3d0d4c2dd76530b4a122121580805f88b2cf8a6` |
+| `packages/platform/test/market-packs/formatMinor.test.ts` | `1690e8c26b363703daf4fd52dbd2e8b776d48227` |
+| `packages/platform/test/market-packs/portFit.test.ts` | `c5c82da9ceb4c6c198c7048a67f4f0c3e9d69932` |
+| `packages/platform/test/market-packs/settlementProfile.test.ts` | `c8355d401ba8d356ef6f59a90370d12ab0c5596d` |
+| `packages/platform/test/packageBoundary.test.ts` | `a9f121689e05f42b9e2a217a889860c35d1c45ab` |
+| `scripts/packages/market-pack-consumer-proof.ts` | `341ef6cecbdeddaf25e47b372a829a89c5deacf4` |
+| `server/adapters/supabase/address-canon/addressCanonLookup.test.ts` | `f97f460cfffff92ba35c39bf0790927fca76b4c0` |
+| `server/bff/address-canon/shared.test.ts` | `1512ef1c111499daf43d260651a7416cda81b1f4` |
+| `server/domains/company-identity/companyIdentityHandlers.test.ts` | `19111e99f1f7d4d0a8cd546b6f6d95d11dede8fc` |
+| `server/domains/company-identity/companyIdentityService.test.ts` | `0be80129b52c1e04d90953543e352464daac29c2` |
+| `src/checkout/composer/marketIdentityPersistence.test.ts` | `cfc7dba7ba703102735d5238ace44a96a335cfa0` |
+| `src/lib/currency/fiscalProfile.test.ts` | `a7d0cd8816a24f2cc45f92f9e376b0727e05c49a` |
+| `src/lib/currency/formatMinor.test.ts` | `3e2e12935ca40768943759dc94e5a074d4f198f5` |
+| `src/lib/currency/platformCurrency.test.ts` | `cbb615dd102df197dac16f12585e6b0e33b28817` |
+| `tests/postgres/marketDirectoryPreservation.test.ts` | `4c7974a8e36a628d13ef69c534f1e106cfedbaa9` |
+| `scripts/packages/platform-cold-consumer.test.ts` | `a1b92f3560db2df217b1a5b85da152e614b7bbfd` |
+| `src/domains/address-canon/contracts.test.ts` | `7e410e8b917d86ab779dc042088ee29640912a22` |
+| `src/domains/address-canon/addressCanonClient.test.ts` | `5d98d8406f20f3920be14a9b91697bfc53d96c5b` |
+| `server/domains/address-canon/addressCanonLookupHandler.test.ts` | `9547f0c447681809766f0a19944159aa2f3732a4` |
+| `src/checkout/composer/configuratorDraftCodec.test.ts` | `4b113f3308b2fe3b8650353f020535d10cf74b67` |
+| `packages/platform/test/shipping/addressConformance.test.ts` | `dd9bb27736f028a4bd97fae074b1c3dba7251191` |
+| `tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts` | `aae9bbc7561be3b034ab4894e0b03a1c48281eee` |
+| `src/public-reference/subscriptionMessages.test.tsx` | `9143824ada4ee2d6c3b7abd2c1a4b15033e1a8ce` |
+
+## Candidate evidence and handoff
+
+Six new discovered test files / 32 cases PASS: rules 11, handlers 5, provider
+recipe 8, market recipe 6, messages 1, descriptor 1. Focused selection: 32 files /
+2,948 cases PASS, followed by the provider file (8 cases, two additive) and the
+two type-repaired files (6 cases), all PASS. Unique final selected union:
+32 files / 2,950 cases. This is not a newly executed donor 218-case claim.
+Real PostgreSQL: unchanged selected-current-object R1 witness, 1 file / 6 cases
+PASS; Docker available, admitted after 60 seconds at one-minute load 4.84.
+The helper removed its owned container. This proves selected managed objects,
+not full installation, live directory data, PostgREST or native search transport.
+
+Ast-grep PASS; final lint PASS (zero errors, 33 existing warnings); package API
+check PASS; policy/docs-update PASS with five obligations, zero unanswered;
+neutrality PASS with zero per-path increases; Git-history and staged redacted
+secret checks PASS. Five-project serialized typecheck PASS, zero unresolved edges
+and zero errors. All 29 frozen predecessor/adjacent witness blobs match.
+New descriptor is added within the existing market-packs entry; export keys,
+module graph and boundary inventories stay unchanged. Smoke and cold-consumer
+registration are additive. API generation also removes a stale predecessor
+JSDoc header attached to a private constant; exponent source is unchanged.
+
+Built tarball trial over staged package inputs PASS: NodeNext and Bundler
+installed declarations, unchanged invoice witness and additive descriptor
+transcript, isolated from workspace resolution and optional peers.
+Platform SHA-256: `ce5759dfd844340756e61635a0a65bb37913c46c0aa6f500e334c9299a69778d`.
+Core SHA-256: `b0b2b80b1322778bc62c51053efb6ee506abc11813f9f774ee22ad73e3bd83f5`.
+These are working-tree artifact trial identities, not committed-head/native proof.
+Existing measurePack: total 2,667 / cap 2,628; code 2,613 / 2,574;
+packed 1,956,340 / 2,029,568 B; unpacked 9,093,916 / 9,447,424 B;
+code gzip 1,689,283 / 1,743,872 B; docs gzip 59,057 / 73,728 B, 5 / 10 files.
+The two file caps are coordinator-reserved after M15 integration; no cap changed.
+packages:check refused the intentionally uncommitted platform tree; its existing
+measurePack/checkPackBudget helpers measured the actual tarball separately.
+No full verification, native review/session, DCO, commit or external write ran.
+
+R3 dependencies: reference rules/schemas, address bundle, explicit provider
+selection and descriptor are available. Retain the existing exported pure policy
+functions as owners; delegating isValidCompanyIdentifier back through this same
+rules object would recurse. No caller was swapped. Existing host locale fallback
+and ambient currency initialization remain separate and unchanged.
+
+Failed attempts retained: the initial witness inventory found an absent design
+selector before any record was written. Publication checks required registering
+new carrier paths, removing an inadmissible per-file fragment row (existing
+pattern admission owns fragments), and reconciling staged/materialized bytes.
+Initial typecheck found one test-only ES library mismatch and two partial request
+casts; those were repaired and their six tests rerun. A subsequent typecheck
+concurrent with lint's dist rebuild observed transient missing declarations;
+that result was invalidated and replaced by the passing serialized run.
+Native repair cycles/review budget consumed: zero; no counted review occurred.
+
+Self-retro: the PG load admission cost one minute. Reusing imported policy and
+schema owners avoided a second engine or schema API. The invalid concurrent
+check demonstrates why build-dependent proof must follow the completed lint
+build; serializing that rerun resolved the diagnostic without changing controls.
+
+## Lead repair evidence
+
+The proof carrier is now
+[scripts/packages/market-descriptor-consumer-proof.ts](../../../scripts/packages/market-descriptor-consumer-proof.ts).
+Its import, contributor link and publication carrier are updated. The contributor
+addition is one sentence. This task record's path and title are also neutral;
+all other new public paths, exported symbols and headings were checked. Only
+the change fragment retains the explicitly permitted predecessor naming convention.
+`referenceCompanyCountry` reads the existing address-canon locality schema's
+country literal: that schema already owns the reference directory jurisdiction,
+so company composition reuses that fact without a new token or string splitting.
+
+Own shipped increment, derived without rebuilding the predecessor from the retained
+candidate tarball and exact predecessor Git blobs: three new entries,
+src/market-packs/marketDescriptor.ts 671 B,
+dist/market-packs/marketDescriptor.js 322 B,
+dist/market-packs/marketDescriptor.d.ts 519 B (1,512 B total).
+Modified shipped bytes, predecessor -> candidate:
+README.md 112,830 -> 113,390 (+560 B); release-gates.json 31,526 -> 31,580 (+54 B);
+src/market-packs/index.ts 149 -> 188 (+39 B), dist/market-packs/index.js
+149 -> 188 (+39 B), dist/market-packs/index.d.ts 149 -> 188 (+39 B).
+The two emitted index files are export-only and exactly equal the source bytes;
+their predecessor bytes are derived by removing the exact added export line,
+not by compiling or packing the predecessor. No other shipped entry is added
+or changed by this task. Total own increment: +3 files (+3 code), +2,243 unpacked B
+(1,512 new +731 modified); inferred predecessor inventory 2,664 total / 2,610
+code files and 9,091,673 unpacked B, versus cumulative candidate 2,667 / 2,613
+and 9,093,916 B. Compressed tarball growth is not additive and is not inferred.
+The retained candidate tarball and cumulative measurements remain unchanged.
+
+Fresh instruction pin for this repair: `6828103f4e8d56ca18808cfc27f606b82ea4ddba`;
+code/stack base remains the provisional predecessor above. The current instruction
+delta concerns risk witness placement and owned-container cleanup; these rename-only repairs create no container or new proof lane.
+The prior implementation evidence remains attributed to the earlier candidate;
+this repair runs only the lead-selected policy, neutrality, structural, focused
+ESLint and cold-consumer unit checks, plus staged whitespace validation.
+Self-retro: neutral carrier naming is part of the public surface check. Deriving
+the own file/byte increment from retained artifacts avoids a predecessor rebuild
+and separates cumulative size pressure from this task's three shipped additions.
+
+The repair policy check initially treated inline tarball-relative names as
+repository links; plain tarball-entry text resolved that documentation error.
+
+Repair verification PASS: policy/docs regeneration and policy-only check (five
+obligations, zero unanswered), zero-increase neutrality, ast-grep, ESLint on the
+two changed TypeScript files, and the unchanged cold-consumer unit suite
+(1 file / 89 cases, two workers, 37.70 seconds). Staged whitespace and all 29
+frozen witness blobs pass. Package/runtime/test bodies are unchanged from the
+prior staged candidate; no package build or predecessor rebuild was rerun.
+No DCO, commit, push, native review or external mutation occurred.

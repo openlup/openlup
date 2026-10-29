@@ -154,6 +154,9 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
+joins the existing installed platform cold-consumer selection.
+
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the production package runner to check ledger admission, stable reads,
 write admission, complete inventory projection and compatibility for status,
