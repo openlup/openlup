@@ -195,3 +195,50 @@ BFF suites pass 9/9 and the real-PG connected transfer suite passes 5/5 on the
 working tree. A future start is an invalid serving-target configuration, so it
 fails closed with an operator action instead of claiming a drain longer than
 its configured maximum. New native review and final verification remain due.
+
+Regroup before another repair, as CD-M14-21 delivery direction requires: the
+integrated tree `8de610af` closed all three prior cards, but the third full
+evaluation found `D32-NEWSLETTER-DRAIN-ENTRY`. The newsletter route checks the
+integration signature before its inner consent handler reaches the drain guard;
+an unsigned POST consequently receives 403 without retry-after. The remaining
+gap belongs to the approved whole-command-surface refusal. Its cause is an
+incomplete inventory of outer route entry order, not the shared drain decision.
+The smallest adequate repair is one call to the existing guard at that entry,
+before secret/body/signature work, retaining the inner guard for direct callers.
+The discriminating test is an unsigned drain POST returning 503 with Retry-After
+and no inner call while the same unsigned POST outside drain still returns 403.
+Lesson: whole-surface controls → trace outer route wrappers and prove refusal
+ordering at the actual entry.
+
+The route-level repair calls the existing drain guard before newsletter secret,
+body and signature processing; the inner handler still guards direct callers.
+The affected BFF suites pass 13/13, including the unsigned-POST refusal and the
+unchanged outside-drain signature rejection. Lint, test TypeScript, ast-grep
+and publication policy pass on the working tree. This is a material
+security-control delta after the read of tree `7a84048e`; the coordinator's r3
+read accepted staged tree `2003aaa5` before DCO. Native cycle 2 and the new finding remain in the
+append-only session; canonical verification remains outstanding.
+The first neutrality check detected a duplicate environment read in the route;
+reusing its existing local environment binding removed the increase, and the
+affected BFF suites again passed 13/13. No baseline or rule was changed.
+
+The r3 read required an entry-point census before DCO. The active portable
+target POST entries reaching acquisition command ports are:
+
+| Route entry | Command port | Drain placement |
+| --- | --- | --- |
+| `server/bff/partners/b2b-inquiries.ts` | Partner submit | Direct handler before parse/binding |
+| `server/bff/admin/partners/b2b-inquiries/status.ts` | Partner transition | Direct handler before authorization/binding |
+| `server/bff/marketing/research/survey-responses.ts` with `acquisition_survey_v1` view | Survey submit | Direct handler before parse/binding |
+| `server/bff/marketing/research/newsletter-consent.ts` | Newsletter integration event | Route entry before secret/body/signature; direct handler also guards |
+
+The four-row table-driven actual-route test passes 4/4 with 503, Retry-After
+and the drain reason before malformed payload, missing authorization or invalid
+signature can reach a port. Search of the direct binding/port callers found no
+other active POST entry. Tester signup/status commands are retired and reject
+without reaching their retained acquisition port; read routes and the managed
+source adapter are outside this target command surface. No further guard call
+was needed after the r3 read.
+An initial separate test file failed the publication inventory; placing the
+same table in the existing partner direct test kept the proof within the
+existing catalog. The four rows pass there without a new catalog entry.

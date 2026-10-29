@@ -1,5 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PartnerAcquisitionPort } from "../../../src/domains/partners/ports.js";
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return { ...actual, enforceDeploymentRoutePolicy: () => true };
+});
+import partnerSubmitRoute from "./b2b-inquiries.js";
+import partnerTransitionRoute from "../admin/partners/b2b-inquiries/status.js";
+import surveySubmitRoute from "../marketing/research/survey-responses.js";
+import newsletterConsentRoute from "../marketing/research/newsletter-consent.js";
 import {
   createPartnerAcquisitionListHandler,
   createPartnerAcquisitionSubmitHandler,
@@ -201,5 +209,32 @@ describe("partner acquisition direct BFF", () => {
       request("POST", { company: "x" }), invalid,
     );
     expect(invalid.status).toHaveBeenCalledWith(400);
+  });
+});
+
+const acquisitionEntries = [
+  { route: "partner submit", handler: partnerSubmitRoute, body: {} },
+  { route: "partner transition", handler: partnerTransitionRoute, body: {} },
+  { route: "survey submit", handler: surveySubmitRoute, body: { view: "acquisition_survey_v1" } },
+  { route: "newsletter integration event", handler: newsletterConsentRoute, body: "not-json" },
+] as const;
+
+describe("active acquisition command route entries", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it.each(acquisitionEntries)("refuses $route before parsing, authorization, signature or port work", async ({ handler, body }) => {
+    vi.stubEnv("PLATFORM_BUNDLE", "node-postgres");
+    vi.stubEnv("DATABASE_URL", "postgres://unreachable/acquisition");
+    vi.stubEnv("OPENLUP_ACQUISITION_DRAIN_STARTED_AT", new Date(Date.now() - 1000).toISOString());
+    vi.stubEnv("OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS", "3600");
+    const req = { method: "POST", body, query: {}, headers: {} } as never;
+    const res = { statusCode: 200, setHeader: vi.fn(), status: vi.fn(), json: vi.fn() } as unknown as HttpResponse;
+    vi.mocked(res.status).mockReturnValue(res);
+    vi.mocked(res.json).mockReturnValue(res);
+    await handler(req, res as never);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", expect.stringMatching(/^[1-9][0-9]*$/));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: false, error: expect.objectContaining({ details: expect.objectContaining({ reason: "acquisition_legacy_drain" }) }),
+    }));
   });
 });

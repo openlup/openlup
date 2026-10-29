@@ -51,7 +51,8 @@ For a managed-source acquisition cut-over, configure the reference target's
 `OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
 604800. Deploy the same values to every target process before activation.
 The partner submit/transition, survey submit and newsletter consent BFF command
-paths refuse with HTTP 503, `Retry-After` and `acquisition_legacy_drain` while
+paths refuse at their route entries before authentication or signature work,
+with HTTP 503, `Retry-After` and `acquisition_legacy_drain` while
 the declared interval is active; read paths remain available. Setting
 `OPENLUP_ACQUISITION_DRAIN_ENDED_AT` to a UTC instant at or after start
 explicitly ends the drain when that instant is reached. A later end cannot
