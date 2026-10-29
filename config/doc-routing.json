@@ -131,7 +131,9 @@
       "paths": [
         "db/**",
         "supabase/**",
-        "src/integrations/**"
+        "src/integrations/**",
+        "tests/postgres/m14ReleasedSchemaUpgrade.test.ts",
+        "tests/postgres/m14ReleasedSchemaUpgradeChild.ts"
       ],
       "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
       "anchor": "#compatibility-lifecycle"
@@ -592,7 +594,7 @@
     },
     {
       "id": "identity-browser",
-      "when": "Reference customer login, callback, selected browser adapters and session ownership",
+      "when": "Reference customer and operator login, callback, selected browser adapters and session ownership",
       "paths": [
         "src/pages/account/LoginPage.tsx",
         "src/pages/account/AuthCallbackPage.tsx",
@@ -653,7 +655,9 @@
         "packages/platform/src/operations/**",
         "packages/platform/test/operations/**",
         "packages/platform/api/operations*.api.md",
-        "packages/platform/sql/20260814010000_platform_control_plane.sql"
+        "packages/platform/sql/20260814010000_platform_control_plane.sql",
+        "server/runtime/public-reference/m14OperationsBinding.ts",
+        "server/runtime/public-reference/m14OperationsBinding.test.ts"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#operations-and-diagnostics"
@@ -679,7 +683,17 @@
         "packages/platform/src/portability/**",
         "packages/platform/test/portability/**",
         "packages/platform/api/portability.api.md",
-        "tests/postgres/portabilityRows.test.ts"
+        "tests/postgres/portabilityRows.test.ts",
+        "server/adapters/postgres/fulfillmentObservationLifecycle.ts",
+        "server/adapters/postgres/fulfillmentObservationLifecycle.test.ts",
+        "tests/postgres/fulfillmentNativeConformance.test.ts",
+        "tests/postgres/m14QualifiedComposition.proof.ts",
+        "tests/postgres/m14QualifiedComposition.test.ts",
+        "tests/postgres/runM14EffectHandover.ts",
+        "tests/postgres/m14ApplicationCohort.ts",
+        "tests/postgres/fixtures/m14EffectActor.mjs",
+        "tests/postgres/fixtures/m14EffectProvider.mjs",
+        "tests/postgres/fixtures/m14ApplicationActor.ts"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#existing-store-transfer-and-recovery"
@@ -691,6 +705,7 @@
         "packages/platform/src/lifecycle/appUpgrade.ts",
         "packages/platform/src/lifecycle/index.ts",
         "packages/platform/test/lifecycle/appUpgrade.test.ts",
+        "scripts/packages/application-upgrade-proof.ts",
         "packages/platform/api/lifecycle.api.md"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",

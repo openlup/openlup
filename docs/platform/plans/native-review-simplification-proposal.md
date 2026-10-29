@@ -102,6 +102,12 @@ repair state machine and no second review route for merge groups.
 
 ### Proposed mechanism (about 450 LOC)
 
+This mechanism is the proposal-time sketch, not the binding interface recorded
+above. Its “latest report” expiry and boolean owner-continuation sketch were not
+selected: current expiry remains anchored to the earliest counted PASS, and
+`continue` records an append-only continuation that adds three cycles. See the
+[native session interface](autonomous-reviewed-delivery.md#native-session-interface).
+
 1. **Local session (`agent-review-session.mjs`, ~250 LOC).**
    - `prepare` records the base (fork point or stack pin), the head tree, the
      paths and the risk (path and mode floor).
@@ -225,6 +231,13 @@ ruleset actions stay with the owner, under the existing per-PR merge grant.
 | **P3** | Collapse R4/R5/R12/R2 inheritance into a counter plus owner flag, finding IDs and an "all closed" check. Edit the rule text. | Yes: owner | Sessions open at merge time either finish under the old code or restart. P3 states which. |
 | **P4** | Summary receipt with hosted risk recomputation; remove R8b and compression; transport option A or B. If A, delete `native-review-admission.yml` and add a comment reader. The job name stays `native-review`. | Yes: owner (transport choice) | No ruleset change, because the check name is unchanged. A dual-read window accepts both receipt formats for 24 h (one expiry) and is then removed in the same PR series. |
 | **P5** | Move `verify-command` (R16) into maintainer-local tooling or a separate script with its own stubbed tests. Update CONTRIBUTING. | Yes: owner | It touches maintainer-local tooling outside this tree only through the documented seam. |
+
+**Current session transition.** A version-1 session file cannot be converted;
+follow the current [native session interface](autonomous-reviewed-delivery.md#native-session-interface)
+and [Native review and accountability](../../../CONTRIBUTING.md#native-review-and-accountability)
+owners for the delete/reprepare procedure. Version-2 `prepare --new` retains
+append-only history and the repair counter. This on-disk schema boundary does
+not waive the task’s recorded authority or consumed-budget limits.
 
 P1 can start immediately after approval and is independent of P2–P5. P2–P5
 are ordered to limit conflicts in `agent-review-session.mjs`. Each is about a

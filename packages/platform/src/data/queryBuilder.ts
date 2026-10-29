@@ -59,8 +59,9 @@ interface BuilderState {
 }
 
 /**
- * Builder over one pg client. Chainable + awaitable (PromiseLike). Every value flows through a param
- * accumulator, so the rendered SQL contains only $N placeholders for values.
+ * Builder over one pg client. Chainable + awaitable (PromiseLike). Data values
+ * use `$N` parameters; table and column identifiers are allowlist-validated, and
+ * `.is()` accepts only `null`, `true` or `false` for its fixed SQL clause.
  */
 export class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>> {
   private state: BuilderState;

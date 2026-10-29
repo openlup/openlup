@@ -31,13 +31,14 @@ function stubPool(input: { ledger?: AppliedRow[]; bodies: readonly string[] }) {
         async query(text: string, values?: unknown[]) {
           queries.push(text);
           if (text.includes("pg_advisory_")) lockNames.push(values?.[0]);
-          if (text === "SELECT pg_advisory_lock(hashtextextended($1, 0))") return { rows: [{}] };
-          if (text === "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked") {
+          if (text === "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))") return { rows: [{}] };
+          if (text === "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked") {
             return { rows: [{ unlocked: true }] };
           }
-          if (text.includes("to_regclass")) {
-            return { rows: [{ ledger_exists: ledgerExists }] };
+          if (text.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,")) {
+            return { rows: ledgerExists ? [{ ledger_oid: "20001", ledger_safe: true }] : [] };
           }
+          if (text.startsWith("LOCK TABLE ONLY ") || text === "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY") return { rows: [] };
           if (text.startsWith("SELECT catalog_path")) return { rows: ledger.map((row) => ({ ...row })) };
           if (text.startsWith("INSERT INTO public.platform_schema_migrations")) {
             ledgerExists = true;
@@ -110,19 +111,17 @@ describe("createPostgresMigrationRunner", () => {
       catalogProjectionPayload: async () => INVENTORY_PAYLOAD,
     });
     await expect(runner.apply()).resolves.toEqual({ applied: [BASELINE_PATH, FORWARD_A, FORWARD_B] });
-    expect(stub.queries[0]).toBe("SELECT pg_advisory_lock(hashtextextended($1, 0))");
+    expect(stub.queries[0]).toBe("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))");
     // The lock name is a persisted operational identifier: old and new hosts must serialize on it.
     expect(stub.lockNames).toEqual(["openlup:public-platform-migrations:v1", "openlup:public-platform-migrations:v1"]);
-    expect(stub.queries.find((query) => query.includes("to_regclass"))).toBe(
-      "SELECT to_regclass($1) IS NOT NULL AS ledger_exists",
-    );
+    expect(stub.queries.some((query) => query.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,"))).toBe(true);
     expect(stub.executed).toEqual(fixture.bodies);
     expect(stub.ledger).toEqual(fixture.entries.map((entry, position) => ({
       catalog_path: entry.file,
       sha256: entry.sha256,
       position,
     })));
-    expect(stub.queries.at(-1)).toBe("SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked");
+    expect(stub.queries.at(-1)).toBe("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked");
     await expect(runner.apply()).resolves.toEqual({ applied: [] });
     expect(stub.executed).toHaveLength(3);
   });

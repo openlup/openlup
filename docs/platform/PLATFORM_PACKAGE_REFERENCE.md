@@ -776,9 +776,12 @@ facts; full reversal has explicit zero AFTER totals. A bridge must prove the
 parent and correction reference on recovery. Unknown remote outcome stays unknown;
 only a complete exact lookup of the full scope can establish absence. A failed,
 ambiguous or unsupported lookup cannot authorize another create. Local pre-issue
-void is separate from unsupported remote void. Each store call is a local
-transaction; remote I/O never belongs inside it. A late accepted issue retains
-its external identity and atomically creates one compensation duty at finalization.
+void is separate from unsupported remote void. Commit each local persistence
+transaction before host/provider I/O. Higher-level store calls may coordinate
+multiple persistence transactions and injected host callbacks outside those
+transactions; the whole method is not necessarily atomic. A late accepted issue
+retains its external identity and atomically creates one compensation duty at
+finalization.
 
 Every missing host binding returns typed `unsupported` before unsupported writes.
 A recorded reversal that native SQL cannot fulfill returns `unsupported_recorded`.
@@ -1140,10 +1143,13 @@ refuses the unsupported short band, expired/residual-unpaid resume and prepared
 attempt pause. Inspect `operatorAuthorityCapabilities` for each action/subcase;
 a supported ordinary action does not promise all state-dependent subcases.
 
-`linkThenApply` preserves two keys and two commits. After a successful link it
-invokes `void onLinked()` before the subscription call. A refusal or transport
-failure then returns a partial result with the completed link; it never claims
-the link rolled back. `createM12OperatorRecoveryBinding` selects these package
+The host must supply `linkThenApply` with distinct idempotency keys and
+separately committed link and subscription commands. After a successful link
+it invokes `void onLinked()` before the subscription call. A refusal or
+transport failure then returns a partial result with the completed link; it
+never claims the link rolled back. The helper preserves this order and partial
+result but does not create or verify the keys or transactions.
+`createM12OperatorRecoveryBinding` selects these package
 exports only with `enabled: true` and complete ports. The reference
 `AccountSupportRecoveryStatus` displays the partial result/capability refusal;
 neither file mounts a route. Install the complete rail, including M11 managed

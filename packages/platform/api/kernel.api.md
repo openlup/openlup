@@ -19,7 +19,10 @@ import { type PlatformBundleDescriptor as CorePlatformBundleDescriptor, type Pla
 /** The bundles a deployment can select with `PLATFORM_BUNDLE`. */
 export declare const PLATFORM_BUNDLE_IDS: readonly ["vercel-supabase", "node-supabase", "node-postgres"];
 export type PlatformBundleId = (typeof PLATFORM_BUNDLE_IDS)[number];
-/** The bundle selected when `PLATFORM_BUNDLE` is absent or unknown. */
+/**
+ * Fallback used when `PLATFORM_BUNDLE` is absent or unknown during bundle resolution.
+ * Readiness still refuses an unknown nonempty `PLATFORM_BUNDLE` value.
+ */
 export declare const DEFAULT_PLATFORM_BUNDLE: PlatformBundleId;
 export declare const isPlatformBundleId: import("@openlup/core/platform-runtime").PlatformBundleIdGuard<"vercel-supabase" | "node-supabase" | "node-postgres">;
 export type PlatformBundleDescriptor = CorePlatformBundleDescriptor & {

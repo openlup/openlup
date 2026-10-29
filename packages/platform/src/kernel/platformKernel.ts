@@ -18,7 +18,10 @@ export const PLATFORM_BUNDLE_IDS = [
 
 export type PlatformBundleId = (typeof PLATFORM_BUNDLE_IDS)[number];
 
-/** The bundle selected when `PLATFORM_BUNDLE` is absent or unknown. */
+/**
+ * Fallback used when `PLATFORM_BUNDLE` is absent or unknown during bundle resolution.
+ * Readiness still refuses an unknown nonempty `PLATFORM_BUNDLE` value.
+ */
 export const DEFAULT_PLATFORM_BUNDLE: PlatformBundleId = "vercel-supabase";
 
 export const isPlatformBundleId = createPlatformBundleIdGuard(PLATFORM_BUNDLE_IDS);

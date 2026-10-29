@@ -7,7 +7,10 @@ This is the historical 2026-10-03 execution record. Its dispatch/artifact
 transport, run-keyed integration receipts, closure lineage, inherited expiry,
 repair-cycle limits and `needs_rescope` recovery are superseded by the
 [2026-10-19 simplification](native-review-simplification-proposal.md). The
-fork-point base and carry-over conditions remain. Current commands are in
+fork-point base remains. The current carry-over rule also has a later narrow
+exception for disjoint package `exports` additions. Use [Required and raw
+checks](../../../CONTRIBUTING.md#required-and-raw-checks) and [Merge queue](../../../CONTRIBUTING.md#merge-queue)
+for the exact current conditions. Current commands are in
 [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change): post
 `node scripts/agent-review-session.mjs receipt <PR>` output using
 `gh pr comment <PR> --body-file -`; a group that cannot carry over is rejected,

@@ -39,8 +39,9 @@ reference activation stays off and absent-terms token bytes are unchanged.
 - Offer availability projection for configurator compatibility and
   recommendation filtering, with a static all-available default for OSS and
   provider-specific inventory mapping kept out of UI contracts.
-- Acquisition offer-pricing projection built by invoking the existing quote
-  port for the active catalog's minimum package. It is scoped to published dog
+- Reference application policy: acquisition offer-pricing projection built by
+  invoking the existing quote port for the active catalog's minimum package.
+  It is scoped to published dog
   recipe products (never cat products or add-ons) and exposes product-only
   one-time, initial-subscription, and recurring-subscription figures; it neither
   computes prices independently nor represents shipping/checkout/receipt truth.
@@ -88,10 +89,12 @@ promotion `draft`, so the v1 quote path cannot observe them. Admin mutations
 persist the definition, idempotency response and redacted audit in one RPC
 transaction.
 
-Checkout v2 is unconditional (its rollout flags were retired in PR 2243).
+Reference checkout policy: Checkout v2 is unconditional (its rollout flags were
+retired in PR 2243).
 Single quote, batch quote and checkout use the same target-effective engine: the better of
 the existing automatic product price and the code wins, product and shipping
-remain separate lanes, and product payable is floored at PLN 1. Quote capacity
+remain separate lanes, and product payable uses the reference settlement
+profile's floor (PLN 1 by default). Quote capacity
 is advisory. The canonical order-draft transaction validates the frozen code
 revision and atomically reserves capacity through its order insert trigger; a
 lost race rolls the whole order graph back and checkout re-quotes as
@@ -102,7 +105,8 @@ refund never restores a use. Traffic that carries no promotion code is
 byte-for-byte unchanged, and Canonical Order Money remains the sole
 allocator of persisted discount money.
 
-New automatic offer-policy v2 assignments have a separate fail-closed database
+Reference offer policy: new automatic offer-policy v2 assignments have a
+separate fail-closed database
 gate. `commerce_offer_policy_v2_readiness()` is service-role-only and checks the
 linked first-subscription v1/v2 definitions, active 14.90/13.40 catalog band,
 Bundle 5%, a fresh persisted watchdog verdict and claim sweep, bounded recent

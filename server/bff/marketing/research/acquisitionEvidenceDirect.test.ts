@@ -27,6 +27,23 @@ describe("direct acquisition evidence BFF handlers", () => {
   beforeEach(() => {
     vi.clearAllMocks(); resolveBinding.mockResolvedValue(binding); authorize.mockResolvedValue("9f576216-011a-4f67-8404-3f28f7f624d5");
   });
+  it("refuses survey and consent commands before resolving target-key ports during drain", async () => {
+    const configured = { ...env(), OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() - 1000).toISOString(),
+      OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
+    const survey = response();
+    await handleAcquisitionSurveySubmit({ method: "POST", headers: { "idempotency-key": "survey-key-0001" },
+      body: { view: "acquisition_survey_v1", caseReference: CASE, surveyType: "consumer", responseData: { a: 1 } } } as unknown as HttpRequest,
+    survey, configured);
+    const consent = response();
+    await handleAcquisitionNewsletterConsent({ contractVersion: "acquisition_newsletter_consent_v1", caseReference: CASE,
+      contactReference: CONTACT, eventReference: "consent-event-0001", eventType: "subscribe",
+      purpose: "marketing_newsletter", explicitOptInEvidence: true, occurredAt: "2026-08-17T13:00:00.000Z" }, consent, configured);
+    for (const res of [survey, consent]) {
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.setHeader).toHaveBeenCalledWith("Retry-After", expect.stringMatching(/^[1-9][0-9]*$/));
+    }
+    expect(resolveBinding).not.toHaveBeenCalled();
+  });
   it("submits and lists strict survey evidence", async () => {
     binding.submitSurvey.mockResolvedValue({ ok: true, value: { contractVersion: "acquisition_survey_v1", evidence: EVIDENCE, replayed: false } });
     const submitRes = response();

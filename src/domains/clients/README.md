@@ -1,6 +1,10 @@
 # clients domain
 
-Canonical D2C contact identity over (currently) legacy tester/waitlist persistence + the physical `clients`/`pets`/`addresses` tables: lifecycle, consents, pets, addresses, and the hidden customer-account link.
+The reference application's contact and lifecycle domain. Its current adapters use
+legacy tester/waitlist persistence and the physical `clients`/`pets`/`addresses`
+tables. Those tables, including the pets schema, describe this reference data
+model; adopters are not required to reproduce it. The portable
+`clients.customer_360.v2` contract uses a neutral subject ID and lifecycle stage.
 
 ## Owns / does not own
 - **Owns:** D2C contacts, portable customer-360 identity/lifecycle facts,

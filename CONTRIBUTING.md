@@ -154,10 +154,49 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
+uses the production package runner to check ledger admission, stable reads,
+write admission, complete inventory projection and compatibility for status,
+dry-run and apply.
+It covers a single-deviation catalog-shape matrix, temporary name shadowing,
+and bootstrap-owned ledger reads from a distinct
+migration login. Run it with
+`npm test -- tests/postgres/m14MigrationSessionAdmission.test.ts` before the
+complete required gates.
+For this boundary, compare the complete catalog shape with the canonical
+baseline ledger; separately blocked examples do not establish that comparison.
+
 The migration control witnesses cover legacy/qualified selection and immutable
 history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
 prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
-and the existing source/release checks. The
+and the existing source/release checks. The same witnesses retain the exact
+sixth runtime-completion fixture, require its selection after the complete
+restore-bound prefix and exercise source/group machinery refusal with unchanged
+pins. The structural append case removes only that named tail from its previous
+plan and supplied migration list before appending it, so the introduced source
+cannot duplicate its fixture. These structural checks are not live inventory
+qualification. Reader support and the exact sixth-pin approval landed separately
+before SQL introduction; the issued qualified 91 preserves legacy 88 and the
+entire F90 prefix. The active owner-path forward follows that issued prefix as
+qualified unit 92, with its two installed inventories measured in the production
+composition witness. The reader reserves it after
+the runtime-completion tail, at approval position seven before the five
+restricted-bootstrap positions. Its fixed function preimages and exact forward
+bytes were approved before SQL introduction; the control witness refuses
+changed bodies, extra definitions and an earlier position. The active SQL is
+byte-identical to that approved fixture.
+The restricted-bootstrap control witness admits the four corrected `qb_`
+identities only as an atomic positions 13–16 append after all twelve earlier
+approvals, checks their exact fixture hashes, and rejects prior repins or
+co-located active SQL. These approvals are inert until a separate selected
+generation passes its installation and runtime proofs. The active
+[`qualified-admin` witness](tests/postgres/m14QualifiedAdminComposition.test.ts)
+uses two disposable PostgreSQL 16 installations with actual non-superuser M
+sessions: each resumes after a 17-unit committed prefix, seals its fixed
+mode-specific inventory, exercises runtime and restore logins and the existing
+connection consumers, then refuses altered inventory, role graph and session
+visibility. It does not qualify a hosted endpoint or connected restore.
+The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
 is visible to a second actual migration login, which refuses under the held
@@ -166,11 +205,45 @@ not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
 
+The [released schema-upgrade witness](tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
+uses the same canonical runner with a published 77-unit legacy predecessor.
+Its [owned child](tests/postgres/m14ReleasedSchemaUpgradeChild.ts) is an exact
+public execution entry: one SIGKILL aborts the in-progress backfill transaction,
+and another lands between committed units. Run the focused PostgreSQL 16 case
+with `npm test -- tests/postgres/m14ReleasedSchemaUpgrade.test.ts`. A local
+published 0.23.0 package installed under
+`.context/scratch/m14-schema-upgrade/previous-app/node_modules/@openlup/platform`
+additionally runs prior package code against the upgraded database; an absent
+package does not claim that code-rollback observation.
+The [data owner](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+defines the applicable history and limits.
+
+The restricted-bootstrap reader initially accepted five fixed `qa_` identities
+and their exact approval now occupies positions 8–12. A disposable PostgreSQL
+install found that the approved actor SQL does not parse. The four corrected
+`qb_` actor, acquisition, runtime and import fixtures are separate inert
+identities; this additive reader accepts only their complete positions 13–16
+append and leaves all twelve issued rows unchanged. The active schema-3 plan selects
+the `qa_` baseline with those four `qb_` replacements, the issued
+runtime-completion tail and two fixed role-mode inventory digests. The manifest
+and admission witnesses reject missing/reordered tails, wrong-generation paths,
+issued-prefix repins and partial approvals. A disposable PostgreSQL 16
+parse-and-apply witness of the exact proposed bytes in both role modes is
+required before the separate four-byte approval packet; active SQL followed
+that approval without changing an issued fixture or approval row.
+
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;
 the installed consumer adds the public export, custom app files, crash/resume
 and a no-op falsifier. Range admission remains caller evidence, separate from
-actual PostgreSQL compatibility. No new runner or required job is added.
+actual PostgreSQL compatibility. The existing native cold scenario also invokes
+the [versioned application witness](scripts/packages/application-upgrade-proof.ts):
+the canonical runner first observes its complete ledger and object inventory,
+then two executable app releases use the same schema and installed packages
+through an explicitly granted application login. Real control writes/readback,
+interrupted file replacement/resume and compatible code rollback preserve durable
+data and adopter files. This proves no database migration or hosted profile.
+No new runner, container matrix or required job is added.
 Its owned child Node witness is registered by exact path in the existing public
 execution inventory; the classifier and all other entries remain unchanged.
 
@@ -181,15 +254,19 @@ redacted error, with a false-admission falsifier. These checks create no install
 or role grants and do not turn a prerequisite report into installation readiness.
 
 The [qualified production witness](tests/postgres/m14QualifiedComposition.test.ts)
-checks F's two fixed restore-bound 90-unit inventories through the built package
-entry and real reference binding, then two fresh targets in the other role mode
+checks the owner-path forward's two measured restore-bound 92-unit inventories
+through the built package entry and real reference binding, then two fresh
+targets in the other role mode
 with changed principal names. The E2 predecessor retains its four 89-unit shapes
 and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
 shadow-symbol refusals without replacing expected digests.
 Each installation also connects as its actual restricted runtime login to prove
 notification row locking and timestamp-only writes, diagnostic replay locking
 with actual event-update refusal, and privacy receipt locks, reads/inserts and
-populated-row update refusal through the existing production ports. Existing
+populated-row update refusal through the existing production ports. The same four
+cases use the normal-runtime preparation binding/lane for context writes and the
+review adapters for receipt command/replay, with receipt mutation and context-key
+refusals; they add no installation matrix or privileged runtime fallback. Existing
 native domain, identity and reviewed-batch fixtures explicitly select the legacy plan
 before slicing upgrade prefixes, so the v2 union does not change their issued
 SQL, positions or expected legacy inventory. These cases use the existing root
@@ -204,6 +281,60 @@ also executes the declared installed entry and selected-row recovery using its
 existing native fixture. These reuse current discovery and runners; loopback
 and Docker availability are prerequisites. Local synthetic proof does not
 certify full-store transfer or hosted effect fencing.
+
+The prepared [connected-store witness](tests/postgres/connectedStoreTransfer.test.ts)
+extends that proof to a fixed native graph and the application's actual private
+`objects/tmp` layout. It uses two owned canonical installations, a pristine
+target baseline, one migration-owner data transaction and independent row/file
+readback. Source media preparation and target media authorization use the actual
+restricted runtime login; owner setup cannot establish that runtime capability.
+Its selected managed identity projection is stored and read through a PostgreSQL
+snapshot before translation into the same qualified restore. Assertions cover
+exact issuer/subject derivation, distinct same-email people, human membership
+and native revoke-audit subset with source-row reference and conflict refusal,
+erasure receipt and re-link refusal, plus unsupported-source refusals. A separate
+real-PG case proves source replay, target command drain refusal and both explicit
+and maximum drain ends before a new target-key command. This local projection
+does not prove managed-provider export authority or full source audit retention.
+The existing PostgreSQL helper closes every owned pool/store and removes its
+containers, including after setup failure. A privilege refusal before the main
+case is a blocked proof, even when the runner reports the case skipped. Record
+which assertions were not reached; do not replace the selected role or expected
+inventory to obtain a pass. This source uses existing Node discovery and root
+test commands. It does not prove all-writer retirement, managed identity/history
+mapping, effective storage access or external-effect handover.
+
+The local [handover entry](tests/postgres/runM14EffectHandover.ts) is an opt-in
+one-shot fixture, not a required job or serving runtime. In its allocated local
+slot, use Node24.21.0, own installed/built dependencies, local Docker and an
+already-local immutable Node24.21.0 image:
+`node --import tsx tests/postgres/runM14EffectHandover.ts sha256:<local-image-id>`.
+The host's existing esbuild API emits one ESM for the application child; plain
+Node in Linux loads audited existing JS dependencies without a host-native tsx
+binary, Linux install or image build. Retain the real metafile, source/output
+identities, R sessions, four process IDs, exact backend retirement, final graph/
+file census, target publication/recovery and cleanup output. Marker files are
+separate from the real media root. Its four executable carriers are declared
+in the existing execution inventory; the cohort helper is a regular module.
+The fixture establishes its new private scratch root with the current UID/GID
+before creating descendants and rereads the actual loopback port after provider
+restart. Reserve child container names before launch; a failed OCI start must
+still remove the exact created child after checking ownership, while preserving
+other named resources. Its passing result covers only the declared graph/media/process profile:
+two accepted effects recovered, one uncertain operation fenced and one ordinary
+duty dispatched/replayed. Source checks, a predecessor pilot and file presence
+cannot establish that result. No new role/grant model, deadline, matrix or global
+readiness claim is introduced; prerequisite delivery/admission remains required.
+
+The [S3 source protocol witness](server/adapters/s3/transferObjectSource.test.ts)
+uses injected command inputs for protocol refusals and a bounded plain Node
+child for actual optional-SDK signing and deserialization. The child supplies
+explicit synthetic credentials and an injected HTTP handler; it makes no
+provider request. This keeps the SDK's Node export conditions independent of
+the test runner's bundler conditions. Its exact test-carrier path joins the
+existing public execution inventory beside the S3 storage conformance carrier;
+the classifier, command selection and gate remain unchanged. This protocol
+proof does not qualify a full source principal, bucket ACL/RLS or hosted storage.
 
 The operations slice uses the existing platform build, API, package and installed
 consumer commands. Its owner-local witnesses cover browser closure and preserved
@@ -1668,6 +1799,11 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
+The existing qualified target/separate-restore witness connects the native G17
+observation host binding through its actual restricted runtime login. Setup
+prepares an already-submitted request; recovery read/ACK, observation/status,
+replay and conflicting-ID refusal use R. See [Compatibility lifecycle](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle). No new grant, install shape or provider qualification is added.
+
 Risk's unchanged import uses `packages/platform/test/risk/` for schemas,
 assessor, adapter and browser boundaries, and
 `tests/postgres/riskControl.conformance.test.ts` for seven scenarios on each
@@ -2309,6 +2445,13 @@ An ordinary lockfile update keeps the source-release digest snapshot unchanged;
 PR checks derive live bindings. Only a reviewed release-preparation contribution
 refreshes the committed snapshot before strict release admission.
 
+For public questions and reports, follow the [support guidance](.github/SUPPORT.md)
+and choose the matching form: [bug reports](.github/ISSUE_TEMPLATE/bug_report.yml)
+ask for a version and reproduction, while [feature requests](.github/ISSUE_TEMPLATE/feature_request.yml)
+ask for the problem, current workaround and why it belongs in Core. Send suspected
+vulnerabilities through the private route in [SECURITY.md](SECURITY.md), never a
+public issue.
+
 ### Local contribution handoff
 
 If your agent lacks supported independent-review capability or you lack upstream write
@@ -2638,6 +2781,26 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-29, M14 managed identity mapping: boundary edge gaps in a fixed
+  mapper/control → validate existing input and command ordering at outer route
+  entries directly before adding another mechanism.
+
+- 2026-10-29, M14 schema-upgrade proof: diagnostic prose repeated a scanned
+  token after the code fix → describe the mechanism without reproducing the
+  scanner match, then check the committed tree.
+
+- 2026-10-29, M14 ledger admission: successive special-case metadata checks
+  left an untested catalog shape → use the canonical comparison and
+  [single-deviation witness](#development-preview-checks) for this boundary.
+
+- 2026-10-28, M14 handover cleanup proof: assumptions about failure metadata or
+  network damage hid an actual created-container leak → test exact container
+  disappearance and preservation of other owned resources directly.
+
+- 2026-10-28, M14 installed application upgrade: a plain PostgreSQL driver
+  decodes timestamps differently from the selected operations adapter → compose
+  the existing gateway type overrides in the actual application connection.
+
 - 2026-10-27, M14 qualified-runtime witness: generic lane escaped its reference
   binding → compose the existing named diagnostic lane and privacy unit of work,
   retaining the unchanged confinement test in focused feedback.
@@ -2659,9 +2822,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
   and one real copy/resume witness covering both cases.
 
-- 2026-10-26, M14 operations neutrality: package/root green missed a cheap
-  source-carrier gate → run unchanged neutrality before the broad gate and
-  collect remaining diagnostic failures before changing the candidate.
+- 2026-10-28, M14 source-carrier neutrality: package/root green missed the cheap
+  gate again → apply the existing working-tree neutrality order in
+  [Deliver a change](#deliver-a-change) and its
+  [required commands](#required-and-raw-checks) before review and broad proof;
+  collect remaining cheap diagnostics before changing the candidate.
 
 - 2026-10-26, M14 operations: package-local green missed existing closed size,
   nested-module and identity-profile inventories → trace exact consumer entries

@@ -30,6 +30,14 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference application's [acquisition legacy drain](../../server/runtime/marketing/acquisitionLegacyDrain.ts)
+is a finite, operator-configured gate on its existing BFF command routes. It
+checks before the selected target-key ports, returns a retry time during drain,
+and opens a new namespace after explicit end or the configured maximum. It
+adds no provider client, service, source-key comparison or background worker.
+Adopters own equivalent routing if they do not use these reference BFF paths;
+the transfer host still owns source quiescence and deployment consistency.
+
 Operational reference handlers and browser clients delegate through the isolated
 [operations package entries](#operations-and-diagnostics). Environment/bundle
 selection, connection ownership and the maintained domain evaluator remain in
@@ -542,16 +550,18 @@ The intended distribution roles are:
 | --- | --- |
 | `@openlup/core` | Existing I/O-free kernel; retain its published coordinates and exports. |
 | `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
-| `@openlup/platform` | Planned backend distribution, beginning with the runnable foundation, then identity at `@openlup/platform/identity`. |
+| `@openlup/platform` | Development-preview backend distribution for the runnable foundation and declared module subpaths, including identity. |
 | UI | Target distribution role; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
 
-These are target roles, not an inventory of published artifacts. The
-[package catalogue](../../config/openlup-packages.json), installed manifests
-and export maps establish the selected set. Identity's planned physical home is
-`packages/platform/src/identity/`; its browser-safe contracts need an isolated
-entry, preferably `@openlup/platform/identity/contracts`, with no server imports.
-Only genuinely shared contracts belong in core; importing platform as a whole
-is not a browser-safety guarantee.
+These are distribution roles, not proof that an artifact is published. The
+[package catalogue](../../config/openlup-packages.json), selected package
+manifest and export map establish the repository's declared set; release and
+registry evidence establish publication. Identity currently lives in
+`packages/platform/src/identity/`, with declared
+`@openlup/platform/identity` and `@openlup/platform/identity/contracts`
+subpaths. Use the isolated contracts entry for browser-safe contracts and
+verify the installed version's exports. Only genuinely shared contracts belong
+in core; importing platform as a whole is not a browser-safety guarantee.
 
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
@@ -1917,8 +1927,10 @@ remain failed/owed recovery work, never evidence of absence or success.
 
 
 `createPostgresInvoiceStore` binds the reviewed native duty/fact/claim/reversal
-RPCs through an injected executor. Each call commits independently; never bind a
-client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
+RPCs through an injected executor. Each local persistence transaction commits
+before host/provider I/O; a store method may coordinate multiple transactions
+with host callbacks outside them and is not necessarily one atomic transaction.
+Never bind a client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
 facts return typed unsupported without installing facts or consuming the owed
 duty. Clearance and observation host projections remain unsupported in this store.
 Delivery is supported only with the host's explicit M04 envelope projection;
@@ -2068,6 +2080,13 @@ The [control-plane handler](../../packages/platform/src/operations/server/contro
 checks injected admin authorization before a typed read or mutation, validates
 requests and results, maps replay conflicts to `CONFLICT`, and keeps raw SQL
 errors out of responses. The host binds the existing request-reference callback.
+Its [package characterization](../../packages/platform/test/operations/controlPlaneHandler.test.ts)
+also pins authorization before malformed-body parsing, unsupported methods without
+port work, injected operator-field refusal and strict request/result validation.
+JSON key normalization and replay receipts retain their exact port boundary;
+heartbeat evidence is forwarded unchanged. Invalid results and upstream failures
+retain safe responses without exposing private error details. These synthetic
+handler cases do not qualify a deployed authorization or persistence binding.
 The [SQL executor adapter](../../packages/platform/src/operations/server/controlPlaneStore.ts)
 uses the existing fixed invoker-rights routines, hashes the complete command and
 retains receipt identity on replay. Its capability-local operator allowlist is
@@ -2095,6 +2114,48 @@ email-template or provider tables. These entries add no managed provider parity
 or activation evidence. The [module record](plans/oss-m14-operations-portability.md)
 retains the remaining M14 evaluator/default portability, role, lifecycle and
 transfer obligations; this bounded slice does not complete that programme.
+
+The maintained [portable reference binding](../../server/runtime/public-reference/m14OperationsBinding.ts)
+composes that retained evaluator and job catalogue with host-supplied evidence,
+ledger, heartbeat and report ports. Its default sink captures each invocation's
+alert ID, dedupe key, severity and time in memory. `delivery: "captured"`
+identifies an in-memory observation, not notification delivery: `notified` stays
+zero, and capture records no notification attempt or delivery cadence in the
+host ledger. A later selected sink can attempt delivery immediately. An explicitly
+selected sink remains an adapter, and its failures/backoff remain visible in the kernel result.
+Check-only evaluation neither records heartbeat nor writes notifications/alerts.
+Missing evidence yields a bounded unavailable result; absent heartbeat keeps
+the existing overview health unknown. Raw domain payloads stay with the ledger.
+
+Alert and pipeline reads retain their existing typed handlers and administrator
+authorization before port access. The Node host admits the exact configured Host
+before body reading, then enters the existing observed-route wrapper on the
+decorated raw request. Public deployment policy and alerts method refusal run
+before request adaptation; the existing BFF dispatcher and admin preflight run
+after it. Adaptation failures use the bounded BFF error response, and safe request
+references correlate response headers/errors with one route log. The existing pipeline
+route is classified as a mutation by public deployment policy and is refused
+before authorization; the alert overview is the available admin readback on this host.
+Request bodies, authorization values, query contents and upstream exception prose
+are excluded from those logs. Unsafe caller references are replaced by the
+existing request-ID policy. This callable composition mounts no routes or jobs
+and creates no database privileges; hosts own those selections. The portable
+Node reference host can explicitly mount its two existing admin reads as a
+separate composition, without adding a watchdog HTTP entrance. Money, order,
+identity and provider truth remain with their domain owners.
+
+The admin schemas validate shape only: they do not authorize a request
+principal, select a setting/control capability, or scope tenant/entity data.
+The host MUST authorize the current principal for the admin operation and
+enforce its allowed settings/control keys. Where data is tenant- or
+entity-scoped, it MUST also bind the injected port to that authenticated scope.
+The host MUST return only approved operator fields and keep secrets out of read
+projections. The generic watchdog performs no built-in content redaction; the
+host supplies privacy-safe evaluator or `normalizeDecision` output to the
+injected ledger and sink. The native `platform_alerts` table stores free-form
+message/payload and has no tenant key, so the host MUST apply its privacy policy
+before persistence or delivery and limit tenant/entity diagnostics to the
+intended operator audience.
 
 The [operations witnesses](../../packages/platform/test/operations/) preserve the
 existing behavior assertions. The existing
@@ -2247,6 +2308,21 @@ results establish proof; authored witnesses alone do not. The
 [neutral disposable recipe](PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade)
 uses this boundary without claiming a complete npm or database upgrade service.
 
+The [installed application witness](../../scripts/packages/application-upgrade-proof.ts)
+adds two executable versions of a disposable control application to that cold
+consumer's existing native PostgreSQL scenario. Before the application fixture
+grants, the canonical runner observes the complete installed migration ledger
+and object inventory; its applied count supplies the caller's schema ordinal.
+Both application versions use that same schema and installed package set. Their
+own restricted login executes real control writes and reads through the installed
+operations adapter. The witness retains customized and unmanaged files, refuses
+a divergent managed file before writes, interrupts an actual replacement,
+resumes and runs the new application, then rolls compatible application code
+back while retaining durable data. The application fixture's explicit grants
+are separate from qualified-install role acceptance. This scenario neither
+upgrades the database nor qualifies another schema, host or OpenLup version;
+an authored witness establishes no passing execution result.
+
 The same lifecycle entry exports the injected-query
 `inspectLegacyPostgresInstallRoles` helper. Its fixed read-only observation is
 limited to `legacy-fresh-bootstrap-role-prerequisites` and
@@ -2255,6 +2331,64 @@ readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstr
 defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
+
+The [local handover witness](../../tests/postgres/runM14EffectHandover.ts)
+combines the existing canonical graph/private-media transfer with three dispatch
+processes and one actual [application process](../../tests/postgres/fixtures/m14ApplicationActor.ts).
+Its [fixture composition](../../tests/postgres/m14ApplicationCohort.ts) uses the
+existing review binding, restricted runtime, real raw HTTP/store operations and
+natural media timer. Host configuration reads reuse the existing environment
+boundary; the standalone synthetic provider receives its fixture control as an
+explicit child argument. The independent [provider ledger](../../tests/postgres/fixtures/m14EffectProvider.mjs)
+retains accepted effects when a response is lost; target G1 recovery must use
+verified observations before ordinary dispatch resumes. The one unresolved
+operation remains visible and fenced while the fourth declared duty can proceed.
+Each child reserves an exact owned container name before Docker startup.
+Cleanup resolves that name and checks its ID and owner/role labels even when
+OCI startup fails before returning an ID; other names are not cleanup targets.
+A passing run reports readiness only for that finite profile; contributor
+guidance owns its opt-in invocation and retained proof requirements.
+
+The finite fixture retires four exact processes plus their observed PostgreSQL
+backends, then freezes its coordinator before final graph and full `objects/tmp`
+capture. Network exclusion alone does not seal local file writers. Target
+recovery and application composition wait for both canonical publications;
+physical clones and restored claim tokens are not that boundary. The
+[runtime owner](RUNTIME_AND_SELF_HOSTING.md#runtime-model) defines the fixture's
+resource retirement and host limits, and the
+[data owner](DATA_AND_MIGRATIONS.md#compatible-data-transfer) preserves interrupted
+state and lossless rows. It adds no production fencing API, role model, scheduler,
+host framework or all-adopter writer-completeness guarantee.
+
+The qualified runtime-completion witness uses the existing
+[preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+and its role-free transaction lane for actual restricted-runtime context insert,
+upsert and delete. The same four-case production composition exercises the review
+adapters' confirm, moderation, delete preparation and revoke replay receipts.
+Context key updates, neighboring dispatch deletion and receipt mutation refuse;
+neither setup-owner facts nor a reference inventory substitutes for normal-runtime
+command proof. The separately approved SQL changes only the finite grants described
+by the [migration owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle), with no new
+transfer API, runtime adapter, role compiler or installation executor.
+The same qualified production composition now includes the separately approved
+owner-path forward and checks its installed settings and restricted runtime and
+restore behavior in both role modes. The transfer graph and API are unchanged.
+
+That selected installation witness also exercises pooled request reads and
+session-affine scheduler locks under the restricted runtime login. Real backend
+switch/reset cases refuse before job execution and preserve another backend's
+lock on a refused release. The [connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+owns those transport requirements; this local proof adds no source/target
+transfer coverage, hosted qualification or writer-fencing guarantee.
+
+The host-owned [native observation binding](../../server/adapters/postgres/fulfillmentObservationLifecycle.ts)
+implements the existing G17 lookup/acceptance pair using native dispatch SQL.
+Its caller must supply an already-verified observation with the exact shipment
+UUID. Selected provider and supplied direct order/parcel/external identities
+must agree. It rereads the current row before atomic ACK and preserves the
+exact retained acceptance on replay. It creates no connection, grant, provider
+request, absence inference or package export. Host verification, evidence
+retention and transaction/login authority remain explicit caller duties.
 
 The experimental Node-only
 [`@openlup/platform/portability`](../../packages/platform/src/portability/index.ts)

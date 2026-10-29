@@ -6,6 +6,12 @@ repair 1 and O-P3 runner integration are implemented; O-P3 focused verification
 is recorded below. Fresh committed native review and the broad gate remain owed.
 No account-readiness, activation or release claim is made.
 
+Current routes: [fulfillment architecture](../ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
+and [opt-in contract](../CANONICAL_CONTRACTS.md#opt-in-fulfillment-example),
+[adapter source](../../../packages/platform/src/fulfillment/omnipack/index.ts),
+[generated API report](../../../packages/platform/api/fulfillment-omnipack.api.md)
+and [offline conformance witness](../../../packages/platform/test/fulfillment/omnipack/conformance.test.ts).
+
 ## Outcome, authority and boundary
 
 Owner decision, 2026-10-21 (direct-carrier wording paraphrased): “Yes: start an A3

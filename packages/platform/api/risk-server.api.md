@@ -260,8 +260,9 @@ import type { PoolClient } from "pg";
 import { type PgQueryExecutor, type PgShimError, type PgShimResult } from "./queryBuilderSql.js";
 export type { PgQueryExecutor, PgShimError, PgShimResult };
 /**
- * Builder over one pg client. Chainable + awaitable (PromiseLike). Every value flows through a param
- * accumulator, so the rendered SQL contains only $N placeholders for values.
+ * Builder over one pg client. Chainable + awaitable (PromiseLike). Data values
+ * use `$N` parameters; table and column identifiers are allowlist-validated, and
+ * `.is()` accepts only `null`, `true` or `false` for its fixed SQL clause.
  */
 export declare class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>> {
     private readonly client;
@@ -522,7 +523,8 @@ export declare function pathnameOf(req: IncomingMessage): string;
 export declare function decorateResponse(res: ServerResponse): HttpResponse;
 /**
  * Adapt a Node IncomingMessage into the Vercel request shape, honoring the raw-body invariant:
- *  - raw-stream entrypoints (process/csp/feedback): stream left intact, NO req.body;
+ *  - the platform's built-in `/api/csp-report` path and deployment entrypoints explicitly marked
+ *    `rawStream: true`: stream left intact, NO req.body;
  *  - everything else: raw bytes buffered + re-exposed as async-iterable (so readRawBody sees the
  *    EXACT bytes for any signature-verifying route, webhook-segment or not) AND req.body = parsed JSON.
  */
@@ -656,14 +658,20 @@ export declare function contentTypeFor(pathname: string): string;
 /** A path "looks like" a built asset if it has a file extension (so we 404 missing assets, not SPA). */
 export declare function looksLikeAsset(pathname: string): boolean;
 /**
- * Serve a built SPA asset if present, otherwise the document the build produced for this route,
- * otherwise the declared CSR fallback for client routes. Missing real assets (a hashed bundle that
- * does not exist) and unknown extensionless paths return 404 rather than the SPA shell.
+ * Try the initial asset read; return a found asset with 200. If the read misses
+ * and the path looks like an asset, return 404. Otherwise, when
+ * `allowRouteDocument` is true and its
+ * lookup finds a route document, return that document with 200. If no route
+ * document was returned, `allowFallback` true returns the SPA index with 200;
+ * otherwise return 404. Both flags default to false. The host must enable these
+ * options only for admitted routes; this helper does not identify application
+ * routes.
  *
  * The middle step is not decoration. The build writes each pre-rendered route as
  * `<route>/index.html` and writes the HOME document to `index.html`; skipping that lookup hands
- * every pre-rendered URL the home document instead of its own. The hosted platform does the same
- * thing declaratively, one rewrite per route, which is why this host had no equivalent code.
+ * every admitted pre-rendered URL the home document instead of its own. The host
+ * supplies the route-document and fallback decisions; this helper does not infer
+ * application routes.
  */
 export declare function serveSpaStatic(_req: IncomingMessage, res: HttpResponse, pathname: string, reader: StaticAssetReader, allowRouteDocument?: boolean, allowFallback?: boolean): Promise<void>;
 ```
@@ -705,31 +713,21 @@ export type EntrypointLoader = () => Promise<{
 
 ```ts
 import type { HttpRequest } from "./types.js";
-/** Hard cap on raw webhook body bytes — the payment provider events are well under 256 KiB. */
+/** Maximum body size accepted by readRawBody, in bytes. */
 export declare const MAX_WEBHOOK_BODY_BYTES = 1048576;
-/** Thrown by readRawBody when the streamed body exceeds MAX_WEBHOOK_BODY_BYTES. */
+/** Thrown by readRawBody when its streamed or fallback body exceeds MAX_WEBHOOK_BODY_BYTES. */
 export declare class WebhookBodyTooLargeError extends Error {
     constructor();
 }
 /**
- * Reads the exact raw request body bytes for provider webhook signature
- * verification.
- *
- * `@vercel/node` (v3, the builder for `/api` functions in this Vite project)
- * auto-parses `application/json` request bodies into `req.body` and IGNORES the
- * `export const config = { api: { bodyParser: false } }` opt-out — that opt-out
- * is a Next.js Pages Router convention, not a vanilla `@vercel/node` one
- * (verified empirically against the hidden-preview deploy: a JSON payload posted
- * with `Content-Type: application/json` arrives parsed, the same bytes posted as
- * `text/plain` arrive raw). Re-serializing the parsed object with
- * `JSON.stringify` does NOT reproduce the provider's exact bytes — the payment provider signs
- * pretty-printed JSON, so a compacted re-serialization breaks HMAC verification.
- *
- * Reading the underlying request stream FIRST — before touching `req.body`,
- * whose getter triggers the parse that consumes the stream — preserves the exact
- * bytes when the platform parses lazily. When `req` is not a stream (unit tests
- * pass a plain `{ body }` object) or the stream yields nothing (already
- * consumed), we fall back to `req.body`.
+ * Read an async-iterable request stream before consulting `req.body` and return
+ * its chunks as concatenated UTF-8 text. Stream input is capped at
+ * `MAX_WEBHOOK_BODY_BYTES`. Even a zero-byte chunk is a stream result. Only
+ * when the stream emits no chunks, or no stream is available, fall back to a
+ * string or Buffer in `req.body`, or JSON-serialize an object; fallback text is
+ * capped by its UTF-8 byte length. Callers verifying signatures must preserve
+ * original raw content, which may be exposed as a stream, string or Buffer; a
+ * parsed object fallback cannot reconstruct the original wire bytes.
  */
 export declare function readRawBody(req: HttpRequest): Promise<string>;
 export declare function verifyHmacSignature(input: {

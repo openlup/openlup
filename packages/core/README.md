@@ -8,10 +8,10 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.30.0` set republishes this kernel with the platform's
-experimental operations, lifecycle and portability surfaces. Upgrade all packages
-together and read [the set notes](CHANGELOG.md#0300); core introduces no API or
-schema migration. Size comparison uses the published `0.29.0` tarball; older releases
+The prepared `0.31.0` set republishes this kernel unchanged alongside the
+platform runtime and migration-admission updates. Upgrade all packages
+together and read [the set notes](CHANGELOG.md#0310); core introduces no API or
+schema migration. Size comparison uses the published `0.30.0` tarball; older releases
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
@@ -132,13 +132,22 @@ promise.
 - `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
   remains package smoke, not external adoption.
 
+The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
+15-attempt/30-day numeric bound. A passing result does not authorize a retry or
+certify compliance; the host/provider must apply actual decline advice and
+current applicable rules, including any narrower limits.
+
 ## Use in an application
 
 From your application's root, with Node 24 and npm 11.19.0:
 
 ```sh
-npm install --save-exact @openlup/core@0.12.0
+npm install --save-exact @openlup/core@<version>
 ```
+
+Replace `<version>` with the exact published version selected for your complete
+`@openlup/*` package set. This source README does not establish registry
+publication.
 
 Read the installed `AGENTS.md`, then compose the [typed wiring example](AGENTS.md#wiring-example)
 with your application's own ports and options. Inspect the shipped sources and
@@ -234,9 +243,12 @@ neutrality evidence, not package activation or consumer compatibility evidence.
 Selected `./readiness` modules retain independent schema requirements.
 Dependencies use the same or an earlier layer:
 `kernel`, `rail`, `capability`, `implementation`.
-See [CHANGELOG migration guidance](CHANGELOG.md#0160) for selection,
-bindings, refusals and diagnostics, and the source checkout's
-`api/readiness.api.md` snapshot for declarations; the host owns inventory.
+See the optional current-source [module contributions, identity, and readiness
+guidance](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
+for selection, bindings, refusals and diagnostics; it is not version-specific
+migration guidance. For an installed package, its declarations for the selected
+version remain authoritative; the source checkout's `api/readiness.api.md` is a
+snapshot reference, and the host owns inventory.
 
 ## Package artifact limits
 

@@ -298,7 +298,7 @@ contract/conformance checks. Start in the context you are actually changing:
 | Task | Agent entrypoint |
 | --- | --- |
 | Change OpenLup itself | Read root [AGENTS.md](AGENTS.md), then the relevant source-map owner and [contribution checks](CONTRIBUTING.md). |
-| Use an installed package | Read your application's instructions and the installed package's `AGENTS.md`; use the exports and declarations shipped with that exact version. |
+| Use an installed package | Read your application's instructions and the installed package's `AGENTS.md` if shipped, otherwise its `README.md`; use the exports and declarations shipped with that exact version. |
 | Investigate a capability | Trace its owner, composition and selected profile. Source presence alone does not mean a route is enabled or a provider is configured. |
 
 Keep application policy and adapters in the application, consume declared public

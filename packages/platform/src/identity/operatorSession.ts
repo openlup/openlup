@@ -9,6 +9,12 @@ export function createOperatorSessionService(options: {
 }) {
   const hash = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
   return {
+    /**
+     * Issue a challenge, then await the optional acceptance callback before mailbox delivery
+     * for every eligibility outcome. Custom HTTP hosts MUST use it to send their padded generic
+     * response before transport. Non-HTTP compositions may omit it; this service sends no HTTP
+     * responses itself.
+     */
     async requestChallenge(email: string, accept?: () => Promise<void>): Promise<void> {
       const token = options.generateToken?.() ?? randomBytes(32).toString("base64url");
       if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new Error("operator_challenge_generator_invalid");
