@@ -168,6 +168,15 @@ Changes to its executable surface, publication controls or
 package gate budgets require the applicable maintainer read before sign-off;
 passing the inventory check does not establish that read or authorize release.
 
+The opt-in [recipe conformance runner](tests/postgres/runM14RecipeConformance.mjs)
+uses the existing restricted-install and released-schema proofs with three
+explicitly disposable external PG16 targets. Its private-file/target/refusal
+regressions run with `npm test -- tests/postgres/m14RecipeConformance.test.ts`.
+The [runtime owner](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+defines input, TLS, mutation and pending-receipt limits. Its execution entry is
+part of the ordinary closed public command inventory; it adds no default hosted
+or destructive CI target.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected
@@ -332,6 +341,13 @@ one-shot fixture, not a required job or serving runtime. In its allocated local
 slot, use Node24.21.0, own installed/built dependencies, local Docker and an
 already-local immutable Node24.21.0 image:
 `node --import tsx tests/postgres/runM14EffectHandover.ts sha256:<local-image-id>`.
+Add `--catch-up` to that command for the finite local portable-to-portable
+journey on qualified-admin installations. Its private worktree-local report adds
+per-table/object counts, interruption/resume, final-generation agreement,
+refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns the exact boundary; managed history, older-snapshot measurement and hosted
+provider qualification remain separate. The final target is distinct from the
+preliminary copy and remains inactive through the DB/object/access barriers.
 The host's existing esbuild API emits one ESM for the application child; plain
 Node in Linux loads audited existing JS dependencies without a host-native tsx
 binary, Linux install or image build. Retain the real metafile, source/output
@@ -2832,6 +2848,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, M14 connected catch-up: fixture labels for observation authority
+  or media visibility → use the existing bootstrap observer and exact domain
+  SQL states before composing retirement and access expectations.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the

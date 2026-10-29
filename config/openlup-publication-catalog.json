@@ -2,10 +2,6 @@
   "schemaVersion": 3,
   "publicPaths": [
     {
-      "path": ".agent-protocol.yml",
-      "class": "public-output"
-    },
-    {
       "path": ".dockerignore",
       "class": "public-output"
     },
@@ -1414,6 +1410,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-connected-catchup.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-existing-store-transfer.md",
       "class": "public-output"
     },
@@ -1427,6 +1427,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-managed-identity-mapping.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-object-access-transfer.md",
       "class": "public-output"
     },
     {
@@ -1446,7 +1450,15 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-recipe-conformance.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-restricted-bootstrap.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-restricted-connected-restore.md",
       "class": "public-output"
     },
     {
@@ -10263,6 +10275,14 @@
     },
     {
       "path": "server/adapters/filesystem/orderReviewMediaObjectStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferAccess.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferAccess.ts",
       "class": "public-output"
     },
     {
@@ -26382,6 +26402,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14ConnectedCatchup.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14InstallQualification.test.ts",
       "class": "public-output"
     },
@@ -26414,11 +26438,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RecipeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ReleasedSchemaUpgrade.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14ReleasedSchemaUpgrade.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/m14ReleasedSchemaUpgradeChild.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
       "class": "public-output"
     },
     {
@@ -26523,6 +26559,10 @@
     },
     {
       "path": "tests/postgres/runM14EffectHandover.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runM14RecipeConformance.mjs",
       "class": "public-output"
     },
     {

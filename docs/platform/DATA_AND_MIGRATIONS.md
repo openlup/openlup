@@ -54,10 +54,15 @@ does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
-captures the connected73-table graph and the application's complete private
-`objects/tmp` tree only after its finite source writers and observed server
-backends retire. Its migration-owner capture is read-only; actual source and
-target domain commands use the qualified restricted runtime. The existing
+takes its final connected73-table graph and application's complete private
+`objects/tmp` capture only after its finite source writers and observed server
+backends retire. The default crash-boundary mode captures with a read-only
+migration-owner session. In catch-up mode the fixture closes its bootstrap
+administrator pool after retiring source backends, then opens a new
+bootstrap-principal session configured read-only by default for the final
+capture/census and closes it afterward. This local superuser fixture step does
+not qualify a restricted source-capture login; actual source and target domain
+commands use the qualified restricted runtime. The existing
 canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
 uploads, partial bytes, cleanup obligations and leases without copying schema,
 roles, private installation-key payloads or migration history. Database and
@@ -67,6 +72,11 @@ only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
 absence or complete upload is manufactured. This finite composition does not
 qualify an adopter's complete writer inventory or managed-history mapping.
+Its optional catch-up mode also takes a preliminary copy while the source
+changes. It discards that target selection and uses a separate fresh inactive
+generation for final recapture and exact readback; no existing target rows are
+patched or deleted to simulate catch-up. The [transfer architecture](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns its interrupted atomic retry, source-domain access and activation evidence.
 
 Historical insertion is not generally inert. `clients` insertion invokes
 `customer_subject_capture_lifecycle_trigger`, generating new history; cycle
@@ -424,7 +434,13 @@ nonowners. The mode-specific expected inventories are fixed in the manifest,
 not learned from the installation being checked. The
 [local production-path witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
 applies, resumes and replays both modes with actual migration/runtime/restore
-logins; hosted and connected-restore qualification remain separate.
+logins. Connected restore selects this generation's mode-specific manifest.
+A host-declared trusted provider control plane may use a non-superuser bootstrap
+login with CREATEROLE and CREATEDB and named outside elevated roles. Admission
+checks that those roles do not enter the application role graph and keeps the
+application ownership, runtime/restore limits and selected catalogue checks.
+Local PG16 role emulation leaves actual hosted privilege behavior and provider
+role inventory for later hosted receipts.
 
 The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
 check the actual login, owner, held lock, protected role graph, default ACLs,
@@ -1246,6 +1262,15 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The [recipe runner](RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+composes this same released-history proof against its declared separate fresh
+schema target. That route requires the actual previous 0.23.0 application
+binding; the ordinary offline test keeps it optional and cannot thereby claim
+compatible-code rollback. Killed child migrations receive their connection
+configuration through stdin, including verified TLS, without credential-bearing
+process arguments. The factored proof retains the same backfill, ledger,
+retained-row and subscription assertions; no new predecessor is invented.
+
 The [released-history witness](../../tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
 selects the nearest published predecessor with an applicable portable data
 backfill: platform 0.23.0, whose 77-unit legacy manifest is an exact prefix of
@@ -1275,8 +1300,11 @@ The separate `qualified-admin` 91-unit catalogue is a fresh installation
 generation. It is not an upgrade, relabel or migration-history conversion from
 legacy or `qualified-v2`. Its interrupted-prefix proof resumes only the same
 selected generation under the same actual migration login and fixed role mode;
-replay after completion applies no units. Connected restore and hosted upgrades
-remain unqualified.
+replay after completion applies no units. The [local PostgreSQL 16 connected
+restore witness](../../tests/postgres/m14RestrictedConnectedRestore.test.ts)
+covers this generation in both role modes with emulated provider control-plane
+roles. Actual hosted connected restore and hosted upgrades remain unqualified
+pending separate hosted receipts.
 
 The existing qualified target/separate-restore witness connects the native G17
 observation host binding through actual restricted R. Bootstrap setup seeds the

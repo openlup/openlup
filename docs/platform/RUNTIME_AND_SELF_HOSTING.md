@@ -46,6 +46,66 @@ uses the same consumer seams with both fixed role modes and a non-superuser
 trusted migration administrator. Its local session-switch refusal is not a
 PgBouncer deployment or hosted endpoint qualification.
 
+## Recipe conformance runner
+
+The source-only preview runner composes the existing restricted installation,
+connection and released-schema witnesses:
+
+```sh
+node tests/postgres/runM14RecipeConformance.mjs --target self-host --credentials /external/recipe.json --receipt /external/new-receipt.json
+```
+
+Build the workspace packages first with `npm run pretest`. The runner requires
+Node 24, npm 11.19.0 and an absolute credential-file path outside Git checkouts,
+owned by the invoking user with mode 600. It never prints credentials, that path
+or raw child output. Receipt destinations must be new files. The credential
+JSON has `schemaVersion: 1`, `target: "self-host"`, `region: "local"`,
+`disposable: true`, and `previousApplicationPath` pointing to the installed
+`@openlup/platform@0.23.0` `dist/payments/index.js` entry. Its `installations`
+object has exactly `installer-managed`, `operator-provisioned` and `schema`.
+Each contains `disposable: true`, the expected PostgreSQL `systemIdentifier`,
+`connectionString`, PEM `ca` and an operator-declared `ociDigest` in
+`sha256:<64 lowercase hex>` form. The runner records the declaration but cannot
+independently inspect an external host's image. Keep the entire file external;
+never put real values in an issue, receipt or source file.
+
+This command mutates all three installations. Each must be a separate fresh
+PG16 cluster with a verified TLS endpoint. The URL explicitly supplies its
+bootstrap login and database (the local reference uses `postgres` for both). The bootstrap prepares separate restricted
+migration, runtime and restore identities in the existing witnesses; this is not
+a claim that hosted control-plane users have identical authority. Admission
+checks every system identity and fresh catalogue before the first installation
+write. The strict local catalogue check permits only the selected ordinary
+database alongside PostgreSQL's two templates, and refuses extra user schemas,
+public objects, extensions, non-bootstrap user roles or another active client
+session at admission. The explicit disposable declaration remains the operator's
+target ownership assertion; the point-in-time check cannot prevent a later
+connection. A wrong TLS hostname
+must also be refused. No reset or target teardown
+is implicit: the operator owns these disposable clusters and their removal.
+After a partial failure, use new fresh installations rather than rerunning over
+a used catalogue.
+
+The JSON receipt records the two fresh bootstrap modes, fixed inventories,
+sealing/replay/refusals, connection limits, role denials, pooled requests,
+read-only transactions, lock contention and deterministic bad-affinity refusal.
+The schema section runs the actual released legacy predecessor, real backfill,
+killed inside/between-unit transactions, resume/replay and compatible previous
+application read/replay. It does not roll the database schema back. The
+previous-application proof creates a temporary login with a per-run random
+password, then attempts to remove its grants and role on normal exit or handled
+failure. A cleanup failure or abrupt process kill still requires operator
+teardown. A successful
+initial receipt remains `PASS_INITIAL_PHASES`: transfer (8D), recovery (9A),
+OIDC (10I), S3 (10O), Node/hosts (10H) and effort/cleanup (10H/10S) stay explicitly
+`PENDING` with their owners. Later factored receipts consume these sections.
+
+The same selector accepts `neon` and `rds` as target labels; it adds no provider
+logic or admission exception. Their actual endpoints, provider-role admission
+and hosted receipts remain unqualified until the corresponding parcels supply
+and exercise them. This is a workspace source proof, not an installed-current
+package, PgBouncer, hosted-provider or stable-framework qualification.
+
 ## Runtime model
 
 For a managed-source acquisition cut-over, configure the reference target's
@@ -78,7 +138,7 @@ local synthetic HTTP probe establishes its fixture semantics only.
 
 The [native handover fixture](../../tests/postgres/runM14EffectHandover.ts)
 uses actual restricted-runtime dispatch and review HTTP/storage composition in
-four owned local processes. It observes the binding's startup and natural30s
+four owned local processes. Its default crash-boundary mode observes the binding's startup and natural30s
 interval, admits raw bodies before the same-grant held finalize, and releases
 real filesystem operations after network exclusion. The host then removes the
 exact processes. Because a severed client socket can leave a server transaction,
@@ -89,6 +149,16 @@ there is no terminate-by-user/prefix, database restart or lease/time manipulatio
 The coordinator closes its source mutation clients before the final read-only
 capture and permits no later source business write, gate release or recreation.
 Target composition follows verified graph and complete private-root publication.
+The optional `--catch-up` mode drains admitted media I/O before egress exclusion
+and retains a separately admitted partial upload. Its restricted M obtains no
+extra backend-inspection grant: the existing fixture bootstrap administrator
+observes and retires exact source sessions, then closes that pool. Final
+catch-up capture/census uses a new bootstrap-principal session configured
+read-only by default and closes it before target publication. Default mode
+instead uses its migration-owner capture session. The
+[transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns preliminary-generation refusal and the final DB/object/access/drain/effect
+barrier; it is a finite local journey, not an adopter-host fencing service.
 This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
 adopter ACLs, provider qualification and whole-store RTO remain separate.
 

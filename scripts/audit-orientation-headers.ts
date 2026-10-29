@@ -178,9 +178,8 @@ function gitLog(root: string, args: string[]): GitLog {
  * that wrote it. That makes this a NARROWER escape than `Known drifts:`, which is written into the
  * document and silences its glob for every future change.
  *
- * The field is read out of section 2 only - the same region `read_plan_metadata` in
- * `scripts/validate-wave-plan.sh` validates - so the key this honours and the key Plan Protocol
- * checks are one key in one place. `#` separates the pair, so unlike every other section-2 key a
+ * The field is read out of section 2 only. OpenLup ships no wave-plan template or Plan Protocol
+ * validator, so nothing else reads this key here. `#` separates the pair, so unlike every other section-2 key a
  * trailing `# comment` is NOT stripped: it would eat the glob. Git failing here answers nothing,
  * which leaves the gate exactly as hard as it is without this path.
  */
@@ -308,8 +307,8 @@ export function auditDocumentHeaders(
     reports.push(`docs-header-stale cannot attribute drift on this checkout, so it can only report: ${base.reason}`);
     reports.push(`docs-header-attestation cannot attribute here, so it stays whole-tree and blocking: ${base.reason}`);
   }
-  // `plan_dir` in `.agent-protocol.yml`, which is the index directory's own `plan/`. If it ever
-  // moves, no plan is read and this gate simply stays as hard as it was before this path existed.
+  // The index directory's own `plan/`. OpenLup task records live in `plans/` instead, so no plan
+  // is read here and this gate simply stays as hard as it was before this path existed.
   const planAnswers = shallow ? new Set<string>() : planAnsweredWatchers(root, base, `${config.directory}/plan`);
 
   for (const name of topLevelDocs(root, config.directory)) {
