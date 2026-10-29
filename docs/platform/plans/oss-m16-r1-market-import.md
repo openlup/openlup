@@ -481,7 +481,46 @@ main. An initial pre-merge policy run saw the old fork plus main's ownership
 transition; after the local merge, only four fresh R1 no-impact answers remain
 (adapters, ownership, graph configuration and tooling). This evidence commit
 refreshes those delta-bound trailers; policy is checked again before push.
-Both package measurements follow after the pushed integration head.
+Publication policy then PASSed with 10 obligations and zero unanswered. The
+integration and evidence were pushed as b1c0fd8fc15ba9ab6c36ef826cc3466a967fecf4;
+PR #431 remained a draft with auto-merge disabled.
+
+Measurements use actual platform tarballs and the existing measurePack and
+checkPackBudget tooling, with main's unchanged current caps. R1-only is packed
+at that pushed integration head. The full stack starts at the same head in a
+disposable detached worktree. R2 head, read through ls-remote:
+`8278ab56835423efde7a0cd2b2280e477810a664`; R3 PR #436 head:
+`257c5f8e70db56bd3919030f1bfa3ceaf8510ca3`. Both descend from R1
+`5f221ac8c23c6084b3fc8d5b179c72652c066457`. Their packages-only diffs against
+that R1 base are byte-identical; R3's incremental package diff over R2 is empty.
+The R2 patch did not apply cleanly to the relocated README section, so the
+permitted scratch merge fallback combined both heads. README resolution retains
+all R2 descriptor documentation beside the R1 market section; unrelated
+non-package conflicts retain the integrated version because this experiment
+measures package inputs only. R2 descriptor source, witness and fragment match
+their branch byte-for-byte. R1 and the full stack have identical cap objects.
+No R2/R3 branch was changed. The detached worktree was removed after packing.
+
+| Metric | Main cap | R1-only | Full M16 stack |
+| --- | ---: | ---: | ---: |
+| Total files | 2,712 | **2,716 (exceeds by 4)** | **2,719 (exceeds by 7)** |
+| Code files | 2,656 | **2,661 (exceeds by 5)** | **2,664 (exceeds by 8)** |
+| Docs files | 10 | 5 | 5 |
+| Packed bytes | 2,029,568 | 1,989,426 | 1,990,053 |
+| Unpacked bytes | 9,447,424 | 9,275,165 | 9,277,408 |
+| Code gzip bytes | 1,743,872 | 1,714,330 | 1,714,663 |
+| Docs gzip bytes | 73,728 | 60,391 | 60,562 |
+
+R1 tarball SHA-256:
+`1c77d6927a59604674716da121f9b7ab02c18c34c08069f7c1514de05d70232a`.
+Full-stack tarball SHA-256:
+`0c507e13fa309f62de2d93f7df438707599313933d4379f67943ad96d584e181`.
+Local measurement JSON, tarballs, patches and stack provenance remain in this
+task's scratch directory. This final task-record-only commit changes no package
+input, so the measured package bytes remain those of the delivered integration.
+No cap is changed: the coordinator owns the CD-M15-6a decision after reading
+these numbers. Work stops here, without any native review, preparation, receipt,
+ready transition, verification or arming.
 Self-retro: integration must preserve scoped documentation ownership as well as
 module inventories; regenerating output exposes missing owner selectors early.
 
