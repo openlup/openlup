@@ -317,6 +317,12 @@ beside the reference handler and is owned by the runtime guide. The [documentati
 assigns those paths to canonical owner pages and sections; it is not a second
 domain or publication census.
 
+The portable operations reference binding and its composed witness route to the
+operations architecture owner. Their catalogue rows admit source and local
+proof, without adding a package entry, installed-default claim or hosted
+observability certification. Runtime guidance describes the host-supplied ports
+and captured delivery boundary separately.
+
 Most domains use `src/domains/<domain>/README.md` as their semantic owner. A
 server README adds server-specific security, money, authorization or operational
 constraints when needed. The [server layer guide](../../server/domains/README.md)

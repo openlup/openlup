@@ -57,6 +57,26 @@ receipts, unchanged heartbeat forwarding and safe invalid-result/upstream errors
 These synthetic handler cases supply no deployment, session-provider or live-store
 qualification; the host still owns those bindings.
 
+For the captured portable operations default, construct
+[`createM14OperationsReferenceBinding`](../../server/runtime/public-reference/m14OperationsBinding.ts)
+with the selected installation's evidence, alert ledger/readback, pipeline,
+administrator authorization and heartbeat ports. Call `runWatchdog` from the
+host's existing trusted scheduler; bind `alerts` and `pipeline` to the existing
+admin read routes when selected. Construction starts no listener or timer.
+The default delivery mode is local capture, with per-tick observations returned
+in `captured`. It performs no network request, records no notification attempt or
+delivery cadence, and leaves `notified` at zero. It is not hosted delivery/readback.
+`checkOnly` returns evaluation without alert, notification or heartbeat writes.
+
+The [composed witness](../../server/runtime/public-reference/m14OperationsBinding.test.ts)
+executes domain/job evaluation, capture, alert readback, selected-sink backoff,
+failure backoff, unknown liveness, authorization and safe correlated logs with
+in-memory host ports. It does not qualify a database adapter, installed npm
+default or remote log drain. Missing remote log/delivery observations remain
+unverified; selecting an adapter alone supplies no such evidence. See the
+[operations owner](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+and [bounded task](plans/oss-m14-portable-operations-defaults.md).
+
 Marketing reference routes compose `@openlup/platform/marketing/server` factories
 with the host BFF responder, authorization and persistence bindings. Case
 list/count retain their direct-bundle guard; prelaunch/evidence dispatch remains
@@ -355,6 +375,20 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
+also accepts an explicitly constructed operations binding on its ordinary
+reference host. That selection mounts only the existing alert and pipeline
+admin read paths; it requires `APP_BASE_URL` for exact Host admission. The
+existing observed-route wrapper starts on the decorated raw request, so policy
+and alert method refusal precede adaptation and authorization. Adaptation and
+preflight failures retain bounded errors and safe correlated request logs. The pipeline path
+retains its public mutation-policy refusal; the alert path supplies admin
+readback through its typed handler.
+It refuses combination with another reference profile or identity admission.
+The watchdog remains a trusted scheduler callable and gets no public cron route.
+Omitting the selection preserves the static reference's existing route surface.
+See the [captured operations recipe](#runtime-model) for ports and proof limits.
 
 The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
 `@openlup/platform/marketing` head descriptors through the host's
