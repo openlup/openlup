@@ -12,8 +12,9 @@ observation regressions through the existing required checks. Stable support and
 Inspected on 6 October 2026 at main
 `dd149c6d5f750f17e2430c4f0a74de1b9d7b96df`, freshly fetched through the configured
 task-worktree helper. This record follows the public plan convention in
-`docs/platform/plans/`. `.agent-protocol.yml` still points to a missing
-docs/templates/wave-plan.md template; its generator and validator are absent.
+`docs/platform/plans/`. `.agent-protocol.yml` then pointed to a missing
+docs/templates/wave-plan.md template; its generator and validator were absent
+(the file was removed on 29 October 2026).
 No native Plan Protocol pass is claimed. Planning acceptance is review of this
 bounded proposal, not an exception to an implementation gate.
 

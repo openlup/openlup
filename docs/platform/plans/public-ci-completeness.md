@@ -111,7 +111,8 @@ regrowth fails. Baseline regeneration never authorizes higher allowances.
    under this task's publication instruction. Opening and squash-merging the
    concrete PR require their applicable explicit maintainer instructions.
 
-The tracked `.agent-protocol.yml` names an absent template and validator. The
+The then-tracked `.agent-protocol.yml` named an absent template and validator
+(the file was removed on 29 October 2026). The
 maintainer previously authorized this public task-record format for this task;
 no native Plan Protocol pass is claimed. Approved scope and guarantees remain
 fixed while computed SHAs, measurements and execution notes evolve.
