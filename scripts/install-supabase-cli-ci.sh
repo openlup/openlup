@@ -31,7 +31,8 @@ fi
 install_dir="$(cd "$install_dir" && pwd -P)"
 trap 'rm -rf "$install_dir"' EXIT
 archive="$install_dir/cli.tar.gz"
-curl --fail --location --silent --show-error --retry 2 --retry-all-errors \
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+  --fail --location --silent --show-error --retry 2 --retry-all-errors \
   --connect-timeout 15 --max-time 120 --header 'Accept: application/octet-stream' \
   "https://api.github.com/repos/supabase/cli/releases/assets/${asset_id}" --output "$archive"
 if command -v sha256sum >/dev/null 2>&1; then

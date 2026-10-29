@@ -27,7 +27,24 @@ function fixture(os = "Linux", arch = "x86_64", binaryVersion = "2.122.0") {
   writeFileSync(script, pins.reduce((text, pin) => text.replace(pin[3]!, sha), source));
   const requests = join(directory, "requests");
   writeFileSync(join(bin, "uname"), `#!/bin/sh\ncase "$1" in -s) echo '${os}';; -m) echo '${arch}';; esac\n`, { mode: 0o755 });
-  writeFileSync(join(bin, "curl"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${requests}'\nfor arg do out="$arg"; done\ncp '${archive}' "$out"\n`, { mode: 0o755 });
+  writeFileSync(join(bin, "curl"), `#!/bin/sh
+printf '%s\\n' "$*" >> '${requests}'
+proto=0; proto_redir=0; tls=0; previous=''
+for arg do
+  case "$previous:$arg" in
+    --proto:=https) proto=1 ;;
+    --proto-redir:=https) proto_redir=1 ;;
+  esac
+  [ "$arg" != '--tlsv1.2' ] || tls=1
+  previous="$arg"
+  out="$arg"
+done
+if [ "$proto:$proto_redir:$tls" != '1:1:1' ]; then
+  echo 'curl requires --proto =https --proto-redir =https --tlsv1.2' >&2
+  exit 1
+fi
+cp '${archive}' "$out"
+`, { mode: 0o755 });
   const allocations = join(directory, "allocations");
   const mktemp = execFileSync("sh", ["-c", "command -v mktemp"], { encoding: "utf8" }).trim();
   writeFileSync(join(bin, "mktemp"), `#!/bin/sh\ncreated="$('${mktemp}' "$@")" || exit 1\nprintf '%s\\n' "$created" >> '${allocations}'\nprintf '%s\\n' "$created"\n`, { mode: 0o755 });
