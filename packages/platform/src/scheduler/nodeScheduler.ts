@@ -42,21 +42,25 @@ export interface NodeSchedulerAdapter extends SchedulerPort {
 export interface CreateNodeSchedulerOptions {
   /** node-cron instance (inject `import("node-cron")` at the host boot site). */
   cron: CronScheduler;
-  /** Per-job advisory lock; defaults to a no-op (single-instance) — supply pg-backed in prod. */
+  /**
+   * Per-job lock capability; defaults to an always-granting no-op for
+   * single-instance/test use, which does not serialize concurrent callbacks.
+   * Supply a cluster-scoped lock when multiple instances must exclude one another.
+   */
   lock?: AdvisoryLock;
   /** Environment whose CRON_SECRET verifies an invocation. */
   env: CronEnv;
   /** The deployment's declared jobs (see `loadJobRegistry`). */
   jobs: readonly ScheduledJobDeclaration[];
-  /** crontab timezone; jobs are authored in UTC to match Vercel. */
+  /** Timezone node-cron uses to interpret the UTC-authored schedule; pass `UTC` for Vercel parity. */
   timezone?: string;
   /** Structured error sink for failed job bodies (defaults to console.error). */
   onError?: (jobId: string, error: unknown) => void;
 }
 
 /**
- * Wrap a job body with the per-job advisory lock. Returns a guarded runner that:
- *  - tries to acquire the lock; if not acquired (another instance is running it) -> skip silently;
+ * Wrap a job body with the supplied per-job lock capability. Returns a guarded runner that:
+ *  - tries to acquire the lock; if acquisition is declined, skips without running the body;
  *  - runs the body; always releases the lock in finally.
  */
 export function withAdvisoryLock(
@@ -81,7 +85,7 @@ export function withAdvisoryLock(
   };
 }
 
-/** Build the Node scheduler adapter backed by node-cron + per-job advisory locks. */
+/** Build the Node scheduler adapter backed by node-cron and the supplied lock capability. */
 export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSchedulerAdapter {
   const env = options.env;
   const jobs = options.jobs;

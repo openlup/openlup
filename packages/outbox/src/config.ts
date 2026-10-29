@@ -40,6 +40,16 @@ function readBoundedInt(
   return clamped;
 }
 
+/**
+ * Read bounded dispatch settings from an environment-like record. Setting names
+ * use `prefix` plus the per-setting suffix; the default prefix is
+ * `COMMERCE_OUTBOX_DISPATCH_`. Missing or blank values use defaults; other
+ * values use base-10 `parseInt`, non-finite parses use defaults, and parsed
+ * values are clamped to their configured bounds. A backoff cap below the base
+ * is raised to the base. `validateScheduledConfig` separately checks
+ * host-dependent scheduled limits. See `src/config.ts` for setting suffixes,
+ * numeric defaults and bounds.
+ */
 export function readOutboxDispatchConfig(
   env: Record<string, string | undefined>,
   prefix = "COMMERCE_OUTBOX_DISPATCH_",

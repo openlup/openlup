@@ -12,7 +12,8 @@ the default **Vercel + Supabase** one-click bundle while allowing the hosting/se
   the capability vocabulary are the engine's.
 - `ports.ts` — pure re-export shim over the 7 package-owned capability port interfaces (`HttpRuntimePort`,
   `SchedulerPort`, `BlobStoragePort`, `DataGatewayPort`, `MigrationRunnerPort`, `AnalyticsPort`,
-  `TransactionalRuntimePort`). Stable seams; real adapters live under `server/adapters/*`.
+  `TransactionalRuntimePort`). Development-preview contract seams; repository
+  adapters live under `server/adapters/*`.
 
 ## Where the code lives
 ⚠️ **The engine is not in this directory.** It lives in
@@ -31,10 +32,16 @@ change belongs there, never in a local shim.
 ## Does NOT own
 - The kernel compatibility shim: `server/domains/platform-runtime/platformKernel.ts`.
 - The deployment-owned composition root that binds adapters per bundle.
-- Concrete adapters/infra: `server/adapters/<provider>/*`, `server/infra/<provider>/*` (added by later waves).
+- Concrete adapters/infra: `server/adapters/<provider>/*`, `server/infra/<provider>/*`.
 
 ## Invariants
 - No infra imports here (`server/infra/*`, `@vercel/*`, `@supabase/*`) — enforced by
   `src/lib/platformRuntimeBoundary.test.ts`.
-- The default `vercel-supabase` bundle is byte-identical to pre-program behavior (golden-master gate).
-- Bundle selection is **explicit** via the `PLATFORM_BUNDLE` env only — never inferred from other values.
+- `server/domains/platform-runtime/platformKernel.test.ts` checks the server
+  binding against the shared bundle IDs and default. The platform package's
+  `test/kernel/platformKernel.test.ts` covers descriptors and readiness.
+  `src/lib/platformRuntimeBoundary.test.ts` guards imports of infrastructure
+  SDKs; it is not a golden-master behavior test or deployment-readiness proof.
+- Bundle selection reads `PLATFORM_BUNDLE` and is never inferred from other
+  values. An absent or unknown selector resolves to the default bundle; runtime
+  readiness separately refuses an unknown configured selector.

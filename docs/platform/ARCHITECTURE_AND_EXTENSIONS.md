@@ -550,16 +550,18 @@ The intended distribution roles are:
 | --- | --- |
 | `@openlup/core` | Existing I/O-free kernel; retain its published coordinates and exports. |
 | `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
-| `@openlup/platform` | Planned backend distribution, beginning with the runnable foundation, then identity at `@openlup/platform/identity`. |
+| `@openlup/platform` | Development-preview backend distribution for the runnable foundation and declared module subpaths, including identity. |
 | UI | Target distribution role; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
 
-These are target roles, not an inventory of published artifacts. The
-[package catalogue](../../config/openlup-packages.json), installed manifests
-and export maps establish the selected set. Identity's planned physical home is
-`packages/platform/src/identity/`; its browser-safe contracts need an isolated
-entry, preferably `@openlup/platform/identity/contracts`, with no server imports.
-Only genuinely shared contracts belong in core; importing platform as a whole
-is not a browser-safety guarantee.
+These are distribution roles, not proof that an artifact is published. The
+[package catalogue](../../config/openlup-packages.json), selected package
+manifest and export map establish the repository's declared set; release and
+registry evidence establish publication. Identity currently lives in
+`packages/platform/src/identity/`, with declared
+`@openlup/platform/identity` and `@openlup/platform/identity/contracts`
+subpaths. Use the isolated contracts entry for browser-safe contracts and
+verify the installed version's exports. Only genuinely shared contracts belong
+in core; importing platform as a whole is not a browser-safety guarantee.
 
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
@@ -1916,8 +1918,10 @@ remain failed/owed recovery work, never evidence of absence or success.
 
 
 `createPostgresInvoiceStore` binds the reviewed native duty/fact/claim/reversal
-RPCs through an injected executor. Each call commits independently; never bind a
-client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
+RPCs through an injected executor. Each local persistence transaction commits
+before host/provider I/O; a store method may coordinate multiple transactions
+with host callbacks outside them and is not necessarily one atomic transaction.
+Never bind a client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
 facts return typed unsupported without installing facts or consuming the owed
 duty. Clearance and observation host projections remain unsupported in this store.
 Delivery is supported only with the host's explicit M04 envelope projection;
@@ -2130,6 +2134,19 @@ and creates no database privileges; hosts own those selections. The portable
 Node reference host can explicitly mount its two existing admin reads as a
 separate composition, without adding a watchdog HTTP entrance. Money, order,
 identity and provider truth remain with their domain owners.
+
+The admin schemas validate shape only: they do not authorize a request
+principal, select a setting/control capability, or scope tenant/entity data.
+The host MUST authorize the current principal for the admin operation and
+enforce its allowed settings/control keys. Where data is tenant- or
+entity-scoped, it MUST also bind the injected port to that authenticated scope.
+The host MUST return only approved operator fields and keep secrets out of read
+projections. The generic watchdog performs no built-in content redaction; the
+host supplies privacy-safe evaluator or `normalizeDecision` output to the
+injected ledger and sink. The native `platform_alerts` table stores free-form
+message/payload and has no tenant key, so the host MUST apply its privacy policy
+before persistence or delivery and limit tenant/entity diagnostics to the
+intended operator audience.
 
 The [operations witnesses](../../packages/platform/test/operations/) preserve the
 existing behavior assertions. The existing

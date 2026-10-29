@@ -339,7 +339,7 @@ Published `0.20.0` baselines (downloaded bytes match registry shasum/integrity):
 Only `pack.baseline` changes; all caps remain unchanged. M06 C4 records `0.20.0`
 published and C4-checked at #271 merge `3e0f1784`; `0.21.0` follows this merge
 and required supervisor review/final verification. The standalone
-[0.21.0 limitations](../../../packages/platform/CHANGELOG.md#0210) retain M06
+[0.21.0 limitations](../../../packages/platform/CHANGELOG-HISTORY.md#0210) retain M06
 pending proof and the five M07 follow-ups.
 
 Docs cap (coordinator ruling for the owner, 2026-10-21; no cap change): the

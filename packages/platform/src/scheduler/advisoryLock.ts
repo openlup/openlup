@@ -11,7 +11,11 @@
 // Injectable: the adapter depends on the AdvisoryLock interface, not on `pg` directly, so tests
 // run without a database and a non-Supabase bundle can supply its own pg-backed implementation.
 
-/** A cluster-wide, per-job mutex. Returns true iff THIS caller acquired the lock. */
+/**
+ * A per-job coordination capability. Its exclusion scope and serialization behavior
+ * depend on the implementation; hosts requiring cross-instance exclusion must
+ * supply a cluster-scoped lock.
+ */
 export interface AdvisoryLock {
   /** Explicit capability marker; a host that must not run a job twice requires a cluster lock. */
   readonly durability?: "cluster" | "process";
@@ -30,9 +34,9 @@ export interface AdvisoryLockQuerier {
 }
 
 /**
- * Deterministic 64-bit-ish key from a jobId for pg_try_advisory_lock(bigint).
- * Postgres advisory locks key on bigint; we hash the job name to a stable signed-32-bit int
- * (the single-arg `pg_try_advisory_lock(key bigint)` accepts it). Stable across processes.
+ * Deterministic signed-32-bit key from a jobId for `pg_try_advisory_lock(bigint)`.
+ * The hash is stable across processes, but distinct job ids can collide and share
+ * a lock key.
  */
 export function advisoryLockKey(jobId: string): number {
   // FNV-1a 32-bit, then coerce to signed 32-bit so it fits a Postgres int safely.

@@ -136,6 +136,10 @@ Authority comes from the human instructions recorded below, not from this record
   released their locks. Overlapping callbacks using the same dedicated PostgreSQL
   session cannot double-run; a replacement host stays excluded during drain and
   can run after release.
+- This is a local Node stop/drain boundary: the [scheduled-jobs owner](../../../packages/platform/README.md#scheduled-jobs)
+  defines admitted-callback and PostgreSQL lock-session drain; old-host provider I/O
+  fencing and accepted-before-ack effect reconciliation remain separate duties under
+  the [existing-store transfer boundary](../ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
 - Code base: `bb12776c381ae35085edd00db793ccecc40b31fd`;
   current instruction revision supplied by the coordinator:
   `ca33647ec80aef932490c0c6fb54b01fc483f287`. Policy and review base are separate.

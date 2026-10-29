@@ -2711,9 +2711,12 @@ export type { CustomerFulfillmentStep } from "@openlup/core/fulfillment";
 export type { ProviderStatusEvidence, ReleasedProviderExceptionHold, ResolvedProviderExceptionRecovery, TimedFulfillmentSignal } from "../contracts/fulfillmentRecovery.js";
 /** Server-only shape read from a released automatic provider-exception hold. */
 /**
- * Finds only database-authored, trigger-created recovery links. The returned IDs
- * stay server-side: the browser receives the resulting Layer C step, never hold
- * metadata or provider evidence identifiers.
+ * Matches supplied hold metadata and evidence rows to a recovery relationship.
+ * The host must supply rows authenticated against its trusted database source and
+ * provide the expected automatic-source markers; this helper does not authenticate
+ * their provenance.
+ * Callers must keep the returned evidence IDs server-side and expose only an
+ * intentional customer-step projection to a browser.
  */
 export declare function resolveProviderExceptionRecovery(input: {
     automaticHoldSource?: string;
@@ -3276,7 +3279,8 @@ export declare function offerAvailabilityRequestItems(variants: readonly {
 import { z } from "zod";
 /**
  * The adopter's own record of why a checkout was bound to an offer version.
- * Server-minted only: core bounds its keys and size and never reads it.
+ * Trusted checkout evidence must be minted by server composition; this schema
+ * validates key format and serialized size, not provenance or business meaning.
  */
 export declare const commerceOfferEvidenceSchema: z.ZodRecord<z.ZodString, z.ZodUnknown>;
 export type CommerceOfferEvidence = z.infer<typeof commerceOfferEvidenceSchema>;
@@ -7844,9 +7848,10 @@ export interface OrderPaymentLifecycleState {
     paymentStatus: string | null;
     paymentUpdatedAt?: string | null;
     hasPayment: boolean;
-    /** The activation sweep abandoned this order's provisional subscription: it writes
-     * `cancelled`, not `expired`, so the expired-checkout gate needs this to tell a swept
-     * first subscription from any other cancellation. Absent for every one-time order. */
+    /** True when the activation sweep abandoned this order's provisional subscription:
+     * it writes `cancelled`, not `expired`, so the expired-checkout gate can distinguish
+     * it from other cancellations. The reference lifecycle reader returns false when the
+     * marker is absent. */
     subscriptionActivationAbandoned?: boolean;
 }
 export interface OrderPaymentLifecyclePort {
@@ -7953,8 +7958,9 @@ export interface CheckoutExpiredEmailInput<Locale extends string = string> {
     firstName: string | null;
     orderId: string;
     amountLabel: string | null;
-    /** Raw checkout-recovery token, emitted only in the outbox payload: the database
-     * stores only its hash, and the host renderer builds the recovery link. */
+    /** Raw checkout-recovery token carried in the persisted outbox payload in the
+     * reference flow. Its dedicated recovery-token table stores only the hash; the
+     * host renderer builds the recovery link. */
     recoveryToken?: string | null;
     outboxEventId: string;
     locale?: Locale;

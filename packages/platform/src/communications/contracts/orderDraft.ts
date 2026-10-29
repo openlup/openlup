@@ -36,9 +36,8 @@ export interface OrderDraftEmailVars {
   /** Absolute CTA URL back to the configurator; null/absent → no button. */
   ctaUrl?: string | null;
   /**
-   * Dog's name from the owner's survey, when known. Drives an optional warm
-   * closing line. Absent/null (e.g. anonymous drafts) → the line is omitted.
-   * Never inflect the copy by gender: the name doesn't reveal it.
+   * Optional context name supplied by the host. When truthy, it is passed to
+   * the host-selected personalized closing; absent or null omits that line.
    */
   contextName?: string | null;
 }

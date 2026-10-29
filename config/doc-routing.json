@@ -594,7 +594,7 @@
     },
     {
       "id": "identity-browser",
-      "when": "Reference customer login, callback, selected browser adapters and session ownership",
+      "when": "Reference customer and operator login, callback, selected browser adapters and session ownership",
       "paths": [
         "src/pages/account/LoginPage.tsx",
         "src/pages/account/AuthCallbackPage.tsx",

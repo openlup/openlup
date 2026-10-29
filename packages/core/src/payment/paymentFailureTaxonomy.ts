@@ -166,13 +166,14 @@ export function isPaymentRetryAdviceCode(
 }
 
 /**
- * The hard ceiling any retry schedule must stay under: at most 15 attempts on one
- * instrument in 30 days. It is the stricter of the published card-scheme limits,
- * chosen deliberately so a schedule that satisfies this one satisfies all of them.
+ * Local numeric guard used by {@link withinSchemeRetryCeiling}: at most 15
+ * counted attempts in the helper's 30-day window. This fixed bound is not a
+ * universal rule limit, retry permission, or compliance certification; decline
+ * advice and applicable rules can prohibit a retry or impose a narrower limit.
+ * The host/provider must apply those constraints before retrying.
  *
- * The current ladder tops out at 4, far below this. The constant exists so a later
- * wave that widens the ladder has to measure itself against the scheme rule rather
- * than discover it through fines.
+ * The default subscription cadence separately has three scheduled retry rungs
+ * after the initial attempt. This count guard does not configure that cadence.
  */
 /** @beta */
 export const SCHEME_RETRY_ATTEMPT_CEILING = 15;
@@ -182,15 +183,18 @@ export const SCHEME_RETRY_ATTEMPT_CEILING = 15;
 export const SCHEME_RETRY_WINDOW_DAYS = 30;
 
 /**
- * Whether an attempt is provably inside the scheme ceiling.
+ * Whether the supplied count and span fit this helper's local numeric guard:
+ * no more than 15 attempts in a window of at most 30 days.
  *
  * `attemptCount` is the ordinal of the attempt being considered — the 15th
- * attempt is inside, the 16th is not. `windowDays` is the span those attempts
- * were counted over; a span longer than {@link SCHEME_RETRY_WINDOW_DAYS} cannot
- * prove compliance, because the attempts may still cluster inside one 30-day
- * sub-window, so it answers false rather than pretending to know.
+ * attempt fits the numeric guard, the 16th does not. `windowDays` is the
+ * caller-supplied span; values over {@link SCHEME_RETRY_WINDOW_DAYS} are outside
+ * this guard and answer false.
  *
- * Fail-closed for anything that is not a positive integer.
+ * This result is neither retry permission nor compliance certification. The
+ * caller must apply actual decline advice and current applicable rules, which
+ * may prohibit a retry or impose a narrower limit. Fail-closed for anything
+ * that is not a positive integer.
  */
 /** @beta */
 export function withinSchemeRetryCeiling(attemptCount: number, windowDays: number): boolean {

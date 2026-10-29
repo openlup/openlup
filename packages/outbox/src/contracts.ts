@@ -37,7 +37,7 @@ export interface OutboxStore {
   ): Promise<number>;
 }
 
-/** Managed-only best-effort queue observation, separate from core claim/ack policy. */
+/** Optional best-effort queue observation, separate from core claim/ack policy. */
 export interface OutboxQueueDiagnostics {
   queueStats(): Promise<Record<string, unknown>>;
 }

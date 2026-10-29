@@ -211,3 +211,10 @@ resolved the demonstrated failures without new runners or controls. Keeping
 immutable chronology behind a compact current record prevents stale proof and
 source-only follow-ups from being mistaken for delivered acceptance. This edit
 ran no executable proof and resets no finding, retry budget or expiry.
+
+## Runtime drain owner
+
+The separate [runtime-drain record](oss-m14-runtime-drain-task.md) concerns
+local Node callback and lock draining. See the [scheduled-jobs boundary](../../../packages/platform/README.md#scheduled-jobs)
+for its limits; old-host effect fencing and accepted-before-acknowledgment
+reconciliation remain with the [transfer boundary](../ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).

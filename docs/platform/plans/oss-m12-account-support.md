@@ -1,7 +1,13 @@
 # Account and customer support design
 
-Status: development-preview, R1 local draft. No activation, release, publication,
-merge or adopter cutover authority is granted by this page.
+Status: development-preview staged design/history through R5b. This page grants
+no release, publication, merge, activation or adopter cutover authority.
+
+Current owners: [account and support contracts](../ARCHITECTURE_AND_EXTENSIONS.md#account-and-support-contracts),
+[package API](../../../packages/platform/api/account-support.api.md),
+[type-only contracts API](../../../packages/platform/api/account-support-contracts.api.md),
+and the [reference composition](../../../server/runtime/public-reference/m12AccountSupportBinding.ts)
+with its [composition witness](../../../server/runtime/public-reference/m12AccountSupportBinding.test.ts).
 
 ## Outcome, placement and ownership
 
@@ -237,8 +243,10 @@ scenario is its own executed case and one failure cannot hide another. The
 NodeNext and Bundler compiler checks and the missing-export/foreign-detail
 falsifiers stay separately executed.
 
-Measured R2 cases (coordinator CD-7: each independent input/state row is one
-executed case; the M12 ceiling is the measured total at S1):
+Measured R2 cases under coordinator CD-7 (each independent input/state row is
+one executed case). These are R2-local counts. The recorded decision assigned
+the M12 ceiling to the measured total at S1; that cumulative measurement is not
+supplied here:
 
 | R2 test file | Executed R2 cases | File duration |
 | --- | ---: | ---: |
@@ -338,8 +346,10 @@ preview, control, explicit-pause and bundle-control fit is executed with R1's ts
 pattern in m12SelfServiceBinding.test.ts. R1 portFit and account-read binding tests
 remain unchanged and must pass.
 
-Budget: CD-7 replaces the earlier case caps; the M12 ceiling is the measured
-executed total, reported at S1. C1–C5 use separate cases for independent input/state rows;
+Recorded budget decision: CD-7 replaced the earlier case caps and assigned the
+M12 ceiling to the measured executed total at S1. This section does not report
+that total; the historical accounting note below records the unreconciled
+ceiling relationship. C1–C5 use separate cases for independent input/state rows;
 only one behavior sequence shares a case. C7–C9 are three real-PG cases through
 the facade, codec and native M10 store. C10 extends the existing installed consumer:
 JavaScript/declaration imports stay inside account-support or reach only the exact
@@ -432,16 +442,21 @@ and append NativeOperatorSubscriptionResult with the unavailable literal.
 Optional OperatorOwnerReceipt carries actual owner evidence; delegated appliedBy
 may be null, with no synthetic audit identifiers. Native linkSubjectAccount has
 an explicit capability refusal. Only the two-key, two-commit link-then-subscription
-sequence permits partial completion. Packaged-owner equality is checked in
+sequence permits partial completion. The host supplies distinct idempotency keys
+and separately commits link and apply; [`linkThenApply`](../../../packages/platform/src/account-support/operatorRecovery.ts)
+creates or verifies neither keys nor transactions. It awaits link; refused or
+conflicting outcomes return before callback/apply. Otherwise it invokes
+`void onLinked()` as a direct call without a receiver or awaiting its return, then
+awaits apply; apply refusal or failure can leave a partial completion.
+Packaged-owner equality is checked in
 operatorAuthority.test.ts and reference-owner equality in
 m12OperatorRecoveryBinding.test.ts; claim/link additions have no older reference
 owner equality claim. Under ID-11, native owner evidence stays server-side: the
 reference wire retains the strict donor DTO and excludes ownerReceipt.
 
 Managed email preserves admission → claim → lazy identity read/move/read →
-settlement, including recovery after an already-completed identity move. Link
-calls `void onLinked()` without a receiver before the separate subscription
-command. Phone, recovery, absorption and subscription preserve owner results.
+settlement, including recovery after an already-completed identity move. Phone,
+recovery, absorption and subscription preserve owner results.
 Native SQL capability refusals write only a support receipt and audit;
 email/phone/link and typed address refuse before SQL. M03 native contact/link
 receipt seams and M10 short band, operator address, unpaid/expired resume and
@@ -495,11 +510,15 @@ subscriptionCommandLifecycleCases, M03 postgresAccountLinkStore and M08
 fulfillmentDeliveryAlignment proofs are reused. The cumulative M12 ceiling is
 125 cases; timing serves module cleanup, with extra speed work only for an
 exceeded existing timeout.
+Historical accounting note: R2 reports 255 executed cases, R4 an inventory of 67
+and R5a an inventory of 38. This plan does not reconcile those populations with
+the retained 125-case ceiling or give a measured cumulative S1 total; these
+figures do not establish cumulative budget compliance.
 
 ## R5: reference composition
 
 R5a supplies the inert browser/API/owner/store composition, readiness guards,
-one selected executor and M04 notice delegation described below. Selected M11
+host-bound operation executors and M04 notice delegation described below. Selected M11
 commerce composition and managed integration proofs belong to R5b.
 
 ## S1: coherent final package set
@@ -515,8 +534,11 @@ adoption require their own authorization and evidence.
 
 R5a contributes `createAccountSupportBindings`, `createAccountSupportServices` and
 `createAccountSupportContribution` without mounting the static or subscription
-reference. It captures one host-selected graph and operation inventory, guards
-each distinct callable once, and shares that wrapper across service, port and
+reference. The host supplies one executor per logical operation.
+[`createAccountSupportBindings`](../../../packages/platform/src/account-support/bindings.ts)
+captures/freezes the graph and operation maps but does not validate executor
+identity or cardinality. [`createAccountSupportServices`](../../../packages/platform/src/account-support/contribution.ts)
+guards each distinct callable once, sharing the wrapper across service, port and
 route aliases. A route whose callable is absent from the operation inventory is
 invalid configuration. Each enabled entrance observes readiness again; disabled
 entrances call neither observer nor owner. Null selected operations remain null

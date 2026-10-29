@@ -79,7 +79,7 @@ still needs domain-owned import-safe routes or an approved canonical pre-data /
 post-data installation design. Preprovisioned referenced parents and the exact
 supported selected rows are prerequisites, not complete-store parity.
 
-The qualified-only [retained-row draft](../../db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql)
+The qualified-only [retained-row unit](../../db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql)
 provides two narrow domain routes: `client_import_retained_row` accepts the 13
 persisted client fields, and `subscription_cycle_import_retained_row` accepts
 the eight persisted cycle fields. Each inserts an absent row, returns `false`
@@ -91,29 +91,35 @@ The restore login receives only EXECUTE on these two SECURITY DEFINER routines.
 Their sealed NOLOGIN owner receives SELECT/INSERT on clients and cycles, with
 client SELECT/INSERT RLS policies. Only INSERT under that owner bypasses the
 client lifecycle-history capture and cycle alignment-admission triggers. Normal
-runtime INSERT and UPDATE paths retain their domain behavior; the draft grants
+runtime INSERT and UPDATE paths retain their domain behavior; the unit grants
 no UPDATE/DELETE or runtime access to the import routines. Parents, history,
 frozen terms and identity mapping must still be restored through their existing
 owners. These two routines are not a generic full-store restore capability.
 
-This draft unit follows the qualified runtime tail in the selected manifest.
-Its exact source SHA-256 is
-`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
-The fifth whole-file approval must land separately before its SQL introduction.
-The plan requires a restore login and selects only two 90-unit `withRestore`
-inventories, one for each migration/bootstrap alias shape. Their fixed values
-come from the [two frozen reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203);
-they do not establish target qualification. The E-only 89-unit hashes remain
-separate historical expectations, and the unchanged legacy plan still selects
-88 units. A request without the restore binding refuses before installation.
-The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
-uses the actual built migration entry and default production transport for two
-reference checks and two renamed-principal targets in the other role mode. It
-checks 90 exact ledger rows, status/apply/replay, ordinary runtime writes and
-their admission effects, restricted restore imports, full-field precision,
-history/frozen-term preservation and refusal behavior. This is prepared proof
-source; the standalone domain witness and reference measurements do not
-establish a working E2+F installation.
+This retained-row unit follows the initial qualified runtime-capabilities unit
+in the selected manifest. Its exact source SHA-256 is
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`. The fifth
+whole-file approval was landed separately before this SQL introduction. The two
+90-unit `withRestore` inventories from the E2+F-only candidate and the linked
+[reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203)
+are historical; the E-only 89-unit expectations and legacy 88-unit plan are
+separate. At audited source pin `535349050419abe5122bd74fa6766c58947be3dd`, the
+selected manifest includes this retained-row unit plus runtime completion in a
+91-unit catalogue; the [manifest at that pin](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/config/platform-migration-manifest.json)
+owns those historical hashes and inventory values. Current selections are defined
+under [module catalogues and installed histories](#module-catalogues-and-installed-histories).
+A request without the
+restore binding refuses before installation.
+
+The [production composition witness at that pin](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/tests/postgres/m14QualifiedComposition.test.ts)
+uses the actual built migration entry and default production transport. At that
+source pin its four disposable PostgreSQL profiles check 91 ledger rows,
+status/apply/replay, ordinary runtime writes and admission effects, restricted
+restore imports, full-field precision, history/frozen-term preservation and
+refusal behavior. The dated [runtime-completion result](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations-portability.md#runtime-completion-28-october-2026)
+records the observed result. The witness and dated result cover only the selected
+source and role profiles, not an adopter database, managed-host, publication,
+activation or full-store restore qualification.
 
 Managed `clients.auth_user_id` and native `clients.principal_id` need explicit
 identity mapping. OIDC derives the principal from exact issuer/subject; email
@@ -429,12 +435,14 @@ does not sandbox PostgreSQL's own deparser or native type-output routines.
 The shared projector retains its legacy payload format and query identities;
 canonical legacy bytes and existing E-only pins still require execution proof.
 
-The prepared
-[production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
-runs four fixed-pin references and four fresh targets through the real binding
-and built package executor. One healthy target supplies the inventory, unsafe
-session and shadow-symbol discriminators before recovering to the same ledger.
-This source has not been executed on the receiving machine.
+At the 27 October E2 89-unit proof-source checkpoint, the eight-case witness
+specified four fixed-pin references and four fresh targets through the real
+binding and built package executor. One healthy target supplied the inventory,
+unsafe-session and shadow-symbol discriminators before recovering to the same
+ledger; that source was still awaiting the receiving-machine run at this
+checkpoint. The linked test later evolved to the four-profile 91-unit
+runtime-completion witness; its dated result appears in the
+[M14 runtime-completion record](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations-portability.md#runtime-completion-28-october-2026).
 
 The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation

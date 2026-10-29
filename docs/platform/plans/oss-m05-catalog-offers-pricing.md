@@ -354,9 +354,10 @@ not replace, the supervisor's committed-candidate package gates.
 
 The owner accepted Bundle-1 and Bundle-2 as capability gaps on 2026-10-20:
 "zgadzam sie na rekomendacje". Bundle-3 is closed for the M05 mounted readback
-boundary with an injected stock reader; its native stock read remains M06 P5a
-work. Bundle-4 is closed only to the incumbent contention characterization
-proved on real PostgreSQL in P7 Phase A; no stronger replay guarantee is claimed.
+boundary with an injected stock reader; its native stock read was deferred to
+M06 P5a at the 2026-10-21 M05/M06 handoff. Bundle-4 is closed only to the
+incumbent contention characterization proved on real PostgreSQL in P7 Phase A;
+no stronger replay guarantee is claimed.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
@@ -366,6 +367,15 @@ proved on real PostgreSQL in P7 Phase A; no stronger replay guarantee is claimed
 | Bundle-2: Native history actor identity | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native principal audit exists; managed-equivalent actor kind/email history is unavailable and not claimed. |
 | Bundle-3: Native mounted admin/feed readback (M05) | Closed for M05: mounted admin/feed readback proven through the merged M06 availability builder with an injected stock reader. The real native stock read is M06's PENDING row (NewPurchaseStockReadPort native implementation, → M06 P5a), dispositioned there. |
 | Bundle-4: Replay/concurrency beyond sequential replay | CLOSED as incumbent characterization by P7 Phase A `native-bundle-replay-contention-characterization` on real PostgreSQL: global-key blocking, commit/unique-conflict rollback, first-attempt rollback, and conflicting payload/entity/routine recognition. No payload-bound or exactly-once guarantee. |
+
+Native-reader status after that handoff: M06 P5a retained native selection as
+`inventory_native_new_purchase_stock_read_unsupported` (`ccf2fbd8`). M11 F3
+later selected the existing native ATP reader only when the host supplies
+`stockSourceKey` (`84c88697`; see the
+[native ATP owner](../ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)).
+M05 P7 still requires an injected `BundleStockPort`; its readback case uses a
+test double, so this later M06 inventory binding does not establish M05
+bundle/native integration or broader parity.
 
 ## P6 — bounded refactor and fixture neutralization
 
@@ -426,7 +436,8 @@ capability gaps under the owner decision above, with no parity claim; Bundle-1
 is the first item of a future native-backend parity round. These gaps must be
 named in the S1 CHANGELOG/docs as "not supported on the native backend". The
 managed path is unaffected. Bundle-3 is closed for M05 by P7's mounted readback
-with an injected stock reader; the native reader remains M06 P5a work. Bundle-4
+with an injected stock reader; at the P6/M05 handoff, native selection was still
+deferred to M06 P5a. Bundle-4
 is closed by P7's real-PostgreSQL replay/contention characterization only.
 
 The original seven-path proof compares production tokens with comments removed,
@@ -519,8 +530,10 @@ guess. Local schemas preserve current package semantics; package server exports,
 DTOs, shipping and band behavior remain unchanged.
 
 Explicit locale/data/media/lifecycle inputs feed additive catalog, product and
-selected-basket pages through testable reference routes. The shipped public root
-is not mounted here; that composition remains P7. The builder maps neutral
+selected-basket pages through testable reference routes. The new M05 catalog UI
+and API routes remain outside the shipped public profile. P7 adds a separate
+explicit inert server binding and readback proof; it does not mount those routes
+in the shipped public profile. The builder maps neutral
 acquisition terms into a separate persisted consent expectation, with fresh
 selected-quote navigation and consent invalidation on basket edits. Existing
 admin pages accept optional read/lifecycle bindings without changing default
@@ -906,8 +919,9 @@ C4 readback on 2026-10-21, against the published packages: **PASS, 4/4**.
   the tag `openlup-{core,outbox,platform}-v0.18.0` and `gitCommit`
   `7a727122550178e063339791a2b79018d0b76472`; each remote tag dereferences to
   that commit.
-- `npm audit signatures`: 4 verified registry signatures, 4 verified
-  attestations, 0 vulnerabilities.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations. The C4 record also reports zero vulnerabilities; a separate
+  vulnerability-audit output is not included here.
 
 M05 delivery through the 0.18.0 set is complete; adoption (C5) starts from
 these published versions.

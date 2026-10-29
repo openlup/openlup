@@ -355,6 +355,13 @@ Maintainer budget read (owner delegate), 2026-10-20:
 
 > M04 post-loop: KEEP. A finite exception caps M04's net runner growth at +729 (580 counted + 285 boundary − 10 from this PR, per the X2 ledger); every case is distinct coverage, so merging into loops would only game the count. Owner of the exception: Bart Roszkowski, via the M04 supervisor. Any further communications case growth needs a new budget read. Time stays inside X2 (+30 s); the hosted after-numbers from this PR's CI are recorded in the ledger.
 
+Ledger clarification (outside the verbatim owner ruling): the parenthetical
+arithmetic as written does not reconcile (`580 + 285 − 10 = 855`). The separate
+runner-registration ledger records `739 → 729` after batching ten registrations;
+counted cases and generated boundary iterations are separate measures, not a
+direct formula for runner registrations. The approved +729 cap and owner quote
+remain unchanged; this clarification authorizes no further case growth.
+
 Inventory baseline: merge-group **39416299647**, main `8b4d4ab`, supplied Ubuntu
 Node 24/npm 11.19.0 shard logs (attempt not identified in supplied files).
 Executed summaries: **3,421 + 3,771 + 4,181 + 3,282 = 14,655**, plus two skipped
@@ -993,14 +1000,22 @@ substantial. No process/control relaxation or successor work is proposed.
 
 ## C-compose — selected communications composition
 
-Status: authorized implementation in progress; no completion or passing candidate
-claim. Coordinator rev 12 approves R1 selected bridges, R2 minimal admin evidence
-mount and strictly opt-in disposable browser profile, R3 additive installed
-substitute proof, R4 existing-canon projection and host-supplied schedules, and R5
-managed maintained network mail, capture and the four bounded B3 groups. No full
-native general sender, maintained cadence or public deployment activation. This
-run permits file edits/local verification only; commits, two fresh full native
-reviews, submission and S1 remain the supervisor's later steps.
+Status at the recorded 2026-10-20 file-only implementation checkpoint:
+implementation was authorized and in progress; no completion or passing
+candidate claim was made for that run. Coordinator rev 12 approves R1 selected
+bridges, R2 minimal admin evidence mount and strictly opt-in disposable browser
+profile, R3 additive installed substitute proof, R4 existing-canon projection
+and host-supplied schedules, and R5 managed maintained network mail, capture and
+the four bounded B3 groups. No full native general sender, maintained cadence or
+public deployment activation. This run permitted file edits/local verification
+only; commits, two fresh full native reviews, submission and S1 remained the
+supervisor's later steps.
+
+Later source history records C-compose merged in PR #223 at
+`c8fd6bd194b189d436b2d66780792d5e7175b6d1` after the
+`6bd830d7d9e7ec00c1908f72a9ce9babaa330787` repair. This records source
+integration only; it does not establish native-review receipt, CI, installation,
+publication, activation or release.
 
 The supplied design enumerated CC01–CC18 (including the requested CC01–CC16).
 This is the full approved old → new ledger; rows are acceptance targets until

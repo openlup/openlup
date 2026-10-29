@@ -17,9 +17,10 @@ export interface OrderPaymentLifecycleState {
   paymentStatus: string | null;
   paymentUpdatedAt?: string | null;
   hasPayment: boolean;
-  /** The activation sweep abandoned this order's provisional subscription: it writes
-   * `cancelled`, not `expired`, so the expired-checkout gate needs this to tell a swept
-   * first subscription from any other cancellation. Absent for every one-time order. */
+  /** True when the activation sweep abandoned this order's provisional subscription:
+   * it writes `cancelled`, not `expired`, so the expired-checkout gate can distinguish
+   * it from other cancellations. The reference lifecycle reader returns false when the
+   * marker is absent. */
   subscriptionActivationAbandoned?: boolean;
 }
 
@@ -142,8 +143,9 @@ export interface CheckoutExpiredEmailInput<Locale extends string = string> {
   firstName: string | null;
   orderId: string;
   amountLabel: string | null;
-  /** Raw checkout-recovery token, emitted only in the outbox payload: the database
-   * stores only its hash, and the host renderer builds the recovery link. */
+  /** Raw checkout-recovery token carried in the persisted outbox payload in the
+   * reference flow. Its dedicated recovery-token table stores only the hash; the
+   * host renderer builds the recovery link. */
   recoveryToken?: string | null;
   outboxEventId: string;
   locale?: Locale;

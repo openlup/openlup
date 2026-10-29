@@ -7,7 +7,7 @@ export type AccountSupportHostBindingRequired = { readonly kind: "unsupported"; 
 type CommerceArguments<F> = F extends AccountSupportCallable ? Parameters<F> : unknown[];
 const HOST_BINDING_REQUIRED: AccountSupportHostBindingRequired = Object.freeze({ kind: "unsupported", code: "host_binding_required" });
 
-/** Capture one graph and one executor per logical operation, without calling either. */
+/** The host must bind one executor per logical operation. This factory captures/freezes its graph and operation maps but does not validate executor cardinality or identity. */
 export function createAccountSupportBindings<O extends AccountSupportOperations, C extends AccountSupportOperations = AccountSupportOperations>(input: {
   graph: "managed" | "native";
   capabilities: AccountSupportCapabilities;
