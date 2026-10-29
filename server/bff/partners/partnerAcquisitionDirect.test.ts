@@ -82,6 +82,23 @@ function authOptions(allowed = true) {
 }
 
 describe("partner acquisition direct BFF", () => {
+  it("refuses submit and authorized transition throughout the declared legacy drain", async () => {
+    const adapter = port();
+    const env = { ...ENV, OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() - 1000).toISOString(),
+      OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
+    const submit = response();
+    await createPartnerAcquisitionSubmitHandler({ env, resolvePort: async () => adapter })(request("POST", {
+      company: "Acme Foods", country: "US", firstName: "Jane", lastName: "Smith", email: "jane@acme.example",
+    }), submit);
+    expect(submit.status).toHaveBeenCalledWith(503);
+    expect(submit.setHeader).toHaveBeenCalledWith("Retry-After", expect.stringMatching(/^[1-9][0-9]*$/));
+    expect(adapter.submit).not.toHaveBeenCalled();
+    const transition = response();
+    await createPartnerAcquisitionTransitionHandler({ env, resolvePort: async () => adapter, authOptions: authOptions() })(
+      request("POST", { id: CASE.caseRef, expectedVersion: 1, status: "contacted" }, {}, TOKEN), transition);
+    expect(transition.status).toHaveBeenCalledWith(503);
+    expect(adapter.transition).not.toHaveBeenCalled();
+  });
   it("submits through the mounted neutral port and returns the existing public envelope", async () => {
     const adapter = port();
     const res = response();

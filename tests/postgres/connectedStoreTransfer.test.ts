@@ -6,12 +6,15 @@ import { join } from "node:path";
 import { Pool } from "pg";
 import * as jose from "jose";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort } from "@openlup/platform/identity";
+import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore, connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
-import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore, type ManagedIdentityMappingSource } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { createPostgresPartnerAcquisitionPort } from "../../server/adapters/postgres/partners/partnerAcquisitionRoutines.js";
+import { createPartnerAcquisitionSubmitHandler } from "../../server/bff/partners/partnerAcquisitionDirect.js";
+import type { VercelResponse } from "../../server/_lib/types/vercel.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { OrderReviewMediaObjectStore } from "../../server/adapters/filesystem/orderReviewMediaObjectStore.js";
@@ -26,7 +29,7 @@ const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", r
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
 const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
 const selectedUnits = [selected.baseline, ...selected.forward];
-type Installation = { owner: Pool; runtime: Pool; restore: Pool; runtimeUrl: string };
+type Installation = { owner: Pool; ownerUrl: string; runtime: Pool; restore: Pool; runtimeUrl: string };
 let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
@@ -56,7 +59,7 @@ async function installation(label: string): Promise<Installation> {
   expect((await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
     .toEqual(selectedUnits.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
   expect((await runner.status()).pending).toEqual([]);
-  return { owner, runtime: pool(url(selection.runtimeLogin)), restore: pool(url(selection.restoreLogin!)), runtimeUrl: url(selection.runtimeLogin) };
+  return { owner, ownerUrl: url(selection.migrationLogin, true), runtime: pool(url(selection.runtimeLogin)), restore: pool(url(selection.restoreLogin!)), runtimeUrl: url(selection.runtimeLogin) };
 }
 async function capture(db: Pool, sourceId: string): Promise<ConnectedNativeStoreCapture> {
   return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
@@ -340,4 +343,191 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   await arrival();
   expect((await target.owner.query("SELECT next_cycle_at::text FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows).toEqual(schedule);
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
+}, 30_000);
+
+it("maps a representative managed identity projection through the qualified restore without reviving erased subjects", async () => {
+  const issuer = "https://issuer.example.invalid/managed";
+  const liveManagedId = randomUUID(), erasedManagedId = randomUUID(), adminManagedId = randomUUID(), revokedManagedId = randomUUID();
+  const liveClient = randomUUID(), erasedClient = randomUUID(), auditId = randomUUID(), erasureId = randomUUID();
+  const created = "2025-01-01T00:00:00.123456Z", revokedAt = "2025-02-01T00:00:00.123456Z";
+  const sourceRows = {
+    clients: [
+      { id: liveClient, created_at: created, updated_at: created, email: "shared@example.invalid", first_name: "Retained",
+        last_name: null, phone: null, country: null, lifecycle_stage: "customer", acquisition_source: null,
+        external_ref: null, metadata: {}, preferences: {}, auth_user_id: liveManagedId, identity_kind: "customer", marketing_contact_id: null },
+      { id: erasedClient, created_at: created, updated_at: revokedAt, email: `erased+${erasedClient}@identity.invalid`, first_name: null,
+        last_name: null, phone: null, country: null, lifecycle_stage: "inactive", acquisition_source: null,
+        external_ref: null, metadata: {}, preferences: {}, auth_user_id: null, identity_kind: "customer", marketing_contact_id: null },
+    ],
+    adminUsers: [
+      { id: adminManagedId, email: "shared@example.invalid", created_at: created, role: "admin", is_machine_actor: false,
+        membership_state: "active", membership_provenance: "legacy", membership_accepted_at: created,
+        membership_revoked_at: null, membership_revoked_by: null, membership_revocation_reason: null },
+      { id: revokedManagedId, email: "revoked@example.invalid", created_at: created, role: "distributor", is_machine_actor: false,
+        membership_state: "revoked", membership_provenance: "legacy", membership_accepted_at: created,
+        membership_revoked_at: revokedAt, membership_revoked_by: adminManagedId, membership_revocation_reason: "policy" },
+    ],
+    revokeAudit: [{ id: auditId, actor_admin_id: adminManagedId, actor_email: "shared@example.invalid", actor_kind: "human",
+      action: "revoke", source: "admin_ui", entity_type: "admin_user_membership", entity_id: revokedManagedId,
+      target_admin_id: revokedManagedId, target_email: "revoked@example.invalid",
+      old_value: { membershipState: "active", role: "distributor" },
+      new_value: { membershipState: "revoked", revokedAt, revokedBy: adminManagedId, revocationReason: "policy" },
+      occurred_at: revokedAt, idempotency_key: null, request_id: null }],
+    erasures: [{ erasure_id: erasureId, idempotency_key: randomUUID(), client_id: erasedClient, principal_id: erasedManagedId,
+      actor_principal_id: adminManagedId, contract_version: "identity.erasure.v1", contributor_versions: { identity: 1 },
+      dispositions: [{ resource: "contact", disposition: "erased" }], retained_obligations: [], completed_at: revokedAt }],
+    lifecycleEvents: [{ id: randomUUID(), client_id: liveClient, from_stage: null, to_stage: "customer", occurred_at: created },
+      { id: randomUUID(), client_id: erasedClient, from_stage: "customer", to_stage: "inactive", occurred_at: revokedAt }],
+  };
+  const before = await census(target.owner);
+  const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
+  const sourceClient = await source.owner.connect();
+  let observed: ConnectedNativeStoreCapture["observation"];
+  let sourceProjection: typeof sourceRows;
+  try {
+    await sourceClient.query("CREATE TEMP TABLE managed_identity_projection(kind text NOT NULL,payload jsonb NOT NULL)");
+    for (const [kind, rows] of Object.entries(sourceRows)) for (const row of rows) {
+      await sourceClient.query("INSERT INTO managed_identity_projection(kind,payload) VALUES($1,$2::jsonb)", [kind, JSON.stringify(row)]);
+    }
+    await sourceClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const fact = (await sourceClient.query<{ cluster: string; database: string; login: string; snapshot: string }>(`SELECT
+      (SELECT system_identifier::text FROM pg_control_system()) AS cluster,current_database() AS database,
+      session_user::text AS login,txid_current_snapshot()::text AS snapshot`)).rows[0]!;
+    observed = fact;
+    // The local managed fixture is a PostgreSQL projection, not a provider-auth
+    // token or source-key export. Read exact stored JSON values in one snapshot.
+    const stored = async <T>(kind: string): Promise<T[]> => (await sourceClient.query<{ payload: string }>(
+      "SELECT payload::text FROM managed_identity_projection WHERE kind=$1 ORDER BY payload::text", [kind]))
+      .rows.map(row => JSON.parse(row.payload) as T);
+    sourceProjection = {
+      clients: await stored<(typeof sourceRows.clients)[number]>("clients"),
+      adminUsers: await stored<(typeof sourceRows.adminUsers)[number]>("adminUsers"),
+      revokeAudit: await stored<(typeof sourceRows.revokeAudit)[number]>("revokeAudit"),
+      erasures: await stored<(typeof sourceRows.erasures)[number]>("erasures"),
+      lifecycleEvents: await stored<(typeof sourceRows.lifecycleEvents)[number]>("lifecycleEvents"),
+    };
+    await sourceClient.query("COMMIT");
+  } catch (error) { await sourceClient.query("ROLLBACK"); throw error; }
+  finally { await sourceClient.query("DROP TABLE IF EXISTS managed_identity_projection").catch(() => undefined); sourceClient.release(); }
+  const subjects = [liveManagedId, erasedManagedId, adminManagedId, revokedManagedId]
+    .map(managedId => ({ managedId, subject: managedId }));
+  const evidence: ManagedIdentityMappingSource = { sourceId: "representative-managed-identity", issuer,
+    observation: observed!, subjects, ...sourceProjection! };
+  const mapped = await mapManagedIdentityForConnectedRestore({ source: evidence, freshTarget: pristine, targetOwner: target.owner });
+  const otherIssuer = await mapManagedIdentityForConnectedRestore({ source: { ...evidence,
+    issuer: "https://other-issuer.example.invalid/managed" }, freshTarget: pristine, targetOwner: target.owner });
+  expect(otherIssuer.subjects[0]!.principalId).not.toBe(mapped.subjects[0]!.principalId);
+  expect(mapped.subjects).toEqual(subjects.map(({ managedId, subject }) => ({ managedId, issuer, subject,
+    principalId: deriveOidcPrincipalId(issuer, subject) })));
+  expect(mapped.packet.observation).toEqual(observed!);
+  expect(mapped.auditReferences).toEqual([{ sourceId: evidence.sourceId, sourceRowId: auditId, targetAuditId: auditId }]);
+  expect(await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: mapped.packet, freshTarget: pristine }))
+    .toMatchObject({ replayed: false });
+  expect((await target.owner.query("SELECT id,principal_id,email FROM public.clients ORDER BY id")).rows).toEqual([
+    { id: liveClient, principal_id: deriveOidcPrincipalId(issuer, liveManagedId), email: "shared@example.invalid" },
+    { id: erasedClient, principal_id: null, email: `erased+${erasedClient}@identity.invalid` },
+  ].sort((a, b) => a.id.localeCompare(b.id)));
+  expect((await target.owner.query("SELECT principal_id,role,membership_state FROM public.platform_human_memberships ORDER BY principal_id")).rows)
+    .toEqual([{ principal_id: deriveOidcPrincipalId(issuer, adminManagedId), role: "admin", membership_state: "active" },
+      { principal_id: deriveOidcPrincipalId(issuer, revokedManagedId), role: "distributor", membership_state: "revoked" }]
+      .sort((a, b) => a.principal_id.localeCompare(b.principal_id)));
+  expect((await target.owner.query("SELECT actor_principal_id,target_principal_id,old_value,new_value FROM public.platform_human_membership_audit_events WHERE id=$1", [auditId])).rows)
+    .toEqual([{ actor_principal_id: deriveOidcPrincipalId(issuer, adminManagedId),
+      target_principal_id: deriveOidcPrincipalId(issuer, revokedManagedId), old_value: { membershipState: "active", role: "distributor" },
+      new_value: { membershipState: "revoked", revokedAt, revokedBy: deriveOidcPrincipalId(issuer, adminManagedId),
+        revocationReason: "policy", sourceAuditRef: { sourceId: evidence.sourceId, rowId: auditId } } }]);
+  expect((await target.owner.query("SELECT principal_id,client_id,dispositions FROM public.identity_privacy_erasures WHERE erasure_id=$1", [erasureId])).rows)
+    .toEqual([{ principal_id: deriveOidcPrincipalId(issuer, erasedManagedId), client_id: erasedClient,
+      dispositions: [{ resource: "contact", disposition: "erased" }] }]);
+  expect((await target.owner.query("SELECT email,first_name,last_name,phone,country,metadata,principal_id FROM public.clients WHERE id=$1", [erasedClient])).rows)
+    .toEqual([{ email: `erased+${erasedClient}@identity.invalid`, first_name: null, last_name: null,
+      phone: null, country: null, metadata: {}, principal_id: null }]);
+  expect((await target.owner.query("SELECT from_stage,to_stage FROM public.customer_subject_lifecycle_events WHERE client_id=$1 ORDER BY occurred_at", [erasedClient])).rows)
+    .toEqual([{ from_stage: "customer", to_stage: "inactive" }]);
+  const accounts = createPostgresAccountLinkStore({ connectionString: target.runtimeUrl }); ports.push(accounts);
+  await expect(accounts.createAccount({ email: "same@example.invalid", principalId: deriveOidcPrincipalId(issuer, erasedManagedId),
+    acquisitionSource: "direct", lifecycleStage: "lead" })).rejects.toThrow("account_erased_refused");
+  expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
+  expect((await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: mapped.packet, freshTarget: pristine })).replayed).toBe(true);
+  const linkedSource = evidence.clients.find(row => row.auth_user_id === liveManagedId)!;
+  const erasedSource = evidence.clients.find(row => row.id === erasedClient)!;
+  const invalid = [
+    { ...evidence, subjects: subjects.filter(value => value.managedId !== liveManagedId) },
+    { ...evidence, erasures: [] },
+    { ...evidence, clients: [{ ...evidence.clients[0], preferences: { hidden: true } }, evidence.clients[1]] },
+    { ...evidence, adminUsers: [{ ...evidence.adminUsers[0], is_machine_actor: true }, evidence.adminUsers[1]] },
+    { ...evidence, erasures: [{ ...evidence.erasures[0], principal_id: liveManagedId }] },
+    { ...evidence, issuer: "https://issuer.example.invalid/managed#alias" },
+    { ...evidence, revokeAudit: [{ ...evidence.revokeAudit[0], actor_admin_id: randomUUID() }] },
+    { ...evidence, revokeAudit: [{ ...evidence.revokeAudit[0], unexpected_field: "unsafe" }] },
+    { ...evidence, clients: evidence.clients.map(row => row.id === erasedClient ? { ...row, email: "erased+leak@example.invalid" } : row) },
+  ];
+  for (const candidate of invalid) await expect(mapManagedIdentityForConnectedRestore({ source: candidate, freshTarget: pristine, targetOwner: target.owner }))
+    .rejects.toMatchObject({ code: "invalid_input" });
+  for (const field of [
+    { old_value: { ...(evidence.revokeAudit[0]!.old_value as Record<string, unknown>), role: "admin" } },
+    { new_value: { ...(evidence.revokeAudit[0]!.new_value as Record<string, unknown>), revokedBy: liveManagedId } },
+    { new_value: { ...(evidence.revokeAudit[0]!.new_value as Record<string, unknown>), revokedAt: created } },
+    { new_value: { ...(evidence.revokeAudit[0]!.new_value as Record<string, unknown>), revocationReason: "different" } },
+  ]) await expect(mapManagedIdentityForConnectedRestore({ source: { ...evidence,
+    revokeAudit: [{ ...evidence.revokeAudit[0], ...field }] }, freshTarget: pristine, targetOwner: target.owner }))
+    .rejects.toMatchObject({ code: "target_conflict", table: "platform_human_membership_audit_events" });
+  await expect(mapManagedIdentityForConnectedRestore({ source: { ...evidence, clients: [linkedSource,
+    { ...linkedSource, id: randomUUID(), email: "other@example.invalid" }, erasedSource] },
+  freshTarget: pristine, targetOwner: target.owner })).rejects.toMatchObject({ code: "target_conflict", table: "clients" });
+  expect(before.clients).toEqual([]);
+}, 30_000);
+
+it("drains every target acquisition command before opening a new installation-key namespace", async () => {
+  const sourcePort = createPostgresPartnerAcquisitionPort({ connectionString: source.ownerUrl });
+  const targetPort = createPostgresPartnerAcquisitionPort({ connectionString: target.ownerUrl });
+  ports.push(sourcePort, targetPort);
+  const input = { idempotencyKey: "managed-drain-command-1", requesterKey: "synthetic-requester",
+    policyVersion: "partner-inquiry-request-v1", sourcePath: "/partners/b2b-inquiries" as const,
+    acceptedAt: new Date().toISOString(), request: { company: "Synthetic Partner", country: "US",
+      firstName: "Ada", lastName: "Example", email: "drain-source@example.invalid", phone: "+15551234567", notes: null } };
+  expect(await sourcePort.submit(input)).toMatchObject({ ok: true, replayed: false });
+  expect(await sourcePort.submit(input)).toMatchObject({ ok: true, replayed: true });
+  const sourceReceipt = (await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows;
+  expect(sourceReceipt).toHaveLength(1);
+  const sourceDigest = (await source.owner.query("SELECT encode(acquisition_private.keyed_digest('transfer-probe','{}'::jsonb),'hex') AS digest")).rows[0].digest;
+  const targetDigest = (await target.owner.query("SELECT encode(acquisition_private.keyed_digest('transfer-probe','{}'::jsonb),'hex') AS digest")).rows[0].digest;
+  expect(targetDigest).not.toBe(sourceDigest);
+  const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
+
+  const started = new Date(Date.now() - 1000).toISOString();
+  const env = { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: started, OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
+  const request = (key: string, email: string) => ({ method: "POST", query: {}, headers: { "idempotency-key": key,
+    "x-forwarded-for": "127.0.0.1" }, body: { company: "Synthetic Partner", country: "US", firstName: "Ada",
+    lastName: "Example", email, phone: "+15551234567", notes: null } });
+  const response = () => {
+    const headers: Record<string, string> = {};
+    let statusCode = 0, body: unknown;
+    const res = { setHeader(name: string, value: string) { headers[name] = value; return res; },
+      status(value: number) { statusCode = value; return res; }, json(value: unknown) { body = value; return res; } } as unknown as VercelResponse;
+    return { res, headers, get statusCode() { return statusCode; }, get body() { return body; } };
+  };
+  const during = response();
+  await createPartnerAcquisitionSubmitHandler({ env, resolvePort: async () => targetPort })(
+    request(input.idempotencyKey, "drain-source@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], during.res);
+  expect(during.statusCode).toBe(503);
+  expect(Number(during.headers["Retry-After"])).toBeGreaterThan(0);
+  expect(during.body).toMatchObject({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE",
+    details: { reason: "acquisition_legacy_drain" } } });
+  expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands")).rows[0].count).toBe(0);
+
+  const ended = response();
+  await createPartnerAcquisitionSubmitHandler({ env: { ...env, OPENLUP_ACQUISITION_DRAIN_ENDED_AT: new Date().toISOString() },
+    resolvePort: async () => targetPort })(request(input.idempotencyKey, "drain-source@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], ended.res);
+  expect(ended.statusCode).toBe(200);
+  expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows[0].count).toBe(1);
+
+  const maximum = response();
+  await createPartnerAcquisitionSubmitHandler({ env: { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() - 2000).toISOString(),
+    OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "1" }, resolvePort: async () => targetPort })(
+    request("managed-drain-command-2", "drain-second@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], maximum.res);
+  expect(maximum.statusCode).toBe(200);
+  expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit'")).rows[0].count).toBe(2);
+  expect((await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows).toEqual(sourceReceipt);
+  expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
 }, 30_000);

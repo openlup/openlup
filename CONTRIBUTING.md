@@ -277,6 +277,14 @@ extends that proof to a fixed native graph and the application's actual private
 target baseline, one migration-owner data transaction and independent row/file
 readback. Source media preparation and target media authorization use the actual
 restricted runtime login; owner setup cannot establish that runtime capability.
+Its selected managed identity projection is stored and read through a PostgreSQL
+snapshot before translation into the same qualified restore. Assertions cover
+exact issuer/subject derivation, distinct same-email people, human membership
+and native revoke-audit subset with source-row reference and conflict refusal,
+erasure receipt and re-link refusal, plus unsupported-source refusals. A separate
+real-PG case proves source replay, target command drain refusal and both explicit
+and maximum drain ends before a new target-key command. This local projection
+does not prove managed-provider export authority or full source audit retention.
 The existing PostgreSQL helper closes every owned pool/store and removes its
 containers, including after setup failure. A privilege refusal before the main
 case is a blocked proof, even when the runner reports the case skipped. Record

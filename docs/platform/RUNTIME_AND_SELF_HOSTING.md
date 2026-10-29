@@ -46,6 +46,23 @@ once available.
 
 ## Runtime model
 
+For a managed-source acquisition cut-over, configure the reference target's
+`OPENLUP_ACQUISITION_DRAIN_STARTED_AT` as a fixed UTC ISO instant and
+`OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
+604800. Deploy the same values to every target process before activation.
+The partner submit/transition, survey submit and newsletter consent BFF command
+paths refuse with HTTP 503, `Retry-After` and `acquisition_legacy_drain` while
+the declared interval is active; read paths remain available. Setting
+`OPENLUP_ACQUISITION_DRAIN_ENDED_AT` to a UTC instant at or after start
+explicitly ends the drain when that instant is reached. A later end cannot
+extend the configured maximum. Incomplete or malformed cut-over configuration
+fails closed before that maximum. After the drain, commands enter a new
+target-key namespace; the target
+does not compare retained source-keyed receipts. The host must separately prove
+source quiescence, consistent rollout and item 8 retention of source history;
+these environment values do not certify any of those facts. See the
+[managed mapping task](plans/oss-m14-managed-identity-mapping.md).
+
 The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 consume qualified transaction and object capabilities; they create no connection,
 route, worker or provider authority. Restoring local claim tokens or checking a

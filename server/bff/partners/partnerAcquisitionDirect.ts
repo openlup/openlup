@@ -18,6 +18,7 @@ import type * as HttpTypes from "../../_lib/types/vercel.js";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 import { resolveAdminAuthBinding, type AdminAuthBindingOptions } from "../../runtime/auth/adminAuthBinding.js";
 import { resolvePartnerAcquisitionBinding } from "../../runtime/partners/partnerAcquisitionBinding.js";
+import { refuseAcquisitionCommandDuringLegacyDrain } from "../../runtime/marketing/acquisitionLegacyDrain.js";
 
 type Env = Record<string, string | undefined>;
 type HttpRequest = HttpTypes.VercelRequest;
@@ -37,6 +38,7 @@ export function createPartnerAcquisitionSubmitHandler(options: Options = {}) {
   const env = options.env ?? process.env;
   return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
+    if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
     const request = partnersB2BInquirySubmitRequestSchema.safeParse(req.body);
     const idempotencyKey = idempotency(req);
     const requesterKey = requester(req);
@@ -91,6 +93,7 @@ export function createPartnerAcquisitionTransitionHandler(options: Options = {})
     if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
     const actorRef = await authorize(req, res, env, options.authOptions);
     if (!actorRef) return;
+    if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
     const request = partnerAcquisitionTransitionRequestSchema.safeParse(req.body);
     const idempotencyKey = idempotency(req);
     if (!request.success || !idempotencyKey) return badRequest(res, request.success ? undefined : request.error.flatten());

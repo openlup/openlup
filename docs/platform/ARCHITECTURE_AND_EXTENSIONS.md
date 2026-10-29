@@ -30,6 +30,14 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference application's [acquisition legacy drain](../../server/runtime/marketing/acquisitionLegacyDrain.ts)
+is a finite, operator-configured gate on its existing BFF command routes. It
+checks before the selected target-key ports, returns a retry time during drain,
+and opens a new namespace after explicit end or the configured maximum. It
+adds no provider client, service, source-key comparison or background worker.
+Adopters own equivalent routing if they do not use these reference BFF paths;
+the transfer host still owns source quiescence and deployment consistency.
+
 Operational reference handlers and browser clients delegate through the isolated
 [operations package entries](#operations-and-diagnostics). Environment/bundle
 selection, connection ownership and the maintained domain evaluator remain in
