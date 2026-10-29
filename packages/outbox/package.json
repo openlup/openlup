@@ -1,6 +1,6 @@
 {
   "name": "@openlup/outbox",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "private": false,
   "description": "Transactional PostgreSQL outbox rail; development preview.",
   "license": "Apache-2.0",
@@ -16,6 +16,7 @@
   "packageManager": "npm@11.19.0",
   "sideEffects": false,
   "files": [
+    "AGENT_CONTEXT.md",
     "dist/**",
     "src/**",
     "sql/**",
@@ -37,7 +38,7 @@
     "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts"
   },
   "peerDependencies": {
-    "@openlup/core": "0.31.0"
+    "@openlup/core": "0.32.0"
   },
   "exports": {
     ".": {

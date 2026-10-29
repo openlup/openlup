@@ -371,6 +371,13 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
       consumerDir,
     );
     assertInstalled(consumerDir, [packageName, "zod"]);
+    const installedCoreRoot = join(consumerDir, "node_modules", packageName);
+    assert(existsSync(join(installedCoreRoot, "AGENT_CONTEXT.md")), "installed core is missing its context snapshot");
+    const installedMetadata = JSON.parse(readFileSync(join(installedCoreRoot, "package.json"), "utf8"));
+    assert(installedMetadata.bin?.["openlup-context"] === "./src/openlup-context.js", "installed context executable target differs");
+    const contextExecutable = join(consumerDir, "node_modules", ".bin", "openlup-context");
+    assert(existsSync(contextExecutable), "offline installation did not link the local context executable");
+    assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
     run(process.execPath, ["smoke.mjs"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.json", "--noEmit"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.bundler.json", "--noEmit"], consumerDir);

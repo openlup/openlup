@@ -4,12 +4,23 @@ Development preview, kind `rail`. One at-least-once dispatch engine, lease-bound
 
 The publication catalogue admits this complete rail to the release set. Catalogue admission does not publish it: direct directory publishing still refuses, and the reviewed release workflow owns provenance-backed publication. New API and shipped SQL require the next minor set.
 
-The prepared `0.31.0` set republishes this rail unchanged with an exact
-`@openlup/core@0.31.0` peer. Upgrade the complete set together; no outbox schema
-migration is introduced. Read [0.31.0 notes](CHANGELOG.md#0310); releases older
-than `0.29.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.30.0` tarball; preparation grants no
+The prepared `0.32.0` set includes a packaged `AGENT_CONTEXT.md`,
+documentation clarifications and an exact `@openlup/core@0.32.0` peer.
+Upgrade the complete set together; no outbox schema
+migration is introduced. Read [0.32.0 notes](CHANGELOG.md#0320); releases older
+than `0.30.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.31.0` tarball; preparation grants no
 publication or installation proof.
+
+## Installed agent context
+
+The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical outbox
+guidance. Its metadata records source paths, line ranges and excerpt digests.
+Read the version from the installed `package.json` and check the cited source
+before relying on an excerpt. Core's installed
+`openlup-context` command discovers this local snapshot and returns source
+citations offline. The snapshot adds no dependency, worker or runtime activation,
+and grants no application policy, publication or execution authority.
 
 ## Package Surface Maturity
 
