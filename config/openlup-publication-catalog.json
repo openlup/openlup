@@ -1442,6 +1442,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-recipe-conformance.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-restricted-bootstrap.md",
       "class": "public-output"
     },
@@ -26186,6 +26190,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RecipeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ReleasedSchemaUpgrade.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14ReleasedSchemaUpgrade.test.ts",
       "class": "public-output"
     },
@@ -26291,6 +26303,10 @@
     },
     {
       "path": "tests/postgres/runM14EffectHandover.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runM14RecipeConformance.mjs",
       "class": "public-output"
     },
     {

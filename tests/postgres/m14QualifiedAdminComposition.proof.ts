@@ -1,8 +1,8 @@
 // Disposable PG16 production-path qualification for the explicit restricted generation.
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Client, Pool, type PoolClient } from "pg";
+import { Client, Pool, type PoolClient, type PoolConfig } from "pg";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { advisoryLockKey, createPgAdvisoryLock, withAdvisoryLock, type AdvisoryLockQuerier } from "@openlup/platform/scheduler";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -12,24 +12,26 @@ import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from 
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 
 const lockName = "openlup:public-platform-migrations:v1";
-const password = "synthetic-proof-only";
 const hash = (s: string): string => createHash("sha256").update(s).digest("hex");
 const identifier = (name: string): string => { assert.match(name, /^[a-z_][a-z0-9_]*$/u); return `"${name}"`; };
 
-export async function runQualifiedAdminCompositionProof(input: { roleMode: "installer-managed" | "operator-provisioned"; inventory: string }) {
+export async function runQualifiedAdminCompositionProof(input: { roleMode: "installer-managed" | "operator-provisioned"; inventory: string; database?: PoolConfig }) {
  const pools: Pool[] = [];
  let container;
  try {
-  container = await runPostgresContainer({ name: `m14-qb-production-${input.roleMode}-${process.pid}`, password: "synthetic-conformance" });
-  assert.equal(await waitForPostgresTcpReady(container.connectionString), true);
-  const pool = (url: string): Pool => { const value = new Pool({ connectionString: url }); pools.push(value); return value; };
+  const password = randomBytes(24).toString("hex");
+  container = input.database ? { connectionString: input.database.connectionString!, remove: async () => {} } : await runPostgresContainer({ name: `m14-qb-production-${input.roleMode}-${process.pid}`, password: "synthetic-conformance" });
+  if (!input.database) assert.equal(await waitForPostgresTcpReady(container.connectionString), true);
+  const bootstrapLogin = decodeURIComponent(new URL(container.connectionString).username);
+  const databaseName = decodeURIComponent(new URL(container.connectionString).pathname.slice(1));
+  const pool = (url: string): Pool => { const value = new Pool({ ...input.database, connectionString: url }); pools.push(value); return value; };
   const loginUrl = (name: string): string => { const value = new URL(container!.connectionString); value.username = name;
-    value.password = name === "postgres" ? "synthetic-conformance" : password; return value.toString(); };
+    value.password = name === bootstrapLogin ? new URL(container!.connectionString).password : password; return value.toString(); };
   const bootstrap = pool(container.connectionString);
   const prefix = input.roleMode === "installer-managed" ? "qb_proof_managed" : "qb_proof_operator";
   const m = `${prefix}_m`, r = `${prefix}_r`, s = `${prefix}_s`, o = `${prefix}_o`;
   await bootstrap.query(`CREATE ROLE ${identifier(m)} LOGIN NOINHERIT ${input.roleMode === "installer-managed" ? "CREATEROLE" : "NOCREATEROLE"} NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-  await bootstrap.query(`ALTER DATABASE postgres OWNER TO ${identifier(m)}`);
+  await bootstrap.query(`ALTER DATABASE ${identifier(databaseName)} OWNER TO ${identifier(m)}`);
   for (const role of [r, s]) await bootstrap.query(`CREATE ROLE ${identifier(role)} LOGIN NOINHERIT NOCREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
   if (input.roleMode === "operator-provisioned") {
     await bootstrap.query(`CREATE ROLE ${identifier(o)} LOGIN NOINHERIT CREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
@@ -43,8 +45,8 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     }
   }
   const selection: QualifiedAdminPostgresInstallation = input.roleMode === "installer-managed"
-    ? { generation: "qualified-admin", roleMode: input.roleMode, migrationLogin: m, bootstrapLogin: "postgres", runtimeLogin: r, restoreLogin: s }
-    : { generation: "qualified-admin", roleMode: input.roleMode, migrationLogin: m, bootstrapLogin: "postgres", runtimeLogin: r, restoreLogin: s, operatorLogin: o };
+    ? { generation: "qualified-admin", roleMode: input.roleMode, migrationLogin: m, bootstrapLogin, runtimeLogin: r, restoreLogin: s }
+    : { generation: "qualified-admin", roleMode: input.roleMode, migrationLogin: m, bootstrapLogin, runtimeLogin: r, restoreLogin: s, operatorLogin: o };
   const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest,
     "qualified-admin", { roleMode: input.roleMode });
   assert.equal(manifest.objectInventorySha256, input.inventory);
@@ -80,7 +82,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
   assert.deepEqual(await runner.status(), { applied: expected.map(entry => entry.file), pending: [] });
   assert.deepEqual(await runner.apply(), { applied: [] });
-  const switchedUrl = new URL(loginUrl("postgres"));
+  const switchedUrl = new URL(loginUrl(bootstrapLogin));
   switchedUrl.searchParams.set("options", qualifiedAdminPostgresStartupOptions(selection));
   const switchedSession = pool(switchedUrl.toString());
   await switchedSession.query(`SET ROLE ${identifier(m)}`);
@@ -111,6 +113,23 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   assert.equal((await runtime.query("SELECT first_name FROM public.clients WHERE id=$1", [clientId])).rows[0].first_name, "runtime");
   await assert.rejects(runtime.query("UPDATE public.platform_schema_migrations SET position=99 WHERE position=0"), { code: "42501" });
   await assert.rejects(restore.query("UPDATE public.clients SET first_name='restore' WHERE id=$1", [clientId]), { code: "42501" });
+  const actor = await runtime.connect();
+  const principal = randomUUID();
+  await runtime.query("UPDATE public.clients SET principal_id=$1 WHERE id=$2", [principal, clientId]);
+  try {
+    await actor.query("BEGIN");
+    await actor.query("SET LOCAL ROLE authenticated");
+    await actor.query("SELECT pg_catalog.set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: randomUUID() })]);
+    assert.deepEqual((await actor.query("SELECT id FROM public.clients WHERE id=$1", [clientId])).rows, []);
+    await actor.query("SELECT pg_catalog.set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal })]);
+    assert.deepEqual((await actor.query("SELECT id FROM public.clients WHERE id=$1", [clientId])).rows, [{ id: clientId }]);
+  } finally { await actor.query("ROLLBACK"); actor.release(); }
+  const anonymous = await runtime.connect();
+  try {
+    await anonymous.query("BEGIN");
+    await anonymous.query("SET LOCAL ROLE anon");
+    await assert.rejects(anonymous.query("SELECT id FROM public.clients"), { code: "42501" });
+  } finally { await anonymous.query("ROLLBACK"); anonymous.release(); }
   const restored = await restore.connect();
   try {
     await restored.query("BEGIN");
@@ -131,7 +150,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     assert.ok((await readonly.query("SELECT id FROM public.clients LIMIT 1")).rowCount);
     await assert.rejects(readonly.query("INSERT INTO public.clients(email) VALUES('read-only@example.invalid')"), { code: "25006" });
   } finally { await readonly.query("ROLLBACK"); readonly.release(); }
-  const first = new Client({ connectionString: loginUrl(r) }), second = new Client({ connectionString: loginUrl(r) });
+  const first = new Client({ ...input.database, connectionString: loginUrl(r) }), second = new Client({ ...input.database, connectionString: loginUrl(r) });
   await first.connect(); await second.connect();
   try {
     assert.notEqual((await first.query("SELECT pg_backend_pid() AS pid")).rows[0].pid,
@@ -139,7 +158,8 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     const owner = createPgAdvisoryLock(first as unknown as AdvisoryLockQuerier);
     const competitor = createPgAdvisoryLock(second as unknown as AdvisoryLockQuerier);
     let runs = 0;
-    await withAdvisoryLock("qualified-admin-scheduler", owner, async () => { runs++; await first.query("SELECT 1"); }, (_id, error) => { throw error; })();
+    await withAdvisoryLock("qualified-admin-scheduler", owner, async () => { runs++; await first.query("SELECT 1");
+      assert.equal(await competitor.tryAcquire("qualified-admin-scheduler"), false); }, (_id, error) => { throw error; })();
     assert.equal(runs, 1);
     assert.equal(await competitor.tryAcquire("qualified-admin-scheduler"), true);
     await competitor.release("qualified-admin-scheduler");
@@ -233,13 +253,13 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   await bootstrap.query("GRANT SET ON PARAMETER session_replication_role TO anon");
   try { await assert.rejects(runner.status(), /runtime_persistent_ddl_or_replication_unsafe/u); }
   finally { await bootstrap.query("REVOKE SET ON PARAMETER session_replication_role FROM anon"); }
-  await bootstrap.query(`ALTER ROLE ${identifier(m)} IN DATABASE postgres SET search_path TO public, pg_catalog`);
+  await bootstrap.query(`ALTER ROLE ${identifier(m)} IN DATABASE ${identifier(databaseName)} SET search_path TO public, pg_catalog`);
   const alteredPool = pool(migrationUrl.toString());
   try {
     const altered = makeRunner(() => alteredPool);
     await assert.rejects(altered.status(), /canonical_search_path_required/u);
   } finally { await alteredPool.end(); pools.splice(pools.indexOf(alteredPool), 1);
-    await bootstrap.query(`ALTER ROLE ${identifier(m)} IN DATABASE postgres RESET search_path`); }
+    await bootstrap.query(`ALTER ROLE ${identifier(m)} IN DATABASE ${identifier(databaseName)} RESET search_path`); }
   const outsider = `${prefix}_outsider`;
   await bootstrap.query(`CREATE ROLE ${identifier(outsider)} NOLOGIN NOCREATEROLE NOSUPERUSER`);
   await bootstrap.query(`GRANT service_role TO ${identifier(outsider)} WITH ADMIN FALSE, INHERIT FALSE, SET FALSE`);
@@ -249,7 +269,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   assert.deepEqual(await runner.apply(), { applied: [] });
   const finalLedger = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(finalLedger, installed);
-  return { mode: input.roleMode, inventory, pendingBefore: before.pending.length, interruptedPrefix: prefixStatus.applied.length,
+  return { identities: { migration: m, runtime: r, restore: s, bootstrap: bootstrapLogin, operator: input.roleMode === "operator-provisioned" ? o : null }, mode: input.roleMode, inventory, pendingBefore: before.pending.length, interruptedPrefix: prefixStatus.applied.length,
     appliedAfterResume: resumed.applied.length, ledgerRows: installed.length, replayApplied: 0,
     runtimeProved: true, restoreProved: true, connectionRecipeProved: true,
     shadowMatrixProved: true, refusalsProved: true };
