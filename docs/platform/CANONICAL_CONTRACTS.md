@@ -563,12 +563,15 @@ witnesses remain required under the
 
 The exact qualified-installation source approvals in
 [`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
-are control inputs, not installation evidence. The six inert fixtures and the
+are control inputs, not installation evidence. The seven inert fixtures and the
 legacy-preserving version-2 source catalogue follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The supported reader admits the exact sixth identity for the demonstrated
 context writes and review-receipt reads/appends. The registry retains all six
 prior approvals unchanged; the exact sixth SQL is now the final selected tail.
+The seventh approval binds one qualified owner-path forward's exact file and
+function definitions. Its inert fixture is not selected by the 91-unit plan;
+SQL introduction and inventory proof remain separate.
 Trusted main parses a changed registry before returning for a no-SQL change,
 so reader support must land before the separate sixth-pin approval, which must
 land before SQL introduction. The installer-ownership/runtime-binding guard relies
