@@ -1466,3 +1466,11 @@ the existing commerce registry's risk slot once. `createRiskContribution` in
 handlers or schedules. The [reference recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
 selects nothing by default and requires schema readiness before effects. Hosts
 still mount any selected callables and own their authorization/actor mapping.
+
+`risk/server` also exports `createRiskPrivacyContributor` and
+`createRiskPrivacyBinding`. Supply the read-only resource owner and explicit
+retention policy, then append the contributor to M03's existing registry with
+`risk` required. Unbound policy remains unresolved. No risk deletion or retention
+period is supplied, and managed identity erasure remains unavailable. Portability
+is deferred unless a host supplies its own opaque binding; the helper neither
+invokes it nor claims transfer/restore support.
