@@ -171,8 +171,9 @@ it("upgrades the released 0.23 legacy prefix through real backfill, killed trans
 
     // An optional pinned local package supplies actual previous application
     // code. The CI path still proves the complete database upgrade offline.
-    const releasedPayments = process.env.OPENLUP_M14_RELEASED_PAYMENTS;
-    if (releasedPayments) {
+    const releasedPayments = join(process.cwd(),
+      ".context/scratch/m14-schema-upgrade/previous-app/node_modules/@openlup/platform/dist/payments/index.js");
+    if (existsSync(releasedPayments)) {
       const releasedPackage = JSON.parse(readFileSync(join(dirname(releasedPayments), "..", "..", "package.json"), "utf8"));
       expect(releasedPackage).toMatchObject({ name: "@openlup/platform", version: "0.23.0" });
       const previous = await import(pathToFileURL(releasedPayments).href);

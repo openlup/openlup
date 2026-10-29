@@ -1,7 +1,8 @@
 # M14 D32: schema upgrade and backfill proof
 
-Status: stabilized working candidate; NEEDS_READ before DCO. Release 0.23.0
-supplies the nearest applicable real backfill. M14 remains open.
+Status: maintainer read accepted and DCO committed; neutrality repair awaits
+fresh native review and final verification. Release 0.23.0 supplies the nearest
+applicable real backfill. M14 remains open.
 
 ## Outcome, scope and authority
 
@@ -47,8 +48,9 @@ Main then changed the same contributor and data-owner files. The unreviewed
 candidate integrated that actual overlap; current code base and fresh policy
 pin are `6869465b306cdfa4efe46782d3dc85528ed19815`. The active manifest
 and released predecessor selection did not change.
-Native review has not started; no repair cycles consumed and no passing receipt
-or verification stamp exists.
+At this integration point native review had not started. The first committed
+candidate later received two fresh full PASS reports, then its full local gate
+refused at neutrality. No passing receipt or verification stamp exists.
 
 ## Evidence and remaining work
 
@@ -105,7 +107,8 @@ The previous stop recorded a too-narrow predecessor interpretation. That
 history and its zero review cycles remain; the current owner decision supersedes
 the stop without resetting any evidence. `npm ci`, structural scan and tracked
 publication-policy check passed before this continuation. No native review,
-DCO, PR, receipt, queue or release action has occurred yet.
+At this selection point no DCO, PR, receipt, queue or release action had
+occurred.
 
 The selected 0.23.0 manifest SHA-256 is
 `abaad6e8b68bcb071ad6c2911c47c580feaa122da5c7f9eb287ca3a15da03bad`.
@@ -131,16 +134,31 @@ test path does not claim this optional package observation. Code rollback does
 not restore the old schema or backfill state. Qualified-v2 fresh installation
 remains separately qualified; no older qualified upgrade is claimed.
 
+The first full committed-tree verification passed its broad tests but refused
+at tree neutrality: reading an optional package path through `process.env`
+increased `ui-9` for the new test. The test now detects the same pinned package
+at its ignored local installation path without an environment read. The
+predecessor package is installed there for the local proof. This repair changes
+neither upgrade nor migration behavior; the new tree needs fresh review and
+full verification.
+
 Working-tree publication policy, inventory, ast-grep, lint (0 errors, 33
 existing warnings), five-project typecheck and redacted Gitleaks directory
 scan passed. Initial focused fixture execution found an already-paid order;
 a separate open order fixed that setup. Four TypeScript literal-type errors
-were corrected without a runtime behavior change. Native review remains 0/3,
-with no DCO, PR, receipt, queue or full committed-candidate stamp. The
-registered child execution surface and migration proof require the stabilized
-maintainer read before DCO under the task's inherited authority.
+were corrected without a runtime behavior change. The registered child
+execution surface and migration proof received a stabilized maintainer read
+before DCO under the task's inherited authority. The accepted staged tree
+`18c882285f0c4046af74fa0d4fd5ac1a29d301dc` became signed commit
+`b41bada778d33589016931328355bb49e2499220`; two independent fresh full
+reviews passed without findings. Its canonical gate passed policy, inventory,
+DCO, Gitleaks, install, lint, typecheck, both builds, packages and broad tests,
+then refused at neutrality. No PR, receipt, queue or full passing stamp exists.
 
 Self-retro: checking issued lineage and top-level SQL found the nearest real
 backfill before PostgreSQL work. The existing runner and fixtures kept the
 proof bounded; the two working failures needed fixture and type corrections,
-not another migration mechanism.
+not another migration mechanism. The first full gate found an optional
+environment read that the cheap checks had not caught. Reading the already
+pinned local package at a fixed ignored path removes that gate violation
+without a new neutrality exception.
