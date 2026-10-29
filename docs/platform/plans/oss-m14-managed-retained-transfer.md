@@ -123,8 +123,13 @@ object-transfer and restricted-restore parcels. Their overlapping capture,
 restore, documentation, catalogue and witness hunks were merged manually,
 with managed capture aligned to the ordinary-session cluster identity SQL.
 The three focused real-PG suites passed 17/17 on that staged merge candidate.
-The merge awaits its own maintainer read before DCO. Full canonical verification,
-native review, PR and receipt are not yet claimed.
+The maintainer accepted the merge read; merge commit `ecdb6b6` has parents
+`df90117` and `c31cc19`, with the accepted tree
+`8fa143f6b5c9d9ca885f2af4a4b0081df2c49334`. A following DCO metadata
+commit records the merged documentation-impact digest because the policy reader
+excludes merge-commit trailers. The public policy and documentation check passes
+against the new main base. Full canonical verification, native review, PR and
+receipt are not yet claimed.
 
 Self-retro at this stop: the first actual managed extraction revealed a pending
 welcome outbox item and email timeline that synthetic projection alone missed;
