@@ -7,6 +7,7 @@ import {
   createPgAdvisoryLock,
   type AdvisoryLockQuerier,
 } from "../../src/scheduler/advisoryLock.js";
+import { withAdvisoryLock } from "../../src/scheduler/nodeScheduler.js";
 
 describe("advisoryLockKey", () => {
   it("is deterministic and stable per jobId", () => {
@@ -70,7 +71,11 @@ describe("createPgAdvisoryLock", () => {
       .mockResolvedValue({ rows: [{ pid: 42, locked: true, held: true, unlocked: true }] });
     const lock = createPgAdvisoryLock({ query });
     await expect(lock.tryAcquire("cleanup")).resolves.toBe(false);
-    await expect(lock.tryAcquire("cleanup")).rejects.toBe(failure);
+    const body = vi.fn();
+    await expect(withAdvisoryLock("cleanup", lock, body, vi.fn())()).rejects.toThrow(
+      /OPENLUP_E_ADVISORY_SESSION_AFFINITY.*Drain the host and retire its lock backend/,
+    );
+    expect(body).not.toHaveBeenCalled();
     await expect(lock.tryAcquire("cleanup")).rejects.toThrow("OPENLUP_E_ADVISORY_SESSION_AFFINITY");
     await expect(lock.tryAcquire("other")).rejects.toThrow("OPENLUP_E_ADVISORY_SESSION_AFFINITY");
     expect(query).toHaveBeenCalledTimes(2);

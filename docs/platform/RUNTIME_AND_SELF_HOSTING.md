@@ -23,9 +23,10 @@ Neither a different URL nor pool mode grants a different database role.
 
 Before each scheduler grant admits a callback, the adapter observes the backend
 PID and its exact granted advisory key in a separate SQL statement. A changed
-PID, missing ownership or an uncertain acquisition refuses further acquisitions
-on that adapter. Release checks the PID before unlocking and refuses a missing
-grant. `OPENLUP_E_ADVISORY_SESSION_AFFINITY` directs the operator to use direct or
+PID, missing ownership or an uncertain acquisition refuses the current job and
+further acquisitions on that adapter with an actionable error. Release checks
+the PID before unlocking and refuses a missing grant.
+`OPENLUP_E_ADVISORY_SESSION_AFFINITY` directs the operator to use direct or
 session-mode transport. Drain the host, close its dedicated connection, and
 retire any lock backend stranded behind a misconfigured pooler before restarting;
 do not force an unlock on an unrelated backend. The refusal does not close the

@@ -103,11 +103,11 @@ export function createPgAdvisoryLock(
         checkPid(observation.rows[0]?.pid);
         if (observation.rows[0]?.held !== true || refused || closed) throw affinityError();
         return true;
-      } catch (error) {
+      } catch {
         // An uncertain grant may still own a session lock. Never reenter it or admit more work.
         // Do not close here: other already-admitted jobs must drain before session disposal.
         refused = true;
-        throw error;
+        throw affinityError();
       }
     },
     async release(jobId) {

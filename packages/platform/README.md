@@ -777,10 +777,11 @@ uses a real local listener and bridge request across that shutdown boundary.
 The PostgreSQL lock adapter also reserves each numeric advisory key locally
 before acquisition. This prevents reentry on the same session, including pending
 acquisitions and colliding job IDs. Contention releases the reservation;
-uncertain acquisition refuses further grants and retains its reservation until
-session disposal. Each acquired key is observed on the same backend in a separate
-statement before the job runs. A changed PID or missing lock ownership refuses
-with `OPENLUP_E_ADVISORY_SESSION_AFFINITY`; release also checks the backend and
+uncertain acquisition refuses that job and further grants with an actionable
+error, retaining its reservation until session disposal. Each acquired key is
+observed on the same backend in a separate statement before the job runs. A
+changed PID or missing lock ownership refuses with
+`OPENLUP_E_ADVISORY_SESSION_AFFINITY`; release also checks the backend and
 requires an actual unlock. Failed unlock retains the reservation. Use a dedicated
 direct connection or session-mode pooler, never `Pool.query` or transaction
 pooling; a finite check cannot certify a pooler's configuration. Follow the

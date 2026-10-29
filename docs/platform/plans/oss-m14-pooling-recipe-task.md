@@ -1,7 +1,7 @@
 # M14 connection and pooling recipe
 
-Status: implementation, pre-DCO read and affected proof complete; native review
-and final verification pending. M14 remains open.
+Status: review cycle 0 exposed one material actionable-error finding; stabilized
+repair and renewed pre-DCO maintainer read pending. M14 remains open.
 
 ## Outcome and boundary
 
@@ -77,9 +77,16 @@ the corrected launch produced the final passing result above.
 Simplicity pre-check: explicit existing connection injection plus one ownership
 observation per successful acquisition is sufficient. Documentation alone cannot
 refuse observed backend switching; a new pool API or coordinator is unnecessary.
-No review cycles consumed; DCO source and merge commits are signed. Native
-review, full verification/coverage and authorized delivery remain. No submission
-or release has occurred.
+Native cycle 0: one independent FULL PASS and one FULL FAIL on tree
+`ff6a1de9e65102cf0df63fd84e4e5a83b0b74e3f`; finding
+`M14-UNCERTAIN-ACQUIRE-ERROR` identified the raw first error on an uncertain
+grant, which lacked the required drain/retire guidance. The repair emits the
+same actionable affinity refusal on that first failed attempt and proves the
+guarded body remains uncalled. The existing sticky refusal and drain stay intact.
+Repair cycle 1 will need two new FULL reviews after a renewed maintainer read.
+DCO source and merge commits are signed; this repair is not yet signed or
+reviewed. Full verification/coverage and authorized delivery remain. No
+submission or release has occurred.
 
 Self-retro: exclusive heavy-window waits were 541 seconds for affected proof and
 661 seconds for lint.
