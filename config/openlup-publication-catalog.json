@@ -8770,6 +8770,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },

@@ -488,7 +488,7 @@ profile still needs its own qualification.
 
 The prepared reader reserves one later qualified owner-path forward after that
 completion tail, at approval position seven before the five reserved
-restricted-bootstrap positions. Its approval must bind the exact file and nine function
+restricted-bootstrap positions. Its approval binds the exact file and nine function
 preimages and definitions before the SQL is introduced. The forward may only
 pin name resolution on those definitions; the current selected plan remains
 91 units until the separately approved forward is added. Earlier qualified
