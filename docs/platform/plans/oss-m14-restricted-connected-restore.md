@@ -17,8 +17,9 @@ graph. The migrator remains a trusted administrator with ADMIN membership; this
 task makes no isolation claim against it.
 
 The active supervisor is the sole writer in the assigned worktree. Existing M14
-authority permits local changes, signed commits and submission after required
-reads, review, checks and live admission; merge is currently held. No secrets,
+authority permits local changes, signed commits, submission and queue/merge
+after required reads, review, checks and live admission; the merge freeze was
+lifted on 2026-10-29. No secrets,
 hosted resources, deployment, release, settings or production action is granted. This parcel owns
 restricted connected restore, qualified-admin admission and the capture cluster
 identity check. Parcel 8A owns fixed table lists and insertion order in restore
@@ -126,8 +127,13 @@ catalogue reader's query object; correcting that wrapper made the focused
 case pass. A new exact-tree maintainer read and two fresh full reviews are
 required before canonical verification and submission.
 The test change uses the existing PostgreSQL test location and command, so
-the development-check instructions remain correct; its DCO repair commit will
-carry the policy checker's scoped `tests` no-impact trailer.
+the development-check instructions remain correct. The maintainer delegate
+accepted exact tree `24095fe27c5f2850334d6f62e31c1705d75a7f9f` before
+DCO, recorded in
+`.context/scratch/oss-m14-restricted-connected-restore/maintainer-read-20261029-4.md`.
+Commit `c67e5c89183e06cb63625ddddab393d75f167e84` contains that exact tree
+and the scoped `tests` no-impact trailer; policy has three obligations and
+none unanswered.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. The replay finding exposed a missing final check;
