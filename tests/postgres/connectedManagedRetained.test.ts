@@ -260,6 +260,13 @@ async function freshTarget() {
 }
 
 it("maps actual managed identity and failed-but-retryable money into a fresh qualified PG16 target", async () => {
+  const linkedUserId = randomUUID(), linkedClientId = randomUUID();
+  await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,'linked-consent@example.invalid')", [linkedUserId]);
+  await managed.owner.query(`INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage)
+    VALUES($1,'linked-consent@example.invalid',$2,'customer')`, [linkedClientId, linkedUserId]);
+  await managed.owner.query(`INSERT INTO public.communication_contact_links(contact_id,source_table,source_id)
+    VALUES($1,'clients',$2)`, [contactId, linkedClientId]);
+  try {
   const source = await capture(), fresh = await freshTarget();
   for (const relation of new Set(source.rows.map(row => row.relation))) {
     const [schema, table] = relation.split(".");
@@ -274,6 +281,8 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   const keyBefore = (await targetOwner!.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
   const mapped = await mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
     freshTarget: fresh, targetOwner: targetOwner! });
+  const consentHistory = mapped.retained.rows.find(row => row.relation === "public.communication_permissions");
+  expect(consentHistory?.subjects).toEqual(expect.arrayContaining([clientId, linkedClientId, linkedUserId]));
   const retainedIdentity = (rows: typeof source.rows) => rows.map(row =>
     JSON.stringify([row.source, row.relation, row.rowIdentity, row.value])).sort();
   expect(retainedIdentity(mapped.retained.rows)).toEqual(retainedIdentity(source.rows));
@@ -323,6 +332,12 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     .toEqual([{ subscription_id: subscriptionId, delivery_admission: "blocked" }]);
   expect((await targetOwner!.query("SELECT recipient_fingerprint,purpose,state FROM public.communication_recipient_consents")).rows)
     .toEqual([{ recipient_fingerprint: createHash("sha256").update(email).digest("hex"), purpose: "marketing_newsletter", state: "suppressed" }]);
+  const activeClientBefore = (await targetOwner!.query("SELECT id,email FROM public.clients WHERE id=$1", [clientId])).rows;
+  const activeConsentBefore = (await targetOwner!.query(`SELECT recipient_fingerprint,purpose,state
+    FROM public.communication_recipient_consents`)).rows;
+  expect(activeClientBefore).toEqual([{ id: clientId, email }]);
+  expect(activeConsentBefore).toEqual([{ recipient_fingerprint: createHash("sha256").update(email).digest("hex"),
+    purpose: "marketing_newsletter", state: "suppressed" }]);
   expect((await targetOwner!.query("SELECT id FROM public.outbox_events WHERE status='pending'")).rows).toHaveLength(2);
   expect((await targetOwner!.query("SELECT order_id,status FROM public.invoicing_duties")).rows)
     .toEqual([{ order_id: paidOrderId, status: "owed" }]);
@@ -357,6 +372,23 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   expect(Buffer.from(redactedObject.bytes).toString("utf8")).not.toContain(email);
   expect(readManagedRetainedHistory(Buffer.concat(redactedChunks), redactedObject.sha256).rows.some(row =>
     row.subjects.includes(userId) || row.subjects.includes(targetPrincipal))).toBe(false);
+  const unrelatedRedacted = redactManagedRetainedHistory(mapped.retained, linkedClientId);
+  const unrelatedObject = exportManagedRetainedHistory(unrelatedRedacted);
+  const unrelatedReadback = readManagedRetainedHistory(unrelatedObject.bytes, unrelatedObject.sha256);
+  expect(unrelatedReadback.rows).not.toContainEqual(expect.objectContaining({
+    relation: consentHistory!.relation, rowIdentity: consentHistory!.rowIdentity }));
+  expect(unrelatedReadback.rows).not.toContainEqual(expect.objectContaining({
+    relation: "public.clients", rowIdentity: clientId }));
+  expect((await targetOwner!.query("SELECT id,email FROM public.clients WHERE id=$1", [clientId])).rows)
+    .toEqual(activeClientBefore);
+  expect((await targetOwner!.query(`SELECT recipient_fingerprint,purpose,state
+    FROM public.communication_recipient_consents`)).rows).toEqual(activeConsentBefore);
+  } finally {
+    await managed.owner.query("DELETE FROM public.communication_contact_links WHERE contact_id=$1 AND source_id=$2",
+      [contactId, linkedClientId]);
+    await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [linkedClientId]);
+    await managed.owner.query("DELETE FROM auth.users WHERE id=$1", [linkedUserId]);
+  }
 }, postgresSetupTimeoutMs);
 
 it("reads actual managed Auth, Storage and business metadata under one snapshot with private redaction", async () => {
@@ -458,3 +490,238 @@ it("checks settlement invoice conflicts and nullable owner links", async () => {
     await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [otherClientId]);
   }
 });
+
+it("retains every populated email delivery subject and erases cross-subject history on readback", async () => {
+  const otherUserId = randomUUID(), otherClientId = randomUUID(), otherContactId = randomUUID();
+  const delivery = (await managed.owner.query<{ id: string; contact_id: string | null; auth_user_id: string | null }>(
+    "SELECT id,contact_id,auth_user_id FROM public.communication_email_deliveries WHERE client_id=$1 ORDER BY id LIMIT 1",
+    [clientId])).rows[0]!;
+  await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [otherUserId, "other-delivery@example.invalid"]);
+  try {
+    await managed.owner.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
+      [otherClientId, "other-delivery@example.invalid", otherUserId]);
+    await managed.owner.query("INSERT INTO public.communication_contacts(id,normalized_email,display_email) VALUES($1,$2,$2)",
+      [otherContactId, "other-delivery@example.invalid"]);
+    await managed.owner.query("INSERT INTO public.communication_contact_links(contact_id,source_table,source_id) VALUES($1,'clients',$2)",
+      [otherContactId, otherClientId]);
+    const checkReadback = async (erased: string, expectedOther: string[]) => {
+      const retained = await capture();
+      const row = retained.rows.find(value => value.relation === "public.communication_email_deliveries"
+        && (JSON.parse(value.value) as { id: string }).id === delivery.id);
+      expect(row?.subjects).toEqual(expect.arrayContaining([clientId, ...expectedOther]));
+      for (const subject of [clientId, erased]) {
+        const redacted = redactManagedRetainedHistory(retained, subject);
+        const bytes = Buffer.from(JSON.stringify(redacted));
+        const sha256 = createHash("sha256").update(bytes).digest("hex");
+        expect(readManagedRetainedHistory(bytes, sha256).rows).not.toContainEqual(expect.objectContaining({ rowIdentity: row!.rowIdentity,
+          relation: "public.communication_email_deliveries" }));
+      }
+    };
+    await managed.owner.query("UPDATE public.communication_email_deliveries SET contact_id=$2,auth_user_id=$3 WHERE id=$1",
+      [delivery.id, otherContactId, userId]);
+    await checkReadback(otherClientId, [otherClientId, otherUserId]);
+    await managed.owner.query("UPDATE public.communication_email_deliveries SET contact_id=$2,auth_user_id=$3 WHERE id=$1",
+      [delivery.id, contactId, otherUserId]);
+    await checkReadback(otherUserId, [otherUserId]);
+    await managed.owner.query("UPDATE public.communication_email_deliveries SET contact_id=$2,auth_user_id=$3 WHERE id=$1",
+      [delivery.id, contactId, userId]);
+    const sameOwner = await capture();
+    expect(sameOwner.rows.find(value => value.relation === "public.communication_email_deliveries"
+      && (JSON.parse(value.value) as { id: string }).id === delivery.id)?.subjects).toContain(clientId);
+  } finally {
+    await managed.owner.query("UPDATE public.communication_email_deliveries SET contact_id=$2,auth_user_id=$3 WHERE id=$1",
+      [delivery.id, delivery.contact_id, delivery.auth_user_id]);
+    await managed.owner.query("DELETE FROM public.communication_contact_links WHERE contact_id=$1", [otherContactId]);
+    await managed.owner.query("DELETE FROM public.communication_contacts WHERE id=$1", [otherContactId]);
+    await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [otherClientId]);
+    await managed.owner.query("DELETE FROM auth.users WHERE id=$1", [otherUserId]);
+  }
+});
+
+it("unions populated owner links across the finite retained business classes", async () => {
+  const b = { user: randomUUID(), client: randomUUID(), contact: randomUUID(), subscription: randomUUID(),
+    cycle: randomUUID(), line: randomUUID(), event: randomUUID(), order: randomUUID(), payment: randomUUID(),
+    intent: randomUUID(), attempt: randomUUID(), lead: randomUUID(), revoked: randomUUID() };
+  const emailB = "provenance-b@example.invalid";
+  await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [b.user, emailB]);
+  try {
+    await managed.owner.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
+      [b.client, emailB, b.user]);
+    await managed.owner.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)",
+      [b.user, emailB]);
+    await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [b.revoked, "revoked-provenance@example.invalid"]);
+    await managed.owner.query(`INSERT INTO public.admin_users
+      (id,email,role,is_machine_actor,membership_state,membership_revoked_at,membership_revoked_by)
+      VALUES($1,$2,'admin',false,'revoked',now(),$3)`, [b.revoked, "revoked-provenance@example.invalid", b.user]);
+    await managed.owner.query("INSERT INTO public.communication_contacts(id,normalized_email,display_email) VALUES($1,$2,$2)",
+      [b.contact, emailB]);
+    await managed.owner.query("INSERT INTO public.communication_contact_links(contact_id,source_table,source_id) VALUES($1,'clients',$2)",
+      [b.contact, b.client]);
+    await managed.owner.query("INSERT INTO public.clients(id,email,identity_kind,marketing_contact_id) VALUES($1,$2,'marketing_lead',$3)",
+      [b.lead, "provenance-lead@example.invalid", b.contact]);
+    await managed.owner.query(`INSERT INTO public.subscriptions
+      (id,client_id,cadence_days,currency,region_code,status,next_cycle_at,payment_method_ref,payment_method_kind)
+      VALUES($1,$2,28,'XXX','ZZ','active','2027-01-01','b-method','card')`, [b.subscription, b.client]);
+    await managed.owner.query(`INSERT INTO public.subscription_cycles
+      (id,subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key)
+      VALUES($1,$2,0,'2026-11-01','cancelled',$3)`, [b.cycle, b.subscription, `b-cycle:${b.cycle}`]);
+    await managed.owner.query("INSERT INTO public.subscription_lines(id,subscription_id,variant_id,qty,sort_order) VALUES($1,$2,$3,1,0)",
+      [b.line, b.subscription, skuId]);
+    await managed.owner.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload)
+      VALUES($1,$2,'created',$3,'{}')`, [b.event, b.subscription, `b-event:${b.event}`]);
+    await managed.owner.query(`INSERT INTO public.commerce_orders
+      (id,client_id,status,currency,subtotal_cents,total_cents,mode)
+      VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [b.order, b.client]);
+    await managed.owner.query(`INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency)
+      VALUES($1,$2,'synthetic-provider','failed',900,'XXX')`, [b.payment, b.order]);
+    await managed.owner.query(`INSERT INTO public.commerce_payment_intents
+      (id,target_kind,order_id,payment_id,amount_cents,currency,status)
+      VALUES($1,'one_time_order',$2,$3,900,'XXX','failed')`, [b.intent, b.order, b.payment]);
+    await managed.owner.query(`INSERT INTO public.commerce_payment_attempts
+      (id,payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
+      VALUES($1,$2,$3,'synthetic-provider',$4,'failed',900,'XXX')`, [b.attempt, b.intent, b.payment, `b-attempt:${b.attempt}`]);
+    const id = async (table: string, condition: string, value: string) => (await managed.owner.query<{ id: string }>(
+      `SELECT id FROM public.${table} WHERE ${condition}=$1 ORDER BY id LIMIT 1`, [value])).rows[0]!.id;
+    const existing = { attempt: await id("commerce_payment_attempts", "payment_intent_id", paidIntentId),
+      transition: await id("commerce_payment_state_transitions", "payment_intent_id", paidIntentId),
+      method: await id("commerce_payment_method_refs", "client_id", clientId),
+      cycle: await id("subscription_cycles", "subscription_id", subscriptionId),
+      event: await id("subscription_events", "subscription_id", subscriptionId),
+      agreement: await id("subscription_price_agreements", "subscription_id", subscriptionId),
+      outbox: await id("outbox_events", "aggregate_id", orderId),
+      audit: await id("admin_audit_events", "actor_admin_id", managed.operator) };
+    const witness = async (relation: string, rowId: string, ownerA: string, ownerB: string,
+      change: () => Promise<unknown>, reset: () => Promise<unknown>) => {
+      await change();
+      try {
+        const retained = await capture();
+        const row = retained.rows.find(value => value.relation === relation
+          && (JSON.parse(value.value) as { id: string }).id === rowId);
+        expect(row?.subjects, relation).toEqual(expect.arrayContaining([ownerA, ownerB]));
+        for (const subject of [ownerA, ownerB]) {
+          const redacted = redactManagedRetainedHistory(retained, subject);
+          const bytes = Buffer.from(JSON.stringify(redacted));
+          const sha256 = createHash("sha256").update(bytes).digest("hex");
+          expect(readManagedRetainedHistory(bytes, sha256).rows, relation).not.toContainEqual(
+            expect.objectContaining({ relation, rowIdentity: row!.rowIdentity }));
+        }
+      } finally { await reset(); }
+    };
+    await witness("public.clients", b.lead, b.lead, b.client,
+      async () => {}, async () => {});
+    await witness("public.commerce_payment_intents", paidIntentId, clientId, b.client,
+      () => managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=$2 WHERE id=$1", [paidIntentId, b.attempt]),
+      () => managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=NULL WHERE id=$1", [paidIntentId]));
+    await witness("public.commerce_payment_attempts", existing.attempt, clientId, b.client,
+      () => managed.owner.query("UPDATE public.commerce_payment_attempts SET payment_id=$2 WHERE id=$1", [existing.attempt, b.payment]),
+      () => managed.owner.query("UPDATE public.commerce_payment_attempts SET payment_id=$2 WHERE id=$1", [existing.attempt, paidPaymentId]));
+    await witness("public.commerce_payment_state_transitions", existing.transition, clientId, b.client,
+      () => managed.owner.query("UPDATE public.commerce_payment_state_transitions SET payment_attempt_id=$2 WHERE id=$1", [existing.transition, b.attempt]),
+      () => managed.owner.query("UPDATE public.commerce_payment_state_transitions SET payment_attempt_id=NULL WHERE id=$1", [existing.transition]));
+    await witness("public.commerce_payment_method_refs", existing.method, clientId, b.client,
+      () => managed.owner.query("UPDATE public.commerce_payment_method_refs SET subscription_id=$2 WHERE id=$1", [existing.method, b.subscription]),
+      () => managed.owner.query("UPDATE public.commerce_payment_method_refs SET subscription_id=$2 WHERE id=$1", [existing.method, subscriptionId]));
+    await witness("public.subscription_cycles", existing.cycle, clientId, b.client,
+      () => managed.owner.query("UPDATE public.subscription_cycles SET order_id=$2 WHERE id=$1", [existing.cycle, b.order]),
+      () => managed.owner.query("UPDATE public.subscription_cycles SET order_id=NULL WHERE id=$1", [existing.cycle]));
+    await witness("public.subscription_events", existing.event, clientId, b.client,
+      () => managed.owner.query("UPDATE public.subscription_events SET cycle_id=$2 WHERE id=$1", [existing.event, b.cycle]),
+      () => managed.owner.query("UPDATE public.subscription_events SET cycle_id=NULL WHERE id=$1", [existing.event]));
+    await witness("public.subscription_price_agreements", existing.agreement, clientId, b.client,
+      () => managed.owner.query("UPDATE public.subscription_price_agreements SET event_id=$2 WHERE id=$1", [existing.agreement, b.event]),
+      () => managed.owner.query("UPDATE public.subscription_price_agreements SET event_id=NULL WHERE id=$1", [existing.agreement]));
+    await witness("public.outbox_events", existing.outbox, clientId, b.client,
+      () => managed.owner.query("UPDATE public.outbox_events SET payload=$2::jsonb WHERE id=$1", [existing.outbox, JSON.stringify({ clientId: b.client })]),
+      () => managed.owner.query("UPDATE public.outbox_events SET payload='{}'::jsonb WHERE id=$1", [existing.outbox]));
+    await witness("public.admin_audit_events", existing.audit, managed.operator, b.user,
+      () => managed.owner.query("UPDATE public.admin_audit_events SET target_admin_id=$2 WHERE id=$1", [existing.audit, b.user]),
+      () => managed.owner.query("UPDATE public.admin_audit_events SET target_admin_id=NULL WHERE id=$1", [existing.audit]));
+    await witness("public.admin_users", b.revoked, b.revoked, b.user,
+      async () => {}, async () => {});
+    const linkId = (await managed.owner.query<{ id: string }>(`INSERT INTO public.communication_contact_links
+      (contact_id,source_table,source_id) VALUES($1,'clients',$2) RETURNING id`, [b.contact, b.lead])).rows[0]!.id;
+    try { await witness("public.communication_contact_links", linkId, b.lead, b.client,
+      async () => {}, async () => {}); }
+    finally { await managed.owner.query("DELETE FROM public.communication_contact_links WHERE id=$1", [linkId]); }
+    const unresolvedId = (await managed.owner.query<{ id: string }>(`INSERT INTO public.communication_contact_links
+      (contact_id,source_table,source_id) VALUES($1,'clients',$2) RETURNING id`, [contactId, randomUUID()])).rows[0]!.id;
+    try {
+      await expect(capture()).rejects.toMatchObject({ code: "target_conflict", table: "public.communication_contact_links" } satisfies Partial<PostgresTransferError>);
+    } finally { await managed.owner.query("DELETE FROM public.communication_contact_links WHERE id=$1", [unresolvedId]); }
+  } finally {
+    await managed.owner.query("DELETE FROM public.communication_email_deliveries WHERE client_id=$1", [b.client]);
+    await managed.owner.query("DELETE FROM public.outbox_events WHERE aggregate_id IN ($1,$2)", [b.order, b.subscription]);
+    await managed.owner.query("DELETE FROM public.commerce_payment_attempts WHERE id=$1", [b.attempt]);
+    await managed.owner.query("DELETE FROM public.commerce_payment_intents WHERE id=$1", [b.intent]);
+    await managed.owner.query("DELETE FROM public.commerce_payments WHERE id=$1", [b.payment]);
+    await managed.owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [b.order]);
+    await managed.owner.query("DELETE FROM public.subscription_events WHERE id=$1", [b.event]);
+    await managed.owner.query("DELETE FROM public.subscription_lines WHERE id=$1", [b.line]);
+    await managed.owner.query("DELETE FROM public.subscription_cycles WHERE id=$1", [b.cycle]);
+    await managed.owner.query("DELETE FROM public.subscriptions WHERE id=$1", [b.subscription]);
+    await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [b.lead]);
+    await managed.owner.query("DELETE FROM public.communication_contact_links WHERE contact_id=$1", [b.contact]);
+    await managed.owner.query("DELETE FROM public.communication_contacts WHERE id=$1", [b.contact]);
+    await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [b.client]);
+    // The managed membership boundary forbids direct admin deletion; the
+    // disposable stack removes this synthetic admin and Auth row at teardown.
+  }
+});
+
+it("retains a completed-erasure subject after Auth deletion without reviving it", async () => {
+  const erasedUser = randomUUID(), erasedClient = randomUUID(), deliveryId = randomUUID(), auditId = randomUUID();
+  // The pinned managed baseline predates the direct receipt relation. Add only
+  // its receipt-shaped forward fixture to exercise the finite capture profile.
+  await managed.owner.query(`CREATE TABLE public.identity_privacy_erasures (
+    erasure_id uuid PRIMARY KEY, idempotency_key uuid NOT NULL UNIQUE,
+    client_id uuid UNIQUE REFERENCES public.clients(id), principal_id uuid UNIQUE,
+    actor_principal_id uuid NOT NULL, contract_version text NOT NULL,
+    contributor_versions jsonb NOT NULL, dispositions jsonb NOT NULL,
+    retained_obligations jsonb NOT NULL, completed_at timestamptz NOT NULL)`);
+  try {
+    await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,'erased-source@example.invalid')", [erasedUser]);
+    await managed.owner.query(`INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage)
+      VALUES($1,'erased-source@example.invalid',$2,'customer')`, [erasedClient, erasedUser]);
+    await managed.owner.query(`INSERT INTO public.communication_email_deliveries
+      (id,client_id,auth_user_id,purpose,template_slug,trigger_source,trigger_event,dedupe_key)
+      VALUES($1,$2,$3,'transactional','synthetic-erasure','synthetic_fixture','synthetic.erasure',$4)`,
+    [deliveryId, erasedClient, erasedUser, `erased-delivery:${deliveryId}`]);
+    await managed.owner.query(`INSERT INTO public.admin_audit_events
+      (id,actor_admin_id,action,entity_type,entity_id,source,actor_kind)
+      VALUES($1,$2,'customer_read','client',$3,'admin_ui','human')`, [auditId, managed.operator, erasedClient]);
+    await managed.owner.query("DELETE FROM auth.users WHERE id=$1", [erasedUser]);
+    await managed.owner.query("UPDATE public.clients SET email=$2 WHERE id=$1",
+      [erasedClient, `erased+${erasedClient}@identity.invalid`]);
+    expect((await managed.owner.query("SELECT auth_user_id FROM public.clients WHERE id=$1", [erasedClient])).rows)
+      .toEqual([{ auth_user_id: null }]);
+    expect((await managed.owner.query("SELECT auth_user_id FROM public.communication_email_deliveries WHERE id=$1", [deliveryId])).rows)
+      .toEqual([{ auth_user_id: erasedUser }]);
+    await expect(capture()).rejects.toMatchObject({ code: "target_conflict", table: "public.communication_email_deliveries" } satisfies Partial<PostgresTransferError>);
+    await managed.owner.query(`INSERT INTO public.identity_privacy_erasures
+      (erasure_id,idempotency_key,client_id,principal_id,actor_principal_id,contract_version,
+        contributor_versions,dispositions,retained_obligations,completed_at)
+      VALUES($1,$2,$3,$4,$5,'identity.erasure.v1','{}','[]','[]',now())`,
+    [randomUUID(), randomUUID(), erasedClient, erasedUser, managed.operator]);
+    const retained = await capture();
+    expect(retained.rows.filter(row => row.relation === "auth.users"
+      && (JSON.parse(row.value) as { id: string }).id === erasedUser)).toHaveLength(0);
+    for (const [relation, id] of [["public.clients", erasedClient], ["public.communication_email_deliveries", deliveryId],
+      ["public.admin_audit_events", auditId]]) {
+      const row = retained.rows.find(value => value.relation === relation
+        && (JSON.parse(value.value) as { id: string }).id === id);
+      expect(row?.subjects, relation).toContain(erasedUser);
+    }
+    const redacted = redactManagedRetainedHistory(retained, erasedUser);
+    const bytes = Buffer.from(JSON.stringify(redacted)), sha256 = createHash("sha256").update(bytes).digest("hex");
+    const readback = readManagedRetainedHistory(bytes, sha256);
+    expect(readback.rows.some(row => row.subjects.includes(erasedUser))).toBe(false);
+    expect(readback.rows.some(row => row.value.includes("erased-source@example.invalid"))).toBe(false);
+  } finally {
+    await managed.owner.query("DELETE FROM public.communication_email_deliveries WHERE id=$1", [deliveryId]);
+    await managed.owner.query("DELETE FROM public.admin_audit_events WHERE id=$1", [auditId]);
+    await managed.owner.query("DELETE FROM public.identity_privacy_erasures WHERE client_id=$1", [erasedClient]);
+    await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [erasedClient]);
+    await managed.owner.query("DELETE FROM auth.users WHERE id=$1", [erasedUser]);
+    await managed.owner.query("DROP TABLE public.identity_privacy_erasures");
+  }
+}, postgresSetupTimeoutMs);

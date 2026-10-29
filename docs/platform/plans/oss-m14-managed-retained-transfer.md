@@ -209,3 +209,91 @@ with tree `78df4d1957bb56891fac077ebcbd049fcb784ca6`. CD-M14-34 authorizes
 one native-review `continue` after that read and DCO. This remains a privacy
 coverage correction within parcel 8A's existing outcome and does not extend
 the hosted qualification boundary.
+
+## Finite retained-row subject provenance audit (CD-M14-35)
+
+This matrix was checked against `subjectOwners`, the frozen managed baseline's
+nullable FK columns, and the finite `mapManagedRetainedBusiness` publication
+profile. `U` means the union of every populated link's resolved subjects;
+unresolved non-null links refuse `target_conflict` before publication. `R`
+means the mapping already refuses the specified nonempty class or shape, so
+no private sidecar can be published from it. `S` is the accepted settlement
+same-order integrity rule. W0 is the original managed→PG16/erasure witness and
+settlement-link test; W1 is the delivery client/contact/Auth readback witness;
+W2 is the finite cross-subject source/readback witness; W3 is the mapped
+consent/client managed→PG16 witness. Union and whole-row removal apply only to
+private sidecar history. `H` means sidecar whole-row removal; `N(table)` means
+the named native table keeps its own domain erasure/redaction or retained-duty
+path; `H+N` means both, with the active row kept. `X` means no admitted row.
+Native identity rows use `identityPersonalDataContributor`; subscription rows
+use `subscriptionsPrivacyContributor`'s obligation veto/retention; commerce,
+outbox, consent and invoicing rows remain in their named native stores under
+their domain-owned retention/privacy path. This classification does not claim
+that a sidecar redaction executes any native erasure operation. Redaction
+witnesses serialize the sidecar and verify readback removes a cross-linked row.
+
+| Retained relation / branch | Populated subject links | Resolution and conflict | Erasure path | Witness |
+| --- | --- | --- | --- | --- |
+| `clients` | own ID, `auth_user_id`, `marketing_contact_id` | U via Auth and contact→linked clients; absent FK refuses. Customer/contact coexistence is barred by source shape. | H+N(`clients`; identity contributor) | W0, W2 marketing lead, W3 |
+| `admin_users` | own ID, `membership_revoked_by` | U via admin rows; missing revoker refuses. | H+N(`platform_human_principals`/`platform_human_memberships`; identity contributor) | W2 |
+| `admin_audit_events` | actor, target admin, `customer_read.entity_id` | U via admin/client rows; missing populated link refuses. Other entity types are not customer links in the finite action set. | H+N(`platform_human_membership_audit_events`; revoke only); H otherwise | W0, W2 |
+| `identity_privacy_erasures` | actor, erased principal, client | Existing union of pseudonymous keys; absent pinned baseline, but the finite profile recognizes a receipt-shaped forward source. | H+N(`identity_privacy_erasures`; immutable native receipt) when mapped | W4 capture |
+| `subscriptions` | client; optional pet and addresses | Client owner; pet/address links must be null; nonempty parents refuse. | H+N(`subscriptions`/`subscription_renewal_terms`; subscription contributor) | W0; guards |
+| `commerce_orders` | client; optional subscription/cycle/recovery/recreated order | Client owner; optional links must be null or R. Pet/address/session parents refuse. | H+N(`commerce_orders`; commerce retained obligation) | W0; guards |
+| `commerce_payment_intents` | order, payment, active attempt; optional subscription/cycle | U for order/payment/attempt; missing link refuses. Subscription/cycle must be null (R). | H+N(`commerce_settlement_intents`; commerce settlement path) | W0, W2 |
+| `commerce_payment_attempts` | intent, payment | U; missing populated link refuses. | H; terminal effect is in native `commerce_settlement_intents`/transitions | W0, W2 |
+| `commerce_payment_state_transitions` | intent, attempt | U; missing populated link refuses. Provider event parent outside profile. | H+N(`commerce_settlement_transitions`; settlement path) | W0, W2 |
+| `commerce_payment_method_refs` | client, subscription | U; missing populated link refuses. Active mismatch refuses; terminal rows history only. | H+N(`subscription_renewal_terms`; active); H terminal | W0, W2 |
+| `commerce_payment_reconciliation_runs` | intent, attempt | Nonempty class R before publication. | X | map refusal |
+| `subscription_cycles` | subscription, order, payment | U; missing populated link refuses. | H+N(`subscription_cycles`; subscription contributor) | W0, W2 |
+| `subscription_events` | subscription, cycle | U; missing populated link refuses. | H+N(`subscription_events`; subscription contributor) | W0, W2 |
+| `subscription_price_agreements` | subscription, line, event | U; missing populated link refuses; current and terminal rows covered. | H+N(`subscription_lines`/`subscription_renewal_term_lines`; current); H terminal | W0, W2 |
+| `subscription_dunning_cases` / `subscription_dunning_notifications` | subscription, cycle, order, intent, client/case/recipient | Nonempty classes R; recipient refs are not inferred as clients. | X | map refusal |
+| `accounting_invoices` | order, correction parent invoice | Order owner; correction rows cannot enter supported issue-outbox cohort (R). | H+N(`invoicing_fact_revisions`; invoicing duty path) | W0; guards |
+| `communication_contacts` / `communication_contact_links` | contact→all client links and marketing leads; link's own source client | U for every resolved client link; non-client/unresolved source links refuse. | H | W0, W1, W2 |
+| `communication_permissions` / `communication_permission_events` | contact→all linked clients | U via contact links; permission maps, nonempty events R. | H+N(`communication_recipient_consents`; consent state) / X for events | W0, W3; profile refusal |
+| `communication_provider_events` | contact, normalized email | Nonempty class R before publication. | X | map refusal |
+| `communication_delivery_events` | operator, command/recipient key | Parent command/operator tables outside profile; nonempty rows refuse. | X | capture refusal |
+| `communication_email_deliveries` | client, contact, Auth, outbox, aggregate | U; missing populated link refuses. Other service parents require unknown nonempty tables and refuse. | H; mapped trigger stays in native `outbox_events` | W0, W1 |
+| `outbox_events` | aggregate order/subscription; typed payload client/order/subscription keys | U; missing populated known link refuses. Pending payload checked in projection. | H+N(`outbox_events`; pending); H terminal | W0, W2 |
+| `payment_provider_settlement_items` / `payment_provider_settlement_batches` | intent, payment, invoice; batch's items | S: populated item links must resolve to same order; cross-order is a money-integrity anomaly. Batch unions item owners; all-null item refuses for 8D-2. | H; native settlement/intents and invoicing duties remain | W0 |
+
+W3 adds a second managed client B to A's contact, then maps and restores the
+real pinned managed source into PG16. The consent and A's client history name B;
+redacting B removes both source-keyed sidecar rows on serialized readback.
+Target `communication_recipient_consents` still has the exact suppressed
+fingerprint/purpose/state, and target A `clients` still has the exact ID/email.
+`redactManagedRetainedHistory` changes only the sidecar object; it never edits
+the canonical packet or runs native identity, commerce or consent erasure.
+Self-retro: the first provenance packet left the native erasure boundary implicit;
+the named path column and restored-row witness make that boundary reviewable.
+
+W4 uses the pinned managed baseline with a temporary direct-format erasure
+receipt relation in the disposable fixture; it does not claim that baseline
+ships a managed erasure operation. Deleting a synthetic Auth user sets its
+`clients.auth_user_id` to NULL (`clients_auth_user_id_fkey ON DELETE SET NULL`),
+while `communication_email_deliveries.auth_user_id` retains the deleted UUID
+because that column has no Auth FK. A completed receipt binds the erased
+principal to the client, whose synthetic profile uses the reserved erased
+address. The finite owner resolver now uses that exact receipt
+to retain the erased principal in client, delivery and customer-read audit
+provenance; the same real fixture first proves a dangling delivery Auth ID
+without the receipt refuses `target_conflict`. The real
+managed readback confirms no Auth row is recreated, and redacting the erased
+principal removes every linked private row and the synthetic email. This is
+a source-level privacy change and needs its own maintainer delta read before DCO.
+Self-retro: the explicit no-receipt refusal guards against turning arbitrary
+dangling Auth references into accepted erased-subject provenance.
+
+Rows with one direct subject parent (`commerce_payments`, order items, invoice
+outboxes, subscription lines, payment external refs) use
+that parent; subject-free catalog/pricing and Storage buckets are explicit
+exceptions. Nonempty unknown service/credential-bearing relations keep their
+existing refusal/exclusion dispositions. This audit adds no general graph
+importer or sidecar schema.
+
+Regroup lesson: repeated first-populated owner selection across retained
+relations → audit all finite subject links once and use direct per-relation
+union/refusal with cross-subject readback proof. The prior settlement-only
+repair closed its row's card but left the same pattern in delivery history;
+the matrix and shared finite resolver cover the published cohort together.

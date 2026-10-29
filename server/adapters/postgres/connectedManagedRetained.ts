@@ -185,32 +185,81 @@ export async function captureManagedRetainedHistory(input: {
 
 function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) => string[] | null {
   const clients = new Map(all.get("public.clients")?.map(row => [row.id, row]) ?? []);
+  const authUsers = new Map(all.get("auth.users")?.map(row => [row.id, row]) ?? []);
+  const adminUsers = new Map(all.get("public.admin_users")?.map(row => [row.id, row]) ?? []);
   const subscriptions = new Map(all.get("public.subscriptions")?.map(row => [row.id, row]) ?? []);
+  const cycles = new Map(all.get("public.subscription_cycles")?.map(row => [row.id, row]) ?? []);
+  const lines = new Map(all.get("public.subscription_lines")?.map(row => [row.id, row]) ?? []);
+  const subscriptionEvents = new Map(all.get("public.subscription_events")?.map(row => [row.id, row]) ?? []);
   const orders = new Map(all.get("public.commerce_orders")?.map(row => [row.id, row]) ?? []);
   const intents = new Map(all.get("public.commerce_payment_intents")?.map(row => [row.id, row]) ?? []);
   const payments = new Map(all.get("public.commerce_payments")?.map(row => [row.id, row]) ?? []);
+  const attempts = new Map(all.get("public.commerce_payment_attempts")?.map(row => [row.id, row]) ?? []);
   const invoices = new Map(all.get("public.accounting_invoices")?.map(row => [row.id, row]) ?? []);
+  const outbox = new Map(all.get("public.outbox_events")?.map(row => [row.id, row]) ?? []);
   const contacts = new Map(all.get("public.communication_contacts")?.map(row => [row.id, row]) ?? []);
+  const erasedPrincipals = new Set<string>();
+  const erasedPrincipalByClient = new Map<string, string>();
+  for (const row of all.get("public.identity_privacy_erasures") ?? []) {
+    if (typeof row.principal_id !== "string" || typeof row.completed_at !== "string") continue;
+    erasedPrincipals.add(row.principal_id);
+    if (typeof row.client_id !== "string") continue;
+    const prior = erasedPrincipalByClient.get(row.client_id);
+    if (prior && prior !== row.principal_id) fail("target_conflict", "public.identity_privacy_erasures");
+    erasedPrincipalByClient.set(row.client_id, row.principal_id);
+  }
   const contactOwners = new Map<unknown, string[]>();
+  for (const row of clients.values()) if (typeof row.marketing_contact_id === "string" && typeof row.id === "string")
+    contactOwners.set(row.marketing_contact_id, [...new Set([...(contactOwners.get(row.marketing_contact_id) ?? []), row.id])]);
   for (const row of all.get("public.communication_contact_links") ?? []) {
-    if (row.source_table !== "clients" || typeof row.source_id !== "string" || !clients.has(row.source_id)) continue;
+    if (row.source_table !== "clients" || typeof row.source_id !== "string") continue;
     contactOwners.set(row.contact_id, [...new Set([...(contactOwners.get(row.contact_id) ?? []), row.source_id])]);
   }
   const byClient = (id: unknown): string[] | null => {
     if (typeof id !== "string") return null;
     const client = clients.get(id);
     if (!client) return null;
-    return typeof client.auth_user_id === "string" ? [id, client.auth_user_id] : [id];
+    const erased = erasedPrincipalByClient.get(id);
+    if (client.auth_user_id === null) return erased ? [id, erased] : [id];
+    if (typeof client.auth_user_id !== "string"
+      || !authUsers.has(client.auth_user_id) && !erasedPrincipals.has(client.auth_user_id)
+      || erased && erased !== client.auth_user_id) return null;
+    return [id, client.auth_user_id];
   };
+  const byAuth = (id: unknown): string[] | null => typeof id === "string"
+    && (authUsers.has(id) || erasedPrincipals.has(id)) ? [id] : null;
+  const byAdmin = (id: unknown): string[] | null => typeof id === "string" && adminUsers.has(id) ? [id] : null;
   const bySubscription = (id: unknown): string[] | null => byClient(subscriptions.get(id)?.client_id);
+  const byCycle = (id: unknown): string[] | null => bySubscription(cycles.get(id)?.subscription_id);
+  const byLine = (id: unknown): string[] | null => bySubscription(lines.get(id)?.subscription_id);
+  const bySubscriptionEvent = (id: unknown): string[] | null => bySubscription(subscriptionEvents.get(id)?.subscription_id);
   const byOrder = (id: unknown): string[] | null => byClient(orders.get(id)?.client_id);
   const byIntent = (id: unknown): string[] | null => byOrder(intents.get(id)?.order_id);
   const byPayment = (id: unknown): string[] | null => byOrder(payments.get(id)?.order_id);
+  const byAttempt = (id: unknown): string[] | null => byIntent(attempts.get(id)?.payment_intent_id);
   const byInvoice = (id: unknown): string[] | null => byOrder(invoices.get(id)?.order_id);
   const byContact = (id: unknown): string[] | null => {
     if (!contacts.has(id)) return null;
     const linked = contactOwners.get(id);
-    return linked ? [...new Set(linked.flatMap(clientId => byClient(clientId) ?? []))] : null;
+    if (!linked) return null;
+    const owners = linked.map(byClient);
+    return owners.some(owner => owner === null) ? null : [...new Set(owners.flatMap(owner => owner!))];
+  };
+  const byAggregate = (kind: unknown, id: unknown): string[] | null => kind === "subscription" ? bySubscription(id)
+    : kind === "commerce_order" ? byOrder(id) : null;
+  const byOutbox = (id: unknown): string[] | null => {
+    const row = outbox.get(id);
+    return row ? byAggregate(row.aggregate_type, row.aggregate_id) : null;
+  };
+  const unionLinks = (relation: string, links: [unknown, (id: unknown) => string[] | null][]): string[] | null => {
+    const owners: string[] = [];
+    for (const [id, resolve] of links) {
+      if (id === null) continue;
+      const found = resolve(id);
+      if (!found?.length) fail("target_conflict", relation);
+      owners.push(...found);
+    }
+    return owners.length ? [...new Set(owners)] : null;
   };
   const settlementItems = all.get("public.payment_provider_settlement_items") ?? [];
   const bySettlementItem = (row: Row): string[] | null => {
@@ -227,18 +276,14 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     return byOrder(orders[0]) ?? fail("target_conflict", "public.payment_provider_settlement_items");
   };
   return (relation, row) => {
-    if (relation === "public.clients") return byClient(row.id);
+    if (relation === "public.clients") return unionLinks(relation,
+      [[row.id, byClient], [row.marketing_contact_id, byContact]]);
     if (relation === "auth.users") return typeof row.id === "string" ? [row.id] : null;
-    if (relation === "public.admin_users") return typeof row.id === "string" ? [row.id] : null;
+    if (relation === "public.admin_users") return unionLinks(relation,
+      [[row.id, byAdmin], [row.membership_revoked_by, byAdmin]]);
     if (relation === "public.admin_audit_events") {
-      if (typeof row.actor_admin_id !== "string") return null;
-      const owners = [row.actor_admin_id];
-      if (typeof row.target_admin_id === "string") owners.push(row.target_admin_id);
-      if (row.action === "customer_read") {
-        if (typeof row.entity_id !== "string" || !clients.has(row.entity_id)) return null;
-        owners.push(...byClient(row.entity_id)!);
-      }
-      return [...new Set(owners)];
+      return unionLinks(relation, [[row.actor_admin_id, byAdmin], [row.target_admin_id, byAdmin],
+        [row.action === "customer_read" ? row.entity_id : null, byClient]]);
     }
     if (relation === "public.identity_privacy_erasures") {
       if (typeof row.actor_principal_id !== "string") return null;
@@ -249,13 +294,25 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     }
     if (relation === "public.customer_subject_lifecycle_events") return byClient(row.client_id);
     if (relation === "public.subscriptions") return bySubscription(row.id);
+    if (relation === "public.subscription_cycles") return unionLinks(relation,
+      [[row.subscription_id, bySubscription], [row.order_id, byOrder], [row.payment_id, byPayment]]);
+    if (relation === "public.subscription_events") return unionLinks(relation,
+      [[row.subscription_id, bySubscription], [row.cycle_id, byCycle]]);
+    if (relation === "public.subscription_price_agreements") return unionLinks(relation,
+      [[row.subscription_id, bySubscription], [row.subscription_line_id, byLine], [row.event_id, bySubscriptionEvent]]);
     if (relation.startsWith("public.subscription_")) return bySubscription(row.subscription_id);
     if (relation === "public.commerce_orders") return byOrder(row.id);
     if (relation === "public.commerce_order_items" || relation === "public.commerce_payments") return byOrder(row.order_id);
-    if (relation === "public.commerce_payment_intents") return byOrder(row.order_id);
-    if (relation === "public.commerce_payment_attempts" || relation === "public.commerce_payment_state_transitions") return byIntent(row.payment_intent_id);
+    if (relation === "public.commerce_payment_intents") return unionLinks(relation, [[row.order_id, byOrder],
+      [row.subscription_id, bySubscription], [row.subscription_cycle_id, byCycle], [row.payment_id, byPayment],
+      [row.active_attempt_id, byAttempt]]);
+    if (relation === "public.commerce_payment_attempts") return unionLinks(relation,
+      [[row.payment_intent_id, byIntent], [row.payment_id, byPayment]]);
+    if (relation === "public.commerce_payment_state_transitions") return unionLinks(relation,
+      [[row.payment_intent_id, byIntent], [row.payment_attempt_id, byAttempt]]);
     if (relation === "public.payment_external_refs") return byPayment(row.payment_id);
-    if (relation === "public.commerce_payment_method_refs") return byClient(row.client_id);
+    if (relation === "public.commerce_payment_method_refs") return unionLinks(relation,
+      [[row.client_id, byClient], [row.subscription_id, bySubscription]]);
     if (relation === "public.commerce_payment_reconciliation_runs") return byIntent(row.payment_intent_id);
     if (relation === "public.payment_provider_settlement_items") return bySettlementItem(row);
     if (relation === "public.payment_provider_settlement_batches") {
@@ -271,22 +328,29 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     }
     if (relation === "public.accounting_invoices") return byInvoice(row.id);
     if (relation.startsWith("public.accounting_invoice_")) return byInvoice(row.invoice_id);
-    if (relation === "public.communication_contacts" || relation === "public.communication_contact_links"
-      || relation === "public.communication_permissions" || relation === "public.communication_permission_events") {
+    if (relation === "public.communication_contacts" || relation === "public.communication_permissions"
+      || relation === "public.communication_permission_events")
       return byContact(relation === "public.communication_contacts" ? row.id : row.contact_id);
+    if (relation === "public.communication_contact_links") {
+      if (row.source_table !== "clients" || typeof row.source_id !== "string") fail("target_conflict", relation);
+      return unionLinks(relation, [[row.contact_id, byContact], [row.source_id, byClient]]);
     }
     if (relation === "public.communication_provider_events") {
       if (row.contact_id !== null) return byContact(row.contact_id);
       const matches = [...contacts.values()].filter(contact => contact.normalized_email === row.normalized_email);
       return matches.length === 1 ? byContact(matches[0]!.id) : null;
     }
-    if (relation === "public.communication_email_deliveries") return row.client_id !== null
-      ? byClient(row.client_id) : row.contact_id !== null ? byContact(row.contact_id)
-        : typeof row.auth_user_id === "string" ? [row.auth_user_id] : null;
+    if (relation === "public.communication_email_deliveries") return unionLinks(relation,
+      [[row.client_id, byClient], [row.contact_id, byContact], [row.auth_user_id, byAuth],
+        [row.outbox_event_id, byOutbox], [row.aggregate_id, id => byAggregate(row.aggregate_type, id)]]);
     if (relation === "public.catalog_products" || relation === "public.catalog_skus"
       || relation === "public.price_lists" || relation === "public.price_entries") return [];
-    if (relation === "public.outbox_events") return row.aggregate_type === "subscription" ? bySubscription(row.aggregate_id)
-      : row.aggregate_type === "commerce_order" ? byOrder(row.aggregate_id) : null;
+    if (relation === "public.outbox_events") {
+      const payload = row.payload && typeof row.payload === "object" && !Array.isArray(row.payload) ? row.payload as Row : {};
+      return unionLinks(relation, [[row.aggregate_id, id => byAggregate(row.aggregate_type, id)],
+        [payload.clientId ?? null, byClient], [payload.orderUuid ?? null, byOrder],
+        [payload.subscriptionId ?? null, bySubscription]]);
+    }
     if (relation === "storage.buckets") return [];
     if (relation === "storage.objects") return typeof row.owner_id === "string" && row.owner_id ? [row.owner_id] : null;
     return null;
