@@ -282,6 +282,14 @@ extends that proof to a fixed native graph and the application's actual private
 target baseline, one migration-owner data transaction and independent row/file
 readback. Source media preparation and target media authorization use the actual
 restricted runtime login; owner setup cannot establish that runtime capability.
+Its selected managed identity projection is stored and read through a PostgreSQL
+snapshot before translation into the same qualified restore. Assertions cover
+exact issuer/subject derivation, distinct same-email people, human membership
+and native revoke-audit subset with source-row reference and conflict refusal,
+erasure receipt and re-link refusal, plus unsupported-source refusals. A separate
+real-PG case proves source replay, target command drain refusal and both explicit
+and maximum drain ends before a new target-key command. This local projection
+does not prove managed-provider export authority or full source audit retention.
 The existing PostgreSQL helper closes every owned pool/store and removes its
 containers, including after setup failure. A privilege refusal before the main
 case is a blocked proof, even when the runner reports the case skipped. Record
@@ -2748,6 +2756,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, M14 managed identity mapping: boundary edge gaps in a fixed
+  mapper/control → validate existing input and command ordering at outer route
+  entries directly before adding another mechanism.
 
 - 2026-10-29, M14 schema-upgrade proof: diagnostic prose repeated a scanned
   token after the code fix → describe the mechanism without reproducing the

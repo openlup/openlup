@@ -1394,6 +1394,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-managed-identity-mapping.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -17643,6 +17647,10 @@
     },
     {
       "path": "server/runtime/marketing/acquisitionEvidenceBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/marketing/acquisitionLegacyDrain.ts",
       "class": "public-output"
     },
     {
