@@ -5,7 +5,7 @@ const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
 const intent = { risk: 'routine', criteria: 'Preserve the approved behavior' };
 const prepare = (extra = {}) => prepareCandidate(null, { ...observed, intent, authorSessionId: 'author', ...extra }, time);
-const report = (extra = {}) => ({ reviewer: 'reviewer-1', cold: true, tree: observed.tree, verdict: 'PASS', findings: [], closes: [], ...extra });
+const report = (extra = {}) => ({ reviewer: 'reviewer-1', cold: true, tree: observed.tree, verdict: 'PASS', findings: [], closes: [], documentation: 'Reviewed canonical guidance and secondary examples; no documentation impact.', ...extra });
 const passed = () => recordReport(prepare(), report(), time);
 
 describe('native review decisions', () => {
@@ -45,6 +45,7 @@ describe('native review decisions', () => {
   });
   it.each([
     { reviewer: 'author' }, { reviewer: '' }, { cold: false }, { verdict: 'pass' },
+    { documentation: undefined }, { documentation: '   ' }, { documentation: 42 }, { documentation: 'x'.repeat(4097) },
     { tree: 'd'.repeat(40) }, { findings: null }, { closes: null },
     { findings: [{ id: 'F1', summary: '', material: true }] },
     { findings: [{ id: 'F1', summary: 'broken' }] }, { closes: ['unknown'] },
@@ -57,6 +58,24 @@ describe('native review decisions', () => {
     const next = prepareCandidate(session, { ...observed, head: 'd'.repeat(40), tree: 'e'.repeat(40), intent, authorSessionId: 'author' }, time);
     expect(() => recordReport(next, report({ tree: next.candidate.tree }), time)).toThrow('already used');
     expect(verdict(next, next.candidate, time).code).toBe('needs_agent_review');
+  });
+  it('keeps prior reports without documentation valid without changing review evidence', () => {
+    const session = recordReport(prepare(), report({ findings: [{ id: 'A1', summary: 'retained prior advice', material: false }] }), time);
+    const stored = structuredClone(session);
+    delete stored.history.at(-1).report.documentation;
+    expect(verdict(stored, observed, time)).toMatchObject({ ok: true, code: 'reviewed' });
+    const prepared = prepareCandidate(stored, { ...observed, intent, authorSessionId: 'author' }, time);
+    expect(prepared.history).toEqual(stored.history);
+    expect(stored.cycle).toBe(session.cycle);
+    expect(stored.history.at(-1).report).not.toHaveProperty('documentation');
+    expect(stored.history.at(-1).report.findings).toEqual(session.history.at(-1).report.findings);
+    expect(receiptSummary(prepared, 12, time).expires).toBe(receiptSummary(session, 12, time).expires);
+    expect(prepared.history.at(-1).at).toBe(session.history.at(-1).at);
+  });
+  it('retains the exact documentation assessment in new reports', () => {
+    const documentation = 'Canonical guide is current; secondary example needs no change.';
+    const session = recordReport(prepare(), report({ documentation }), time);
+    expect(session.history.at(-1).report.documentation).toBe(documentation);
   });
   it.each([{ reviewer: 'author' }, { cold: false }])('rechecks persisted reviewer independence: %j', patch => {
     const session = passed(); Object.assign(session.history.at(-1).report, patch);

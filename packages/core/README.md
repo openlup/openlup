@@ -264,3 +264,73 @@ artifact evidence.
 Source contributors record notable changes in package changelog fragments;
 release preparation assembles the shipped CHANGELOG. Follow the
 [public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+
+## Readiness contract
+
+The `./readiness` export evaluates inert package contributions against a complete
+host inventory and bounded schema observation. Its grouped PostgreSQL probe
+preserves request ordinals and distinguishes legitimate absence from malformed
+or incomplete results. This is a host admission contract: the helper performs
+no I/O, migration, scheduling or activation; the application retains identity,
+transaction and admission policy.
+
+## Bundle contracts
+
+The `./bundle` export supplies neutral bundle identifiers, descriptors and
+readiness composition inputs. A descriptor is a contribution to host-owned
+composition, not proof that a route, schedule, schema or provider is installed.
+Use the selected module's package export and retain the application's own
+capability selection and activation policy.
+
+
+## Commerce data contracts
+
+The `./catalog` and `./inventory` exports provide neutral product and stock
+contracts; `./pricing` and `./promo` provide price calculation and promotion
+eligibility kernels. They define data and decisions for an application to
+compose, without adding persistence, catalogue policy or checkout activation.
+
+## Delivery contracts
+
+The `./fulfillment` export normalizes shipment status and customer-facing
+delivery facts. The `./shipping` export keeps carrier-neutral quotes and
+selection rules separate from provider translation. Hosts own carrier calls,
+shipment dispatch and the evidence that a parcel reached a customer.
+
+## Partner and risk contracts
+
+The `./company-identity` and `./partners` exports define seller and partner
+identity values. The `./risk` export carries neutral admission and review
+contracts. An application supplies the authority, evidence sources and any
+local policy; these exports do not authenticate a partner or approve an order.
+
+## Payment contracts
+
+The `./payment` export defines provider-neutral payment status and money-path
+contracts. Host adapters translate provider results and retain authorization,
+verification and settlement policy; the kernel performs no provider I/O.
+
+## Marketing contracts
+
+The `./marketing/research` export represents consent-aware research evidence and
+its neutral projection contracts. Applications supply collection, retention,
+consent and persistence policy; the package does not activate collection.
+
+## Outbox contracts
+
+The `./outbox` export defines delivery envelopes and claim/acknowledgement
+ports. Durable claiming, transactions, scheduling and external delivery belong
+to the selected host adapter and worker.
+
+## Platform runtime contracts
+
+The `./platform-runtime` export describes shared host capabilities and runtime
+configuration inputs. It does not construct a server or read deployment
+configuration; the application binds and admits its own runtime.
+
+## Standard schema contracts
+
+The `./standard-schema` export exposes the framework-neutral schema interface
+used by package contracts. It keeps browser-safe consumers independent of a
+schema library runtime; validation behavior still belongs to each declared
+schema and its consumer.

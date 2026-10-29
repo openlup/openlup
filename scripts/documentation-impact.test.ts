@@ -1,5 +1,5 @@
 import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
-import { existsSync, chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -79,6 +79,95 @@ function review(root: string, base: string): void {
   const comment = renderNoImpactComment({ ...obligation, digest: legacyDigest(root, base, obligation) }, "This internal implementation change preserves the documented replay contract.");
   write(root, OWNER, ownerText.replace("## Other", `${comment}\n\n## Other`));
 }
+
+describe("production documentation owner routes", () => {
+  it("routes multi-contract core, platform and adapter modules to real owner sections", () => {
+    const state = readDocumentationState(process.cwd());
+    const expected = [
+      ["packages/core/src/readiness/schemaProbe.ts", "core-readiness", "#readiness-contract"],
+      ["packages/core/src/bundle/contracts.ts", "core-bundle", "#bundle-contracts"],
+      ["packages/core/src/payment/index.ts", "core-payment", "#payment-contracts"],
+      ["packages/core/src/testing.ts", "core-testing", "#local-verification-from-source"],
+      ["packages/platform/src/scheduler/cronGuard.ts", "platform-scheduler", "#scheduled-jobs"],
+      ["packages/platform/src/http/index.ts", "platform-http", "#http-runtime-and-security-contract"],
+      ["packages/platform/src/payments/index.ts", "platform-payments", "#payments-prepared-attempts"],
+      ["packages/platform/src/invoicing/index.ts", "invoicing-package", "#invoicing-contracts"],
+      ["packages/platform/src/identity/index.ts", "identity", ""],
+      ["server/adapters/postgres/queryBuilder.ts", "adapter-postgres", "#postgresql-domain-bindings"],
+      ["server/adapters/postgres/migrationRunner.ts", "adapter-postgres-install", "#restricted-postgresql-installation-binding"],
+      ["server/adapters/postgres/connectedStoreCapture.ts", "adapter-connected-transfer", "#native-retained-store-transfer-preparation"],
+      ["server/adapters/s3/transferObjectSource.ts", "adapter-s3", "#s3-object-source-preparation"],
+      ["server/adapters/noop_payment/noopPaymentExecutionAdapter.ts", "adapter-payment", "#payment-execution-and-reconciliation"],
+      ["server/adapters/noop_shipping/noopShippingAdapter.ts", "adapter-fulfillment", "#fulfillment-execution"],
+      ["server/adapters/accounting/testAccountingProvider.ts", "adapter-accounting", "#accounting-document-execution"],
+      ["server/adapters/email/adminRoleNotificationPort.ts", "adapter-communications", "#communications-delivery-and-sync"],
+      ["server/adapters/node/httpRequestAdapter.ts", "adapter-host-runtime", "#scheduler-and-host-runtime"],
+    ] as const;
+    for (const [path, unit, anchor] of expected) {
+      const owner = resolveDocumentationOwner(state, path);
+      expect(owner).toMatchObject({ unit, anchor });
+      if (anchor) expect(markdownHeadings(readFileSync(join(process.cwd(), owner.doc), "utf8")).some(heading => heading.anchor === anchor)).toBe(true);
+    }
+    for (const root of ["packages/core/src", "packages/platform/src"]) {
+      for (const module of readdirSync(join(process.cwd(), root), { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name)) {
+        const owner = resolveDocumentationOwner(state, `${root}/${module}/routing-contract.ts`);
+        expect(owner.paths.some(selector => selector === `${root}/${module}/**` || selector.startsWith(`${root}/${module}/`))).toBe(true);
+      }
+    }
+    expect(state.surfaces.flatMap(surface => surface.paths)).not.toContain("packages/**");
+    expect(state.surfaces.flatMap(surface => surface.paths)).not.toContain("packages/core/**");
+    expect(state.surfaces.flatMap(surface => surface.paths)).not.toContain("packages/platform/**");
+
+  });
+
+  it("requires the actual payment capability section after an adapter source change", () => {
+    const { root, base, surfaces } = fixture();
+    const production = JSON.parse(readFileSync(join(process.cwd(), "config/doc-routing.json"), "utf8")) as { surfaces: DocumentationSurface[] };
+    const payment = production.surfaces.find(row => row.id === "adapter-payment")!;
+    surfaces.push(payment, { id: "adapter-doc", when: "Adapter README fixture", paths: [payment.doc], doc: payment.doc, anchor: "" });
+    write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
+    const adapterText = "# Adapters\n\n## Owns\n\nAdapter overview.\n\n## Capability Map\n\nPayment execution overview.\n\n### Payment execution and reconciliation\n\nThe payment adapter translates a selected control action and provider observation.\n";
+    write(root, payment.doc, adapterText);
+    const sourcePath = "server/adapters/noop_payment/noopPaymentExecutionAdapter.ts";
+    write(root, sourcePath, "export const paymentExecution = 1;\n");
+    const sourceBase = commit(root);
+    write(root, sourcePath, "export const paymentExecution = 2;\n");
+    write(root, payment.doc, adapterText.replace("## Owns", "## Owns\n\nAn unrelated adapter overview changed."));
+    expect(impact(root, sourceBase).failures).toHaveLength(1);
+    write(root, payment.doc, adapterText.replace("### Payment execution and reconciliation", "### Payment execution and reconciliation\n\nThe selected adapter preserves the provider-neutral control boundary."));
+    expect(impact(root, sourceBase).failures).toEqual([]);
+  });
+
+  it("requires the actual scheduler owner section after a core/platform source change", () => {
+    const { root, base, surfaces } = fixture();
+    const production = JSON.parse(readFileSync(join(process.cwd(), "config/doc-routing.json"), "utf8")) as { surfaces: DocumentationSurface[] };
+    const scheduler = production.surfaces.find(row => row.id === "platform-scheduler")!;
+    const core = production.surfaces.find(row => row.id === "core-readiness")!;
+    surfaces.push(scheduler, core,
+      { id: "package-platform-doc", when: "Platform package README fixture", paths: [scheduler.doc], doc: scheduler.doc, anchor: "" },
+      { id: "package-core-doc", when: "Core package README fixture", paths: [core.doc], doc: core.doc, anchor: "" });
+    write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
+    const schedulerText = "# Platform package\n\n## Package surface\n\nPackage export overview.\n\n## Scheduled jobs\n\nThe scheduler binds recurring job contracts and authenticated HTTP execution.\n";
+    const coreText = "# Core package\n\n## Readiness contract\n\nReadiness probes the host inventory before admission.\n";
+    write(root, scheduler.doc, schedulerText);
+    write(root, core.doc, coreText);
+    const schedulerPath = "packages/platform/src/scheduler/cronGuard.ts";
+    const corePath = "packages/core/src/readiness/schemaProbe.ts";
+    write(root, schedulerPath, "export const schedulerSecurityContract = 1;\n");
+    write(root, corePath, "export const readinessContract = 1;\n");
+    const sourceBase = commit(root);
+    write(root, schedulerPath, "export const schedulerSecurityContract = 2;\n");
+    write(root, corePath, "export const readinessContract = 2;\n");
+    const unrelated = schedulerText.replace("## Package surface", "## Package surface\n\nThis unrelated package surface was edited.");
+    write(root, scheduler.doc, unrelated);
+    expect(impact(root, sourceBase).failures).toHaveLength(2);
+    const updatedScheduler = schedulerText.replace("## Scheduled jobs", "## Scheduled jobs\n\nThe scheduler guard preserves authenticated job admission and its refusal behavior.");
+    const updatedCore = coreText.replace("## Readiness contract", "## Readiness contract\n\nThe schema probe retains exact ordered result admission for its caller.");
+    write(root, scheduler.doc, updatedScheduler);
+    write(root, core.doc, updatedCore);
+    expect(impact(root, sourceBase).failures).toEqual([]);
+  });
+});
 
 describe("public documentation routing", () => {
   it("resolves specific workflow sections and treats reachability as a separate gate", () => {

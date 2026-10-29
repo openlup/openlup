@@ -92,7 +92,25 @@
         "server/adapters/**"
       ],
       "doc": "server/adapters/README.md",
-      "anchor": ""
+      "anchor": "#capability-map"
+    },
+    {
+      "id": "adapter-postgres",
+      "when": "PostgreSQL domain query, transaction and persistence bindings",
+      "paths": [
+        "server/adapters/postgres/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#postgresql-domain-bindings"
+    },
+    {
+      "id": "adapter-s3",
+      "when": "Adapter S3-compatible object-source preparation and capability boundary",
+      "paths": [
+        "server/adapters/s3/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#s3-object-source-preparation"
     },
     {
       "id": "infrastructure",
@@ -142,19 +160,61 @@
       "id": "packages",
       "when": "Package API, exports, release-shape and consumer boundaries",
       "paths": [
-        "packages/**"
+        "packages/**/package.json",
+        "packages/**/CHANGELOG.md",
+        "packages/**/CHANGELOG-HISTORY.md",
+        "packages/**/AGENTS.md",
+        "packages/**/api/**",
+        "packages/**/sql/**",
+        "packages/**/tsconfig*.json",
+        "packages/**/vitest.config.ts",
+        "packages/**/.gitignore",
+        "packages/**/LICENSE",
+        "packages/**/package-lock.json",
+        "packages/*/changes/*.md"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": ""
+      "doc": "CONTRIBUTING.md",
+      "anchor": "#development-preview-checks"
     },
     {
       "id": "core",
       "when": "Portable neutral core kernels and their package verification",
       "paths": [
-        "packages/core/**"
+        "packages/core/README.md",
+        "packages/core/package.json",
+        "packages/core/CHANGELOG.md",
+        "packages/core/CHANGELOG-HISTORY.md",
+        "packages/core/AGENTS.md",
+        "packages/core/docs/**",
+        "packages/core/test/**",
+        "packages/core/smoke/**",
+        "packages/core/package-lock.json",
+        "packages/core/release-gates.json",
+        "packages/core/repository-policy.json",
+        "packages/core/vitest.config.ts",
+        "packages/core/tsconfig*.json",
+        "packages/core/scripts/**"
       ],
       "doc": "packages/core/README.md",
       "anchor": ""
+    },
+    {
+      "id": "core-readiness",
+      "when": "Core readiness contracts, schema probes and inert contribution checks",
+      "paths": [
+        "packages/core/src/readiness/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#readiness-contract"
+    },
+    {
+      "id": "core-bundle",
+      "when": "Core bundle identity, descriptor and readiness contracts",
+      "paths": [
+        "packages/core/src/bundle/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#bundle-contracts"
     },
     {
       "id": "subscription-kernel",
@@ -539,11 +599,38 @@
       "id": "platform-substrate",
       "when": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduling, storage, data gateways and bundle composition",
       "paths": [
-        "packages/platform/**",
-        "tests/postgres/nodeHostRuntimeDrain.test.ts"
+        "packages/platform/README.md",
+        "packages/platform/package.json",
+        "packages/platform/CHANGELOG.md",
+        "packages/platform/CHANGELOG-HISTORY.md",
+        "packages/platform/api/**",
+        "packages/platform/test/**",
+        "packages/platform/release-gates.json",
+        "packages/platform/scripts/**",
+        "packages/platform/vitest.config.ts",
+        "packages/platform/tsconfig*.json",
+        "packages/platform/LICENSE"
       ],
       "doc": "packages/platform/README.md",
       "anchor": ""
+    },
+    {
+      "id": "platform-scheduler",
+      "when": "Platform scheduled-job contracts, leases, scheduler bindings and refusal behavior",
+      "paths": [
+        "packages/platform/src/scheduler/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#scheduled-jobs"
+    },
+    {
+      "id": "platform-payments",
+      "when": "Platform prepared-payment attempts and provider-neutral ordering contracts",
+      "paths": [
+        "packages/platform/src/payments/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#payments-prepared-attempts"
     },
     {
       "id": "identity",
@@ -721,6 +808,417 @@
       ],
       "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
       "anchor": "#legacy-fresh-bootstrap-role-observation"
+    },
+    {
+      "id": "core-catalog",
+      "when": "Core product identity and catalogue contracts",
+      "paths": [
+        "packages/core/src/catalog/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#commerce-data-contracts"
+    },
+    {
+      "id": "core-inventory",
+      "when": "Core stock and inventory contracts",
+      "paths": [
+        "packages/core/src/inventory/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#commerce-data-contracts"
+    },
+    {
+      "id": "core-pricing",
+      "when": "Core price calculation and policy contracts",
+      "paths": [
+        "packages/core/src/pricing/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#commerce-data-contracts"
+    },
+    {
+      "id": "core-promotions",
+      "when": "Core promotion eligibility contracts",
+      "paths": [
+        "packages/core/src/promo/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#commerce-data-contracts"
+    },
+    {
+      "id": "core-fulfillment",
+      "when": "Core fulfillment status and delivery facts",
+      "paths": [
+        "packages/core/src/fulfillment/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#delivery-contracts"
+    },
+    {
+      "id": "core-shipping",
+      "when": "Core carrier-neutral shipping contracts",
+      "paths": [
+        "packages/core/src/shipping/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#delivery-contracts"
+    },
+    {
+      "id": "core-partners-risk",
+      "when": "Core partner identity and risk admission contracts",
+      "paths": [
+        "packages/core/src/company-identity/**",
+        "packages/core/src/partners/**",
+        "packages/core/src/risk/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#partner-and-risk-contracts"
+    },
+    {
+      "id": "core-payment",
+      "when": "Core payment status, money and provider-neutral ports",
+      "paths": [
+        "packages/core/src/payment/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#payment-contracts"
+    },
+    {
+      "id": "core-marketing",
+      "when": "Core marketing and research contracts",
+      "paths": [
+        "packages/core/src/marketing/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#marketing-contracts"
+    },
+    {
+      "id": "core-outbox",
+      "when": "Core outbox message and delivery contracts",
+      "paths": [
+        "packages/core/src/outbox/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#outbox-contracts"
+    },
+    {
+      "id": "core-platform-runtime",
+      "when": "Core shared runtime contracts",
+      "paths": [
+        "packages/core/src/platform-runtime/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#platform-runtime-contracts"
+    },
+    {
+      "id": "core-standard-schema",
+      "when": "Core standard-schema compatibility contracts",
+      "paths": [
+        "packages/core/src/standard-schema/**"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#standard-schema-contracts"
+    },
+    {
+      "id": "platform-account-support",
+      "when": "Platform account and support services",
+      "paths": [
+        "packages/platform/src/account-support/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#account-and-support-contracts"
+    },
+    {
+      "id": "platform-bff",
+      "when": "Platform backend HTTP dispatch and response composition",
+      "paths": [
+        "packages/platform/src/bff/**"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#runtime-model"
+    },
+    {
+      "id": "platform-blob",
+      "when": "Platform object storage adapters and blob port binding",
+      "paths": [
+        "packages/platform/src/blob/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#blob-storage"
+    },
+    {
+      "id": "platform-catalog",
+      "when": "Platform catalogue services and publication ports",
+      "paths": [
+        "packages/platform/src/catalog/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#catalog"
+    },
+    {
+      "id": "platform-commerce",
+      "when": "Platform commerce contracts and order effects",
+      "paths": [
+        "packages/platform/src/commerce/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#commerce-contracts"
+    },
+    {
+      "id": "platform-communications",
+      "when": "Platform communications contracts and package delegation",
+      "paths": [
+        "packages/platform/src/communications/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#communications-import"
+    },
+    {
+      "id": "platform-composition",
+      "when": "Platform host composition and bundle assembly",
+      "paths": [
+        "packages/platform/src/composition/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#what-the-application-supplies"
+    },
+    {
+      "id": "platform-data",
+      "when": "Platform data gateway and transaction contracts",
+      "paths": [
+        "packages/platform/src/data/**"
+      ],
+      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
+      "anchor": "#module-catalogues-and-installed-histories"
+    },
+    {
+      "id": "platform-http",
+      "when": "Node HTTP runtime, request adaptation and deployment-owned security policy contracts",
+      "paths": [
+        "packages/platform/src/http/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#http-runtime-and-security-contract"
+    },
+    {
+      "id": "platform-inventory",
+      "when": "Platform durable inventory services",
+      "paths": [
+        "packages/platform/src/inventory/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#inventory"
+    },
+    {
+      "id": "platform-job-ledger",
+      "when": "Platform job-run ledger adapters and SQL boundary",
+      "paths": [
+        "packages/platform/src/job-ledger/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#job-run-ledger-sql"
+    },
+    {
+      "id": "platform-kernel",
+      "when": "Platform bundle identity and readiness contracts",
+      "paths": [
+        "packages/platform/src/kernel/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#bundle-readiness"
+    },
+    {
+      "id": "platform-marketing",
+      "when": "Platform marketing services and host bindings",
+      "paths": [
+        "packages/platform/src/marketing/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#marketing-contracts"
+    },
+    {
+      "id": "platform-migrations",
+      "when": "Platform migration runner and compatibility boundary",
+      "paths": [
+        "packages/platform/src/migrations/**",
+        "packages/platform/sql/**"
+      ],
+      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
+      "anchor": "#compatibility-lifecycle"
+    },
+    {
+      "id": "platform-pricing",
+      "when": "Platform pricing services and policy",
+      "paths": [
+        "packages/platform/src/pricing/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#pricing"
+    },
+    {
+      "id": "platform-promotions",
+      "when": "Platform promotion services and eligibility",
+      "paths": [
+        "packages/platform/src/promotions/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#promotions"
+    },
+    {
+      "id": "platform-shipping",
+      "when": "Platform shipping services and carrier ports",
+      "paths": [
+        "packages/platform/src/shipping/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#shipping"
+    },
+    {
+      "id": "platform-lifecycle",
+      "when": "Platform application-file lifecycle fallback outside specifically owned file contracts",
+      "paths": [
+        "packages/platform/src/lifecycle/**"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#application-file-upgrades"
+    },
+    {
+      "id": "package-documentation",
+      "when": "Package README and package-local documentation ownership and maintenance",
+      "paths": [
+        "packages/**/README.md",
+        "packages/**/docs/**"
+      ],
+      "doc": "docs/platform/DOCUMENTATION.md",
+      "anchor": "#ownership"
+    },
+    {
+      "id": "core-testing",
+      "when": "Core standalone test helpers and package testing exports",
+      "paths": [
+        "packages/core/src/testing.ts"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#local-verification-from-source"
+    },
+    {
+      "id": "ui-package",
+      "when": "Private UI primitives, design tokens and accessibility helpers",
+      "paths": [
+        "packages/ui/src/**",
+        "packages/ui/smoke/**"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#package-architecture"
+    },
+    {
+      "id": "core-policy-files",
+      "when": "Core contributor, security and repository-policy instructions",
+      "paths": [
+        "packages/core/.github/**",
+        "packages/core/CONTRIBUTING.md",
+        "packages/core/SECURITY.md",
+        "packages/core/CODE_OF_CONDUCT.md",
+        "packages/core/MAINTAINERS.md"
+      ],
+      "doc": "CONTRIBUTING.md",
+      "anchor": "#development-preview-checks"
+    },
+    {
+      "id": "adapter-postgres-install",
+      "when": "PostgreSQL migration runner and qualified installation session admission",
+      "paths": [
+        "server/adapters/postgres/migrationRunner.*",
+        "server/adapters/postgres/qualifiedInstall.*"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#restricted-postgresql-installation-binding"
+    },
+    {
+      "id": "adapter-connected-transfer",
+      "when": "Native connected-store capture and restore preparation",
+      "paths": [
+        "server/adapters/postgres/connectedStore*.ts",
+        "server/adapters/filesystem/orderReviewMediaTransfer*"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#native-retained-store-transfer-preparation"
+    },
+    {
+      "id": "adapter-payment",
+      "when": "Payment execution, reconciliation and simulator capability adapters",
+      "paths": [
+        "server/adapters/noop_payment/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#payment-execution-and-reconciliation"
+    },
+    {
+      "id": "adapter-fulfillment",
+      "when": "Carrier and fulfillment execution capability adapters",
+      "paths": [
+        "server/adapters/noop_shipping/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#fulfillment-execution"
+    },
+    {
+      "id": "adapter-accounting",
+      "when": "Accounting document issuance and provider execution capability adapters",
+      "paths": [
+        "server/adapters/accounting/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#accounting-document-execution"
+    },
+    {
+      "id": "adapter-communications",
+      "when": "Communications delivery, newsletter sync and delivery evidence capability adapters",
+      "paths": [
+        "server/adapters/email/**",
+        "server/adapters/noop_channel/**",
+        "server/adapters/noop_newsletter/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#communications-delivery-and-sync"
+    },
+    {
+      "id": "adapter-storage",
+      "when": "Blob and private filesystem storage capability adapters",
+      "paths": [
+        "server/adapters/filesystem/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#storage-and-blob"
+    },
+    {
+      "id": "adapter-host-runtime",
+      "when": "Node HTTP adaptation, host scheduling and runtime capability bindings",
+      "paths": [
+        "server/adapters/node/**",
+        "server/adapters/platform/**",
+        "server/adapters/scheduler/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#scheduler-and-host-runtime"
+    },
+    {
+      "id": "adapter-auth",
+      "when": "Authentication and identity verification capability adapters",
+      "paths": [
+        "server/adapters/jwt/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#authentication-and-identity"
+    },
+    {
+      "id": "adapter-captured",
+      "when": "Captured and deterministic adapters used for local contract execution",
+      "paths": [
+        "server/adapters/captured/**"
+      ],
+      "doc": "server/adapters/README.md",
+      "anchor": "#simulators-and-captured-adapters"
     }
   ]
 }

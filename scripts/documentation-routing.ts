@@ -109,6 +109,80 @@ export function markdownHeadings(markdown: string): MarkdownHeading[] {
   return headings;
 }
 
+function documentationLinkTargets(markdown: string): string[] {
+  const visible = unfencedMarkdown(markdown).replace(/<!--[\s\S]*?-->/gu, "")
+    .replace(/(?<!`)`+[^`\n]*`+(?!`)/gu, " ");
+  const references = new Map<string, string>();
+  const withoutDefinitions = visible.replace(/^ {0,3}\[([^\]]+)\]:\s*(?:<([^>]+)>|(\S+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*$/gmu,
+    (_definition, label: string, angled: string | undefined, plain: string | undefined) => {
+      references.set(label.trim().replace(/\s+/gu, " ").toLowerCase(), angled ?? plain!);
+      return " ";
+    });
+  const targets: string[] = [];
+  for (const match of withoutDefinitions.matchAll(/\]\(\s*(<[^>\n]*>|(?:\\.|[^()\s]|\([^)]*\))*)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/gu)) {
+    targets.push(match[1]!.replace(/^<|>$/gu, "").replace(/\\([\\`*_{}[\]()#+.!<>|])/gu, "$1"));
+  }
+  for (const match of withoutDefinitions.matchAll(/\[([^\]]+)\](?:\[([^\]]*)\])?/gu)) {
+    if (withoutDefinitions[match.index! + match[0].length] === "(") continue;
+    const label = (match[2] || match[1]!).trim().replace(/\s+/gu, " ").toLowerCase();
+    const target = references.get(label);
+    if (target) targets.push(target);
+  }
+  return targets;
+}
+
+function markdownHtmlIds(markdown: string): Set<string> {
+  const visible = unfencedMarkdown(markdown).replace(/<!--[\s\S]*?-->/gu, "").replace(/(?<!`)`+[^`\n]*`+(?!`)/gu, " ");
+  return new Set([...visible.matchAll(/<[a-z][^>]*\bid\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>/giu)]
+    .map((match) => match[1] ?? match[2] ?? match[3]!));
+}
+
+/** Validate local links in Markdown files; remote links remain outside this offline check. */
+export function assertLocalDocumentationLinks(root: string, paths: Iterable<string>): void {
+  const available = new Set(paths);
+  const directories = new Set<string>(["."]);
+  for (const path of available) {
+    const parts = path.split("/");
+    for (let index = 1; index < parts.length; index++) directories.add(parts.slice(0, index).join("/"));
+  }
+  const documents = [...available].filter((path) => path.endsWith(".md"));
+  for (const source of documents) {
+    const markdown = readFileSync(join(root, source), "utf8");
+    const links = documentationLinkTargets(markdown);
+    // HTML ids are valid fragment targets alongside generated heading slugs.
+    const anchorsByDocument = new Map<string, { headings: Set<string>; ids: Set<string> }>();
+    for (const href of links) {
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/|\\)/iu.test(href)) continue;
+      const hash = href.indexOf("#");
+      const query = href.indexOf("?");
+      const pathEnd = [hash, query].filter((index) => index >= 0).reduce((end, index) => Math.min(end, index), href.length);
+      let targetPath: string;
+      let fragment: string;
+      try {
+        targetPath = decodeURIComponent(href.slice(0, pathEnd));
+        fragment = hash < 0 ? "" : decodeURIComponent(href.slice(hash + 1));
+      } catch {
+        throw new Error(`documentation: malformed local link in ${source}: ${href}`);
+      }
+      const resolved = posix.normalize(posix.join(posix.dirname(source), targetPath || posix.basename(source))).replace(/\/+$/u, "") || ".";
+      if (resolved === ".." || resolved.startsWith("../") || (!available.has(resolved) && !directories.has(resolved)))
+        throw new Error(`documentation: missing local link target in ${source}: ${href} resolves to ${resolved}`);
+      if (!fragment || !resolved.endsWith(".md")) continue;
+      let anchors = anchorsByDocument.get(resolved);
+      if (!anchors) {
+        const destination = readFileSync(join(root, resolved), "utf8");
+        anchors = {
+          headings: new Set(markdownHeadings(destination).map((heading) => heading.anchor.slice(1))),
+          ids: markdownHtmlIds(destination),
+        };
+        anchorsByDocument.set(resolved, anchors);
+      }
+      if (!anchors.headings.has(fragment) && !anchors.ids.has(fragment))
+        throw new Error(`documentation: missing local fragment in ${source}: ${href} resolves to ${resolved}#${fragment}`);
+    }
+  }
+}
+
 export function documentationSection(markdown: string, anchor: string): string {
   if (anchor === "") return markdown;
   const heading = markdownHeadings(markdown).find((candidate) => candidate.anchor === anchor);
@@ -161,6 +235,7 @@ export function documentationCandidatePaths(root: string): string[] {
 
 export function assertDocumentationNavigation(state: DocumentationState): void {
   const { root, paths, surfaces } = state;
+  assertLocalDocumentationLinks(root, paths);
   const available = new Set(paths);
   const pending = ["README.md", "CONTRIBUTING.md", "docs/platform/README.md"].filter((path) => available.has(path));
   const reached = new Set<string>();

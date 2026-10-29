@@ -8690,6 +8690,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/documentation-links.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/documentation-navigation.ts",
       "class": "public-output"
     },
