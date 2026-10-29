@@ -1326,6 +1326,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/disposable-docker-test-resources.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/documentation-maintenance.md",
       "class": "platform-documentation"
     },
