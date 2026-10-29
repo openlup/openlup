@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sweep } from "./disposable-docker.mjs";
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { cpus, loadavg, tmpdir } from "node:os";
+import { availableParallelism, cpus, loadavg, tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { coverageArtifactWaitMs, readCoverageStageBinding, readValidatedCoverageSidecar } from "./coverage-summary-protocol.ts";
 
@@ -119,13 +119,6 @@ if (!isCoverageRun && env.CI !== "true" && !env.VITEST_MAX_WORKERS
   const available = Number.isInteger(tokens) && tokens > 0 ? Math.max(1, tokens - 1) : 4;
   env.VITEST_MAX_WORKERS = String(Math.max(1, Math.min(4, cpus().length, available)));
 }
-// Emit the effective local pin too; otherwise a nested fixture's diagnostic
-// could be mistaken for this invocation's worker count.
-if (!isCoverageRun && env.CI !== "true"
-  && (env.OPENLUP_HEAVY_ACTIVE || env.AI_RESOURCE_GATE_ACTIVE === "1")) {
-  console.error(`Local verification Vitest workers=${env.VITEST_MAX_WORKERS}`);
-}
-
 if (!env.VITEST_MAX_WORKERS && process.env.CI !== "true") {
   const cores = Math.max(1, cpus().length);
   const highLoad = loadavg()[0] > cores;
@@ -134,6 +127,21 @@ if (!env.VITEST_MAX_WORKERS && process.env.CI !== "true") {
   if (isCoverageRun) {
     env.VITEST_MAX_WORKERS = highLoad || dockerHeavyActive ? "40%" : "50%";
   }
+}
+
+// Vitest reads VITEST_MAX_WORKERS with parseInt, so "50%" would mean 50 workers.
+// Resolve a percentage here the way Vitest resolves one from config or CLI.
+const workerPercent = /^(\d+(?:\.\d+)?)%$/.exec(env.VITEST_MAX_WORKERS ?? "");
+if (workerPercent) {
+  const cores = availableParallelism();
+  env.VITEST_MAX_WORKERS = String(Math.max(1, Math.min(cores, Math.round(Number.parseInt(workerPercent[1]) / 100 * cores))));
+}
+
+// Emit the effective local pin too; otherwise a nested fixture's diagnostic
+// could be mistaken for this invocation's worker count.
+if (!isCoverageRun && env.CI !== "true"
+  && (env.OPENLUP_HEAVY_ACTIVE || env.AI_RESOURCE_GATE_ACTIVE === "1")) {
+  console.error(`Local verification Vitest workers=${env.VITEST_MAX_WORKERS}`);
 }
 
 let activeChild, interrupted, childSignal, stopTimer, swept;

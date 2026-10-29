@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { availableParallelism } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { afterAll, expect, it } from "vitest";
@@ -16,15 +17,15 @@ writeFileSync(docker, `#!${process.execPath}\n`);
 chmodSync(docker, 0o700);
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-function witness(overrides: NodeJS.ProcessEnv) {
+function witness(overrides: NodeJS.ProcessEnv, args = ["run", "example.test.ts"]) {
   const env: NodeJS.ProcessEnv = { ...processEnvironment, PATH: `${bin}${delimiter}${processEnvironment.PATH}` };
-  for (const name of ["CI", "VITEST_MAX_WORKERS", "OPENLUP_VITEST_MAX_WORKERS", "OPENLUP_HEAVY_ACTIVE", "AI_RESOURCE_GATE_ACTIVE", "AI_RESOURCE_GATE_CPU_TOKENS", "OPENLUP_VITEST_EXCLUDE_FILE"]) delete env[name];
-  const output = spawnSync(process.execPath, [resolve("scripts/run-vitest.mjs"), "run", "example.test.ts"], {
+  for (const name of ["CI", "VITEST_MAX_WORKERS", "OPENLUP_VITEST_MAX_WORKERS", "OPENLUP_VITEST_COVERAGE_MAX_WORKERS", "OPENLUP_HEAVY_ACTIVE", "AI_RESOURCE_GATE_ACTIVE", "AI_RESOURCE_GATE_CPU_TOKENS", "AI_RESOURCE_GATE_LANE", "AI_RESOURCE_GATE_RESOURCE", "OPENLUP_VITEST_EXCLUDE_FILE"]) delete env[name];
+  const output = spawnSync(process.execPath, [resolve("scripts/run-vitest.mjs"), ...args], {
     cwd: scratch, env: { ...env, ...overrides }, encoding: "utf8", timeout: 5_000,
   });
   expect(output.status).toBe(0); return output;
 }
-function run(overrides: NodeJS.ProcessEnv) { return JSON.parse(witness(overrides).stdout); }
+function run(overrides: NodeJS.ProcessEnv, args?: string[]) { return JSON.parse(witness(overrides, args).stdout.trim().split("\n").at(-1)!); }
 
 it("caps plain local verification and leaves CPU capacity for the parent", () => {
   expect(run({ AI_RESOURCE_GATE_ACTIVE: "1", AI_RESOURCE_GATE_CPU_TOKENS: "2" })).toEqual({ workers: "1", args: ["run", "example.test.ts"] });
@@ -39,12 +40,23 @@ it("preserves explicit caller and machine pins and leaves CI scheduling unchange
   expect(run({ ...broker, CI: "true" }).workers).toBeUndefined();
 });
 
+// Vitest's own rule for a configured percentage: round(cores * percent), at least one.
+const percentOfCores = (percent: number) => String(Math.max(1, Math.min(availableParallelism(), Math.round(percent / 100 * availableParallelism()))));
+
 it("reports the effective explicit worker pin before any child fixture output", () => {
-  for (const workers of ["3", "40%"]) {
+  for (const [workers, effective] of [["3", "3"], ["40%", percentOfCores(40)]]) {
     const output = witness({ OPENLUP_HEAVY_ACTIVE: scratch, VITEST_MAX_WORKERS: workers });
-    expect(output.stderr.trim()).toBe(`Local verification Vitest workers=${workers}`);
-    expect(JSON.parse(output.stdout).workers).toBe(workers);
+    expect(output.stderr.trim()).toBe(`Local verification Vitest workers=${effective}`);
+    expect(JSON.parse(output.stdout).workers).toBe(effective);
   }
+});
+
+it("resolves env worker percentages to integer workers, as Vitest's parseInt would read 50% as 50", () => {
+  for (const [workers, effective] of [["50%", percentOfCores(50)], ["40%", percentOfCores(40)], ["37.5%", percentOfCores(37)], ["4", "4"]]) {
+    expect(run({ VITEST_MAX_WORKERS: workers }).workers).toBe(effective);
+  }
+  // The wrapper's own coverage default is 50%, or 40% under contention.
+  expect([percentOfCores(40), percentOfCores(50)]).toContain(run({}, ["run", "--coverage"]).workers);
 });
 
 it("defaults local config workers to 37.5% and keeps explicit pins and CI scheduling", () => {

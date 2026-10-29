@@ -613,8 +613,8 @@ workers:
 The default is stated as a percentage so it scales with other hosts: 37.5%,
 which Vitest 4.1 resolves to 6 of this host's 16 cores (it reads the integer
 percent, 37, and rounds 5.92 to 6). (50% would give 8 workers
-here; at 8 only the subset was measured, 96–97 s.) Coverage keeps its 50%
-default. Explicit
+here; at 8 only the subset was measured, 96–97 s.) Through the wrapper,
+coverage keeps its 50% default, or 40% under contention. Explicit
 `VITEST_MAX_WORKERS` and `OPENLUP_VITEST_MAX_WORKERS` pins and the broker
 verification defaults are unchanged. CI sets no plain local cap, and its
 coverage shards keep their own worker counts, so hosted CI is unaffected. The
@@ -622,4 +622,19 @@ wrapper's former high-load lowering of plain runs to 50% was removed, since it
 would now raise them above the 37.5% default. `scripts/run-vitest.test.ts` pins
 the default by loading `vitest.config.ts` through Vite's loader; it fails with
 75%.
+
+**Scope addition: wrapper env percentages are resolved to integer workers.**
+Native review of this change found, and a read-only run on this host
+confirmed, that Vitest 4.1 reads `VITEST_MAX_WORKERS` with `Number.parseInt`
+and lets it override the config and `--maxWorkers`. The wrapper's coverage
+`"50%"` and `"40%"` therefore meant 50 and 40 workers, and a caller's `"37.5%"`
+meant 37. The same percentages from the config or the CLI resolved to 8 and 6.
+That is the overload this task exists to remove, so the coordinator folded the
+fix into the same change (`scripts/run-vitest.mjs`, `scripts/run-vitest.test.ts`,
+`CONTRIBUTING.md`, the config comment). The wrapper now resolves any
+`VITEST_MAX_WORKERS` percentage as Vitest resolves one from config: the
+integer percent of available cores, rounded, at least one. Integer pins pass
+through unchanged. `scripts/run-vitest.test.ts` covers 50%, 40%, 37.5%, an
+integer pin and the coverage default; on the previous wrapper it fails with
+`expected '50%' to be '8'`.
 

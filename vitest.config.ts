@@ -70,7 +70,8 @@ const exactExclusions = readExactExclusions();
 // docs/platform/plans/disposable-docker-test-resources.md). Vitest turns the
 // percentage into a worker count from the available cores, with a minimum of
 // one. Vitest reads VITEST_MAX_WORKERS as an integer worker count, so set it to
-// a number like "4" to override per machine. CI is intentionally left
+// a number like "4" to override per machine; scripts/run-vitest.mjs resolves a
+// percentage in it to a count first. CI is intentionally left
 // untouched so the dedicated coverage-shard worker counts below stay
 // authoritative; see CONTRIBUTING.md#test-scope-and-diagnostics.
 const localWorkerCap =
