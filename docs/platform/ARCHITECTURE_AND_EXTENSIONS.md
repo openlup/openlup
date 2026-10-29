@@ -35,9 +35,10 @@ keeps reference identifier/name rules, address schemas, provider selection and
 fallback facts in application source. The package owns the neutral rules seam,
 lookup engine/cache and pure descriptor/readers. Language, settlement currency,
 pricing region and fiscal jurisdiction are independent inputs. Recipe selection
-installs no BFF routes, environment reader or translation runtime; reference
-caller delegation is separate work. Existing manual shipping does not depend
-on a directory suggestion.
+installs no BFF routes, environment reader or translation runtime. Existing
+reference caller paths delegate through their facades to the package engines;
+browser contracts remain separate from server composition. Manual shipping
+does not depend on a directory suggestion.
 
 The reference application's [acquisition legacy drain](../../server/runtime/marketing/acquisitionLegacyDrain.ts)
 is a finite, operator-configured gate on its existing BFF command routes. It

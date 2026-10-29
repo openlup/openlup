@@ -368,4 +368,72 @@ before the R3 swap. New cases go in new files.
 
 ### R3 implementation and evidence
 
-Pending delegation. Quote pre-swap witness: 1 file / 12 cases PASS (Node 24.21.0, Vitest two workers). Ast-grep and neutrality passed at this stage.
+Quote witness is committed as `c0a5213f`, then type-corrected in test-only
+`0a29474a` before the swap (one fixture cast, no runtime change, 12/12 PASS;
+all 44 frozen witnesses still matched R2_HEAD at the pre-swap check). Ast-grep,
+lint and neutrality passed on that first commit's candidate (lint: 0 errors,
+33 existing warnings; neutrality: zero per-path increases). The publication
+policy identified one commerce owner obligation, answered by scoped no-impact
+DCO trailers in both quote commits. The corrected quote witness is frozen for
+the delegation swap. The API typecheck has zero unresolved edges and zero
+consumer-side errors against its zero ceiling.
+
+CD-M16-13 and the lead's subsequent disposition resolved the cache witness
+conflict. The package owns the sole cache. R2 will reset both caches between its
+two equivalence invocations, test-only, then the lead will sign-off-merge that
+new R2 head. Until then its `found` and `invalid_output` variants alone are
+accepted pending-predecessor failures. R3 never edits that witness.
+
+The application facades now delegate service, handler, contract, money and
+address-schema behavior to the R1/R2 exports. Environment selection and invoice
+status collapse stay in the BFF; the address route preserves env, gateway, probe,
+handler order and success-only availability metadata. Domain facades could not
+import an adapter under the existing boundary. The reference rules therefore
+reside in the existing counted domain service file, with the R2 adapter
+re-exporting them. This removes the import cycle and retains zero per-path
+neutrality increases. No package production file, package API, security control,
+SQL, migration, route or flag changes.
+
+One unmounted `createReferenceMarketBinding` selects the R2 recipe. Its default
+language is the existing public-reference `en`, with the same fallback. The
+public message module now exports that existing default so the server binding
+can import it, and uses `.js` suffixes for NodeNext resolution. A new test
+observes exported values, default, fallback and instance isolation; it also
+observes that the default mounts no route and calls no provider or directory.
+The directory remains optional and manual shipping useful.
+
+New proof files cover shared-cache/reset, dispatcher initialization, an isolated
+installed-tarball invoice consumer (NodeNext and Bundler declarations, evidence,
+extensions, envelope, request ID and provider transcript), refusal/status
+outcomes, default composition/manual shipping, independent EN/EUR/region/fiscal
+selection and malformed refusal through existing readers, and draft reload/PII
+exclusion/historical currency. The existing selected-object real-PG witness
+covers the directory predicate set; no public gap justified a new PG case.
+Managed PostgREST transport remains unchanged and unproven by public CI.
+
+All 44 frozen source blobs still match R2_HEAD. Focused Vitest over their test
+files (excluding real PG) and new/adjacent suites: 45 files, 3,028/3,030 cases
+passed; only the two predecessor-pending variants above failed. Quote witness
+remains byte-identical to test-only `0a29474a` and passed. Ast-grep
+and lint pass (33 pre-existing warnings). Platform `api:check` reports no
+delta. Neutrality inventories 6,566 text paths with zero count increases;
+gitleaks finds no leak. The platform pack measures 1,956,340/2,029,568 packed
+bytes, 9,093,916/9,447,424 unpacked bytes, 2,667/2,628 files, 1,689,283/
+1,743,872 code gzip bytes, 2,613/2,574 code files, 59,057/73,728 docs gzip
+bytes and 5/10 docs files. These are exactly R2's measures: the two file-count
+cap excesses predate R3, and no cap is edited. Docker was available and the
+one-minute load fell below 8; R1's unchanged selected-object real-PG proof
+passed 6/6 cases. No additional PG gap was demonstrated. The full draft verify
+and other heavy stages remain held. Owner sections for adapter, BFF, browser,
+address, company and reference runtime responsibilities are updated; the
+consumer-proof tooling follows the existing cold-consumer contract with no
+change to the documented check interface.
+
+The three R3 tooling paths have a scoped no-impact trailer prepared for commit
+2; documentation policy will evaluate it after that commit.
+
+Self-retro: the shared-cache equivalence test needed a test-only reset once both
+reference and package factories intentionally shared one owner. Checking it
+early exposed the pre-existing independent-engine assumption. The additional
+domain import lint check exposed a simpler location for the reference rule
+object without a new module or neutrality-count increase.

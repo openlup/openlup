@@ -9230,6 +9230,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/reference-delegation-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/reference-delegation-consumer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/release-bump.test.ts",
       "class": "public-output"
     },
@@ -18070,6 +18078,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/referenceCompanyDelegation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/referenceMarketBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/referenceMarketBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -18571,6 +18591,10 @@
     },
     {
       "path": "src/checkout/composer/referenceBuilderModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceMarketDraftContinuity.test.ts",
       "class": "public-output"
     },
     {

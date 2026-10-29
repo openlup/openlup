@@ -22,9 +22,9 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Opt-in reference market composition
 
-[Reference company rules](market-packs/referenceCompanyIdentityRules.ts) import
-existing identifier/name policy and build the strict host schema bundle with the
-package rules seam. [Provider selection](market-packs/referenceCompanyIdentityProviders.ts)
+[Reference company rules](market-packs/referenceCompanyIdentityRules.ts) re-export
+the existing domain service's identifier/name policy and build the strict host
+schema bundle with the package rules seam. [Provider selection](market-packs/referenceCompanyIdentityProviders.ts)
 accepts explicit constructed ports and preserves current order and exception
 mapping; configuration/environment reading and HTTP remain with their owners.
 The [address bundle](market-packs/referenceAddressCanon.ts) reuses existing

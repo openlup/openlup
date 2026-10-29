@@ -348,6 +348,12 @@ dispatch through the unreleased `@openlup/platform` dispatcher, bound in
 `server/runtime/bffDispatch.ts` with this application's settlement bootstrap,
 admin preflight, and not-found envelope. Shared cron entrypoints
 use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
+Company lookup BFF composition still reads the existing mode and provider
+environment at its established construction points, then passes the selected
+ports to the package-backed domain facade. Hidden address routes still read the
+service environment, create the gateway, probe availability and invoke the
+handler in that order; they inject the reference schema bundle without changing
+route admission or success-only availability metadata.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
@@ -450,6 +456,15 @@ Unknown recipe language refuses explicitly; existing callers keep their own
 selection and fallback behavior. Synthetic/unsupported/manual examples prove
 existing service branches without provider IO. This is no foreign fiscal,
 registry, licensed directory or production-host qualification.
+
+The [reference binding](../../server/runtime/public-reference/referenceMarketBinding.ts)
+selects that recipe explicitly and remains unmounted. Its default uses the
+public reference's existing language and settlement facts; the message module
+still creates isolated i18n instances with its existing fallback. Company
+lookup and address schema facades use the package engines while provider mode,
+environment reading, gateway order and invoice mapping remain with the host.
+Constructing the binding calls no provider or directory and leaves manual
+shipping available.
 
 The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
 also accepts an explicitly constructed operations binding on its ordinary

@@ -3,6 +3,8 @@ import { readSupabaseDataGatewayEnv } from "../../adapters/supabase/dataGatewayC
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import type { AddressCanonLookupPort } from "../../domains/address-canon/ports.js";
+import type { AddressLookupSchemas } from "@openlup/platform/shipping";
+import { referenceAddressCanonSchemas } from "../../adapters/market-packs/referenceAddressCanon.js";
 import {
   createSupabaseAddressCanonLookupPort,
   type SupabaseAddressCanonLookupPort,
@@ -10,6 +12,7 @@ import {
 
 export type AddressCanonHandlerFactory = (
   lookupPort: AddressCanonLookupPort,
+  schemas: AddressLookupSchemas,
 ) => (req: VercelRequest, res: VercelResponse) => Promise<void>;
 
 export function createHiddenAddressCanonRoute(factory: AddressCanonHandlerFactory) {
@@ -28,7 +31,7 @@ export function createHiddenAddressCanonRoute(factory: AddressCanonHandlerFactor
       // candidates -> "no match for this query". When the probe itself fails the
       // hint is omitted (left undefined) so a transient probe error never
       // mislabels a populated directory as offline.
-      return factory(lookupPort)(req, withDataAvailableMeta(res, dataAvailable));
+      return factory(lookupPort, referenceAddressCanonSchemas)(req, withDataAvailableMeta(res, dataAvailable));
     });
   };
 }

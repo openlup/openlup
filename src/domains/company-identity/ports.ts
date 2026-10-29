@@ -1,1 +1,1 @@
-export type { CompanyIdentityLookupPort } from "@openlup/core/company-identity";
+export type { CompanyIdentityLookupPort } from "@openlup/platform/company-identity/contracts";
