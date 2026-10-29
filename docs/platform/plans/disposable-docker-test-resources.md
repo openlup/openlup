@@ -1,8 +1,7 @@
 # Disposable Docker test resources reclaim themselves
 
-Status: plan only, prepared 2026-10-29 and revised after one independent
-challenge; not approved, not implemented. No pull request, push or Docker
-mutation has been made for it.
+Status: approved 2026-10-29 (owner decisions D1–D7 below); implementation in
+progress on this branch. No push, pull request or Docker mutation yet.
 
 ## Outcome and boundary
 
@@ -32,15 +31,11 @@ unchanged and is not extended.
 
 ## Authority and execution
 
-Grant recorded for this task: preparing this plan in a dedicated worktree and
-committing it locally. Not granted until the owner decides (D1–D6 below):
-
-- implementation;
-- push, pull request or merge;
-- activation on a shared host;
-- removal of any existing Docker resource.
-
-DCO identity when granted: Bart Roszkowski <dev@openlup.com>.
+Grant recorded for this task (D4): local work, commits, push, PR and merge
+after the required gates and native counted review. Activation follows D2;
+any other removal of existing Docker resources, production and credentials are
+not granted. DCO identity: Bart Roszkowski <dev@openlup.com>. One writer: this
+session's supervisor.
 
 - Policy revision and source base (freshly fetched): `e5ba63ab1e77643968d79ec0c37e3bfdbea8d90a`.
 - Worktree `.worktrees/docker-test-resource-reclaim`, branch
@@ -215,7 +210,7 @@ the inspected ID only.
 
 ## Cut-lines
 
-**Merge.** One PR, after D1, D4 and D6:
+**Merge.** One PR (D1, D4 and D6 granted):
 
 - design items 1–6 and the item 7 worker-cap default, if measured;
 - the host-wide sweep in `report`;
@@ -415,27 +410,36 @@ both repositories. D1 decides whether that is allowed.
 
 ## Owner decisions
 
-- **D1. Contract-wide removal.** OpenLup's test lifecycle may remove
-  dead-owner containers labelled `dev.disposable=1` on the same host, whichever
-  project created them.
-  - Recommended: yes. The alternative is an OpenLup-only namespace label.
-  - The CONTRIBUTING statement about pruning is reworded to match.
-- **D2. Activation.** After merge and one recorded `report` set, flip the
-  host-wide sweep to `remove`.
-- **D3. Defaults from the measurement.** Accept the measured worker-cap
-  default, and the start limiter only if the measurement requires it.
-- **D4. Delivery grant for the implementation PR.** It covers local work,
-  commits, push, the PR, and merge after the required gates. None is recorded
-  today.
-- **D5. SIGKILLed Supabase CLI and compose stacks.** They stay a manual,
-  reviewed removal. Recommended: yes.
-- **D6. M14 coordinator consent.** M14 consents to labelling M14's PostgreSQL
-  containers through the shared helper, which makes them sweepable after a
-  crashed owner. Otherwise the merge waits until M14 lands.
+Decided 2026-10-29. The owner instructed, in the coordinating Velipet session:
+"jakie decyzje odnosnie Openlup? zarekomenduj najlepsze rozwiazania i podejmij
+decyzje zgodnie z rkeomendacjami" (recommend the best options and decide
+accordingly). The coordinator relayed the resulting decisions to this task:
+
+- **D1. Yes.** OpenLup's sweep may remove dead-owner `dev.disposable=1`
+  containers on the same host, whichever project created them, under the
+  shared liveness rule (D7). The CONTRIBUTING pruning statement is reworded.
+- **D2. Yes, conditional.** After merge, run one host-wide `report` sweep and
+  record its exact set. If every entry is a dead-owner labelled container, flip
+  the host-wide sweep to `remove` without asking again. If any live-owner or
+  unexpected entry appears, stop and report.
+- **D3. Yes.** Accept the measured worker-cap default under the decision rule
+  above. The start limiter ships only if no worker cap meets the bar. The 6 h
+  and 18-run caps apply.
+- **D4. Yes.** Delivery grant: local work, commits (OpenLup identity), push, PR
+  and merge after the required gates and OpenLup's native counted review.
+  Production and credentials stay excluded.
+- **D5. Yes.** SIGKILLed Supabase CLI and compose stacks stay a manual,
+  reviewed removal.
+- **D6. Yes.** M14's PostgreSQL containers may be labelled through the shared
+  helper, so they become sweepable only after a crashed owner. M14's own
+  harness files stay out of scope. Merge timing avoids changing the helper
+  under an in-flight M14 proof run, for example by landing between M14
+  checkpoints.
 - **D7. Resolved 2026-10-29** in the Velipet session, for the shared
   contract: the `owner_start` label compared within 2 s ("owner_start label
   (Recommended)"), and the Linux-only `pidns` label ("Yes, on Linux
-  (Recommended)"). Velipet implements the same contract.
+  (Recommended)"). Velipet implements the same contract in
+  ProteineResources/velipet#4597.
 
 ## Independent challenge
 
@@ -493,5 +497,5 @@ file:
 - every relative link and anchor resolves.
 
 No implementation, test run, measurement or Docker mutation has happened.
-Remaining: owner decisions D1–D6, then implementation under the merge
-cut-line.
+Remaining: implementation under the merge cut-line, delivery, then
+activation under D2 and the measurement under D3.
