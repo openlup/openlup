@@ -1,7 +1,8 @@
 # M14 connection and pooling recipe
 
-Status: review cycle 0 exposed one material actionable-error finding; stabilized
-repair and renewed pre-DCO maintainer read pending. M14 remains open.
+Status: review cycle 0 exposed one material actionable-error finding; the
+renewed maintainer read accepted its signed repair. Cycle 1 review and final
+verification remain. M14 remains open.
 
 ## Outcome and boundary
 
@@ -29,6 +30,8 @@ Policy revision and initial source base:
 Current policy pin: `3fbd95565ed665c68f3819a9fe27dc14f5bf9c85`.
 The maintainer read accepted staged tree
 `e76a3d0325e8f23a7726a8091ddcf3bc392faf30` before DCO.
+The renewed read accepted staged repair tree
+`e0415638300279165d12ba37f1714ff231e3fd70` before its DCO commit.
 The signed integration of that source with current main is `d4d47475f1211aa103e592fa51763dc7cf3407d2`.
 It preserved the accepted lock source, witness and API snapshots; main's
 independent owner-path approval remains outside the selected 91-unit plan.
@@ -83,9 +86,9 @@ Native cycle 0: one independent FULL PASS and one FULL FAIL on tree
 grant, which lacked the required drain/retire guidance. The repair emits the
 same actionable affinity refusal on that first failed attempt and proves the
 guarded body remains uncalled. The existing sticky refusal and drain stay intact.
-Repair cycle 1 will need two new FULL reviews after a renewed maintainer read.
-DCO source and merge commits are signed; this repair is not yet signed or
-reviewed. Full verification/coverage and authorized delivery remain. No
+Repair cycle 1 needs two new FULL reviews of the current tree.
+DCO source, merge and repair commits are signed. Full verification/coverage
+and authorized delivery remain. No
 submission or release has occurred.
 
 Self-retro: exclusive heavy-window waits were 541 seconds for affected proof and
@@ -93,4 +96,6 @@ Self-retro: exclusive heavy-window waits were 541 seconds for affected proof and
 Reusing the existing qualified composition avoided another installation harness;
 the late test-generic errors show why test-project typechecking belongs in early
 focused feedback alongside production builds. No acceptance or retry-budget
-change was needed.
+change was needed. Native review caught the missing first-error guidance before
+submission; the guarded-callback assertion now proves that refusal reaches the
+first affected job before its body runs.
