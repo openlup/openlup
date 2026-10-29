@@ -365,12 +365,12 @@ version 2: the complete legacy plan and digest plus an explicitly selected
 qualified fresh plan. It validates the union before normalizing either plan for
 the existing package runner. Keep the immutable legacy prefix; do not create a
 competing canonical manifest or add package SQL paths to the legacy plan. The
-current source checkpoint carries v2: its legacy selection still has the exact
+current source checkpoint carries v3: its legacy selection still has the exact
 88 issued units and inventory
 `cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`.
-The reader also recognizes a future version 3 with a separately selected
-restricted-bootstrap plan and two fixed role-mode inventories. Reader support
-does not introduce that plan into the active version-2 manifest.
+The current source manifest uses version 3 with a separately selected
+`qualified-admin` restricted-bootstrap plan and two fixed role-mode inventories.
+Its legacy and `qualified-v2` selections retain their issued paths and hashes.
 
 A qualified plan has a new actual position-zero baseline, the two fixed
 actor/acquisition bootstrap replacements and the fixed runtime tail after the
@@ -391,6 +391,21 @@ and restore are distinct, restricted, non-owner logins. Installer-managed mode
 creates the fixed group roles; operator-provisioned mode requires the exact
 existing flags and membership graph. Credentials and provisioning remain
 host-owned; this source profile does not qualify a restricted managed host.
+
+The explicit `qualified-admin` selection uses a different 91-unit fresh plan:
+the approved `qa_` baseline, four corrected `qb_` replacements, shared legacy
+forwards and the issued runtime-completion tail. It requires PostgreSQL 16,
+`current_user = session_user = M`, database ownership by M, and exact prefix
+and protected membership admission before principal normalization. M is a
+trusted non-superuser administrator retaining ADMIN membership in six groups;
+this is not isolation from M. Installer-managed M has CREATEROLE and creates
+the fixed groups. Operator-provisioned M has NOCREATEROLE and receives their
+ADMIN edges from the declared operator. Runtime and restore remain restricted
+nonowners. The mode-specific expected inventories are fixed in the manifest,
+not learned from the installation being checked. The
+[local production-path witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
+applies, resumes and replays both modes with actual migration/runtime/restore
+logins; hosted and connected-restore qualification remain separate.
 
 The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
 check the actual login, owner, held lock, protected role graph, default ACLs,
@@ -498,15 +513,13 @@ retain seven exact bound units, including the
 selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) has
-five further fixed approvals at positions 8–12. Those `qa_` fixtures remain
-inert. A PostgreSQL parse failure in the approved actor unit requires four
-new `qb_` replacement identities. The preceding reader checkpoint accepts
-their fixed paths only as a complete positions 13–16 append. This separate
-approval checkpoint adds those four exact whole-file identities; no `qa_`/`qb_`
-SQL or schema-3 plan is active here.
-The future 91-unit restricted generation selects the `qa_` baseline and four
+five fixed approvals at positions 8–12. Those `qa_` fixtures remain inert
+except for the selected baseline. A PostgreSQL parse failure in the approved
+actor unit led to four corrected `qb_` identities at positions 13–16, after a
+separate reader and approval checkpoint. The active 91-unit restricted
+generation selects the `qa_` baseline and four
 `qb_` replacements, reuses the issued completion tail, and excludes the
-qualified owner-path forward. It requires two fixed role-mode inventories.
+qualified owner-path forward. It has two fixed role-mode inventories.
 Its migration login is a trusted administrator retaining ADMIN membership,
 not an isolated principal.
 All six earlier approval rows and their byte identities remain unchanged. The runtime-completion tail grants
@@ -516,7 +529,7 @@ Its local guard requires an unswitched installer owning both targets, the
 existing restricted runtime/group binding and a declared role mode. The complete
 role graph still belongs to the trusted source's preflight; the common tail
 adds no SUPERUSER requirement or alternate installer. A future non-superuser
-profile still needs its own qualification.
+profile has its own local PG16 qualification; hosted qualification remains open.
 
 The reader reserves the qualified owner-path forward after runtime completion,
 at approval position seven before the five reserved restricted-bootstrap
@@ -1224,6 +1237,13 @@ selected catalogue through the existing executor and ledger; this exact grant
 completion does not authorize owner fallback, legacy relabelling or a new role mode.
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
+
+The separate `qualified-admin` 91-unit catalogue is a fresh installation
+generation. It is not an upgrade, relabel or migration-history conversion from
+legacy or `qualified-v2`. Its interrupted-prefix proof resumes only the same
+selected generation under the same actual migration login and fixed role mode;
+replay after completion applies no units. Connected restore and hosted upgrades
+remain unqualified.
 
 The existing qualified target/separate-restore witness connects the native G17
 observation host binding through actual restricted R. Bootstrap setup seeds the

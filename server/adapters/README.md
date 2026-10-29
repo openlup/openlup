@@ -20,6 +20,20 @@ and interfaces should describe the reusable capability first, then name the
 current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
+## Restricted PostgreSQL installation binding
+
+The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
+the `qualified-admin` fresh generation for a PostgreSQL 16 database owner that
+is not a superuser. The [session admission](postgres/qualifiedInstall.ts) checks
+the real migration session, exact ledger prefix and protected role graph before
+normalizing declared names into either fixed mode-specific inventory. It reuses
+the existing package executor, advisory lock, per-unit transaction and final
+inventory comparison. Installer-managed M creates the six fixed groups;
+operator-provisioned M receives declared ADMIN edges without CREATEROLE. M is
+a trusted administrator retaining those ADMIN edges; the runtime and restore
+logins remain restricted nonowners. This binding does not qualify a hosted
+endpoint or connected store restore.
+
 ## Native retained-store transfer preparation
 
 The experimental [source capture](postgres/connectedStoreCapture.ts) and

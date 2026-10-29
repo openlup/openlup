@@ -189,7 +189,13 @@ The restricted-bootstrap control witness admits the four corrected `qb_`
 identities only as an atomic positions 13–16 append after all twelve earlier
 approvals, checks their exact fixture hashes, and rejects prior repins or
 co-located active SQL. These approvals are inert until a separate selected
-generation passes its installation and runtime proofs.
+generation passes its installation and runtime proofs. The active
+[`qualified-admin` witness](tests/postgres/m14QualifiedAdminComposition.test.ts)
+uses two disposable PostgreSQL 16 installations with actual non-superuser M
+sessions: each resumes after a 17-unit committed prefix, seals its fixed
+mode-specific inventory, exercises runtime and restore logins and the existing
+connection consumers, then refuses altered inventory, role graph and session
+visibility. It does not qualify a hosted endpoint or connected restore.
 The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
@@ -217,14 +223,14 @@ and their exact approval now occupies positions 8–12. A disposable PostgreSQL
 install found that the approved actor SQL does not parse. The four corrected
 `qb_` actor, acquisition, runtime and import fixtures are separate inert
 identities; this additive reader accepts only their complete positions 13–16
-append and leaves all twelve issued rows unchanged. Its schema-3 parser selects
+append and leaves all twelve issued rows unchanged. The active schema-3 plan selects
 the `qa_` baseline with those four `qb_` replacements, the issued
 runtime-completion tail and two fixed role-mode inventory digests. The manifest
 and admission witnesses reject missing/reordered tails, wrong-generation paths,
 issued-prefix repins and partial approvals. A disposable PostgreSQL 16
 parse-and-apply witness of the exact proposed bytes in both role modes is
-required before the separate four-byte approval packet; active SQL follows
-that approval. This reader checkpoint adds no active migration or CI job.
+required before the separate four-byte approval packet; active SQL followed
+that approval without changing an issued fixture or approval row.
 
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;

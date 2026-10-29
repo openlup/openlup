@@ -25,6 +25,11 @@ import {
 } from "./platform-migration-manifest.js";
 
 const raw = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+const issued = (() => {
+  if (raw.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
+  const { qualifiedAdmin: _admin, ...prior } = raw;
+  return { ...prior, schemaVersion: 2 as const };
+})();
 const legacy: PlatformMigrationPlan = { schemaVersion: 1, baseline: raw.baseline, forward: raw.forward, objectInventorySha256: raw.objectInventorySha256 };
 const legacyMigrations = readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !isQualifiedPlatformMigrationPath(file));
 const inventory = "fixed qualified inventory fixture";
@@ -53,7 +58,6 @@ function fixture() {
 
 describe("canonical qualified migration selection", () => {
   it("admits a separate 91-unit restricted generation with fixed role-mode inventories", () => {
-    if (raw.schemaVersion !== 2) throw new Error("current qualified source must be schema 2");
     const files = [ADMIN_BASELINE_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE,
       REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE];
     const source = files.map((file, index) => ({ file, content: `-- synthetic restricted unit ${index}\nSELECT 1;\n` }));
@@ -64,21 +68,21 @@ describe("canonical qualified migration selection", () => {
     ]);
     const admin = {
       baseline: entries.get(ADMIN_BASELINE_FILE)!,
-      forward: raw.qualified.forward.filter(entry => entry.file !== QUALIFIED_OWNER_PATH_FILE)
+      forward: issued.qualified.forward.filter(entry => entry.file !== QUALIFIED_OWNER_PATH_FILE)
         .map(entry => replacement.has(entry.file) ? entries.get(replacement.get(entry.file)!)! : entry),
       objectInventorySha256: { installerManaged: sha256("fixed managed inventory"), operatorProvisioned: sha256("fixed provisioned inventory") },
     };
-    const manifest = { ...raw, schemaVersion: 3 as const, qualifiedAdmin: admin };
-    const migrations = [...readPlatformMigrations(process.cwd()).migrations, ...source];
+    const manifest = { ...issued, schemaVersion: 3 as const, qualifiedAdmin: admin };
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !files.includes(file)), ...source];
     expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toEqual([]);
-    expect(evaluatePlatformMigrationManifestHistory(raw, manifest, files)).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(issued, manifest, files)).toEqual([]);
     for (const roleMode of ["installer-managed", "operator-provisioned"] as const) {
       const selected = selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode });
       expect([selected.baseline, ...selected.forward]).toHaveLength(91);
       expect(selected.forward.at(-1)?.file).toBe(QUALIFIED_RUNTIME_COMPLETION_FILE);
       expect(selected.objectInventorySha256).toBe(admin.objectInventorySha256[roleMode === "installer-managed" ? "installerManaged" : "operatorProvisioned"]);
     }
-    const ownerEntry = raw.qualified.forward.at(-1)!;
+    const ownerEntry = issued.qualified.forward.at(-1)!;
     const withoutOwner = structuredClone(manifest);
     withoutOwner.qualified.forward.pop();
     const withOwner = structuredClone(withoutOwner);
@@ -91,14 +95,14 @@ describe("canonical qualified migration selection", () => {
     const wrongAdmin = structuredClone(withOwner);
     wrongAdmin.qualifiedAdmin.forward.push(ownerEntry);
     expect(evaluatePlatformMigrationManifest({ manifest: wrongAdmin, migrations: withOwnerMigrations }).length).toBeGreaterThan(0);
-    expect(() => selectPlatformMigrationManifest(raw, "qualified-admin", { roleMode: "installer-managed" })).toThrow("exact canonical plan");
+    expect(() => selectPlatformMigrationManifest(issued, "qualified-admin", { roleMode: "installer-managed" })).toThrow("exact canonical plan");
     expect(() => selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode: "installer-managed", hasRestore: true } as never)).toThrow("role-mode binding");
     const missingTail = structuredClone(manifest);
     missingTail.qualifiedAdmin.forward.pop();
     expect(evaluatePlatformMigrationManifest({ manifest: missingTail, migrations })).toEqual(expect.arrayContaining([expect.stringContaining("qualified plan is missing")]));
     const alteredIssued = structuredClone(manifest);
     alteredIssued.qualified.forward[0]!.sha256 = "a".repeat(64);
-    expect(evaluatePlatformMigrationManifestHistory(raw, alteredIssued, files)).toEqual(expect.arrayContaining([expect.stringContaining("previous prefix")]));
+    expect(evaluatePlatformMigrationManifestHistory(issued, alteredIssued, files)).toEqual(expect.arrayContaining([expect.stringContaining("previous prefix")]));
     const wrongInventory = structuredClone(manifest);
     wrongInventory.qualifiedAdmin.objectInventorySha256.operatorProvisioned = "invalid";
     expect(evaluatePlatformMigrationManifest({ manifest: wrongInventory, migrations })).toEqual(expect.arrayContaining([expect.stringContaining("two exact role-mode")]));
@@ -158,15 +162,16 @@ describe("canonical qualified migration selection", () => {
   });
 
   it("admits only the exact completion tail after the unchanged restore-bound prefix", () => {
-    if (raw.schemaVersion !== 2) throw new Error("canonical fixture requires schema 2");
-    const previous = structuredClone(raw);
+    const previous = structuredClone(issued);
     // Isolate the structural pre-completion fixture after the real tail is introduced.
     previous.qualified.forward = previous.qualified.forward.filter(({ file }) => file !== QUALIFIED_RUNTIME_COMPLETION_FILE && file !== QUALIFIED_OWNER_PATH_FILE);
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`, "utf8");
     const completion = { file: QUALIFIED_RUNTIME_COMPLETION_FILE, sha256: sha256(content) };
     const completed = structuredClone(previous);
     completed.qualified.forward.push(completion);
-    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => file !== completion.file && file !== QUALIFIED_OWNER_PATH_FILE),
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(({ file }) =>
+      !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_")
+      && file !== completion.file && file !== QUALIFIED_OWNER_PATH_FILE),
       { file: completion.file, content }];
     // Structural inputs retain historical hashes; they are not future live inventory evidence.
     expect(evaluatePlatformMigrationManifest({ manifest: completed, migrations })).toEqual([]);
@@ -195,12 +200,11 @@ describe("canonical qualified migration selection", () => {
   });
 
   it("allows an appended owner path forward only after the issued completion tail", () => {
-    if (raw.schemaVersion !== 2) throw new Error("canonical fixture requires schema 2");
-    const entry = raw.qualified.forward.at(-1)!;
-    const previous = structuredClone(raw);
+    const entry = issued.qualified.forward.at(-1)!;
+    const previous = structuredClone(issued);
     previous.qualified.forward.pop();
-    const next = structuredClone(raw);
-    const migrations = readPlatformMigrations(process.cwd()).migrations;
+    const next = structuredClone(issued);
+    const migrations = readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
     expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(previous, next, [entry.file])).toEqual([]);
     expect(selectPlatformMigrationManifest(next, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }).forward.at(-1)).toEqual(entry);
