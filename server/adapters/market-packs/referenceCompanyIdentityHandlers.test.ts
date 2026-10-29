@@ -27,6 +27,7 @@ describe("reference rules through the package handler", () => {
     const expected = response();
     await currentHandler({ lookupPort })(input as unknown as VercelRequest, expected as unknown as VercelResponse);
     const transcript = calls.splice(0);
+    __resetCompanyIdentityCaches(); resetCurrent();
     const actual = response();
     await createCompanyIdentityLookupHandler({ lookupPort }, bffResponder, referenceCompanyIdentityRules)(input as unknown as HttpRequest, actual as unknown as HttpResponse);
     expect(actual).toMatchObject({ statusCode: expected.statusCode, payload: expected.payload, headers: expected.headers });
