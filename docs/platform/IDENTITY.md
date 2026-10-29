@@ -303,7 +303,7 @@ non-enumerating accepted response and padding. The neutral conformance witness i
 [`authVerifyUrl.test.ts`](../../packages/platform/test/identity/authVerifyUrl.test.ts);
 the reference route tests pin configuration precedence and the new refusal.
 
-## Schema continuity and readiness
+## Email-trust schema readiness
 `emailTrustPolicy` is a required port. `identityEmailTrustReadiness`
 returns core readiness issues with `module: "identity"`, subject
 `emailTrustPolicy`, existing code `OPENLUP_E_PORT_MISSING`, and the precise
@@ -413,7 +413,7 @@ parity.
 See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 [package invocation](PLATFORM_PACKAGE_REFERENCE.md#operator-invitations).
 
-## Schema continuity and readiness
+## Identity migration continuity and readiness
 
 [`IDENTITY_MIGRATIONS`](../../packages/platform/src/identity/sql.ts) records the
 canonical path, SHA-256 digest and runner position of seven complete units, at

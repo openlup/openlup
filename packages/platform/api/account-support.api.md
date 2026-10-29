@@ -103,7 +103,7 @@ export type AccountSupportHostBindingRequired = {
     readonly code: "host_binding_required";
 };
 type CommerceArguments<F> = F extends AccountSupportCallable ? Parameters<F> : unknown[];
-/** Capture one graph and one executor per logical operation, without calling either. */
+/** The host must bind one executor per logical operation. This factory captures/freezes its graph and operation maps but does not validate executor cardinality or identity. */
 export declare function createAccountSupportBindings<O extends AccountSupportOperations, C extends AccountSupportOperations = AccountSupportOperations>(input: {
     graph: "managed" | "native";
     capabilities: AccountSupportCapabilities;
@@ -1664,7 +1664,7 @@ export declare function executeOperatorAccountLink(input: {
     identity: OperatorAccountLinkIdentityPort;
     authority: Pick<ManagedOperatorAuthorityPort, "linkSubjectAccount">;
 }): Promise<OperatorAccountLinkResult>;
-/** Two commands, two commits. Callback invocation keeps the donor's non-await order. */
+/** The host must supply distinct idempotency keys and separately committed link/subscription authorities; this helper creates or verifies neither keys nor transactions. It awaits link; refused/conflicting outcomes return before callback or apply. Otherwise it invokes onLinked() without awaiting its return, then awaits apply(). */
 export declare function linkThenApply(input: {
     link: () => Promise<OperatorAccountLinkResult>;
     apply: () => ReturnType<NativeOperatorAuthorityPort["applySubscriptionAction"]>;
@@ -4478,8 +4478,10 @@ export interface InvoiceDutyReadback {
         readonly leaseUntil: string | null;
     }[];
 }
-/** Every operation is one local transaction; commit before external I/O. Native
- * success atomically saves late identity and compensation; stale catch writes nothing.
+/** Commit each local persistence transaction before host/provider I/O. A store
+ * method may coordinate multiple transactions with host callbacks outside those
+ * transactions; it is not necessarily one atomic transaction. Native success
+ * atomically saves late identity and compensation; stale catch writes nothing.
  * Compatibility stores bind provider selection at construction; the structural
  * native store accepts it per claim and persists the first provider on the duty.
  * No implementation, executor or migration is installed by these declarations.

@@ -4,7 +4,7 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## PostgreSQL connection recipe
 
-For the current qualified-v2 PostgreSQL 16 preview profile, bind connections by
+For the `qualified-v2` and `qualified-admin` PostgreSQL 16 preview profiles, bind connections by
 their work, even when HTTP and timers share one Node host:
 
 | Work | Connection and existing seam |
@@ -41,10 +41,31 @@ uses the real 91-unit selected installation, pooled request work and restricted
 runtime lock sessions. Its deterministic backend-switch/reset cases use real
 PostgreSQL sessions, not a PgBouncer deployment; they prove observed-violation
 refusal before the job body. This is local PG16 evidence, not hosted Neon/RDS
-qualification. Restricted-bootstrap qualification will reuse the same recipe
-once available.
+qualification. The separate [restricted-bootstrap witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
+uses the same consumer seams with both fixed role modes and a non-superuser
+trusted migration administrator. Its local session-switch refusal is not a
+PgBouncer deployment or hosted endpoint qualification.
 
 ## Runtime model
+
+For a managed-source acquisition cut-over, configure the reference target's
+`OPENLUP_ACQUISITION_DRAIN_STARTED_AT` as a fixed UTC ISO instant and
+`OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
+604800. Deploy the same values to every target process before activation.
+The partner submit/transition, survey submit and newsletter consent BFF command
+paths refuse at their route entries before authentication or signature work,
+with HTTP 503, `Retry-After` and `acquisition_legacy_drain` while
+the declared interval is active; read paths remain available. Setting
+`OPENLUP_ACQUISITION_DRAIN_ENDED_AT` to a UTC instant at or after start
+explicitly ends the drain when that instant is reached. A later end cannot
+extend the configured maximum. A future start is invalid on a serving target;
+the operator must correct the cut-over instant before activation. Incomplete or malformed cut-over configuration
+fails closed before that maximum. After the drain, commands enter a new
+target-key namespace; the target
+does not compare retained source-keyed receipts. The host must separately prove
+source quiescence, consistent rollout and item 8 retention of source history;
+these environment values do not certify any of those facts. See the
+[managed mapping task](plans/oss-m14-managed-identity-mapping.md).
 
 The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 consume qualified transaction and object capabilities; they create no connection,

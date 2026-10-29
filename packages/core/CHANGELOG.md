@@ -10,6 +10,10 @@ in the source repository.
 
 ## [Unreleased]
 
+- Clarify that the payment retry-count helper enforces only its local numeric
+  bound and does not establish retry permission or compliance; runtime behavior
+  is unchanged.
+
 ## [0.31.0]
 
 - Publishable on the npm `latest` dist-tag as `0.31.0`, from tag

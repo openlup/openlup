@@ -99,14 +99,20 @@ export function looksLikeAsset(pathname: string): boolean {
 }
 
 /**
- * Serve a built SPA asset if present, otherwise the document the build produced for this route,
- * otherwise the declared CSR fallback for client routes. Missing real assets (a hashed bundle that
- * does not exist) and unknown extensionless paths return 404 rather than the SPA shell.
+ * Try the initial asset read; return a found asset with 200. If the read misses
+ * and the path looks like an asset, return 404. Otherwise, when
+ * `allowRouteDocument` is true and its
+ * lookup finds a route document, return that document with 200. If no route
+ * document was returned, `allowFallback` true returns the SPA index with 200;
+ * otherwise return 404. Both flags default to false. The host must enable these
+ * options only for admitted routes; this helper does not identify application
+ * routes.
  *
  * The middle step is not decoration. The build writes each pre-rendered route as
  * `<route>/index.html` and writes the HOME document to `index.html`; skipping that lookup hands
- * every pre-rendered URL the home document instead of its own. The hosted platform does the same
- * thing declaratively, one rewrite per route, which is why this host had no equivalent code.
+ * every admitted pre-rendered URL the home document instead of its own. The host
+ * supplies the route-document and fallback decisions; this helper does not infer
+ * application routes.
  */
 export async function serveSpaStatic(
   _req: IncomingMessage,

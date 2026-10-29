@@ -589,10 +589,11 @@ stay outside active SQL and the schema-2 manifest; their two owner-body files
 carry the same pinned name-resolution attributes as the issued forward. This
 approval does not install the future 91-unit restricted plan, establish either
 role-mode inventory or grant a release or hosted compatibility claim.
-Four corrected `qb_` fixture identities follow at approval positions 13–16
-as one exact-byte append. The preceding twelve approvals remain fixed. The
-`qb_` files remain inert; the future restricted plan selects them only after
-this separate approval and still needs its own installation qualification.
+Four corrected `qb_` identities follow at approval positions 13–16 as one
+exact-byte append. The preceding twelve approvals remain fixed. The active
+restricted plan selects those four files with the approved `qa_` baseline only
+after the separate approval. Its local PG16 qualification covers both role
+modes; this does not qualify a hosted installation or release.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2
@@ -1121,8 +1122,11 @@ Only fresh, authorized `erasure.read` with authenticated provider-read evidence
 can complete the original bounded deletion. Ordinary 404, empty search, elapsed
 time and receipt replay cannot. Completion never removes the subject tombstone.
 Existing marketing ports and their observations and the existing
-`NewsletterSyncProviderPort` remain unchanged. A refusal-only newsletter bridge
-is planned in the later adapter PR. The [A1 ledger](plans/oss-a1-communications-adapters.md)
+`NewsletterSyncProviderPort` remain unchanged. The current opt-in adapter
+includes a refusal-only `NewsletterSyncProviderPort`: all capability flags are
+false, and `sync` and `reconcile` return `skipped/unsupported`; it does not
+enable newsletter provider work. This declared bridge is not provider selection
+or activation. The [A1 ledger](plans/oss-a1-communications-adapters.md)
 records the offline synthetic proof and remaining delivery gates.
 
 ### Consent push admission and reconciliation

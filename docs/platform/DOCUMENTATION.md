@@ -307,9 +307,11 @@ generated navigation describes source locations rather than installation proof.
 
 Identity routing includes the direct operator challenge source and tests,
 canonical/projection SQL, runtime auth composition and browser auth seams. The
-identity guide owns their behavior; package, architecture, migration and runtime
-owners retain their API, installation and host explanations. Generated navigation
-reflects these routes and never substitutes for those substantive owner updates.
+browser identity owner covers both customer and operator page/provider composition,
+selected-profile inventory, callback and persistence guidance. The identity guide
+owns their behavior; package, architecture, migration and runtime owners retain
+their API, installation and host explanations. Generated navigation reflects
+these routes and never substitutes for those substantive owner updates.
 
 
 <!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-b3d56b4feaad78d44001bd18aeebe086853ba4c6f9cc79d1d49563c50591301d","reason":"The identity browser surface assigns customer pages, session hooks and browser adapters to their new canonical guide. Existing owner precedence and same-change documentation obligations remain unchanged; prior browser and data owners retain their impact review."} -->

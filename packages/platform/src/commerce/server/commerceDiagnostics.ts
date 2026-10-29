@@ -13,6 +13,11 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   [/\+?\d[\d\s().-]{7,}\d/g, "[redacted-number]"],
 ];
 
+/**
+ * Redacts selected common email, credential, identifier and phone patterns,
+ * then truncates the result. This is not complete sanitization or a privacy
+ * boundary; hosts must decide whether diagnostic text may be logged or returned.
+ */
 export function safeCommerceDiagnosticValue(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   let text = String(value);

@@ -189,7 +189,13 @@ The restricted-bootstrap control witness admits the four corrected `qb_`
 identities only as an atomic positions 13–16 append after all twelve earlier
 approvals, checks their exact fixture hashes, and rejects prior repins or
 co-located active SQL. These approvals are inert until a separate selected
-generation passes its installation and runtime proofs.
+generation passes its installation and runtime proofs. The active
+[`qualified-admin` witness](tests/postgres/m14QualifiedAdminComposition.test.ts)
+uses two disposable PostgreSQL 16 installations with actual non-superuser M
+sessions: each resumes after a 17-unit committed prefix, seals its fixed
+mode-specific inventory, exercises runtime and restore logins and the existing
+connection consumers, then refuses altered inventory, role graph and session
+visibility. It does not qualify a hosted endpoint or connected restore.
 The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
@@ -217,14 +223,14 @@ and their exact approval now occupies positions 8–12. A disposable PostgreSQL
 install found that the approved actor SQL does not parse. The four corrected
 `qb_` actor, acquisition, runtime and import fixtures are separate inert
 identities; this additive reader accepts only their complete positions 13–16
-append and leaves all twelve issued rows unchanged. Its schema-3 parser selects
+append and leaves all twelve issued rows unchanged. The active schema-3 plan selects
 the `qa_` baseline with those four `qb_` replacements, the issued
 runtime-completion tail and two fixed role-mode inventory digests. The manifest
 and admission witnesses reject missing/reordered tails, wrong-generation paths,
 issued-prefix repins and partial approvals. A disposable PostgreSQL 16
 parse-and-apply witness of the exact proposed bytes in both role modes is
-required before the separate four-byte approval packet; active SQL follows
-that approval. This reader checkpoint adds no active migration or CI job.
+required before the separate four-byte approval packet; active SQL followed
+that approval without changing an issued fixture or approval row.
 
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;
@@ -282,6 +288,14 @@ extends that proof to a fixed native graph and the application's actual private
 target baseline, one migration-owner data transaction and independent row/file
 readback. Source media preparation and target media authorization use the actual
 restricted runtime login; owner setup cannot establish that runtime capability.
+Its selected managed identity projection is stored and read through a PostgreSQL
+snapshot before translation into the same qualified restore. Assertions cover
+exact issuer/subject derivation, distinct same-email people, human membership
+and native revoke-audit subset with source-row reference and conflict refusal,
+erasure receipt and re-link refusal, plus unsupported-source refusals. A separate
+real-PG case proves source replay, target command drain refusal and both explicit
+and maximum drain ends before a new target-key command. This local projection
+does not prove managed-provider export authority or full source audit retention.
 The existing PostgreSQL helper closes every owned pool/store and removes its
 containers, including after setup failure. A privilege refusal before the main
 case is a blocked proof, even when the runner reports the case skipped. Record
@@ -2429,6 +2443,13 @@ An ordinary lockfile update keeps the source-release digest snapshot unchanged;
 PR checks derive live bindings. Only a reviewed release-preparation contribution
 refreshes the committed snapshot before strict release admission.
 
+For public questions and reports, follow the [support guidance](.github/SUPPORT.md)
+and choose the matching form: [bug reports](.github/ISSUE_TEMPLATE/bug_report.yml)
+ask for a version and reproduction, while [feature requests](.github/ISSUE_TEMPLATE/feature_request.yml)
+ask for the problem, current workaround and why it belongs in Core. Send suspected
+vulnerabilities through the private route in [SECURITY.md](SECURITY.md), never a
+public issue.
+
 ### Local contribution handoff
 
 If your agent lacks supported independent-review capability or you lack upstream write
@@ -2761,6 +2782,10 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-29, disposable Docker cleanup: same-module mocks hid per-project
   state and queued-signal failures → prove lifecycle invariants through actual
   Vitest project loaders and subprocess interruptions.
+
+- 2026-10-29, M14 managed identity mapping: boundary edge gaps in a fixed
+  mapper/control → validate existing input and command ordering at outer route
+  entries directly before adding another mechanism.
 
 - 2026-10-29, M14 schema-upgrade proof: diagnostic prose repeated a scanned
   token after the code fix → describe the mechanism without reproducing the

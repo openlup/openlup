@@ -1218,6 +1218,26 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -1334,6 +1354,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/documentation-quality-audit.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/early-package-gates.md",
       "class": "platform-documentation"
     },
@@ -1395,6 +1419,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-lifecycle-task.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-managed-identity-mapping.md",
       "class": "public-output"
     },
     {
@@ -17670,6 +17698,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/marketing/acquisitionLegacyDrain.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/observability/clientAddressResolver.test.ts",
       "class": "public-output"
     },
@@ -25991,6 +26023,14 @@
     },
     {
       "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedAdminComposition.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedAdminComposition.test.ts",
       "class": "public-output"
     },
     {

@@ -11,13 +11,17 @@
 
 import { readFileSync } from "node:fs";
 
-/** A scheduled job declared by path in the platform-runtime configuration (HTTP-invoked). */
+/** A scheduled job declared by path in the platform-runtime configuration. */
 export interface ScheduledJobDeclaration {
   /** Stable job id used for advisory locking + job-run accounting (derived from the cron path). */
   jobId: string;
   /** Crontab expression (UTC), exactly as authored in the platform-runtime configuration. */
   schedule: string;
-  /** The app endpoint a self-hosted scheduler invokes (Vercel cron hits this directly). */
+  /**
+   * The declared HTTP entrypoint (Vercel cron invokes it directly). A Node
+   * scheduler uses a supplied direct handler when present, otherwise its HTTP
+   * compatibility bridge invokes this path.
+   */
   path: string;
 }
 

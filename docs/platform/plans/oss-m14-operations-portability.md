@@ -121,9 +121,9 @@ of six rows before its no-SQL return was a real ordering constraint.
 | Selection | Exact scope and evidence distinction |
 | --- | --- |
 | Legacy 88 | Default remains the immutable 88-unit plan, inventory `cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`. Legacy bootstrap SUPERUSER/shared-login/pre-existing-role refusals remain. |
-| E-only qualified 89 | Four historical profile expectations and eight production reference/renamed-target checks belong to their exact E2 source. They are not F90 or current 91 expectations. |
+| E-only qualified 89 | Four historical profile expectations and eight production reference/renamed-target checks belong to their exact E2 source. They are not F90 or source-91 expectations. |
 | F qualified 90 | Restore-bound only: aliased migrator `f10dd81aadf543e9b14b5fca30e377c6d0d8689dde379837ad0c145795c09d8f`, separate migrator `d68dd042c487c30b9082cd70103c63de81e2f6ee1754ff52e5961144f172d4b1`. The [once-only reference report](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203) is not target qualification. This is the qualified tail described by published 0.30.0. |
-| Source qualified 91 | Preserves every F90 path/hash/position and appends only runtime completion at position 90. Current manifest inventories are aliased `feba6f9f401d749b7f9d3eb5b380e5d1e0eaf9e8322164e282ae8ec82ead388d`, separate `6f58dd8ba4b83c5f73e80f25b2319721c505926d6b7a374d6defe4f6d7fc1efb`. This later source is absent from published 0.30.0. |
+| Source qualified 91 | Preserves every F90 path/hash/position and appends only runtime completion at position 90. At that source checkpoint, manifest inventories were aliased `feba6f9f401d749b7f9d3eb5b380e5d1e0eaf9e8322164e282ae8ec82ead388d`, separate `6f58dd8ba4b83c5f73e80f25b2319721c505926d6b7a374d6defe4f6d7fc1efb`. This later source is absent from published 0.30.0. |
 
 The [selected manifest](../../../config/platform-migration-manifest.json) owns
 current catalogue bytes. Fresh `qualified-v2` supports the two explicitly tested

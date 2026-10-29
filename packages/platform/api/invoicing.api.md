@@ -1005,8 +1005,10 @@ export interface InvoiceDutyReadback {
         readonly leaseUntil: string | null;
     }[];
 }
-/** Every operation is one local transaction; commit before external I/O. Native
- * success atomically saves late identity and compensation; stale catch writes nothing.
+/** Commit each local persistence transaction before host/provider I/O. A store
+ * method may coordinate multiple transactions with host callbacks outside those
+ * transactions; it is not necessarily one atomic transaction. Native success
+ * atomically saves late identity and compensation; stale catch writes nothing.
  * Compatibility stores bind provider selection at construction; the structural
  * native store accepts it per claim and persists the first provider on the duty.
  * No implementation, executor or migration is installed by these declarations.
@@ -1806,7 +1808,10 @@ export declare function createPostgresInvoiceStore(db: Executor, options?: Parti
     readonly seller?: InvoiceHostPorts["seller"];
 }): NativeStore;
 type MoneyEvidence = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
-/** Native issue/readback binding; every store operation commits before host I/O.
+/** Native issue/readback binding that awaits each supplied store call separately
+ * from subsequent host/provider work; supplied stores own their transaction
+ * boundaries. Native claim selects the host seller before candidate lookup and
+ * the lease call.
  * @consumer Explicit native host issue binding and installed-consumer conformance.
  */
 export declare function runNativeInvoiceIssueJob(input: {

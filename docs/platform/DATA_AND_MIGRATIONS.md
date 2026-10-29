@@ -79,7 +79,7 @@ still needs domain-owned import-safe routes or an approved canonical pre-data /
 post-data installation design. Preprovisioned referenced parents and the exact
 supported selected rows are prerequisites, not complete-store parity.
 
-The qualified-only [retained-row draft](../../db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql)
+The qualified-only [retained-row unit](../../db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql)
 provides two narrow domain routes: `client_import_retained_row` accepts the 13
 persisted client fields, and `subscription_cycle_import_retained_row` accepts
 the eight persisted cycle fields. Each inserts an absent row, returns `false`
@@ -91,29 +91,35 @@ The restore login receives only EXECUTE on these two SECURITY DEFINER routines.
 Their sealed NOLOGIN owner receives SELECT/INSERT on clients and cycles, with
 client SELECT/INSERT RLS policies. Only INSERT under that owner bypasses the
 client lifecycle-history capture and cycle alignment-admission triggers. Normal
-runtime INSERT and UPDATE paths retain their domain behavior; the draft grants
+runtime INSERT and UPDATE paths retain their domain behavior; the unit grants
 no UPDATE/DELETE or runtime access to the import routines. Parents, history,
 frozen terms and identity mapping must still be restored through their existing
 owners. These two routines are not a generic full-store restore capability.
 
-This draft unit follows the qualified runtime tail in the selected manifest.
-Its exact source SHA-256 is
-`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
-The fifth whole-file approval must land separately before its SQL introduction.
-The plan requires a restore login and selects only two 90-unit `withRestore`
-inventories, one for each migration/bootstrap alias shape. Their fixed values
-come from the [two frozen reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203);
-they do not establish target qualification. The E-only 89-unit hashes remain
-separate historical expectations, and the unchanged legacy plan still selects
-88 units. A request without the restore binding refuses before installation.
-The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
-uses the actual built migration entry and default production transport for two
-reference checks and two renamed-principal targets in the other role mode. It
-checks 90 exact ledger rows, status/apply/replay, ordinary runtime writes and
-their admission effects, restricted restore imports, full-field precision,
-history/frozen-term preservation and refusal behavior. This is prepared proof
-source; the standalone domain witness and reference measurements do not
-establish a working E2+F installation.
+This retained-row unit follows the initial qualified runtime-capabilities unit
+in the selected manifest. Its exact source SHA-256 is
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`. The fifth
+whole-file approval was landed separately before this SQL introduction. The two
+90-unit `withRestore` inventories from the E2+F-only candidate and the linked
+[reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203)
+are historical; the E-only 89-unit expectations and legacy 88-unit plan are
+separate. At audited source pin `535349050419abe5122bd74fa6766c58947be3dd`, the
+selected manifest includes this retained-row unit plus runtime completion in a
+91-unit catalogue; the [manifest at that pin](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/config/platform-migration-manifest.json)
+owns those historical hashes and inventory values. Current selections are defined
+under [module catalogues and installed histories](#module-catalogues-and-installed-histories).
+A request without the
+restore binding refuses before installation.
+
+The [production composition witness at that pin](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/tests/postgres/m14QualifiedComposition.test.ts)
+uses the actual built migration entry and default production transport. At that
+source pin its four disposable PostgreSQL profiles check 91 ledger rows,
+status/apply/replay, ordinary runtime writes and admission effects, restricted
+restore imports, full-field precision, history/frozen-term preservation and
+refusal behavior. The dated [runtime-completion result](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations-portability.md#runtime-completion-28-october-2026)
+records the observed result. The witness and dated result cover only the selected
+source and role profiles, not an adopter database, managed-host, publication,
+activation or full-store restore qualification.
 
 Managed `clients.auth_user_id` and native `clients.principal_id` need explicit
 identity mapping. OIDC derives the principal from exact issuer/subject; email
@@ -365,12 +371,12 @@ version 2: the complete legacy plan and digest plus an explicitly selected
 qualified fresh plan. It validates the union before normalizing either plan for
 the existing package runner. Keep the immutable legacy prefix; do not create a
 competing canonical manifest or add package SQL paths to the legacy plan. The
-current source checkpoint carries v2: its legacy selection still has the exact
+current source checkpoint carries v3: its legacy selection still has the exact
 88 issued units and inventory
 `cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`.
-The reader also recognizes a future version 3 with a separately selected
-restricted-bootstrap plan and two fixed role-mode inventories. Reader support
-does not introduce that plan into the active version-2 manifest.
+The current source manifest uses version 3 with a separately selected
+`qualified-admin` restricted-bootstrap plan and two fixed role-mode inventories.
+Its legacy and `qualified-v2` selections retain their issued paths and hashes.
 
 A qualified plan has a new actual position-zero baseline, the two fixed
 actor/acquisition bootstrap replacements and the fixed runtime tail after the
@@ -391,6 +397,21 @@ and restore are distinct, restricted, non-owner logins. Installer-managed mode
 creates the fixed group roles; operator-provisioned mode requires the exact
 existing flags and membership graph. Credentials and provisioning remain
 host-owned; this source profile does not qualify a restricted managed host.
+
+The explicit `qualified-admin` selection uses a different 91-unit fresh plan:
+the approved `qa_` baseline, four corrected `qb_` replacements, shared legacy
+forwards and the issued runtime-completion tail. It requires PostgreSQL 16,
+`current_user = session_user = M`, database ownership by M, and exact prefix
+and protected membership admission before principal normalization. M is a
+trusted non-superuser administrator retaining ADMIN membership in six groups;
+this is not isolation from M. Installer-managed M has CREATEROLE and creates
+the fixed groups. Operator-provisioned M has NOCREATEROLE and receives their
+ADMIN edges from the declared operator. Runtime and restore remain restricted
+nonowners. The mode-specific expected inventories are fixed in the manifest,
+not learned from the installation being checked. The
+[local production-path witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
+applies, resumes and replays both modes with actual migration/runtime/restore
+logins; hosted and connected-restore qualification remain separate.
 
 The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
 check the actual login, owner, held lock, protected role graph, default ACLs,
@@ -414,12 +435,14 @@ does not sandbox PostgreSQL's own deparser or native type-output routines.
 The shared projector retains its legacy payload format and query identities;
 canonical legacy bytes and existing E-only pins still require execution proof.
 
-The prepared
-[production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
-runs four fixed-pin references and four fresh targets through the real binding
-and built package executor. One healthy target supplies the inventory, unsafe
-session and shadow-symbol discriminators before recovering to the same ledger.
-This source has not been executed on the receiving machine.
+At the 27 October E2 89-unit proof-source checkpoint, the eight-case witness
+specified four fixed-pin references and four fresh targets through the real
+binding and built package executor. One healthy target supplied the inventory,
+unsafe-session and shadow-symbol discriminators before recovering to the same
+ledger; that source was still awaiting the receiving-machine run at this
+checkpoint. The linked test later evolved to the four-profile 91-unit
+runtime-completion witness; its dated result appears in the
+[M14 runtime-completion record](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations-portability.md#runtime-completion-28-october-2026).
 
 The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation
@@ -509,15 +532,13 @@ retain seven exact bound units, including the
 selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) has
-five further fixed approvals at positions 8–12. Those `qa_` fixtures remain
-inert. A PostgreSQL parse failure in the approved actor unit requires four
-new `qb_` replacement identities. The preceding reader checkpoint accepts
-their fixed paths only as a complete positions 13–16 append. This separate
-approval checkpoint adds those four exact whole-file identities; no `qa_`/`qb_`
-SQL or schema-3 plan is active here.
-The future 91-unit restricted generation selects the `qa_` baseline and four
+five fixed approvals at positions 8–12. Those `qa_` fixtures remain inert
+except for the selected baseline. A PostgreSQL parse failure in the approved
+actor unit led to four corrected `qb_` identities at positions 13–16, after a
+separate reader and approval checkpoint. The active 91-unit restricted
+generation selects the `qa_` baseline and four
 `qb_` replacements, reuses the issued completion tail, and excludes the
-qualified owner-path forward. It requires two fixed role-mode inventories.
+qualified owner-path forward. It has two fixed role-mode inventories.
 Its migration login is a trusted administrator retaining ADMIN membership,
 not an isolated principal.
 All six earlier approval rows and their byte identities remain unchanged. The runtime-completion tail grants
@@ -527,7 +548,7 @@ Its local guard requires an unswitched installer owning both targets, the
 existing restricted runtime/group binding and a declared role mode. The complete
 role graph still belongs to the trusted source's preflight; the common tail
 adds no SUPERUSER requirement or alternate installer. A future non-superuser
-profile still needs its own qualification.
+profile has its own local PG16 qualification; hosted qualification remains open.
 
 The reader reserves the qualified owner-path forward after runtime completion,
 at approval position seven before the five reserved restricted-bootstrap
@@ -1235,6 +1256,13 @@ selected catalogue through the existing executor and ledger; this exact grant
 completion does not authorize owner fallback, legacy relabelling or a new role mode.
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
+
+The separate `qualified-admin` 91-unit catalogue is a fresh installation
+generation. It is not an upgrade, relabel or migration-history conversion from
+legacy or `qualified-v2`. Its interrupted-prefix proof resumes only the same
+selected generation under the same actual migration login and fixed role mode;
+replay after completion applies no units. Connected restore and hosted upgrades
+remain unqualified.
 
 The existing qualified target/separate-restore witness connects the native G17
 observation host binding through actual restricted R. Bootstrap setup seeds the

@@ -11,8 +11,9 @@ surface.
 - Customer-safe profile, pet, address, billing/orderer, order history/detail,
   subscription-action, invoice correction intent, payment recovery, and invoice
   PDF download handler boundaries.
-- Ownership checks that map the logged-in Supabase auth user to local client,
-  order, invoice, and subscription facts.
+- Ownership checks that map the verified customer principal (managed Auth user
+  or direct identity principal) to local client, order, invoice, and subscription
+  facts.
 
 ## Structural Slices
 

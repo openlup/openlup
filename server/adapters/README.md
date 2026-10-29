@@ -20,6 +20,20 @@ and interfaces should describe the reusable capability first, then name the
 current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
+## Restricted PostgreSQL installation binding
+
+The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
+the `qualified-admin` fresh generation for a PostgreSQL 16 database owner that
+is not a superuser. The [session admission](postgres/qualifiedInstall.ts) checks
+the real migration session, exact ledger prefix and protected role graph before
+normalizing declared names into either fixed mode-specific inventory. It reuses
+the existing package executor, advisory lock, per-unit transaction and final
+inventory comparison. Installer-managed M creates the six fixed groups;
+operator-provisioned M receives declared ADMIN edges without CREATEROLE. M is
+a trusted administrator retaining those ADMIN edges; the runtime and restore
+logins remain restricted nonowners. This binding does not qualify a hosted
+endpoint or connected store restore.
+
 ## Native retained-store transfer preparation
 
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
@@ -59,6 +73,21 @@ a known name alone never establishes safe behavior. A retained source event or
 pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
+
+The [managed identity mapper](postgres/connectedStoreRestore.ts) translates an
+explicitly evidenced issuer/subject binding, customer references, human operator
+membership and the native subset of managed revoke audit, lifecycle rows and
+privacy erasure receipts into the fixed connected restore packet. It retains
+customer and audit row IDs as stable source references, translates revoker
+references through the frozen OIDC derivation, and refuses conflicting audit
+fields, missing bindings, machine actors, erased rows without receipts,
+populated managed-only preferences and other unsupported shapes. Equal email
+addresses establish no identity relationship. The host must prove its source
+snapshot and completeness; the mapper does not collect managed auth subjects or
+certify issuer control. Full managed audit rows and source-keyed acquisition
+history remain with item 8, outside the fixed 73-table graph. The task decision
+and remaining proof boundary are in the
+[managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 
 The [filesystem census](filesystem/orderReviewMediaTransferInventory.ts) and
 [reader](filesystem/orderReviewMediaTransferReader.ts) include both the actual
@@ -308,7 +337,9 @@ The direct [migration binding](postgres/migrationRunner.ts) delegates to the
 package executor and keeps legacy as its default. Explicit qualified selection
 adds the reference catalogue, restricted runtime/optional restore principal
 bindings, startup transport and [read-only session admission](postgres/qualifiedInstall.ts).
-Its 89-unit source plan is not installed or hosted qualification; the
+Its explicit qualified source selection currently contains 91 units; the
+legacy selection remains the default at 88 units. Neither source plan is
+installed or hosted qualification. The
 [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 records its binding shapes and outstanding production proof.
 

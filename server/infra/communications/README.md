@@ -1,16 +1,12 @@
-# Communications provider infra
+# Communications integration signature adapter
 
-Status: source-of-truth
-Verified against `0dc20d72` (2026-09-04) - scope: the single runtime file in
-this directory and its two non-test BFF callers, found by grep across the
-source tree.
-
-`server/infra/communications` owns one low-level, provider-neutral primitive:
-the signature scheme for inbound communication integration events.
+Status: development-preview guidance. The package owns the signature algorithm;
+this directory provides the server-facing compatibility import and its focused
+refusal witness.
 
 ## Owns
 
-`integrationEventSignature.ts`, and nothing else. It exports:
+`integrationEventSignature.ts` re-exports the public package implementation. It exports:
 
 - `signCommunicationIntegrationEvent(...)` - HMAC-SHA256 over
   `` `${timestamp}.${rawBody}` `` with the shared secret, hex-encoded.
@@ -43,8 +39,10 @@ Callers: `server/bff/communications/integrations/events.ts` and
 - Callers must pass the raw request body, not a re-serialized object, or every
   signature will mismatch.
 
-## Known non-neutrality
+## Protocol compatibility
 
-The two header names are prefixed with this deployment's short brand token. They
-are string constants in one file; an adopter renames them there and in the two
-callers, and must update whatever sends the events.
+The exported header constants use the public OpenLup protocol names. Callers
+using this package contract must send those headers; this documentation does not
+recommend editing platform source to rename them for a particular deployment.
+An application with a different inbound protocol owns its own adapter and
+compatibility decision.

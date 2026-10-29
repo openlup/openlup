@@ -1,4 +1,4 @@
-# Customer identity in the reference browser
+# Customer and operator identity in the reference browser
 
 Status: development-preview reference-application behaviour. This composition
 adds no package API, database object, identity transfer or release authority.
