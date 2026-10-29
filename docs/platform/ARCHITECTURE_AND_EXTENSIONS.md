@@ -2403,9 +2403,36 @@ private `report.json` records per-table counts, object/partial counts, observed
 installation identities, timings, refusals, rollback and takeover. Evidence is
 kept under the invoking worktree's `.context/scratch`; cleanup still removes
 only the run's owned resources. The managed first leg and retained-history
-sidecar are separate, as are older-snapshot RPO/RTO and hosted provider receipts.
+sidecar are separate, as are hosted provider receipts.
 No CDC, generic upsert/delete engine or production activation coordinator is
 introduced; capture/restore's finite table regions are unchanged.
+
+The executable's `--older-snapshot` mode composes that same finite native graph
+with a [persisted recovery boundary](../../tests/postgres/m14OlderSnapshotRecovery.ts).
+It drains and retires the media application, pauses three dispatches after their
+real DB admission, and saves the DB packet and complete private media copy before
+provider acceptance. It waits approximately 60 real seconds, then releases
+acceptance, loses the acknowledgment and induces executor unavailability.
+Restore reloads those saved bytes; a later source census is diagnostic only.
+The target remains inactive until publications, later privacy obligations,
+authorization and authenticated effect reconciliation agree. Existing identity
+erasure operations reapply a post-snapshot erasure and retained free-text
+redaction before serving; earlier erasure receipts remain present. The managed
+retained-history sidecar's own restore/redaction proof is a separate boundary.
+
+The retired old executor's exact identity cannot restart after transfer; the
+new worker refuses before its recovery barrier opens. Two accepted effects are
+recovered through the durable independent synthetic provider ledger, a late
+authenticated delivery observation extends the cycle once, and one uncertain
+dispatch remains visibly fenced while ordinary work executes and replays.
+The private report records snapshot age and effective RPO in seconds from the
+consistent pre-effect boundary to induced unavailability. RTO runs from that
+unavailability through restore, object publication, privacy, reconciliation,
+authorization, serving and ordinary-job readback; this declared readiness allows
+the named uncertain operation's refusal. Individual refusals have null RTO.
+Counts, fixture bytes and human/access waits accompany the measured times.
+These are finite local measurements, without an SLO, universal exactly-once or
+hosted qualification claim. Code rollback does not recover data.
 
 The qualified runtime-completion witness uses the existing
 [preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)

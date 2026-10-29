@@ -78,6 +78,18 @@ generation for final recapture and exact readback; no existing target rows are
 patched or deleted to simulate catch-up. The [transfer architecture](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 owns its interrupted atomic retry, source-domain access and activation evidence.
 
+In `--older-snapshot` mode, recovery instead reloads a persisted pre-provider-
+acceptance DB packet and complete private media snapshot. Media writers have
+retired and admitted dispatches are paused while this consistent boundary is
+saved. The approximately 60-second age is real elapsed time. Later source
+captures cannot replace this restore input. Before opening serving, the fixture
+replays its independently retained later erasure obligation through the existing
+restricted-runtime privacy transaction, including retained-text redaction and
+authentication refusal. The older backup itself remains private and immutable.
+The [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+defines its measured RPO/RTO, visible uncertainty and separate managed-sidecar
+proof boundary; this adds no schema, table admission or general backup service.
+
 Historical insertion is not generally inert. `clients` insertion invokes
 `customer_subject_capture_lifecycle_trigger`, generating new history; cycle
 insertion invokes `subscription_delivery_alignment_guard_cycle_insert`, which

@@ -336,6 +336,14 @@ refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITEC
 owns the exact boundary; managed history, older-snapshot measurement and hosted
 provider qualification remain separate. The final target is distinct from the
 preliminary copy and remains inactive through the DB/object/access barriers.
+Use `--older-snapshot` instead for the bounded local recovery measurement. It
+persists the consistent DB/private-media backup before provider acceptance,
+waits approximately 60 real seconds, restores those saved bytes after induced
+unavailability and reapplies later privacy obligations before serving. Its
+private `recovery-measurement.json` reports numeric snapshot age, effective RPO,
+scoped RTO, counts, fixture bytes and separate human/access waits. Declared
+readiness includes ordinary-job readback and permits the named uncertain
+dispatch to remain fenced. A safe refusal has null RTO; no SLO is asserted.
 The host's existing esbuild API emits one ESM for the application child; plain
 Node in Linux loads audited existing JS dependencies without a host-native tsx
 binary, Linux install or image build. Retain the real metafile, source/output
