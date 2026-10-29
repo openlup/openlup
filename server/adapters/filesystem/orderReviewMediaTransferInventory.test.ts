@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
 import { OrderReviewMediaObjectStore } from "./orderReviewMediaObjectStore.js";
-import { captureOrderReviewMediaFilesystem } from "./orderReviewMediaTransferInventory.js";
+import { captureOrderReviewMediaFilesystem, reconcileOrderReviewMediaFilesystem,
+  type OrderReviewMediaSourceReference } from "./orderReviewMediaTransferInventory.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -27,6 +28,30 @@ it("includes every final object and reconstructible partial upload without domai
   expect(census.temporary.map(object => [object.key, object.bytes])).toEqual([[partial.tempRef.slice(4), 4]]);
   expect(await f.store.inspect("review/media")).toMatchObject({ exists: true, sha256: census.objects[0]!.sha256 });
   expect(await f.store.inspect(partial.tempRef)).toMatchObject({ exists: true, sha256: census.temporary[0]!.sha256 });
+});
+
+it("reconciles source rows with final, pending partial and cleanup obligations", async () => {
+  const f = await fixture();
+  const final = await f.store.writeTemp("completed", body("final"), 5, "2999-01-01T00:00:00Z");
+  await f.store.promote(final.tempRef, "review/media");
+  const partial = await f.store.writeTemp("pending", body("part"), 8, "2999-01-01T00:00:00Z");
+  const census = await capture(f.root);
+  const row = (suffix: string, state: OrderReviewMediaSourceReference["state"], objectKey: string): OrderReviewMediaSourceReference => ({
+    mediaReference: `order-review-media:123e4567-e89b-12d3-a456-42661417400${suffix}`,
+    state, objectKey, tempKey: null, writerReference: null, cleanupReceipt: null, nextAttemptAt: null,
+  });
+  const references = [row("0", "stored", "review/media"),
+    { ...row("1", "pending", "review/pending"), writerReference: "pending", tempKey: partial.tempRef },
+    { ...row("2", "cleanup_pending", "review/cleanup"), cleanupReceipt: "cleanup:1", nextAttemptAt: "2030-01-01T00:00:00Z" }];
+  expect(reconcileOrderReviewMediaFilesystem({ census, references })).toMatchObject({
+    retained: references, physicalObjects: 1, partialObjects: 1,
+  });
+  expect(() => reconcileOrderReviewMediaFilesystem({ census, references: references.slice(1) }))
+    .toThrow(expect.objectContaining({ code: "integrity_conflict" }));
+  expect(() => reconcileOrderReviewMediaFilesystem({ census, references: references.slice(0, 1) }))
+    .toThrow(expect.objectContaining({ code: "integrity_conflict" }));
+  expect(() => reconcileOrderReviewMediaFilesystem({ census: { ...census, objects: [] }, references }))
+    .toThrow(expect.objectContaining({ code: "absent" }));
 });
 
 it("refuses unknown nonempty source layout instead of omitting it", async () => {

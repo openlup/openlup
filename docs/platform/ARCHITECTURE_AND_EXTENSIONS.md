@@ -2404,6 +2404,19 @@ A successful write is insufficient: target bytes and descriptor must match
 before checkpoint. Resume recognizes the exact retained object after a lost
 write ACK or checkpoint interruption and refuses a divergent existing key.
 This first slice has no remote inventory traversal or live object-delta protocol.
+The server [S3 transfer source](../../server/adapters/s3/transferObjectSource.ts)
+adds bounded authenticated traversal and can reconcile it against an independently
+read source-store reference snapshot. Matching principal-visible listings alone
+do not establish completeness. The reference snapshot must account for pending,
+partial and cleanup keys, and a fenced caller must retain all corresponding
+business rows. The [filesystem media adapter](../../server/adapters/filesystem/orderReviewMediaTransferInventory.ts)
+reconciles its final and partial files against those rows. Its staging entry
+point builds a separate inactive generation; the host still owns activation
+after database and access reconciliation. Route probes exercise actual customer
+and operator serving handlers under anonymous, owner, other-customer and
+operator identities and refuse effective access changes or served-byte drift.
+These finite source checks do not grant hosted bucket qualification or a whole
+connected-store cutover.
 
 The [private filesystem capability](../../packages/platform/src/portability/filesystemObjects.ts)
 publishes bytes and metadata through exclusive files, fsync and one directory

@@ -6,7 +6,7 @@ import { ObjectTransferError } from "@openlup/platform/portability";
 import { OrderReviewMediaObjectStore } from "./orderReviewMediaObjectStore.js";
 import { captureOrderReviewMediaFilesystem } from "./orderReviewMediaTransferInventory.js";
 import { createOrderReviewMediaTransferReader } from "./orderReviewMediaTransferReader.js";
-import { restoreOrderReviewMediaFilesystem } from "./orderReviewMediaTransferRestore.js";
+import { restoreOrderReviewMediaFilesystem, stageOrderReviewMediaFilesystem } from "./orderReviewMediaTransferRestore.js";
 
 const roots: string[] = [];
 const limits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
@@ -37,6 +37,18 @@ it("publishes final and partial bytes in the actual runtime layout and replays a
   expect(await captureOrderReviewMediaFilesystem({ root: f.target, ...limits })).toEqual(f.census);
   expect(await readdir(f.parent)).toEqual(expect.arrayContaining(["source", "target"]));
   expect((await readdir(f.parent)).filter(name => name.startsWith(".openlup-media-transfer-"))).toEqual([]);
+});
+
+it("stages a complete generation without creating the configured serving root", async () => {
+  const f = await fixture();
+  const copy = { census: f.census, objects: f.objects, temporary: f.temporary, ...limits };
+  const staged = await stageOrderReviewMediaFilesystem({ ...copy, servingRoot: f.target, generationId: "snapshot-1" });
+  expect(staged.generationRoot).toBe(join(f.parent, ".openlup-inactive-media-snapshot-1"));
+  expect(await readdir(f.parent)).toEqual([".openlup-inactive-media-snapshot-1", "source"]);
+  expect(await captureOrderReviewMediaFilesystem({ root: staged.generationRoot, ...limits })).toEqual(f.census);
+  expect((await stageOrderReviewMediaFilesystem({ ...copy, servingRoot: f.target, generationId: "snapshot-1" })).replayed).toBe(true);
+  await expect(stageOrderReviewMediaFilesystem({ ...copy, servingRoot: f.target, generationId: "../escape" }))
+    .rejects.toMatchObject({ code: "invalid_input" });
 });
 
 it("leaves the runtime target absent after an interrupted source read and can resume from the same capture", async () => {

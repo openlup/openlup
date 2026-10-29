@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { expect, it, vi } from "vitest";
 import { createS3TransferObjectSource } from "./transferObjectSource.js";
+import type { S3SourceReferenceSnapshot } from "./transferObjectSource.js";
 
 type Command = { constructor: { name: string }; input: Record<string, unknown> };
 // Protocol doubles expose command input only; the separate plain-Node SDK
@@ -175,4 +176,55 @@ it("reports only observed empty terminal pages for an accessible empty view", as
   const f = fixture(() => page([]));
   expect(await f.source.capture()).toEqual({ bucket: "owned-fixture", pages: { before: 1, after: 1 }, objects: [] });
   expect(f.send).toHaveBeenCalledTimes(2);
+});
+
+it("qualifies only an independent stable reference snapshot with exact bytes and metadata", async () => {
+  const f = fixture(command => command.constructor.name === "GetObjectCommand"
+    ? output("abc", { owner: "retained" }) : page(["known"]));
+  const observed = await f.source.read("known");
+  const reference: S3SourceReferenceSnapshot = { bucket: "owned-fixture", snapshotId: "source-snapshot-1",
+    features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" }, objects: [observed.object], obligations: [
+    { kind: "cleanup", key: "known", sourceRecordId: "media-1" },
+    { kind: "pending-upload", key: "not-materialized-yet", sourceRecordId: "media-2" },
+  ] };
+  expect(await f.source.captureAgainstReferences(async () => reference)).toMatchObject({
+    referenceSnapshotId: "source-snapshot-1", obligations: reference.obligations,
+  });
+  await expect(f.source.captureAgainstReferences(async () => ({ ...reference, features: undefined as never })))
+    .rejects.toMatchObject({ code: "invalid_input" });
+  await expect(f.source.captureAgainstReferences(async () => ({ ...reference, bucket: "another-bucket" })))
+    .rejects.toMatchObject({ code: "invalid_input" });
+  await expect(f.source.captureAgainstReferences(async () => ({ ...reference, objects: [
+    ...reference.objects, { ...observed.object, key: "filtered" },
+  ] }))).rejects.toMatchObject({ code: "integrity_conflict" });
+  await expect(f.source.captureAgainstReferences(async () => ({ ...reference, objects: [] })))
+    .rejects.toMatchObject({ code: "integrity_conflict" });
+  await expect(f.source.captureAgainstReferences(async () => ({ ...reference, objects: [
+    { ...observed.object, sha256: "0".repeat(64) },
+  ] }))).rejects.toMatchObject({ code: "integrity_conflict" });
+  await expect(f.source.captureAgainstReferences(async () => ({ ...reference, objects: [
+    { ...observed.object, metadata: { "s3.user.owner": "other" } },
+  ] }))).rejects.toMatchObject({ code: "integrity_conflict" });
+});
+
+it("refuses source-reference drift and unexplained physical objects", async () => {
+  const f = fixture(command => command.constructor.name === "GetObjectCommand" ? output() : page(["known", "extra"]));
+  const object = (await f.source.read("known")).object;
+  let reads = 0;
+  await expect(f.source.captureAgainstReferences(async () => ({ bucket: "owned-fixture", snapshotId: `snapshot-${++reads}`,
+    features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" }, objects: [object], obligations: [] })))
+    .rejects.toMatchObject({ code: "version_conflict" });
+  await expect(f.source.captureAgainstReferences(async () => ({ bucket: "owned-fixture", snapshotId: "stable",
+    features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" }, objects: [object], obligations: [] })))
+    .rejects.toMatchObject({ code: "integrity_conflict" });
+});
+
+it("refuses a native versioned source instead of silently omitting older versions", async () => {
+  const f = fixture(command => command.constructor.name === "GetObjectCommand"
+    ? output("abc", {}, { VersionId: "v2" }) : page(["known"]));
+  const object = (await f.source.read("known")).object;
+  expect(object.metadata["s3.version-id"]).toBe("v2");
+  await expect(f.source.captureAgainstReferences(async () => ({ bucket: "owned-fixture", snapshotId: "versioned",
+    features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" }, objects: [object], obligations: [] })))
+    .rejects.toMatchObject({ code: "invalid_input" });
 });

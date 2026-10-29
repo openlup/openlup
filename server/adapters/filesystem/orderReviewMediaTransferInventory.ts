@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstat, opendir, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { ObjectTransferError, type TransferObject } from "@openlup/platform/portability";
@@ -7,6 +8,65 @@ import { createOrderReviewMediaTransferReader } from "./orderReviewMediaTransfer
 export interface OrderReviewMediaFilesystemCensus {
   objects: TransferObject[];
   temporary: TransferObject[];
+}
+
+/** Exact retained DB projection from the same fenced source snapshot as the filesystem census. */
+export interface OrderReviewMediaSourceReference {
+  mediaReference: string;
+  state: "pending" | "stored" | "confirmed" | "cleanup_pending" | "deleted";
+  objectKey: string;
+  tempKey: string | null;
+  writerReference: string | null;
+  cleanupReceipt: string | null;
+  nextAttemptAt: string | null;
+}
+
+/** Refuse unexplained physical files and missing served objects while retaining every pending/cleanup row. */
+export function reconcileOrderReviewMediaFilesystem(input: {
+  census: OrderReviewMediaFilesystemCensus;
+  references: readonly OrderReviewMediaSourceReference[];
+}): { retained: OrderReviewMediaSourceReference[]; physicalObjects: number; partialObjects: number } {
+  const { census, references } = input;
+  if (!census || !Array.isArray(census.objects) || !Array.isArray(census.temporary)
+    || !Array.isArray(references)) throw new ObjectTransferError("invalid_input");
+  const objects = new Set(census.objects.map(object => object.key));
+  const temporary = new Set(census.temporary.map(object => object.key));
+  if (objects.size !== census.objects.length || temporary.size !== census.temporary.length) throw new ObjectTransferError("invalid_input");
+  const retained: OrderReviewMediaSourceReference[] = [];
+  const refs = new Set<string>(), physical = new Set<string>(), partial = new Set<string>();
+  for (const row of references) {
+    if (!row || !/^order-review-media:[a-f0-9-]{36}$/.test(row.mediaReference)
+      || !["pending", "stored", "confirmed", "cleanup_pending", "deleted"].includes(row.state)
+      || !/^[A-Za-z0-9_-]{1,128}(?:\/[A-Za-z0-9_-]{1,128}){0,3}$/.test(row.objectKey)
+      || row.tempKey !== null && !/^tmp\/[a-f0-9]{64}-part$/.test(row.tempKey)
+      || row.writerReference !== null && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(row.writerReference)
+      || row.cleanupReceipt !== null && typeof row.cleanupReceipt !== "string"
+      || row.nextAttemptAt !== null && (typeof row.nextAttemptAt !== "string" || !Number.isFinite(Date.parse(row.nextAttemptAt)))
+      || refs.has(row.mediaReference) || physical.has(row.objectKey)) throw new ObjectTransferError("invalid_input");
+    refs.add(row.mediaReference); physical.add(row.objectKey);
+    const derived = row.writerReference === null ? null
+      : `tmp/${createHash("sha256").update(row.writerReference).digest("hex")}-part`;
+    if (row.tempKey !== null && derived !== null && row.tempKey !== derived) throw new ObjectTransferError("integrity_conflict");
+    const temp = row.tempKey ?? derived;
+    if (temp !== null) {
+      if (partial.has(temp.slice(4))) throw new ObjectTransferError("invalid_input");
+      partial.add(temp.slice(4));
+    }
+    if ((row.state === "stored" || row.state === "confirmed") && !objects.has(row.objectKey)) {
+      throw new ObjectTransferError("absent");
+    }
+    if (row.state === "pending" && row.tempKey !== null && !temporary.has(row.tempKey.slice(4))) {
+      throw new ObjectTransferError("absent");
+    }
+    if (row.state === "deleted" && (objects.has(row.objectKey) || temp !== null && temporary.has(temp.slice(4)))) {
+      throw new ObjectTransferError("integrity_conflict");
+    }
+    retained.push({ ...row });
+  }
+  if ([...objects].some(key => !physical.has(key)) || [...temporary].some(key => !partial.has(key))) {
+    throw new ObjectTransferError("integrity_conflict");
+  }
+  return { retained, physicalObjects: objects.size, partialObjects: temporary.size };
 }
 
 /**
