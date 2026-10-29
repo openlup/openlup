@@ -33,6 +33,19 @@ describe("POST /api/bff/marketing/research/newsletter-consent", () => {
     expect(handleConsent).not.toHaveBeenCalled();
   });
 
+  it("refuses an unsigned POST at the route entry throughout the declared drain", async () => {
+    vi.stubEnv("COMMUNICATION_INTEGRATIONS_EVENTS_SECRET", "integration-secret");
+    vi.stubEnv("OPENLUP_ACQUISITION_DRAIN_STARTED_AT", new Date(Date.now() - 1000).toISOString());
+    vi.stubEnv("OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS", "3600");
+    handleConsent.mockClear();
+    const { default: handler } = await import("./newsletter-consent.js");
+    const res = response();
+    await handler(request(JSON.stringify({ contractVersion: "acquisition_newsletter_consent_v1" }), "bad"), res);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", expect.stringMatching(/^[1-9][0-9]*$/));
+    expect(handleConsent).not.toHaveBeenCalled();
+  });
+
   it("passes a verified providerless command to the direct binding", async () => {
     vi.stubEnv("COMMUNICATION_INTEGRATIONS_EVENTS_SECRET", "integration-secret");
     handleConsent.mockImplementation(async (_body, res: HttpResponse) => { res.status(200).json({ ok: true }); });

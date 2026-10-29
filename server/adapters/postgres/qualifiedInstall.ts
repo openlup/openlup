@@ -196,7 +196,7 @@ export async function assertQualifiedPostgresSession(client: PoolClient, applied
 
 /** A distinct payload format; the issued selected-catalog-v2 payload remains untouched. */
 export async function qualifiedPostgresCatalogPayload(client: PoolClient, selection: QualifiedPostgresInstallation, lockName: string): Promise<string> {
-  const applied = (await client.query<{ file: string; sha256: string; position: number }>("SELECT catalog_path AS file,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
+  const applied = (await client.query<{ file: string; sha256: string; position: number }>("SELECT catalog_path AS file,sha256,position FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   const { rows, protectedNames } = await checkedCatalog(client, selection, applied, lockName);
   const sameRoot = selection.migrationLogin === selection.bootstrapLogin;
   const bindings = new Map<string, string>([
@@ -236,4 +236,229 @@ export async function qualifiedPostgresCatalogPayload(client: PoolClient, select
   const catalog: unknown = JSON.parse(selectedCatalogRowsPayloadForQualifiedInstall(normalized));
   return stable({ format: "qualified-catalog-v1", bindingShape: { migrationIsBootstrap: sameRoot, hasRestore: selection.restoreLogin !== undefined },
     criticalSession: { replicationRole: "origin", runtimeReplicationCapability: false, restoreReplicationCapability: false }, catalog });
+}
+export type QualifiedAdminPostgresInstallation = {
+  generation: "qualified-admin";
+  migrationLogin: string;
+  bootstrapLogin: string;
+  runtimeLogin: string;
+  restoreLogin: string;
+} & ({ roleMode: "installer-managed"; operatorLogin?: never }
+  | { roleMode: "operator-provisioned"; operatorLogin: string });
+
+export const ADMIN_FILES = {
+  baseline: "db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+  actor: "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+  acquisition: "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+  runtime: "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+  retainedImport: "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+  contexts: "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+} as const;
+const actorGroups = ["anon", "authenticated", "service_role"] as const;
+const acquisitionGroups = ["platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"] as const;
+const groups = [...actorGroups, ...acquisitionGroups];
+function refuse(code: string): never { throw new Error(`qualified-admin PostgreSQL refused: ${code}`); }
+export function assertQualifiedAdminPostgresSelection(input: QualifiedAdminPostgresInstallation): void {
+  if (!input || typeof input !== "object" || Array.isArray(input)) refuse("invalid_selection");
+  if (input.generation !== "qualified-admin" || !["installer-managed", "operator-provisioned"].includes(input.roleMode)) refuse("invalid_selection");
+  const keys = ["generation", "roleMode", "migrationLogin", "bootstrapLogin", "runtimeLogin", "restoreLogin",
+    ...(input.roleMode === "operator-provisioned" ? ["operatorLogin"] : [])].sort();
+  if (JSON.stringify(Object.keys(input).sort()) !== JSON.stringify(keys)) refuse("invalid_selection_keys");
+  const names = [input.migrationLogin, input.bootstrapLogin, input.runtimeLogin, input.restoreLogin,
+    ...(input.roleMode === "operator-provisioned" ? [input.operatorLogin] : [])];
+  if (names.some(name => typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u.test(name)
+    || name.toUpperCase() === "PUBLIC" || name.startsWith("pg_") || groups.includes(name as typeof groups[number]))) refuse("invalid_principal_name");
+  if (new Set(names).size !== names.length) refuse("principal_alias_not_permitted");
+}
+/** Identifier-only transport; the selected generation never falls back to v2. */
+export function qualifiedAdminPostgresStartupOptions(input: QualifiedAdminPostgresInstallation): string {
+  assertQualifiedAdminPostgresSelection(input);
+  return `-c openlup.qualified.runtime_login=${input.runtimeLogin} -c openlup.qualified.restore_login=${input.restoreLogin} -c openlup.qualified.role_mode=${input.roleMode}`
+    + (input.roleMode === "operator-provisioned" ? ` -c openlup.qualified.operator_login=${input.operatorLogin}` : "");
+}
+export type AdminPrefixPhase = Readonly<{
+  actorPresent: boolean;
+  acquisitionPresent: boolean;
+  acquisitionExecutionOpen: boolean;
+  retainedImportPresent: boolean;
+  contextsPresent: boolean;
+}>;
+/** The existing runner proves the exact source prefix before this observation. */
+export function qualifiedAdminPrefixPhase(applied: readonly { file: string }[], input: QualifiedAdminPostgresInstallation): AdminPrefixPhase {
+  assertQualifiedAdminPostgresSelection(input);
+  const present = new Set(applied.map(row => row.file));
+  if (applied.length > 0 && applied[0]?.file !== ADMIN_FILES.baseline) refuse("wrong_generation_prefix");
+  const actor = present.has(ADMIN_FILES.actor), acquisition = present.has(ADMIN_FILES.acquisition);
+  const runtime = present.has(ADMIN_FILES.runtime), retained = present.has(ADMIN_FILES.retainedImport), contexts = present.has(ADMIN_FILES.contexts);
+  if (acquisition && !actor || runtime && !acquisition || retained && !runtime || contexts && !retained) refuse("invalid_installation_phase");
+  return {
+    actorPresent: input.roleMode === "operator-provisioned" || actor,
+    acquisitionPresent: input.roleMode === "operator-provisioned" || acquisition,
+    acquisitionExecutionOpen: acquisition && !runtime,
+    retainedImportPresent: retained,
+    contextsPresent: contexts,
+  };
+}
+export type AdminObservedMembership = Readonly<{
+  grantedRole: string; memberRole: string; grantorRole: string;
+  adminOption: boolean; inheritOption: boolean; setOption: boolean;
+}>;
+/** Fixed expected rows for equality checking. This does not synthesize GRANT SQL. */
+export function expectedQualifiedAdminMemberships(input: QualifiedAdminPostgresInstallation, phase: AdminPrefixPhase): readonly AdminObservedMembership[] {
+  assertQualifiedAdminPostgresSelection(input);
+  const rows: AdminObservedMembership[] = ["pg_read_all_settings", "pg_read_all_stats", "pg_stat_scan_tables"].map(grantedRole => ({
+    grantedRole, memberRole: "pg_monitor", grantorRole: input.bootstrapLogin,
+    adminOption: false, inheritOption: true, setOption: true,
+  }));
+  for (const role of [...(phase.actorPresent ? actorGroups : []), ...(phase.acquisitionPresent ? acquisitionGroups : [])]) {
+    if (input.roleMode === "installer-managed") rows.push({ grantedRole: role, memberRole: input.migrationLogin, grantorRole: input.bootstrapLogin,
+      adminOption: true, inheritOption: false, setOption: false });
+    else {
+      rows.push({ grantedRole: role, memberRole: input.operatorLogin, grantorRole: input.bootstrapLogin,
+        adminOption: true, inheritOption: false, setOption: false });
+      rows.push({ grantedRole: role, memberRole: input.migrationLogin, grantorRole: input.operatorLogin,
+        adminOption: true, inheritOption: false, setOption: false });
+    }
+    if ([...actorGroups, "platform_acquisition_runtime"].includes(role)) rows.push({
+      grantedRole: role, memberRole: input.runtimeLogin,
+      grantorRole: input.roleMode === "installer-managed" ? input.migrationLogin : input.operatorLogin,
+      adminOption: false, inheritOption: role === "service_role", setOption: true,
+    });
+  }
+  if (phase.acquisitionExecutionOpen) rows.push({ grantedRole: "platform_acquisition_owner", memberRole: input.migrationLogin,
+    grantorRole: input.migrationLogin, adminOption: false, inheritOption: true, setOption: true });
+  return rows;
+}
+// The new strict session/projector uses these rows only after actual role flags,
+// owner, lock, defaults, DDL/replication and canonical visibility have been checked.
+// The importer temporary edge is never a committed-prefix state: its unit is atomic.
+type AdminCheckedCatalog = CheckedCatalog & { phase: AdminPrefixPhase };
+function assertAdminFlags(row: CatalogRow | undefined, createRole: boolean): void {
+  if (!row) refuse("required_role_missing");
+  const a = attributes(row);
+  if (a.login !== true || a.inherit !== false || a.superuser !== false || a.createRole !== createRole
+    || ["createDb", "replication", "bypassRls"].some(key => a[key] !== false)
+    || a.connectionLimit !== -1 || a.validUntil !== null) refuse("admin_role_flags_differ");
+}
+async function checkedQualifiedAdminCatalog(client: PoolClient, selection: QualifiedAdminPostgresInstallation, applied: readonly Applied[], lockName: string): Promise<AdminCheckedCatalog> {
+  assertQualifiedAdminPostgresSelection(selection);
+  const phase = qualifiedAdminPrefixPhase(applied, selection);
+  const facts = (await client.query<SessionFacts>(SESSION_FACTS_SQL, [selection.runtimeLogin, selection.restoreLogin, lockName])).rows[0];
+  if (!facts || !Array.isArray(facts.effective_search_path) || facts.effective_search_path.length !== 2
+    || facts.effective_search_path[0] !== "pg_catalog" || facts.effective_search_path[1] !== "public") refuse("canonical_search_path_required");
+  if (facts.current_user !== selection.migrationLogin || facts.session_user !== selection.migrationLogin
+    || facts.database_owner !== selection.migrationLogin || facts.bootstrap_login !== selection.bootstrapLogin) refuse("actual_login_or_owner_mismatch");
+  if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) refuse("postgresql_16_required");
+  if (facts.session_lock_held !== true) refuse("migration_session_lock_not_held");
+  if (facts.replication_role !== "origin" || facts.runtime_unsafe !== false || facts.restore_unsafe !== false
+    || facts.unsafe_replication_default !== false) refuse("runtime_persistent_ddl_or_replication_unsafe");
+  if (facts.default_privileges_exist !== false) refuse("canonical_default_privileges_required");
+  if (facts.runtime_setting !== selection.runtimeLogin || facts.restore_setting !== selection.restoreLogin
+    || facts.mode_setting !== selection.roleMode) refuse("startup_binding_mismatch");
+  const operator = selection.roleMode === "operator-provisioned" ? selection.operatorLogin : "";
+  const extra = (await client.query<{ operator_setting: string | null; acquisition_public_create: boolean; import_unsafe: boolean }>(String.raw`
+    SELECT pg_catalog.current_setting('openlup.qualified.operator_login',true) AS operator_setting,
+      COALESCE((SELECT pg_catalog.has_schema_privilege(r.oid,'public','CREATE') FROM pg_catalog.pg_roles r
+        WHERE r.rolname OPERATOR(pg_catalog.=) 'platform_acquisition_owner'),false) AS acquisition_public_create,
+      COALESCE((SELECT pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+        OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM')
+        FROM pg_catalog.pg_roles r WHERE r.rolname OPERATOR(pg_catalog.=) 'openlup_retained_import_owner'),false) AS import_unsafe`)).rows[0];
+  if (!extra || (extra.operator_setting ?? "") !== operator || extra.acquisition_public_create !== phase.acquisitionExecutionOpen
+    || extra.import_unsafe !== false) refuse("owner_window_or_operator_transport_invalid");
+  if (facts.ledger_exists !== true && facts.ledger_exists !== false) refuse("malformed_ledger_observation");
+  if (facts.ledger_exists === true && (applied.length === 0 || facts.ledger_owner !== selection.migrationLogin)) refuse("empty_or_differently_owned_ledger");
+  const rows = await readSelectedCatalogRowsForQualifiedInstall(client);
+  selectedCatalogRowsPayloadForQualifiedInstall(rows);
+  const roles = new Map(rows.filter(row => row.kind === "role").map(row => [row.name,row]));
+  assertFlags(roles.get(selection.bootstrapLogin), {login:true,inherit:true,superuser:true,elevated:true});
+  assertAdminFlags(roles.get(selection.migrationLogin),selection.roleMode === "installer-managed");
+  if (selection.roleMode === "operator-provisioned") assertAdminFlags(roles.get(selection.operatorLogin),true);
+  for (const name of [selection.runtimeLogin,selection.restoreLogin]) assertFlags(roles.get(name), {login:true,inherit:false,superuser:false,elevated:false});
+  for (const name of GROUPS) {
+    const present = ACTOR_GROUPS.includes(name) ? phase.actorPresent : phase.acquisitionPresent;
+    if (present) assertFlags(roles.get(name), {login:false,inherit:false,superuser:false,elevated:false});
+    else if (roles.has(name)) refuse("installer_managed_role_preexists");
+  }
+  for (const name of PREDEFINED) {
+    const row = roles.get(name); if (!row) refuse("predefined_role_missing");
+    const a = attributes(row);
+    if (a.login !== false || a.superuser !== false || ["createRole","createDb","replication","bypassRls"].some(key => a[key] !== false)) refuse("predefined_role_elevated");
+  }
+  const protectedNames = new Set([...GROUPS,...PREDEFINED,selection.migrationLogin,selection.bootstrapLogin,selection.runtimeLogin,selection.restoreLogin,...(operator ? [operator] : [])]);
+  for (const [name,row] of roles) if (!protectedNames.has(name)) {
+    const a = attributes(row);
+    if (name.startsWith("pg_") || ["superuser","createRole","createDb","replication","bypassRls"].some(key => a[key] !== false)) refuse("outside_role_has_host_authority");
+  }
+  const expected = expectedQualifiedAdminMemberships(selection,phase);
+  const actual: AdminObservedMembership[] = [];
+  for (const row of rows.filter(row => row.kind === "role-membership")) {
+    const a = attributes(row);
+    if (protectedNames.has(String(a.grantedRole)) || protectedNames.has(String(a.memberRole))) actual.push({
+      grantedRole:String(a.grantedRole),memberRole:String(a.memberRole),grantorRole:String(a.grantorRole),
+      adminOption:a.adminOption as boolean,inheritOption:a.inheritOption as boolean,setOption:a.setOption as boolean,
+    });
+    else if (protectedNames.has(String(a.grantorRole)) && a.grantorRole !== selection.bootstrapLogin
+      && a.grantorRole !== selection.migrationLogin && a.grantorRole !== operator) refuse("protected_grantor_has_outside_edge");
+  }
+  if (stable(actual.map(stable).sort()) !== stable(expected.map(stable).sort())) refuse("protected_membership_graph_differs");
+  for (const row of rows) {
+    if (row.kind === "role" || row.kind === "role-membership") continue;
+    const a = attributes(row);
+    if (row.kind === "default-privilege") refuse("canonical_default_privileges_required");
+    const principals = [a.owner,a.ownerRole,a.grantor,a.grantee,...(row.kind === "policy" && Array.isArray(a.roles) ? a.roles : [])];
+    if (principals.some(name => typeof name === "string" && name !== "PUBLIC" && !protectedNames.has(name))) refuse("outside_principal_references_selected_catalog");
+    if (typeof a.owner === "string" && ![selection.migrationLogin,selection.bootstrapLogin,"pg_database_owner","platform_acquisition_owner","openlup_retained_import_owner"].includes(a.owner)) refuse("runtime_operator_or_actor_owns_selected_object");
+    if (a.owner === "openlup_retained_import_owner" && (!phase.retainedImportPresent || row.kind !== "function" || row.schema !== "public"
+      || !["client_import_retained_row","subscription_cycle_import_retained_row"].includes(row.name))) refuse("unexpected_import_owner_object");
+    if (row.kind === "schema" && !["public","auth","acquisition_private"].includes(row.name)) refuse("unsupported_selected_schema");
+  }
+  if (facts.ledger_exists === false) for (const row of rows) {
+    const a = attributes(row);
+    if (row.kind === "role" || row.kind === "role-membership" || row.kind === "extension" && row.name === "plpgsql"
+      || row.kind === "schema" && row.name === "public"
+      || row.kind === "acl-grant" && a.targetClass === "schema" && row.name === "public") continue;
+    refuse("fresh_generation_requires_empty_database");
+  }
+  return {rows,protectedNames,phase};
+}
+export async function assertQualifiedAdminPostgresSession(client: PoolClient, applied: readonly Applied[], selection: QualifiedAdminPostgresInstallation, lockName: string): Promise<void> {
+  await checkedQualifiedAdminCatalog(client,selection,applied,lockName);
+}
+/** Distinct payload; checks above precede all principal field normalization. */
+export async function qualifiedAdminPostgresCatalogPayload(client: PoolClient, selection: QualifiedAdminPostgresInstallation, lockName: string): Promise<string> {
+  const applied = (await client.query<{file:string;sha256:string;position:number}>("SELECT catalog_path AS file,sha256,position FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
+  const {rows,protectedNames} = await checkedQualifiedAdminCatalog(client,selection,applied,lockName);
+  const bindings = new Map<string,string>([
+    [selection.migrationLogin,"@qa:migrator"],[selection.bootstrapLogin,"@qa:bootstrap"],
+    [selection.runtimeLogin,"@qa:runtime"],[selection.restoreLogin,"@qa:restore"],
+    ...(selection.roleMode === "operator-provisioned" ? [[selection.operatorLogin,"@qa:operator"] as [string,string]] : []),
+  ]);
+  const principal = (value: unknown): unknown => typeof value === "string" ? bindings.get(value) ?? value : value;
+  const normalized: CatalogRow[] = [];
+  for (const row of rows) {
+    const a = attributes(row);
+    if (row.kind === "role" && !protectedNames.has(row.name)) continue;
+    if (row.kind === "role-membership" && !protectedNames.has(String(a.grantedRole)) && !protectedNames.has(String(a.memberRole))) continue;
+    let name = row.name; const args = [...row.arguments];
+    if (typeof a.owner === "string") a.owner = principal(a.owner);
+    if (row.kind === "role") name = String(principal(name));
+    if (row.kind === "role-membership") {
+      name=String(principal(name)); args[0]=String(principal(args[0])); args[1]=String(principal(args[1]));
+      a.grantedRole=principal(a.grantedRole); a.memberRole=principal(a.memberRole); a.grantorRole=principal(a.grantorRole);
+    } else if (row.kind === "acl-grant") {
+      args[args.length-5]=String(principal(args[args.length-5])); args[args.length-4]=String(principal(args[args.length-4]));
+      a.grantor=principal(a.grantor); a.grantee=principal(a.grantee);
+    } else if (row.kind === "default-privilege") {
+      name=String(principal(name)); args[1]=String(principal(args[1])); args[2]=String(principal(args[2]));
+      a.ownerRole=principal(a.ownerRole); a.grantor=principal(a.grantor); a.grantee=principal(a.grantee);
+    } else if (row.kind === "policy") {
+      if (!Array.isArray(a.roles) || !a.roles.every(role => typeof role === "string")) refuse("malformed_policy_principals");
+      a.roles=a.roles.map(principal).sort();
+    }
+    normalized.push({...row,name,arguments:args,attributes:stable(a)});
+  }
+  return stable({format:"qualified-admin-catalog-v1",bindingShape:{roleMode:selection.roleMode,hasRestore:true},
+    criticalSession:{replicationRole:"origin",runtimeReplicationCapability:false,restoreReplicationCapability:false},
+    catalog:JSON.parse(selectedCatalogRowsPayloadForQualifiedInstall(normalized)) as unknown});
 }

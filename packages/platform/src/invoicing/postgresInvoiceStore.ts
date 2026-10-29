@@ -235,7 +235,10 @@ const LOCAL_DOCUMENT_SQL = `
 type MoneyEvidence = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
 class ClaimFenceError extends Error {}
 
-/** Native issue/readback binding; every store operation commits before host I/O.
+/** Native issue/readback binding that awaits each supplied store call separately
+ * from subsequent host/provider work; supplied stores own their transaction
+ * boundaries. Native claim selects the host seller before candidate lookup and
+ * the lease call.
  * @consumer Explicit native host issue binding and installed-consumer conformance.
  */
 export async function runNativeInvoiceIssueJob(input: {

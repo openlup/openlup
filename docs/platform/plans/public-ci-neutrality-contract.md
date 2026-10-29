@@ -8,7 +8,7 @@ Scope: development-preview tree checks using the existing core source scanner an
 
 Removed neutrality debt must not return. Counts belong to an exact relative path and category; a reduction elsewhere cannot pay for an increase. Changing a matcher must not masquerade as removing a finding.
 
-For a PR, use the event's full base SHA and record the actual checked-out candidate SHA separately from the PR head. For a main push, use the event's previous SHA. Local execution resolves an explicit full SHA or `origin/main`. Missing, malformed, unavailable or all-zero bases refuse; a parentless repository bootstrap is outside this implementation slice.
+For a PR, use the event's full base SHA and record the actual checked-out candidate SHA separately from the PR head. For a main push, use the event's previous SHA. For a merge group, use the event's full `base_sha`; the workflow passes `github.event.merge_group.base_sha`, not the group's candidate/head SHA. Local execution resolves an explicit full SHA or `origin/main`. Missing, malformed, unavailable or all-zero bases refuse; a parentless repository bootstrap is outside this implementation slice.
 
 Scan all tracked text regardless of extension. Local dirty execution also scans nonignored untracked files. Inventory binary files separately. Genuine deletions are allowed; unreadable existing objects refuse. Git objects and filesystem entries must not cause the check to follow a symlink or escape the source tree. Read historical blobs as data, not historical programs.
 
@@ -26,8 +26,8 @@ Run this command from the repository root with pinned development dependencies i
 
 ## Count and baseline rules
 
-- A candidate count cannot exceed either the actual base count or its accepted baseline count for the same exact path/category. Missing counts mean zero.
-- Candidate baseline allowances cannot exceed the parent baseline. Baseline deletion cannot reopen bootstrap.
+- Every candidate count must fit the accepted baseline for the same exact path/category. It also cannot exceed the measured base count except for closed, exact-byte reviewed introductions whose path, digest, category and before/after counts match their approved pins. [Current contribution checks](../../../CONTRIBUTING.md#package-policy-and-release-checks) owns those pins and their separate review route; ordinary review or baseline regeneration cannot authorize another exception. Missing counts mean zero.
+- Candidate baseline allowances cannot exceed the parent baseline except for those same exact reviewed introductions. Baseline deletion cannot reopen bootstrap.
 - Initial baseline is allowed only when the trusted base lacks one. Its `sourceCommit` equals that full base SHA and its counts equal the complete measured base tree.
 - Ordinary regeneration only lowers allowances deterministically. It cannot authorise scanner changes or raise the accepted debt.
 - Path keys retain exact case through SHA-256 identities. A contaminated rename introduces debt at its destination and refuses. Clean rename/deletion passes. Reintroduction is measured against the current base, not an old ceiling.

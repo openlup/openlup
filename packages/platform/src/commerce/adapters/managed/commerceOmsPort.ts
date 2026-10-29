@@ -136,9 +136,11 @@ export function createManagedCommerceOmsPort(
  * through `inventory_reserve_order` while it mints the replacement's stock generation - is
  * something the operator caused and can answer: it becomes a conflict carrying only the
  * stable reason, not the SQLSTATE and not the message, because that reason is the single
- * field the operator surface renders from. Anything else never reached a refusal at all
- * (transport, permissions, a dead connection) and stays an upstream failure keyed by
- * SQLSTATE, which is diagnostic and never shown as a refusal.
+ * field the operator surface renders from. Other errors stay upstream failures; a supplied
+ * code is preserved for diagnostics when present, but is not guaranteed to exist or be a
+ * SQLSTATE and does not establish the failure's cause. The known vocabulary cannot prove the
+ * cause of unrecognized error text; it may be a transport/permission failure or a refusal this
+ * mapper does not yet recognize.
  *
  * The reservation half is the one this wave added, and it is the most likely legitimate
  * refusal in production: the command reserves through an external stock authority, so a

@@ -1,10 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { HttpRequest } from "./types.js";
 
-/** Hard cap on raw webhook body bytes — the payment provider events are well under 256 KiB. */
+/** Maximum body size accepted by readRawBody, in bytes. */
 export const MAX_WEBHOOK_BODY_BYTES = 1_048_576;
 
-/** Thrown by readRawBody when the streamed body exceeds MAX_WEBHOOK_BODY_BYTES. */
+/** Thrown by readRawBody when its streamed or fallback body exceeds MAX_WEBHOOK_BODY_BYTES. */
 export class WebhookBodyTooLargeError extends Error {
   constructor() {
     super("Webhook body exceeds maximum size");
@@ -13,24 +13,14 @@ export class WebhookBodyTooLargeError extends Error {
 }
 
 /**
- * Reads the exact raw request body bytes for provider webhook signature
- * verification.
- *
- * `@vercel/node` (v3, the builder for `/api` functions in this Vite project)
- * auto-parses `application/json` request bodies into `req.body` and IGNORES the
- * `export const config = { api: { bodyParser: false } }` opt-out — that opt-out
- * is a Next.js Pages Router convention, not a vanilla `@vercel/node` one
- * (verified empirically against the hidden-preview deploy: a JSON payload posted
- * with `Content-Type: application/json` arrives parsed, the same bytes posted as
- * `text/plain` arrive raw). Re-serializing the parsed object with
- * `JSON.stringify` does NOT reproduce the provider's exact bytes — the payment provider signs
- * pretty-printed JSON, so a compacted re-serialization breaks HMAC verification.
- *
- * Reading the underlying request stream FIRST — before touching `req.body`,
- * whose getter triggers the parse that consumes the stream — preserves the exact
- * bytes when the platform parses lazily. When `req` is not a stream (unit tests
- * pass a plain `{ body }` object) or the stream yields nothing (already
- * consumed), we fall back to `req.body`.
+ * Read an async-iterable request stream before consulting `req.body` and return
+ * its chunks as concatenated UTF-8 text. Stream input is capped at
+ * `MAX_WEBHOOK_BODY_BYTES`. Even a zero-byte chunk is a stream result. Only
+ * when the stream emits no chunks, or no stream is available, fall back to a
+ * string or Buffer in `req.body`, or JSON-serialize an object; fallback text is
+ * capped by its UTF-8 byte length. Callers verifying signatures must preserve
+ * original raw content, which may be exposed as a stream, string or Buffer; a
+ * parsed object fallback cannot reconstruct the original wire bytes.
  */
 export async function readRawBody(req: HttpRequest): Promise<string> {
   if (isAsyncIterable(req)) {

@@ -2,7 +2,70 @@
 
 Status: development-preview contract. No recipe in this document is a supported production deployment or a stable installer promise.
 
+## PostgreSQL connection recipe
+
+For the `qualified-v2` and `qualified-admin` PostgreSQL 16 preview profiles, bind connections by
+their work, even when HTTP and timers share one Node host:
+
+| Work | Connection and existing seam |
+| --- | --- |
+| Request/database work | A bounded `pg.Pool` using the restricted runtime login, through `createPostgresDataGateway` or the existing capability-local transaction lanes. A transaction-mode pooler is suitable only for operations whose state is entirely transaction-local. |
+| Migration and privileged administration | The direct database endpoint, bypassing external poolers, with the selected migration/admin principal. Bind the migration runner's explicit `connectionString` independently of runtime `DATABASE_URL`; see the [data owner](DATA_AND_MIGRATIONS.md#connection-roles). |
+| Scheduler/jobs using session advisory locks | One dedicated runtime-login session through a direct endpoint or a session-mode pooler. Pass `createPgAdvisoryLock(client)` as `serveNode({ advisoryLock, ... })`, or inject `createEnvAdvisoryLock({ DATABASE_URL: sessionConnectionString })`. Keep it until host drain and `stop()` complete. Never pass `Pool.query` or a transaction-mode pooler. |
+
+These are existing composition seams, not new environment-variable conventions.
+`createEnvAdvisoryLock(env)` still uses `env.DATABASE_URL` by default. If that URL
+points to a transaction pooler for requests, explicitly inject the separate
+session lock above; constructing a `pg.Client` against that same pooler does not
+make the transport session-affine. Likewise, bind the direct migration port in
+the composition root: the listening Node host applies that port before serving.
+Neither a different URL nor pool mode grants a different database role.
+
+Before each scheduler grant admits a callback, the adapter observes the backend
+PID and its exact granted advisory key in a separate SQL statement. A changed
+PID, missing ownership or an uncertain acquisition refuses the current job and
+further acquisitions on that adapter with an actionable error. Release checks
+the PID before unlocking and refuses a missing grant.
+`OPENLUP_E_ADVISORY_SESSION_AFFINITY` directs the operator to use direct or
+session-mode transport. Drain the host, close its dedicated connection, and
+retire any lock backend stranded behind a misconfigured pooler before restarting;
+do not force an unlock on an unrelated backend. The refusal does not close the
+session under already-admitted jobs.
+
+A finite observation cannot identify every transaction pooler: an idle pooler
+may reuse one backend throughout a check. Nor does it fence a job after admission
+if a connection subsequently fails. Correct transport configuration, job leases,
+idempotency and external-effect fencing retain their existing duties.
+The [qualified composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+uses the real 91-unit selected installation, pooled request work and restricted
+runtime lock sessions. Its deterministic backend-switch/reset cases use real
+PostgreSQL sessions, not a PgBouncer deployment; they prove observed-violation
+refusal before the job body. This is local PG16 evidence, not hosted Neon/RDS
+qualification. The separate [restricted-bootstrap witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
+uses the same consumer seams with both fixed role modes and a non-superuser
+trusted migration administrator. Its local session-switch refusal is not a
+PgBouncer deployment or hosted endpoint qualification.
+
 ## Runtime model
+
+For a managed-source acquisition cut-over, configure the reference target's
+`OPENLUP_ACQUISITION_DRAIN_STARTED_AT` as a fixed UTC ISO instant and
+`OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
+604800. Deploy the same values to every target process before activation.
+The partner submit/transition, survey submit and newsletter consent BFF command
+paths refuse at their route entries before authentication or signature work,
+with HTTP 503, `Retry-After` and `acquisition_legacy_drain` while
+the declared interval is active; read paths remain available. Setting
+`OPENLUP_ACQUISITION_DRAIN_ENDED_AT` to a UTC instant at or after start
+explicitly ends the drain when that instant is reached. A later end cannot
+extend the configured maximum. A future start is invalid on a serving target;
+the operator must correct the cut-over instant before activation. Incomplete or malformed cut-over configuration
+fails closed before that maximum. After the drain, commands enter a new
+target-key namespace; the target
+does not compare retained source-keyed receipts. The host must separately prove
+source quiescence, consistent rollout and item 8 retention of source history;
+these environment values do not certify any of those facts. See the
+[managed mapping task](plans/oss-m14-managed-identity-mapping.md).
 
 The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 consume qualified transaction and object capabilities; they create no connection,
@@ -13,10 +76,29 @@ drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
 cannot activate the target and must not pause active subscription state. The
 local synthetic HTTP probe establishes its fixture semantics only.
 
+The [native handover fixture](../../tests/postgres/runM14EffectHandover.ts)
+uses actual restricted-runtime dispatch and review HTTP/storage composition in
+four owned local processes. It observes the binding's startup and natural30s
+interval, admits raw bodies before the same-grant held finalize, and releases
+real filesystem operations after network exclusion. The host then removes the
+exact processes. Because a severed client socket can leave a server transaction,
+its disposable migration owner may terminate only previously observed actor
+backends whose PID, start time, database, principal and actual boot-bound
+application name still match. Unknown clients or reused identities refuse;
+there is no terminate-by-user/prefix, database restart or lease/time manipulation.
+The coordinator closes its source mutation clients before the final read-only
+capture and permits no later source business write, gate release or recreation.
+Target composition follows verified graph and complete private-root publication.
+This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
+adopter ACLs, provider qualification and whole-store RTO remain separate.
+
 For a graceful Node shutdown, await the host's cached `stop()` promise before
 disposing callback dependencies. The scheduler fences its current registrations
-synchronously and drains admitted callbacks through lock release; the host
-closes the dedicated lock session after that drain settles. Direct scheduler
+synchronously and drains admitted callbacks through lock release. The host keeps
+the local listener available during that drain, including while an admitted
+callback waits for lock acquisition before its HTTP compatibility request. After
+the drain settles, it attempts listener and dedicated lock-session cleanup even
+if the drain failed; shutdown failures remain aggregated. Direct scheduler
 users must await `stopAll(): Promise<void>`, including when supplying a custom
 implementation. The adapter permits later registrations, so the host remains
 responsible for preventing new work during its own shutdown. See
@@ -30,6 +112,33 @@ watchdog invokes the package persisted-job tick; missing configuration and
 transport failures keep their existing safe error responses. Package imports
 install no routes or schedules. See the
 [operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+
+The [package handler characterization](../../packages/platform/test/operations/controlPlaneHandler.test.ts)
+pins the injected authorization/port boundary used by this reference composition:
+authorization before malformed-body parsing, method/command refusals, replay
+receipts, unchanged heartbeat forwarding and safe invalid-result/upstream errors.
+These synthetic handler cases supply no deployment, session-provider or live-store
+qualification; the host still owns those bindings.
+
+For the captured portable operations default, construct
+[`createM14OperationsReferenceBinding`](../../server/runtime/public-reference/m14OperationsBinding.ts)
+with the selected installation's evidence, alert ledger/readback, pipeline,
+administrator authorization and heartbeat ports. Call `runWatchdog` from the
+host's existing trusted scheduler; bind `alerts` and `pipeline` to the existing
+admin read routes when selected. Construction starts no listener or timer.
+The default delivery mode is local capture, with per-tick observations returned
+in `captured`. It performs no network request, records no notification attempt or
+delivery cadence, and leaves `notified` at zero. It is not hosted delivery/readback.
+`checkOnly` returns evaluation without alert, notification or heartbeat writes.
+
+The [composed witness](../../server/runtime/public-reference/m14OperationsBinding.test.ts)
+executes domain/job evaluation, capture, alert readback, selected-sink backoff,
+failure backoff, unknown liveness, authorization and safe correlated logs with
+in-memory host ports. It does not qualify a database adapter, installed npm
+default or remote log drain. Missing remote log/delivery observations remain
+unverified; selecting an adapter alone supplies no such evidence. See the
+[operations owner](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+and [bounded task](plans/oss-m14-portable-operations-defaults.md).
 
 Marketing reference routes compose `@openlup/platform/marketing/server` factories
 with the host BFF responder, authorization and persistence bindings. Case
@@ -353,6 +462,20 @@ pins the captured escalated UI refusal even when the server's action eligibility
 allows actions. Managed replay still projects `false`; no policy correction,
 route activation or privacy/portability integration is implied.
 
+
+The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
+also accepts an explicitly constructed operations binding on its ordinary
+reference host. That selection mounts only the existing alert and pipeline
+admin read paths; it requires `APP_BASE_URL` for exact Host admission. The
+existing observed-route wrapper starts on the decorated raw request, so policy
+and alert method refusal precede adaptation and authorization. Adaptation and
+preflight failures retain bounded errors and safe correlated request logs. The pipeline path
+retains its public mutation-policy refusal; the alert path supplies admin
+readback through its typed handler.
+It refuses combination with another reference profile or identity admission.
+The watchdog remains a trusted scheduler callable and gets no public cron route.
+Omitting the selection preserves the static reference's existing route surface.
+See the [captured operations recipe](#runtime-model) for ports and proof limits.
 
 The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
 `@openlup/platform/marketing` head descriptors through the host's

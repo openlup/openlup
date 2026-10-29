@@ -356,6 +356,62 @@ describe("host scheduled execution", () => {
 });
 
 describe("host shutdown", () => {
+  it("keeps the local HTTP bridge available for a callback admitted before stop while acquiring its lock", async () => {
+    const { host, deps } = hostFixture();
+    const { cron, callbacks, stops } = cronFixture();
+    const lock = lockFixture();
+    let enter!: () => void;
+    let acquire!: (acquired: boolean) => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const pending = new Promise<boolean>((resolve) => { acquire = resolve; });
+    lock.tryAcquire.mockImplementation(async () => { enter(); return pending; });
+    const endpoint = vi.fn((req: HttpRequest, res: HttpResponse) => {
+      expect(req.method).toBe("GET");
+      expect(req.headers.authorization).toBe(`Bearer ${env.CRON_SECRET}`);
+      res.status(200).json({ ok: true });
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const runtime = createNodeHttpRuntime({
+      routes: [], dispatch: vi.fn(),
+      security: { globalHeaders: [], assetCachePrefixes: [], noindexFamilies: [], noindexExacts: [], isProductionHost: () => false },
+      scheduledEntrypoint: (jobId) => jobId === jobs[0].jobId ? async () => ({ default: endpoint }) : null,
+    });
+    // Bind an ephemeral listener before composition so APP_BASE_URL names this exact runtime.
+    await runtime.listen!({ port: 0, host: "127.0.0.1" });
+    const address = runtime.server!.address();
+    if (!address || typeof address === "string") throw new Error("missing bridge listener address");
+    deps.createHttpRuntime.mockReturnValue(runtime);
+    const result = await host.serveNode({
+      env: { ...env, APP_BASE_URL: `http://127.0.0.1:${address.port}` },
+      cron, listen: false, advisoryLock: lock, schedulerJobs: [jobs[0]],
+    });
+    const running = callbacks[0]();
+    await entered;
+    const stopping = result.stop();
+    const completed = Promise.allSettled([running, stopping]);
+    try {
+      expect(result.stop()).toBe(stopping);
+      expect(stops[0]).toHaveBeenCalledTimes(1);
+      const listeningDuringAcquisition = runtime.server!.listening;
+      expect(lock.close).not.toHaveBeenCalled();
+      await callbacks[0]();
+      expect(lock.tryAcquire).toHaveBeenCalledTimes(1);
+      acquire(true);
+      await Promise.all([running, stopping]);
+      expect(endpoint).toHaveBeenCalledTimes(1);
+      expect(errors).not.toHaveBeenCalled();
+      expect(listeningDuringAcquisition).toBe(true);
+      expect(runtime.server!.listening).toBe(false);
+      expect(lock.release).toHaveBeenCalledExactlyOnceWith(jobs[0].jobId);
+      expect(lock.close).toHaveBeenCalledTimes(1);
+      expect(lock.release.mock.invocationCallOrder[0]).toBeLessThan(lock.close.mock.invocationCallOrder[0]);
+    } finally {
+      acquire(true);
+      await completed;
+      await result.stop();
+    }
+  });
+
   it("keeps its lock session until an admitted callback has released its job", async () => {
     const { host } = hostFixture();
     const { cron, callbacks, stops } = cronFixture();
@@ -409,11 +465,12 @@ describe("host shutdown", () => {
     const stopping = result.stop();
     const rejected = expect(stopping).rejects.toMatchObject({ message: "node_host_shutdown_failed", errors: [failure] });
     try {
-      expect(close).toHaveBeenCalledTimes(1);
+      expect(close).not.toHaveBeenCalled();
       expect(lock.close).not.toHaveBeenCalled();
       finish();
       await expect(running).rejects.toBe(failure);
       await rejected;
+      expect(close).toHaveBeenCalledTimes(1);
       expect(lock.close).toHaveBeenCalledTimes(1);
       expect(result.stop()).toBe(stopping);
     } finally {

@@ -1,5 +1,5 @@
 /** The server cannot assign a policy right now. Caller-independent: retrying an
- * identical request only succeeds once production configuration changes. */
+ * identical request may succeed after server-side configuration or readiness changes. */
 export class CommercePricingPolicyUnavailableError extends Error {
   constructor(public readonly reason: string) {
     super("commerce_pricing_policy_v2_unavailable");
@@ -9,12 +9,12 @@ export class CommercePricingPolicyUnavailableError extends Error {
 
 /**
  * Every reason a caller-side refusal can carry. ⛔ Each one answers `400`, which
- * puts it outside every 5xx monitor, so each one owes a dedicated monitor of its
- * own; a host's observability check can read this tuple and fail when a reason
- * has none. Adding a member here without adding a monitor is the regression this
- * tuple exists to prevent: reclassifying `v2_capability_required` from `503` to
- * `400` once silently removed the only alert on a site-wide unpriceable-quote
- * outage.
+ * puts it outside every 5xx monitor, so each one owes a dedicated host monitor.
+ * A host observability check can compare this tuple with its configured monitors;
+ * the tuple itself does not install or verify those monitors. Adding a member
+ * here without adding a monitor is the regression this tuple lets a host check
+ * for: reclassifying `v2_capability_required` from `503` to `400` once silently
+ * removed the only alert on a site-wide unpriceable-quote outage.
  */
 export const PRICING_POLICY_REQUEST_REASONS = [
   "v2_capability_required",
@@ -25,7 +25,7 @@ export type PricingPolicyRequestReason = (typeof PRICING_POLICY_REQUEST_REASONS)
 
 /** The request itself lacks the context a v2 assignment needs. Caller-fixable,
  * and never evidence that pricing is down. The reason is typed off
- * PRICING_POLICY_REQUEST_REASONS so a new one cannot skip its monitor. */
+ * PRICING_POLICY_REQUEST_REASONS so a host observability check can include it. */
 export class CommercePricingPolicyRequestError extends Error {
   constructor(public readonly reason: PricingPolicyRequestReason) {
     super("commerce_pricing_policy_v2_request_invalid");

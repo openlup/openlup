@@ -4,7 +4,8 @@ const COMMERCE_OFFER_EVIDENCE_MAX_JSON_LENGTH = 4_096;
 
 /**
  * The adopter's own record of why a checkout was bound to an offer version.
- * Server-minted only: core bounds its keys and size and never reads it.
+ * Trusted checkout evidence must be minted by server composition; this schema
+ * validates key format and serialized size, not provenance or business meaning.
  */
 export const commerceOfferEvidenceSchema = z
   .record(z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,39}$/), z.unknown())

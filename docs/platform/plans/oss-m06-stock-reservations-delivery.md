@@ -1,5 +1,20 @@
 # M06 stock, reservations and delivery
 
+**Current owner note (2026-10-29).** The M06 state and PENDING dispositions
+below describe evidence through the 2026-10-21 S1/C4 cut. M11 later added a
+native ATP reader selected only when the host supplies `stockSourceKey`, and an
+optional managed `stockRpc` reader over forward
+`20261025109000_inventory_new_purchase_stock_read.sql`. Both reader adapters
+refuse horizons other than 14 days and non-null own-order exclusions; source
+selection, transport and credentials remain host-owned. See the current
+[inventory host binding](../RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
+and [managed installation/refund boundaries](../DATA_AND_MIGRATIONS.md#managed-stock-wait-atp-and-refund-parity).
+These later source capabilities do not revise M06 P5a's `ccf2fbd8` refusal,
+prove hosted/adopter selection or installation, or close the historical
+managed-host parity, concurrency, or upgrade gates. Read each later status from
+its current owner. All counts, budgets, caps, and measurements below remain
+dated M06 evidence; they are not fresh grants or current performance claims.
+
 ## Scope and placement
 
 Development-preview extraction into `@openlup/platform/{inventory,inventory/contracts,shipping,shipping/contracts}`; no new package. Core retains ATP, FEFO and shipping arithmetic. Reference application policy, provider translation and composition retain their owners. C1 identity: adopter commit `4595d4b3d`, nine characterization witnesses, 36 cases; unchanged witnesses remain the comparison source. Extraction does not establish native-store parity or activation.

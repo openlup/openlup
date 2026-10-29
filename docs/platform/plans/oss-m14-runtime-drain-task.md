@@ -1,5 +1,131 @@
 # M14 Node runtime drain task
 
+## Independent runtime and handler-witness delivery, 2026-10-28
+
+Outcome: keep the local listener usable by already admitted scheduler callbacks
+through drain, and preserve the existing control-plane handler characterization
+at its neutral package boundary. This finite correction combines the frozen
+runtime author patch with the four-file handler-witness author packet; it adds
+no provider, deployment, migration, package version or publishing change.
+
+- Base and freshly fetched instruction revision:
+  `535349050419abe5122bd74fa6766c58947be3dd`. The same dedicated worktree and
+  `codex/oss-m14-composed-shutdown` branch continue without reset or rebase.
+  Earlier source, failed installation and discriminating red/green evidence
+  below remain intact. This worktree has no earlier native review session.
+- Scope is exactly nine paths: the runtime source, its composition test and
+  generated composition API report; the operations handler test; the package
+  README and existing shutdown changelog fragment; runtime and architecture
+  owners; this existing task record. Shared owners' paragraphs merge normally.
+  Source/test/API bytes of the frozen runtime correction remain unchanged.
+- Effective authority: the maintainer's standing M14 delivery grant covers
+  local work, DCO, two fresh independent full reviews, canonical full proof,
+  neutral PR/receipt/source-and-group checks and merge. Source preparation used
+  Codex context `01a18357-930d-7c91-8f01-64ada285415e`. Programme supervisor
+  `01a17909-94d4-7cc0-b40f-9a8782a0986f` now owns direct execution and delivery.
+  All source-author and coordination contexts and previous reviewers are excluded from
+  independent review. Required supervisor reading of one stabilized exact
+  source/API/owner/artifact packet still precedes DCO. Release dispatch,
+  publication, settings, credentials, deployment and production remain excluded.
+- Acceptance: preserve the actual HTTP-bridge predecessor failure and corrected
+  drain/idempotence/refusal/failure-cleanup tests; execute the combined host,
+  scheduler and operations selection (65 + 20 cases). The handler's two existing
+  package cases remain intact; its additional neutral cases preserve request,
+  injected authorization, replay, result and upstream-error boundaries. This
+  synthetic characterization qualifies no deployed authentication or store.
+- Proof plan: cheap AST, public policy/navigation/inventory checks first, then
+  strict prerequisite builds, affected types/API, combined cases, lint and actual
+  three-package fixed-cap measurements. Serialize output-producing phases.
+  After the stabilized supervisor read, commit and obtain two new cold full
+  reviews, including the smallest-adequate-solution perspective, then run the
+  unchanged `node scripts/verify-local.mjs --pgtap` on the clean candidate.
+  Retain all actual session findings/counters/expiry and terminal command logs;
+  no old proof stamp is copied. Wait for the current private full slot's actual
+  release before the public heavy phases. Mandatory source/group CI still runs.
+- Simplicity pre-check: defer listener cleanup behind the existing drain promise
+  and extend the existing package test. A second lifecycle abstraction, timeout
+  or duplicate host suite would add maintenance without closing another accepted
+  boundary. No useful additional process change is needed.
+- Working proof: the combined selection passed 85/85. Direct supervisor
+  execution then passed prerequisite builds, lint (zero errors, 33 existing
+  warnings), AST, policy/navigation, inventory, five-project types, API and
+  actual three-package content/browser/cap measurements. Platform measured
+  1,929,179 packed / 8,980,401 unpacked / 1,662,287 code-gzip bytes, with
+  2,574 code and 2,628 total files, within unchanged limits. These are
+  pre-DCO observations; independent native and clean-candidate full proof
+  remain required. Small independent preparation phases use the broker;
+  full runs and mutable outputs remain serialized.
+
+## Composed HTTP shutdown continuation, 2026-10-28
+
+The authorized correction keeps the local HTTP listener available until every
+already admitted scheduler callback settles, including a callback waiting for
+advisory-lock acquisition before its compatibility request. The existing cached
+shutdown promise, stopped-registration fence and failure aggregation remain.
+The smallest adequate change defers listener cleanup behind the existing drain;
+it adds no shutdown framework, timeout, cancellation, dependency or scheduler API.
+
+- Base and supplied current instruction revision are separately pinned to
+  `535349050419abe5122bd74fa6766c58947be3dd`. Worktree:
+  `/private/tmp/openlup-m14-composed-shutdown`; branch:
+  `codex/oss-m14-composed-shutdown`.
+- Scope: `nodeHost.ts`, its existing composition tests, the runtime/package
+  owners, this existing record and one package changelog fragment. The API
+  snapshot follows its normal producer when verification is authorized.
+  Other runtime, database, release-control and shared-documentation paths remain
+  with the coordinating supervisor.
+- Actors and authority: the active supervisor delegated this bounded source
+  correction and source/static preparation to one author; the supervisor owns
+  two fresh independent native reviewers and later integration/release
+  preparation. Two-way task coordination is authorized. This author has no
+  commit, DCO, push, PR, merge, release, settings or credential authority.
+  Required sensitive-boundary read by the supervisor precedes any DCO sign-off.
+- Acceptance/proof: a real local Node HTTP runtime serves the scheduler's actual
+  compatibility request after acquisition is blocked, stop fences its timer,
+  and acquisition resumes. Assert the listener survives the pending acquisition,
+  the authenticated endpoint executes once without a scheduler error, stopped
+  callbacks cannot acquire again, and job release precedes session closure.
+  Existing unlock/timer/listener/lock failures and repeated-stop tests retain the
+  refusal/cleanup evidence. The existing PostgreSQL witness retains the distinct
+  session ownership/replacement-admission proof.
+- Execution: the supervisor later allocated one local focused heavy slot with
+  the existing fail-fast resource broker. Own lockfile installation used Node
+  24.21.0/npm 11.19.0 and a separate npm cache. The sandboxed attempt hit DNS
+  refusal and was interrupted (exit 130); an escalated retry installed 727
+  packages in 13 seconds (exit 0). No dependencies, auth or proof stamps were
+  copied. No PostgreSQL/full verification, counted review, DCO or commit has
+  run in this continuation; earlier histories below are unchanged.
+- Focused results (all terminal exit 0 except the expected predecessor failure):
+  AST scan, public inventory, documentation policy (one obligation, none
+  unanswered), three-package manifest check and strict prerequisite builds
+  passed. A temporary frozen predecessor module/test snapshot, removed in
+  `finally`, failed the composed regression because the real endpoint executed
+  zero times instead of once. The corrected production source hash remained
+  `fa0fd1b8f40a6c5820094389cf12450d1cb07807798b20ac28a9be2a87ef2966`.
+  Discovery found both selected host/scheduler test files; their corrected run
+  passed 65/65. The normal Platform API producer/check passed; its only tracked
+  delta is the composition stop JSDoc. Mandatory lint passed with zero errors
+  and 33 existing warnings. `git diff --check` passed.
+- Actual pre-DCO pack measurement used current built files and the existing
+  content/cap/browser-entry policy functions, with no findings for any package.
+  Platform: 1,929,113/2,029,568 tarball bytes; 1,662,287/1,743,872 code-gzip
+  bytes; 59,504/73,728 docs-gzip bytes; 2,628/2,628 total files and
+  2,574/2,574 code files. Core and Outbox also fit their current caps. This
+  working-candidate measurement does not claim the clean committed artifact
+  gate or release growth check. No cap, version or package file count changed.
+- Risk/remaining work: listener closure now waits for admitted HTTP users; no
+  drain timeout is added. Generated navigation remains the supervisor's
+  shared-path responsibility. Required committed package, PostgreSQL and full
+  verification remain with later supervisor allocation. Delivery remains
+  blocked on remaining proof, the sensitive-boundary read and independent
+  review.
+- Self-retro at source handoff: the existing drain promise provides the needed
+  dependency order without another lifecycle operation. The initial sandboxed
+  network attempt delayed installation; use the already authorized network
+  escalation for that phase. No additional process machinery is needed.
+
+## Prior runtime-drain history
+
 Status: resumed for current-candidate proof and owner-authorized delivery
 (2026-10-27). Earlier baseline failures and positive probes below retain their
 historical inputs. Full current verification and independent review remain owed.
@@ -10,6 +136,10 @@ Authority comes from the human instructions recorded below, not from this record
   released their locks. Overlapping callbacks using the same dedicated PostgreSQL
   session cannot double-run; a replacement host stays excluded during drain and
   can run after release.
+- This is a local Node stop/drain boundary: the [scheduled-jobs owner](../../../packages/platform/README.md#scheduled-jobs)
+  defines admitted-callback and PostgreSQL lock-session drain; old-host provider I/O
+  fencing and accepted-before-ack effect reconciliation remain separate duties under
+  the [existing-store transfer boundary](../ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
 - Code base: `bb12776c381ae35085edd00db793ccecc40b31fd`;
   current instruction revision supplied by the coordinator:
   `ca33647ec80aef932490c0c6fb54b01fc483f287`. Policy and review base are separate.

@@ -14,9 +14,11 @@ the same public sources; reviewers remain accountable for behavioral meaning.
 
 Reuse the platform index, domain READMEs, package API/documentation checks,
 publication catalogue and existing `oss:published-tree` execution owner.
-The current source snapshot has 26 registered domains, 25 shared domain READMEs
-and a dormant routing file with 65 absent targets among its 71 rows. These are
-navigation gaps, not evidence of a presently failing documentation gate.
+At this plan's 2026-09-27 source snapshot, there were 26 registered domains,
+25 shared domain READMEs and a dormant routing file with 65 absent targets among
+its 71 rows. These were navigation gaps, not evidence of a gate failure at that
+planning stage. For current ownership, use
+[Documentation maintenance](../DOCUMENTATION.md).
 
 ## 2. Scope and authority
 

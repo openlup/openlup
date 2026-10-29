@@ -10,15 +10,21 @@ import {
 } from "../../src/migrations/postgresRunner.js";
 
 const lockName = "synthetic-schema-update";
-const acquireSql = "SELECT pg_advisory_lock(hashtextextended($1, 0))";
-const releaseSql = "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked";
-const existenceSql = "SELECT to_regclass($1) IS NOT NULL AS ledger_exists";
-const boundAcquireSql = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
-const boundReleaseSql = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
-const boundExistenceSql = "SELECT pg_catalog.to_regclass($1::pg_catalog.text) IS NOT NULL AS ledger_exists";
-const ledgerSql = "SELECT catalog_path, sha256, position FROM public.platform_schema_migrations ORDER BY position";
+const acquireSql = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
+const releaseSql = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
+const identitySql = expect.stringContaining("SELECT c.oid::pg_catalog.text AS ledger_oid,");
+const isIdentitySql = (sql: string) => sql.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,");
+const readBeginSql = "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY";
+const readLockSql = "LOCK TABLE ONLY public.platform_schema_migrations IN ACCESS SHARE MODE";
+const writeBeginSql = "BEGIN";
+const writeLockSql = "LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE";
+const ledgerSql = "SELECT catalog_path, sha256, position FROM ONLY public.platform_schema_migrations ORDER BY position";
 const insertSql = "INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ($1, $2, $3)";
-const ledgerName = "public.platform_schema_migrations";
+const readQueries = (present = true, validPrefix = true) => [
+  [readBeginSql], [identitySql],
+  ...(present ? [[readLockSql], [identitySql], [ledgerSql]] : []),
+  [validPrefix ? "COMMIT" : "ROLLBACK"],
+];
 const root = "/virtual/migration-input";
 const env = { connectionString: "postgres://localhost/reference" };
 const inventory = "inventory-v1:objects=3";
@@ -51,11 +57,12 @@ function scenario(input: {
   const query = vi.fn(async (sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => {
     const failure = input.fail?.(sql);
     if (failure !== undefined) throw failure;
-    if (sql === acquireSql || sql === boundAcquireSql) return { rows: [{}] };
-    if (sql === releaseSql || sql === boundReleaseSql) return { rows: input.unlockRows ?? [{ unlocked: true }] };
-    if (sql === existenceSql || sql === boundExistenceSql) return { rows: [{ ledger_exists: present }] };
+    if (sql === acquireSql) return { rows: [{}] };
+    if (sql === releaseSql) return { rows: input.unlockRows ?? [{ unlocked: true }] };
+    if (isIdentitySql(sql)) return { rows: present ? [{ ledger_oid: "20001", ledger_safe: true }] : [] };
+    if (sql === readBeginSql || sql === readLockSql || sql === writeLockSql) return { rows: [] };
     if (sql === ledgerSql) return { rows: rows.map((row) => ({ ...row })) };
-    if (sql === "BEGIN") snapshot = { present, rows: rows.map((row) => ({ ...row })) };
+    if (sql === writeBeginSql) snapshot = { present, rows: rows.map((row) => ({ ...row })) };
     else if (sql === "COMMIT") snapshot = undefined;
     else if (sql === "ROLLBACK") {
       if (snapshot) {
@@ -100,14 +107,13 @@ describe("PostgreSQL migration runner", () => {
     const admission = vi.fn(async (client: PoolClient, applied: readonly (typeof entries[number] & { position: number })[]) => {
       expect(client).toBe(s.client);
       expect(applied).toEqual([{ ...entries[0], position: 0 }]);
-      expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql]]);
+      expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries().slice(0, -1)]);
     });
     await expect(s.makeRunner({ source: { ...s.source, assertSession: admission } }).apply()).resolves.toEqual({ applied: files.slice(1) });
     expect(admission).toHaveBeenCalledOnce();
-    expect(admission.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder[3]!);
+    expect(admission.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder[6]!);
     expect(s.rows).toEqual(expectedRows());
-    expect(s.query.mock.calls.slice(-3)).toEqual([[boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
-    expect(s.query.mock.calls.filter(([sql]) => [acquireSql, existenceSql, releaseSql].includes(sql))).toEqual([]);
+    expect(s.query.mock.calls.slice(-7)).toEqual([...readQueries(), [releaseSql, [lockName]]]);
   });
 
   it.each(["status", "apply", "dry-run"] as const)("refuses session admission before %s results or pending writes and releases the lock", async method => {
@@ -117,7 +123,7 @@ describe("PostgreSQL migration runner", () => {
     const result = method === "status" ? runner.status() : runner.apply({ dryRun: method === "dry-run" });
     await expect(result).rejects.toThrow("declared runtime binding differs");
     expect(admission).toHaveBeenCalledOnce();
-    expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries(true, false), [releaseSql, [lockName]]]);
     expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
     expect(s.rows).toEqual(expectedRows().slice(0, 1));
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
@@ -130,15 +136,15 @@ describe("PostgreSQL migration runner", () => {
     if (method === "status") await expect(runner.status()).resolves.toEqual({ pending: files.slice(1), applied: files.slice(0, 1) });
     else await expect(runner.apply({ dryRun: true })).resolves.toEqual({ applied: files.slice(1) });
     expect(admission).toHaveBeenCalledOnce();
-    expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries(), [releaseSql, [lockName]]]);
     expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("preserves the legacy transcript when the session hook is explicitly undefined", async () => {
+  it("keeps catalog-bound reads when the session hook is explicitly undefined", async () => {
     const s = scenario({ rows: expectedRows().slice(0, 1) });
     await expect(s.makeRunner({ source: { ...s.source, assertSession: undefined } }).status())
       .resolves.toEqual({ pending: files.slice(1), applied: files.slice(0, 1) });
-    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]]]);
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries(), [releaseSql, [lockName]]]);
   });
 
   it("rejects a mismatched prefix before calling admission and releases the catalog-bound lock", async () => {
@@ -147,7 +153,7 @@ describe("PostgreSQL migration runner", () => {
     await expect(s.makeRunner({ source: { ...s.source, assertSession: admission } }).status())
       .rejects.toThrow("platform migration ledger is not the exact manifest prefix at position 0");
     expect(admission).not.toHaveBeenCalled();
-    expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries(true, false), [releaseSql, [lockName]]]);
   });
 
   it("validates the plan before creating a reusable pool and lists manifest order under the supplied lock", async () => {
@@ -163,7 +169,7 @@ describe("PostgreSQL migration runner", () => {
     expect(s.evaluate.mock.invocationCallOrder[0]).toBeLessThan(s.poolFactory.mock.invocationCallOrder[0]!);
     expect(s.poolFactory).toHaveBeenCalledExactlyOnceWith(env);
     expect(s.query.mock.calls).toEqual([
-      [acquireSql, [lockName]], [existenceSql, [ledgerName]], [releaseSql, [lockName]],
+      [acquireSql, [lockName]], ...readQueries(false), [releaseSql, [lockName]],
     ]);
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
     expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
@@ -185,11 +191,14 @@ describe("PostgreSQL migration runner", () => {
     const runner = s.makeRunner();
     await expect(runner.apply()).resolves.toEqual({ applied: files });
     expect(s.query.mock.calls).toEqual([
-      [acquireSql, [lockName]], [existenceSql, [ledgerName]],
+      [acquireSql, [lockName]], ...readQueries(false),
       ...bodies.flatMap((sql, index) => [
-        ["BEGIN"], [sql], [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
+        [writeBeginSql],
+        ...(index === 0 ? [] : [[writeLockSql], [identitySql], [writeLockSql], [identitySql], [ledgerSql]]),
+        [sql], [identitySql], [writeLockSql], [identitySql], [ledgerSql],
+        [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
       ]),
-      [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]],
+      ...readQueries(), [releaseSql, [lockName]],
     ]);
     expect(s.rows).toEqual(expectedRows());
     expect(s.catalogProjectionPayload).toHaveBeenCalledExactlyOnceWith(s.client);
@@ -197,14 +206,15 @@ describe("PostgreSQL migration runner", () => {
       [{ manifest: s.manifest, migrations: s.migrations }],
       [{ manifest: s.manifest, migrations: s.migrations, objectInventoryPayload: inventory }],
     ]);
-    expect(s.query.mock.invocationCallOrder.at(-2)).toBeLessThan(s.catalogProjectionPayload.mock.invocationCallOrder[0]!);
+    expect(s.query.mock.invocationCallOrder.at(-3)).toBeLessThan(s.catalogProjectionPayload.mock.invocationCallOrder[0]!);
+    expect(s.catalogProjectionPayload.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder.at(-2)!);
     expect(s.catalogProjectionPayload.mock.invocationCallOrder[0]).toBeLessThan(s.evaluate.mock.invocationCallOrder[1]!);
     expect(s.evaluate.mock.invocationCallOrder[1]).toBeLessThan(s.query.mock.invocationCallOrder.at(-1)!);
     s.query.mockClear();
     await expect(runner.apply()).resolves.toEqual({ applied: [] });
     expect(s.query.mock.calls).toEqual([
-      [acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql],
-      [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]],
+      [acquireSql, [lockName]], ...readQueries(),
+      ...readQueries(), [releaseSql, [lockName]],
     ]);
     expect(s.catalogProjectionPayload).toHaveBeenCalledTimes(2);
     expect(s.poolFactory).toHaveBeenCalledOnce();
@@ -222,11 +232,11 @@ describe("PostgreSQL migration runner", () => {
     expect(s.rows).toEqual(expectedRows());
   });
 
-  it.each([0, 1, 3])("dry-run reports the pending suffix for prefix length %i without transaction or ledger writes", async (length) => {
+  it.each([0, 1, 3])("dry-run reports the pending suffix for prefix length %i without migration or ledger writes", async (length) => {
     const s = scenario({ rows: expectedRows().slice(0, length) });
     await expect(s.makeRunner().apply({ dryRun: true })).resolves.toEqual({ applied: files.slice(length) });
     expect(s.query.mock.calls).toEqual([
-      [acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]],
+      [acquireSql, [lockName]], ...readQueries(), ...(length === 3 ? readQueries() : []), [releaseSql, [lockName]],
     ]);
     expect(s.rows).toEqual(expectedRows().slice(0, length));
     expect(s.catalogProjectionPayload).toHaveBeenCalledTimes(length === 3 ? 1 : 0);
@@ -275,7 +285,7 @@ describe("PostgreSQL migration runner", () => {
     await expect(runner.status()).rejects.toThrow(/^platform migration ledger is not the exact manifest prefix at position 0$/);
     await expect(runner.apply()).rejects.toThrow(/^platform migration ledger is not the exact manifest prefix at position 0$/);
     expect(s.query.mock.calls).toEqual(Array.from({ length: 2 }, () => [
-      [acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]],
+      [acquireSql, [lockName]], ...readQueries(true, false), [releaseSql, [lockName]],
     ]).flat());
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
     expect(s.release.mock.calls).toEqual([[false], [false]]);
@@ -291,7 +301,7 @@ describe("PostgreSQL migration runner", () => {
   it("rejects extra ledger rows even when the known prefix is intact", async () => {
     const s = scenario({ rows: [...expectedRows(), { catalog_path: "migrations/extra.sql", sha256: "extra", position: 3 }] });
     await expect(s.makeRunner().apply()).rejects.toThrow(/^platform migration ledger contains an extra row$/);
-    expect(s.query).not.toHaveBeenCalledWith("BEGIN");
+    expect(s.query).not.toHaveBeenCalledWith(writeBeginSql);
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
     expect(s.release).toHaveBeenCalledWith(false);
   });
@@ -309,7 +319,7 @@ describe("PostgreSQL migration runner", () => {
     );
     expect(s.catalogProjectionPayload).toHaveBeenCalledExactlyOnceWith(s.client);
     expect(s.evaluate).toHaveBeenLastCalledWith({ manifest: s.manifest, migrations: s.migrations, objectInventoryPayload: payload });
-    expect(s.query).not.toHaveBeenCalledWith("BEGIN");
+    expect(s.query).not.toHaveBeenCalledWith(writeBeginSql);
     expect(s.release).toHaveBeenCalledWith(false);
   });
 
@@ -318,14 +328,15 @@ describe("PostgreSQL migration runner", () => {
     s.evaluate.mockImplementation((input) => input.objectInventoryPayload === undefined ? [] : ["object inventory SHA-256 mismatch"]);
     await expect(s.makeRunner().apply()).rejects.toThrow(/^platform migration inventory rejected: object inventory SHA-256 mismatch$/);
     expect(s.rows).toEqual(expectedRows());
-    expect(s.query.mock.calls.filter(([sql]) => sql === "COMMIT")).toHaveLength(3);
-    expect(s.query).not.toHaveBeenCalledWith("ROLLBACK");
+    expect(s.query.mock.calls.filter(([sql]) => sql === "COMMIT")).toHaveLength(4);
+    expect(s.query.mock.calls.filter(([sql]) => sql === "ROLLBACK")).toHaveLength(1);
   });
 
-  it("refuses an incomplete ledger after apply before evaluating inventory", async () => {
+  it("refuses a missing prior prefix before recording the next unit", async () => {
     const s = scenario({ ignoreInserts: true });
-    await expect(s.makeRunner().apply()).rejects.toThrow(/^platform migration ledger is incomplete after apply$/);
+    await expect(s.makeRunner().apply()).rejects.toThrow(`platform migration ${files[1]} failed: platform migration ledger changed before write`);
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
+    expect(s.query).not.toHaveBeenCalledWith(bodies[2]);
     expect(s.query).toHaveBeenLastCalledWith(releaseSql, [lockName]);
     expect(s.release).toHaveBeenCalledWith(false);
   });
@@ -336,7 +347,7 @@ describe("PostgreSQL migration runner", () => {
     const s = scenario({ fail: (sql) => {
       if (stage === "body" && sql === bodies[1]) return new Error("step refused");
       if (sql === insertSql && ++inserts === 2 && stage === "insert") return new Error("step refused");
-      if (sql === "COMMIT" && ++commits === 2 && stage === "commit") return new Error("step refused");
+      if (sql === "COMMIT" && ++commits === 3 && stage === "commit") return new Error("step refused");
       return undefined;
     } });
     await expect(s.makeRunner().apply()).rejects.toThrow(`platform migration ${files[1]} failed: step refused`);
@@ -358,7 +369,7 @@ describe("PostgreSQL migration runner", () => {
 
   it("releases the lock after a transaction-start failure without attempting rollback", async () => {
     const failure = new Error("transaction unavailable");
-    const s = scenario({ fail: (sql) => sql === "BEGIN" ? failure : undefined });
+    const s = scenario({ fail: (sql) => sql === writeBeginSql ? failure : undefined });
     await expect(s.makeRunner().apply()).rejects.toBe(failure);
     expect(s.query).not.toHaveBeenCalledWith("ROLLBACK");
     expect(s.query).toHaveBeenLastCalledWith(releaseSql, [lockName]);
@@ -380,7 +391,7 @@ describe("PostgreSQL migration runner", () => {
   });
 
   it("aggregates operation and lock-release failures and destroys the client", async () => {
-    const s = scenario({ fail: (sql) => sql === existenceSql ? new Error("ledger unavailable")
+    const s = scenario({ fail: (sql) => isIdentitySql(sql) ? new Error("ledger unavailable")
       : sql === releaseSql ? "unlock unavailable" : undefined });
     await expect(s.makeRunner().status()).rejects.toThrow(
       /^platform migration operation failed: ledger unavailable; advisory lock release failed: unlock unavailable$/,

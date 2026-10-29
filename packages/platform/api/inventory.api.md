@@ -16,7 +16,8 @@ interface PgQueryExecutor {
         rows: Record<string, unknown>[];
     }>;
 }
-/** Operator readback over the same public stock and reservation rail used by renewal. */
+/** Operator readback over the same public stock and reservation rail used by renewal.
+ * Direct stock adjustment is refused because native stock is externally observed. */
 export declare function createPostgresAdminInventoryPort(executor: PgQueryExecutor, config: {
     stockMasterProvider: string;
     providerSchema: z.ZodType<string>;

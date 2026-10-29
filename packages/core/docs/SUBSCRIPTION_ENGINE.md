@@ -13,11 +13,13 @@ its exact unit/parity tests.
 All `src/subscription/` paths and unprefixed commands in this document are
 relative to this package root.
 
-`src/subscription/` is the engine. Nothing else in the platform decides when a
-subscription's next cycle falls, whether an edit window is still open, or what a
-recorded payment does to the schedule. A host application that re-exports these
-functions is a caller, not a second engine — see **Consuming it from a host
-application** at the end.
+`src/subscription/` is the pure lifecycle engine within this package: its
+functions calculate cycle timing, edit windows and the schedule effect of a
+recorded payment. Durable host and database rails can make separate persisted
+schedule decisions, including delivery alignment; see the
+[delivery-alignment contract at this source revision](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
+A host application that re-exports these functions is a caller, not a second
+engine — see **Consuming it from a host application** at the end.
 
 ## What this package owns
 

@@ -458,17 +458,24 @@ exception for disjoint package `exports` additions; this plan does not maintain
 a second list. Existing review evidence remains subject to those native rules.
 
 Otherwise reject the group: merge `main` and re-review. There is no run-keyed or
-integration-review receipt route. At most two automatic queue-rebuild retries
-remain separate from the source repair counter. Review grants no settings,
+integration-review receipt route. At most two authorized supervisor
+queue-recovery retries remain separate from the source repair counter, under
+the canonical [Merge queue](../../../CONTRIBUTING.md#merge-queue) procedure.
+The trusted Queue Handoff command makes one enqueue attempt after eligibility
+checks; it does not retry a refusal within that invocation or automatically
+requeue an entry from the same arming intent. Review grants no settings,
 publication, merge or release authority.
 
 ### Native transport and admission
 
 Transport option A was chosen on 2026-10-19. The supervisor posts
 `agent-review-session.mjs receipt <PR>` output with
-`gh pr comment <PR> --body-file -`. The queue script exposes only `wait`; the
-old dispatch workflow, transport input/submit commands, compressed envelopes and
-artifact upload/download path are removed.
+`gh pr comment <PR> --body-file -`. The queue script exposes `wait` for
+admission and `enqueue` for the trusted one-shot Queue Handoff, after its
+eligibility checks; it does not retry a refusal within that invocation or
+automatically requeue an entry from the same arming intent. The old dispatch
+workflow, transport input/submit commands, compressed envelopes and artifact
+upload/download path are removed.
 
 The `native-review` job runs from trusted main after the six mechanical checks,
 when `OPENLUP_NATIVE_QUEUE=enabled`. It reads all pages of PR comments and

@@ -248,6 +248,12 @@ contained a commit that no human read before it was opened, or was opened
 without an instruction for that pull request; either would return rules 2 and 4
 to their earlier text.
 
+**Superseded for current work.** The **Native-session delegation, decided
+2026-09-27** decision below replaces the personal-read condition in this
+historical revision for maintainer-authorized agent tasks. Current
+accountability, DCO, submission-authority and review requirements are the four
+rules and admission contract above.
+
 
 **Native-session delegation, decided 2026-09-27.** The maintainer authorized
 review through isolated fresh-context native subagents in the same conversation,

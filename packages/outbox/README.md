@@ -4,11 +4,11 @@ Development preview, kind `rail`. One at-least-once dispatch engine, lease-bound
 
 The publication catalogue admits this complete rail to the release set. Catalogue admission does not publish it: direct directory publishing still refuses, and the reviewed release workflow owns provenance-backed publication. New API and shipped SQL require the next minor set.
 
-The prepared `0.30.0` set republishes this rail unchanged with an exact
-`@openlup/core@0.30.0` peer. Upgrade the complete set together; no outbox schema
-migration is introduced. Read [0.30.0 notes](CHANGELOG.md#0300); releases older
-than `0.28.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.29.0` tarball; preparation grants no
+The prepared `0.31.0` set republishes this rail unchanged with an exact
+`@openlup/core@0.31.0` peer. Upgrade the complete set together; no outbox schema
+migration is introduced. Read [0.31.0 notes](CHANGELOG.md#0310); releases older
+than `0.29.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.30.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Package Surface Maturity
@@ -22,6 +22,23 @@ publication or installation proof.
 The application supplies its driver, committed-operation executor, lease adapter, effect handlers, explicit ordered known event vocabulary and host trigger bindings. `createOutbox` validates effective composed timeouts before construction and matches the run-built registry before the first claim. The lease must cover the full declared host execution window, including finish time; the factory has no renewal loop. Build after the lease; a builder owns partially acquired resources until it returns a scope. A returned scope closes after finish, including failure. Hook metadata cannot replace reserved run identity or worker counters. A resolved negative business observation is nonfatal; a thrown business hook prevents claims and attempts a failed finish once. A failed finish remains observable; cleanup errors do not turn accepted effects into retries.
 
 The bare `runOutboxDispatchWorker` supports immediate dispatch without a job lease. The registry alone supplies its claim allowlist. `knownEventTypes` is explicit and is never derived from enabled handlers. A composed handler replays its first component when the second retries, sums timeouts, and retains the original nested details and top-level delivery observations. Its components deliberately do not receive the transient execution context. Effects must honor abort and enforce their own idempotency; timeout cannot cancel a request already accepted by a provider.
+
+## Dispatch configuration and optional diagnostics
+
+`readOutboxDispatchConfig` reads prefixed settings from an environment-like
+record. Its default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass a different
+prefix to use another host naming scheme. Missing or blank values use each
+setting's default. Other values are parsed with base-10 `parseInt`, non-finite
+parses use defaults, and parsed values clamp to their configured bounds. If the
+backoff cap is below its base, the helper raises the cap to the base.
+`createOutbox` separately validates the host-dependent scheduled limits through
+`validateScheduledConfig`. The setting suffixes, numeric defaults and bounds
+are listed in [`src/config.ts`](src/config.ts).
+
+`OutboxQueueDiagnostics` is an optional host-supplied port. When bound, the
+worker reports its queue observation on a best-effort basis after dispatch,
+with a three-second deadline. This observation is separate from claim and
+acknowledgement policy.
 
 ## PostgreSQL installation and transactions
 
@@ -55,7 +72,7 @@ For the local required route, run `node --experimental-strip-types scripts/packa
 Before SQL, the Outbox binding supplies its actual installed schema/probe/checker exports and reference input to the common repository test utility `scripts/packages/schema-budget-proof.mjs`. Future modules can reuse that utility with their own installed requirement and input callback; it carries no package registry or duplicate schema inventory. Its positive serial model uses 250 ms setup plus 100 ms per presence operation, so actual schema growth participates automatically. A single operation longer than the unchanged 3000 ms waiting deadline proves timeout refusal even if the adapter later batches reads. Completeness and overload cases follow the supplied schema's capabilities. Timer cleanup does not imply cancellation of pending driver work; the proof settles its owned fake queue before restoring real timers. The same real database then demonstrates absent table, column and function-overload observations. A single replay witness accepts a synthetic durable effect, loses acknowledgement, reclaims the same event through scheduled work after immediate work, refuses the formerly valid token and acknowledges the new claim. Multiple attempts with one application-owned deduped effect demonstrate at-least-once recovery for this synthetic example, not provider recovery or a universal exactly-once contract.
 
 The same installed Core tarball also executes the additive grouped readiness
-catalog query in [the neutral grouped proof](smoke/groupedSchemaProof.ts).
+catalog query in [the neutral grouped proof](https://github.com/openlup/openlup/blob/main/packages/outbox/smoke/groupedSchemaProof.ts).
 Within a host-owned read-only repeatable-read transaction it compares grouped
 presence with every scalar probe, including the existing Outbox requirement,
 exact overloads, absent objects, dropped/system columns, views and sequences,
@@ -74,8 +91,8 @@ The root companion tests prepare that verified local image in a separate 330-sec
 
 The standalone-driver fixtures run builtin-only proof stubs or stop before the
 packed consumer starts, so they need no Zod directory copy. Artifact-set and
-digest refusals remain in [the manifest-input tests](../../scripts/packages/pack-manifest-input.test.ts);
-installed missing-export refusal remains in [the required-package-gate tests](../../scripts/packages/required-package-gates.test.ts).
+digest refusals remain in [the manifest-input tests](https://github.com/openlup/openlup/blob/main/scripts/packages/pack-manifest-input.test.ts);
+installed missing-export refusal remains in [the required-package-gate tests](https://github.com/openlup/openlup/blob/main/scripts/packages/required-package-gates.test.ts).
 The required cold package gate executes the actual installed reference proof,
 including the replay and token-fencing witness above. The root companion tests
 focus on cancellation, ownership and bounded cleanup without repeating that

@@ -1,6 +1,10 @@
 import type { CommerceOfferPricingResponse } from "./contracts/offer.js";
 
-/** One bounded value and one in-flight load per runtime instance. */
+/**
+ * Entries and in-flight loads are keyed by caller string per runtime instance.
+ * TTLs bound freshness and failure reuse, not entry count; callers choose the
+ * key set, and this cache does not cap or prune distinct keys.
+ */
 export interface CommerceOfferPricingCache<Response extends CommerceOfferPricingResponse = CommerceOfferPricingResponse> {
   read(key: string, load: () => Promise<Response>): Promise<Response>;
 }

@@ -1210,6 +1210,34 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -1322,6 +1350,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/documentation-quality-audit.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/early-package-gates.md",
       "class": "platform-documentation"
     },
@@ -1386,6 +1418,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-managed-identity-mapping.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -1394,7 +1430,23 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-pooling-recipe-task.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-portable-operations-defaults.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-restricted-bootstrap.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-runtime-drain-task.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-schema-upgrade-task.md",
       "class": "public-output"
     },
     {
@@ -8854,6 +8906,50 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qa_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -9019,6 +9115,10 @@
     },
     {
       "path": "scripts/oss-source-release-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/application-upgrade-proof.ts",
       "class": "public-output"
     },
     {
@@ -9958,6 +10058,30 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferInventory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferInventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferReader.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferRestore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/gusCeidg/invoiceDataLookupClient.test.ts",
       "class": "public-output"
     },
@@ -10378,6 +10502,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreRestore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/customerCommunicationPreferences.test.ts",
       "class": "public-output"
     },
@@ -10423,6 +10555,14 @@
     },
     {
       "path": "server/adapters/postgres/fulfillmentEvidenceReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/fulfillmentObservationLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/fulfillmentObservationLifecycle.ts",
       "class": "public-output"
     },
     {
@@ -10703,6 +10843,14 @@
     },
     {
       "path": "server/adapters/s3/objectStorageConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/transferObjectSource.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/transferObjectSource.ts",
       "class": "public-output"
     },
     {
@@ -17630,6 +17778,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/marketing/acquisitionLegacyDrain.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/observability/clientAddressResolver.test.ts",
       "class": "public-output"
     },
@@ -17835,6 +17987,14 @@
     },
     {
       "path": "server/runtime/public-reference/m12SupportReadBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m14OperationsBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m14OperationsBinding.ts",
       "class": "public-output"
     },
     {
@@ -25838,6 +25998,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/customer_browser_identity.test.ts",
       "class": "public-output"
     },
@@ -25855,6 +26019,18 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/m14ApplicationActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/m14EffectActor.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/m14EffectProvider.mjs",
       "class": "public-output"
     },
     {
@@ -25930,11 +26106,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14ApplicationCohort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14InstallQualification.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedAdminComposition.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedAdminComposition.test.ts",
       "class": "public-output"
     },
     {
@@ -25951,6 +26139,14 @@
     },
     {
       "path": "tests/postgres/m14QualifiedSession.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ReleasedSchemaUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ReleasedSchemaUpgradeChild.ts",
       "class": "public-output"
     },
     {
@@ -26047,6 +26243,10 @@
     },
     {
       "path": "tests/postgres/runIdentityEnvelopeConformance.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runM14EffectHandover.ts",
       "class": "public-output"
     },
     {
