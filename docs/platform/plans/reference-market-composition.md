@@ -6,14 +6,18 @@ Prepare opt-in reference rules, address schemas, provider recipe, synthetic
 examples, unmounted bilingual message data and a neutral market descriptor.
 Single writer in the assigned worktree; accountable maintainer Bart Roszkowski
 <dev@openlup.com>. Direct assignment and CD-M16-1..12 authorize implementation,
-checks and staging, then **stop before DCO or commit** for the lead's exact-tree
-API/budget read. Native review, draft delivery and predecessor integration remain
-later lead work. No ready/receipt/queue/merge/release/activation or adopter work.
+checks and staging. The coordinator accepted the exact-tree API/budget read;
+the later direct grant authorized its DCO commit, then predecessor integration,
+ordinary push and a stacked draft PR only. Native review/prepare/receipt/ready
+and heavy draft verification remain held; no queue, merge, release, activation
+or adopter work is authorized by this continuation.
 
-Code/stack base: `c723bb73c57c65e3a77324c943faf1712d1f0a4c`, provisional R1
-head (draft #431), tree `b785e3e907bd67b306a751702c18749212a52e54`.
-Instructions were read at this head; policy revision is separate from the code
-base. A later R1 change is integrated by the lead through a signed merge.
+Current code/stack base: `373481a4e3795ab6f78ce05e19278cdb0f8bc6cd`, R1
+head (draft #431), tree `34cf77d2776751c116e737ef7da8b9aafb790727`.
+Initial implementation base was `c723bb73c57c65e3a77324c943faf1712d1f0a4c`
+(tree `b785e3e907bd67b306a751702c18749212a52e54`). Instructions were read
+at that head and refreshed at the policy pin below, separately from the code
+base. Predecessor updates use sign-off merges, never rebases.
 No other task worktree/branch is touched. Dependency install with Node 24.21.0
 passed (727 packages); no dependency changes.
 
@@ -196,7 +200,7 @@ and 9,093,916 B. Compressed tarball growth is not additive and is not inferred.
 The retained candidate tarball and cumulative measurements remain unchanged.
 
 Fresh instruction pin for this repair: `6828103f4e8d56ca18808cfc27f606b82ea4ddba`;
-code/stack base remains the provisional predecessor above. The current instruction
+the initial implementation base remains recorded above. The current instruction
 delta concerns risk witness placement and owned-container cleanup; these rename-only repairs create no container or new proof lane.
 The prior implementation evidence remains attributed to the earlier candidate;
 this repair runs only the lead-selected policy, neutrality, structural, focused
@@ -215,3 +219,26 @@ two changed TypeScript files, and the unchanged cold-consumer unit suite
 frozen witness blobs pass. Package/runtime/test bodies are unchanged from the
 prior staged candidate; no package build or predecessor rebuild was rerun.
 No DCO, commit, push, native review or external mutation occurred.
+
+## Predecessor integration and draft delivery
+
+The direct continuation grant names predecessor
+`373481a4e3795ab6f78ce05e19278cdb0f8bc6cd`. Its fetched remote ref matches;
+it descends from the initial implementation base. Merge
+`6621e282774a21aa450bf46f34e9b3f7f0fbd382` retains both parents and the
+maintainer identity/sign-off, with no conflicts. R1 changes only its task record
+and regenerates the stale exponent API comment. The stacked API diff now has
+only the descriptor export and declarations; no comment removal remains.
+No generated conflict or regeneration delta requires another implementation
+commit. All 29 frozen witness blobs match the new predecessor. No R1 witness
+was touched by its API/documentation-only update, so no additional R1 test
+rerun is selected. Prior artifact measurements are unchanged: this integration
+changes no shipped package bytes. Required focused checks use the new stack
+base; native review and heavy verification wait for the later authorized stage.
+Self-retro: the sign-off predecessor merge retained the exact reviewed package
+bytes while attributing the stale API-report correction to its original owner.
+
+Integration checks PASS: platform workspace API check; publication policy with
+five answered obligations; zero-increase neutrality; ast-grep; six focused
+files / 32 cases with two workers. The final stacked DCO range is checked before
+submission. No native or heavy verification was run under the retained hold.
