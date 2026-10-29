@@ -2,6 +2,48 @@
 
 Status: development-preview contract. No recipe in this document is a supported production deployment or a stable installer promise.
 
+## PostgreSQL connection recipe
+
+For the current qualified-v2 PostgreSQL 16 preview profile, bind connections by
+their work, even when HTTP and timers share one Node host:
+
+| Work | Connection and existing seam |
+| --- | --- |
+| Request/database work | A bounded `pg.Pool` using the restricted runtime login, through `createPostgresDataGateway` or the existing capability-local transaction lanes. A transaction-mode pooler is suitable only for operations whose state is entirely transaction-local. |
+| Migration and privileged administration | The direct database endpoint, bypassing external poolers, with the selected migration/admin principal. Bind the migration runner's explicit `connectionString` independently of runtime `DATABASE_URL`; see the [data owner](DATA_AND_MIGRATIONS.md#connection-roles). |
+| Scheduler/jobs using session advisory locks | One dedicated runtime-login session through a direct endpoint or a session-mode pooler. Pass `createPgAdvisoryLock(client)` as `serveNode({ advisoryLock, ... })`, or inject `createEnvAdvisoryLock({ DATABASE_URL: sessionConnectionString })`. Keep it until host drain and `stop()` complete. Never pass `Pool.query` or a transaction-mode pooler. |
+
+These are existing composition seams, not new environment-variable conventions.
+`createEnvAdvisoryLock(env)` still uses `env.DATABASE_URL` by default. If that URL
+points to a transaction pooler for requests, explicitly inject the separate
+session lock above; constructing a `pg.Client` against that same pooler does not
+make the transport session-affine. Likewise, bind the direct migration port in
+the composition root: the listening Node host applies that port before serving.
+Neither a different URL nor pool mode grants a different database role.
+
+Before each scheduler grant admits a callback, the adapter observes the backend
+PID and its exact granted advisory key in a separate SQL statement. A changed
+PID, missing ownership or an uncertain acquisition refuses the current job and
+further acquisitions on that adapter with an actionable error. Release checks
+the PID before unlocking and refuses a missing grant.
+`OPENLUP_E_ADVISORY_SESSION_AFFINITY` directs the operator to use direct or
+session-mode transport. Drain the host, close its dedicated connection, and
+retire any lock backend stranded behind a misconfigured pooler before restarting;
+do not force an unlock on an unrelated backend. The refusal does not close the
+session under already-admitted jobs.
+
+A finite observation cannot identify every transaction pooler: an idle pooler
+may reuse one backend throughout a check. Nor does it fence a job after admission
+if a connection subsequently fails. Correct transport configuration, job leases,
+idempotency and external-effect fencing retain their existing duties.
+The [qualified composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+uses the real 91-unit selected installation, pooled request work and restricted
+runtime lock sessions. Its deterministic backend-switch/reset cases use real
+PostgreSQL sessions, not a PgBouncer deployment; they prove observed-violation
+refusal before the job body. This is local PG16 evidence, not hosted Neon/RDS
+qualification. Restricted-bootstrap qualification will reuse the same recipe
+once available.
+
 ## Runtime model
 
 The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
