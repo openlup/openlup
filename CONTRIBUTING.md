@@ -154,6 +154,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
+uses the production package runner to check ledger admission, stable reads,
+write admission, complete inventory projection and compatibility for status,
+dry-run and apply.
+It covers a single-deviation catalog-shape matrix, temporary name shadowing,
+and bootstrap-owned ledger reads from a distinct
+migration login. Run it with
+`npm test -- tests/postgres/m14MigrationSessionAdmission.test.ts` before the
+complete required gates.
+For this boundary, compare the complete catalog shape with the canonical
+baseline ledger; separately blocked examples do not establish that comparison.
+
 The migration control witnesses cover legacy/qualified selection and immutable
 history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
 prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
@@ -2714,6 +2726,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, M14 ledger admission: successive special-case metadata checks
+  left an untested catalog shape → use the canonical comparison and
+  [single-deviation witness](#development-preview-checks) for this boundary.
 
 - 2026-10-28, M14 handover cleanup proof: assumptions about failure metadata or
   network damage hid an actual created-container leak → test exact container
