@@ -4,7 +4,7 @@ import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferOb
 import type { InvoiceFacts } from "@openlup/platform/invoicing/contracts";
 import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
 import { restoreConnectedNativeStore } from "./connectedStoreRestore.js";
-import type { ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import { connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 type Row = Record<string, unknown>;
 type Disposition = "requires-active-mapping" | "mapped-active-and-retained" | "retained-history" | "unsupported-empty" |
@@ -106,7 +106,7 @@ export async function captureManagedRetainedHistory(input: {
       const facts = (await db.query<{ readonly: string; isolation: string; cluster: string; database: string; login: string; snapshot: string }>(
         `SELECT pg_catalog.current_setting('transaction_read_only') AS readonly,
           pg_catalog.current_setting('transaction_isolation') AS isolation,
-          (SELECT system_identifier::pg_catalog.text FROM pg_catalog.pg_control_system()) AS cluster,
+          ${connectedStoreClusterIdentitySql} AS cluster,
           pg_catalog.current_database() AS database,session_user::pg_catalog.text AS login,
           pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") fail("invalid_input");

@@ -58,6 +58,16 @@ export interface ConnectedNativeStoreCapture {
   sha256: string;
 }
 
+// Ordinary PostgreSQL sessions can observe this database incarnation. A
+// postmaster restart changes the value and requires a new pristine capture.
+// The database name is checked separately by connected restore.
+export const connectedStoreClusterIdentitySql = String.raw`pg_catalog.concat_ws(':',
+  pg_catalog.date_part('epoch', pg_catalog.pg_postmaster_start_time())::pg_catalog.text,
+  pg_catalog.inet_server_addr()::pg_catalog.text,
+  pg_catalog.inet_server_port()::pg_catalog.text,
+  (SELECT oid::pg_catalog.text FROM pg_catalog.pg_database
+    WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()))`;
+
 /**
  * Capture the selected finite native graph in ONE observed read-only repeatable
  * read transaction. The actual host must separately exclude all DB/object
@@ -78,7 +88,7 @@ export async function captureConnectedNativeStore(input: {
         readonly: string; isolation: string; cluster: string; database: string; login: string; snapshot: string;
       }>(`SELECT pg_catalog.current_setting('transaction_read_only') AS readonly,
         pg_catalog.current_setting('transaction_isolation') AS isolation,
-        (SELECT system_identifier::pg_catalog.text FROM pg_catalog.pg_control_system()) AS cluster,
+        ${connectedStoreClusterIdentitySql} AS cluster,
         pg_catalog.current_database() AS database, session_user::pg_catalog.text AS login,
         pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") throw new PostgresTransferError("invalid_input");

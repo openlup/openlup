@@ -548,7 +548,7 @@ The intended distribution roles are:
 
 | Distribution | Role and adoption boundary |
 | --- | --- |
-| `@openlup/core` | Existing I/O-free kernel; retain its published coordinates and exports. |
+| `@openlup/core` | Existing I/O-free kernel and the isolated, tool-only installed-context executable; retain its published coordinates and kernel exports. |
 | `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
 | `@openlup/platform` | Development-preview backend distribution for the runnable foundation and declared module subpaths, including identity. |
 | UI | Target distribution role; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
@@ -562,6 +562,15 @@ registry evidence establish publication. Identity currently lives in
 subpaths. Use the isolated contracts entry for browser-safe contracts and
 verify the installed version's exports. Only genuinely shared contracts belong
 in core; importing platform as a whole is not a browser-safety guarantee.
+
+The `openlup-context` executable is a narrow tool-only distribution decision:
+core already reaches installed consumers, so it carries offline context lookup
+without a new package or service. Its Node built-ins read local installed
+snapshots only when explicitly invoked. No kernel export imports the executable;
+all kernel imports remain I/O-free and browser-safe. Package-root
+`AGENT_CONTEXT.md` snapshots ship with their owning packages. Lookup results
+locate evidence and grant no policy or execution authority. This exception does
+not permit Node dependencies or I/O in kernel contracts or logic.
 
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
@@ -2404,6 +2413,22 @@ A successful write is insufficient: target bytes and descriptor must match
 before checkpoint. Resume recognizes the exact retained object after a lost
 write ACK or checkpoint interruption and refuses a divergent existing key.
 This first slice has no remote inventory traversal or live object-delta protocol.
+The server [S3 transfer source](../../server/adapters/s3/transferObjectSource.ts)
+adds bounded authenticated traversal and can reconcile it against an independently
+read source-store reference snapshot. Matching principal-visible listings alone
+do not establish completeness. The reference snapshot must account for pending,
+partial and cleanup keys, and a fenced caller must retain all corresponding
+business rows. The [filesystem media adapter](../../server/adapters/filesystem/orderReviewMediaTransferInventory.ts)
+reconciles its final and partial files against those rows, including retained
+observed bytes when a cleanup file remains present. Its staging entry
+point builds a separate inactive generation and refuses a serving-root name
+collision; the host still owns activation
+after database and access reconciliation. Route probes exercise both actual customer
+and operator serving handlers under anonymous, owner, other-customer and
+operator identities, bind each route reference to the source row, and refuse
+effective access changes or served-byte and observed content-type drift.
+These finite source checks do not grant hosted bucket qualification or a whole
+connected-store cutover.
 
 The [private filesystem capability](../../packages/platform/src/portability/filesystemObjects.ts)
 publishes bytes and metadata through exclusive files, fsync and one directory

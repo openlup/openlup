@@ -10,7 +10,7 @@ import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostg
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { captureConnectedNativeStore, connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { captureConnectedNativeStore, connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore, type ManagedIdentityMappingSource } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { createPostgresPartnerAcquisitionPort } from "../../server/adapters/postgres/partners/partnerAcquisitionRoutines.js";
 import { createPartnerAcquisitionSubmitHandler } from "../../server/bff/partners/partnerAcquisitionDirect.js";
@@ -411,11 +411,38 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   };
   const before = await census(target.owner);
   const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
-  const observed = packet.observation;
+  const sourceClient = await source.owner.connect();
+  let observed: ConnectedNativeStoreCapture["observation"];
+  let sourceProjection: typeof sourceRows;
+  try {
+    await sourceClient.query("CREATE TEMP TABLE managed_identity_projection(kind text NOT NULL,payload jsonb NOT NULL)");
+    for (const [kind, rows] of Object.entries(sourceRows)) for (const row of rows) {
+      await sourceClient.query("INSERT INTO managed_identity_projection(kind,payload) VALUES($1,$2::jsonb)", [kind, JSON.stringify(row)]);
+    }
+    await sourceClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const fact = (await sourceClient.query<{ cluster: string; database: string; login: string; snapshot: string }>(`SELECT
+      ${connectedStoreClusterIdentitySql} AS cluster,current_database() AS database,
+      session_user::text AS login,txid_current_snapshot()::text AS snapshot`)).rows[0]!;
+    observed = fact;
+    // The local managed fixture is a PostgreSQL projection, not a provider-auth
+    // token or source-key export. Read exact stored JSON values in one snapshot.
+    const stored = async <T>(kind: string): Promise<T[]> => (await sourceClient.query<{ payload: string }>(
+      "SELECT payload::text FROM managed_identity_projection WHERE kind=$1 ORDER BY payload::text", [kind]))
+      .rows.map(row => JSON.parse(row.payload) as T);
+    sourceProjection = {
+      clients: await stored<(typeof sourceRows.clients)[number]>("clients"),
+      adminUsers: await stored<(typeof sourceRows.adminUsers)[number]>("adminUsers"),
+      revokeAudit: await stored<(typeof sourceRows.revokeAudit)[number]>("revokeAudit"),
+      erasures: await stored<(typeof sourceRows.erasures)[number]>("erasures"),
+      lifecycleEvents: await stored<(typeof sourceRows.lifecycleEvents)[number]>("lifecycleEvents"),
+    };
+    await sourceClient.query("COMMIT");
+  } catch (error) { await sourceClient.query("ROLLBACK"); throw error; }
+  finally { await sourceClient.query("DROP TABLE IF EXISTS managed_identity_projection").catch(() => undefined); sourceClient.release(); }
   const subjects = [liveManagedId, erasedManagedId, adminManagedId, revokedManagedId]
     .map(managedId => ({ managedId, subject: managedId }));
   const evidence: ManagedIdentityMappingSource = { sourceId: "representative-managed-identity", issuer,
-    observation: observed, subjects, ...sourceRows };
+    observation: observed, subjects, ...sourceProjection };
   const mapped = await mapManagedIdentityForConnectedRestore({ source: evidence, freshTarget: pristine, targetOwner: target.owner });
   const otherIssuer = await mapManagedIdentityForConnectedRestore({ source: { ...evidence,
     issuer: "https://other-issuer.example.invalid/managed" }, freshTarget: pristine, targetOwner: target.owner });

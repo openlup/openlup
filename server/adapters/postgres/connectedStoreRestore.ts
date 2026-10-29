@@ -6,8 +6,9 @@ import {
 } from "@openlup/platform/portability";
 import { deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
-import { qualifiedPostgresCatalogPayload, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
-import { connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
+  assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
+import { connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
@@ -259,12 +260,15 @@ const order = [
  */
 export async function restoreConnectedNativeStore(input: {
   owner: Pool;
-  installation: QualifiedPostgresInstallation;
+  installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation;
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
   const packet = copyCapture(input.packet), fresh = copyCapture(input.freshTarget);
-  const installation = { ...input.installation };
+  const installation = structuredClone(input.installation);
+  if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
+  if (packet.observation.cluster === fresh.observation.cluster
+    && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
   const client = await input.owner.connect().catch(() => { throw new PostgresTransferError("database_unavailable"); });
   let locked = false, unlockFailed = false;
@@ -275,7 +279,7 @@ export async function restoreConnectedNativeStore(input: {
     await client.query("BEGIN");
     await client.query("SET LOCAL TimeZone = 'UTC'");
     const facts = (await client.query<{ cluster: string; database: string; login: string; xid: string; mode: string }>(`SELECT
-      (SELECT system_identifier::pg_catalog.text FROM pg_catalog.pg_control_system()) AS cluster,
+      ${connectedStoreClusterIdentitySql} AS cluster,
       pg_catalog.current_database() AS database,session_user::pg_catalog.text AS login,
       pg_catalog.pg_current_xact_id()::pg_catalog.text AS xid,pg_catalog.current_setting('session_replication_role') AS mode`)).rows[0]!;
     if (facts.mode !== "origin" || facts.cluster !== fresh.observation.cluster || facts.database !== fresh.observation.database
@@ -289,6 +293,12 @@ export async function restoreConnectedNativeStore(input: {
     if (ledger.rows.length !== expectedLedger.length
       || JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
     const ledgerBefore = (await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
+    // The restricted migrator has ADMIN but no inherited owner access at rest.
+    // Observe its sealed graph first, then open only the already-admitted
+    // acquisition owner privilege inside this transaction for census/locks.
+    const inventory = installation.generation === "qualified-admin" ? await catalogPayload(client, installation) : undefined;
+    if (inventory !== undefined && digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    if (installation.generation === "qualified-admin") await openRestrictedOwnerWindow(client, installation);
     const keyIdentity = await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key");
     // Lock the whole public/app census, including excluded tables. Unknown data
     // cannot appear during import, and no observer sees intermediate rows.
@@ -298,8 +308,8 @@ export async function restoreConnectedNativeStore(input: {
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
     for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
     // Inspect definitions after table locks, before any retained-data mutation.
-    const inventory = await qualifiedPostgresCatalogPayload(client, installation, migrationLock);
-    if (digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    const lockedInventory = inventory ?? await catalogPayload(client, installation);
+    if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
@@ -310,6 +320,10 @@ export async function restoreConnectedNativeStore(input: {
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
     if (await equalCensus(client, source)) {
+      if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
+      if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
+      if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");
+      if (JSON.stringify((await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows) !== JSON.stringify(ledgerBefore)) fail("schema_conflict");
       await client.query("COMMIT");
       result = { captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 };
     } else {
@@ -371,9 +385,10 @@ export async function restoreConnectedNativeStore(input: {
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
       await assertOutsideEmpty(client, relations);
       if (!await equalCensus(client, source)) fail("target_conflict");
-      if (await qualifiedPostgresCatalogPayload(client, installation, migrationLock) !== inventory) fail("schema_conflict");
-      if (JSON.stringify((await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows) !== JSON.stringify(ledgerBefore)) fail("schema_conflict");
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
+      if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
+      if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");
+      if (JSON.stringify((await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows) !== JSON.stringify(ledgerBefore)) fail("schema_conflict");
       if ((await client.query("SELECT pg_catalog.pg_current_xact_id()::pg_catalog.text AS xid")).rows[0].xid !== facts.xid) fail("invalid_input");
       await client.query("COMMIT");
       result = { captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: neutralized };
@@ -400,6 +415,8 @@ function copyCapture(input: ConnectedNativeStoreCapture): ConnectedNativeStoreCa
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
     const { sha256, ...body } = copy;
     if (copy.format !== "openlup.native-retained-store.v1" || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
+    if (!copy.observation || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
+      || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
     const all = tables(copy);
     if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
@@ -422,12 +439,31 @@ function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {
   if (new Set(all.map(table => table.table)).size !== all.length) fail("invalid_input");
   return new Map<TableName, Rows>(all.map(table => [table.table, table]));
 }
-function expectedManifest(installation: QualifiedPostgresInstallation) {
+function expectedManifest(installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation) {
   const root = process.cwd(), raw = readPlatformMigrationManifest(root), catalog = readPlatformMigrations(root);
   if (!raw || catalog.errors.length || evaluatePlatformMigrationManifest({ manifest: raw, migrations: catalog.migrations }).length) fail("schema_conflict");
-  return selectPlatformMigrationManifest(raw as PlatformMigrationManifest, "qualified-v2", {
-    migrationIsBootstrap: installation.migrationLogin === installation.bootstrapLogin, hasRestore: installation.restoreLogin !== undefined,
-  });
+  return installation.generation === "qualified-admin"
+    ? selectPlatformMigrationManifest(raw as PlatformMigrationManifest, "qualified-admin", { roleMode: installation.roleMode })
+    : selectPlatformMigrationManifest(raw as PlatformMigrationManifest, "qualified-v2", {
+      migrationIsBootstrap: installation.migrationLogin === installation.bootstrapLogin, hasRestore: installation.restoreLogin !== undefined,
+    });
+}
+function catalogPayload(client: PoolClient, installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation): Promise<string> {
+  return installation.generation === "qualified-admin"
+    ? qualifiedAdminPostgresCatalogPayload(client, installation, migrationLock)
+    : qualifiedPostgresCatalogPayload(client, installation, migrationLock);
+}
+async function openRestrictedOwnerWindow(client: PoolClient, installation: QualifiedAdminPostgresInstallation): Promise<void> {
+  const migrator = JSON.stringify(installation.migrationLogin);
+  await client.query(`GRANT platform_acquisition_owner TO ${migrator}
+    WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY ${migrator}`);
+  await client.query(`GRANT openlup_retained_import_owner TO ${migrator}
+    WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY ${migrator}`);
+}
+async function closeRestrictedOwnerWindow(client: PoolClient, installation: QualifiedAdminPostgresInstallation): Promise<void> {
+  const migrator = JSON.stringify(installation.migrationLogin);
+  await client.query(`REVOKE openlup_retained_import_owner FROM ${migrator} GRANTED BY ${migrator}`);
+  await client.query(`REVOKE platform_acquisition_owner FROM ${migrator} GRANTED BY ${migrator}`);
 }
 async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): Promise<boolean> {
   for (const [table, data] of expected) {

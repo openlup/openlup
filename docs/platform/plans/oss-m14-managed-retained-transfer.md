@@ -88,6 +88,16 @@ refuse activation unless a verified mapping preserves its obligation; retaining
 the row as history alone is insufficient. The source fixture and mapping proof
 must establish which finite cohort can pass and which rows refuse.
 
+## Hosted handoff limit
+
+The disposable local managed fixture does not establish hosted service-relation
+dispositions. Hosted managed projects may have nonempty `realtime`, `net`,
+`cron`, `supabase_functions` and `vault` relations, which this capture currently
+refuses if they are outside its finite profile. The hosted leg needs explicit,
+read-approved dispositions before admission. Vault and other secret-bearing
+relations must remain disposition-only; their rows must never enter the
+business capture or retained sidecar.
+
 ## Evidence and handoff
 
 After a host reboot removed the original temporary worktree, the assigned
@@ -106,10 +116,15 @@ native connected transfer 5/5, including exact source/sidecar row identities,
 target rows and obligations, erasure readback, unknown nonempty relation,
 missing privacy coverage and mapped-field conflict refusals. `ast-grep`, lint
 (zero errors), publication inventory, neutrality and redacted Gitleaks passed
-on the final staged candidate. The policy
-checker leaves one test-guidance no-impact trailer for the post-read DCO
-commit. No full verification, maintainer read, review cycle, DCO commit, PR or
-receipt is yet claimed.
+on the original staged candidate. The maintainer read accepted tree
+`47442a0429655c7eda34c1ee507bd8e1ea626b75`; the DCO commit is `df90117` and
+includes the test-guidance no-impact trailer. `origin/main` later included the
+object-transfer and restricted-restore parcels. Their overlapping capture,
+restore, documentation, catalogue and witness hunks were merged manually,
+with managed capture aligned to the ordinary-session cluster identity SQL.
+The three focused real-PG suites passed 17/17 on that staged merge candidate.
+The merge awaits its own maintainer read before DCO. Full canonical verification,
+native review, PR and receipt are not yet claimed.
 
 Self-retro at this stop: the first actual managed extraction revealed a pending
 welcome outbox item and email timeline that synthetic projection alone missed;
