@@ -310,7 +310,7 @@ RETURNS bytea
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
   SELECT pg_catalog.sha256(k.key_bytes
     || pg_catalog.convert_to(p_domain || ':' || p_payload::text, 'UTF8')
@@ -324,7 +324,7 @@ RETURNS jsonb
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
   SELECT jsonb_build_object(
     'contractVersion', 'tester_application_v1',
@@ -359,7 +359,7 @@ CREATE FUNCTION acquisition_private.refuse_append_only_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 BEGIN
   RAISE EXCEPTION 'acquisition_append_only' USING ERRCODE = '42501';
@@ -408,7 +408,7 @@ CREATE FUNCTION public.acquisition_case_submit_v1(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE
   v_command_fingerprint bytea;
@@ -579,7 +579,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE
   v_row record;
@@ -635,7 +635,7 @@ CREATE FUNCTION public.acquisition_case_transition_v1(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE
   v_command_fingerprint bytea;
@@ -747,7 +747,7 @@ RETURNS bigint
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
   SELECT count(*)::bigint
   FROM acquisition_private.cases AS c

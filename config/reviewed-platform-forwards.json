@@ -1884,6 +1884,26 @@
           "afterSha256": "d80964683b7aa8606945e90ac5e4db2f919f7c773164fa80c998fbccbbadccc5"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/qa_00000000000000_platform_baseline.sql",
+      "sha256": "a19f78b5e948f96d5bdca6cc14159230cf5197c5ff7fe94f7fc10f26e585a710"
+    },
+    {
+      "path": "db/platform/migrations/qa_20260810180001_self_host_actor_auth.sql",
+      "sha256": "afbba5c95206a579325239a315772095ba47e608b21c8b26d5bbac16a2e0aaa9"
+    },
+    {
+      "path": "db/platform/migrations/qa_20260816140000_acquisition_case_foundation.sql",
+      "sha256": "db8e461b3559d0c0c0f7789b61e1f853d327110b9ff0b305e412054454bb6b87"
+    },
+    {
+      "path": "db/platform/migrations/qa_20261026130000_runtime_capabilities.sql",
+      "sha256": "7083a206e7cedfbb87d009d35234360975d9247b80ccd99a6478d89a12e95cb7"
+    },
+    {
+      "path": "db/platform/migrations/qa_20261026140000_retained_client_subscription_import.sql",
+      "sha256": "09be0b6f7caedf8a16d1de574e74856d6eda26863f759af184ee4ba2d63e6cae"
     }
   ]
 }

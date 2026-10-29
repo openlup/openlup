@@ -264,7 +264,7 @@ CREATE POLICY clients_retained_import_insert ON public.clients
 CREATE OR REPLACE FUNCTION public.customer_subject_capture_lifecycle()
 RETURNS trigger
 LANGUAGE plpgsql
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
   IF TG_OP = 'INSERT' AND current_user = 'openlup_retained_import_owner' THEN
@@ -287,7 +287,7 @@ CREATE OR REPLACE FUNCTION public.subscription_delivery_alignment_guard_cycle_in
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   v_subscription public.subscriptions%ROWTYPE;

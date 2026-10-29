@@ -1,29 +1,31 @@
 # Qualified installation approval fixtures
 
-The six inert files retain the exact whole bytes bound in
+The first six fixture files retain the exact whole bytes bound in
 [`qualifiedInstallations`](../../../../../../config/reviewed-platform-forwards.json).
 The sixth runtime-completion fixture equals its separately introduced canonical
 SQL, bound by the unchanged sixth prior-approval row.
 They are not an installation chain, a package SQL export or a migration source.
 Reader preparation landed before this sixth approval row, which landed before
 active SQL. All six approval rows and the canonical manifest's legacy 88-unit
-selection and complete F90 prefix remain unchanged; qualified selection now
-appends only the exact completion as unit 91 with two measured withRestore
-inventories. Trusted admission parses a changed registry
+selection and complete F90 prefix remain unchanged; the completion is unit 91
+of the qualified selection. Trusted admission parses a changed registry
 using main's reader before its no-SQL return, so reader support must land first.
 Only after the exact sixth approval lands may the SQL feature introduce the
 identical file and append its selected row.
 Observed installation hashes cannot replace prior source approval.
 
-The seventh inert file binds the qualified owner-path forward's exact nine
-definitions. Its reviewed file and function hashes are approved before the
-identical SQL is introduced into the active migration directory. The current
-qualified selection remains 91 units until that separate introduction.
+The seventh fixture binds the qualified owner-path forward's exact nine
+definitions. Its reviewed file and function hashes were approved before the
+identical active SQL was introduced as qualified unit 92.
 
-Five additional `qa_` files are inert restricted-bootstrap candidates. Their
-whole bytes are present for a later separate approval; none is in the current
-registry or active migration manifest. The issued completion tail is reused
-unchanged by the planned restricted generation. See the
+Five additional `qa_` files remain inert restricted-bootstrap candidates. This
+separate control-only checkpoint adds their exact whole-byte approvals at
+positions 8–12; no `qa_` SQL or schema-3 plan enters the active migration
+catalogue. The nine owner-executed definitions shared with the qualified
+owner-path forward carry its pinned name-resolution attributes in these bytes;
+the two retained-import definers already use the same pinned search path.
+The restricted generation reuses the issued completion tail unchanged and
+selects its own five replacements, without the qualified owner-path forward. See the
 [restricted-bootstrap task](../../../../../../docs/platform/plans/oss-m14-restricted-bootstrap.md).
 
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)

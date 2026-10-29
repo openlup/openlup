@@ -201,7 +201,8 @@ separate 91-unit generation, the issued runtime-completion tail and exactly two
 fixed role-mode inventory digests. The manifest and admission witnesses reject
 missing/reordered tails, wrong-generation paths, malformed modes, issued-prefix
 repins and partial approval sets. The five fixture files are inert source bytes;
-their later approval and active SQL must land in separate checkpoints. No new
+their exact approval follows the reader and owner-path forward in a separate
+checkpoint, and active SQL follows that approval. No new
 test command or CI job is introduced by reader preparation.
 
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
