@@ -12,8 +12,8 @@ ordinary push and a stacked draft PR only. Native review/prepare/receipt/ready
 and heavy draft verification remain held; no queue, merge, release, activation
 or adopter work is authorized by this continuation.
 
-Current code/stack base: `5f221ac8c23c6084b3fc8d5b179c72652c066457`, R1
-head (draft #431), tree `c4d7d0daac5a9bc840c43e34f87d6cfaf6dc6ccc`.
+Current code/stack base: `f05668d67b50a211e89a98f578cc37bb57b68fd6`, R1
+head (draft #431), tree `d75883b282aa18ed0b0f2b22f10f24fc729f9f98`.
 Initial implementation base was `c723bb73c57c65e3a77324c943faf1712d1f0a4c`
 (tree `b785e3e907bd67b306a751702c18749212a52e54`). Instructions were read
 at that head and refreshed at the policy pin below, separately from the code
@@ -78,7 +78,9 @@ cache or translation runtime is needed.
 
 ## Frozen predecessor witnesses
 
-All blobs below remain byte-identical, including imports and expectations.
+All working-tree blobs below match the current approved predecessor, including
+imports and expectations. The main-integration note identifies predecessor-owned
+updates; original blob identities remain in the earlier task commits.
 
 | File | R1 blob |
 | --- | --- |
@@ -92,7 +94,7 @@ All blobs below remain byte-identical, including imports and expectations.
 | `packages/platform/test/market-packs/formatMinor.test.ts` | `1690e8c26b363703daf4fd52dbd2e8b776d48227` |
 | `packages/platform/test/market-packs/portFit.test.ts` | `c5c82da9ceb4c6c198c7048a67f4f0c3e9d69932` |
 | `packages/platform/test/market-packs/settlementProfile.test.ts` | `c8355d401ba8d356ef6f59a90370d12ab0c5596d` |
-| `packages/platform/test/packageBoundary.test.ts` | `a9f121689e05f42b9e2a217a889860c35d1c45ab` |
+| `packages/platform/test/packageBoundary.test.ts` | `c545dd247c8d61dba9b96a2b6c72853122f2ff64` |
 | `scripts/packages/market-pack-consumer-proof.ts` | `341ef6cecbdeddaf25e47b372a829a89c5deacf4` |
 | `server/adapters/supabase/address-canon/addressCanonLookup.test.ts` | `f97f460cfffff92ba35c39bf0790927fca76b4c0` |
 | `server/bff/address-canon/shared.test.ts` | `1512ef1c111499daf43d260651a7416cda81b1f4` |
@@ -103,7 +105,7 @@ All blobs below remain byte-identical, including imports and expectations.
 | `src/lib/currency/formatMinor.test.ts` | `3e2e12935ca40768943759dc94e5a074d4f198f5` |
 | `src/lib/currency/platformCurrency.test.ts` | `cbb615dd102df197dac16f12585e6b0e33b28817` |
 | `tests/postgres/marketDirectoryPreservation.test.ts` | `4c7974a8e36a628d13ef69c534f1e106cfedbaa9` |
-| `scripts/packages/platform-cold-consumer.test.ts` | `a1b92f3560db2df217b1a5b85da152e614b7bbfd` |
+| `scripts/packages/platform-cold-consumer.test.ts` | `f9bb24551669d29905a13d066c991ce72fe546e0` |
 | `src/domains/address-canon/contracts.test.ts` | `7e410e8b917d86ab779dc042088ee29640912a22` |
 | `src/domains/address-canon/addressCanonClient.test.ts` | `5d98d8406f20f3920be14a9b91697bfc53d96c5b` |
 | `server/domains/address-canon/addressCanonLookupHandler.test.ts` | `9547f0c447681809766f0a19944159aa2f3732a4` |
@@ -280,3 +282,48 @@ Owner-driven documentation regeneration produced no tracked output delta.
 Self-retro: separate load admission for each Vitest invocation protected the
 running predecessor verification and kept the expected budget finding distinct
 from registration or behavior regressions. No native/heavy verification ran.
+
+## Main and risk union integration
+
+Predecessor `f05668d67b50a211e89a98f578cc37bb57b68fd6` matches its fetched
+remote ref and descends from `5f221ac8c23c6084b3fc8d5b179c72652c066457`.
+Sign-off merge `759c3ebc229639badfd7e51639cad7910e3d00bb` keeps both parents.
+Four authored documentation files conflicted. Saved resolutions were inspected,
+then rebuilt as explicit unions so incoming policy/risk guidance and this task's
+market composition survive. Package-source navigation follows the incoming
+README's current-main link convention. The incoming catalogue, risk subpaths,
+module graph, package boundary/import-map witnesses and all budget values remain
+intact; the package gate diff adds only this task's descriptor smoke witness.
+API and documentation owner regeneration produced no tracked generated delta.
+The new precise documentation owner required a reference-composition row in the
+existing adapter capability map; no ownership rule or scanner was changed.
+
+The current frozen table carries the predecessor's updated packageBoundary and
+platform-cold-consumer unit-test blobs from main's risk integration. These are
+predecessor-owned witness updates; no R2 test expectation was changed. All other
+original frozen blobs remain identical. Current instruction/main pin is
+`8046797ace978e148556c30767d8ed231a0dd6e3`, separate from the stack base.
+Earlier pre-main artifact byte/cap measurements remain historical; the selected
+real-pack witness measures this integrated candidate under main's current caps.
+The six reference test files and two companion files run only after load is
+below eight, with bounded 60-second polling. No native or heavy verification is
+admitted by this continuation, even though main's risk programme has landed.
+
+
+Integrated proof: the companion suites were admitted after 420 seconds at load
+4.77. ESLint import-map passed 123/123; package-size-policy passed 47/48, with
+one expected real-platform-pack case containing only code files 2,664 / cap
+2,656 and total files 2,719 / cap 2,712. Every other content/browser budget
+assertion passed. This retains a budget finding, not a passing full package gate;
+no cap, test, timeout or assertion was weakened. The six reference files passed
+32/32 after separate admission at load 5.51, 432 seconds into the wait.
+API, structural scan, six answered documentation obligations and zero-increase
+neutrality passed. All 29 current frozen blobs, both companion files, the risk
+manifest/module graph and package boundary match the integrated predecessor.
+No generated output changed after the owner commands. A predecessor-owned blank
+line at the end of its historical cleanup plan appeared in the whole merge's
+whitespace diagnostic; the scoped delta against this predecessor remains clean.
+Self-retro: inspecting saved conflict resolutions prevented lost reference prose.
+Using the existing capability-map owner closed the documentation gap without
+adding routing controls. The load wait cost seven minutes; the only remaining
+package finding is the explicitly deferred file-cap allocation.
