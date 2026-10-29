@@ -360,3 +360,64 @@ DCO, review, verification and delivery.
 Self-retro for this stopped checkpoint: extending the existing four-case
 production composition covered the new owner paths without creating a second
 installation harness or changing the issued qualification prefix.
+
+
+## Corrected package-set preparation S1 (29 October 2026)
+
+Outcome: prepare the coherent development-preview set `0.31.0` for Core, Outbox
+and Platform from the corrections and runtime changes after the `0.30.0`
+release source `fea0854a1a5a27c1a48f8c2c9078c618f47f66a3`. Platform's behavior
+changes require a minor set; Core and Outbox republish unchanged with exact
+internal pins. npm observations on 29 October found `0.30.0` as the highest
+version of each package. This preparation publishes nothing.
+
+Bart Roszkowski authorized the active supervisor as single writer for local
+preparation, signed commits, push, PR, receipt, queue and merge after the required
+maintainer read and gates. The programme coordinator retains dispatch; the owner
+retains protected release approval. No dispatch, npm publish, credentials,
+settings, deployment, adopter activation or other repository is in this task.
+The active supervisor context is `01a185a8-a347-7c52-b44b-c716d4785e3c`.
+Policy revision and initial source base are
+`9690386f6d25324bf7cc7a448c7277d9278d98f0`.
+
+Scope follows preparation PR #407: versions and locks, three packed changelogs
+and source-only histories, version-specific READMEs, previous-release artifact
+baselines, consumed fragments and the generated source release contract. This
+section is the single task record. Fixed caps, dependency selection, runtime,
+API and SQL implementation remain unchanged by S1. Security-correction notes
+use neutral descriptions only.
+
+Acceptance: coherent versions/pins, empty Unreleased sections, verbatim history
+rotation, all three existing Platform fragments consumed, accurate adjacent
+upgrade notes, integrity-verified `0.30.0` artifact baselines and fresh source
+contract. Published tarballs measured Core 167,200 B, Outbox 39,217 B and
+Platform 1,930,457 B; their registry SHA-512 integrity was verified against the
+actual fetched bytes. All existing caps remain binding.
+
+Proof plan: policy/inventory/neutrality, structural scan, redacted secret scan,
+working-tree artifact/content/browser checks and lint before the stabilized
+release-control read and DCO. After that read, two fresh FULL native reviewers
+(one assessing simplicity), canonical verification including cold package gates
+and pgTAP, then normal source/group checks through confirmed merge. Verify the
+merged main contexts, cold release-set audit/artifacts and tarball secret scan,
+then generate shared notes from that commit and hand off the exact `all`, version,
+commit and note bytes for dispatch. M14 and C6 retain their existing remainder.
+
+Working checkpoint: versions/pins, manifest checks, history rotation, source
+snapshot, inventory, tree/UI neutrality, structural scan and redacted working
+patch/history secret scans passed. Lint passed with zero errors and 33 existing
+warnings. Three focused files passed 66 tests in 3.07 seconds, including all
+17 browser entries. Working artifacts passed content, growth and fixed caps:
+Core 167,346 B / 224 files; Outbox 39,168 B / 41 files; Platform 1,933,379 B /
+2,628 files, code gzip 1,669,813 B and unpacked 9,000,038 B. These previews do
+not substitute for the committed cold proof. Policy has three answered owners
+and one pending scoped repository no-impact trailer: lock changes alter only
+workspace versions and exact internal pins, so existing contributor checks,
+dependency selections and runtime instructions remain correct. No DCO, native
+candidate, review, canonical verification, PR or release is claimed. The required
+release-control read precedes sign-off.
+
+Self-retro for this stopped checkpoint: one 60-second admission wait serialized
+artifact tests behind another task. Reusing the set-bump helper and previous
+preparation's file shape avoided a new release mechanism; published registry
+byte measurements remain distinct from working-tree estimates.
