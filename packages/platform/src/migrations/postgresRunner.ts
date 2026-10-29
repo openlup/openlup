@@ -168,9 +168,10 @@ export function createPostgresMigrationRunner(
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const { applied } = await readAppliedPrefix(client, plan.units, async (applied) => {
-          await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
-        });
+        const assertSession = options.source.assertSession;
+        const { applied } = await readAppliedPrefix(client, plan.units, assertSession ? async (applied) => {
+          await assertSession(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        } : undefined);
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
           pending: plan.units.slice(applied.length).map((unit) => unit.catalogPath),
@@ -183,9 +184,10 @@ export function createPostgresMigrationRunner(
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const initial = await readAppliedPrefix(client, plan.units, async (applied) => {
-          await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
-        });
+        const assertSession = options.source.assertSession;
+        const initial = await readAppliedPrefix(client, plan.units, assertSession ? async (applied) => {
+          await assertSession(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        } : undefined);
         const pending = plan.units.slice(initial.applied.length);
         if (opts?.dryRun) {
           if (pending.length === 0) await assertObjectInventory(client, plan, options);
@@ -303,6 +305,15 @@ async function readAppliedPrefix(
   await client.query("BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY");
   try {
     const ledger = await readLockedPrefix(client, units, "ACCESS SHARE");
+    if (ledger.oid === null && whileLocked) {
+      // There is no relation to lock. End the initial absence observation, then
+      // keep the qualified catalog callback on one stable read-only snapshot.
+      await client.query("COMMIT");
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      if ((await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows.length !== 0) {
+        throw new Error("platform migration ledger changed before read");
+      }
+    }
     await whileLocked?.(ledger.applied);
     await client.query("COMMIT");
     return ledger;

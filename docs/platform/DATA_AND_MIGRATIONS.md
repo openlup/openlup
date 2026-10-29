@@ -404,6 +404,9 @@ provisioning boundary. Sources omitting it retain their existing queries and
 execution. With a hook present, the preceding lock/hash and ledger-existence
 functions bind to `pg_catalog` before admission; release uses the same bound
 lock identity. The later qualified source owns its finite read-only checks.
+For a fresh qualified installation, catalog-only revalidation precedes a
+read-only snapshot shared by session facts and the selected-catalog observation;
+an installed ledger remains protected by its admitted relation lock.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
