@@ -154,6 +154,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The existing policy/self-check also validates ordinary local Markdown file links
+and fragments, beyond mapped owner anchors. Source ownership is narrowed by
+module/contract section so an unrelated README edit does not settle an affected
+contract. The [documentation maintenance rules](docs/platform/DOCUMENTATION.md#impact)
+define scoped no-impact answers and review of related examples. New native
+reports include the short documentation assessment described under
+[native review](#native-review-and-accountability); prior recorded reports retain
+their history and expiry. These checks add no job, reviewer floor or gate budget.
+
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the production package runner to check ledger admission, stable reads,
 write admission, complete inventory projection and compatibility for status,
@@ -1804,6 +1813,17 @@ observation host binding through its actual restricted runtime login. Setup
 prepares an already-submitted request; recovery read/ACK, observation/status,
 replay and conflicting-ID refusal use R. See [Compatibility lifecycle](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle). No new grant, install shape or provider qualification is added.
 
+Risk's unchanged import uses `packages/platform/test/risk/` for schemas,
+assessor, adapter and browser boundaries, and
+`tests/postgres/riskControl.conformance.test.ts` for seven scenarios on each
+existing SQL rail. The fixture applies the hash-checked native prefix or frozen
+managed baseline, exercises separate non-superuser runtime/browser sessions,
+and runs the existing `supabase/tests/risk_blocklist_test.sql` pgTAP assertions.
+Its native grants are fixture composition only. The shared cold-consumer harness
+executes packed risk assessment and missing-payment refusal without optional
+runtime peers; this preliminary trial does not establish adopter acceptance.
+
+
 Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Start with the affected behavior, then complete [required and raw checks](#required-and-raw-checks). Focused tests do not replace required package, lint, policy or verification gates.
 
 #### Run and inspect
@@ -1846,7 +1866,17 @@ creation, so an interrupted worker cannot leave an anonymous data volume.
 Normal and failed-start teardown still removes the owned container with
 `docker rm -f -v`; other anonymous mounts are removed too. A worker killed
 with `SIGKILL` can still leave a container, including one in `Created` state:
-temporary data storage prevents the volume leak, but does not reap containers.
+temporary data storage prevents the volume leak. Disposable creators also label
+the owner PID, host-clock start epoch, short hostname and (on Linux) PID namespace
+with `dev.disposable.*`, plus the fresh test run ID. A same-host sweep reclaims
+only `dev.disposable=1` containers at least 60 seconds old whose owner is gone
+or whose PID start differs by more than two seconds; uncertainty keeps them.
+`OPENLUP_DISPOSABLE_REAP=remove` (default), `report` or `off` controls the
+once-per-run host sweep; `CI=true` disables that sweep. Teardown and the wrapper
+sweep only their own run selector under the same liveness rule, including on CI,
+without the age floor: an exited helper child's container goes at teardown, and
+after its Vitest child exits the wrapper removes one started just before Ctrl-C.
+Nested runs get independent IDs. Unlabeled containers are never removed.
 The container-helper regression checks exact owned container and volume IDs
 for normal teardown and port-bind failure, without relying on global counts.
 
@@ -1958,7 +1988,8 @@ them behind. Docker retains named volumes with this operation. The
 [cleanup regression](tests/postgres/postgresContainerCleanup.test.ts) uses its own
 unique containers and volumes against a real Docker daemon, checks bind-conflict
 retry and other startup errors, and preserves a named volume and another
-container. This lifecycle does not authorize pruning other test runs' resources.
+container. Cross-run reclamation is limited to the labelled dead-owner contract
+above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
 Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
@@ -2710,6 +2741,18 @@ manual. Explain material deviations, evidence and remaining limitations. Review
 must assess correctness, approved scope and whether unnecessary complexity adds
 maintenance cost; findings need a concrete mechanism and effect, not a quota.
 
+Each newly recorded native report must include a concise `documentation` string
+(up to 4096 characters): identify the canonical sections checked, relevant
+secondary instructions/examples and the assessment of no-impact reasoning.
+For documentation-only edits, compare consequential claims with the selected
+source/contracts rather than assuming no source delta means no risk. Search
+related documentation for changed public exports, options and commands. Explain
+why no related update is needed where that is the result; a bare “OK” does not
+satisfy the review contract. The supervisor assesses substance, not just presence.
+Existing recorded version-2 reports remain valid without rewriting history or
+resetting cycles, findings or expiry; the requirement applies at new `record`
+calls. Risk floors and the receipt format are unchanged.
+
 Include the affected documentation owners and what changed in their explanations.
 For a scoped no-impact record, challenge its reasoning as well as its fresh
 fingerprint: a hash identifies the delta and its owner, not semantic correctness.
@@ -2769,6 +2812,14 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, documentation routing: duplicating a capability inventory in
+  ownership selectors → route to its canonical section and specialize the
+  neutral contracts, without introducing another registry or scanner exception.
+
+- 2026-10-29, disposable Docker cleanup: same-module mocks hid per-project
+  state and queued-signal failures → prove lifecycle invariants through actual
+  Vitest project loaders and subprocess interruptions.
 
 - 2026-10-29, M14 managed identity mapping: boundary edge gaps in a fixed
   mapper/control → validate existing input and command ordering at outer route

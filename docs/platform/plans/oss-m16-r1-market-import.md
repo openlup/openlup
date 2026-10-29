@@ -444,6 +444,34 @@ The added key is explicitly submitted for the coordinator budget read above;
 no previously allocated cap is increased.
 Self-retro: the focused selection missed the package tooling tests that enumerate module directories and browser entries; include scripts/packages/{eslint-import-map,package-size-policy}.test.ts whenever subpaths or module directories are added.
 
+## Main integration and measurement (coordinator GO)
+
+On 2026-10-29 the coordinator authorized merging main into R1 (no rebase),
+resolving module inventories as unions, regenerating artifacts, running the
+listed cheap gates, signing/pushing the integration and measuring R1 and the
+full M16 packages stack. Current policy/main pin:
+`8046797ace978e148556c30767d8ed231a0dd6e3`; the code comparison base becomes
+that main revision after the merge. The freshly read AGENTS/CONTRIBUTING and
+Documentation maintenance rules include M15's scoped ownership and #433's
+link/command checks. No native prepare/review/receipt/ready/verify-local/arming
+or cap allocation is authorized in this phase. PR #431 stays a draft.
+
+Five conflicts are resolved by union: generated publication catalogue rows;
+release gate browser keys (main risk unchanged, identity contracts 20 retained);
+package-boundary sanctioned entries; lint graph sanctioned server splits; and
+cold consumer imports/proofs (both risk workflows and the market proof retained).
+Main's caps, risk source/tests/SQL and existing browser budgets are unchanged.
+R1 behavior and all company/money witness files remain unchanged. API reports
+are regenerated from a fresh core/platform build. The catalogue is regenerated
+with the existing constructor from both sets of descriptors, and navigation
+with --policy --docs-update. M15's narrower routing requires two new R1 owner
+sections: existing company/money guidance is moved intact into those sections,
+and only their R1 source/test/API selectors are added to documentation routing.
+
+Integration evidence and both package measurements are recorded below when complete.
+Self-retro: integration must preserve scoped documentation ownership as well as
+module inventories; regenerating output exposes missing owner selectors early.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness

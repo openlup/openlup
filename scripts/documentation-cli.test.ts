@@ -13,6 +13,7 @@ import { renderDocumentationSourceMap } from "./documentation-navigation.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRYPOINT = "scripts/oss-published-tree-check.ts";
+const localEnvironment = { ...process.env, GITHUB_ACTIONS: "false" };
 const git = (root: string, args: string[]): string => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
 function write(root: string, path: string, bytes: string | Buffer): void { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), bytes); }
 function commit(root: string): string {
@@ -72,6 +73,24 @@ function seed(root: string): string {
 }
 
 describe("documentation CLI on the bare public runtime", () => {
+  it("regenerates stale navigation after an owner heading rename and still checks authored links", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "documentation-rename-cli-"));
+    try {
+      const base = seed(temporary);
+      write(temporary, "README.md", readFileSync(join(temporary, "README.md"), "utf8").replace("## Contract", "## Renamed contract"));
+      write(temporary, "config/doc-routing.json", readFileSync(join(temporary, "config/doc-routing.json"), "utf8").replaceAll("#contract", "#renamed-contract"));
+      const execute = () => spawnSync(process.execPath, ["--experimental-strip-types", ENTRYPOINT, "--policy", "--docs-update", "--docs-base", base], {
+        cwd: temporary, encoding: "utf8", env: localEnvironment, timeout: 30_000,
+      });
+      const regenerated = execute();
+      expect(regenerated.stderr).toBe("");
+      expect(readFileSync(join(temporary, "docs/platform/SOURCE_MAP.md"), "utf8")).not.toContain("README.md#contract");
+      write(temporary, "README.md", `${readFileSync(join(temporary, "README.md"), "utf8")}\n[Broken](#missing)\n`);
+      const broken = execute();
+      expect(broken.status).toBe(1);
+      expect(broken.stderr).toContain("missing local fragment");
+    } finally { rmSync(temporary, { recursive: true, force: true }); }
+  });
   it("checks a merge group's event range on the bare runtime and refuses stale event refs", () => {
     const temporary = mkdtempSync(join(tmpdir(), "documentation-queue-cli-"));
     try {
@@ -82,7 +101,7 @@ describe("documentation CLI on the bare public runtime", () => {
       writeFileSync(event, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, action: "checks_requested",
         merge_group: { base_sha: base, base_ref: "refs/heads/main", head_sha: head, head_ref: ref,
           head_commit: { id: head, tree_id: git(checkout, ["rev-parse", "HEAD^{tree}"]) } } }));
-      const env = { ...process.env, GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: "merge_group", GITHUB_REF: ref, GITHUB_SHA: head, GITHUB_EVENT_PATH: event };
+      const env = { ...localEnvironment, GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: "merge_group", GITHUB_REF: ref, GITHUB_SHA: head, GITHUB_EVENT_PATH: event };
       const execute = (patch = {}) => spawnSync(process.execPath, ["--experimental-strip-types", ENTRYPOINT, "--policy", "--docs-base", head], {
         cwd: checkout, encoding: "utf8", env: { ...env, ...patch }, timeout: 30_000,
       });
@@ -117,7 +136,7 @@ describe("documentation CLI on the bare public runtime", () => {
       expect(git(checkout, ["rev-parse", "--is-shallow-repository"])).toBe("true");
       expect(existsSync(join(checkout, "node_modules"))).toBe(false);
       const execute = (args: string[], hosted?: Record<string, string>) => spawnSync(process.execPath, ["--experimental-strip-types", ENTRYPOINT, "--policy", ...args], {
-        cwd: checkout, encoding: "utf8", env: { ...process.env, GITHUB_ACTIONS: "false", ...hosted }, timeout: 30_000,
+        cwd: checkout, encoding: "utf8", env: { ...localEnvironment, ...hosted }, timeout: 30_000,
       });
       expect(execute(["--docs-base", base]).status).toBe(1); // Missing object is not an empty diff.
       git(checkout, ["fetch", "-q", "--no-tags", "--depth=2", "origin", "main"]);

@@ -1,4 +1,6 @@
 // Opt-in only: this process owns one isolated installation and never skips a failed prerequisite.
+import { ownedStackCleanup } from "../../scripts/owned-stack-cleanup.mjs";
+import { disposableLabelArgs } from "../../scripts/disposable-docker.mjs";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -152,12 +154,38 @@ export async function main(args = process.argv.slice(2)) {
   let owned, managedStarted = false;
   const ids = [];
   let database, origin, auth, managedPortBase;
+  const cleanup = ownedStackCleanup(options => {
+    const cleanupInspect = id => JSON.parse(must("docker", ["inspect", id], options()))[0];
+    // Cleanup failures are fatal. An unknown container is never removed.
+    if (managedStarted && !ids.length) {
+      const partial = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`], options()).split("\n").filter(Boolean);
+      for (const id of partial) {
+        const container = cleanupInspect(id), expected = { containerId: container.Id, label: "com.supabase.cli.project", value: project };
+        assertContainerOwnership(container, expected); ids.push(expected);
+      }
+    }
+    for (const entry of ids) assertContainerOwnership(cleanupInspect(entry.containerId), entry);
+    if (managedStarted) {
+      const current = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`], options()).split("\n").filter(Boolean);
+      if (current.some(id => !ids.some(entry => entry.containerId.startsWith(id)))) throw new Error("Managed cleanup cannot establish complete ownership; run directory retained");
+      must("supabase", ["stop", "--workdir", directory, "--no-backup"], options());
+    } else if (bundle === "node-postgres") {
+      // A failed start may have created a container without returning its ID.
+      const partial = must("docker", ["ps", "-aq", "--filter", `label=com.openlup.identity.run=${runId}`], options()).split("\n").filter(Boolean);
+      for (const id of partial) {
+        const container = cleanupInspect(id);
+        assertContainerOwnership(container, { containerId: container.Id, label: "com.openlup.identity.run", value: runId });
+        must("docker", ["rm", "-f", "-v", container.Id], options());
+      }
+    }
+    rmSync(directory, { recursive: true });
+  });
   try {
     if (bundle === "node-postgres") {
       // Require a cached image; this runner does not fetch an image or install a tool.
       const image = "postgres:16"; must("docker", ["image", "inspect", image]);
       const password = randomBytes(24).toString("hex");
-      const containerId = must("docker", ["run", "--pull=never", "--detach", "--tmpfs", "/var/lib/postgresql/data", "--label", `com.openlup.identity.run=${runId}`, "--name", project,
+      const containerId = await cleanup.start("docker", ["run", "--pull=never", "--detach", "--tmpfs", "/var/lib/postgresql/data", "--label", `com.openlup.identity.run=${runId}`, ...disposableLabelArgs(), "--name", project,
         "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image]);
       owned = { containerId, label: "com.openlup.identity.run", value: runId };
       const container = inspect(containerId); assertContainerOwnership(container, owned); ids.push(owned);
@@ -176,7 +204,7 @@ export async function main(args = process.argv.slice(2)) {
       const names = must("docker", ["ps", "-a", "--format", "{{.Names}}"]);
       if (names.split("\n").some(name => name.endsWith(`_${project}`))) throw new Error("Identity project already exists");
       managedStarted = true;
-      must("supabase", ["start", "--workdir", directory, "--exclude", "realtime,storage-api,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor"]);
+      await cleanup.start("supabase", ["start", "--workdir", directory, "--exclude", "realtime,storage-api,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor"]);
       const credentials = parseEnv(must("supabase", ["status", "--workdir", directory, "-o", "env"]));
       if (!credentials.ANON_KEY || !credentials.SERVICE_ROLE_KEY) throw new Error("Owned managed credentials unavailable");
       const managedIds = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`]).split("\n").filter(Boolean);
@@ -204,29 +232,7 @@ export async function main(args = process.argv.slice(2)) {
     await runAcceptance({ bundle, directory, database, origin, runId, auth, assertContainer });
     console.log(`Identity acceptance ${bundle}: passed`);
   } finally {
-    // Cleanup failures are fatal. An unknown container is never removed.
-    if (managedStarted && !ids.length) {
-      const partial = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`]).split("\n").filter(Boolean);
-      for (const id of partial) {
-        const container = inspect(id), expected = { containerId: container.Id, label: "com.supabase.cli.project", value: project };
-        assertContainerOwnership(container, expected); ids.push(expected);
-      }
-    }
-    for (const entry of ids) assertContainerOwnership(inspect(entry.containerId), entry);
-    if (managedStarted) {
-      const current = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`]).split("\n").filter(Boolean);
-      if (current.some(id => !ids.some(entry => entry.containerId.startsWith(id)))) throw new Error("Managed cleanup cannot establish complete ownership; run directory retained");
-      must("supabase", ["stop", "--workdir", directory, "--no-backup"]);
-    } else if (bundle === "node-postgres") {
-      // A failed start may have created a container without returning its ID.
-      const partial = must("docker", ["ps", "-aq", "--filter", `label=com.openlup.identity.run=${runId}`]).split("\n").filter(Boolean);
-      for (const id of partial) {
-        const container = inspect(id);
-        assertContainerOwnership(container, { containerId: container.Id, label: "com.openlup.identity.run", value: runId });
-        must("docker", ["rm", "-f", "-v", container.Id]);
-      }
-    }
-    rmSync(directory, { recursive: true });
+    await cleanup.finish();
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => { console.error(error instanceof Error ? error.message : "Identity acceptance failed"); process.exitCode = 1; });

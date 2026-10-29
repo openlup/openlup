@@ -1346,6 +1346,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/disposable-docker-test-resources.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/documentation-maintenance.md",
       "class": "platform-documentation"
     },
@@ -1447,6 +1451,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-schema-upgrade-task.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m15-generic-risk-controls.md",
       "class": "public-output"
     },
     {
@@ -2650,6 +2658,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/risk-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/risk-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/risk.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/scheduler.api.md",
       "class": "public-output"
     },
@@ -2747,6 +2767,10 @@
     },
     {
       "path": "packages/platform/sql/20260813120000_communications_control_plane.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813230000_post_order_control.sql",
       "class": "public-output"
     },
     {
@@ -4307,6 +4331,10 @@
     },
     {
       "path": "packages/platform/src/composition/nodeHost.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/riskContribution.ts",
       "class": "public-output"
     },
     {
@@ -6147,6 +6175,70 @@
     },
     {
       "path": "packages/platform/src/promotions/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/contracts/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/managedRiskAdminPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/managedRiskOrderPaid.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/orderPaidRiskPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/postgresRiskControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/privacyContributor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/riskAdminCasesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/riskFingerprint.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/validation.ts",
       "class": "public-output"
     },
     {
@@ -8266,6 +8358,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/risk/adapters.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/adminHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/orderPaidRiskPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/privacyContributor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/privacyPortFit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/scheduler/advisoryLock.test.ts",
       "class": "public-output"
     },
@@ -8682,6 +8802,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/disposable-docker.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-docker.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-run-lifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/documentation-bundle-io.ts",
       "class": "public-output"
     },
@@ -8707,6 +8839,10 @@
     },
     {
       "path": "scripts/documentation-impact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-links.test.ts",
       "class": "public-output"
     },
     {
@@ -9119,6 +9255,14 @@
     },
     {
       "path": "scripts/oss-source-release-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/owned-stack-cleanup.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/owned-stack-cleanup.test.ts",
       "class": "public-output"
     },
     {
@@ -18006,6 +18150,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m15RiskBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m15RiskBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/readiness.ts",
       "class": "public-output"
     },
@@ -24646,6 +24798,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/riskReviewRoutes.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/seoHead.test.tsx",
       "class": "public-output"
     },
@@ -25786,6 +25942,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/riskControlFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/identity/acceptance.conformance.ts",
       "class": "public-output"
     },
@@ -25999,6 +26159,10 @@
     },
     {
       "path": "tests/postgres/customer_browser_identity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/disposableDockerReap.test.ts",
       "class": "public-output"
     },
     {
@@ -26238,6 +26402,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/riskControl.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/runIdentityEnvelopeConformance.mjs",
       "class": "public-output"
     },
@@ -26335,6 +26503,10 @@
     },
     {
       "path": "tests/preview/ssg-hydration.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/setup/disposable-docker.ts",
       "class": "public-output"
     },
     {

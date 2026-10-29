@@ -15,6 +15,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { dockerAvailable, reservePort } from "../../../tests/helpers/postgresContainer.js";
 
+import { disposableLabelArgs } from "../../../scripts/disposable-docker.mjs";
+
 const exec = promisify(execFile);
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const CONTAINER = `object-storage-conformance-${process.pid}`;
@@ -25,6 +27,7 @@ const BUCKET = "objects";
 let endpoint = "";
 let ready = false;
 let infrastructureAvailable = false;
+let attempted = false;
 
 /** The object-storage image the reference compose pins, so this proof follows the compose file. */
 function composeStorageImage(): string {
@@ -89,16 +92,18 @@ beforeAll(async () => {
   if (!infrastructureAvailable) return;
   const port = await reservePort();
   endpoint = `http://127.0.0.1:${port}`;
+  attempted = true;
   await exec("docker", [
-    "run", "-d", "--rm", "--name", CONTAINER, "-p", `127.0.0.1:${port}:7070`,
+    "run", ...disposableLabelArgs(), "-d", "--rm", "--name", CONTAINER, "-p", `127.0.0.1:${port}:7070`,
     "--read-only", "--tmpfs", "/data", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
     composeStorageImage(), "--access", ACCESS_KEY, "--secret", SECRET_KEY, "posix", "/data",
-  ]);
+  ], { timeout: 30_000, killSignal: "SIGKILL" });
   ready = (await runStep("bucket")).created === true;
 }, 180_000);
 
 afterAll(async () => {
-  await exec("docker", ["rm", "-f", CONTAINER]).catch(() => {});
+  if (!attempted) return;
+  await exec("docker", ["rm", "-f", CONTAINER], { timeout: 30_000, killSignal: "SIGKILL" }).catch(() => {});
 });
 
 function requireStorage(ctx: { skip: (note?: string) => void }, available: boolean, initialized: boolean): void {

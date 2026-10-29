@@ -1,26 +1,5 @@
 # @openlup/platform
 
-Experimental `./company-identity` preserves the existing compatibility schemas
-(including optional registry fields); `./company-identity/contracts` contains only
-browser-safe types over the unchanged core contract. `./company-identity/server`
-exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
-to retain its request-reference binding. The handler shares its process cache
-across factory instances: ten-minute TTL, UTC-day/normalized-identity keys, no
-purpose/provider partition, manual-input bypass and oldest-insertion eviction.
-Lookup does not write customer data. Identifier normalization/validity and legal-name policy are optional inputs in
-`CompanyIdentityRules`. Neutral defaults keep identifiers unchanged, accept
-non-empty values and do not prefer or seek fuller names. The reference
-application retains its existing national rules and callers unchanged.
-
-Experimental `./market-packs` exposes pure settlement/fiscal record readers,
-profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
-explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
-and display locale independently; formatting historical amounts uses their own
-currency. Ambient environment reading/initialization remains application-owned.
-These entries add no provider, locale resources, native directory schema or
-application caller swap. Shipping suggestions retain the existing optional lane.
-
-
 Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 `createInvoiceContribution` through `/invoicing`, with no new composition entry.
 `claimInvoiceSellerRevision` reads an injected selection before claim; the pinned
@@ -183,6 +162,25 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
 | `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
+
+## HTTP runtime and security contract
+
+The Node-only `./http` entry builds a request handler around host-supplied route
+tables, dispatch, entrypoint loaders, deadlines, security-header policy, robots
+content and static-asset reader. Its request order is fixed: apply security
+headers, handle canonical trailing-slash redirects and declared entrypoints,
+dispatch the BFF and scheduled routes, refuse unknown API paths, then apply
+host-declared redirects and static-document rules. The package does not infer
+which application routes are authorized or supply deployment-specific header
+policy.
+
+Buffered requests retain the exact raw bytes for signature verification while
+also exposing parsed JSON to handlers; the platform CSP-report entrypoint and
+explicitly marked stream-first handlers retain their live stream instead. Body
+size/deadline boundaries remain explicit. Static serving returns 404 for a
+missing asset, serves only declared route documents or an enabled SPA fallback,
+and leaves route admission to the host. These helpers define the HTTP adapter
+contract; they do not certify a deployed route or security policy.
 
 ## Marketing contracts
 
@@ -943,6 +941,17 @@ committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
 
+The `release-gates.json` pack caps are 2,029,568 tarball bytes, 9,447,424
+unpacked bytes, 2,712 total files, 1,743,872 code gzip bytes and 2,656 code files.
+The [M15 budget decision](../../docs/platform/plans/oss-m15-generic-risk-controls.md#cd-m15-6-platform-pack-budget--2026-10-27)
+sized R1's original allocation from the measured full M15 stack after M14 #397,
+with approximately 2% for S1 and repairs. The later lifecycle integration takes
+the higher parent value for each cap: M14 supplies the three current byte caps,
+while M15 retains its higher file caps. Documentation caps remain 73,728 gzip
+bytes and 10 files; browser caps and the release baseline are unchanged.
+Every candidate still needs its actual artifact check; later growth needs its
+own measured budget decision.
+
 The source-checkout binding `npm run test:consumer` runs
 [`platform-cold-consumer.ts`](https://github.com/openlup/openlup/blob/main/scripts/packages/platform-cold-consumer.ts).
 It requires the cold package producer's verified `OPENLUP_PACK_MANIFEST` and
@@ -1436,3 +1445,56 @@ Settings preserve scalar values, and pipeline reads preserve the existing tester
 and email projection. Identity membership and tracking effects keep their owners.
 See the [operations architecture](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
 for refusal behavior, SQL prerequisites and the bounded preview scope.
+
+## Risk controls
+
+The experimental `@openlup/platform/risk` entry exports the existing strict
+schemas with CSP-safe Zod initialization. `risk/contracts` is type-only;
+`risk/server` exports paid-order assessment, subject hashing, structural managed
+clients and the native executor factory. Core risk remains at `@openlup/core/risk`.
+No provider SDK or pg runtime import is required by risk. Hosts supply trusted
+operator authorization and actor mapping, clients, mode and hash secret.
+The [risk contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
+explains the preserved rail differences and sparse SQL descriptor. These entries
+register no route, worker or schedule and do not activate risk.
+
+R2 adds `createRiskBindings` and the unchanged admin handler factories in
+`risk/server`; supply the host BFF responder, trusted authorization, admin port,
+mutation policy and already constructed assessment port. Pass `outboxRisk` into
+the existing commerce registry's risk slot once. `createRiskContribution` in
+`composition` describes selected routes and the assessment callable, with no
+handlers or schedules. The [reference recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
+selects nothing by default and requires schema readiness before effects. Hosts
+still mount any selected callables and own their authorization/actor mapping.
+
+`risk/server` also exports `createRiskPrivacyContributor` and
+`createRiskPrivacyBinding`. Supply the read-only resource owner and explicit
+retention policy, then append the contributor to M03's existing registry with
+`risk` required. Unbound policy remains unresolved. No risk deletion or retention
+period is supplied, and managed identity erasure remains unavailable. Portability
+is deferred unless a host supplies its own opaque binding; the helper neither
+invokes it nor claims transfer/restore support.
+
+## Company identity
+
+Experimental `./company-identity` preserves the existing compatibility schemas
+(including optional registry fields); `./company-identity/contracts` contains only
+browser-safe types over the unchanged core contract. `./company-identity/server`
+exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
+to retain its request-reference binding. The handler shares its process cache
+across factory instances: ten-minute TTL, UTC-day/normalized-identity keys, no
+purpose/provider partition, manual-input bypass and oldest-insertion eviction.
+Lookup does not write customer data. Identifier normalization/validity and legal-name policy are optional inputs in
+`CompanyIdentityRules`. Neutral defaults keep identifiers unchanged, accept
+non-empty values and do not prefer or seek fuller names. The reference
+application retains its existing national rules and callers unchanged.
+
+## Market packs
+
+Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
+explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
+and display locale independently; formatting historical amounts uses their own
+currency. Ambient environment reading/initialization remains application-owned.
+These entries add no provider, locale resources, native directory schema or
+application caller swap. Shipping suggestions retain the existing optional lane.
