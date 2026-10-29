@@ -96,10 +96,12 @@ export async function assertFreshClusterCatalogue(pool, selectedDatabase, bootst
       WHERE n.nspname='public') AS public_types,
     EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname<>'plpgsql') AS extra_extensions,
     EXISTS (SELECT 1 FROM pg_catalog.pg_roles
-      WHERE rolname !~ '^pg_' AND rolname NOT IN ('postgres',$1)) AS extra_roles`, [bootstrapLogin])).rows[0];
+      WHERE rolname !~ '^pg_' AND rolname NOT IN ('postgres',$1)) AS extra_roles,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity
+      WHERE backend_type='client backend' AND pid<>pg_backend_pid()) AS other_client_sessions`, [bootstrapLogin])).rows[0];
   if (row.ordinary_databases?.length !== 1 || row.ordinary_databases[0] !== selectedDatabase
     || row.extra_schemas || row.public_relations || row.public_functions || row.public_types
-    || row.extra_extensions || row.extra_roles) refuse("fresh_cluster_required");
+    || row.extra_extensions || row.extra_roles || row.other_client_sessions) refuse("fresh_cluster_required");
 }
 async function executeRecipe(config, receipt) {
   const { tsImport } = await import("tsx/esm/api");

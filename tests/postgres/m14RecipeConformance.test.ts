@@ -77,6 +77,11 @@ it("refuses a reused cluster catalogue before the proof can create global roles"
       try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required"); }
       finally { await pool.query(clear); }
     }
+    const other = new Pool({ connectionString: container.connectionString });
+    const held = await other.connect();
+    try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required"); }
+    finally { held.release(); await other.end(); }
+    await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).resolves.toBeUndefined();
   } finally { await closePostgres(container, pool); }
 }, postgresSetupTimeoutMs);
 

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,6 +64,7 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
   const connectionString = input.database?.connectionString ?? container!.connectionString;
   let pool: Pool | undefined;
   let previousAppPool: Pool | undefined;
+  let previousAppRole: string | undefined;
   let root: string | undefined;
   let inside: ChildProcess | undefined;
   let between: ChildProcess | undefined;
@@ -180,17 +181,20 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
       const releasedPackage = JSON.parse(readFileSync(join(dirname(releasedPayments), "..", "..", "package.json"), "utf8"));
       assert.partialDeepStrictEqual(releasedPackage, { name: "@openlup/platform", version: "0.23.0" });
       const previous = await import(pathToFileURL(releasedPayments).href);
-      await pool.query("CREATE ROLE m14_previous_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-conformance'");
-      await pool.query(`GRANT USAGE ON SCHEMA public TO m14_previous_app;
-        GRANT SELECT,INSERT,UPDATE ON public.payment_truth_events TO m14_previous_app;
+      const role = `m14_previous_app_${randomUUID().replaceAll("-", "")}`;
+      const password = randomBytes(32).toString("hex");
+      await pool.query(`CREATE ROLE ${role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${password}'`);
+      previousAppRole = role;
+      await pool.query(`GRANT USAGE ON SCHEMA public TO ${role};
+        GRANT SELECT,INSERT,UPDATE ON public.payment_truth_events TO ${role};
         GRANT SELECT ON public.commerce_settlement_intents,public.commerce_orders,
-          public.subscription_cycles,public.subscriptions,public.accounting_documents TO m14_previous_app;
+          public.subscription_cycles,public.subscriptions,public.accounting_documents TO ${role};
         GRANT EXECUTE ON FUNCTION public.payment_truth_readback(uuid,boolean),
           public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text)
-          TO m14_previous_app`);
+          TO ${role}`);
       const oldAppUrl = new URL(connectionString);
-      oldAppUrl.username = "m14_previous_app";
-      oldAppUrl.password = "synthetic-conformance";
+      oldAppUrl.username = role;
+      oldAppUrl.password = password;
       previousAppPool = new Pool({ ...input.database, connectionString: oldAppUrl.toString() });
       const previousPort = previous.createPostgresPaymentTruthPort(executor(previousAppPool), paymentOptions);
       assert.partialDeepStrictEqual(await previousPort.readEvent(accepted.event.id), {
@@ -229,7 +233,18 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
   } finally {
     if (inside && inside.exitCode === null) inside.kill("SIGKILL");
     if (between && between.exitCode === null) between.kill("SIGKILL");
-    await closePostgres(container, [pool, previousAppPool]);
-    if (root) rmSync(root, { recursive: true, force: true });
+    try {
+      if (previousAppPool) await previousAppPool.end();
+    } finally {
+      try {
+        if (previousAppRole && pool) {
+          await pool.query(`DROP OWNED BY ${previousAppRole}`);
+          await pool.query(`DROP ROLE ${previousAppRole}`);
+        }
+      } finally {
+        await closePostgres(container, pool);
+        if (root) rmSync(root, { recursive: true, force: true });
+      }
+    }
   }
 }

@@ -77,7 +77,10 @@ a claim that hosted control-plane users have identical authority. Admission
 checks every system identity and fresh catalogue before the first installation
 write. The strict local catalogue check permits only the selected ordinary
 database alongside PostgreSQL's two templates, and refuses extra user schemas,
-public objects, extensions or non-bootstrap user roles. A wrong TLS hostname
+public objects, extensions, non-bootstrap user roles or another active client
+session at admission. The explicit disposable declaration remains the operator's
+target ownership assertion; the point-in-time check cannot prevent a later
+connection. A wrong TLS hostname
 must also be refused. No reset or target teardown
 is implicit: the operator owns these disposable clusters and their removal.
 After a partial failure, use new fresh installations rather than rerunning over
@@ -88,7 +91,11 @@ sealing/replay/refusals, connection limits, role denials, pooled requests,
 read-only transactions, lock contention and deterministic bad-affinity refusal.
 The schema section runs the actual released legacy predecessor, real backfill,
 killed inside/between-unit transactions, resume/replay and compatible previous
-application read/replay. It does not roll the database schema back. A successful
+application read/replay. It does not roll the database schema back. The
+previous-application proof creates a temporary login with a per-run random
+password, then attempts to remove its grants and role on normal exit or handled
+failure. A cleanup failure or abrupt process kill still requires operator
+teardown. A successful
 initial receipt remains `PASS_INITIAL_PHASES`: transfer (8D), recovery (9A),
 OIDC (10I), S3 (10O), Node/hosts (10H) and effort/cleanup (10H/10S) stay explicitly
 `PENDING` with their owners. Later factored receipts consume these sections.

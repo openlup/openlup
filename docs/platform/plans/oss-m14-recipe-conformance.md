@@ -138,6 +138,35 @@ The parcel patch-id excluding this task record is
 `eb1a0584` and against new main `c31cc19b`; only this record was added to
 the automatic merge. Full native review will bind to the resulting merge tree.
 
+Cycle-1 `prepare` bound to merged head `860b1542` (tree `844fecaa`). Two new
+full reviews both failed on a fixed, public previous-application login password
+left on the operator-owned external schema cluster (`R10A-3`). One also found
+that a catalogue-clean cluster with another active client session passes
+admission before cluster-global writes (`R10A-4`). The earlier extra-catalogue
+and OCI-digest cards were closed; the original catalogue-freshness card was
+closed for that narrower mechanism, while `R10A-4` records the separate
+active-session mechanism. The second review used this new ID in native history
+because the original ID is bound to its prior summary. The unsigned repair
+refuses other client sessions at admission, uses a per-run random password and
+role name for previous-code replay, and attempts to drop the temporary role and
+grants on proof exit. The explicit disposable declaration still supplies operator
+ownership; a point-in-time session check cannot prevent later connections.
+This new control change requires another maintainer read before DCO.
+The staged cycle-1 repair passed the three-file focused suite (9/9), including
+a real PG16 second-client-session refusal. A new three-cluster TLS self-host
+receipt at `.context/scratch/m14-recipe-conformance/selfhost-repair1-receipt.json`
+is `PASS_INITIAL_PHASES` (SHA-256
+`aca870b6d9dc1801f0303648b8dcc2daa33144ea661ed6fd27c43b3e0015ef7b`):
+two 91-unit restricted installs, 77→88 released-schema upgrade with previous
+application replay, and six later sections explicitly pending. The temporary
+previous-application role was absent before schema-cluster teardown; the
+receipt contains no credential value or external credential path, and all three
+containers were removed.
+Build, lint (zero errors, 33 existing warnings), published-tree typecheck (zero
+unresolved edges or consumer errors), documentation policy and structural
+checks passed. The focused suite waited 1,921 seconds for the M15-priority host
+gate; that delay did not consume a review cycle.
+
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier
 uncommitted evidence; durable worktree scratch and unsigned refs now preserve
@@ -146,4 +175,9 @@ repair build, 1,741 seconds before the first focused run and 1,021 seconds
 before the diagnostic, without consuming review retries. The new catalogue
 query's `name[]` result was parsed as a string; one explicit `text[]` cast
 removed that false refusal.
+Cycle-1 review exposed two assumptions hidden by the prior auto-removed test
+container: an empty catalogue does not rule out an active client session, and
+an otherwise disposable target can still expose a predictable login until
+teardown. The direct admission query, per-run credential and finally cleanup
+address those observed paths without a provider registry or new service.
 No additional abstraction or scope change is justified.
