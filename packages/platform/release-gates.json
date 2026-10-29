@@ -730,6 +730,62 @@
       ],
       "entrypoint": "dist/lifecycle/index.d.ts",
       "snapshot": "api/lifecycle.api.md"
+    },
+    "./company-identity": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/company-identity/companyIdentityService.test.ts",
+        "test/company-identity/companyIdentityHandlers.test.ts",
+        "test/company-identity/contracts.test.ts",
+        "test/company-identity/cacheFit.test.ts"
+      ],
+      "entrypoint": "dist/company-identity/index.d.ts",
+      "snapshot": "api/company-identity.api.md"
+    },
+    "./company-identity/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/company-identity/companyIdentityService.test.ts",
+        "test/company-identity/companyIdentityHandlers.test.ts",
+        "test/company-identity/contracts.test.ts",
+        "test/company-identity/cacheFit.test.ts"
+      ],
+      "entrypoint": "dist/company-identity/contracts/index.d.ts",
+      "snapshot": "api/company-identity-contracts.api.md"
+    },
+    "./company-identity/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/company-identity/companyIdentityService.test.ts",
+        "test/company-identity/companyIdentityHandlers.test.ts",
+        "test/company-identity/contracts.test.ts",
+        "test/company-identity/cacheFit.test.ts"
+      ],
+      "entrypoint": "dist/company-identity/server/index.d.ts",
+      "snapshot": "api/company-identity-server.api.md"
+    },
+    "./market-packs": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/market-packs/fiscalProfile.test.ts",
+        "test/market-packs/formatMinor.test.ts",
+        "test/market-packs/portFit.test.ts",
+        "test/market-packs/settlementProfile.test.ts"
+      ],
+      "entrypoint": "dist/market-packs/index.d.ts",
+      "snapshot": "api/market-packs.api.md"
     }
   },
   "pack": {

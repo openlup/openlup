@@ -305,6 +305,26 @@
       "types": "./dist/lifecycle/index.d.ts",
       "import": "./dist/lifecycle/index.js",
       "default": "./dist/lifecycle/index.js"
+    },
+    "./company-identity": {
+      "types": "./dist/company-identity/index.d.ts",
+      "import": "./dist/company-identity/index.js",
+      "default": "./dist/company-identity/index.js"
+    },
+    "./company-identity/contracts": {
+      "types": "./dist/company-identity/contracts/index.d.ts",
+      "import": "./dist/company-identity/contracts/index.js",
+      "default": "./dist/company-identity/contracts/index.js"
+    },
+    "./company-identity/server": {
+      "types": "./dist/company-identity/server/index.d.ts",
+      "import": "./dist/company-identity/server/index.js",
+      "default": "./dist/company-identity/server/index.js"
+    },
+    "./market-packs": {
+      "types": "./dist/market-packs/index.d.ts",
+      "import": "./dist/market-packs/index.js",
+      "default": "./dist/market-packs/index.js"
     }
   },
   "repository": {

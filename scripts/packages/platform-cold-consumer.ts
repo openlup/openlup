@@ -1,5 +1,6 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import ts from "typescript";
+import { MARKET_PACK_CONSUMER_PROOF } from "./market-pack-consumer-proof.ts";
 import { createRequire, stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
@@ -15,6 +16,10 @@ import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "company-identity",
+  "company-identity/contracts",
+  "company-identity/server",
+  "market-packs",
   "lifecycle",
   "portability",
   "operations",
@@ -1981,6 +1986,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
 `);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
+    consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);

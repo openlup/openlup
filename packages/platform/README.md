@@ -1,5 +1,24 @@
 # @openlup/platform
 
+Experimental `./company-identity` preserves the existing compatibility schemas
+(including optional registry fields); `./company-identity/contracts` contains only
+browser-safe types over the unchanged core contract. `./company-identity/server`
+exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
+to retain its request-reference binding. The handler shares its process cache
+across factory instances: ten-minute TTL, UTC-day/normalized-identity keys, no
+purpose/provider partition, manual-input bypass and oldest-insertion eviction.
+Lookup does not write customer data. The current PL validation and fuller-name
+rule remain compatibility policy, not a universal company-identity promise.
+
+Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+profile comparison, exponent lookup and money formatting. Existing defaults and
+COMMERCE configuration keys are preserved. Supply currency, region, fiscal facts
+and display locale independently; formatting historical amounts uses their own
+currency. Ambient environment reading/initialization remains application-owned.
+These entries add no provider, locale resources, native directory schema or
+application caller swap. Shipping suggestions retain the existing optional lane.
+
+
 Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 `createInvoiceContribution` through `/invoicing`, with no new composition entry.
 `claimInvoiceSellerRevision` reads an injected selection before claim; the pinned
