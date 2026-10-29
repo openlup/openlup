@@ -20,6 +20,8 @@ export const NON_ADAPTER_ENTRIES = [
   "portability",
   "operations",
   "operations/contracts",
+  "risk",
+  "risk/contracts",
   "account-support",
   "account-support/contracts",
   "marketing",
@@ -57,6 +59,7 @@ export const NON_ADAPTER_ENTRIES = [
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
   "operations/server",
+  "risk/server",
   "marketing/server/postgres",
   "blob",
   "catalog",
@@ -1985,6 +1988,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
+    proveRiskConsumer(consumer);
     compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
@@ -2113,3 +2117,26 @@ console.log("R2_SCENARIOS="+JSON.stringify(results));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) runPlatformColdConsumer();
+
+/** M15 preliminary packed paid-order trial: useful assessment, refusal and no pg runtime peer. */
+export function proveRiskConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as contracts from "@openlup/platform/risk/contracts";
+import { adminRiskCasesListRequestSchema } from "@openlup/platform/risk";
+import { createOrderPaidRiskAssessmentPort, createPostgresRiskControlPorts, riskSubjectHash } from "@openlup/platform/risk/server";
+assert.deepEqual(Object.keys(contracts),[]);
+assert.deepEqual(adminRiskCasesListRequestSchema.parse({}),{page:1,pageSize:25});
+const writes=[];
+const order={id:"order-a",clientId:null,subtotalCents:900,discountCents:0,shippingCents:0,shippingDiscountCents:0,taxCents:0,totalCents:900,currency:"XTS",mode:"one_time",metadata:{}};
+const deps={mode:"shadow",evidencePort:{readOrder:async()=>order,readSucceededPaymentIntent:async()=>({id:"payment-a",amountCents:900,currency:"XTS"})},blocklistPort:{checkExactBlocklist:async()=>({blocked:false,reasonCodes:[]})},assessmentPort:{assessPaidOrder:async request=>{writes.push(request);return {assessmentId:"assessment-a",caseId:null,holdId:null,decision:"allow",holdOpened:false,replayed:false};}}};
+const input={orderUuid:"order-a",outboxEventId:"event-a",signal:new AbortController().signal};
+assert.deepEqual(await createOrderPaidRiskAssessmentPort(deps).assessPaidOrder(input),{kind:"allow",detail:{assessmentId:"assessment-a"}});
+assert.equal(writes[0].idempotencyKey,"risk:event-a:order-a");
+assert.equal(writes[0].subjectRefs[0].subjectHash,riskSubjectHash("order","order-a"));
+assert.deepEqual(await createOrderPaidRiskAssessmentPort({...deps,evidencePort:{...deps.evidencePort,readSucceededPaymentIntent:async()=>null}}).assessPaidOrder(input),{kind:"retryable",reason:"risk_payment_intent_not_ready"});
+assert.equal(writes.length,1);
+assert.equal(typeof createPostgresRiskControlPorts,"function");
+await assert.rejects(import("@openlup/platform/dist/risk/server/orderPaidRiskPort.js"),error=>error.code==="ERR_PACKAGE_PATH_NOT_EXPORTED");
+`);
+}
