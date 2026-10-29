@@ -1430,6 +1430,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-object-access-transfer.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -10247,6 +10251,14 @@
     },
     {
       "path": "server/adapters/filesystem/orderReviewMediaObjectStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferAccess.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferAccess.ts",
       "class": "public-output"
     },
     {

@@ -110,6 +110,13 @@ they do not turn those states into absence or successful delivery. The reader
 checks actual owner UID, private modes, single links and file continuity while
 hashing bounded bytes. Its `posix-owner-mode` label describes these observed
 checks, not additional filesystem ACLs, domain grants or HTTP authorization.
+The source-reference reconciliation checks the same fenced source snapshot's
+retained media rows against every final and partial file. It refuses missing
+stored/confirmed objects, observed digest or byte-length disagreement for any
+present final file including cleanup work, and unexplained files. It carries
+pending and cleanup row identities with selected
+writer, receipt and scheduling references; the full business-row lease/claim
+state remains part of the database transfer.
 
 [Filesystem restore](filesystem/orderReviewMediaTransferRestore.ts) prepares
 and verifies the complete private tree in a sibling directory, syncs files and
@@ -120,6 +127,15 @@ it does not publish partial runtime files. Source and target must stay under
 the actual host's writer exclusion. Database and filesystem publication are
 separate operations: the target remains inactive until both are verified.
 Copying does not reset leases, complete cleanup or manufacture domain facts.
+The staging entry point derives a fresh hidden generation beside the configured
+serving root and refuses a name collision with that root. The later host activation must bind
+the verified generation only after its other barriers pass. The route probe
+compares actual
+customer and operator media handlers for anonymous, owner, other customer and
+operator requests on each route at source and target against independent source-domain grant
+facts, binding each route media reference to the retained source row. It refuses
+any grant change, observed content-type mismatch or changed
+served bytes; a POSIX label alone is not access evidence.
 
 The colocated filesystem tests exercise the actual runtime layout and refusal/
 replay boundaries. The prepared [connected PostgreSQL witness](../../tests/postgres/connectedStoreTransfer.test.ts)
@@ -148,9 +164,22 @@ then repeats the listing. Duplicate keys, repeated/missing cursors, unexpected
 common prefixes, byte disagreement and changed listing facts refuse. The host
 must still prove full-namespace read authority and hold actual writer exclusion;
 two matching principal-visible listings do not establish either fact.
+For the declared object profile, `captureAgainstReferences` requires a stable
+source-store reference snapshot independent of ListObjectsV2 and bound to the
+selected bucket. It compares every
+listed key, logical version, byte digest and metadata field with those records,
+and preserves explicit pending-upload, partial-object and cleanup references
+with their source-record identities.
+The source-store snapshot must explicitly establish that this finite profile
+has no retained native version history, object tags or in-progress multipart
+uploads; a missing feature fact refuses qualification. Pending logical uploads
+may still exist before bytes are materialized and remain retained obligations.
+Pending or cleanup work can name a not-yet-materialized key; a partial object
+must be listed. Missing or extra physical keys and changed references refuse.
 
-Logical versions hash content and captured returned metadata. They are not ETag,
-native version IDs or proof of conditional GET support. The adapter retains
+Logical versions hash content and captured returned metadata. They are not ETag
+or proof of conditional GET support. A returned native version ID is retained
+as metadata and bound into the logical version. The adapter retains
 returned user metadata, content type/encoding/disposition/language, cache
 control, expiry representations and website redirect without supplying defaults.
 Declared missing metadata and observed nonzero tags refuse. Native version
@@ -159,6 +188,8 @@ the selected profile cannot qualify them by omission. The fixed
 `authenticated-source-read` classification means only that authenticated GET
 succeeded. Bucket policy, public access, RLS and domain access require their
 independent owner facts and probes before any complete-store claim.
+The qualified reference path refuses any returned native version ID, since its
+current-object listing cannot establish the retained version history.
 
 Only a recognized NoSuchKey means absence. NoSuchBucket and ambiguous 404/NotFound
 responses remain unavailable; authentication denial, cancellation, truncated
