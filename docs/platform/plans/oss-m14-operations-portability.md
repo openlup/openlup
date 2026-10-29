@@ -135,6 +135,10 @@ canonical catalog resolution, exact ledger prefix and selected object inventory
 must pass under the existing lock. No alias, projector/expectation override,
 SET ROLE substitute or fixture grant can qualify the offered runtime.
 
+The separate [restricted-bootstrap task](oss-m14-restricted-bootstrap.md) prepares
+a fresh non-superuser installation generation and its own proof. Reader and
+inert fixture preparation do not qualify that generation; M14 remains open.
+
 F's fixed import routines retain 13 client and eight cycle fields, precision,
 history/frozen terms and exact-row replay; conflicting rows refuse with `23505`,
 and non-origin replication refuses with `55000`. Ordinary runtime lifecycle and
@@ -283,3 +287,137 @@ Self-retro: repeated integration transcripts obscured the current source/release
 boundary. One current record with pinned history preserves failures and authority
 without making old measurements look like proof of the repaired transfer tree.
 No implementation, test, review or delivery result was created by compaction.
+
+### Qualified owner path hardening (F5)
+
+Status: control preparation landed in [PR #418](https://github.com/openlup/openlup/pull/418),
+and exact forward approval landed in [PR #420](https://github.com/openlup/openlup/pull/420).
+The active SQL checkpoint is prepared for its separate maintainer read. The bounded outcome is to pin name resolution in the owner-executed
+acquisition and retained-import paths of the current qualified-v2 installation.
+Preserve its issued 91-unit prefix and six approval rows; introduce only one
+separately reviewed forward with exact function and file identities. Both
+declared role modes retain their ordinary behavior.
+
+Bart Roszkowski is the accountable owner. The active supervisor may prepare,
+verify, commit, submit and merge this parcel after the required read and native
+review. Release dispatch, npm publication, deployment, settings, credentials
+and adopter activation remain separate owner actions. The corrected package
+release is outside this parcel.
+
+Acceptance requires the forward to change only the fixed owner-executed
+definitions, keep selected metadata, migration ledger and object inventory
+coherent, and pass real PostgreSQL negative and ordinary behavior proof on
+both affected paths and role modes. Existing source controls and package gates
+remain binding. First deliver the fixed forward reader as a separate control
+change, then bind the exact forward and prove the qualified chain. Adjacent M14
+work may require a signed main integration and renewed review. Execution
+evidence and a short self-retro will be recorded here at completion.
+
+Control-preparation checkpoint: the pre-integration tree passed 26 focused
+tests, native review by two fresh reviewers and canonical verification with
+pgTAP. Main then added the restricted-bootstrap reader on overlapping control
+paths. Its required signed integration caused three textual conflicts; the
+resolved working tree keeps the six active approvals and the 91-unit selected
+qualified plan. The pending qualified forward takes approval position seven,
+before the five restricted-bootstrap reservations. It has no active
+SQL or pin in this control preparation. The integrated control needs its own
+maintainer read before DCO, review and verification.
+
+Self-retro for this stopped run: the pre-integration proof could not carry over
+the overlapping reader landing. Resolving its fixed approval order in one
+control change preserves the existing qualification boundary; the integrated
+tree needs fresh evidence before delivery.
+
+Control delivery: corrected tree `2dcd783a1a0f1994e237065d3a44cc2a259414a2`
+passed two fresh FULL reviews and canonical verification with pgTAP. Source and
+merge-group checks passed; PR #418 merged as `bc4299bba72aff58159c2739e81a6b69f507b900`.
+The next checkpoint adds only the exact seventh approval and an inert copy of
+its forward bytes for review. The current selected plan remains 91 units; SQL
+introduction and installation proof are the later checkpoint.
+
+Pin delivery: the approved pin tree `de0e1d8904af5b451dfdf3e0149c023045451711`
+was integrated with main without changing the nine-path F5 delta. The integrated
+tree `cd86ab561f80dbfea2d0c7d92d3f85afa2e09e8a` passed two new FULL
+reviews and canonical verification with pgTAP. Source and merge-group checks
+passed; PR #420 merged as `3fbd95565ed665c68f3819a9fe27dc14f5bf9c85`.
+The seventh approval and inert fixture are now on main; the SQL checkpoint
+selects the byte-identical forward as unit 92 and binds its measured inventories.
+
+SQL checkpoint preparation: the active forward is byte-identical to the seventh
+approved fixture and appends unit 92 after the issued 91-unit prefix. Fresh
+PostgreSQL 16 installations measured inventory SHA-256
+`c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b`
+for the aliased bootstrap/migration shape and
+`624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82`
+for the separate migration shape, identically across both declared role modes.
+The four-case composition passes status, apply, replay, owner-path resolution
+and ordinary runtime and restore behavior, with unchanged selected metadata,
+ledger and inventory after the regression probes. The package dry run still
+measures 2,628 files against its 2,628-file cap, so no budget change is needed.
+The active SQL and package change note await a separate maintainer read before
+DCO, review, verification and delivery.
+
+Self-retro for this stopped checkpoint: extending the existing four-case
+production composition covered the new owner paths without creating a second
+installation harness or changing the issued qualification prefix.
+
+
+## Corrected package-set preparation S1 (29 October 2026)
+
+Outcome: prepare the coherent development-preview set `0.31.0` for Core, Outbox
+and Platform from the corrections and runtime changes after the `0.30.0`
+release source `fea0854a1a5a27c1a48f8c2c9078c618f47f66a3`. Platform's behavior
+changes require a minor set; Core and Outbox republish unchanged with exact
+internal pins. npm observations on 29 October found `0.30.0` as the highest
+version of each package. This preparation publishes nothing.
+
+Bart Roszkowski authorized the active supervisor as single writer for local
+preparation, signed commits, push, PR, receipt, queue and merge after the required
+maintainer read and gates. The programme coordinator retains dispatch; the owner
+retains protected release approval. No dispatch, npm publish, credentials,
+settings, deployment, adopter activation or other repository is in this task.
+The active supervisor context is `01a185a8-a347-7c52-b44b-c716d4785e3c`.
+Policy revision and initial source base are
+`9690386f6d25324bf7cc7a448c7277d9278d98f0`.
+
+Scope follows preparation PR #407: versions and locks, three packed changelogs
+and source-only histories, version-specific READMEs, previous-release artifact
+baselines, consumed fragments and the generated source release contract. This
+section is the single task record. Fixed caps, dependency selection, runtime,
+API and SQL implementation remain unchanged by S1. Security-correction notes
+use neutral descriptions only.
+
+Acceptance: coherent versions/pins, empty Unreleased sections, verbatim history
+rotation, all three existing Platform fragments consumed, accurate adjacent
+upgrade notes, integrity-verified `0.30.0` artifact baselines and fresh source
+contract. Published tarballs measured Core 167,200 B, Outbox 39,217 B and
+Platform 1,930,457 B; their registry SHA-512 integrity was verified against the
+actual fetched bytes. All existing caps remain binding.
+
+Proof plan: policy/inventory/neutrality, structural scan, redacted secret scan,
+working-tree artifact/content/browser checks and lint before the stabilized
+release-control read and DCO. After that read, two fresh FULL native reviewers
+(one assessing simplicity), canonical verification including cold package gates
+and pgTAP, then normal source/group checks through confirmed merge. Verify the
+merged main contexts, cold release-set audit/artifacts and tarball secret scan,
+then generate shared notes from that commit and hand off the exact `all`, version,
+commit and note bytes for dispatch. M14 and C6 retain their existing remainder.
+
+Working checkpoint: versions/pins, manifest checks, history rotation, source
+snapshot, inventory, tree/UI neutrality, structural scan and redacted working
+patch/history secret scans passed. Lint passed with zero errors and 33 existing
+warnings. Three focused files passed 66 tests in 3.07 seconds, including all
+17 browser entries. Working artifacts passed content, growth and fixed caps:
+Core 167,346 B / 224 files; Outbox 39,168 B / 41 files; Platform 1,933,379 B /
+2,628 files, code gzip 1,669,813 B and unpacked 9,000,038 B. These previews do
+not substitute for the committed cold proof. Policy has three answered owners
+and one pending scoped repository no-impact trailer: lock changes alter only
+workspace versions and exact internal pins, so existing contributor checks,
+dependency selections and runtime instructions remain correct. No DCO, native
+candidate, review, canonical verification, PR or release is claimed. The required
+release-control read precedes sign-off.
+
+Self-retro for this stopped checkpoint: one 60-second admission wait serialized
+artifact tests behind another task. Reusing the set-bump helper and previous
+preparation's file shape avoided a new release mechanism; published registry
+byte measurements remain distinct from working-tree estimates.

@@ -154,6 +154,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
+uses the production package runner to check ledger admission, stable reads,
+write admission, complete inventory projection and compatibility for status,
+dry-run and apply.
+It covers a single-deviation catalog-shape matrix, temporary name shadowing,
+and bootstrap-owned ledger reads from a distinct
+migration login. Run it with
+`npm test -- tests/postgres/m14MigrationSessionAdmission.test.ts` before the
+complete required gates.
+For this boundary, compare the complete catalog shape with the canonical
+baseline ledger; separately blocked examples do not establish that comparison.
+
 The migration control witnesses cover legacy/qualified selection and immutable
 history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
 prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
@@ -164,8 +176,16 @@ pins. The structural append case removes only that named tail from its previous
 plan and supplied migration list before appending it, so the introduced source
 cannot duplicate its fixture. These structural checks are not live inventory
 qualification. Reader support and the exact sixth-pin approval landed separately
-before SQL introduction; qualified 91 preserves legacy 88 and the entire F90 prefix.
-The SQL feature still needs its own runtime and inventory evidence. The
+before SQL introduction; the issued qualified 91 preserves legacy 88 and the
+entire F90 prefix. The active owner-path forward follows that issued prefix as
+qualified unit 92, with its two installed inventories measured in the production
+composition witness. The reader reserves it after
+the runtime-completion tail, at approval position seven before the five
+restricted-bootstrap positions. Its fixed function preimages and exact forward
+bytes were approved before SQL introduction; the control witness refuses
+changed bodies, extra definitions and an earlier position. The active SQL is
+byte-identical to that approved fixture.
+The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix
 is visible to a second actual migration login, which refuses under the held
@@ -173,6 +193,33 @@ lock before pending SQL and preserves the ledger. This generic hook proof does
 not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
+
+The [released schema-upgrade witness](tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
+uses the same canonical runner with a published 77-unit legacy predecessor.
+Its [owned child](tests/postgres/m14ReleasedSchemaUpgradeChild.ts) is an exact
+public execution entry: one SIGKILL aborts the in-progress backfill transaction,
+and another lands between committed units. Run the focused PostgreSQL 16 case
+with `npm test -- tests/postgres/m14ReleasedSchemaUpgrade.test.ts`. A local
+published 0.23.0 package installed under
+`.context/scratch/m14-schema-upgrade/previous-app/node_modules/@openlup/platform`
+additionally runs prior package code against the upgraded database; an absent
+package does not claim that code-rollback observation.
+The [data owner](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+defines the applicable history and limits.
+
+The restricted-bootstrap reader initially accepted five fixed `qa_` identities
+and their exact approval now occupies positions 8–12. A disposable PostgreSQL
+install found that the approved actor SQL does not parse. The four corrected
+`qb_` actor, acquisition, runtime and import fixtures are separate inert
+identities; this additive reader accepts only their complete positions 13–16
+append and leaves all twelve issued rows unchanged. Its schema-3 parser selects
+the `qa_` baseline with those four `qb_` replacements, the issued
+runtime-completion tail and two fixed role-mode inventory digests. The manifest
+and admission witnesses reject missing/reordered tails, wrong-generation paths,
+issued-prefix repins and partial approvals. A disposable PostgreSQL 16
+parse-and-apply witness of the exact proposed bytes in both role modes is
+required before the separate four-byte approval packet; active SQL follows
+that approval. This reader checkpoint adds no active migration or CI job.
 
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;
@@ -196,8 +243,9 @@ redacted error, with a false-admission falsifier. These checks create no install
 or role grants and do not turn a prerequisite report into installation readiness.
 
 The [qualified production witness](tests/postgres/m14QualifiedComposition.test.ts)
-checks the completion's two measured restore-bound 91-unit inventories through the built package
-entry and real reference binding, then two fresh targets in the other role mode
+checks the owner-path forward's two measured restore-bound 92-unit inventories
+through the built package entry and real reference binding, then two fresh
+targets in the other role mode
 with changed principal names. The E2 predecessor retains its four 89-unit shapes
 and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
 shadow-symbol refusals without replacing expected digests.
@@ -2695,6 +2743,14 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, M14 schema-upgrade proof: diagnostic prose repeated a scanned
+  token after the code fix → describe the mechanism without reproducing the
+  scanner match, then check the committed tree.
+
+- 2026-10-29, M14 ledger admission: successive special-case metadata checks
+  left an untested catalog shape → use the canonical comparison and
+  [single-deviation witness](#development-preview-checks) for this boundary.
 
 - 2026-10-28, M14 handover cleanup proof: assumptions about failure metadata or
   network damage hid an actual created-container leak → test exact container

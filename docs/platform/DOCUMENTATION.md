@@ -84,12 +84,17 @@ external executor fencing and effect reconciliation duties. The publication
 catalogue includes the real-session witness; generated navigation establishes
 no current test result or complete store-transfer claim.
 
-The migration session hook, union/history controls, exact qualified approval
-inputs, five issued inert fixtures and unapproved sixth proposal retain the
+The migration session hook, union/history controls, seven issued qualified
+approval inputs and five additional inert restricted-bootstrap fixtures retain the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The package entry and contributor witness descriptions link to that boundary;
-publication inventory includes the four control witnesses/fragment and inert
-fixtures without admitting them to the canonical installation catalogue.
+publication inventory includes the control witnesses and inert fixtures without
+admitting the five separately approved replacements to the canonical installation catalogue.
+The released legacy upgrade witness and its child process route to the same
+[data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle). Its published
+predecessor pin, real backfill and code-rollback limit belong there; contributor
+guidance owns the process-kill test invocation and the child's execution-path
+registration. This adds no qualified-v2 upgrade lineage or migration SQL.
 
 Application lifecycle source, owner-local witnesses and its API report route
 to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
@@ -316,6 +321,12 @@ and takes its new source owner; the subscription action-guard test now lives
 beside the reference handler and is owned by the runtime guide. The [documentation routing map](../../config/doc-routing.json)
 assigns those paths to canonical owner pages and sections; it is not a second
 domain or publication census.
+
+The portable operations reference binding and its composed witness route to the
+operations architecture owner. Their catalogue rows admit source and local
+proof, without adding a package entry, installed-default claim or hosted
+observability certification. Runtime guidance describes the host-supplied ports
+and captured delivery boundary separately.
 
 Most domains use `src/domains/<domain>/README.md` as their semantic owner. A
 server README adds server-specific security, money, authorization or operational
