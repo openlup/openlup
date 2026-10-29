@@ -19,6 +19,31 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Connection roles
+
+Use the [runtime connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+to separate restricted pooled request work, direct migration/admin work and
+session-affine scheduler locks. Migration and privileged administration connect
+directly to PostgreSQL, bypassing external transaction and session poolers. The
+existing migration runner takes `{ connectionString: directConnectionString }`;
+its internal `pg.Pool` leases one connection for the whole operation and its
+session advisory lock. That local client pool is distinct from a proxy that
+reassigns PostgreSQL backends between statements. Do not feed a pooled runtime
+URL through `resolvePostgresMigrationRunnerEnv` into a migration runner: that
+helper continues to read `DATABASE_URL`, with no implicit direct-endpoint lookup.
+Supply the migration port explicitly through the composition root's `migrations`
+binder, including when the Node host migrates before listening.
+
+Connection separation preserves the selected installation's principal/grant
+contract; it grants no runtime DDL or migrator isolation. The current
+qualified-v2 profile still requires its declared privileged migration principal.
+The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+installs/replays all 91 selected units through the direct endpoint, then exercises
+the pooled request and dedicated session-lock recipe through the restricted
+runtime login. Restricted-bootstrap installation is a separate qualification
+and will reuse these connection roles when it lands. Hosted endpoints remain
+unqualified by this local witness.
+
 ## Compatible data transfer
 
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)

@@ -4,9 +4,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { createPostgresFulfillmentDispatchStore, createPostgresFulfillmentShipmentSpinePort } from "@openlup/platform/fulfillment";
 import type { FulfillmentObservation } from "@openlup/platform/fulfillment/contracts";
 import { readFileSync } from "node:fs";
-import { Pool, type PoolClient } from "pg";
+import { Client, Pool, type PoolClient } from "pg";
 import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
-import type { PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
+import { advisoryLockKey, createPgAdvisoryLock, withAdvisoryLock, type AdvisoryLockQuerier } from "@openlup/platform/scheduler";
 import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork } from "@openlup/platform/identity";
 import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
@@ -202,6 +203,79 @@ async function proveOwnerPathResolution(bootstrap: Pool): Promise<void> {
     } finally { await restored.query("ROLLBACK"); }
   } finally { restored.release(); }
   assert.deepEqual(await snapshot(), before);
+}
+
+async function proveConnectionRecipe() {
+  const runtime = pool(loginUrl(selection.runtimeLogin));
+  const gateway = createPostgresDataGateway({ connectionString: loginUrl(selection.runtimeLogin) }, { poolFactory: () => runtime });
+  // Request work uses the existing transaction-local role boundary on a reused pool.
+  for (let i = 0; i < 2; i += 1) {
+    const result = await gateway.asService(async raw => (raw as PgGatewayClient).from("clients").select("id").limit(1));
+    assert.equal(result.error, null);
+    assert.equal(result.data?.length, 1);
+    assert.deepEqual((await runtime.query("SELECT current_user, session_user")).rows,
+      [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin }]);
+  }
+  const first = new Client({ connectionString: loginUrl(selection.runtimeLogin) });
+  const second = new Client({ connectionString: loginUrl(selection.runtimeLogin) });
+  try {
+    await first.connect(); await second.connect();
+    const firstPid = (await first.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const secondPid = (await second.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    assert.notEqual(firstPid, secondPid);
+    const owner = createPgAdvisoryLock(first as unknown as AdvisoryLockQuerier);
+    const competitor = createPgAdvisoryLock(second as unknown as AdvisoryLockQuerier);
+    const jobId = "qualified-pooling-recipe";
+    let runs = 0;
+    await withAdvisoryLock(jobId, owner, async () => {
+      runs += 1;
+      await first.query("SELECT 1");
+      assert.equal(await competitor.tryAcquire(jobId), false);
+    }, (_id, error) => { throw error; })();
+    assert.equal(runs, 1);
+    assert.equal(await competitor.tryAcquire(jobId), true);
+    await competitor.release(jobId);
+
+    for (const mode of ["switch-backend", "reset-locks"] as const) {
+      let statements = 0;
+      const transport: AdvisoryLockQuerier = {
+        async query<T>(text: string, values?: unknown[]) {
+          statements += 1;
+          // Autocommit returns a transaction-pool backend after each statement.
+          // Deterministically switch real backends, or emulate a server-reset policy.
+          if (mode === "reset-locks" && statements === 2) await first.query("SELECT pg_advisory_unlock_all()");
+          const backend = mode === "switch-backend" && statements > 1 ? second : first;
+          return (backend as unknown as AdvisoryLockQuerier).query<T>(text, values);
+        },
+      };
+      const invalid = createPgAdvisoryLock(transport);
+      await assert.rejects(withAdvisoryLock(jobId, invalid, async () => { runs += 1; },
+        (_id, error) => { throw error; }), /OPENLUP_E_ADVISORY_SESSION_AFFINITY.*never transaction pooling/u);
+      assert.equal(runs, 1);
+      await assert.rejects(invalid.tryAcquire("different-job"), /OPENLUP_E_ADVISORY_SESSION_AFFINITY/u);
+      assert.equal(statements, 2);
+      if (mode === "switch-backend") {
+        // A pooler may strand the lock on its original server connection.
+        assert.equal((await second.query("SELECT pg_try_advisory_lock($1::bigint) AS locked", [advisoryLockKey(jobId)])).rows[0].locked, false);
+      }
+      // Fixture-only cleanup of these two owned backend sessions, never an operator recipe.
+      await first.query("SELECT pg_advisory_unlock_all()");
+      await second.query("SELECT pg_advisory_unlock_all()");
+    }
+    // A backend switch on release must not unlock another session's later grant.
+    let backend = first;
+    const switched = createPgAdvisoryLock({
+      query: <T>(text: string, values?: unknown[]) => (backend as unknown as AdvisoryLockQuerier).query<T>(text, values),
+    });
+    assert.equal(await switched.tryAcquire(jobId), true);
+    await first.query("SELECT pg_advisory_unlock_all()");
+    assert.equal((await second.query("SELECT pg_try_advisory_lock($1::bigint) AS locked", [advisoryLockKey(jobId)])).rows[0].locked, true);
+    backend = second;
+    await assert.rejects(switched.release(jobId), /OPENLUP_E_ADVISORY_SESSION_AFFINITY/u);
+    assert.equal((await first.query("SELECT pg_try_advisory_lock($1::bigint) AS locked", [advisoryLockKey(jobId)])).rows[0].locked, false);
+  } finally {
+    await Promise.all([first.end(), second.end()]);
+  }
 }
 
 async function proveRetainedRuntime(admin: Pool) {
@@ -654,6 +728,7 @@ async function prove() {
   await proveOwnerPathResolution(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
   await proveRuntimeCompletion(bootstrap);
+  if (input.discriminators) await proveConnectionRecipe();
   if (input.discriminators) await proveObservationRuntime(bootstrap);
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await ledger(), installed);
@@ -734,6 +809,7 @@ async function prove() {
   return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
     runtimeCompletionProved: true, ownerPathResolutionProved: true, nativeObservationRuntimeProved: input.discriminators,
+    connectionRecipeProved: input.discriminators,
     discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
 }
 

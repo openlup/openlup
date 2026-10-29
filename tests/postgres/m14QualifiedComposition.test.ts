@@ -54,6 +54,7 @@ for (const profile of profiles) for (const shape of shapes) {
         appliedNow: 92, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
         runtimeLockPrivilegesProved: true, runtimeCompletionProved: true, ownerPathResolutionProved: true,
         nativeObservationRuntimeProved: profile.name === "target" && shape.name === "separate-restore",
+        connectionRecipeProved: profile.name === "target" && shape.name === "separate-restore",
         discriminators: profile.name === "target" && shape.name === "separate-restore",
       });
       console.info(`qualified-production ${profile.name}/${shape.name} ${stdout.trim()}`);
