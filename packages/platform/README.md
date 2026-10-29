@@ -1485,3 +1485,27 @@ retention policy, then append the contributor to M03's existing registry with
 period is supplied, and managed identity erasure remains unavailable. Portability
 is deferred unless a host supplies its own opaque binding; the helper neither
 invokes it nor claims transfer/restore support.
+
+## Company identity
+
+Experimental `./company-identity` preserves the existing compatibility schemas
+(including optional registry fields); `./company-identity/contracts` contains only
+browser-safe types over the unchanged core contract. `./company-identity/server`
+exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
+to retain its request-reference binding. The handler shares its process cache
+across factory instances: ten-minute TTL, UTC-day/normalized-identity keys, no
+purpose/provider partition, manual-input bypass and oldest-insertion eviction.
+Lookup does not write customer data. Identifier normalization/validity and legal-name policy are optional inputs in
+`CompanyIdentityRules`. Neutral defaults keep identifiers unchanged, accept
+non-empty values and do not prefer or seek fuller names. The reference
+application retains its existing national rules and callers unchanged.
+
+## Market packs
+
+Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
+explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
+and display locale independently; formatting historical amounts uses their own
+currency. Ambient environment reading/initialization remains application-owned.
+These entries add no provider, locale resources, native directory schema or
+application caller swap. Shipping suggestions retain the existing optional lane.

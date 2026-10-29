@@ -1470,6 +1470,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m16-r1-market-import.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2542,6 +2546,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/company-identity-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/company-identity-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/company-identity.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/composition.api.md",
       "class": "public-output"
     },
@@ -2599,6 +2615,10 @@
     },
     {
       "path": "packages/platform/api/lifecycle.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/market-packs.api.md",
       "class": "public-output"
     },
     {
@@ -4282,6 +4302,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/company-identity/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/rules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/server/companyIdentityHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/server/companyIdentityService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/server/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/accountSupportContribution.ts",
       "class": "public-output"
     },
@@ -5287,6 +5335,26 @@
     },
     {
       "path": "packages/platform/src/lifecycle/postgresInstallQualification.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/currencyExponent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/fiscalProfile.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/formatMinor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/settlementProfile.ts",
       "class": "public-output"
     },
     {
@@ -7202,6 +7270,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/company-identity/cacheFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/companyIdentityHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/companyIdentityService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/fixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/composition/accountSupportContribution.test.ts",
       "class": "public-output"
     },
@@ -7699,6 +7787,26 @@
     },
     {
       "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/fiscalProfile.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/formatMinor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/settlementProfile.test.ts",
       "class": "public-output"
     },
     {
@@ -9219,6 +9327,10 @@
     },
     {
       "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/market-pack-consumer-proof.ts",
       "class": "public-output"
     },
     {
@@ -18590,6 +18702,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/marketIdentityPersistence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/normalizeConfiguratorDelivery.ts",
       "class": "public-output"
     },
@@ -26259,6 +26375,10 @@
     },
     {
       "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/marketDirectoryPreservation.test.ts",
       "class": "public-output"
     },
     {

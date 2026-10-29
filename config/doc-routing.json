@@ -635,6 +635,28 @@
       "anchor": ""
     },
     {
+      "id": "platform-company-identity",
+      "when": "Company identity compatibility schemas, caller rules, ordered lookup and shared handler caches",
+      "paths": [
+        "packages/platform/src/company-identity/**",
+        "packages/platform/test/company-identity/**",
+        "packages/platform/api/company-identity*.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#company-identity"
+    },
+    {
+      "id": "platform-market-packs",
+      "when": "Explicit settlement and fiscal fallbacks, currency metadata and own-currency formatting",
+      "paths": [
+        "packages/platform/src/market-packs/**",
+        "packages/platform/test/market-packs/**",
+        "packages/platform/api/market-packs.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#market-packs"
+    },
+    {
       "id": "platform-scheduler",
       "when": "Platform scheduled-job contracts, leases, scheduler bindings and refusal behavior",
       "paths": [
