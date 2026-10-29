@@ -55,6 +55,7 @@ export function loadCredentials(path, target) {
     for (const mode of modes) {
       const entry = value.installations[mode];
       if (entry?.disposable !== true || !/^[0-9]{10,30}$/u.test(entry.systemIdentifier ?? "")) refuse("installation_declaration_required");
+      if (!/^sha256:[a-f0-9]{64}$/u.test(entry.ociDigest ?? "")) refuse("oci_digest_required");
       const url = new URL(entry.connectionString);
       // Bootstrap/database names are explicit target data. Provider admission stays in the installer.
       if (!["postgres:", "postgresql:"].includes(url.protocol) || !/^[a-z_][a-z0-9_]*$/u.test(decodeURIComponent(url.username)) || !/^\/[a-z_][a-z0-9_]*$/u.test(decodeURIComponent(url.pathname))
@@ -66,7 +67,7 @@ export function loadCredentials(path, target) {
   } catch (error) {
     const known = ["target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
       "explicit_disposable_target_required", "region_required", "three_installations_required", "installation_declaration_required",
-      "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required"];
+      "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required"];
     refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
   }
 }
@@ -79,6 +80,27 @@ export function initialReceipt(target) {
 }
 
 const poolLimits = { max: 4, connectionTimeoutMillis: 5000, statement_timeout: 15000, query_timeout: 20000, idleTimeoutMillis: 1000 };
+// The proof creates cluster-global roles, so admission must inspect more than
+// the selected database's public tables before the first write to any target.
+export async function assertFreshClusterCatalogue(pool, selectedDatabase, bootstrapLogin) {
+  const row = (await pool.query(`SELECT
+    (SELECT array_agg(datname::text ORDER BY datname) FROM pg_catalog.pg_database
+      WHERE datname NOT IN ('template0','template1')) AS ordinary_databases,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
+      WHERE nspname NOT IN ('pg_catalog','pg_toast','information_schema','public')) AS extra_schemas,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public') AS public_relations,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public') AS public_functions,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
+      WHERE n.nspname='public') AS public_types,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname<>'plpgsql') AS extra_extensions,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+      WHERE rolname !~ '^pg_' AND rolname NOT IN ('postgres',$1)) AS extra_roles`, [bootstrapLogin])).rows[0];
+  if (row.ordinary_databases?.length !== 1 || row.ordinary_databases[0] !== selectedDatabase
+    || row.extra_schemas || row.public_relations || row.public_functions || row.public_types
+    || row.extra_extensions || row.extra_roles) refuse("fresh_cluster_required");
+}
 async function executeRecipe(config, receipt) {
   const { tsImport } = await import("tsx/esm/api");
   const { Pool } = await import("pg");
@@ -99,11 +121,7 @@ async function executeRecipe(config, receipt) {
         (SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid()) AS tls
         FROM pg_catalog.pg_control_system() s`)).rows[0];
       if (facts.identity !== config.installations[mode].systemIdentifier || !/^16/u.test(facts.version_num) || !facts.tls) refuse("target_identity_or_tls_refused");
-      const occupied = (await pool.query(`SELECT nspname FROM pg_catalog.pg_namespace
-        WHERE nspname IN ('auth','acquisition_private')
-        UNION ALL SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-        WHERE n.nspname='public'`)).rows;
-      if (occupied.length) refuse("fresh_cluster_required");
+      await assertFreshClusterCatalogue(pool, facts.database, facts.login);
       observed.push({ mode, ...facts });
       // A trusted certificate plus the wrong hostname must refuse before SQL.
       const bad = new Pool({ ...databases[mode], ssl: { ...databases[mode].ssl, checkServerIdentity: (_host, cert) => checkServerIdentity("wrong-host.example.invalid", cert) } });
@@ -126,8 +144,8 @@ async function executeRecipe(config, receipt) {
     sourceTree: git(["rev-parse", "HEAD^{tree}"]), workingDiffSha256: hash(git(["diff", "HEAD", "--binary"])), sourceSha256,
     node: process.versions.node, npm: npmVersion(),
     packages: packageIdentities, previousApplication: { name: previousManifest.name, version: previousManifest.version, manifestSha256: hash(previousBytes), compiledSha256: directoryDigest(resolve(config.previousApplicationPath, "../..")) },
-    installations: observed, oci: modes.map(mode => ({ mode, operatorDeclaredDigest: /^sha256:[a-f0-9]{64}$/u.test(config.installations[mode].ociDigest ?? "")
-      ? config.installations[mode].ociDigest : null, verification: "external endpoint; image identity declared by operator" })),
+    installations: observed, oci: modes.map(mode => ({ mode, operatorDeclaredDigest: config.installations[mode].ociDigest,
+      verification: "external endpoint; image identity declared by operator" })),
     limits: ["PostgreSQL 16 only", "three disposable fresh clusters; bootstrap login and database supplied in each URL",
       "workspace source proof; no installed-current-package claim", "backend switching; no PgBouncer qualification", "no hosted qualification inferred", "operator owns target teardown"] };
   receipt.install = { status: "RUNNING", modes: [] };

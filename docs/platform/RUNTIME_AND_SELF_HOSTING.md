@@ -64,8 +64,10 @@ JSON has `schemaVersion: 1`, `target: "self-host"`, `region: "local"`,
 `@openlup/platform@0.23.0` `dist/payments/index.js` entry. Its `installations`
 object has exactly `installer-managed`, `operator-provisioned` and `schema`.
 Each contains `disposable: true`, the expected PostgreSQL `systemIdentifier`,
-`connectionString` and PEM `ca`. Keep the entire file external; never put real
-values in an issue, receipt or source file.
+`connectionString`, PEM `ca` and an operator-declared `ociDigest` in
+`sha256:<64 lowercase hex>` form. The runner records the declaration but cannot
+independently inspect an external host's image. Keep the entire file external;
+never put real values in an issue, receipt or source file.
 
 This command mutates all three installations. Each must be a separate fresh
 PG16 cluster with a verified TLS endpoint. The URL explicitly supplies its
@@ -73,7 +75,10 @@ bootstrap login and database (the local reference uses `postgres` for both). The
 migration, runtime and restore identities in the existing witnesses; this is not
 a claim that hosted control-plane users have identical authority. Admission
 checks every system identity and fresh catalogue before the first installation
-write. A wrong TLS hostname must also be refused. No reset or target teardown
+write. The strict local catalogue check permits only the selected ordinary
+database alongside PostgreSQL's two templates, and refuses extra user schemas,
+public objects, extensions or non-bootstrap user roles. A wrong TLS hostname
+must also be refused. No reset or target teardown
 is implicit: the operator owns these disposable clusters and their removal.
 After a partial failure, use new fresh installations rather than rerunning over
 a used catalogue.

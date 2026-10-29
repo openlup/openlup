@@ -2,8 +2,10 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Pool } from "pg";
 import { afterEach, expect, it } from "vitest";
-import { initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
+import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { assertFreshClusterCatalogue, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
 
 const directories: string[] = [];
 function fixture() {
@@ -15,6 +17,7 @@ function fixture() {
       disposable: true, systemIdentifier: String(7000000000000000000n + BigInt(index)),
       connectionString: `postgresql://postgres:${secret}@127.0.0.1:1/postgres`,
       ca: "-----BEGIN CERTIFICATE-----\nunusable-private-input\n-----END CERTIFICATE-----",
+      ociDigest: `sha256:${"a".repeat(64)}`,
     }])) };
   const path = join(root, "credentials.json");
   const save = () => writeFileSync(path, JSON.stringify(config), { mode: 0o600 }); save();
@@ -47,6 +50,35 @@ it("requires private mode, an external ordinary file, and three declared distinc
   f.config.installations.schema.systemIdentifier = f.config.installations["installer-managed"].systemIdentifier; f.save();
   expect(() => loadCredentials(f.path, "self-host")).toThrow("separate_clusters_required");
 });
+
+it("requires an exact declared image digest for each installation", () => {
+  const f = fixture();
+  delete (f.config.installations.schema as { ociDigest?: string }).ociDigest; f.save();
+  expect(() => loadCredentials(f.path, "self-host")).toThrow("oci_digest_required");
+  f.config.installations.schema.ociDigest = "sha256:invalid"; f.save();
+  expect(() => loadCredentials(f.path, "self-host")).toThrow("oci_digest_required");
+});
+
+it("refuses a reused cluster catalogue before the proof can create global roles", async () => {
+  if (!await dockerAvailable()) throw new Error("Recipe freshness refusal requires Docker PostgreSQL 16");
+  const container = await runPostgresContainer({ name: `m14-recipe-freshness-${process.pid}`, password: "synthetic-conformance" });
+  let pool: Pool | undefined;
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    pool = new Pool({ connectionString: container.connectionString });
+    await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).resolves.toBeUndefined();
+    for (const [occupy, clear] of [
+      ["CREATE DATABASE recipe_other", "DROP DATABASE recipe_other"],
+      ["CREATE SCHEMA recipe_other", "DROP SCHEMA recipe_other"],
+      ["CREATE FUNCTION public.recipe_other() RETURNS integer LANGUAGE SQL AS 'SELECT 1'", "DROP FUNCTION public.recipe_other()"],
+      ["CREATE ROLE recipe_other", "DROP ROLE recipe_other"],
+    ]) {
+      await pool.query(occupy);
+      try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required"); }
+      finally { await pool.query(clear); }
+    }
+  } finally { await closePostgres(container, pool); }
+}, postgresSetupTimeoutMs);
 
 it("keeps credentials, paths and raw worker errors out of process output and failed receipts", () => {
   const f = fixture();

@@ -67,7 +67,7 @@ removed the original temporary worktree and uncommitted proof, this candidate
 was reconstructed in the durable assigned worktree and preserved in private
 unsigned WIP refs. The first maintainer read accepted exact tree
 `414e2460834738963b8da7cbd780f0c4febe69db`; DCO commit `c659279e` has
-that tree. No review cycles or submission yet.
+that tree. No repair cycles or submission yet.
 
 Recreated-worktree proof: `npm ci` and `npm run pretest` passed with pinned Node
 24.21.0/npm 11.19.0. The focused three-file suite passed 7/7, including
@@ -82,7 +82,7 @@ credential values or paths, and all three disposable clusters were removed.
 `npm run lint` passed with zero errors (33 existing warnings); public policy,
 inventory, neutrality, structural and configured redacted secret scans passed.
 The serialized published-tree typecheck passed with zero unresolved edges and
-zero consumer errors across five projects. Native review and canonical
+zero consumer errors across five projects. Passing native review and canonical
 verification remain pending. This local receipt does not establish a complete
 self-host, hosted provider or released-package qualification.
 
@@ -90,18 +90,42 @@ Hosted use remains owned by 10N/10R and their own reads: target identity must
 come from an unprivileged incarnation observation or declared provider identity,
 and one hosted cluster needs serial fresh-catalogue phases with cleanup of
 test-owned roles and databases. Neither is a condition on this local 10A proof.
-Main `eb1a0584` is being merged with a manual resolution of the adjacent
-`CONTRIBUTING.md` documentation paragraphs; the uncommitted resolution needs
-its separate maintainer read before a DCO merge commit. The original parcel
+Main `eb1a0584` was integrated in DCO merge `3bf686c6` after a separate
+accepted read of the adjacent `CONTRIBUTING.md` paragraph resolution. Its
+tree is `2fe026a2fb576cfaab7c0fcc0be58591d5e5b8e9`. The original parcel
 patch-id excluding this task record is `8f68d32f57ee4d3e159116a0b84d8ca7477f92b6`;
 against new main it is `cf51c9cda063bfffd603411bbbc9fa4c1f1e4993`.
-The post-merge documentation impact check against new main has three obligations,
-none unanswered. The ordinary policy comparison still uses the old fork point
-until the merge commit exists; the merged-main documentation change accounts
-for its transient extra obligation.
+Post-merge documentation policy against new main passed with three obligations,
+none unanswered.
+
+The two initial full native reviews of merged tree `2fe026a2` both failed on
+fresh-cluster admission: another ordinary database or user schema could pass
+before global role and database-owner writes. One also found that a missing
+OCI digest could still yield a passing receipt. The open material cards are
+`R10A-1`, `R10A-2` and `R10A-CLUSTER-FRESHNESS`; cycle 0 is recorded. The
+unsigned repair checks the selected cluster's ordinary databases, user
+catalogue and roles before any proof write, requires each declared OCI digest,
+and adds real-PG and credential-file refusal discriminators. The first new
+focused run passed 8/9 but the clean-cluster baseline refused: `pg` returns
+PostgreSQL `name[]` as a scalar string. Casting the database list to `text[]`
+fixed that transport mismatch; the next focused run passed 9/9. A separate
+fresh-container diagnostic found only the ordinary `postgres` database and no
+extra schemas, public objects, extensions or user roles. The repaired
+`.context/scratch/m14-recipe-conformance/selfhost-repair-receipt.json` is
+`PASS_INITIAL_PHASES` on three new TLS PG16 clusters with both 91-unit modes,
+77→88 legacy upgrade and previous application replay; each installation has
+an operator-declared OCI digest and all containers were removed. The old
+receipt belongs to the reviewed tree. A new control read is required before
+signing this repair. Lint passed with zero errors and 33 existing warnings;
+the serialized published-tree typecheck passed with zero unresolved edges and
+zero consumer errors across five projects. Final review remains pending.
 
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier
 uncommitted evidence; durable worktree scratch and unsigned refs now preserve
-the reconstructed candidate. Host load gating added substantial elapsed wait
-without consuming test or review retries. No further scope change is justified.
+the reconstructed candidate. Host load gates added 1,141 seconds before the
+repair build, 1,741 seconds before the first focused run and 1,021 seconds
+before the diagnostic, without consuming review retries. The new catalogue
+query's `name[]` result was parsed as a string; one explicit `text[]` cast
+removed that false refusal.
+No additional abstraction or scope change is justified.
