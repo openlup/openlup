@@ -287,3 +287,42 @@ Self-retro: repeated integration transcripts obscured the current source/release
 boundary. One current record with pinned history preserves failures and authority
 without making old measurements look like proof of the repaired transfer tree.
 No implementation, test, review or delivery result was created by compaction.
+
+### Qualified owner path hardening (F5)
+
+Status: integrated control preparation; delivery awaits a renewed maintainer
+read after the restricted-bootstrap reader landed. The bounded outcome is to pin name resolution in the owner-executed
+acquisition and retained-import paths of the current qualified-v2 installation.
+Preserve its issued 91-unit prefix and six approval rows; introduce only one
+separately reviewed forward with exact function and file identities. Both
+declared role modes retain their ordinary behavior.
+
+Bart Roszkowski is the accountable owner. The active supervisor may prepare,
+verify, commit, submit and merge this parcel after the required read and native
+review. Release dispatch, npm publication, deployment, settings, credentials
+and adopter activation remain separate owner actions. The corrected package
+release is outside this parcel.
+
+Acceptance requires the forward to change only the fixed owner-executed
+definitions, keep selected metadata, migration ledger and object inventory
+coherent, and pass real PostgreSQL negative and ordinary behavior proof on
+both affected paths and role modes. Existing source controls and package gates
+remain binding. First deliver the fixed forward reader as a separate control
+change, then bind the exact forward and prove the qualified chain. Adjacent M14
+work may require a signed main integration and renewed review. Execution
+evidence and a short self-retro will be recorded here at completion.
+
+Control-preparation checkpoint: the pre-integration tree passed 26 focused
+tests, native review by two fresh reviewers and canonical verification with
+pgTAP. Main then added the restricted-bootstrap reader on overlapping control
+paths. Its required signed integration caused three textual conflicts; the
+resolved working tree keeps the six active approvals and the 91-unit selected
+qualified plan. The pending qualified forward takes approval position seven,
+before the five restricted-bootstrap reservations. It has no active
+SQL or pin in this control preparation. The integrated control needs its own
+maintainer read before DCO, review and verification.
+
+Self-retro for this stopped run: the pre-integration proof could not carry over
+the overlapping reader landing. Resolving its fixed approval order in one
+control change preserves the existing qualification boundary; the integrated
+tree needs fresh evidence before delivery.
