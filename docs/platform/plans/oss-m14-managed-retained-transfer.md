@@ -184,3 +184,23 @@ is the smaller repair than adding another object adapter or transfer runner.
 The canonical gate exposed strict TypeScript errors that focused PG execution
 did not; running the existing public typecheck before a sensitive read would
 have found them without another control or test harness.
+
+Cycle 3 on merged tree `c61c9c9cca9eb4d3fa47206c8904f55ae7b1626b`
+received one full PASS and one material FAIL. The managed settlement item has
+independent intent, payment and nullable invoice foreign keys. Previously,
+privacy ownership used the first available link, so an item for one customer's
+payment could retain another customer's invoice reference after erasure. The
+source capture now resolves every non-null link and refuses conflicting orders
+before the item or batch can enter the retained sidecar. An unresolved non-null
+link also refuses. A real managed Postgres witness assigns the item to a second
+customer's invoice and expects refusal, then checks a same-order invoice and
+intent-only and payment-only links remain capturable. With all three links null,
+the pre-repair result remains `invalid_input` on the settlement batch: it has
+an item with no subject owners, so the full retained capture cannot establish
+privacy coverage. The initial repair required both intent and payment and was
+not accepted because all three links are nullable in the managed baseline;
+the bounded correction awaits a second maintainer read before DCO. Native
+review cycle 3 is the last automatic cycle; CD-M14-34 authorizes one `continue`
+only after this corrected repair is accepted and DCO committed. This is a
+privacy coverage correction within parcel 8A's existing outcome and does not
+extend the hosted qualification boundary.

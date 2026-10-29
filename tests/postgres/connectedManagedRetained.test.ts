@@ -412,3 +412,49 @@ it("refuses a mapped Auth and client email conflict from actual source rows", as
       .toThrowError(/postgres_transfer_target_conflict:auth.users/);
   } finally { await managed.owner.query("UPDATE auth.users SET email=$2 WHERE id=$1", [userId, email]); }
 });
+
+it("checks settlement invoice conflicts and nullable owner links", async () => {
+  const otherClientId = randomUUID(), otherOrderId = randomUUID(), otherInvoiceId = randomUUID();
+  const itemId = (await managed.owner.query<{ id: string }>(
+    "SELECT id FROM public.payment_provider_settlement_items WHERE payment_intent_id=$1", [paidIntentId])).rows[0]!.id;
+  await managed.owner.query("INSERT INTO public.clients(id,email,lifecycle_stage) VALUES($1,$2,'customer')",
+    [otherClientId, "other-retained@example.invalid"]);
+  try {
+    await managed.owner.query(`INSERT INTO public.commerce_orders
+      (id,client_id,status,currency,subtotal_cents,total_cents,mode)
+      VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [otherOrderId, otherClientId]);
+    await managed.owner.query(`INSERT INTO public.accounting_invoices
+      (id,order_id,order_ref,invoice_ref,currency,buyer_snapshot,order_snapshot,tax_snapshot,
+        lines_snapshot,total_net_cents,total_gross_cents)
+      VALUES($1,$2,$3,$4,'XXX','{}','{}','{}','[]',833,900)`,
+    [otherInvoiceId, otherOrderId, `order:${otherOrderId}`, `synthetic-invoice:${otherInvoiceId}`]);
+    await managed.owner.query("UPDATE public.payment_provider_settlement_items SET invoice_id=$2 WHERE id=$1",
+      [itemId, otherInvoiceId]);
+    await expect(capture()).rejects.toMatchObject({ code: "target_conflict", table: "public.payment_provider_settlement_items" } satisfies Partial<PostgresTransferError>);
+    await managed.owner.query("UPDATE public.payment_provider_settlement_items SET invoice_id=$2 WHERE id=$1",
+      [itemId, invoiceId]);
+    const sameOrder = await capture();
+    expect(sameOrder.rows.find(row => row.relation === "public.payment_provider_settlement_items")?.subjects)
+      .toContain(clientId);
+    await managed.owner.query("UPDATE public.payment_provider_settlement_items SET invoice_id=NULL WHERE id=$1", [itemId]);
+    for (const links of [
+      { payment_intent_id: paidIntentId, payment_id: null },
+      { payment_intent_id: null, payment_id: paidPaymentId },
+    ]) {
+      await managed.owner.query(`UPDATE public.payment_provider_settlement_items
+        SET payment_intent_id=$2,payment_id=$3 WHERE id=$1`, [itemId, links.payment_intent_id, links.payment_id]);
+      const retained = await capture();
+      expect(retained.rows.find(row => row.relation === "public.payment_provider_settlement_items")?.subjects)
+        .toContain(clientId);
+    }
+    await managed.owner.query(`UPDATE public.payment_provider_settlement_items
+      SET payment_intent_id=NULL,payment_id=NULL,invoice_id=NULL WHERE id=$1`, [itemId]);
+    await expect(capture()).rejects.toMatchObject({ code: "invalid_input", table: "public.payment_provider_settlement_batches" } satisfies Partial<PostgresTransferError>);
+  } finally {
+    await managed.owner.query(`UPDATE public.payment_provider_settlement_items
+      SET payment_intent_id=$2,payment_id=$3,invoice_id=NULL WHERE id=$1`, [itemId, paidIntentId, paidPaymentId]);
+    await managed.owner.query("DELETE FROM public.accounting_invoices WHERE id=$1", [otherInvoiceId]);
+    await managed.owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [otherOrderId]);
+    await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [otherClientId]);
+  }
+});

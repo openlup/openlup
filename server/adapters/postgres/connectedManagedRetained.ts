@@ -213,8 +213,19 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     return linked ? [...new Set(linked.flatMap(clientId => byClient(clientId) ?? []))] : null;
   };
   const settlementItems = all.get("public.payment_provider_settlement_items") ?? [];
-  const bySettlementItem = (row: Row): string[] | null => byIntent(row.payment_intent_id)
-    ?? byPayment(row.payment_id) ?? byInvoice(row.invoice_id);
+  const bySettlementItem = (row: Row): string[] | null => {
+    const links = [[row.payment_intent_id, intents], [row.payment_id, payments], [row.invoice_id, invoices]] as const;
+    const orders: string[] = [];
+    for (const [id, rows] of links) {
+      if (id === null) continue;
+      const orderId = rows.get(id)?.order_id;
+      if (typeof orderId !== "string") fail("target_conflict", "public.payment_provider_settlement_items");
+      orders.push(orderId);
+    }
+    if (new Set(orders).size > 1) fail("target_conflict", "public.payment_provider_settlement_items");
+    if (!orders.length) return null;
+    return byOrder(orders[0]) ?? fail("target_conflict", "public.payment_provider_settlement_items");
+  };
   return (relation, row) => {
     if (relation === "public.clients") return byClient(row.id);
     if (relation === "auth.users") return typeof row.id === "string" ? [row.id] : null;
