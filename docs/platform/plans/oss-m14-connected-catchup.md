@@ -1,9 +1,10 @@
 # M14 connected catch-up journey
 
-Status: development-preview parcel 8D-1, local preparation. Code base: `c31cc19bfd1a1108bf14535337fbca167a82f835`. Fresh policy
-revision: `d1800393caad3b101173f8c100625d1c974c451f`; the relevant
-instruction files have no delta from that code base. No main integration was
-performed solely for freshness.
+Status: development-preview parcel 8D-1, committed local candidate. Code base:
+`c31cc19bfd1a1108bf14535337fbca167a82f835`. Fresh policy revision:
+`d1800393caad3b101173f8c100625d1c974c451f`; the relevant instruction
+files have no delta from that code base. Main integration followed a native
+carry-over refusal, not a freshness merge.
 
 ## Outcome and boundary
 
@@ -108,16 +109,14 @@ activation cases refused, followed by successful takeover. Two accepted effects
 were recovered; one uncertain operation remained fenced; the ordinary duty
 executed exactly once and replayed without a new effect. Frozen terms, unsettled
 money, invoice duties, the retained outbox row and active subscriptions survived.
-Selected readiness occurred at 79119 ms from run start; this is no older-snapshot
-RPO/RTO or hosted result. Cleanup failures: zero. Original-mode regression and
-final working-tree checks remain pending before the pre-DCO read.
+Selected readiness occurred at 79119 ms from this local fixture's run start;
+this is no older-snapshot RPO/RTO or hosted result. Cleanup failures: zero.
 
 The original H1/H2 mode also passed on the same executable source, with
 selected readiness at 99319 ms and zero cleanup failures. Its report is
 `.context/scratch/oss-m14-connected-catchup/journey-lZQ9c9/report.json`.
 Redacted Gitleaks 8.30.1 history (1,165 commits) and candidate-diff scans passed;
 working test TypeScript, whitespace and generated-context freshness passed.
-Final lint, publication/inventory and neutrality precede the read packet.
 
 Self-retro: four working-run fixture mistakes cost four attempts before the
 complete journey passed: missing transaction lane, a fault selector with the
@@ -126,8 +125,8 @@ access expectations. Reading the existing transaction, observer and domain SQL
 contracts gave direct repairs with no production abstraction or privilege
 change. Shared-machine waits dominated elapsed time. The two regroup lessons
 above are retained in contributor guidance. Native cycles and delivery retries
-remain zero; DCO, independent review, canonical verification and submission wait
-for the required exact-tree read.
+remain zero; independent review, canonical verification and submission follow
+the accepted exact-tree read.
 
 Final working checks passed: lint (zero errors, 33 existing warnings), test
 TypeScript, generated-context freshness, structural scan, whitespace,
@@ -138,10 +137,17 @@ tracked files have catalogue rows. Capture and restore source files remain
 byte-identical to the code base. No gate budget, package export, issued SQL or
 approval pin changed.
 
-This run stops for the required delegated maintainer read recorded by the
-private packet `.context/scratch/oss-m14-connected-catchup/read-request.md`.
-The candidate is staged and preserved in a private WIP ref; no DCO commit, native
-review, canonical verification, PR, receipt or queue action has occurred. After
-the accepted read: DCO, two new parallel FULL reviews, required canonical
-verification, submission/receipt and queue. The managed continuation still waits
-for the lead's explicit predecessor-landing notice and its separate PR.
+The delegated maintainer accepted exact tree
+`2307e4460727d82f10bd1f0108f54bdd6cfe086a` and candidate diff SHA-256
+`36eb7f105e7b7344ad3810ff2ad5a9ed8a4f7a4a79d7df4b776b5fa1576a3026`.
+It was DCO committed as `1e63d6bdc189cba1ef4859a143a82b143d873027`.
+Native prepare then refused main carry-over. A conflict-free merge from parents
+`1e63d6bdc189cba1ef4859a143a82b143d873027` and
+`d1800393caad3b101173f8c100625d1c974c451f` produced pre-note tree
+`32551b2c5be232982ba704efeac6b4db61a5cc31`. Excluding this task record,
+the stable parcel patch ID is identical against old and new bases:
+`9c333a8c687db77d00f61e7d87c76f7330f160f9`. The only added parcel edit
+is this status/timing note. CD-M14-30 and CD-M14-31 therefore keep the accepted
+read applicable; the integrated candidate still needs two new FULL reviews and
+canonical proof before submission. The managed continuation waits for the
+lead's explicit predecessor-landing notice and its separate PR.
