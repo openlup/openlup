@@ -10,7 +10,7 @@ import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostg
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { captureConnectedNativeStore, connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { captureConnectedNativeStore, connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore, type ManagedIdentityMappingSource } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { createPostgresPartnerAcquisitionPort } from "../../server/adapters/postgres/partners/partnerAcquisitionRoutines.js";
 import { createPartnerAcquisitionSubmitHandler } from "../../server/bff/partners/partnerAcquisitionDirect.js";
@@ -391,7 +391,7 @@ it("maps a representative managed identity projection through the qualified rest
     }
     await sourceClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const fact = (await sourceClient.query<{ cluster: string; database: string; login: string; snapshot: string }>(`SELECT
-      (SELECT system_identifier::text FROM pg_control_system()) AS cluster,current_database() AS database,
+      ${connectedStoreClusterIdentitySql} AS cluster,current_database() AS database,
       session_user::text AS login,txid_current_snapshot()::text AS snapshot`)).rows[0]!;
     observed = fact;
     // The local managed fixture is a PostgreSQL projection, not a provider-auth

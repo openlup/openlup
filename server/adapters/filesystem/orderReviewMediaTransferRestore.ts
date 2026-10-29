@@ -114,6 +114,32 @@ export async function restoreOrderReviewMediaFilesystem(input: {
   }
 }
 
+/**
+ * Prepare a generation outside the configured serving root. The host selects
+ * the serving root only after its DB, object and access barriers have passed.
+ * Reusing the same generation verifies exact replay; a later catch-up uses a
+ * new identifier and leaves the earlier generation inactive for host cleanup.
+ */
+export async function stageOrderReviewMediaFilesystem(input: Omit<Parameters<typeof restoreOrderReviewMediaFilesystem>[0], "root"> & {
+  servingRoot: string;
+  generationId: string;
+}): Promise<{ generationRoot: string; replayed: boolean; objects: number; temporary: number }> {
+  if (!isAbsolute(input.servingRoot) || !/^[A-Za-z0-9_-]{1,128}$/.test(input.generationId)) {
+    throw new ObjectTransferError("invalid_input");
+  }
+  const servingRoot = resolve(input.servingRoot);
+  const parent = dirname(servingRoot);
+  if (await realpath(parent) !== parent) throw new ObjectTransferError("denied");
+  const generationRoot = join(parent, `.openlup-inactive-media-${input.generationId}`);
+  if (generationRoot === servingRoot) throw new ObjectTransferError("invalid_input");
+  const result = await restoreOrderReviewMediaFilesystem({
+    root: generationRoot, census: input.census, objects: input.objects, temporary: input.temporary,
+    maximumObjectBytes: input.maximumObjectBytes, maximumTotalBytes: input.maximumTotalBytes,
+    maximumFiles: input.maximumFiles,
+  });
+  return { generationRoot, ...result };
+}
+
 async function compare(root: string, expected: OrderReviewMediaFilesystemCensus, limits: {
   maximumObjectBytes: number; maximumTotalBytes: number; maximumFiles: number;
 }): Promise<void> {
