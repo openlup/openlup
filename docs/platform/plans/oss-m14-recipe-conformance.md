@@ -175,6 +175,15 @@ appears in the `CREATE ROLE` statement text and may be recorded by target
 statement logging. The role uses a single-use credential, and the proof
 attempts role and grant removal in `finally`; operator teardown remains required
 after a cleanup failure or abrupt process kill.
+Main then advanced through orphaned-agent-protocol cleanup, changing the
+publication catalogue; native `prepare` refused carry-over. A second forced,
+conflict-free CD-M14-30 merge has parents `bb2807d5731dcdfec56a0afa04ead3dacce7adfa`
+and `d1800393caad3b101173f8c100625d1c974c451f`. Its unedited automatic
+tree before this note is `153a637714751565a519a8b92f0cf9abf7a1b0c7`.
+The parcel patch-id excluding this task record is
+`bf89a037fc8b02cc2902828c912196d9d85e1e36` against both old base
+`c31cc19b` and new main `d1800393`; only this note was added locally to the
+automatic merge. Full native review will bind to the final merge tree.
 
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier
