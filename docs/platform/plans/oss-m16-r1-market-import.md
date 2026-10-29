@@ -802,3 +802,28 @@ the initiating merge's option alone did not protect the earlier commit.
 Unsigned integration plus no-rewrite authority led to this replacement branch,
 not a bypass. Moving main during long proof led to the reserved enqueue window,
 not another uncontrolled verification loop.
+
+## Reserved delivery window after 10A
+
+The owner-delegate opened the CD-M16-21 exclusive enqueue window after M14
+10A (#446), ending 2026-10-29 23:55Z. Current policy and code review base are
+`b5451b24c2dbb753f54965226d9c40972d70f356`. The current guide and changed
+contribution section were read: the new opt-in recipe runner retains its
+disposable-target boundary and adds no default hosted target. R1 changes no
+runner, command inventory, provider control or public instruction.
+
+The single authorized catch-up merge is
+`2aace47d8577b3f2c5f923782c9382b479f01e8a`, with parents the replacement
+preparation head and current main. It merged cleanly with Bart's sign-off;
+the catalogue retains both inventories. Package inputs, approved cap values,
+S1 release metadata, pending fragment and all R1 witnesses remain unchanged.
+The native session, continuation and earlier findings remain in this worktree.
+Fresh current-candidate review and complete verification precede readiness,
+receipt and enqueue. Another main-move refusal stops this window; there is no
+authority for a second catch-up merge or another continuation. At most one
+material-finding repair is allowed within the window. Exact final gate,
+review, verification and queue observations stay in the existing ignored
+delivery evidence after source freeze.
+
+Self-retro: the reserved window replaces repeated attempts against a moving
+base. Check DCO before every push and stop on a new main-move refusal.
