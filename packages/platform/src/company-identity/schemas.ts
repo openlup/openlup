@@ -14,7 +14,8 @@ import {
   companyIdentityVerificationLevelSchema,
   isCompleteCompanyIdentity,
 } from "@openlup/core/company-identity";
-
+import type { CompanyIdentityRules } from "./contracts/index.js";
+import { defaultCompanyIdentityRules } from "./rules.js";
 
 export const companyIdentityCompanySchema = z
   .object({
@@ -24,34 +25,39 @@ export const companyIdentityCompanySchema = z
   })
   .strict();
 
-// Extend the core input shape only for the existing registry-specific fields.
-export const companyIdentityLookupRequestSchema = coreCompanyIdentityLookupRequestSchema.in
-  .extend({
-    manualCompany: companyIdentityCompanySchema.partial({
-      identifierKind: true,
-      identifierValue: true,
-      country: true,
-      registryStatus: true,
-    }).optional(),
-  })
-  .transform((request) => {
-    const identifierValue = request.country === "PL" && request.identifierKind === "pl_nip"
-      ? normalizeCompanyTaxIdentifier(request.identifierValue) ?? request.identifierValue
-      : request.identifierValue;
-    const normalized = normalizeCompanyIdentityLookupRequest({ ...request, identifierValue });
-    return {
-      ...normalized,
-      ...(normalized.manualCompany ? {
-        manualCompany: { ...request.manualCompany, ...normalized.manualCompany },
-      } : {}),
-    };
-  });
+/** Build strict host-extension validators with explicit identifier normalization. */
+export function createCompanyIdentitySchemas(rules: CompanyIdentityRules = defaultCompanyIdentityRules) {
+  // Extend the core input shape only for the existing registry-specific fields.
+  const companyIdentityLookupRequestSchema = coreCompanyIdentityLookupRequestSchema.in
+    .extend({
+      manualCompany: companyIdentityCompanySchema.partial({
+        identifierKind: true,
+        identifierValue: true,
+        country: true,
+        registryStatus: true,
+      }).optional(),
+    })
+    .transform((request) => {
+      const identifierValue = rules.normalizeIdentifier(request.country, request.identifierKind, request.identifierValue);
+      const normalized = normalizeCompanyIdentityLookupRequest({ ...request, identifierValue });
+      return {
+        ...normalized,
+        ...(normalized.manualCompany ? {
+          manualCompany: { ...request.manualCompany, ...normalized.manualCompany },
+        } : {}),
+      };
+    });
+
+  return { companyIdentityCompanySchema, companyIdentityLookupRequestSchema, companyIdentityLookupResponseSchema };
+}
 
 export const companyIdentityLookupResponseSchema = coreCompanyIdentityLookupResponseSchema
   .extend({
     company: companyIdentityCompanySchema.nullable(),
   })
   .strict();
+
+export const { companyIdentityLookupRequestSchema } = createCompanyIdentitySchemas();
 
 export type CompanyIdentityLookupRequest = z.infer<typeof companyIdentityLookupRequestSchema>;
 export type CompanyIdentityLookupResponse = z.infer<typeof companyIdentityLookupResponseSchema>;
@@ -73,24 +79,10 @@ export {
   isCompleteCompanyIdentity,
 };
 
-export function isValidCompanyIdentifier(country: string, identifierKind: string, value: string): boolean {
+export function isValidCompanyIdentifier(
+  country: string, identifierKind: string, value: string,
+  rules: CompanyIdentityRules = defaultCompanyIdentityRules,
+): boolean {
   if (identifierKind === "custom") return value.trim().length > 0;
-  if (country === "PL" && identifierKind === "pl_nip") return isValidCompanyTaxIdentifier(value);
-  return value.trim().length > 0;
-}
-
-function normalizeCompanyTaxIdentifier(value: string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const trimmed = String(value).trim();
-  const withoutCountryPrefix = trimmed.replace(/^\s*PL[\s-]*/i, "");
-  const digits = withoutCountryPrefix.replace(/\D/g, "");
-  return digits.length > 0 ? digits : null;
-}
-
-function isValidCompanyTaxIdentifier(value: string | null | undefined): boolean {
-  const digits = normalizeCompanyTaxIdentifier(value);
-  if (!digits || !/^\d{10}$/.test(digits)) return false;
-  const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
-  const checksum = weights.reduce((sum, weight, index) => sum + weight * Number(digits[index]), 0) % 11;
-  return checksum !== 10 && checksum === Number(digits[9]);
+  return rules.isValidIdentifier(country, identifierKind, value);
 }

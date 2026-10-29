@@ -2,12 +2,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { canonicalAddressKey } from "@openlup/platform/shipping";
 import { createConfiguratorDraftPersistedState, getConfiguratorDraftStorageKey, PUBLIC_CONFIGURATOR_DRAFT_SCOPE, serializeConfiguratorIntent } from "./configuratorDraftCodec";
-import { defaultConfiguratorFormData } from "./configuratorFormStore";
+import { defaultConfiguratorFormData, type BusinessInvoiceAddress } from "./configuratorFormStore";
 
 beforeEach(() => localStorage.clear());
 describe("market identity draft fit", () => {
   it("reloads permitted shipping intent without final invoice identity", () => {
-    const data = { ...defaultConfiguratorFormData, firstName: "Example", street: "Example Road 1", postalCode: "10001", city: "Example City", country: "US", pendingDeliveryOptionId: "delivery-fixture", businessInvoice: { requested: true, taxIdInput: "fixture-private-tax", lookupStatus: "found" as const, lookupError: null, lookupResult: null, acceptedData: { companyName: "Fixture Private Company", taxId: "fixture-private-tax", address: { line1: "Invoice Road", city: "Invoice City", postalCode: "10001", country: "PL" as const } } } };
+    const data = { ...defaultConfiguratorFormData, firstName: "Example", street: "Example Road 1", postalCode: "10001", city: "Example City", country: "US", pendingDeliveryOptionId: "delivery-fixture", businessInvoice: { requested: true, taxIdInput: "fixture-private-tax", lookupStatus: "found" as const, lookupError: null, lookupResult: null, acceptedData: { companyName: "Fixture Private Company", taxId: "fixture-private-tax", address: { line1: "Invoice Road", city: "Invoice City", postalCode: "10001", country: defaultConfiguratorFormData.country as BusinessInvoiceAddress["country"] } } } };
     const form = serializeConfiguratorIntent(data, PUBLIC_CONFIGURATOR_DRAFT_SCOPE);
     const key = getConfiguratorDraftStorageKey(PUBLIC_CONFIGURATOR_DRAFT_SCOPE);
     expect(createConfiguratorDraftPersistedState(key).save({ form, step: 1, maxStep: 1 })).toBe("saved");

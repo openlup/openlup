@@ -1,11 +1,12 @@
+import { rules } from "./fixtures.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCompanyIdentityLookupPort, type CompanyIdentityProvider } from "../../src/company-identity/server/index.js";
 
 const request = {
-  country: "PL",
-  identifierKind: "pl_nip",
-  identifierValue: "1234563218",
+  country: "ZZ",
+  identifierKind: "national",
+  identifierValue: "1236",
   purpose: "checkout_invoice" as const,
 };
 
@@ -43,11 +44,11 @@ describe("company identity lookup service", () => {
     });
   });
 
-  it("rejects invalid PL NIP before provider calls", async () => {
+  it("rejects invalid synthetic identifier before provider calls", async () => {
     const provider = vi.fn();
     const port = createCompanyIdentityLookupPort({
-      PL: [{ providerKind: "test", lookup: provider }],
-    });
+      ZZ: [{ providerKind: "test", lookup: provider }],
+    }, rules);
 
     await expect(port.lookupCompanyIdentity({
       ...request,
@@ -56,73 +57,73 @@ describe("company identity lookup service", () => {
     expect(provider).not.toHaveBeenCalled();
   });
 
-  it("continues from MF not_found to GUS complete data", async () => {
-    const mf = provider("mf_vat_whitelist", { status: "not_found" });
-    const gus = provider("gus_ceidg", { status: "found" });
+  it("continues from first absent source to later complete data", async () => {
+    const mf = provider("fixture_first", { status: "not_found" });
+    const gus = provider("fixture_later", { status: "found" });
     const port = createCompanyIdentityLookupPort({
-      PL: [mf, gus],
+      ZZ: [mf, gus],
     });
 
     await expect(port.lookupCompanyIdentity(request)).resolves.toMatchObject({
       status: "found",
       verificationLevel: "registry_verified",
       company: {
-        legalName: "Example Company Sp. z o.o.",
+        legalName: "Example Company LLC",
         registeredAddress: { city: "ExampleCity" },
       },
       sources: [
-        { providerKind: "mf_vat_whitelist", status: "not_found" },
-        { providerKind: "gus_ceidg", status: "found" },
+        { providerKind: "fixture_first", status: "not_found" },
+        { providerKind: "fixture_later", status: "found" },
       ],
     });
   });
 
-  it("continues past a complete MF personal-name JDG record and prefers a fuller CEIDG name", async () => {
-    const mf = provider("mf_vat_whitelist", {
+  it("continues past a complete first personal-name record and prefers a fuller later name", async () => {
+    const mf = provider("fixture_first", {
       status: "found",
-      legalName: "ALFA BETA",
+      legalName: "Alfa Beta",
       regon: "123456789",
-      address: { line1: "Example Road 3", postalCode: "00-001", city: "Example City", country: "PL" },
+      address: { line1: "Example Road 3", postalCode: "00-001", city: "Example City", country: "ZZ" },
     });
-    const ceidg = provider("gus_ceidg", {
+    const ceidg = provider("fixture_later", {
       status: "found",
       legalName: "Example Services Alfa Beta",
       regon: "123456789",
-      address: { line1: "Example Road 3", postalCode: "00-001", city: "Example City", country: "PL" },
+      address: { line1: "Example Road 3", postalCode: "00-001", city: "Example City", country: "ZZ" },
     });
-    const port = createCompanyIdentityLookupPort({ PL: [mf, ceidg] });
+    const port = createCompanyIdentityLookupPort({ ZZ: [mf, ceidg] }, rules);
 
-    await expect(port.lookupCompanyIdentity({ ...request, identifierValue: "1234563218" })).resolves.toMatchObject({
+    await expect(port.lookupCompanyIdentity({ ...request, identifierValue: "1236" })).resolves.toMatchObject({
       status: "found",
       verificationLevel: "registry_verified",
       company: { legalName: "Example Services Alfa Beta" },
       sources: [
-        { providerKind: "mf_vat_whitelist", status: "found" },
-        { providerKind: "gus_ceidg", status: "found" },
+        { providerKind: "fixture_first", status: "found" },
+        { providerKind: "fixture_later", status: "found" },
       ],
     });
   });
 
-  it("does not call later providers when MF returns a complete company legal name", async () => {
-    const mf = provider("mf_vat_whitelist", {
+  it("does not call later providers when the first provider returns a complete company legal name", async () => {
+    const mf = provider("fixture_first", {
       status: "found",
-      legalName: '"Example Company" SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ',
+      legalName: 'Example Company LLC',
     });
-    const ceidg = provider("gus_ceidg", {
+    const ceidg = provider("fixture_later", {
       status: "found",
-      legalName: "Ignored Enrichment Sp. z o.o.",
+      legalName: "Ignored Enrichment LLC",
     });
-    const port = createCompanyIdentityLookupPort({ PL: [mf, ceidg] });
+    const port = createCompanyIdentityLookupPort({ ZZ: [mf, ceidg] }, rules);
 
     await expect(port.lookupCompanyIdentity(request)).resolves.toMatchObject({
       status: "found",
-      company: { legalName: '"Example Company" SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ' },
-      sources: [{ providerKind: "mf_vat_whitelist", status: "found" }],
+      company: { legalName: 'Example Company LLC' },
+      sources: [{ providerKind: "fixture_first", status: "found" }],
     });
     expect(ceidg.lookup).not.toHaveBeenCalled();
   });
   it("retains ordered unavailable and absent evidence", async () => {
-    const port = createCompanyIdentityLookupPort({ PL: [
+    const port = createCompanyIdentityLookupPort({ ZZ: [
       provider("fixture_a", { status: "provider_unavailable" }),
       provider("fixture_b", { status: "not_found" }),
     ] });
@@ -136,7 +137,7 @@ describe("company identity lookup service", () => {
   });
 
   it("retains partial identity when enrichment is unavailable", async () => {
-    const port = createCompanyIdentityLookupPort({ PL: [
+    const port = createCompanyIdentityLookupPort({ ZZ: [
       provider("fixture_a", { status: "found", legalName: "Example Supply Ltd", regon: "1234567", address: null }),
       provider("fixture_b", { status: "provider_unavailable" }),
     ] });
@@ -151,7 +152,7 @@ describe("company identity lookup service", () => {
   });
 
   it("distinguishes exhausted absence from unavailability", async () => {
-    const port = createCompanyIdentityLookupPort({ PL: [provider("fixture_a", { status: "not_found" })] });
+    const port = createCompanyIdentityLookupPort({ ZZ: [provider("fixture_a", { status: "not_found" })] });
     await expect(port.lookupCompanyIdentity(request)).resolves.toMatchObject({
       status: "not_found", verificationLevel: "invalid", company: null, warnings: ["not_found"],
     });
@@ -160,9 +161,40 @@ describe("company identity lookup service", () => {
   it("propagates provider throws and never calls the next provider", async () => {
     const failed = { providerKind: "fixture_a", lookup: vi.fn().mockRejectedValue(new Error("fixture unavailable")) };
     const later = provider("fixture_b", { status: "not_found" });
-    await expect(createCompanyIdentityLookupPort({ PL: [failed, later] }).lookupCompanyIdentity(request))
+    await expect(createCompanyIdentityLookupPort({ ZZ: [failed, later] }).lookupCompanyIdentity(request))
       .rejects.toThrow("fixture unavailable");
     expect(later.lookup).not.toHaveBeenCalled();
+  });
+
+  it("stops on the last complete provider without asking the continuation rule", async () => {
+    const shouldSeekFullerLegalName = vi.fn(() => true);
+    const port = createCompanyIdentityLookupPort({ ZZ: [provider("fixture", { status: "found" })] }, { ...rules, shouldSeekFullerLegalName });
+    await expect(port.lookupCompanyIdentity(request)).resolves.toMatchObject({ status: "found" });
+    expect(shouldSeekFullerLegalName).not.toHaveBeenCalled();
+  });
+  it("defaults to country-neutral non-empty validation with no fuller-name preference", async () => {
+    const first = provider("first", { status: "found", legalName: "Alfa Beta", address: null });
+    const later = provider("later", { status: "found", legalName: "Services Alfa Beta", address: null });
+    const port = createCompanyIdentityLookupPort({ ZZ: [first, later] });
+    await expect(port.lookupCompanyIdentity({ ...request, identifierValue: "any-non-empty" })).resolves.toMatchObject({
+      status: "partial", company: { legalName: "Alfa Beta" }, sources: [{ providerKind: "first" }, { providerKind: "later" }],
+    });
+  });
+  it("uses the injected fuller-name comparison independently of country-specific continuation", async () => {
+    const port = createCompanyIdentityLookupPort({ US: [
+      provider("first", { status: "found", legalName: "Alfa Beta", address: null }),
+      provider("later", { status: "found", legalName: "Services Alfa Beta", address: null }),
+    ] }, rules);
+    await expect(port.lookupCompanyIdentity({ ...request, country: "US" })).resolves.toMatchObject({
+      status: "partial", company: { legalName: "Services Alfa Beta" },
+    });
+  });
+  it("keeps custom identifier validation in the engine rather than in host policy", async () => {
+    const isValidIdentifier = vi.fn(() => false);
+    const port = createCompanyIdentityLookupPort({}, { ...rules, isValidIdentifier });
+    await expect(port.lookupCompanyIdentity({ ...request, identifierKind: "custom", identifierValue: "manual" })).resolves.toMatchObject({ status: "not_found", verificationLevel: "manual_unverified" });
+    await expect(port.lookupCompanyIdentity({ ...request, identifierKind: "custom", identifierValue: " " })).resolves.toMatchObject({ status: "invalid" });
+    expect(isValidIdentifier).not.toHaveBeenCalled();
   });
 
 });
@@ -171,14 +203,14 @@ function provider(
   providerKind: string,
   {
     status,
-    legalName = "Example Company Sp. z o.o.",
+    legalName = "Example Company LLC",
     regon = "123456789",
-    address = { line1: "Example Street 11", postalCode: "32-091", city: "ExampleCity", country: "PL" as const },
+    address = { line1: "Example Street 11", postalCode: "32-091", city: "ExampleCity", country: "ZZ" as const },
   }: {
     status: "found" | "not_found" | "provider_unavailable";
     legalName?: string;
     regon?: string;
-    address?: { line1: string; postalCode: string; city: string; country: "PL" } | null;
+    address?: { line1: string; postalCode: string; city: string; country: "ZZ" } | null;
   },
 ): CompanyIdentityProvider {
   return {

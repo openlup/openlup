@@ -4250,6 +4250,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/company-identity/rules.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/company-identity/schemas.ts",
       "class": "public-output"
     },
@@ -7154,6 +7158,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/company-identity/fixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/composition/accountSupportContribution.test.ts",
       "class": "public-output"
     },
@@ -7655,6 +7663,10 @@
     },
     {
       "path": "packages/platform/test/market-packs/fiscalProfile.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/fixtures.ts",
       "class": "public-output"
     },
     {

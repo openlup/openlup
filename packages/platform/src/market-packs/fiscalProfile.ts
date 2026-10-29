@@ -1,23 +1,3 @@
-/**
- * What this deployment invoices under, and the smallest amount it will sell for.
- *
- * Both used to be constants: a tax profile named after this shop's product
- * category, and a payable floor written as the literal `100`. Neither is a
- * platform fact. The floor in particular was not even a floor - it was *one
- * major unit* frozen at an exponent of two, which is a hundredfold
- * overstatement in any currency that has no hundredths.
- *
- * These live beside the currency module rather than inside it because that file
- * is two lines under the repository's source-size cap, and beside rather than
- * under `src/domains/commerce/` because the settlement profile is read by
- * commerce, catalog and the checkout composer alike; putting it in any one of
- * them would make the other two import across a domain boundary.
- *
- * `COMMERCE_` rather than `PLATFORM_` on every key below, for the reason E2-F0
- * established: only the prefixes in `GOVERNED_PREFIXES` are enforced by the
- * env/flag discovery guard, so a `PLATFORM_`-named key would be droppable,
- * renameable and misspellable with nothing failing.
- */
 import { currencyExponent } from "./currencyExponent.js";
 
 /**
@@ -41,22 +21,6 @@ const FISCAL_CATEGORY_ENV_KEY = "COMMERCE_FISCAL_CATEGORY";
 const FISCAL_VAT_RATE_BPS_ENV_KEY = "COMMERCE_FISCAL_VAT_RATE_BPS";
 const FISCAL_LEGAL_BASIS_ENV_KEY = "COMMERCE_FISCAL_LEGAL_BASIS";
 const MINIMUM_PRODUCT_PAYABLE_ENV_KEY = "COMMERCE_MIN_PRODUCT_PAYABLE_MINOR";
-
-/**
- * The reference deployment's fiscal facts, and the value every unset key falls
- * back to. It states its jurisdiction rather than borrowing the settlement
- * region: the region selects which price list is read, the jurisdiction names
- * whose tax law the invoice cites, and a platform that sells from one country's
- * list into another's regime is an ordinary arrangement - the quote port's own
- * tests pin exactly that case.
- */
-export const PLATFORM_DEFAULT_FISCAL_PROFILE: FiscalProfile = {
-  included: true,
-  country: "PL",
-  category: "pet_food",
-  vatRateBps: 800,
-  legalBasis: "PL VAT Annex 3 item 10c",
-};
 
 /** Raised when configuration names a fiscal fact the platform cannot make sense of. */
 export class InvalidFiscalProfileError extends Error {
@@ -92,24 +56,12 @@ export class InvalidMinimumProductPayableError extends Error {
   }
 }
 
-/**
- * Reads the fiscal profile from an environment record.
- *
- * Same absent-versus-malformed rule as the rest of the settlement profile: an
- * **absent** key yields the documented default, which is what keeps every
- * existing deployment exactly where it is; a **present but malformed** value
- * throws by name. Silently correcting a misconfigured fiscal fact to this
- * shop's own is how a platform issues one jurisdiction's reduced-rate invoice in
- * a country that has no such rate.
- *
- * The four keys are independent on purpose. A deployment that keeps the rate but
- * cites a different statute, or keeps the statute but sells a different
- * category, should not have to restate the facts that did not move.
- */
+/** Read independent fiscal facts, using the caller's fallback only for absent/blank values. */
 export function readFiscalProfile(
-  env: Readonly<Record<string, string | undefined>> = {},
+  env: Readonly<Record<string, string | undefined>>,
+  fallback: FiscalProfile,
 ): FiscalProfile {
-  const country = readText(env, FISCAL_COUNTRY_ENV_KEY, PLATFORM_DEFAULT_FISCAL_PROFILE.country);
+  const country = readText(env, FISCAL_COUNTRY_ENV_KEY, fallback.country);
   if (!/^[A-Z]{2}$/.test(country)) {
     throw new InvalidFiscalProfileError(
       FISCAL_COUNTRY_ENV_KEY, country, "an ISO 3166-1 alpha-2 code (two uppercase letters)",
@@ -120,11 +72,11 @@ export function readFiscalProfile(
   return {
     included: true,
     country,
-    category: readText(env, FISCAL_CATEGORY_ENV_KEY, PLATFORM_DEFAULT_FISCAL_PROFILE.category),
+    category: readText(env, FISCAL_CATEGORY_ENV_KEY, fallback.category),
     vatRateBps: rawRate === undefined || rawRate === ""
-      ? PLATFORM_DEFAULT_FISCAL_PROFILE.vatRateBps
+      ? fallback.vatRateBps
       : parseBasisPoints(rawRate),
-    legalBasis: readText(env, FISCAL_LEGAL_BASIS_ENV_KEY, PLATFORM_DEFAULT_FISCAL_PROFILE.legalBasis),
+    legalBasis: readText(env, FISCAL_LEGAL_BASIS_ENV_KEY, fallback.legalBasis),
   };
 }
 

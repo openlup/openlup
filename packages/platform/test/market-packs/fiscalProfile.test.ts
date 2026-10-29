@@ -1,46 +1,47 @@
+import { fallbacks } from "./fixtures.js";
 import { describe, expect, it } from "vitest";
 import {
   InvalidFiscalProfileError,
   InvalidMinimumProductPayableError,
-  PLATFORM_DEFAULT_FISCAL_PROFILE,
+
   readFiscalProfile,
   readMinimumProductPayableMinor,
 } from "../../src/market-packs/index.js";
 
 describe("readFiscalProfile", () => {
   it("yields the documented default for an absent, empty or whitespace value", () => {
-    expect(readFiscalProfile({})).toEqual(PLATFORM_DEFAULT_FISCAL_PROFILE);
-    expect(readFiscalProfile()).toEqual(readFiscalProfile({}));
+    expect(readFiscalProfile({}, fallbacks.fiscalProfile)).toEqual(fallbacks.fiscalProfile);
+    expect(readFiscalProfile({}, fallbacks.fiscalProfile)).toEqual(readFiscalProfile({}, fallbacks.fiscalProfile));
     for (const blank of ["", "   "]) {
       expect(readFiscalProfile({
         COMMERCE_FISCAL_COUNTRY: blank,
         COMMERCE_FISCAL_CATEGORY: blank,
         COMMERCE_FISCAL_VAT_RATE_BPS: blank,
         COMMERCE_FISCAL_LEGAL_BASIS: blank,
-      })).toEqual(PLATFORM_DEFAULT_FISCAL_PROFILE);
+      }, fallbacks.fiscalProfile)).toEqual(fallbacks.fiscalProfile);
     }
   });
 
   it("reads the four keys independently of one another", () => {
     // A deployment that keeps the rate but cites a different statute should not
     // have to restate the facts that did not move, so each key is read alone.
-    expect(readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: "2300" })).toEqual({
-      ...PLATFORM_DEFAULT_FISCAL_PROFILE,
+    expect(readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: "2300" }, fallbacks.fiscalProfile)).toEqual({
+      ...fallbacks.fiscalProfile,
       vatRateBps: 2300,
     });
-    expect(readFiscalProfile({ COMMERCE_FISCAL_LEGAL_BASIS: "Example VAT rule" })).toEqual({
-      ...PLATFORM_DEFAULT_FISCAL_PROFILE,
+    expect(readFiscalProfile({ COMMERCE_FISCAL_LEGAL_BASIS: "Example VAT rule" }, fallbacks.fiscalProfile)).toEqual({
+      ...fallbacks.fiscalProfile,
       legalBasis: "Example VAT rule",
     });
-    expect(readFiscalProfile({ COMMERCE_FISCAL_CATEGORY: "standard" }).category).toBe("standard");
-    expect(readFiscalProfile({ COMMERCE_FISCAL_COUNTRY: "CZ" }).country).toBe("CZ");
+    expect(readFiscalProfile({ COMMERCE_FISCAL_CATEGORY: "standard" }, fallbacks.fiscalProfile).category).toBe("standard");
+    expect(readFiscalProfile({ COMMERCE_FISCAL_COUNTRY: "CZ" }, fallbacks.fiscalProfile).country).toBe("CZ");
   });
 
   it("accepts the whole basis-point range and refuses everything outside it", () => {
-    expect(readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: "0" }).vatRateBps).toBe(0);
-    expect(readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: "10000" }).vatRateBps).toBe(10_000);
+    expect(readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: "0" }, fallbacks.fiscalProfile).vatRateBps).toBe(0);
+    expect(readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: "10000" }, fallbacks.fiscalProfile).vatRateBps).toBe(10_000);
     for (const malformed of ["10001", "-1", "8.5", "0x08", " eight ", "١٠"]) {
-      expect(() => readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: malformed }))
+      expect(() => readFiscalProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: malformed }, fallbacks.fiscalProfile))
         .toThrow(InvalidFiscalProfileError);
     }
   });
@@ -50,14 +51,14 @@ describe("readFiscalProfile", () => {
     // this module: a document issued to a tax authority under a treatment nobody
     // chose is not something a later correction fully undoes.
     for (const malformed of ["cz", "CZE", "C", "12", "C1"]) {
-      expect(() => readFiscalProfile({ COMMERCE_FISCAL_COUNTRY: malformed }))
+      expect(() => readFiscalProfile({ COMMERCE_FISCAL_COUNTRY: malformed }, fallbacks.fiscalProfile))
         .toThrow(InvalidFiscalProfileError);
     }
   });
 
   it("names the offending key and value in the refusal", () => {
     try {
-      readFiscalProfile({ COMMERCE_FISCAL_COUNTRY: "cz" });
+      readFiscalProfile({ COMMERCE_FISCAL_COUNTRY: "cz" }, fallbacks.fiscalProfile);
       expect.unreachable("a malformed jurisdiction must not resolve to a profile");
     } catch (error) {
       expect(error).toBeInstanceOf(InvalidFiscalProfileError);

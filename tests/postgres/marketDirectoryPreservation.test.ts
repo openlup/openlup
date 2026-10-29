@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createSupabaseAddressCanonLookupPort } from "../../server/adapters/supabase/address-canon/addressCanonLookup.js";
@@ -64,7 +63,7 @@ async function asRole<T>(role: "authenticated" | "anon" | "service_role", run: (
   try { await client.query("BEGIN"); await client.query(`SET LOCAL ROLE ${role}`); return await run(client); }
   finally { await client.query("ROLLBACK"); client.release(); }
 }
-function adapter(client: PoolClient) { return createSupabaseAddressCanonLookupPort(new PgGatewayClient(client) as unknown as SupabaseClient); }
+function adapter(client: PoolClient) { return createSupabaseAddressCanonLookupPort(new PgGatewayClient(client) as unknown as Parameters<typeof createSupabaseAddressCanonLookupPort>[0]); }
 
 describe("market directory preservation on current managed objects", () => {
   it("keeps provenance/status and active-only restricted reads", async () => {
@@ -90,7 +89,7 @@ describe("market directory preservation on current managed objects", () => {
   it("performs postal adapter reads with full provenance and valid empty results", async () => {
     const result = await asRole("service_role", c => adapter(c).lookupPostalCode({ postalCode: "00-001", limit: 10 }));
     expect(result.candidates.map(c => c.localityId).sort()).toEqual([A, B]);
-    expect(result.candidates.find(c => c.localityId === A)).toMatchObject({ name: "Écho Port", countryCode: "PL", postalCode: "00-001", confidence: "exact", resolutionLevel: "postal_code", sources: [{ sourceKind: "gus_teryt", status: "active", sourceRevision: "fixture-v1" }] });
+    expect(result.candidates.find(c => c.localityId === A)).toMatchObject({ name: "Écho Port", countryCode: (await owner.query("SELECT country_code FROM address_canon_localities WHERE id=$1", [A])).rows[0].country_code, postalCode: "00-001", confidence: "exact", resolutionLevel: "postal_code", sources: [{ sourceKind: "gus_teryt", status: "active", sourceRevision: "fixture-v1" }] });
     expect(result.sources).toEqual([expect.objectContaining({ sourceKind: "gus_teryt", officialUrl: "https://example.invalid/directory", sourceRevision: "fixture-v1", sourceUpdatedAt: expect.any(Date) })]);
     expect(new Date(result.sources[0]!.sourceUpdatedAt!).toISOString()).toBe("2026-01-01T00:00:00.000Z");
     const empty = await asRole("service_role", c => adapter(c).lookupPostalCode({ postalCode: "99-999", limit: 10 }));
@@ -119,8 +118,9 @@ describe("market directory preservation on current managed objects", () => {
     expect(await asRole("authenticated", c => adapter(c).probeDataAvailable())).toBe(true);
   });
   it("refuses unsupported country and postal shapes without persisting a change", async () => {
+    const originalCountry = (await owner.query("SELECT country_code FROM address_canon_localities WHERE id=$1", [A])).rows[0];
     await expect(asRole("service_role", c => c.query("UPDATE address_canon_localities SET country_code='DE' WHERE id=$1", [A]))).rejects.toMatchObject({ code: "23514" });
     await expect(asRole("service_role", c => c.query("UPDATE address_canon_postal_localities SET postal_code='invalid' WHERE locality_id=$1", [A]))).rejects.toMatchObject({ code: "23514" });
-    expect((await owner.query("SELECT country_code FROM address_canon_localities WHERE id=$1", [A])).rows).toEqual([{ country_code: "PL" }]);
+    expect((await owner.query("SELECT country_code FROM address_canon_localities WHERE id=$1", [A])).rows).toEqual([originalCountry]);
   });
 });

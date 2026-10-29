@@ -1,3 +1,4 @@
+import { rules } from "./fixtures.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpRequest as VercelRequest, HttpResponse as VercelResponse } from "../../src/http/index.js";
 import { createBffResponder } from "../../src/bff/index.js";
@@ -116,16 +117,25 @@ describe("company identity lookup handler", () => {
     expect(lookupCompanyIdentity).toHaveBeenCalledTimes(3);
   });
 
+  it("normalizes through the selected rule before lookup and the shared cache key", async () => {
+    const lookupCompanyIdentity = vi.fn().mockResolvedValue(response());
+    const handler = createCompanyIdentityLookupHandler({ lookupPort: { lookupCompanyIdentity } }, createBffResponder(), rules);
+    await handler(request("12-36"), createResponse());
+    await handler(request("1236"), createResponse());
+    expect(lookupCompanyIdentity).toHaveBeenCalledTimes(1);
+    expect(lookupCompanyIdentity).toHaveBeenCalledWith(expect.objectContaining({ identifierValue: "1236" }));
+  });
+
 });
 
-function request(identifierValue = "1234563218"): VercelRequest & { body: Record<string, unknown> } {
+function request(identifierValue = "1236"): VercelRequest & { body: Record<string, unknown> } {
   return {
     method: "POST",
     query: {},
     headers: {},
     body: {
-      country: "PL",
-      identifierKind: "pl_nip",
+      country: "ZZ",
+      identifierKind: "national",
       identifierValue,
       purpose: "checkout_invoice",
     },
@@ -138,15 +148,15 @@ function response() {
     status: "found" as const,
     verificationLevel: "registry_verified" as const,
     company: {
-      country: "PL",
-      identifierKind: "pl_nip",
-      identifierValue: "1234563218",
+      country: "ZZ",
+      identifierKind: "national",
+      identifierValue: "1236",
       legalName: "Example Company Sp. z o.o.",
       registeredAddress: {
         line1: "Testowa 1",
         postalCode: "00-001",
         city: "Example City",
-        country: "PL",
+        country: "ZZ",
       },
       registryStatus: "active",
       regon: null,

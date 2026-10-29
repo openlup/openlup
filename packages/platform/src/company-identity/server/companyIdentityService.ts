@@ -1,5 +1,7 @@
 import {
   COMPANY_IDENTITY_CONTRACT_VERSION,
+  defaultCompanyIdentityRules,
+  type CompanyIdentityRules,
   isCompleteCompanyIdentity,
   isValidCompanyIdentifier,
   type CompanyIdentityCompany,
@@ -23,10 +25,11 @@ export interface CompanyIdentityProviderResult {
 
 export function createCompanyIdentityLookupPort(
   providersByCountry: Record<string, CompanyIdentityProvider[]>,
+  rules: CompanyIdentityRules = defaultCompanyIdentityRules,
 ): CompanyIdentityLookupPort {
   return {
     async lookupCompanyIdentity(request) {
-      if (!isValidCompanyIdentifier(request.country, request.identifierKind, request.identifierValue)) {
+      if (!isValidCompanyIdentifier(request.country, request.identifierKind, request.identifierValue, rules)) {
         return response("invalid", "invalid", null, [], ["invalid_identifier"]);
       }
       if (request.identifierKind === "custom") {
@@ -53,8 +56,8 @@ export function createCompanyIdentityLookupPort(
         const result = await provider.lookup(request);
         sources.push(result.source);
         if (result.status === "provider_unavailable") hasUnavailable = true;
-        if (result.company && (!best || isMoreComplete(result.company, best))) best = result.company;
-        if (best && isCompleteCompanyIdentity(best) && !shouldContinueForFullerLegalName(request, best, providers, index)) {
+        if (result.company && (!best || isMoreComplete(result.company, best, rules))) best = result.company;
+        if (best && isCompleteCompanyIdentity(best) && !(index < providers.length - 1 && rules.shouldSeekFullerLegalName(request, best))) {
           return response("found", "registry_verified", best, sources);
         }
       }
@@ -101,48 +104,9 @@ function response(
   };
 }
 
-function isMoreComplete(next: CompanyIdentityCompany, current: CompanyIdentityCompany): boolean {
+function isMoreComplete(next: CompanyIdentityCompany, current: CompanyIdentityCompany, rules: CompanyIdentityRules): boolean {
   return Number(isCompleteCompanyIdentity(next)) > Number(isCompleteCompanyIdentity(current)) ||
-    isFullerSoleProprietorLegalName(next.legalName, current.legalName) ||
+    rules.isFullerLegalName(next.legalName, current.legalName) ||
     (!current.legalName && Boolean(next.legalName)) ||
     (!current.registeredAddress && Boolean(next.registeredAddress));
-}
-
-function shouldContinueForFullerLegalName(
-  request: CompanyIdentityLookupRequest,
-  current: CompanyIdentityCompany,
-  providers: CompanyIdentityProvider[],
-  currentIndex: number,
-): boolean {
-  return request.country === "PL" &&
-    request.identifierKind === "pl_nip" &&
-    currentIndex < providers.length - 1 &&
-    isLikelyPersonalOnlyLegalName(current.legalName);
-}
-
-function isFullerSoleProprietorLegalName(next: string | null, current: string | null): boolean {
-  if (!next || !current || !isLikelyPersonalOnlyLegalName(current)) return false;
-  const nextNormalized = normalizeLegalName(next);
-  const currentNormalized = normalizeLegalName(current);
-  if (nextNormalized.length <= currentNormalized.length || nextNormalized === currentNormalized) return false;
-  return currentNormalized.split(" ").every((part) => nextNormalized.includes(part));
-}
-
-function isLikelyPersonalOnlyLegalName(value: string | null): boolean {
-  if (!value) return false;
-  const normalized = normalizeLegalName(value);
-  const parts = normalized.split(" ").filter(Boolean);
-  return parts.length >= 2 &&
-    parts.length <= 4 &&
-    !/\b(SP|ZOO|AKCYJNA|SA|FUNDACJA|STOWARZYSZENIE|SPOLKA|SPÓŁKA|SC|S\.C|SKA|KOMANDYTOWA|CYWILNA)\b/.test(normalized);
-}
-
-function normalizeLegalName(value: string): string {
-  return value
-    .normalize("NFKC")
-    .replace(/["'„”]/g, "")
-    .replace(/[.,]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLocaleUpperCase("pl-PL");
 }

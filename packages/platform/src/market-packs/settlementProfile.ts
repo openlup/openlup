@@ -1,20 +1,3 @@
-/**
- * What one deployment settles in, read from an environment record.
- *
- * Extracted verbatim from `platformCurrency.ts`, which had grown to the edge of
- * its line budget while owning two separable jobs: *reading* the configuration,
- * and *deciding* with it. This module is the reading half — defaults, keys,
- * refusals, the profile shape, and the pure function that produces one. It
- * knows nothing about schemas or about which side of the wire is asking, so the
- * dependency runs one way: `platformCurrency.ts` imports from here and
- * re-exports every name, which is why no call site moved.
- *
- * The client-secret boundary guard's test scans this file by name, along
- * with `platformCurrency.ts` and `fiscalProfile.ts`, and asserts that every
- * environment key spelled here matches a public bundle prefix. Moving the keys
- * without moving them under that scan would have quietly removed the assertion
- * that keeps a private key from being named in a bundled module.
- */
 import { currencyExponent } from "./currencyExponent.js";
 import {
   readFiscalProfile,
@@ -22,32 +5,8 @@ import {
   type FiscalProfile,
 } from "./fiscalProfile.js";
 
-/** The currency this platform prices and settles in. */
-export const PLATFORM_DEFAULT_CURRENCY = "PLN" as const;
-
-/**
- * The environment key that names the currency this deployment settles in.
- *
- * `COMMERCE_` rather than `PLATFORM_` on purpose: only the prefixes listed in
- * the env/flag discovery guard are governed, and `PLATFORM_` is not among
- * them. A `PLATFORM_`-named key would be invisible to the registry guard —
- * droppable, renameable and misspellable with nothing failing. The prefix is a
- * governance namespace, not a statement about which domain owns the concept.
- */
 const SETTLEMENT_CURRENCY_ENV_KEY = "COMMERCE_SETTLEMENT_CURRENCY";
 
-/**
- * The region this platform prices for, as an ISO 3166-1 alpha-2 code.
- *
- * It is a second stated fact rather than something computed from the settlement
- * currency, because that computation does not exist: nineteen countries settle
- * in the euro and several more in the dollar, so any derivation would have to
- * pick one. A guess wearing the costume of a lookup is precisely the silent
- * coercion this module exists to remove.
- */
-export const PLATFORM_DEFAULT_REGION = "PL" as const;
-
-/** The environment key that names the region this deployment prices for. */
 const SETTLEMENT_REGION_ENV_KEY = "COMMERCE_SETTLEMENT_REGION";
 
 /** Raised when configuration names a settlement currency that is not a currency code. */
@@ -92,7 +51,7 @@ export type SettlementProfile = {
   readonly defaultCurrency: string;
   readonly acceptedCurrencies: readonly string[];
   readonly exponent: number;
-  /** Which region's price lists the resolver reads; see {@link PLATFORM_DEFAULT_REGION}. */
+  /** Which region's price lists the resolver reads. */
   readonly regionCode: string;
   /**
    * The smallest amount a product line may be sold for, in minor units. Derived
@@ -104,24 +63,17 @@ export type SettlementProfile = {
   readonly fiscalProfile: FiscalProfile;
 };
 
-/**
- * Reads the settlement profile from an environment record.
- *
- * Takes the record as an argument rather than reaching for the process
- * environment so that a browser bundle can hand it the record its bundler
- * substituted, a server process can hand it its own, and a test can hand it a
- * literal — the same read, no matter which side of the wire is asking.
- *
- * An **absent** key yields {@link PLATFORM_DEFAULT_CURRENCY}: that is the
- * documented behaviour, and it is what keeps every existing deployment exactly
- * where it is. A **present but malformed** value throws. The difference matters — silently correcting a
- * misconfigured currency to the default is the failure mode behind Vendure's
- * GHSA-wm63-7627, where an order is accepted at a price denominated in a
- * currency nobody validated. The region key follows the same rule, for the same
- * reason applied one layer down: a mistyped region selects the wrong price list.
- */
+/** Caller-owned fallback facts; no market is selected by this package. */
+export type SettlementProfileFallbacks = {
+  readonly defaultCurrency: string;
+  readonly regionCode: string;
+  readonly fiscalProfile: FiscalProfile;
+};
+
+/** Blank/absent environment values use the explicit fallbacks; malformed values refuse. */
 export function readSettlementProfile(
-  env: Readonly<Record<string, string | undefined>> = {},
+  env: Readonly<Record<string, string | undefined>>,
+  fallbacks: SettlementProfileFallbacks,
 ): SettlementProfile {
   const configured = env[SETTLEMENT_CURRENCY_ENV_KEY]?.trim();
   if (configured !== undefined && configured !== "" && !/^[A-Z]{3}$/.test(configured)) {
@@ -129,7 +81,7 @@ export function readSettlementProfile(
   }
 
   const defaultCurrency = configured === undefined || configured === ""
-    ? PLATFORM_DEFAULT_CURRENCY
+    ? fallbacks.defaultCurrency
     : configured;
 
   const configuredRegion = env[SETTLEMENT_REGION_ENV_KEY]?.trim();
@@ -141,7 +93,7 @@ export function readSettlementProfile(
   }
 
   const regionCode = configuredRegion === undefined || configuredRegion === ""
-    ? PLATFORM_DEFAULT_REGION
+    ? fallbacks.regionCode
     : configuredRegion;
 
   return {
@@ -150,7 +102,7 @@ export function readSettlementProfile(
     exponent: currencyExponent(defaultCurrency),
     regionCode,
     minimumProductPayableMinor: readMinimumProductPayableMinor(env, defaultCurrency),
-    fiscalProfile: readFiscalProfile(env),
+    fiscalProfile: readFiscalProfile(env, fallbacks.fiscalProfile),
   };
 }
 

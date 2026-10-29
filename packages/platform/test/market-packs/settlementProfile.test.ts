@@ -1,8 +1,8 @@
+import { fallbacks } from "./fixtures.js";
 import { describe, expect, it } from "vitest";
 import {
   currencyExponent, InvalidSettlementCurrencyError, InvalidSettlementRegionError,
   InvalidFiscalProfileError, InvalidMinimumProductPayableError,
-  PLATFORM_DEFAULT_FISCAL_PROFILE, PLATFORM_DEFAULT_CURRENCY, PLATFORM_DEFAULT_REGION,
   readSettlementProfile,
 } from "../../src/market-packs/index.js";
 const FOREIGN_CODE = "EUR";
@@ -16,7 +16,7 @@ describe("currencyExponent", () => {
     // The platform's own currency is asserted through the constant rather than
     // spelled again: this row is what the unmodified formatter characterization
     // rests on, and it must keep saying 2 for as long as those assertions do.
-    [PLATFORM_DEFAULT_CURRENCY, 2],
+    [fallbacks.defaultCurrency, 2],
     ["EUR", 2],
     ["CZK", 2],
     ["USD", 2],
@@ -49,41 +49,41 @@ describe("currencyExponent", () => {
 
 describe("readSettlementProfile", () => {
   it("defaults to the platform currency when nothing is configured", () => {
-    expect(readSettlementProfile({})).toEqual({
-      defaultCurrency: PLATFORM_DEFAULT_CURRENCY,
-      acceptedCurrencies: [PLATFORM_DEFAULT_CURRENCY],
+    expect(readSettlementProfile({}, fallbacks)).toEqual({
+      defaultCurrency: fallbacks.defaultCurrency,
+      acceptedCurrencies: [fallbacks.defaultCurrency],
       exponent: 2,
-      regionCode: PLATFORM_DEFAULT_REGION,
+      regionCode: fallbacks.regionCode,
       minimumProductPayableMinor: 100,
-      fiscalProfile: PLATFORM_DEFAULT_FISCAL_PROFILE,
+      fiscalProfile: fallbacks.fiscalProfile,
     });
-    expect(readSettlementProfile()).toEqual(readSettlementProfile({}));
+    expect(readSettlementProfile({}, { ...fallbacks, defaultCurrency: "EUR", regionCode: "DE" })).toMatchObject({ defaultCurrency: "EUR", regionCode: "DE" });
   });
 
   it("treats an empty or whitespace value as unconfigured", () => {
     for (const blank of ["", "   "]) {
-      expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: blank }).defaultCurrency).toBe(
-        PLATFORM_DEFAULT_CURRENCY,
+      expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: blank }, fallbacks).defaultCurrency).toBe(
+        fallbacks.defaultCurrency,
       );
     }
   });
 
   it("carries a configured currency and its own exponent", () => {
-    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: FOREIGN_CODE })).toEqual({
+    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: FOREIGN_CODE }, fallbacks)).toEqual({
       defaultCurrency: FOREIGN_CODE,
       acceptedCurrencies: [FOREIGN_CODE],
       exponent: 2,
       // The region does not move with the currency: configuring one says nothing
       // about the other, which is why they are two keys and not a derivation.
-      regionCode: PLATFORM_DEFAULT_REGION,
+      regionCode: fallbacks.regionCode,
       // Same exponent, so the same floor. The currency that changes this one is
       // the zero-exponent case below.
       minimumProductPayableMinor: 100,
-      fiscalProfile: PLATFORM_DEFAULT_FISCAL_PROFILE,
+      fiscalProfile: fallbacks.fiscalProfile,
     });
     // The exponent travels with the currency rather than being assumed, which is
     // the point of reading it here instead of at the formatter's call sites.
-    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "JPY" }).exponent).toBe(0);
+    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "JPY" }, fallbacks).exponent).toBe(0);
   });
 
   it("gives a currency without hundredths a floor of one minor unit, not a hundred", () => {
@@ -92,25 +92,25 @@ describe("readSettlementProfile", () => {
     // unit is a hundred minor ones. Reading it back at 100 here would mean a
     // yen-settling shop refusing to sell anything under ¥100 while believing it
     // had set a ¥1 minimum.
-    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "JPY" })
+    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "JPY" }, fallbacks)
       .minimumProductPayableMinor).toBe(1);
     // Not a special case for zero: the rule is one major unit, whatever that is.
-    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "BHD" })
+    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "BHD" }, fallbacks)
       .minimumProductPayableMinor).toBe(1000);
-    expect(readSettlementProfile({}).minimumProductPayableMinor).toBe(100);
+    expect(readSettlementProfile({}, fallbacks).minimumProductPayableMinor).toBe(100);
   });
 
   it("lets configuration state a floor, and refuses one it cannot read", () => {
-    expect(readSettlementProfile({ COMMERCE_MIN_PRODUCT_PAYABLE_MINOR: "250" })
+    expect(readSettlementProfile({ COMMERCE_MIN_PRODUCT_PAYABLE_MINOR: "250" }, fallbacks)
       .minimumProductPayableMinor).toBe(250);
     // A configured floor wins over the derivation in both directions, including
     // the one minor unit a zero-exponent currency would otherwise get.
     expect(readSettlementProfile({
       COMMERCE_SETTLEMENT_CURRENCY: "JPY",
       COMMERCE_MIN_PRODUCT_PAYABLE_MINOR: "500",
-    }).minimumProductPayableMinor).toBe(500);
+    }, fallbacks).minimumProductPayableMinor).toBe(500);
     for (const malformed of ["0", "-1", "1.5", "1e2", "lots"]) {
-      expect(() => readSettlementProfile({ COMMERCE_MIN_PRODUCT_PAYABLE_MINOR: malformed }))
+      expect(() => readSettlementProfile({ COMMERCE_MIN_PRODUCT_PAYABLE_MINOR: malformed }, fallbacks))
         .toThrow(InvalidMinimumProductPayableError);
     }
   });
@@ -121,7 +121,7 @@ describe("readSettlementProfile", () => {
       COMMERCE_FISCAL_CATEGORY: "standard",
       COMMERCE_FISCAL_VAT_RATE_BPS: "2100",
       COMMERCE_FISCAL_LEGAL_BASIS: "Example VAT rule",
-    }).fiscalProfile;
+    }, fallbacks).fiscalProfile;
 
     expect(profile).toEqual({
       included: true,
@@ -132,14 +132,14 @@ describe("readSettlementProfile", () => {
     });
     // The fiscal country is a stated fact, not a lookup from the settlement
     // region: configuring one moves neither the other nor the currency.
-    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: "CZ" }).fiscalProfile)
-      .toEqual(PLATFORM_DEFAULT_FISCAL_PROFILE);
+    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: "CZ" }, fallbacks).fiscalProfile)
+      .toEqual(fallbacks.fiscalProfile);
     for (const malformed of ["cz", "CZE", "1"]) {
-      expect(() => readSettlementProfile({ COMMERCE_FISCAL_COUNTRY: malformed }))
+      expect(() => readSettlementProfile({ COMMERCE_FISCAL_COUNTRY: malformed }, fallbacks))
         .toThrow(InvalidFiscalProfileError);
     }
     for (const malformed of ["10001", "-1", "8.5", "eight"]) {
-      expect(() => readSettlementProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: malformed }))
+      expect(() => readSettlementProfile({ COMMERCE_FISCAL_VAT_RATE_BPS: malformed }, fallbacks))
         .toThrow(InvalidFiscalProfileError);
     }
   });
@@ -150,7 +150,7 @@ describe("readSettlementProfile", () => {
     // typo to the default would hide the misconfiguration behind plausible
     // output.
     for (const malformed of [FOREIGN_CODE.toLowerCase(), `${FOREIGN_CODE}O`, "12"]) {
-      expect(() => readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: malformed })).toThrow(
+      expect(() => readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: malformed }, fallbacks)).toThrow(
         InvalidSettlementCurrencyError,
       );
     }
@@ -159,7 +159,7 @@ describe("readSettlementProfile", () => {
   it("names the offending value in the refusal", () => {
     const failure = (() => {
       try {
-        readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "eur" });
+        readSettlementProfile({ COMMERCE_SETTLEMENT_CURRENCY: "eur" }, fallbacks);
         return null;
       } catch (error) {
         return error as InvalidSettlementCurrencyError;
@@ -172,10 +172,10 @@ describe("readSettlementProfile", () => {
   });
 
   it("carries a configured region, unconfigured or blank yielding the platform default", () => {
-    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: "CZ" }).regionCode).toBe("CZ");
+    expect(readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: "CZ" }, fallbacks).regionCode).toBe("CZ");
     for (const blank of ["", "   "]) {
-      expect(readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: blank }).regionCode).toBe(
-        PLATFORM_DEFAULT_REGION,
+      expect(readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: blank }, fallbacks).regionCode).toBe(
+        fallbacks.regionCode,
       );
     }
   });
@@ -186,14 +186,14 @@ describe("readSettlementProfile", () => {
     // from none. Correcting it to the default would hide which of the two
     // happened behind a plausible-looking price.
     for (const malformed of ["cz", "CZE", "C", "C1", "  cz  "]) {
-      expect(() => readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: malformed })).toThrow(
+      expect(() => readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: malformed }, fallbacks)).toThrow(
         InvalidSettlementRegionError,
       );
     }
 
     const failure = (() => {
       try {
-        readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: "cz" });
+        readSettlementProfile({ COMMERCE_SETTLEMENT_REGION: "cz" }, fallbacks);
         return null;
       } catch (error) {
         return error as InvalidSettlementRegionError;
@@ -209,7 +209,7 @@ describe("readSettlementProfile", () => {
     const profile = readSettlementProfile({
       COMMERCE_SETTLEMENT_CURRENCY: FOREIGN_CODE,
       COMMERCE_SETTLEMENT_REGION: "CZ",
-    });
+    }, fallbacks);
 
     expect(profile.defaultCurrency).toBe(FOREIGN_CODE);
     expect(profile.regionCode).toBe("CZ");

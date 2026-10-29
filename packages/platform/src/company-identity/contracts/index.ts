@@ -22,3 +22,11 @@ export type {
   CompanyIdentityPurpose, CompanyIdentitySource, CompanyIdentitySourceStatus,
   CompanyIdentityVerificationLevel,
 } from "@openlup/core/company-identity";
+
+/** Host policy; the engine owns sequencing, completeness and the last-provider stop. */
+export interface CompanyIdentityRules {
+  normalizeIdentifier(country: string, identifierKind: string, value: string): string;
+  isValidIdentifier(country: string, identifierKind: string, value: string): boolean;
+  isFullerLegalName(next: string | null, current: string | null): boolean;
+  shouldSeekFullerLegalName(request: CompanyIdentityLookupRequest, current: CompanyIdentityCompany): boolean;
+}

@@ -75,7 +75,7 @@ function directoryClient(rows: Record<string, unknown[]>, faultTable?: string) {
   return { client, calls };
 }
 const sourceRow = { source_key: "gus_teryt", status: "active", display_name: "Example directory", official_url: "https://example.invalid/directory", source_revision: "fixture-v1", source_updated_at: "2026-01-01T00:00:00Z" };
-const localityRow = { id: "fixture-place", source_key: "gus_teryt", country_code: "PL", name: "Écho Port", terc_code: "01", simc_code: "02", municipality_name: "Example Municipality", municipality_terc_code: "03", county_name: "Example County", voivodeship_name: "Example Region" };
+const localityRow = { id: "fixture-place", source_key: "gus_teryt", country_code: "US", name: "Écho Port", terc_code: "01", simc_code: "02", municipality_name: "Example Municipality", municipality_terc_code: "03", county_name: "Example County", voivodeship_name: "Example Region" };
 
 describe("managed directory preservation", () => {
   it("preserves normalized prefix mapping, bounds and every locality/provenance field", async () => {
@@ -85,7 +85,7 @@ describe("managed directory preservation", () => {
     expect(calls).toContainEqual(["address_canon_localities", "eq", "active", true]);
     expect(calls).toContainEqual(["address_canon_localities", "limit", 3]);
     expect(calls).toContainEqual(["address_canon_sources", "in", "source_key", ["gus_teryt"]]);
-    expect(result.candidates).toEqual([{ localityId: "fixture-place", countryCode: "PL", name: "Écho Port", tercCode: "01", simcCode: "02", municipalityName: "Example Municipality", municipalityTercCode: "03", countyName: "Example County", voivodeshipName: "Example Region", postalCode: null, confidence: "partial", resolutionLevel: "locality", sources: result.sources }]);
+    expect(result.candidates).toEqual([{ localityId: "fixture-place", countryCode: "US", name: "Écho Port", tercCode: "01", simcCode: "02", municipalityName: "Example Municipality", municipalityTercCode: "03", countyName: "Example County", voivodeshipName: "Example Region", postalCode: null, confidence: "partial", resolutionLevel: "locality", sources: result.sources }]);
     expect(result.sources).toEqual([{ sourceKind: "gus_teryt", status: "active", displayName: sourceRow.display_name, officialUrl: sourceRow.official_url, sourceRevision: "fixture-v1", sourceUpdatedAt: sourceRow.source_updated_at }]);
   });
   it("preserves street identity, parent scope, optional prefix and limit", async () => {

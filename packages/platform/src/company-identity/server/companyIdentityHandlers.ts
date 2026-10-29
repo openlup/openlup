@@ -1,7 +1,9 @@
 import type { HttpRequest, HttpResponse } from "../../http/index.js";
 import type { BffResponder } from "../../bff/index.js";
 import {
-  companyIdentityLookupRequestSchema,
+  createCompanyIdentitySchemas,
+  defaultCompanyIdentityRules,
+  type CompanyIdentityRules,
   companyIdentityLookupResponseSchema,
   type CompanyIdentityLookupRequest,
   type CompanyIdentityLookupResponse,
@@ -48,7 +50,8 @@ export function createCompanyIdentityLookupHandler({
   lookupPort,
 }: {
   lookupPort: CompanyIdentityLookupPort;
-}, responder: BffResponder) {
+}, responder: BffResponder, rules: CompanyIdentityRules = defaultCompanyIdentityRules) {
+  const { companyIdentityLookupRequestSchema } = createCompanyIdentitySchemas(rules);
   const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = responder;
   return async function handler(req: HttpRequest, res: HttpResponse): Promise<void> {
     if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);

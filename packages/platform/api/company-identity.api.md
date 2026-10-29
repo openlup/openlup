@@ -25,18 +25,34 @@ export interface CompanyIdentityLookupPort {
     lookupCompanyIdentity(request: CompanyIdentityLookupRequest): Promise<CompanyIdentityLookupResponse>;
 }
 export type { CompanyIdentityPurpose, CompanyIdentitySource, CompanyIdentitySourceStatus, CompanyIdentityVerificationLevel, } from "@openlup/core/company-identity";
+/** Host policy; the engine owns sequencing, completeness and the last-provider stop. */
+export interface CompanyIdentityRules {
+    normalizeIdentifier(country: string, identifierKind: string, value: string): string;
+    isValidIdentifier(country: string, identifierKind: string, value: string): boolean;
+    isFullerLegalName(next: string | null, current: string | null): boolean;
+    shouldSeekFullerLegalName(request: CompanyIdentityLookupRequest, current: CompanyIdentityCompany): boolean;
+}
 ```
 ## dist/company-identity/index.d.ts
 
 ```ts
 export * from "./schemas.js";
-export type { CompanyIdentityLookupPort } from "./contracts/index.js";
+export type { CompanyIdentityLookupPort, CompanyIdentityRules } from "./contracts/index.js";
+export { defaultCompanyIdentityRules } from "./rules.js";
+```
+## dist/company-identity/rules.d.ts
+
+```ts
+import type { CompanyIdentityRules } from "./contracts/index.js";
+/** Country-neutral behaviour. Hosts supply identifier and legal-name policy. */
+export declare const defaultCompanyIdentityRules: CompanyIdentityRules;
 ```
 ## dist/company-identity/schemas.d.ts
 
 ```ts
 import { z } from "zod";
 import { COMPANY_IDENTITY_CONTRACT_VERSION, companyIdentityAddressSchema, companyIdentityIdentifierKindSchema, companyIdentityLookupStatusSchema, companyIdentityPurposeSchema, companyIdentitySourceSchema, companyIdentitySourceStatusSchema, companyIdentityVerificationLevelSchema, isCompleteCompanyIdentity } from "@openlup/core/company-identity";
+import type { CompanyIdentityRules } from "./contracts/index.js";
 export declare const companyIdentityCompanySchema: z.ZodObject<{
     regon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     vatStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -51,6 +67,168 @@ export declare const companyIdentityCompanySchema: z.ZodObject<{
         country: z.ZodString;
     }, z.core.$strict>>;
     registryStatus: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+/** Build strict host-extension validators with explicit identifier normalization. */
+export declare function createCompanyIdentitySchemas(rules?: CompanyIdentityRules): {
+    companyIdentityCompanySchema: z.ZodObject<{
+        regon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        vatStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        country: z.ZodString;
+        identifierKind: z.ZodString;
+        identifierValue: z.ZodString;
+        legalName: z.ZodNullable<z.ZodString>;
+        registeredAddress: z.ZodNullable<z.ZodObject<{
+            line1: z.ZodString;
+            postalCode: z.ZodString;
+            city: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>>;
+        registryStatus: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    companyIdentityLookupRequestSchema: z.ZodPipe<z.ZodObject<{
+        country: z.ZodString;
+        identifierKind: z.ZodString;
+        identifierValue: z.ZodString;
+        purpose: z.ZodEnum<{
+            checkout_invoice: "checkout_invoice";
+            customer_billing_profile: "customer_billing_profile";
+        }>;
+        manualCompany: z.ZodOptional<z.ZodObject<{
+            regon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            vatStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            country: z.ZodOptional<z.ZodString>;
+            identifierKind: z.ZodOptional<z.ZodString>;
+            identifierValue: z.ZodOptional<z.ZodString>;
+            legalName: z.ZodNullable<z.ZodString>;
+            registeredAddress: z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>;
+            registryStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodTransform<{
+        manualCompany?: Partial<import("@openlup/core/company-identity").CompanyIdentityCompany>;
+        country: string;
+        identifierKind: string;
+        identifierValue: string;
+        purpose: import("@openlup/core/company-identity").CompanyIdentityPurpose;
+    }, {
+        country: string;
+        identifierKind: string;
+        identifierValue: string;
+        purpose: "checkout_invoice" | "customer_billing_profile";
+        manualCompany?: {
+            legalName: string | null;
+            registeredAddress: {
+                line1: string;
+                postalCode: string;
+                city: string;
+                country: string;
+            } | null;
+            regon?: string | null | undefined;
+            vatStatus?: string | null | undefined;
+            country?: string | undefined;
+            identifierKind?: string | undefined;
+            identifierValue?: string | undefined;
+            registryStatus?: string | null | undefined;
+        } | undefined;
+    }>>;
+    companyIdentityLookupResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"company_identity.lookup.v1">;
+        status: z.ZodEnum<{
+            partial: "partial";
+            invalid: "invalid";
+            found: "found";
+            not_found: "not_found";
+            ambiguous: "ambiguous";
+            unsupported_country: "unsupported_country";
+            provider_unavailable: "provider_unavailable";
+        }>;
+        verificationLevel: z.ZodEnum<{
+            registry_verified: "registry_verified";
+            provider_verified: "provider_verified";
+            manual_unverified: "manual_unverified";
+            invalid: "invalid";
+        }>;
+        sources: z.ZodArray<z.ZodObject<{
+            providerKind: z.ZodString;
+            status: z.ZodEnum<{
+                partial: "partial";
+                invalid: "invalid";
+                found: "found";
+                not_found: "not_found";
+                ambiguous: "ambiguous";
+                provider_unavailable: "provider_unavailable";
+            }>;
+            observedAt: z.ZodString;
+            evidenceHash: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        warnings: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        company: z.ZodNullable<z.ZodObject<{
+            regon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            vatStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            country: z.ZodString;
+            identifierKind: z.ZodString;
+            identifierValue: z.ZodString;
+            legalName: z.ZodNullable<z.ZodString>;
+            registeredAddress: z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>;
+            registryStatus: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>;
+};
+export declare const companyIdentityLookupResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"company_identity.lookup.v1">;
+    status: z.ZodEnum<{
+        partial: "partial";
+        invalid: "invalid";
+        found: "found";
+        not_found: "not_found";
+        ambiguous: "ambiguous";
+        unsupported_country: "unsupported_country";
+        provider_unavailable: "provider_unavailable";
+    }>;
+    verificationLevel: z.ZodEnum<{
+        registry_verified: "registry_verified";
+        provider_verified: "provider_verified";
+        manual_unverified: "manual_unverified";
+        invalid: "invalid";
+    }>;
+    sources: z.ZodArray<z.ZodObject<{
+        providerKind: z.ZodString;
+        status: z.ZodEnum<{
+            partial: "partial";
+            invalid: "invalid";
+            found: "found";
+            not_found: "not_found";
+            ambiguous: "ambiguous";
+            provider_unavailable: "provider_unavailable";
+        }>;
+        observedAt: z.ZodString;
+        evidenceHash: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    warnings: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    company: z.ZodNullable<z.ZodObject<{
+        regon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        vatStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        country: z.ZodString;
+        identifierKind: z.ZodString;
+        identifierValue: z.ZodString;
+        legalName: z.ZodNullable<z.ZodString>;
+        registeredAddress: z.ZodNullable<z.ZodObject<{
+            line1: z.ZodString;
+            postalCode: z.ZodString;
+            city: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>>;
+        registryStatus: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 export declare const companyIdentityLookupRequestSchema: z.ZodPipe<z.ZodObject<{
     country: z.ZodString;
@@ -102,53 +280,6 @@ export declare const companyIdentityLookupRequestSchema: z.ZodPipe<z.ZodObject<{
         registryStatus?: string | null | undefined;
     } | undefined;
 }>>;
-export declare const companyIdentityLookupResponseSchema: z.ZodObject<{
-    contractVersion: z.ZodLiteral<"company_identity.lookup.v1">;
-    status: z.ZodEnum<{
-        partial: "partial";
-        invalid: "invalid";
-        found: "found";
-        not_found: "not_found";
-        ambiguous: "ambiguous";
-        unsupported_country: "unsupported_country";
-        provider_unavailable: "provider_unavailable";
-    }>;
-    verificationLevel: z.ZodEnum<{
-        registry_verified: "registry_verified";
-        provider_verified: "provider_verified";
-        manual_unverified: "manual_unverified";
-        invalid: "invalid";
-    }>;
-    sources: z.ZodArray<z.ZodObject<{
-        providerKind: z.ZodString;
-        status: z.ZodEnum<{
-            partial: "partial";
-            invalid: "invalid";
-            found: "found";
-            not_found: "not_found";
-            ambiguous: "ambiguous";
-            provider_unavailable: "provider_unavailable";
-        }>;
-        observedAt: z.ZodString;
-        evidenceHash: z.ZodNullable<z.ZodString>;
-    }, z.core.$strict>>;
-    warnings: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    company: z.ZodNullable<z.ZodObject<{
-        regon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-        vatStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-        country: z.ZodString;
-        identifierKind: z.ZodString;
-        identifierValue: z.ZodString;
-        legalName: z.ZodNullable<z.ZodString>;
-        registeredAddress: z.ZodNullable<z.ZodObject<{
-            line1: z.ZodString;
-            postalCode: z.ZodString;
-            city: z.ZodString;
-            country: z.ZodString;
-        }, z.core.$strict>>;
-        registryStatus: z.ZodNullable<z.ZodString>;
-    }, z.core.$strict>>;
-}, z.core.$strict>;
 export type CompanyIdentityLookupRequest = z.infer<typeof companyIdentityLookupRequestSchema>;
 export type CompanyIdentityLookupResponse = z.infer<typeof companyIdentityLookupResponseSchema>;
 export type CompanyIdentityCompany = z.infer<typeof companyIdentityCompanySchema>;
@@ -157,5 +288,5 @@ export type CompanyIdentitySource = z.infer<typeof companyIdentitySourceSchema>;
 export type CompanyIdentitySourceStatus = z.infer<typeof companyIdentitySourceStatusSchema>;
 export type CompanyIdentityVerificationLevel = z.infer<typeof companyIdentityVerificationLevelSchema>;
 export { COMPANY_IDENTITY_CONTRACT_VERSION, companyIdentityAddressSchema, companyIdentityIdentifierKindSchema, companyIdentityLookupStatusSchema, companyIdentityPurposeSchema, companyIdentitySourceSchema, companyIdentitySourceStatusSchema, companyIdentityVerificationLevelSchema, isCompleteCompanyIdentity, };
-export declare function isValidCompanyIdentifier(country: string, identifierKind: string, value: string): boolean;
+export declare function isValidCompanyIdentifier(country: string, identifierKind: string, value: string, rules?: CompanyIdentityRules): boolean;
 ```
