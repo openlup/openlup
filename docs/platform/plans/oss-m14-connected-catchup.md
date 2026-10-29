@@ -1,6 +1,6 @@
 # M14 connected catch-up journey
 
-Status: development-preview parcel 8D-1, review repair awaiting exact-tree read. Code base:
+Status: development-preview parcel 8D-1, review repair committed. Code base:
 `c31cc19bfd1a1108bf14535337fbca167a82f835`. Fresh policy revision:
 `d1800393caad3b101173f8c100625d1c974c451f`; the relevant instruction
 files have no delta from that code base. Main integration followed a native
@@ -155,6 +155,12 @@ cycle 0 recorded one independent PASS and one FAIL with open material finding
 administration at final capture, while catch-up opens a new bootstrap-principal
 session configured read-only by default. The scoped prose repair states the
 actual principal, session lifecycle and local qualification limit. The source
-and existing journey proof are unchanged; the user requires another exact-tree
-read before DCO of this repair and renewed FULL reviews. The managed continuation waits for the
-lead's explicit predecessor-landing notice and its separate PR.
+and existing journey proof are unchanged. The lead applied CD-M14-31 to the
+prose-only correction, found no new maintainer read necessary, and authorized
+DCO of exact repair tree `4c0435566a3e25dcf5f7de8c53a8407acf1752d6`
+with HEAD-to-repair patch SHA-256
+`d0da49e92899644e1a8d02e1cab1cc1d6208b508edbdbe99a9ca121d4b455b45`.
+The repair was signed as `6e9e2c32ab29bb97d94da9dedaf603214b019120`;
+two new FULL reviews must close `DOC-1` on the resulting candidate before
+canonical proof. The managed continuation waits for the lead's explicit
+predecessor-landing notice and its separate PR.
