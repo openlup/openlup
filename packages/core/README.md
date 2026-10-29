@@ -8,10 +8,10 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.31.0` set republishes this kernel unchanged alongside the
-platform runtime and migration-admission updates. Upgrade all packages
-together and read [the set notes](CHANGELOG.md#0310); core introduces no API or
-schema migration. Size comparison uses the published `0.30.0` tarball; older releases
+The prepared `0.32.0` set republishes this kernel with documentation clarifications alongside
+the platform risk controls. Runtime behavior is unchanged. Upgrade all packages
+together and read [the set notes](CHANGELOG.md#0320); core introduces no API or
+schema migration. Size comparison uses the published `0.31.0` tarball; older releases
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 

@@ -5,17 +5,17 @@
     "npm": "11.19.0"
   },
   "inventory": {
-    "digest": "sha256-7558fc9d8161001589484b31a3c146ad89e355315a12e2aae38c14a76be9cbde",
-    "classDigest": "sha256-ec7dc8e0003f5ade855649c6acd333df6a35b14831e84340f3ee2986932f5b9c"
+    "digest": "sha256-63a81815ce82f5a0f687fac08031748c96e4dd0b641bfab7f21dfffc6fc706bd",
+    "classDigest": "sha256-b89f882435b2c85e5e30176f2a3f95a140a5eaaa282c6a0f00ce6d0204bb232a"
   },
   "packages": {
     "manifestDigest": "sha256-5244ff3965707c9e47539d541895e54f25f5fcd30f10edc6b9771e828987fcbb",
-    "rootLockDigest": "sha256-8f6f5b57103e4176b74399f737b938d3c986f7448f5c42c2f254ee759226ec09",
-    "coreLockDigest": "sha256-299108420edbdf91717e0b38229a5f6805e61de1ae04362bbaa298a187d83586"
+    "rootLockDigest": "sha256-9706e93e00310d8b18d8f5fca4d8e73a626b102cec7ad44c6ab87e653c403017",
+    "coreLockDigest": "sha256-0369419008c94eda0621c29a4127140f726133f945b86a6f598bd76298303b8e"
   },
   "platformMigrationManifest": {
     "path": "config/platform-migration-manifest.json",
-    "digest": "sha256-60e558fba87b1b863d28649c01536c99d0b187ad821f83caf59b133b4afba43f"
+    "digest": "sha256-691af2ca2a5fb133cebeb015f555a725452142eb3f0d0ca02bb86cac76a2f320"
   },
   "databaseSchema": {
     "path": "src/integrations/supabase/types.ts",
@@ -25,7 +25,7 @@
   },
   "policy": {
     "registryDigest": "sha256-19738c711bef792342483d6153060495dee23b69076e260a5a344c9089c0cc03",
-    "publicationCatalogDigest": "sha256-f0f08740b8e887740844cdadef4640c4b3e819f27237796aceb4469152766b34"
+    "publicationCatalogDigest": "sha256-11c3c7477fb59dbc348f111c18a016c8088928e36b7c900a9456deaf4c72e90f"
   },
   "compatibility": {
     "typecheck": {

@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.32.0]
+
+- Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
+  `openlup-core-v0.32.0`.
+
 - Clarify that the payment retry-count helper enforces only its local numeric
   bound and does not establish retry permission or compliance; runtime behavior
   is unchanged.
@@ -23,8 +28,3 @@ in the source repository.
 
 - Publishable on the npm `latest` dist-tag as `0.30.0`, from tag
   `openlup-core-v0.30.0`.
-
-## [0.29.0]
-
-- Publishable on the npm `latest` dist-tag as `0.29.0`, from tag
-  `openlup-core-v0.29.0`.

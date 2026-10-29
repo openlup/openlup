@@ -1814,3 +1814,132 @@ Exact-predecessor policy exposed one stale digest that the pre-commit broad
 comparison did not; retaining that comparison and scoped evidence closed it
 without changing controls. Resolve DCO endpoints to full digests before invocation.
 No formal rethink, optional follow-up or successor work was needed.
+
+
+## Package-set release preparation S1 — 29 October 2026
+
+Outcome: prepare the coherent development-preview set `0.32.0` for
+`@openlup/core`, `@openlup/outbox` and `@openlup/platform`, comparing
+with the released `0.31.0` source
+`2688f517c7df40a2e8d2d4a3741ef642555a68f9`. The inventory admits exactly
+these three packages. Platform adds risk APIs and a shipped SQL asset, requiring
+a minor set; Core and Outbox carry documentation clarifications with unchanged
+runtime behavior. All packages and exact internal pins advance together.
+
+Bart Roszkowski authorizes the active supervisor as single writer for local
+preparation, DCO commits, push, PR, native receipt, queue and merge after required
+reading and gates. The programme coordinator dispatches; the owner approves the
+protected release. Dispatch, npm publication, credentials, settings, deployment,
+adopter activation and changes to other repositories are excluded. Earlier R1/R2/R3
+local-only grants above remain historical and do not narrow this direct S1 grant.
+Supervisor context: `01a187f5-c95d-7cd3-87e5-23fbb3da19c2`.
+Instruction revision and initial source base, recorded separately by role:
+`8046797ace978e148556c30767d8ed231a0dd6e3` for both. PRs #395, #396 and
+#398 are merged ancestors; #398's merge-group run completed successfully before
+the dedicated S1 worktree was created.
+
+Scope follows preparations #424 and #407: package versions/locks and exact pins,
+three packed changelogs and source-only histories, version-specific READMEs,
+previous-release artifact baselines, consumption of three Platform fragments,
+and the canonical generated source contract. This section is the single task
+record. Runtime, API, SQL, dependency selections and release workflow code are
+unchanged by S1. Fixed artifact caps stay unchanged unless measured overflow
+requires its own maintainer read. Release notes use neutral generic risk-control
+descriptions, including scoring, blocklist, review queue and default-off selection.
+
+Acceptance: coherent versions/pins, empty Unreleased sections, previous release
+sections retained verbatim across changelog/history rotation, all three fragments
+consumed, accurate adjacent upgrade notes, integrity-verified published `0.31.0`
+artifact baselines and fresh source contract. Preparation publishes nothing.
+
+Proof plan: inventory/policy/neutrality, structural scan, redacted secret scans,
+focused release checks, working-tree artifact/content/browser measurements and
+lint before one stabilized release-control read and DCO. Then two new parallel
+fresh-context FULL reviews, one assessing the simpler adequate solution; canonical
+verification including cold package gates and pgTAP; normal source/group checks,
+receipt and confirmed merge. Verify the merged main contexts and cold release-set
+audit/artifacts with tarball secret scans, build notes from the merged release
+commit, and stop with the exact `all`, version, commit and notes path for the
+coordinator. Native repair allowance starts unconsumed; no review or proof is
+claimed by this plan. Existing package tools are the smallest adequate solution.
+
+S1 working checkpoint: the highest registry version observed for each package
+is `0.31.0`. Its three annotated tags all dereference to the previous release
+source above. Fetched registry tarballs pass SHA-512 integrity checks and measure
+Core 167,195 B, Outbox 39,218 B and Platform 1,935,051 B; these are the new
+previous-release baselines, distinct from candidate measurements. The bump
+consumed all three Platform fragments. Released note bodies are retained through
+history rotation; only the final section separator is normalized at packed EOF.
+Manifests, source snapshot, structural scan, tree/UI neutrality and redacted
+history/working-patch secret scans passed. Package builds passed serially after
+machine admission. Working previews fit every unchanged content, growth and
+byte/file cap: Core 169,963 B / 224 files; Outbox 39,982 B / 41 files; Platform
+1,962,833 B / 2,680 files, 9,168,185 B unpacked and 1,697,305 B code gzip.
+All 18 browser entries fit their unchanged limits. These are uncommitted previews,
+not final cold proof or publication evidence.
+
+Mandatory policy blocker: consuming the final pending fragments leaves no path
+matching the documentation map's `packages/*/changes/*.md` selector. The policy
+check refuses it as dead, although set preparation requires an empty pending
+fragment set. No selector removal, dummy fragment or checker exception is applied.
+The supervisor requested a bounded control decision under the instruction against
+new allowlists before extending this metadata-only preparation. The failed gate
+remains binding; no DCO, native candidate, review, canonical verify, PR or release
+is claimed. Full logs and registry bytes are retained under ignored S1 evidence.
+
+S1 stopped checkpoint: all 142 existing focused release tests passed across
+five files (68.93 s). Lint passed with zero errors and 33 existing warnings after
+machine admission. Whitespace, inventory and source-snapshot checks passed.
+Freshly fetched main remains the recorded policy revision. The mandatory
+empty-fragment documentation-policy failure above is unresolved; a bounded
+control decision is required before a complete release-control packet can be
+stabilized for its pre-DCO read. No counter or review budget has been consumed,
+and no commit, PR, receipt, queue request or dispatch has been made.
+
+Self-retro: two machine-admission waits dominated this checkpoint; existing
+bump/build/measurement routes needed no new release mechanism or cap. Two CLI
+usage errors were corrected from their actual usage contracts before checking
+results. Check optional modes before invocation, and preserve the valid empty
+fragment state as an explicit release-path proof rather than a dummy pending note.
+
+S1 continuation after the separate control fix: PR #438 merged as
+`ef99742de560bb88865794a8a1694884d65d06ea` after source and merge-group
+checks. Its native merge-group admission reported a disjoint base move. S1
+merged that main commit with DCO sign-off as
+`941dbb2aa968c1a9e88f4efc555bfce9bd31150b`, then restored and staged
+the same 22 release-preparation paths. No S1 release-control read, DCO release
+commit, native review, canonical verification, PR or dispatch has occurred.
+The source snapshot remains fresh against the staged set. Documentation policy
+now accepts the empty pending-fragment state and reports only scoped no-impact
+trailer obligations for the Outbox manifest's version/exact Core pin and the
+root lockfile's corresponding set versions/pins. The owner section describing
+package and root command inventories remains correct because no command,
+package membership, dependency selection or publication route changes here.
+The exact digests and substantive reasons belong in the stabilized pre-DCO
+release-control packet. The signed main merge is integration of its tested
+control, not a release sign-off or dispatch grant.
+
+The integrated working tree passes source snapshot `--check`, manifest and
+public inventory checks, structural scan, tree/UI neutrality, redacted history
+and patch secret scans, and whitespace checks. The five focused release,
+fragment, size-policy and routing test files pass 175 tests. Lint passes with
+zero errors and 33 existing warnings. Serial builds and working package
+measurements pass unchanged caps and all 18 browser limits; the three preview
+tarball sizes remain 169,963 / 39,982 / 1,962,833 bytes. Fresh registry reads
+still show `0.31.0` as the highest published version for each package.
+`--policy --docs-update` reports five obligations, two pending only because
+the S1 release commit cannot carry their scoped trailers before the required
+release-control read. Generated navigation has no byte delta. No review cycle
+has been consumed. S1 stops here for the exact-tree release-control read.
+
+Continuation self-retro: the separate control fix let the documented empty
+fragment state pass without widening any release control. Shared verification
+jobs delayed this working-tree proof; no extra process or cap was needed. One
+incorrect UI-neutrality script path was corrected to its existing UI smoke
+command before the passing check, without changing source.
+
+The 2026-10-29 maintainer release-control read accepted staged tree
+`e2e0a3fed4ae34abf21f17480db9f5bc9aad4d9a` and both proposed impact
+reasons before DCO. Its record is retained at ignored
+`.context/scratch/m15-release-032/maintainer-read-20261029.md`. This evidence
+pointer adds no release metadata or control change.
