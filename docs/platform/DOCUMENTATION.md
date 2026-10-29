@@ -345,8 +345,11 @@ browser, provider, data, tooling, test, policy, asset or historical role.
 
 A more specific route can narrow broad category guidance. Equally specific
 conflicting owners, orphan paths, missing pages or anchors, and selectors that
-match nothing are errors. When moving or deleting a source, inspect its previous
-owner as well as its new owner; changing the route must not hide an obligation.
+match nothing are errors. The pending package changelog-fragment selector may
+match nothing after release preparation consumes every fragment; its owner route
+still applies when a new fragment appears. When moving or deleting a source,
+inspect its previous owner as well as its new owner; changing the route must
+not hide an obligation.
 
 `anchor: ""` owns the complete page. A nonempty anchor owns that heading and
 its subsections until the next heading of the same or higher level. Selectors
