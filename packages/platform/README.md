@@ -922,6 +922,17 @@ committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
 
+The `release-gates.json` pack caps are 2,029,568 tarball bytes, 9,447,424
+unpacked bytes, 2,712 total files, 1,743,872 code gzip bytes and 2,656 code files.
+The [M15 budget decision](../../docs/platform/plans/oss-m15-generic-risk-controls.md#cd-m15-6-platform-pack-budget--2026-10-27)
+sized R1's original allocation from the measured full M15 stack after M14 #397,
+with approximately 2% for S1 and repairs. The later lifecycle integration takes
+the higher parent value for each cap: M14 supplies the three current byte caps,
+while M15 retains its higher file caps. Documentation caps remain 73,728 gzip
+bytes and 10 files; browser caps and the release baseline are unchanged.
+Every candidate still needs its actual artifact check; later growth needs its
+own measured budget decision.
+
 The source-checkout binding `npm run test:consumer` runs
 [`platform-cold-consumer.ts`](https://github.com/openlup/openlup/blob/main/scripts/packages/platform-cold-consumer.ts).
 It requires the cold package producer's verified `OPENLUP_PACK_MANIFEST` and
@@ -1415,3 +1426,15 @@ Settings preserve scalar values, and pipeline reads preserve the existing tester
 and email projection. Identity membership and tracking effects keep their owners.
 See the [operations architecture](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
 for refusal behavior, SQL prerequisites and the bounded preview scope.
+
+## Risk controls
+
+The experimental `@openlup/platform/risk` entry exports the existing strict
+schemas with CSP-safe Zod initialization. `risk/contracts` is type-only;
+`risk/server` exports paid-order assessment, subject hashing, structural managed
+clients and the native executor factory. Core risk remains at `@openlup/core/risk`.
+No provider SDK or pg runtime import is required by risk. Hosts supply trusted
+operator authorization and actor mapping, clients, mode and hash secret.
+The [risk contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
+explains the preserved rail differences and sparse SQL descriptor. These entries
+register no route, worker or schedule and do not activate risk.

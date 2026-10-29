@@ -719,6 +719,45 @@
       "entrypoint": "dist/portability/index.d.ts",
       "snapshot": "api/portability.api.md"
     },
+    "./risk": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/risk/contracts.test.ts",
+        "test/risk/orderPaidRiskPort.test.ts",
+        "test/risk/adapters.test.ts",
+        "test/risk/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/risk/index.d.ts",
+      "snapshot": "api/risk.api.md"
+    },
+    "./risk/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/risk/contracts.test.ts",
+        "test/risk/orderPaidRiskPort.test.ts",
+        "test/risk/adapters.test.ts",
+        "test/risk/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/risk/contracts/index.d.ts",
+      "snapshot": "api/risk-contracts.api.md"
+    },
+    "./risk/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/risk/contracts.test.ts",
+        "test/risk/orderPaidRiskPort.test.ts",
+        "test/risk/adapters.test.ts",
+        "test/risk/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/risk/server/index.d.ts",
+      "snapshot": "api/risk-server.api.md"
+    },
     "./lifecycle": {
       "role": "rail",
       "maturity": "experimental",
@@ -735,7 +774,7 @@
   "pack": {
     "code": {
       "maxPackedBytes": 1743872,
-      "maxFiles": 2574
+      "maxFiles": 2656
     },
     "docs": {
       "maxPackedBytes": 73728,
@@ -743,7 +782,7 @@
     },
     "maxPackedBytes": 2029568,
     "maxUnpackedBytes": 9447424,
-    "maxFiles": 2628,
+    "maxFiles": 2712,
     "baseline": {
       "version": "0.30.0",
       "packedBytes": 1930457
@@ -765,7 +804,8 @@
       "./account-support/contracts": 32,
       "./operations/contracts": 32,
       "./operations": 30720,
-      "./marketing/contracts": 32
+      "./marketing/contracts": 32,
+      "./risk/contracts": 32
     }
   }
 }

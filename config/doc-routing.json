@@ -663,6 +663,20 @@
       "anchor": "#operations-and-diagnostics"
     },
     {
+      "id": "risk-package",
+      "when": "Risk schemas, paid-order assessment, persistence ports and SQL preservation",
+      "paths": [
+        "packages/platform/src/risk/**",
+        "packages/platform/test/risk/**",
+        "packages/platform/api/risk*.api.md",
+        "packages/platform/sql/20260813230000_post_order_control.sql",
+        "tests/helpers/riskControlFixture.ts",
+        "tests/postgres/riskControl.conformance.test.ts"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#risk-contracts"
+    },
+    {
       "id": "portability-capability",
       "when": "Bounded server object transfer, compatible PostgreSQL rows and refusal/recovery contracts",
       "paths": [
