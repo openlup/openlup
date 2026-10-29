@@ -1454,6 +1454,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-restricted-connected-restore.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-runtime-drain-task.md",
       "class": "public-output"
     },
@@ -26243,6 +26247,10 @@
     },
     {
       "path": "tests/postgres/m14ReleasedSchemaUpgradeChild.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
       "class": "public-output"
     },
     {
