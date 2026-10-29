@@ -3,6 +3,8 @@
 Status: approved implementation plan, development preview, 2026-09-23.
 Audience: contributors implementing and verifying the disposable Node + Supabase profile.
 
+Current evaluator instructions are in [Evaluate a subscription account](../SUBSCRIPTION_REFERENCE.md), and the current route boundary is in [runtime and self-hosting](../RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference). In this source profile, the [browser entry](../../../src/public-reference/SubscriptionAccount.tsx) calls routes registered by the [subscription profile](../../../server/runtime/public-reference/subscriptionProfile.ts); checkout uses the local captured simulator, while the owner-bound account read and date action go through [subscription handlers](../../../server/runtime/public-reference/subscriptionAccount.ts). This profile does not run M10 automatic renewal/dunning or mount the current M11/M12 module bindings. Fulfillment and delivery alignment remain separate acceptance stages, and the selected date is not a delivery promise.
+
 ## 1. Outcome and boundary
 
 An independent evaluator purchases one recurring synthetic product, signs in with
@@ -121,10 +123,16 @@ No private SQL/service-role shortcut substitutes for a buyer action.
 
 Protected public review/merge/checks precede immutable source release. An adopter
 selects the authenticated release deliberately and verifies a retained customization.
-No release is complete merely because a local test passes. Current work is not
-published, merged or a supported installation; record actual evidence here as it lands.
+No release is complete merely because a local test passes. At the recorded local
+checkpoints, publication, merge and supported installation were not claimed; the
+evidence below retains that scope.
 
-## 8. Current evidence and completion
+## 8. Recorded local evidence and completion
+
+This section retains local outcomes reported during the September 2026 implementation
+checkpoints; it does not state current integration, review, publication or installation
+status. Use [the current evaluator guide](../SUBSCRIPTION_REFERENCE.md) for the present
+profile route and instructions.
 
 Base is `cda8d207aa4d949d5d2223d1a824b87713337c5b`. At functional checkpoint
 `9402d744`, locked installation and root tests passed (359 files, 2911 tests); the separately owned
@@ -171,7 +179,7 @@ installation or production-provider certification is claimed.
 
 ## 9. Core fixture portability follow-up
 
-Status: implementation in progress, 2026-09-24.
+Status: source correction present at `10e937d89e973dcd55c46e54ddd14ed697b6a82e` (2026-09-24); this page records no test execution result. The current [`consumerTooling.test.ts`](../../../packages/core/test/consumerTooling.test.ts) reads the meaning from [`release-gates.json`](../../../packages/core/release-gates.json).
 
 The packed-consumer leakage test fixture must use the approved meaning from its
 package's shipped `release-gates.json`. A separately hard-coded sentence can

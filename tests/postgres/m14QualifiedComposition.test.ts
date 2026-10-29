@@ -8,11 +8,11 @@ import {
 } from "../helpers/postgresContainer.js";
 
 const exec = promisify(execFile);
-// Frozen two-reference F measurements are independent expectations, never
-// target-derived replacements. E2 retains its four 89-unit shapes on its branch.
+// Frozen two-reference 92-unit measurements are independent expectations, never
+// target-derived replacements. The complete issued 91-unit prefix remains unchanged.
 const shapes = [
-  { name: "bootstrap-restore", separate: false, sha256: "f10dd81aadf543e9b14b5fca30e377c6d0d8689dde379837ad0c145795c09d8f" },
-  { name: "separate-restore", separate: true, sha256: "d68dd042c487c30b9082cd70103c63de81e2f6ee1754ff52e5961144f172d4b1" },
+  { name: "bootstrap-restore", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -26,7 +26,7 @@ beforeAll(async () => {
 // Exactly two production reference checks and two fresh other-mode targets.
 // Run in order: no parallel installations or additional role-mode cross product.
 for (const profile of profiles) for (const shape of shapes) {
-  it(`qualifies production E2+F ${profile.name} ${shape.name} against its frozen pin`, async () => {
+  it(`qualifies production E2+F+completion ${profile.name} ${shape.name} against its frozen pin`, async () => {
     let container: PostgresContainer | undefined;
     try {
       container = await runPostgresContainer({
@@ -50,9 +50,11 @@ for (const profile of profiles) for (const shape of shapes) {
       ], { timeout: 240_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
       const result = JSON.parse(stdout);
       expect(result).toMatchObject({
-        inventorySha256: shape.sha256, ledgerRows: 90, pendingBefore: 90,
-        appliedNow: 90, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
-        runtimeLockPrivilegesProved: true,
+        inventorySha256: shape.sha256, ledgerRows: 92, pendingBefore: 92,
+        appliedNow: 92, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
+        runtimeLockPrivilegesProved: true, runtimeCompletionProved: true, ownerPathResolutionProved: true,
+        nativeObservationRuntimeProved: profile.name === "target" && shape.name === "separate-restore",
+        connectionRecipeProved: profile.name === "target" && shape.name === "separate-restore",
         discriminators: profile.name === "target" && shape.name === "separate-restore",
       });
       console.info(`qualified-production ${profile.name}/${shape.name} ${stdout.trim()}`);

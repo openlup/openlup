@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
+import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
 
 export const NON_ADAPTER_ENTRIES = [
   "lifecycle",
@@ -1646,21 +1647,25 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
     const port = docker(["port",name,"5432/tcp"]).split(":").at(-1)!;
     const connectionString = `postgresql://postgres@127.0.0.1:${port}/postgres`;
     // Host TCP readiness, through the same repository harness as the real-PG witness.
-    command(process.execPath,["--import",import.meta.resolve("tsx"),"--input-type=module","-e",`
+    const schemaObservation = JSON.parse(command(process.execPath,["--import",import.meta.resolve("tsx"),"--input-type=module","-e",`
       import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root,"tests/helpers/postgresContainer.ts")).href)};
       import { createPostgresMigrationRunner } from ${JSON.stringify(pathToFileURL(join(root,"server/adapters/postgres/migrationRunner.ts")).href)};
       import pg from "pg";
       const connectionString=process.argv[1];
       if(!await waitForPostgresTcpReady(connectionString))throw new Error("Native cold PG unavailable");
       const runner=createPostgresMigrationRunner({connectionString});await runner.apply();
+      const observed=await runner.status();
+      if(observed.pending.length || !observed.applied.length)throw new Error("Incomplete application upgrade schema");
       const client=new pg.Client({connectionString});await client.connect();
       try {
         await client.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ('b3000000-0000-4000-8000-000000000001','admin@example.invalid')");
         await client.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ('b3000000-0000-4000-8000-000000000001','admin','active','legacy',now())");
         await client.query("INSERT INTO public.platform_communication_operators(principal_id) VALUES ('b3000000-0000-4000-8000-000000000001')");
       } finally {await client.end();}
+      process.stdout.write(JSON.stringify({schemaVersion:observed.applied.length}));
       process.exit(0);
-    `,connectionString],root,isolatedConsumerEnv());
+    `,connectionString],root,isolatedConsumerEnv()));
+    proveApplicationUpgradePostgres(consumer,connectionString,schemaObservation.schemaVersion);
     proveNativeCommunicationsOperations(consumer,connectionString);
     proveOperationsPostgres(consumer,connectionString);
     provePortabilityPostgres(consumer,connectionString);

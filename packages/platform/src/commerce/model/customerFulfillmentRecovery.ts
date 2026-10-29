@@ -8,9 +8,12 @@ export type { ProviderStatusEvidence,ReleasedProviderExceptionHold,ResolvedProvi
 /** Server-only shape read from a released automatic provider-exception hold. */
 
 /**
- * Finds only database-authored, trigger-created recovery links. The returned IDs
- * stay server-side: the browser receives the resulting Layer C step, never hold
- * metadata or provider evidence identifiers.
+ * Matches supplied hold metadata and evidence rows to a recovery relationship.
+ * The host must supply rows authenticated against its trusted database source and
+ * provide the expected automatic-source markers; this helper does not authenticate
+ * their provenance.
+ * Callers must keep the returned evidence IDs server-side and expose only an
+ * intentional customer-step projection to a browser.
  */
 export function resolveProviderExceptionRecovery(input: {
   automaticHoldSource?: string;

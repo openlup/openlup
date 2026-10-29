@@ -1,6 +1,6 @@
 # A1 communications adapters
 
-Status: development-preview implementation ledger, 2026-10-20.
+Status: development-preview implementation ledger; opened 2026-10-20.
 Audience and purpose: platform contributors maintaining the neutral marketing-sync
 contract and opt-in Node communications adapters. Protocol and synthetic
 conformance evidence does not certify a provider account or authorize activation
@@ -37,7 +37,7 @@ The original contract describes profile sync, negative consent readback and
 erasure request/status; C-PR1b extends it with the consent-push family below.
 Local consent remains authoritative. Existing M04 providers remain assignable;
 there is no new package subpath, runtime helper or production abstraction.
-A refusal-only newsletter bridge belongs to the later adapter work.
+At the C-PR1 boundary, a refusal-only newsletter bridge was assigned to later adapter work; P2 below records the current refusal-only surface.
 
 The offline conformance helper uses one synthetic dialect, with audience
 variants asserted inside each case. S01–S12 cover binding/capability, private
@@ -146,8 +146,9 @@ Baseline, scanner pins, caps and browser budgets remain unchanged.
 Root and package-local test execution, generated API checks, neutrality, lint and
 publication policy are distinct obligations. An installed-artifact release proof
 requires the actual retained tarball; synthetic consumer fixtures establish only
-their named offline properties. Hosted timing, TEST-account/key capability
-readback and no-trigger evidence remain separate later-adapter gates.
+their named offline properties. Hosted timing remains a separate evidence
+obligation; TEST-account/key capability readback and no-trigger evidence remain
+owner TEST qualification gates.
 
 ## C-PR1b: additive consent push
 
@@ -206,7 +207,7 @@ constants, raw clients or public job controls. The internal revision is
 importing donor behavior or contacting the provider.
 
 The host supplies a current opaque-subject mapper, local authorization/consent
-registries, an in-memory credential resolver and atomic compare-and-swap storage
+registries, a synchronous host-supplied credential resolver and atomic compare-and-swap storage
 shared by all instances and namespaces for an account/environment. That storage
 is durable in an installation; tests use an isolated in-memory implementation.
 Its private `availability` record is shared by reference across every adapter for

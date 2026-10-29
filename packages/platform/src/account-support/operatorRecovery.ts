@@ -75,7 +75,7 @@ export async function executeOperatorAccountLink(input: {
     authUserId, idempotencyKey: command.idempotencyKey, operatorId: input.operatorId });
 }
 
-/** Two commands, two commits. Callback invocation keeps the donor's non-await order. */
+/** The host must supply distinct idempotency keys and separately committed link/subscription authorities; this helper creates or verifies neither keys nor transactions. It awaits link; refused/conflicting outcomes return before callback or apply. Otherwise it invokes onLinked() without awaiting its return, then awaits apply(). */
 export async function linkThenApply(input: {
   link: () => Promise<OperatorAccountLinkResult>;
   apply: () => ReturnType<NativeOperatorAuthorityPort["applySubscriptionAction"]>;

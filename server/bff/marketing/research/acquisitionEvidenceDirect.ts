@@ -4,6 +4,7 @@ import type { HttpRequest, HttpResponse } from "../../../_lib/types/http.js";
 import { authorizeAcquisitionCaseAdmin } from "../../clients/acquisitionCaseDirect.js";
 import { getBundleDescriptor, resolveBundleId } from "../../../domains/platform-runtime/platformKernel.js";
 import { resolveAcquisitionEvidenceBinding } from "../../../runtime/marketing/acquisitionEvidenceBinding.js";
+import { refuseAcquisitionCommandDuringLegacyDrain } from "../../../runtime/marketing/acquisitionLegacyDrain.js";
 type Env = Record<string, string | undefined>;
 
 export function isDirectAcquisitionEvidenceBundle(env: Env = process.env): boolean {
@@ -22,12 +23,14 @@ function dependencies(env: Env) {
   };
 }
 export async function handleAcquisitionSurveySubmit(req: HttpRequest, res: HttpResponse, env: Env = process.env): Promise<void> {
+  if (req.method === "POST" && refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
   return createAcquisitionSurveySubmitDirectHandler(dependencies(env))(req, res);
 }
 export async function handleAcquisitionSurveyList(req: HttpRequest, res: HttpResponse, env: Env = process.env): Promise<void> {
   return createAcquisitionSurveyListDirectHandler(dependencies(env))(req, res);
 }
 export async function handleAcquisitionNewsletterConsent(value: unknown, res: HttpResponse, env: Env = process.env): Promise<void> {
+  if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
   return createAcquisitionNewsletterConsentDirectHandler(dependencies(env))(value, res);
 }
 function first(value: string | string[] | undefined): string | undefined { return Array.isArray(value) ? value[0] : value; }

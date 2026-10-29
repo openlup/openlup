@@ -88,11 +88,14 @@ parser case live in `packages/core/test/fulfillment*.test.ts`; platform retains
 label lifecycle and dispatch-contract tests. Host characterization witnesses
 retain their existing source and imports.
 
-The platform runtime entry exports only these values; internal helper types are not entry
-exports. Dispatch, observation, sync, lifecycle handlers and projections share the
-entry with status, parser and capability selection values. The register matches
-the [runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
-[runtime API report](../../../packages/platform/api/fulfillment.api.md).
+At the 0.22.0 release, the platform runtime entry exported the values listed
+below; internal helper types were not entry exports. Dispatch, observation,
+sync, lifecycle handlers and projections share the entry with status, parser
+and capability selection values. This is a historical register; later parity
+additions are recorded below. Use the current
+[runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
+[runtime API report](../../../packages/platform/api/fulfillment.api.md) for the
+current export surface.
 
 | Source | Exported values |
 | --- | --- |
@@ -134,15 +137,19 @@ the [runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
 | shipmentsOverviewHandler.ts | createFulfillmentShipmentsOverviewHandler |
 | trackingProgress.ts | fulfillmentProgressPresentation |
 
-The contracts entry exports only these types, including the prepare-result and
-evidence envelopes. G14–G17 amend methods, fields or inline inputs without new
-type names; offline conformance adds the subject and evidence types. G18–G21 add
-replacement, operator, customer-alignment and host-read types with a shared native
-refusal. G22 supplies the host preparation binding. The contracts entry also exposes
-FulfillmentServicesOptions and FulfillmentServices for explicit service selection,
-readiness and dispatch. The read contracts include tracking-progress input and presentation.
-The register matches the [contracts entry](../../../packages/platform/src/fulfillment/contracts/index.ts)
-and [contracts API report](../../../packages/platform/api/fulfillment-contracts.api.md).
+At the 0.22.0 release, the contracts entry exported only these types, including
+the prepare-result and evidence envelopes. G14–G17 amend methods, fields or
+inline inputs without new type names; offline conformance adds the subject and
+evidence types. G18–G21 add replacement, operator, customer-alignment and
+host-read types with a shared native refusal. G22 supplies the host preparation
+binding. The contracts entry also exposes FulfillmentServicesOptions and
+FulfillmentServices for explicit service selection, readiness and dispatch. The
+read contracts include tracking-progress input and presentation.
+This is a historical register, not the current type inventory. Later parity
+additions are recorded below; use the current
+[contracts entry](../../../packages/platform/src/fulfillment/contracts/index.ts)
+and [contracts API report](../../../packages/platform/api/fulfillment-contracts.api.md)
+for the current type surface.
 
 | Source | Exported types |
 | --- | --- |
@@ -570,7 +577,7 @@ Source-release preparation refreshes the derived inventory/class, lock,
 publication-catalogue and canonical migration-manifest bindings; it changes no
 migration bytes, API snapshot, identity or compatibility control.
 
-The standalone [0.22.0 limitations](../../../packages/platform/CHANGELOG.md#0220)
+The standalone [0.22.0 limitations](../../../packages/platform/CHANGELOG-HISTORY.md#0220)
 retain cumulative limits and the G18–G22 host-owned/native-refusal table, G23
 runner composition requirement, localized core label follow-up and opt-in
 warehouse adapter boundary. Native alignment stays off or shadow until the host composes
@@ -674,7 +681,7 @@ and severity through the complete canonical migration chain. The forward
 `20261022165000_fulfillment_stock_evidence_replay_reopen.sql` at native position
 76 closes the scheduled reopen gap. Legacy native alert fingerprints
 still conflict, including after resolution; native shadow drafts and observation
-retries require the migration steps in the [0.23.0 notes](../../../packages/platform/CHANGELOG.md#0230).
+retries require the migration steps in the [0.23.0 notes](../../../packages/platform/CHANGELOG-HISTORY.md#0230).
 D2 native dispatch-finish rejected/unknown detail retention and immutable stock snapshot/alert
 evidence storage remain KEEP-GAPs. The warehouse adapter retains opt-in product
 sync parity and offline diagnostics without provider-account evidence.

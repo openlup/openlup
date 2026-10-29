@@ -135,14 +135,19 @@ Known failed checks, conflicts and unresolved mergeability keep their existing
 stops. A pending `autoMergeRequest` records enabled auto-merge; `mergeQueueEntry`
 alone confirms queue entry. Required source and group success still precedes merge.
 
-Carry-over remains available when the group tree equals the reviewed tree, or
-when `git merge-tree` predicts exactly that group and the base's net change
-avoids the reviewed paths and admission, identity-binding, dependency and
-migration machinery. Otherwise reject the group: merge `main` and re-review.
-The [plan](autonomous-reviewed-delivery.md#source-evidence-and-carry-over) lists
-the exact protected paths. The optional `OPENLUP_STACK_BASE` pin must lie between
-the fork point and HEAD and already be on actual main for hosted admission.
-At most two automatic queue-rebuild retries remain separate from repair cycles.
+Carry-over follows the canonical
+[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks),
+including its narrow exception for disjoint package `exports` additions. The
+[plan](autonomous-reviewed-delivery.md#source-evidence-and-carry-over) points
+to that owner for the exact protected paths. Otherwise reject the group: merge
+`main` and re-review. The optional `OPENLUP_STACK_BASE` pin must lie between the
+fork point and HEAD and already be on actual main for hosted admission. At most
+two authorized supervisor queue-recovery retries remain separate from repair
+cycles, under the canonical
+[Merge queue](../../../CONTRIBUTING.md#merge-queue) procedure. The trusted
+Queue Handoff command makes one enqueue attempt after eligibility checks; it
+does not retry a refusal within that invocation or automatically requeue an
+entry from the same arming intent.
 
 Foundation delivery does not authorize settings activation. The original live
 activation proof is historical; current guidance and dated activation evidence

@@ -30,8 +30,9 @@ continuously on call.
 | a suspected security vulnerability | the private route in `SECURITY.md` - never a public issue |
 | a question about running the platform | read the documentation first; then a feature request describing what the documentation failed to answer |
 
-Blank issues are disabled. Every report goes through a form, because triage
-without a version and a reproduction is not triage.
+Blank issues are disabled. Bug reports ask for a version and a reproduction;
+feature requests ask for the problem, the current workaround, and why it belongs
+in core. Each form collects the details for its report type.
 
 ## Release channel decides the promise
 

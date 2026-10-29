@@ -314,7 +314,7 @@ host evidence. Adopters must not activate unselected or unready invoicing; M10
 renewal/retry stages remain incomplete and default-off, not for adopter activation.
 Managed correction arbitration/reconciliation, first-claim legacy fallback,
 contention recovery and the M07 accounting-readback DDL/ACL limit remain in the
-[candidate limitations](../../../packages/platform/CHANGELOG.md#0240).
+[candidate limitations](../../../packages/platform/CHANGELOG-HISTORY.md#0240).
 
 Set preparation carries the Zod validation floor, the optional fulfillment shadow
 fingerprint and dispatch facts, exact internal peer pins, rolling changelogs and

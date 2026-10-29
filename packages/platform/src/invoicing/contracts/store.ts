@@ -38,8 +38,10 @@ export interface InvoiceDutyReadback {
     readonly leaseUntil: string | null;
   }[];
 }
-/** Every operation is one local transaction; commit before external I/O. Native
- * success atomically saves late identity and compensation; stale catch writes nothing.
+/** Commit each local persistence transaction before host/provider I/O. A store
+ * method may coordinate multiple transactions with host callbacks outside those
+ * transactions; it is not necessarily one atomic transaction. Native success
+ * atomically saves late identity and compensation; stale catch writes nothing.
  * Compatibility stores bind provider selection at construction; the structural
  * native store accepts it per claim and persists the first provider on the duty.
  * No implementation, executor or migration is installed by these declarations.

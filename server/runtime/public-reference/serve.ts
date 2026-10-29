@@ -1,7 +1,11 @@
 import type { createM09InvoicingReferenceBinding } from "./m09InvoicingBinding.js";
 import type { CommunicationsReferenceMount } from "./communications.js";
+import type { createM14OperationsReferenceBinding } from "./m14OperationsBinding.js";
+import { preflightAdminBffRoute, type AdminAuthBindingOptions } from "../auth/adminAuthBinding.js";
 import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
 import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
+import { withObservedRoute } from "../../_lib/observability/route.js";
+import { sendBffError, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { createReferenceBffDispatcher } from "../bffDispatch.js";
 import { admitReferenceIdentity, type ReferenceIdentity, type ReferenceIdentityAdmission } from "../auth/referenceIdentity.js";
 import type { admitReferenceOutbox } from "../outbox/candidateAdmission.js";
@@ -17,7 +21,7 @@ import { loadSiteRouteManifest } from "../../../scripts/site-routes.mjs";
 import { createSubscriptionProfile, SUBSCRIPTION_PAGES } from "./subscriptionProfile.js";
 
 import { IDENTITY_PAGES, IDENTITY_ROUTES, identityLocalOrigin, withIdentityReferencePolicy, type IdentityReferenceProfile } from "../auth/referenceIdentityPolicy.js";
-import { adaptRequest, decorateResponse } from "../../adapters/node/httpRequestAdapter.js";
+import { adaptRequest, decorateRequest, decorateResponse } from "../../adapters/node/httpRequestAdapter.js";
 
 /** The disposable profile augments the same admitted candidate used by other hosts. */
 export type ReferenceIdentityRuntime = ReferenceIdentityAdmission & {
@@ -47,6 +51,10 @@ export type PublicReferenceServerOptions = {
   distDir?: string;
   env?: NodeJS.ProcessEnv;
   communications?: CommunicationsReferenceMount;
+  /** Selected portable operations default; host-owned ports and admin authority. */
+  operations?: ReturnType<typeof createM14OperationsReferenceBinding>;
+  /** Existing admin preflight's host-owned identity adapters. */
+  operationsAdminAuth?: AdminAuthBindingOptions;
   /** Inert host admission seam; no invoice routes, cron or worker are mounted. */
   invoicing?: Pick<ReturnType<typeof createM09InvoicingReferenceBinding>, "readiness">;
   identity?: ReferenceIdentityAdmission & { profile?: IdentityReferenceProfile; authOrigin?: string };
@@ -124,8 +132,10 @@ function health(env: NodeJS.ProcessEnv): string {
 
 function createServerForCandidate(options: PublicReferenceServerOptions, identityRuntime?: ReferenceIdentity) {
   const current = runtime(options);
+  const operationsHost = options.operations ? new URL(current.env.APP_BASE_URL ?? "").host : null;
   if (identityRuntime && identityRuntime.bundle !== (current.env.PLATFORM_BUNDLE ?? "node-supabase")) throw new Error("Identity candidate bundle does not match the reference host");
   const profileName = current.env.OPENLUP_REFERENCE_PROFILE;
+  if (options.operations && (profileName || identityRuntime)) throw new Error("Operations reference requires its own host composition");
   if (profileName && !["subscription", "identity", "communications"].includes(profileName)) throw new Error("Unknown public reference profile");
   const communications=profileName==="communications"?options.communications:undefined;
   if(profileName==="communications"&&!communications)throw new Error("Communications reference requires startup admission");
@@ -134,10 +144,30 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
   if (identity && (identity.profile!.bundle !== current.env.PLATFORM_BUNDLE || identity.profile!.origin !== identityLocalOrigin(current.env.APP_BASE_URL ?? ""))) throw new Error("Identity composition does not match selected installation");
   const identityCsp = "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'" + (identity?.authOrigin ? ` ${identityLocalOrigin(identity.authOrigin)}` : "");
   const subscription = profileName === "subscription" ? createSubscriptionProfile(current.env) : null;
-  const dispatch = createReferenceBffDispatcher(() => identityRuntime?.env ?? current.env, identityRuntime?.preflight);
+  const dispatch = createReferenceBffDispatcher(() => identityRuntime?.env ?? current.env,
+    options.operations ? (req, res, route) => preflightAdminBffRoute(req, res, route, current.env, options.operationsAdminAuth) : identityRuntime?.preflight);
   return createServer((request, res) => {
     const pathname = requestPath(request);
     if (!pathname) return response(res, 404, "Not found\n", { "content-type": "text/plain; charset=utf-8" });
+    const operationsRead = pathname === "/api/bff/admin/platform/alerts" ? options.operations?.alerts
+      : pathname === "/api/bff/admin/platform/pipeline" ? options.operations?.pipeline : undefined;
+    if (operationsRead) {
+      if (request.headers.host !== operationsHost) return response(res, 403, "Reference host mismatch\n");
+      for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
+      const observed = withObservedRoute({ route: pathname, domain: "platform", surface: "admin", risk: pathname.endsWith("/pipeline") ? "mutation" : "read" }, async (req, decorated) => {
+        if (req.method !== "GET") return sendMethodNotAllowed(decorated, ["GET"]);
+        try {
+          await dispatch([{ route: pathname, pattern: /^\/api\/bff\/admin\/platform\/(?:alerts|pipeline)$/, params: [], handler: operationsRead }], await adaptRequest(request, pathname, false, 32768), decorated);
+        } catch {
+          if (!res.headersSent) sendBffError(decorated, "UPSTREAM_UNAVAILABLE", "Operations unavailable", { status: 503 });
+          else res.destroy();
+        }
+      });
+      void observed(decorateRequest(request), decorateResponse(res)).catch(() => {
+        if (!res.headersSent) response(res, 503, "Operations unavailable\n"); else res.destroy();
+      });
+      return;
+    }
     if(communications&&(pathname.startsWith("/api/")||pathname===communications.page)) {
       try{communications.admission.assertCurrent();}catch{return response(res,503,"Communications admission stale\n");}
       if(request.headers.host!==new URL(communications.origin).host)return response(res,403,"Reference host mismatch\n");

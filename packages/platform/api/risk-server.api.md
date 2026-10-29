@@ -106,8 +106,9 @@ import type { PoolClient } from "pg";
 import { type PgQueryExecutor, type PgShimError, type PgShimResult } from "./queryBuilderSql.js";
 export type { PgQueryExecutor, PgShimError, PgShimResult };
 /**
- * Builder over one pg client. Chainable + awaitable (PromiseLike). Every value flows through a param
- * accumulator, so the rendered SQL contains only $N placeholders for values.
+ * Builder over one pg client. Chainable + awaitable (PromiseLike). Data values
+ * use `$N` parameters; table and column identifiers are allowlist-validated, and
+ * `.is()` accepts only `null`, `true` or `false` for its fixed SQL clause.
  */
 export declare class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>> {
     private readonly client;

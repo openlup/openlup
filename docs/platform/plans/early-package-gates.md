@@ -1,6 +1,7 @@
 # Earlier package gates with bounded verification cost
 
-Status: LOCAL_IMPLEMENTATION — approved local work; no publication or installed-tool authority.
+Status recorded for the 6 October 2026 task: `LOCAL_IMPLEMENTATION` —
+approved local work; no publication or installed-tool authority.
 Audience: development-preview contributors and the maintainer.
 Outcome: apply reusable premerge gates to every publishable package, rejecting
 unvalidated APIs, broken cold artifact/reference bindings and applicable schema
@@ -11,8 +12,8 @@ observation regressions through the existing required checks. Stable support and
 Inspected on 6 October 2026 at main
 `dd149c6d5f750f17e2430c4f0a74de1b9d7b96df`, freshly fetched through the configured
 task-worktree helper. This record follows the public plan convention in
-`docs/platform/plans/`. `.agent-protocol.yml` still points to an absent
-the missing docs/templates/wave-plan.md template; no generator or validator exists in this tree.
+`docs/platform/plans/`. `.agent-protocol.yml` still points to a missing
+docs/templates/wave-plan.md template; its generator and validator are absent.
 No native Plan Protocol pass is claimed. Planning acceptance is review of this
 bounded proposal, not an exception to an implementation gate.
 
@@ -357,6 +358,9 @@ feed required `test` with conservative tooling-input selection. pgTAP remains a 
 
 ## Local implementation checkpoint
 
+Historical 6 October 2026 task snapshot: the local results below are records
+from that task, not evidence of current execution or delivery status.
+
 The common runner has no package-name switch. A real cold-producer fixture with
 three independent publishable workspaces executes every API before every owning
 batch and imports each ordinary installed tarball. That fixture exposed the
@@ -392,6 +396,10 @@ reviews and final installed verification remain pending; no delivery receipt,
 hosted gate pass or publication is claimed.
 
 ## Cost baseline and decision budgets
+
+The planning measurements and estimates below were recorded for the 6 October
+2026 Core/Outbox two-package baseline; they are not a current three-package cost
+estimate.
 
 Measurements are one hosted main-push sample, not stable percentiles or savings.
 API timestamps from run 37428448424/1 give:
@@ -436,7 +444,8 @@ Planning estimates for incremental proof: new selection falsifiers 1–5 s (the
 API invocation alone has the local measurement above); deterministic
 schema tests under 2 s wall time; cold current-set pack 5–20 s; isolated consumers
 5–20 s; owned DB startup/readiness 3–15 s, SQL/replay 1–10 s, cleanup 1–5 s.
-Target incremental required critical path for the current two-package set is
+Target incremental required critical path for the
+6 October Core/Outbox baseline is
 15–60 s with reused core consumer work. Future packages add their measured
 owning proof cost; this is not a constant-time promise for an expanding set.
 This target assumes the PostgreSQL image is already available; first/cold image
@@ -517,7 +526,8 @@ review budget, or scope beyond these failure classes. A runtime defect discovere
 by new tests is diagnosed and reported before expanding this tests/wiring plan.
 Keep recoverable work; no force-push, control bypass or automatic successor.
 
-Current authority: bounded local implementation, clarified to cover future
+Authority recorded for the 6 October task: bounded local implementation,
+clarified to cover future
 modules through the same package inventory and runner, including repository CI
 wiring, neutral test/artifact work and signed task commits after any applicable
 maintainer read. The stabilized control/bounds packet and exact parity

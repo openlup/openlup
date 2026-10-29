@@ -5,9 +5,6 @@ ranked locality candidates; given a locality, return its streets. It exists so a
 checkout or account form can *assist* an address entry without guessing, and it
 is deliberately a read-only directory rather than a validator.
 
-⚠️ This README is the whole documentation for this domain. Nothing about it is
-covered by the maintainer canons in the private overlay.
-
 ## Owns / does not own
 
 - **Owns:** the canonical postal-code, locality and street lookup contracts;

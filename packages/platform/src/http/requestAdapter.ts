@@ -172,7 +172,8 @@ export function decorateResponse(res: ServerResponse): HttpResponse {
 
 /**
  * Adapt a Node IncomingMessage into the Vercel request shape, honoring the raw-body invariant:
- *  - raw-stream entrypoints (process/csp/feedback): stream left intact, NO req.body;
+ *  - the platform's built-in `/api/csp-report` path and deployment entrypoints explicitly marked
+ *    `rawStream: true`: stream left intact, NO req.body;
  *  - everything else: raw bytes buffered + re-exposed as async-iterable (so readRawBody sees the
  *    EXACT bytes for any signature-verifying route, webhook-segment or not) AND req.body = parsed JSON.
  */

@@ -9,7 +9,9 @@ export interface CompensationRpcClient {
 }
 
 /**
- * Binds both cancellations to one service-role client. Compositions inject the
+ * Binds both cancellations to the RPC client supplied by the host. The host
+ * must provide and protect a client with the required authorization; this
+ * adapter does not authenticate or authorize it. Compositions inject the
  * result into the inventory reservation port, so the staying domain module
  * never imports this adapter.
  */

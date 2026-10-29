@@ -8,12 +8,15 @@ import {
   verifyCommunicationIntegrationEventSignature,
 } from "../../../infra/communications/integrationEventSignature.js";
 import { handleAcquisitionNewsletterConsent } from "./acquisitionEvidenceDirect.js";
+import { refuseAcquisitionCommandDuringLegacyDrain } from "../../../runtime/marketing/acquisitionLegacyDrain.js";
 
 export const config = { api: { bodyParser: false } };
 
 async function handler(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
-  const secret = process.env.COMMUNICATION_INTEGRATIONS_EVENTS_SECRET;
+  const env = process.env;
+  if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
+  const secret = env.COMMUNICATION_INTEGRATIONS_EVENTS_SECRET;
   if (!secret) return sendBffError(res, "UPSTREAM_UNAVAILABLE", "Acquisition consent is not configured");
 
   let rawBody: string;

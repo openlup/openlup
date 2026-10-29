@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The exact-shipment native G17 host binding and its local unit/native witnesses
+route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
+The [data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) defines its
+actual restricted-login recovery proof. This source routing does not establish
+whole-store transfer, host exclusion, provider qualification or new-dispatch
+runtime capability.
+
 The Node host and scheduler shutdown source, API reports and disposable
 PostgreSQL drain witness belong to the platform package's
 [scheduled jobs boundary](../../packages/platform/README.md#scheduled-jobs).
@@ -77,12 +84,17 @@ external executor fencing and effect reconciliation duties. The publication
 catalogue includes the real-session witness; generated navigation establishes
 no current test result or complete store-transfer claim.
 
-The migration session hook, union/history controls, exact qualified approval
-inputs and five inert fixtures retain the
+The migration session hook, union/history controls, seven issued qualified
+approval inputs and five additional inert restricted-bootstrap fixtures retain the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The package entry and contributor witness descriptions link to that boundary;
-publication inventory includes the four control witnesses/fragment and inert
-fixtures without admitting them to the canonical installation catalogue.
+publication inventory includes the control witnesses and inert fixtures without
+admitting the five separately approved replacements to the canonical installation catalogue.
+The released legacy upgrade witness and its child process route to the same
+[data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle). Its published
+predecessor pin, real backfill and code-rollback limit belong there; contributor
+guidance owns the process-kill test invocation and the child's execution-path
+registration. This adds no qualified-v2 upgrade lineage or migration SQL.
 
 Application lifecycle source, owner-local witnesses and its API report route
 to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
@@ -90,6 +102,10 @@ The package README remains the short import entry, the package reference owns
 the disposable recipe, and database/runtime owners retain their separate
 compatibility and admission duties. Generated navigation adds no upgrade,
 installation or provider claim.
+The installed versioned-application witness routes to that same file-upgrade
+owner. Its existing native cold scenario observes the canonical database before
+fixture grants and exercises real operations through an application login;
+the database owner retains schema compatibility and qualified-role acceptance.
 
 The lifecycle legacy PostgreSQL role helper, its package witness and actual
 PostgreSQL witness route to the
@@ -107,6 +123,14 @@ its API report route to the
 Data guidance retains canonical import-trigger/identity limitations; runtime
 guidance retains effect-time fencing and host capability ownership. Navigation
 and selected-row/local-object evidence do not close the full M14 store outcome.
+
+The five local handover sources (entry, cohort helper, dispatch actor,
+application actor and provider) route to that same transfer architecture owner.
+Runtime guidance explains exact process/backend retirement and the frozen
+coordinator; data guidance preserves interrupted graph/media state. Contributor
+guidance owns the opt-in command, four executable carriers and retained
+handover proof. Exact publication and generated navigation add no execution,
+adopter-host qualification or delivered-predecessor claim.
 
 Operations source, owner-local witnesses, the unchanged control-plane SQL
 projection and the three operations API reports route to the
@@ -290,9 +314,11 @@ generated navigation describes source locations rather than installation proof.
 
 Identity routing includes the direct operator challenge source and tests,
 canonical/projection SQL, runtime auth composition and browser auth seams. The
-identity guide owns their behavior; package, architecture, migration and runtime
-owners retain their API, installation and host explanations. Generated navigation
-reflects these routes and never substitutes for those substantive owner updates.
+browser identity owner covers both customer and operator page/provider composition,
+selected-profile inventory, callback and persistence guidance. The identity guide
+owns their behavior; package, architecture, migration and runtime owners retain
+their API, installation and host explanations. Generated navigation reflects
+these routes and never substitutes for those substantive owner updates.
 
 
 <!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-b3d56b4feaad78d44001bd18aeebe086853ba4c6f9cc79d1d49563c50591301d","reason":"The identity browser surface assigns customer pages, session hooks and browser adapters to their new canonical guide. Existing owner precedence and same-change documentation obligations remain unchanged; prior browser and data owners retain their impact review."} -->
@@ -304,6 +330,12 @@ and takes its new source owner; the subscription action-guard test now lives
 beside the reference handler and is owned by the runtime guide. The [documentation routing map](../../config/doc-routing.json)
 assigns those paths to canonical owner pages and sections; it is not a second
 domain or publication census.
+
+The portable operations reference binding and its composed witness route to the
+operations architecture owner. Their catalogue rows admit source and local
+proof, without adding a package entry, installed-default claim or hosted
+observability certification. Runtime guidance describes the host-supplied ports
+and captured delivery boundary separately.
 
 Most domains use `src/domains/<domain>/README.md` as their semantic owner. A
 server README adds server-specific security, money, authorization or operational

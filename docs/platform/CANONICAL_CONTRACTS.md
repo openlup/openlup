@@ -552,9 +552,10 @@ privileges and complete catalogue installation are described in
 ## Compatibility posture
 
 The qualified retained-import selection requires an actual restore login and one
-of the two fixed 90-unit inventories for its migration/bootstrap shape. The
-manifest appends only the exact separately approved import SQL after qualified
-runtime sealing; legacy selection remains the issued 88-unit catalogue. The
+of the two independently measured 92-unit inventories for its migration/bootstrap
+shape. The manifest preserves the entire issued 91-unit prefix and appends the
+separately approved owner-path forward after runtime completion; legacy selection
+remains the issued 88-unit catalogue. The
 two reference-derived digests are expectations, not target observations or
 qualification. Production status/apply/replay and runtime/restore privilege
 witnesses remain required under the
@@ -562,11 +563,37 @@ witnesses remain required under the
 
 The exact qualified-installation source approvals in
 [`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
-are control inputs, not installation evidence. The five inert fixtures and the
+are control inputs, not installation evidence. The seven reviewed fixtures and the
 legacy-preserving version-2 source catalogue follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+The supported reader admits the exact sixth identity for the demonstrated
+context writes and review-receipt reads/appends. The registry retains all six
+prior approvals unchanged; the exact sixth SQL preceded the owner-path tail.
+The seventh approval binds one qualified owner-path forward's exact file and
+function definitions. Its active SQL is selected as unit 92, byte-identical to
+the prior inert fixture; the two installed inventories are measured separately.
+Trusted main parses a changed registry before returning for a no-SQL change,
+so reader support must land before the separate sixth-pin approval, which must
+land before SQL introduction. The installer-ownership/runtime-binding guard relies
+on existing trusted session admission. The tail adds only context column writes/
+DELETE and receipt SELECT/INSERT; receipt mutation, ownership, RLS, triggers,
+production runner/projector, npm API and package budgets remain unchanged.
+The complete F90 prefix and historical inventory evidence remain retained.
 Introducing approved SQL still requires the separately landed control route;
 these pins grant no activation or managed-host compatibility.
+
+The separate restricted-bootstrap approval checkpoint extends the fixed list
+from seven to twelve whole-file identities. The seven issued rows, including the
+completion and owner-path forward, remain unchanged. The five `qa_` fixtures
+stay outside active SQL and the schema-2 manifest; their two owner-body files
+carry the same pinned name-resolution attributes as the issued forward. This
+approval does not install the future 91-unit restricted plan, establish either
+role-mode inventory or grant a release or hosted compatibility claim.
+Four corrected `qb_` identities follow at approval positions 13–16 as one
+exact-byte append. The preceding twelve approvals remain fixed. The active
+restricted plan selects those four files with the approved `qa_` baseline only
+after the separate approval. Its local PG16 qualification covers both role
+modes; this does not qualify a hosted installation or release.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2
@@ -1095,8 +1122,11 @@ Only fresh, authorized `erasure.read` with authenticated provider-read evidence
 can complete the original bounded deletion. Ordinary 404, empty search, elapsed
 time and receipt replay cannot. Completion never removes the subject tombstone.
 Existing marketing ports and their observations and the existing
-`NewsletterSyncProviderPort` remain unchanged. A refusal-only newsletter bridge
-is planned in the later adapter PR. The [A1 ledger](plans/oss-a1-communications-adapters.md)
+`NewsletterSyncProviderPort` remain unchanged. The current opt-in adapter
+includes a refusal-only `NewsletterSyncProviderPort`: all capability flags are
+false, and `sync` and `reconcile` return `skipped/unsupported`; it does not
+enable newsletter provider work. This declared bridge is not provider selection
+or activation. The [A1 ledger](plans/oss-a1-communications-adapters.md)
 records the offline synthetic proof and remaining delivery gates.
 
 ### Consent push admission and reconciliation

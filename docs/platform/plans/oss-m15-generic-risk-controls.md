@@ -473,3 +473,35 @@ no changed value. The lockfile is unchanged, so no npm ci. The smallest adequate
 solution uses the existing merge and generators without a runtime change or
 new mechanism. Logs and retained artifacts: `.context/scratch/m15-main-4ff46904/`
 per worktree. Completion results follow after the full-stack measurement.
+
+### Draft stack maintenance — 2026-10-29
+
+Direct maintainer continuation authorizes local non-fast-forward DCO merges
+main → R1 → R2 → R3, existing API/navigation regeneration, focused checks
+with two workers, and package checks in R1/R3. No rebase, force-push, push,
+remote mutation, arming, activation or release. Existing review history and
+budgets remain intact; full verification and counted admission remain later
+coordinator obligations. CD-M15-6a applies only to exceeded full-stack caps:
+ceil(measured × 1.02 / 5,000) × 5,000 for bytes, ceil(measured × 1.02) for
+files, applied first in R1 and cascaded.
+
+Fresh main/instruction pin: `8faa3232c6858cd219cfa1f16173a9ad00fe7ca6`;
+the code review base remains separately recorded above. Starting heads:
+R1 `5affb9c40f932106de6cadfc509d2c488c14fd5f`,
+R2 `c2c1c31c05a5eca5523c345b5d913acb407f43a2`,
+R3 `cf7dd2725ed418e2b993d26212088cb00df24027`. Current contributor guidance
+adds M14 migration, upgrade and qualified-installation proofs; the AI policy
+clarifies the superseded historical personal-read condition. Existing scope
+and delivery restrictions are preserved.
+
+R1 conflicts in contributor test guidance, publication catalogue, migration
+owner documentation and generated source map. Retain both M14 and M15 prose
+and catalogue entries; regenerate navigation from the combined inputs. M14
+source, API reports, released 0.31.0 versions and changelogs remain authoritative;
+M15 risk source and pending fragments remain intact. Per-cap parent maxima
+retain packed 2,029,568, unpacked 9,447,424, 2,712 files, code gzip 1,743,872
+and 2,656 code files; docs/browser caps are unchanged. The lockfile changes
+for 0.31.0, requiring npm ci in each worktree. The smallest adequate solution
+is the existing registration union and generators, without a runtime change
+or new mechanism. Logs/artifacts: `.context/scratch/m15-main-8faa3232/` per tree.
+Completion evidence and self-retro follow after checks and full-stack measurement.

@@ -47,7 +47,7 @@ aggregation, private pricing/copy and scheduling hosts remain outside the module
 
 [Port fit](../../../packages/platform/test/subscriptions/portFit.test.ts) covers the
 contract amendments. [Current-prefix PostgreSQL](../../../tests/postgres/subscriptionContinuityBaseline.test.ts)
-proves arrival maximum/no stacking and native exhaustion without pause. With mode
+covers arrival maximum/no stacking and native exhaustion without pause. With mode
 off and no captured case, renewal proceeds without an admission RPC.
 After rollback to `off`, shadow cases are admitted. Captured protected cases
 still go through admission and defer until actual arrival: `protect` releases
@@ -118,7 +118,8 @@ characterization decision; later native stores do not inherit hosted readiness.
 
 P2 carries only pinned N1, in native version order before N2 and N3. Its F16
 repair uses the same obligation through decline, retry and authorized recovery.
-The shared PostgreSQL selection checks exact-prefix restart, catalog rollback,
+The shared [PostgreSQL selection](../../../tests/postgres/subscriptionRenewalLifecycle.test.ts)
+checks exact-prefix restart, catalog rollback,
 ACLs, replay, contention, atomic prepare failure, exhaustion and each captured
 alignment rollback branch. It is not a serving or activation receipt.
 

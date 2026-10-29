@@ -19,11 +19,12 @@ import type {
  * availability port knows what a unit's stock is. Nothing here re-derives stock and
  * nothing here opens a database handle.
  *
- * ONE BATCHED CALL, ALWAYS. Every component of every bundle in the request is
- * asked for in a single `getAvailability`, deduplicated by sku, because the
- * underlying port answers a set in three queries — asking per bundle would turn a
- * catalogue listing into a query storm and would let two bundles sharing a unit
- * disagree about its stock inside one response.
+ * Component SKUs are deduplicated across the supplied compositions. When at
+ * least one SKU is requested, this service makes one `getAvailability` call and
+ * reuses each returned SKU figure across the compositions in that response. An
+ * empty composition list or a combined set with no component SKUs makes no call.
+ * The injected availability port owns its access and query strategy; this service
+ * promises no query count.
  *
  * A sku the availability port does not answer for is a MISSING figure, not zero:
  * it is folded in as `sellableNow: null`, so the pure kernel reports the bundle as
