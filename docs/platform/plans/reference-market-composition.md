@@ -8,9 +8,9 @@ Single writer in the assigned worktree; accountable maintainer Bart Roszkowski
 <dev@openlup.com>. Direct assignment and CD-M16-1..12 authorize implementation,
 checks and staging. The coordinator accepted the exact-tree API/budget read;
 the later direct grant authorized its DCO commit, then predecessor integration,
-ordinary push and a stacked draft PR only. Native review/prepare/receipt/ready
-and heavy draft verification remain held; no queue, merge, release, activation
-or adopter work is authorized by this continuation.
+ordinary push and a stacked draft PR only. That preparation continuation held
+native review and heavy verification. The continuation below records the later
+direct grant and its current restriction under CD-M16-17.
 
 Current code/stack base: `18f71994475a30963050944b0ebc6fcbb29603ea`, R1
 head (draft #431), tree `4a81ab795a94ea674a01279cdb4dcd5c092a05e6`.
@@ -373,3 +373,42 @@ Self-retro: consuming the delegated budget unchanged closed the real-pack
 finding without weakening its assertion. This integration needed no conflict
 resolution, test repair or load wait; only the predecessor identity and its
 fixture blob advanced in the current record.
+
+
+## Native review before the post-S1 predecessor
+
+The owner assigned Codex as active supervisor for PR #434 in the existing
+`claude/oss-m16-r2-market-packs` worktree. The later arming grant under CD-M16-1
+permits delivery after the required predecessor. CD-M16-17 dequeued R1 until
+the M15 S1 0.32.0 release PR merges; R1 will integrate main and acquire a new
+head. The binding follow-up limits this run to the task-record update, Bart
+Roszkowski <dev@openlup.com> DCO commits, fast-forward pushes, native prepare
+and two independent fresh counted reviews on the current exact R1 pin.
+Full local verification, ready/main retargeting, receipt and queue/merge wait
+for R1's post-S1 head to be merged into R2 and integration-reviewed. Heavy
+priority is M15, then M14, then M16. This run does not invoke canonical
+`verify-local --pgtap` or make ready, receipt or queue writes.
+
+Current policy revision is `ef99742de560bb88865794a8a1694884d65d06ea`, separate
+from the unchanged exact stack pin
+`18f71994475a30963050944b0ebc6fcbb29603ea`. No catch-up main merge or rebase
+is authorized here. The supplied arming runbook governs the permitted steps;
+exact-candidate native history and terminal evidence remain under
+`.context/scratch/agent-review/`. There is no earlier native session or consumed
+repair cycle. Three changed-tree repair cycles are permitted, with no automatic
+continuation. New functionality, changed fallbacks, accepted regressions,
+settings, credentials, releases and caps remain owner-reserved. The existing
+maintainer read and CD-M16-10/11/12/14 remain applicable; CD-M16-16 is consumed
+unchanged through R1. No adopter endpoint is in scope.
+
+Acceptance remains the frozen R1 witness bytes, host extension fields, provider
+and validation order, shared cache scope, defaults, fallbacks and refusals.
+The descriptor and language/currency/pricing-region/fiscal inputs remain
+independent; bilingual data and the source recipe remain opt-in and unmounted.
+No caller swap, SQL/migration, vendor change, export-key addition, neutrality
+increase or cap edit is admitted. This run requires two counted fresh PASS
+reports and native `reviewed`. Those reports provide prior source coverage for
+the later integration review, subject to native lineage and expiry checks;
+they do not prove the future integrated tree or replace its required final
+verification. Terminal evidence, remaining work and self-retro extend this
+task's ignored execution summary without changing reviewed tracked inputs.
