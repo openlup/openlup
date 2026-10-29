@@ -107,11 +107,11 @@ describe("PostgreSQL migration runner", () => {
     const admission = vi.fn(async (client: PoolClient, applied: readonly (typeof entries[number] & { position: number })[]) => {
       expect(client).toBe(s.client);
       expect(applied).toEqual([{ ...entries[0], position: 0 }]);
-      expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries()]);
+      expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries().slice(0, -1)]);
     });
     await expect(s.makeRunner({ source: { ...s.source, assertSession: admission } }).apply()).resolves.toEqual({ applied: files.slice(1) });
     expect(admission).toHaveBeenCalledOnce();
-    expect(admission.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder[7]!);
+    expect(admission.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder[6]!);
     expect(s.rows).toEqual(expectedRows());
     expect(s.query.mock.calls.slice(-7)).toEqual([...readQueries(), [releaseSql, [lockName]]]);
   });
@@ -123,7 +123,7 @@ describe("PostgreSQL migration runner", () => {
     const result = method === "status" ? runner.status() : runner.apply({ dryRun: method === "dry-run" });
     await expect(result).rejects.toThrow("declared runtime binding differs");
     expect(admission).toHaveBeenCalledOnce();
-    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries(), [releaseSql, [lockName]]]);
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], ...readQueries(true, false), [releaseSql, [lockName]]]);
     expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
     expect(s.rows).toEqual(expectedRows().slice(0, 1));
     expect(s.catalogProjectionPayload).not.toHaveBeenCalled();

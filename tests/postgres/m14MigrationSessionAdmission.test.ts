@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresMigrationRunner, type PlatformMigrationSource } from "@openlup/platform/migrations";
-import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
+import { readSelectedCatalogProjection, readSelectedCatalogRowsForQualifiedInstall, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { qualifiedPostgresCatalogPayload } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -251,12 +251,12 @@ async function invocationCount(): Promise<number> {
       AND objid OPERATOR(pg_catalog.=) 73120491::pg_catalog.oid AND granted`)).rows[0].calls;
 }
 
-function fixtureRunner(pool: Pool, withHook: boolean, onAdmission = () => {},
+function fixtureRunner(pool: Pool, withHook: boolean, onAdmission: (client: PoolClient) => void | Promise<void> = () => {},
   projector: (client: PoolClient) => Promise<string> = async () => inventory) {
   return createPostgresMigrationRunner({ connectionString: "owned synthetic pool" }, {
     lockName: "synthetic-ledger-preflight", poolFactory: () => pool,
     catalogProjectionPayload: projector,
-    source: source(withHook ? async () => { onAdmission(); } : undefined),
+    source: source(withHook ? async client => { await onAdmission(client); } : undefined),
   });
 }
 
@@ -593,6 +593,39 @@ it("holds the admitted ledger relation lock until its rows have been read", asyn
     expect(await invocationCount()).toBe(0);
   } finally {
     allowRead.resolve();
+    await Promise.allSettled(replacement ? [result, replacement] : [result]);
+    await pool.end();
+  }
+});
+
+it("holds the admitted ledger lock through the qualified session catalog read", async () => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+    [entries[0]!.file, entries[0]!.sha256]);
+  const oid = (await admin.query("SELECT 'public.platform_schema_migrations'::pg_catalog.regclass::pg_catalog.oid AS oid")).rows[0].oid;
+  const inSession = signal(), allowCatalogRead = signal();
+  const pool = probePool();
+  const result = fixtureRunner(pool, true, async client => {
+    inSession.resolve();
+    await allowCatalogRead.promise;
+    const rows = await readSelectedCatalogRowsForQualifiedInstall(client);
+    expect(rows.some(row => row.kind === "relation" && row.schema === "public"
+      && row.name === "platform_schema_migrations")).toBe(true);
+  }).status();
+  let replacement: Promise<unknown> | undefined;
+  try {
+    await Promise.race([inSession.promise, result.then(() => { throw new Error("qualified catalog read did not reach its gate"); })]);
+    replacement = admin.query(`DROP TABLE public.platform_schema_migrations; ${hostileLayouts[0][1]}`);
+    await expect.poll(async () => (await admin.query(`SELECT pg_catalog.count(*)::pg_catalog.int4 AS waiting
+      FROM pg_catalog.pg_locks WHERE relation OPERATOR(pg_catalog.=) $1::pg_catalog.oid
+        AND mode OPERATOR(pg_catalog.=) 'AccessExclusiveLock'::pg_catalog.text AND NOT granted`, [oid])).rows[0].waiting,
+    { timeout: 10_000 }).toBe(1);
+    allowCatalogRead.resolve();
+    await expect(result).resolves.toEqual({ applied: files.slice(0, 1), pending: files.slice(1) });
+    await replacement;
+    expect(await invocationCount()).toBe(0);
+  } finally {
+    allowCatalogRead.resolve();
     await Promise.allSettled(replacement ? [result, replacement] : [result]);
     await pool.end();
   }

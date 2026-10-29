@@ -168,8 +168,9 @@ export function createPostgresMigrationRunner(
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const { applied } = await readAppliedPrefix(client, plan.units);
-        await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        const { applied } = await readAppliedPrefix(client, plan.units, async (applied) => {
+          await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        });
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
           pending: plan.units.slice(applied.length).map((unit) => unit.catalogPath),
@@ -182,8 +183,9 @@ export function createPostgresMigrationRunner(
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const initial = await readAppliedPrefix(client, plan.units);
-        await options.source.assertSession?.(client, initial.applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        const initial = await readAppliedPrefix(client, plan.units, async (applied) => {
+          await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
+        });
         const pending = plan.units.slice(initial.applied.length);
         if (opts?.dryRun) {
           if (pending.length === 0) await assertObjectInventory(client, plan, options);

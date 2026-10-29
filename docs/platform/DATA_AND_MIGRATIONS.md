@@ -153,8 +153,9 @@ or inheritance links, triggers, rules, row policies or extended statistics.
 The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
 major with different catalog expression trees is refused until separately qualified.
 It checks this before reading applied rows, keeps the admitted relation stable
-through complete inventory projection and reads only rows belonging to the
-ledger itself. These checks apply to legacy and qualified sources. Legacy
+through qualified session admission and complete inventory projection, and
+reads only rows belonging to the ledger itself. These checks apply to legacy
+and qualified sources. Legacy
 bootstrap ownership remains accepted; qualified session admission still
 requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
