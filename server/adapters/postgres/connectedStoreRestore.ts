@@ -321,6 +321,7 @@ export async function restoreConnectedNativeStore(input: {
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
       if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");
+      if (JSON.stringify((await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows) !== JSON.stringify(ledgerBefore)) fail("schema_conflict");
       await client.query("COMMIT");
       result = { captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 };
     } else {

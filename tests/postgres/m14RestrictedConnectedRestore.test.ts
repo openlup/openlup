@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { Pool, type PoolClient } from "pg";
+import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -137,6 +137,39 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
+      if (shape === "neon" && mode === "installer-managed") {
+        // A separate administrator changes the ledger after the first exact
+        // read but just before restore locks the table. Replay must recheck it.
+        const root = target.pools[0]!;
+        const original = (await root.query<{ sha256: string }>(
+          "SELECT sha256 FROM public.platform_schema_migrations WHERE position=0")).rows[0]!.sha256;
+        const changed = `${original[0] === "f" ? "e" : "f"}${original.slice(1)}`;
+        let raced = false, closed = false;
+        const racingOwner = { async connect() {
+          const client = await target!.owner.connect();
+          return {
+            async query(sql: string | QueryConfig, values?: unknown[]) {
+              const text = typeof sql === "string" ? sql : sql.text;
+              if (!raced && text.includes('LOCK TABLE "public"."platform_schema_migrations"')) {
+                await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [changed]);
+                raced = true;
+              }
+              const result = typeof sql === "string" ? await client.query(sql, values) : await client.query(sql);
+              if (text.startsWith("REVOKE platform_acquisition_owner")) closed = true;
+              return result;
+            },
+            release: (destroy?: boolean) => client.release(destroy),
+          };
+        } } as unknown as Pool;
+        try {
+          await expect(restoreConnectedNativeStore({ ...input, owner: racingOwner })).rejects.toMatchObject({ code: "schema_conflict" });
+          expect(raced).toBe(true);
+          expect(closed).toBe(true);
+        } finally {
+          await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [original]);
+        }
+        expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
+      }
       expect(await keyIdentity(target)).toEqual(beforeKey);
       await expect(restoreConnectedNativeStore({ ...input, freshTarget: packet })).rejects.toMatchObject({ code: "invalid_input" });
       const restoreLogin = new Pool({ connectionString: (() => {

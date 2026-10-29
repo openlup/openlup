@@ -110,7 +110,27 @@ merge. The documentation policy passes against the new main base with three
 obligations and none unanswered. Native review, canonical verification and
 submission follow.
 
+The first full native review of tree
+`c112bd6567d9f49e466aace10d6888bd6e372a0c` produced one PASS and one
+material finding, `8C-REPLAY-LEDGER`: replay rechecked the final catalogue
+after closing its owner window but omitted the final ledger comparison. An
+outside ledger update between the initial read and relation lock could then
+survive a successful replay. The repair adds the same final ledger comparison
+used by fresh restore and a concurrent-update replay refusal discriminator.
+The focused PG16 race discriminator passed (1 passed, 7 skipped; 16.54
+seconds). The complete restricted matrix then passed (8/8, 64.37 seconds),
+and the existing connected-transfer regression passed (5/5, 30.96 seconds).
+`npm run lint` passed with zero errors and 33 unrelated warnings. The first
+race-test run exposed a fixture wrapper that handled SQL strings but not the
+catalogue reader's query object; correcting that wrapper made the focused
+case pass. A new exact-tree maintainer read and two fresh full reviews are
+required before canonical verification and submission.
+The test change uses the existing PostgreSQL test location and command, so
+the development-check instructions remain correct; its DCO repair commit will
+carry the policy checker's scoped `tests` no-impact trailer.
+
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
-cost two local setup runs. A durable early snapshot and a reversible settings
-row made the final discriminator repeatable; no further process change is
-justified within this parcel.
+cost two local setup runs. The replay finding exposed a missing final check;
+one shared comparison on both success paths is the smallest repair. The race
+fixture's query-object omission cost two failed focused runs, then the full
+case passed. No further process change is justified within this parcel.
