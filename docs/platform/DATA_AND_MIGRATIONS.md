@@ -1252,6 +1252,15 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The [recipe runner](RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+composes this same released-history proof against its declared separate fresh
+schema target. That route requires the actual previous 0.23.0 application
+binding; the ordinary offline test keeps it optional and cannot thereby claim
+compatible-code rollback. Killed child migrations receive their connection
+configuration through stdin, including verified TLS, without credential-bearing
+process arguments. The factored proof retains the same backfill, ledger,
+retained-row and subscription assertions; no new predecessor is invented.
+
 The [released-history witness](../../tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
 selects the nearest published predecessor with an applicable portable data
 backfill: platform 0.23.0, whose 77-unit legacy manifest is an exact prefix of
