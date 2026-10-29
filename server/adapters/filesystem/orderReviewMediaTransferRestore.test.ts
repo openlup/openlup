@@ -49,6 +49,10 @@ it("stages a complete generation without creating the configured serving root", 
   expect((await stageOrderReviewMediaFilesystem({ ...copy, servingRoot: f.target, generationId: "snapshot-1" })).replayed).toBe(true);
   await expect(stageOrderReviewMediaFilesystem({ ...copy, servingRoot: f.target, generationId: "../escape" }))
     .rejects.toMatchObject({ code: "invalid_input" });
+  const collision = join(f.parent, ".openlup-inactive-media-collision");
+  await expect(stageOrderReviewMediaFilesystem({ ...copy, servingRoot: collision, generationId: "collision" }))
+    .rejects.toMatchObject({ code: "invalid_input" });
+  expect(await readdir(f.parent)).toEqual([".openlup-inactive-media-snapshot-1", "source"]);
 });
 
 it("leaves the runtime target absent after an interrupted source read and can resume from the same capture", async () => {

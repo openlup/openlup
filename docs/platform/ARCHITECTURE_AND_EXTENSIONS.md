@@ -2420,10 +2420,12 @@ do not establish completeness. The reference snapshot must account for pending,
 partial and cleanup keys, and a fenced caller must retain all corresponding
 business rows. The [filesystem media adapter](../../server/adapters/filesystem/orderReviewMediaTransferInventory.ts)
 reconciles its final and partial files against those rows. Its staging entry
-point builds a separate inactive generation; the host still owns activation
+point builds a separate inactive generation and refuses a serving-root name
+collision; the host still owns activation
 after database and access reconciliation. Route probes exercise actual customer
 and operator serving handlers under anonymous, owner, other-customer and
-operator identities and refuse effective access changes or served-byte drift.
+operator identities, bind each route reference to the source row, and refuse
+effective access changes or served-byte and observed content-type drift.
 These finite source checks do not grant hosted bucket qualification or a whole
 connected-store cutover.
 

@@ -8,7 +8,8 @@ import type { TransferObject } from "@openlup/platform/portability";
 import { createOrderReviewMediaBffHandler } from "../../bff/order-review/media.js";
 import { createAdminOrderReviewMediaBffHandler } from "../../bff/admin/order-review/media.js";
 import { OrderReviewMediaObjectStore } from "./orderReviewMediaObjectStore.js";
-import { captureOrderReviewMediaFilesystem, reconcileOrderReviewMediaFilesystem } from "./orderReviewMediaTransferInventory.js";
+import { captureOrderReviewMediaFilesystem, reconcileOrderReviewMediaFilesystem,
+  type OrderReviewMediaSourceReference } from "./orderReviewMediaTransferInventory.js";
 import { createOrderReviewMediaTransferReader } from "./orderReviewMediaTransferReader.js";
 import { stageOrderReviewMediaFilesystem } from "./orderReviewMediaTransferRestore.js";
 import { reconcileOrderReviewMediaServing, type MediaServingProbe } from "./orderReviewMediaTransferAccess.js";
@@ -20,6 +21,9 @@ const digest = createHash("sha256").update(bytes).digest("hex");
 const object: TransferObject = { key: "review/media", version: `sha256:${digest}`, bytes: bytes.length,
   sha256: digest, metadata: {}, access: "posix-owner-mode" };
 const media = { state: "confirmed", observedContentType: "image/webp", observedByteLength: bytes.length, observedDigest: digest };
+const reference: OrderReviewMediaSourceReference = { mediaReference: ref, state: "confirmed", objectKey: object.key,
+  observedDigest: digest, observedByteLength: bytes.length, observedContentType: "image/webp",
+  tempKey: null, writerReference: null, cleanupReceipt: null, nextAttemptAt: null };
 
 function probes(): MediaServingProbe[] {
   return (["anonymous", "customer-owner", "customer-other", "operator"] as const).map(actor => {
@@ -77,24 +81,34 @@ it("compares effective anonymous, owner, cross-customer and operator access thro
     await sourceStore.promote(uploaded.tempRef, object.key);
     const limits = { maximumObjectBytes: 1024, maximumTotalBytes: 4096, maximumFiles: 10 };
     const census = await captureOrderReviewMediaFilesystem({ root: sourceRoot, ...limits });
-    expect(reconcileOrderReviewMediaFilesystem({ census, references: [{ mediaReference: ref, state: "confirmed",
-      objectKey: object.key, tempKey: null, writerReference: null, cleanupReceipt: null, nextAttemptAt: null }] }).physicalObjects).toBe(1);
+    expect(reconcileOrderReviewMediaFilesystem({ census, references: [reference] }).physicalObjects).toBe(1);
     const staged = await stageOrderReviewMediaFilesystem({ servingRoot, generationId: "verified", census,
       objects: createOrderReviewMediaTransferReader({ root: sourceRoot, maximumObjectBytes: 1024 }),
       temporary: createOrderReviewMediaTransferReader({ root: sourceRoot, maximumObjectBytes: 1024, area: "tmp" }), ...limits });
     const targetStore = await OrderReviewMediaObjectStore.create(staged.generationRoot);
-    expect(await reconcileOrderReviewMediaServing({ objects: census.objects, probes: probes(),
+    expect(await reconcileOrderReviewMediaServing({ objects: census.objects, references: [reference], probes: probes(),
       fetchRoute: routeFetch({ sourceStore, targetStore }) })).toEqual({ observed: 4, allowed: 2, denied: 2 });
   } finally { await rm(parent, { recursive: true, force: true }); }
 });
 
 it("refuses target access widening, loss and divergent served bytes", async () => {
-  await expect(reconcileOrderReviewMediaServing({ objects: [object], probes: probes(), fetchRoute: routeFetch({ widenTarget: true }) }))
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: probes(), fetchRoute: routeFetch({ widenTarget: true }) }))
     .rejects.toMatchObject({ code: "denied" });
-  await expect(reconcileOrderReviewMediaServing({ objects: [object], probes: probes(), fetchRoute: routeFetch({ loseTarget: true }) }))
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: probes(), fetchRoute: routeFetch({ loseTarget: true }) }))
     .rejects.toMatchObject({ code: "denied" });
-  await expect(reconcileOrderReviewMediaServing({ objects: [object], probes: probes(), fetchRoute: routeFetch({ loseSource: true, loseTarget: true }) }))
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: probes(), fetchRoute: routeFetch({ loseSource: true, loseTarget: true }) }))
     .rejects.toMatchObject({ code: "denied" });
-  await expect(reconcileOrderReviewMediaServing({ objects: [object], probes: probes(), fetchRoute: routeFetch({ corruptTarget: true }) }))
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: probes(), fetchRoute: routeFetch({ corruptTarget: true }) }))
     .rejects.toMatchObject({ code: "integrity_conflict" });
+});
+
+it("binds every route probe to the retained media reference and observed type", async () => {
+  const otherRef = "order-review-media:123e4567-e89b-12d3-a456-426614174099";
+  const wrong = probes().map(probe => ({ ...probe,
+    source: new Request(probe.source.url.replace(ref, otherRef), { headers: probe.source.headers }),
+    target: new Request(probe.target.url.replace(ref, otherRef), { headers: probe.target.headers }) }));
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: wrong,
+    fetchRoute: routeFetch() })).rejects.toMatchObject({ code: "invalid_input" });
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [{ ...reference, observedContentType: "image/jpeg" }],
+    probes: probes(), fetchRoute: routeFetch() })).rejects.toMatchObject({ code: "denied" });
 });

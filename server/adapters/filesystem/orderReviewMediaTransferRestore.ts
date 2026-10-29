@@ -131,6 +131,7 @@ export async function stageOrderReviewMediaFilesystem(input: Omit<Parameters<typ
   const parent = dirname(servingRoot);
   if (await realpath(parent) !== parent) throw new ObjectTransferError("denied");
   const generationRoot = join(parent, `.openlup-inactive-media-${input.generationId}`);
+  if (generationRoot === servingRoot) throw new ObjectTransferError("invalid_input");
   const result = await restoreOrderReviewMediaFilesystem({
     root: generationRoot, census: input.census, objects: input.objects, temporary: input.temporary,
     maximumObjectBytes: input.maximumObjectBytes, maximumTotalBytes: input.maximumTotalBytes,

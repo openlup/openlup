@@ -15,6 +15,9 @@ export interface OrderReviewMediaSourceReference {
   mediaReference: string;
   state: "pending" | "stored" | "confirmed" | "cleanup_pending" | "deleted";
   objectKey: string;
+  observedDigest: string | null;
+  observedByteLength: number | null;
+  observedContentType: "image/jpeg" | "image/png" | "image/webp" | null;
   tempKey: string | null;
   writerReference: string | null;
   cleanupReceipt: string | null;
@@ -29,7 +32,7 @@ export function reconcileOrderReviewMediaFilesystem(input: {
   const { census, references } = input;
   if (!census || !Array.isArray(census.objects) || !Array.isArray(census.temporary)
     || !Array.isArray(references)) throw new ObjectTransferError("invalid_input");
-  const objects = new Set(census.objects.map(object => object.key));
+  const objects = new Map(census.objects.map(object => [object.key, object]));
   const temporary = new Set(census.temporary.map(object => object.key));
   if (objects.size !== census.objects.length || temporary.size !== census.temporary.length) throw new ObjectTransferError("invalid_input");
   const retained: OrderReviewMediaSourceReference[] = [];
@@ -38,6 +41,10 @@ export function reconcileOrderReviewMediaFilesystem(input: {
     if (!row || !/^order-review-media:[a-f0-9-]{36}$/.test(row.mediaReference)
       || !["pending", "stored", "confirmed", "cleanup_pending", "deleted"].includes(row.state)
       || !/^[A-Za-z0-9_-]{1,128}(?:\/[A-Za-z0-9_-]{1,128}){0,3}$/.test(row.objectKey)
+      || row.observedDigest !== null && !/^[a-f0-9]{64}$/.test(row.observedDigest)
+      || row.observedByteLength !== null && (!Number.isSafeInteger(row.observedByteLength) || row.observedByteLength < 1 || row.observedByteLength > 20 * 1024 * 1024)
+      || row.observedContentType !== null && !["image/jpeg", "image/png", "image/webp"].includes(row.observedContentType)
+      || new Set([row.observedDigest, row.observedByteLength, row.observedContentType].map(value => value === null)).size !== 1
       || row.tempKey !== null && !/^tmp\/[a-f0-9]{64}-part$/.test(row.tempKey)
       || row.writerReference !== null && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(row.writerReference)
       || row.cleanupReceipt !== null && typeof row.cleanupReceipt !== "string"
@@ -55,6 +62,14 @@ export function reconcileOrderReviewMediaFilesystem(input: {
     if ((row.state === "stored" || row.state === "confirmed") && !objects.has(row.objectKey)) {
       throw new ObjectTransferError("absent");
     }
+    if (row.state === "stored" || row.state === "confirmed") {
+      const object = objects.get(row.objectKey)!;
+      if (row.observedDigest === null || row.observedByteLength === null || row.observedContentType === null
+        || object.sha256 !== row.observedDigest || object.bytes !== row.observedByteLength) {
+        throw new ObjectTransferError("integrity_conflict");
+      }
+    }
+    if (row.state === "pending" && row.observedDigest !== null) throw new ObjectTransferError("integrity_conflict");
     if (row.state === "pending" && row.tempKey !== null && !temporary.has(row.tempKey.slice(4))) {
       throw new ObjectTransferError("absent");
     }
@@ -63,7 +78,7 @@ export function reconcileOrderReviewMediaFilesystem(input: {
     }
     retained.push({ ...row });
   }
-  if ([...objects].some(key => !physical.has(key)) || [...temporary].some(key => !partial.has(key))) {
+  if ([...objects.keys()].some(key => !physical.has(key)) || [...temporary].some(key => !partial.has(key))) {
     throw new ObjectTransferError("integrity_conflict");
   }
   return { retained, physicalObjects: objects.size, partialObjects: temporary.size };

@@ -38,7 +38,11 @@ it("reconciles source rows with final, pending partial and cleanup obligations",
   const census = await capture(f.root);
   const row = (suffix: string, state: OrderReviewMediaSourceReference["state"], objectKey: string): OrderReviewMediaSourceReference => ({
     mediaReference: `order-review-media:123e4567-e89b-12d3-a456-42661417400${suffix}`,
-    state, objectKey, tempKey: null, writerReference: null, cleanupReceipt: null, nextAttemptAt: null,
+    state, objectKey,
+    observedDigest: state === "stored" || state === "confirmed" ? census.objects[0]!.sha256 : null,
+    observedByteLength: state === "stored" || state === "confirmed" ? census.objects[0]!.bytes : null,
+    observedContentType: state === "stored" || state === "confirmed" ? "image/webp" : null,
+    tempKey: null, writerReference: null, cleanupReceipt: null, nextAttemptAt: null,
   });
   const references = [row("0", "stored", "review/media"),
     { ...row("1", "pending", "review/pending"), writerReference: "pending", tempKey: partial.tempRef },
@@ -52,6 +56,12 @@ it("reconciles source rows with final, pending partial and cleanup obligations",
     .toThrow(expect.objectContaining({ code: "integrity_conflict" }));
   expect(() => reconcileOrderReviewMediaFilesystem({ census: { ...census, objects: [] }, references }))
     .toThrow(expect.objectContaining({ code: "absent" }));
+  expect(() => reconcileOrderReviewMediaFilesystem({ census, references: [
+    { ...references[0]!, observedDigest: "0".repeat(64) }, ...references.slice(1),
+  ] })).toThrow(expect.objectContaining({ code: "integrity_conflict" }));
+  expect(() => reconcileOrderReviewMediaFilesystem({ census, references: [
+    { ...references[0]!, observedByteLength: 6 }, ...references.slice(1),
+  ] })).toThrow(expect.objectContaining({ code: "integrity_conflict" }));
 });
 
 it("refuses unknown nonempty source layout instead of omitting it", async () => {

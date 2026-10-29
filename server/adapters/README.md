@@ -112,8 +112,10 @@ hashing bounded bytes. Its `posix-owner-mode` label describes these observed
 checks, not additional filesystem ACLs, domain grants or HTTP authorization.
 The source-reference reconciliation checks the same fenced source snapshot's
 retained media rows against every final and partial file. It refuses missing
-stored/confirmed objects and unexplained files, while carrying pending and
-cleanup rows with their lease/receipt fields into transfer evidence.
+stored/confirmed objects, observed digest or byte-length disagreement, and
+unexplained files. It carries pending and cleanup row identities with selected
+writer, receipt and scheduling references; the full business-row lease/claim
+state remains part of the database transfer.
 
 [Filesystem restore](filesystem/orderReviewMediaTransferRestore.ts) prepares
 and verifies the complete private tree in a sibling directory, syncs files and
@@ -125,12 +127,13 @@ the actual host's writer exclusion. Database and filesystem publication are
 separate operations: the target remains inactive until both are verified.
 Copying does not reset leases, complete cleanup or manufacture domain facts.
 The staging entry point derives a fresh hidden generation beside the configured
-serving root and never changes that root. The later host activation must bind
+serving root and refuses a name collision with that root. The later host activation must bind
 the verified generation only after its other barriers pass. The route probe
 compares actual
 customer and operator media handlers for anonymous, owner, other customer and
 operator requests on source and target against independent source-domain grant
-facts. It refuses any grant change or changed
+facts, binding each route media reference to the retained source row. It refuses
+any grant change, observed content-type mismatch or changed
 served bytes; a POSIX label alone is not access evidence.
 
 The colocated filesystem tests exercise the actual runtime layout and refusal/
