@@ -545,9 +545,7 @@ it.each(["read committed", "repeatable read", "serializable"])("sees a ledger re
       FROM pg_catalog.pg_locks WHERE mode OPERATOR(pg_catalog.=) 'ShareRowExclusiveLock'::pg_catalog.text
         AND NOT granted`)).rows[0].waiting, { timeout: 3_000 }).toBeGreaterThan(0);
     await blocker.query(`ALTER TABLE public.platform_schema_migrations RENAME TO synthetic_old_ledger;
-      CREATE VIEW public.platform_schema_migrations AS SELECT
-        'synthetic'::pg_catalog.text AS catalog_path, 'synthetic'::pg_catalog.text AS sha256,
-        0::pg_catalog.int4 AS position`);
+      ${hostileLayouts[0][1]}`);
     await blocker.query("COMMIT");
     expect(await result).toMatchObject({ message: expect.stringContaining("not safe to read") });
     expect(postLockCatalogRead).toBe(true);
