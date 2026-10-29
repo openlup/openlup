@@ -12,17 +12,30 @@ export interface S3TransferObjectCensus {
   objects: TransferObject[];
 }
 
+/** Supplied from the source store's own retained object/obligation records, never from ListObjectsV2. */
+export interface S3SourceReferenceSnapshot {
+  bucket: string;
+  snapshotId: string;
+  /** Independently established source-store feature facts for this finite profile. */
+  features: { nativeVersionHistory: "none"; objectTags: "none"; multipartUploads: "none" };
+  objects: ReadonlyArray<Pick<TransferObject, "key" | "version" | "bytes" | "sha256" | "metadata">>;
+  /** Pending and cleanup work may name a key with no current physical object. */
+  obligations: ReadonlyArray<{ kind: "pending-upload" | "partial-object" | "cleanup"; key: string; sourceRecordId: string }>;
+}
+
 /**
  * Explicitly selected server source, never an SDK/client/credential factory.
  * Imports/construction perform no requests or default credential discovery.
  * The host must supply its selected authenticated client, full-namespace read
  * authority and held writer exclusion. Terminal pagination observes only what
- * that principal can see; it does not certify namespace completeness or access.
+ * that principal can see. captureAgainstReferences additionally requires an
+ * authoritative source-store snapshot independent of this S3 listing.
  *
- * Logical versions bind captured bytes and returned metadata, not ETag, native
- * version history or If-Match. The fixed access label means authenticated GET
- * succeeded, not private/public policy, ACL, RLS or domain authorization.
- * Tags, ACLs, native versions and provider-private metadata are not exported;
+ * Logical versions bind captured bytes and returned metadata, including a
+ * returned native version ID, not ETag, version history or If-Match. The fixed
+ * access label means authenticated GET succeeded, not private/public policy,
+ * ACL, RLS or domain authorization. ACLs, tags, native version history and
+ * provider-private metadata are not exported;
  * missing independent policy facts cannot qualify them through omission.
  */
 export function createS3TransferObjectSource(input: {
@@ -33,7 +46,13 @@ export function createS3TransferObjectSource(input: {
   maximumFiles: number;
   maximumPages: number;
   signal?: AbortSignal;
-}, loadCommands: () => Commands = () => createRequire(import.meta.url)("@aws-sdk/client-s3")): TransferObjectReader & { capture(): Promise<S3TransferObjectCensus> } {
+}, loadCommands: () => Commands = () => createRequire(import.meta.url)("@aws-sdk/client-s3")): TransferObjectReader & {
+  capture(): Promise<S3TransferObjectCensus>;
+  captureAgainstReferences(readReferences: () => Promise<S3SourceReferenceSnapshot>): Promise<S3TransferObjectCensus & {
+    referenceSnapshotId: string; features: S3SourceReferenceSnapshot["features"];
+    obligations: S3SourceReferenceSnapshot["obligations"];
+  }>;
+} {
   const { client, bucket, maximumObjectBytes, maximumTotalBytes, maximumFiles, maximumPages, signal } = input;
   if (!client || typeof client.send !== "function" || !text(bucket, 256)
     || !ceiling(maximumObjectBytes, 20 * 1024 * 1024) || !ceiling(maximumTotalBytes, 64 * 1024 * 1024)
@@ -115,7 +134,7 @@ export function createS3TransferObjectSource(input: {
       }
     } catch (error) { throw failure(error, "bucket"); }
   }
-  return { ...reader,
+  const source = { ...reader,
     async capture() {
       const before = await list(), objects: TransferObject[] = [];
       for (const entry of before.entries) {
@@ -127,7 +146,66 @@ export function createS3TransferObjectSource(input: {
       if (JSON.stringify(before.entries) !== JSON.stringify(after.entries)) throw new ObjectTransferError("version_conflict");
       return { bucket, pages: { before: before.pages, after: after.pages }, objects };
     },
+    async captureAgainstReferences(readReferences: () => Promise<S3SourceReferenceSnapshot>) {
+      if (typeof readReferences !== "function") throw new ObjectTransferError("invalid_input");
+      const before = await referenceRead(readReferences);
+      if (before.bucket !== bucket) throw new ObjectTransferError("invalid_input");
+      const expected = referenceEncoding(before, maximumFiles, maximumTotalBytes);
+      const retained = JSON.parse(expected) as S3SourceReferenceSnapshot;
+      const observed = await source.capture();
+      // ListObjectsV2 does not enumerate retained native versions. A versioned
+      // bucket needs a separate history-aware transfer profile, not this census.
+      if (observed.objects.some(object => Object.hasOwn(object.metadata, "s3.version-id"))) {
+        throw new ObjectTransferError("invalid_input");
+      }
+      const after = await referenceRead(readReferences);
+      if (after.bucket !== bucket || referenceEncoding(after, maximumFiles, maximumTotalBytes) !== expected) throw new ObjectTransferError("version_conflict");
+      const listed = observed.objects.map(({ key, version, bytes, sha256, metadata }) => ({ key, version, bytes, sha256, metadata }));
+      if (JSON.stringify(listed) !== JSON.stringify(retained.objects)) throw new ObjectTransferError("integrity_conflict");
+      return { ...observed, referenceSnapshotId: retained.snapshotId, features: retained.features,
+        obligations: retained.obligations };
+    },
   };
+  return source;
+}
+
+async function referenceRead(readReferences: () => Promise<S3SourceReferenceSnapshot>): Promise<S3SourceReferenceSnapshot> {
+  try { return await readReferences(); }
+  catch (error) { throw error instanceof ObjectTransferError ? error : new ObjectTransferError("unavailable"); }
+}
+
+function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: number, maximumTotalBytes: number): string {
+  if (!snapshot || !text(snapshot.bucket, 256) || !text(snapshot.snapshotId, 1024) || snapshot.features?.nativeVersionHistory !== "none"
+    || snapshot.features?.objectTags !== "none" || snapshot.features?.multipartUploads !== "none"
+    || !Array.isArray(snapshot.objects)
+    || snapshot.objects.length > maximumFiles || !Array.isArray(snapshot.obligations)
+    || snapshot.obligations.length > maximumFiles) throw new ObjectTransferError("invalid_input");
+  const keys = new Set<string>();
+  const duties = new Set<string>();
+  let total = 0;
+  const objects = snapshot.objects.map(object => {
+    if (!keyText(object?.key) || !/^sha256:[a-f0-9]{64}$/.test(object.version)
+      || !Number.isSafeInteger(object.bytes) || object.bytes < 0
+      || !/^[a-f0-9]{64}$/.test(object.sha256) || !object.metadata
+      || typeof object.metadata !== "object" || Array.isArray(object.metadata)
+      || Object.entries(object.metadata).some(([key, value]) => !text(key, 1024) || typeof value !== "string" || Buffer.byteLength(value) > 8192)
+      || Buffer.byteLength(JSON.stringify(object.metadata)) > 65536
+      || keys.has(object.key)) throw new ObjectTransferError("invalid_input");
+    keys.add(object.key);
+    total += object.bytes;
+    if (!Number.isSafeInteger(total) || total > maximumTotalBytes) throw new ObjectTransferError("invalid_input");
+    return { key: object.key, version: object.version, bytes: object.bytes, sha256: object.sha256,
+      metadata: Object.fromEntries(Object.entries(object.metadata).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) };
+  }).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  const obligations = snapshot.obligations.map(value => {
+    if (!value || !["pending-upload", "partial-object", "cleanup"].includes(value.kind)
+      || !keyText(value.key) || !text(value.sourceRecordId, 1024)
+      || value.kind === "partial-object" && !keys.has(value.key)
+      || duties.has(`${value.kind}\u0000${value.key}\u0000${value.sourceRecordId}`)) throw new ObjectTransferError("invalid_input");
+    duties.add(`${value.kind}\u0000${value.key}\u0000${value.sourceRecordId}`);
+    return { kind: value.kind, key: value.key, sourceRecordId: value.sourceRecordId };
+  }).sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : JSON.stringify(a) > JSON.stringify(b) ? 1 : 0);
+  return JSON.stringify({ bucket: snapshot.bucket, snapshotId: snapshot.snapshotId, features: snapshot.features, objects, obligations });
 }
 
 function capturedMetadata(response: GetObjectCommandOutput): Record<string, string> {
@@ -143,6 +221,10 @@ function capturedMetadata(response: GetObjectCommandOutput): Record<string, stri
     result[key] = response[field]!;
   }
   if (response.Expires !== undefined) result["s3.expires-date"] = date(response.Expires);
+  if (response.VersionId !== undefined) {
+    if (!text(response.VersionId, 1024)) throw new ObjectTransferError("integrity_conflict");
+    result["s3.version-id"] = response.VersionId;
+  }
   if (response.Metadata !== undefined) {
     if (!response.Metadata || typeof response.Metadata !== "object" || Array.isArray(response.Metadata)) throw new ObjectTransferError("integrity_conflict");
     for (const [key, value] of Object.entries(response.Metadata)) {

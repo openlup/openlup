@@ -128,6 +128,15 @@ The coordinator accepted the cycle-0 repair read at staged tree `06cb3c3e`
 (patch SHA-256 `2e3ddb918400c5ad7129c8d8f9fe03bd2cfb825c3abcc268509059f0a4a33c65`).
 DCO commit `fcb24351` has exactly that tree. The hosted allowance note above
 records the deferred 10N/10R limit from that read; it changes no runner control.
+Native `prepare` then refused source carry-over after main advanced through the
+object-transfer and restricted-restore parcels. Under CD-M14-30, a forced,
+conflict-free main merge has parents `ad61652b19d16731e622d703e9c3ca80ebdbad43`
+and `c31cc19bfd1a1108bf14535337fbca167a82f835`. The unedited automatic
+merge tree before this note is `94ae21cdc27e6c51fc4400ae206ea3bee5d365a9`.
+The parcel patch-id excluding this task record is
+`2181d3d5b48347ae28946542760de52d2734d667` both against old base
+`eb1a0584` and against new main `c31cc19b`; only this record was added to
+the automatic merge. Full native review will bind to the resulting merge tree.
 
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier
