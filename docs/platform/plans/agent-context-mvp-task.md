@@ -145,6 +145,9 @@ loop. Focused deletion, malformed-marker and over-limit regressions exercise
 the refusals. This closes an approved integrity and bounded-work requirement;
 it adds no CLI option, dependency, service, publication route or package budget.
 Fresh committed-tree review and final verification remain required.
+After that repair commit, `main` advanced to `511216f6` (M15 R2); native
+preflight required integration. The clean merge added no conflict resolution
+or task feature beyond carrying the approved candidate onto that base.
 
 Research and independent Astra counter-review support choosing retrieval by
 the evidence needed, rather than imposing one method on every task.
