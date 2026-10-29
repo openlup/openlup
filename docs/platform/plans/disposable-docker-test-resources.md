@@ -33,7 +33,7 @@ unchanged and is not extended.
 ## Authority and execution
 
 Grant recorded for this task: preparing this plan in a dedicated worktree and
-committing it locally. Not granted until the owner decides (D1–D7 below):
+committing it locally. Not granted until the owner decides (D1–D6 below):
 
 - implementation;
 - push, pull request or merge;
@@ -86,7 +86,14 @@ A disposable container carries these labels at creation:
 
 - `dev.disposable=1`
 - `dev.disposable.owner_pid=<pid of the long-lived owning process>`
+- `dev.disposable.owner_start=<epoch seconds of the owner's start, host clock>`
 - `dev.disposable.host=<hostname -s>` (Node: `os.hostname()` up to the first `.`)
+- on Linux only, `dev.disposable.pidns=<readlink /proc/self/ns/pid>`; macOS sets
+  no `pidns` label
+
+Node computes `owner_start` as `Date.now() - process.uptime() * 1000`, rounded
+to seconds; shell owners compute it from the UTC `lstart` parse below. The
+owner decided this contract jointly for Velipet and OpenLup on 2026-10-29 (D7).
 
 OpenLup also adds `dev.disposable.run=<run id>`, which readers of the shared
 contract ignore.
@@ -94,30 +101,20 @@ contract ignore.
 **When the owner is dead.** The owner is dead only when either holds:
 
 - `process.kill(pid, 0)` fails with `ESRCH`.
-- The pid is alive and is judged recycled. The start time comes from
-  `ps -o lstart= -p <pid>`, run with `LC_ALL=C TZ=UTC` and parsed to epoch.
-  `.Created` comes from `docker inspect`. No locale-dependent token is stored.
+- The pid is alive and is recycled: its current start time, from
+  `ps -o lstart= -p <pid>` run with `LC_ALL=C TZ=UTC` and parsed to epoch,
+  differs from `owner_start` by more than 2 s.
 
-The daemon stamps `.Created` with the Docker VM's clock. The OrbStack VM can
-drift from the macOS clock, especially after sleep. A fresh Vitest fork starts
-only 1–3 s before its `docker run`, so even a small drift could make a live
-owner look recycled.
-
-**Recycled-pid rule.** Pending D7, OpenLup applies the shared rule with a
-keep-biased margin: recycled only when the start time is later than
-`.Created + 30 s`. A pid reused within 30 s is kept, which is safe. D7 proposes
-amending the shared contract instead, by adding the label
-`dev.disposable.owner_start=<epoch s from the host clock>`. Node computes it as
-`Date.now() - process.uptime() * 1000`; shell owners compute it from the same
-UTC `lstart` parse. With that label, the pid counts as recycled when the
-current start time differs from `owner_start` by more than 2 s. Both values
-then come from the host clock.
+Both values come from the host clock. The Docker VM's clock, which stamps
+`.Created`, is used only for the 60 s age floor, so OrbStack VM drift cannot
+make a live owner look recycled. No locale-dependent token is stored.
 
 **Keep conditions.** Any of these means keep:
 
 - `EPERM`;
 - any parse failure;
-- missing or malformed labels (`owner_pid` not an integer above 1);
+- missing or malformed labels (`owner_pid` not an integer above 1, or
+  `owner_start` missing or not an integer epoch);
 - a different host;
 - an age under 60 s;
 - an unanswering daemon;
@@ -218,7 +215,7 @@ the inspected ID only.
 
 ## Cut-lines
 
-**Merge.** One PR, after D1, D4, D6 and D7:
+**Merge.** One PR, after D1, D4 and D6:
 
 - design items 1–6 and the item 7 worker-cap default, if measured;
 - the host-wide sweep in `report`;
@@ -257,8 +254,9 @@ the inspected ID only.
 | Case | Decision |
 | --- | --- |
 | `ESRCH` | dead |
-| Alive, start within the margin | keep |
-| Alive, start beyond the margin (recycled pid) | dead |
+| Alive, start within 2 s of `owner_start` | keep |
+| Alive, start more than 2 s from `owner_start` (recycled pid) | dead |
+| `owner_start` missing or malformed | keep |
 | `EPERM` | keep |
 | Unparsable `lstart` or `.Created` | keep |
 | Missing, non-`1` or malformed labels | keep |
@@ -266,8 +264,6 @@ the inspected ID only.
 | PID-namespace mismatch or missing label on Linux | keep |
 | Age 59 s | keep |
 | Daemon timeout | keep |
-| Under D7, `owner_start` mismatch over 2 s | dead |
-| Under D7, `owner_start` mismatch under 2 s | keep |
 
 **E2. Real-daemon proof with a SIGKILLed owner.**
 
@@ -293,10 +289,14 @@ the default and proves the 60 s keep.
 
 - Parse the real `ps -o lstart=` of a live process under inherited `pl_PL`,
   `en_GB` and `C` environments. All three must give the same epoch.
-- Record the host-to-VM clock offset (host `Date.now()` against `.Created` of a
+- Record, for information, the host-to-VM clock offset (host `Date.now()` against `.Created` of a
   freshly created container), once on a fresh boot and once after a sleep/wake
   cycle.
-- If the offset exceeds the chosen margin, stop and raise it with Velipet.
+- For a live Node owner and a live shell owner, the label's `owner_start` and
+  the parsed `lstart` agree within 2 s. If they do not, stop and raise it with
+  Velipet: the shared 2 s rule would misjudge live owners.
+- The host-to-VM offset only affects the 60 s age floor. If it exceeds 30 s,
+  record it as a residual risk.
 
 **E4. Interrupted and nested runs.**
 
@@ -394,8 +394,8 @@ must hold before removal:
 - the label is present;
 - same host, and on Linux the same PID namespace;
 - age of at least 60 s;
-- the owner is dead, by `ESRCH` or by a recycled-pid judgement with a
-  keep-biased margin.
+- the owner is dead, by `ESRCH` or by a start time more than 2 s from
+  `owner_start`.
 
 Any uncertain reading means keep. Run cleanup follows the same rule. The
 host-wide sweep ships in `report`, so the first real removal follows a
@@ -406,8 +406,9 @@ worker were recycled while its container was still in use, the sweep would see
 a dead owner. E2 proves that a live worker's container survives a concurrent
 `remove` sweep.
 
-**Clock offset between the host and the Docker VM.** Handled by the margin or
-by D7, and measured in E3.
+**Clock offset between the host and the Docker VM.** Removed from the liveness
+decision by `owner_start` (D7); it only shifts the 60 s age floor. E3 measures
+it.
 
 **Other projects' contract containers are swept on purpose.** One sweep serves
 both repositories. D1 decides whether that is allowed.
@@ -431,13 +432,10 @@ both repositories. D1 decides whether that is allowed.
 - **D6. M14 coordinator consent.** M14 consents to labelling M14's PostgreSQL
   containers through the shared helper, which makes them sweepable after a
   crashed owner. Otherwise the merge waits until M14 lands.
-- **D7. Joint decision with the Velipet plan.** Choose one recycled-pid rule
-  for the shared contract:
-  - Recommended: the `owner_start` epoch label, compared within 2 s.
-  - Alternative: the label-free rule with a 30 s margin.
-
-  Also decide whether to add the Linux `pidns` label. The contract stays
-  shared only if both repositories adopt the same rule.
+- **D7. Resolved 2026-10-29** in the Velipet session, for the shared
+  contract: the `owner_start` label compared within 2 s ("owner_start label
+  (Recommended)"), and the Linux-only `pidns` label ("Yes, on Linux
+  (Recommended)"). Velipet implements the same contract.
 
 ## Independent challenge
 
@@ -457,7 +455,7 @@ All 12 findings were checked and adopted.
 
 **Majors:**
 
-- **Host clock against VM clock.** Now: a 30 s margin and D7.
+- **Host clock against VM clock.** Now: the `owner_start` label (D7, resolved).
 - **Same hostname, different PID namespace.** Now: the `pidns` keep rule.
 - **Wrapper had no signal handlers.** Now: item 4, and E4 signals the process
   group.
@@ -495,5 +493,5 @@ file:
 - every relative link and anchor resolves.
 
 No implementation, test run, measurement or Docker mutation has happened.
-Remaining: owner decisions D1–D7, then implementation under the merge
+Remaining: owner decisions D1–D6, then implementation under the merge
 cut-line.
