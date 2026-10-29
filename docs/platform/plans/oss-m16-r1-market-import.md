@@ -583,6 +583,36 @@ Self-retro: cap approval follows measured full-stack evidence; reserve the final
 tracked authority/criteria packet before native review so bookkeeping cannot
 invalidate the verified tree. Later execution observations remain in scratch.
 
+## Native repair cycle 1: PostgreSQL fixture lifecycle
+
+Both initial fresh native review executions completed on cap candidate
+26f33955d1369c8e532310ddfd9012d8112843cb. The session retains one material
+finding, M16-R1-PG-LIFECYCLE: the directory fixture's literal 120-second setup
+budget could expire during the helper's permitted 300-second cold pull, and
+unbounded pool closes could prevent container removal. The second independent
+report established no additional finding. This is one completed candidate
+evaluation, not two repair cycles. Actual context identities/reports and their
+execution observations are retained in ignored native-session evidence.
+
+Repair only the new fixture lifecycle: use existing postgresSetupTimeoutMs and
+postgresTeardownTimeoutMs, and closePostgres(container, [reader, owner]). The
+existing helper bounds the shared close phase and attempts container removal
+after failure or stall. All six test titles, SQL, role/refusal assertions and
+package behavior remain unchanged. No helper, runner, timeout constant or new
+mechanism is changed. Focused real-PG and existing cheap checks precede the DCO
+repair commit; two new fresh contexts must review this committed tree and close
+the material finding explicitly. Initial reports remain in history and do not
+count as current-tree approval. The intent and 44-path scope are unchanged. Repair checks: focused real-PG
+6/6 PASS (1.94 seconds); focused ast-grep PASS; lint PASS (zero errors, 33
+existing warnings); neutrality PASS (zero increases). The changed fixture delta
+requires a fresh tests no-impact trailer, supplied in the repair commit and
+checked before re-preparation. No package runtime or artifact input changes.
+
+Self-retro: use the canonical integration fixture lifecycle from the outset;
+a passing warm-image run does not establish safe cold acquisition or bounded
+teardown. This repair applies the existing rule rather than adding another
+cleanup mechanism or changing any preservation assertion.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness
