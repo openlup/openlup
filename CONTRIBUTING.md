@@ -154,6 +154,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The installed `openlup-context` command uses the tracked core
+[launcher](packages/core/src/openlup-context.js) and compiled
+retrieval code. The public execution catalogue binds that exact executable
+inventory and its package scripts/bin digest; the launcher does not admit
+additional executable paths. This offline command adds no runtime dependency,
+package or service. `npm run oss:published-tree -- --policy` also checks that
+the committed agent excerpts still match their canonical owner sections.
+Changes to its executable surface, publication controls or
+package gate budgets require the applicable maintainer read before sign-off;
+passing the inventory check does not establish that read or authorize release.
+
 The opt-in [recipe conformance runner](tests/postgres/runM14RecipeConformance.mjs)
 uses the existing restricted-install and released-schema proofs with three
 explicitly disposable external PG16 targets. Its private-file/target/refusal

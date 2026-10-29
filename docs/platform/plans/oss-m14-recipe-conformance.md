@@ -25,7 +25,8 @@ native review and final verification follow the read. The runner and tests are
 source tools, not an installed npm capability or stable-host qualification.
 Initial code/review base: `15a708a6b5b34f8a6d27b25f4867787425084bf7`.
 Policy freshness pin: `15a708a6b5b34f8a6d27b25f4867787425084bf7`, read at
-task start independently of the review base.
+task start independently of the review base. Current main policy was refreshed
+at `eb1a0584f035774251a8c296e82f3b9ffd68180b` before integration.
 
 ## Acceptance, risk and sufficient proof
 
@@ -64,7 +65,9 @@ receives credentials through stdin instead of process arguments. The ordinary
 Vitest wrappers retain disposable fixture execution. After the host reboot
 removed the original temporary worktree and uncommitted proof, this candidate
 was reconstructed in the durable assigned worktree and preserved in private
-unsigned WIP refs. No review cycles, DCO commits or submission yet.
+unsigned WIP refs. The first maintainer read accepted exact tree
+`414e2460834738963b8da7cbd780f0c4febe69db`; DCO commit `c659279e` has
+that tree. No review cycles or submission yet.
 
 Recreated-worktree proof: `npm ci` and `npm run pretest` passed with pinned Node
 24.21.0/npm 11.19.0. The focused three-file suite passed 7/7, including
@@ -79,14 +82,23 @@ credential values or paths, and all three disposable clusters were removed.
 `npm run lint` passed with zero errors (33 existing warnings); public policy,
 inventory, neutrality, structural and configured redacted secret scans passed.
 The serialized published-tree typecheck passed with zero unresolved edges and
-zero consumer errors across five projects. Maintainer read, native review and
-canonical verification remain pending. This local receipt does not establish
-a complete self-host, hosted provider or released-package qualification.
-At the final policy refresh, `origin/main` had advanced; a read-only
-`git merge-tree` check found a `CONTRIBUTING.md` content conflict. After the
-required read and first signed candidate commit, merge main, resolve that
-documentation overlap, and review the resulting tree. No main integration
-was performed in this unsigned worktree state.
+zero consumer errors across five projects. Native review and canonical
+verification remain pending. This local receipt does not establish a complete
+self-host, hosted provider or released-package qualification.
+
+Hosted use remains owned by 10N/10R and their own reads: target identity must
+come from an unprivileged incarnation observation or declared provider identity,
+and one hosted cluster needs serial fresh-catalogue phases with cleanup of
+test-owned roles and databases. Neither is a condition on this local 10A proof.
+Main `eb1a0584` is being merged with a manual resolution of the adjacent
+`CONTRIBUTING.md` documentation paragraphs; the uncommitted resolution needs
+its separate maintainer read before a DCO merge commit. The original parcel
+patch-id excluding this task record is `8f68d32f57ee4d3e159116a0b84d8ca7477f92b6`;
+against new main it is `cf51c9cda063bfffd603411bbbc9fa4c1f1e4993`.
+The post-merge documentation impact check against new main has three obligations,
+none unanswered. The ordinary policy comparison still uses the old fork point
+until the merge commit exists; the merged-main documentation change accounts
+for its transient extra obligation.
 
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier

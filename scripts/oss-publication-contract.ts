@@ -1,5 +1,6 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
+  "packages/core/src/agent-context-cli.ts", "packages/core/src/openlup-context.js",
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",
   "packages/platform/test/lifecycle/appUpgrade.test.ts",
@@ -22,6 +23,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-session.mjs", "scripts/agent-review-session.test.ts",
   "scripts/agent-review-queue.mjs", "scripts/agent-review-queue.test.ts",
   "scripts/agent-review-gate.test.ts",
+  "scripts/agent-context/evaluate.mjs", "scripts/agent-context/generate.mjs",
   "scripts/ast-grep/check-filewide-ignore.mjs",
   "scripts/ci-image-mirror.mjs",
   "scripts/ci-test-scope.mjs", "scripts/verify-local.mjs",
