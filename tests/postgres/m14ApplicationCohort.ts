@@ -292,7 +292,7 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
         entrypoints: ["/review/submit", "/review/media-intent", "/review/media-confirm", "PUT /raw", "/admin/media-delete"],
         scheduling: "binding queueMicrotask plus natural 30000ms interval", recreation: "exclusive owned witness host",
         exclusions: ["moderate", "revoke", "source webhooks", "unregistered jobs", "other application modules", "other Docker operators"] },
-      async fenceAndRetire() {
+      async fenceAndRetire(options: { settleMediaBeforeFence?: boolean } = {}) {
         assert(!callsStarted && !retired); callsStarted = true;
         // Admit and observe partial bytes BEFORE finalize holds FOR UPDATE on
         // the shared authorizing grant. Admission commits before body streaming;
@@ -323,13 +323,25 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
         assert.equal(before.find(row => row.media_reference === promotion.mediaRef)?.state, "pending");
         assert(before.find(row => row.media_reference === promotion.mediaRef)?.temp_key);
         await call("/fixture/stop-admission", {});
+        if (options.settleMediaBeforeFence) {
+          // Catch-up drains admitted media I/O through the real runtime before
+          // fencing. The original crash-boundary profile below stays unchanged.
+          partialRequest.destroy();
+          writeFileSync(join(directory, "release-promote"), "release", { mode: 0o600 });
+          writeFileSync(join(directory, "release-remove"), "release", { mode: 0o600 });
+          await Promise.all([heldRaw, heldDelete, partialDone]);
+          await until(async () => (await runtime.query("SELECT state,writer_reference,temp_key FROM public.commerce_order_review_media WHERE media_reference=$1", [partial.mediaRef])).rows[0],
+            row => row?.writer_reference === null && row.temp_key === null);
+        }
         ownedActor(); docker(["network", "disconnect", "--force", network.Name, id!]);
         assert.deepEqual(Object.keys(ownedActor().NetworkSettings.Networks), []);
         const egressExcludedSequence = status()!.observations.at(-1)!.sequence;
-        writeFileSync(join(directory, "release-promote"), "release", { mode: 0o600 });
-        writeFileSync(join(directory, "release-remove"), "release", { mode: 0o600 });
-        await until(status, value => !!value?.observations.some(event => event.kind === "filesystem-promoted" && event.sequence > egressExcludedSequence)
+        if (!options.settleMediaBeforeFence) {
+          writeFileSync(join(directory, "release-promote"), "release", { mode: 0o600 });
+          writeFileSync(join(directory, "release-remove"), "release", { mode: 0o600 });
+          await until(status, value => !!value?.observations.some(event => event.kind === "filesystem-promoted" && event.sequence > egressExcludedSequence)
           && !!value.observations.some(event => event.kind === "filesystem-remove" && event.removed === true && event.sequence > egressExcludedSequence));
+        }
         const postFence = status()!;
         // Observe actual server sessions while this exact process still exists.
         // Process removal after veth exclusion need not notify the remote backend;
@@ -373,7 +385,7 @@ export async function prepareM14ApplicationCohort(input: OwnedSourceInput) {
         const retainedPartial = census.find(object => object.key === partialBefore!.tempKey);
         if (retainedPartial) { assert.equal(retainedPartial.bytes, 45); assert.equal(retainedPartial.sha256, sha(png.subarray(0, 45))); }
         await closeRuntime();
-        const evidence = { outcome: "SELECTED_APPLICATION_PROCESS_RETIRED", id, compilation, before, after, partialBefore, postFence, observedBackends, census,
+        const evidence = { outcome: "SELECTED_APPLICATION_PROCESS_RETIRED", mediaDrainedBeforeFence: options.settleMediaBeforeFence === true, id, compilation, before, after, partialBefore, postFence, observedBackends, census,
           endpointAvailable, uid, gid, root: mediaRoot, egressExcludedSequence,
           boundary: "Application actor only; handover caller retires the three dispatch actors and closes coordinator source mutation clients before final graph+FS capture",
           qualification: "Actual R fixture operations only; installed-profile admission and additional host ACL qualification remain separate",

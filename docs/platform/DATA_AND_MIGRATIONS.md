@@ -54,10 +54,15 @@ does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
-captures the connected73-table graph and the application's complete private
-`objects/tmp` tree only after its finite source writers and observed server
-backends retire. Its migration-owner capture is read-only; actual source and
-target domain commands use the qualified restricted runtime. The existing
+takes its final connected73-table graph and application's complete private
+`objects/tmp` capture only after its finite source writers and observed server
+backends retire. The default crash-boundary mode captures with a read-only
+migration-owner session. In catch-up mode the fixture closes its bootstrap
+administrator pool after retiring source backends, then opens a new
+bootstrap-principal session configured read-only by default for the final
+capture/census and closes it afterward. This local superuser fixture step does
+not qualify a restricted source-capture login; actual source and target domain
+commands use the qualified restricted runtime. The existing
 canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
 uploads, partial bytes, cleanup obligations and leases without copying schema,
 roles, private installation-key payloads or migration history. Database and
@@ -67,6 +72,11 @@ only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
 absence or complete upload is manufactured. This finite composition does not
 qualify an adopter's complete writer inventory or managed-history mapping.
+Its optional catch-up mode also takes a preliminary copy while the source
+changes. It discards that target selection and uses a separate fresh inactive
+generation for final recapture and exact readback; no existing target rows are
+patched or deleted to simulate catch-up. The [transfer architecture](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns its interrupted atomic retry, source-domain access and activation evidence.
 
 Historical insertion is not generally inert. `clients` insertion invokes
 `customer_subject_capture_lifecycle_trigger`, generating new history; cycle
