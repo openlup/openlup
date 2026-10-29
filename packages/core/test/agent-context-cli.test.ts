@@ -23,7 +23,7 @@ function install(root: string, name: string, version = "0.31.0"): string {
   writeFileSync(join(directory, "package.json"), JSON.stringify({ name: `@openlup/${name}`, version, exports: { "./subscription": "./dist/subscription.js" } }, null, 2));
   const excerpt = "## Retry policy\nUse nextRetryAttemptAt for the retry schedule.\n";
   const metadata = { id: "retry-policy", source: "packages/core/docs/SUBSCRIPTION_ENGINE.md", heading: "Retry policy", sha256: createHash("sha256").update(excerpt).digest("hex") };
-  writeFileSync(join(directory, "AGENT_CONTEXT.md"), `# Installed context\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}<!-- /openlup-context -->\n`);
+  writeFileSync(join(directory, "AGENT_CONTEXT.md"), `# Installed context\n<!-- openlup-context-inventory ${JSON.stringify([metadata])} -->\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}<!-- /openlup-context -->\n`);
   writeFileSync(join(directory, "dist", "subscription.d.ts"), "export declare function nextRetryAttemptAt(): number;\n");
   return directory;
 }
@@ -78,6 +78,27 @@ describe("installed agent context", () => {
     const file = join(root, "node_modules/@openlup/core/AGENT_CONTEXT.md");
     writeFileSync(file, readFileSync(file, "utf8").replace("retry schedule", "fabricated schedule"));
     expect(() => searchContext(root, "unmatchedneedle")).toThrow(/digest mismatch/);
+  });
+
+  it.each([
+    (corpus: string) => corpus.replace('<!-- openlup-context {', '<!-- openlup-context BROKEN {'),
+    (corpus: string) => corpus.replace(/<!-- openlup-context \{[^\n]*\} -->\n[\s\S]*?<!-- \/openlup-context -->\n/u, ''),
+    (corpus: string) => corpus.replace('<!-- /openlup-context -->', '<!-- /openlup-context BROKEN -->'),
+  ])("refuses malformed or missing sections for an unmatched query", (alter) => {
+    const root = fixture();
+    const file = join(root, "node_modules/@openlup/core/AGENT_CONTEXT.md");
+    writeFileSync(file, alter(readFileSync(file, "utf8")));
+    expect(() => searchContext(root, "unmatchedneedle")).toThrow(/corpus|context/);
+  });
+
+  it.each([["application", 2500], ["declaration", 1200]] as const)("bounds a flat %s directory", (kind, limit) => {
+    const root = fixture();
+    const directory = kind === "application" ? root : join(root, "node_modules/@openlup/core/dist");
+    if (kind === "declaration") rmSync(join(directory, "subscription.d.ts"));
+    for (let index = 0; index <= limit; index++) {
+      writeFileSync(join(directory, `${String(index).padStart(4, "0")}.${kind === "application" ? "ts" : "d.ts"}`), index === limit ? "export const beyondBoundNeedle = 1;\n" : "export const unrelated = 1;\n");
+    }
+    expect(searchContext(root, "beyondBoundNeedle", kind === "application").hits).toEqual([]);
   });
 
   it("reports an empty search without claiming the public seam is absent", () => {

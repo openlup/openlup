@@ -29,6 +29,9 @@ test('all checked-in corpora are current and every citation binds exact source b
     const corpus = generateCorpus(root, packageName);
     const records = [...corpus.matchAll(/<!-- openlup-context (.+) -->\n([\s\S]*?)<!-- \/openlup-context -->/gu)];
     assert.equal(records.length, routes[packageName].length);
+    const inventory = JSON.parse(corpus.match(/<!-- openlup-context-inventory (.+) -->/u)[1]);
+    assert.deepEqual(inventory, records.map((record) => JSON.parse(record[1])));
+    assert.equal(new Set(inventory.map((entry) => entry.id)).size, inventory.length);
     for (const [, json, excerpt] of records) {
       const metadata = JSON.parse(json);
       const originalSource = routes[packageName].find((route) => route[0] === metadata.id)[2];

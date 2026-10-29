@@ -63,14 +63,18 @@ export function generateCorpus(root, packageName) {
     'Each source span is verbatim, with one-based inclusive line numbers and a SHA-256 of its UTF-8 bytes.\n' +
     'Package-local source paths are relative to this package; docs/platform paths are repository-relative.\n' +
     'Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.\n\n';
+  const inventory = [];
+  let sections = '';
   for (const [id, title, source, heading, stopBefore] of entries) {
     const { excerpt, startLine, endLine } = extractSection(readFileSync(resolve(root, source), 'utf8'), heading, stopBefore);
     const sha256 = createHash('sha256').update(excerpt).digest('hex');
     const localPrefix = `packages/${packageName}/`;
     const metadata = { id, source: source.startsWith(localPrefix) ? source.slice(localPrefix.length) : source, heading, startLine, endLine, sha256 };
-    output += `## ${id}: ${title}\n\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
+    inventory.push(metadata);
+    sections += `## ${id}: ${title}\n\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
       '<!-- /openlup-context -->\n\n';
   }
+  output += `<!-- openlup-context-inventory ${JSON.stringify(inventory)} -->\n\n${sections}`;
   if (Buffer.byteLength(output) > 12_000) throw new Error(`${packageName} corpus exceeds its 12 KB excerpt budget; narrow the task routes`);
   return output.slice(0, -1); // Keep one final newline, without an empty EOF line.
 }

@@ -134,6 +134,18 @@ was necessary against the old base but is unnecessary on current main.
 Integrated package and policy checks are required before counting review or
 final proof.
 
+Counted native review of the integrated tree at cycle 0 returned two
+independent FAIL reports for the same two mechanisms. A deleted or malformed
+corpus section could evade per-section validation and silently disappear from
+results, and the flat-directory scanners could read past their advertised
+2500 application-file or 1200 declaration-file limits. The repair adds one
+generated ordered section inventory to each existing corpus and validates its
+markers and metadata before ranking. Both scans now stop inside the directory
+loop. Focused deletion, malformed-marker and over-limit regressions exercise
+the refusals. This closes an approved integrity and bounded-work requirement;
+it adds no CLI option, dependency, service, publication route or package budget.
+Fresh committed-tree review and final verification remain required.
+
 Research and independent Astra counter-review support choosing retrieval by
 the evidence needed, rather than imposing one method on every task.
 [Agent Retrieval Bench](https://arxiv.org/abs/2607.24882) reports different
@@ -161,4 +173,7 @@ snapshot or retrieval service. A missing local ast-grep binary caused an
 unsuccessful registry-resolution attempt; use the supervisor's installed tools
 for final verification. The complex fixture's missing `.bin` link invalidated
 its first comparison; checking the executable before cold trials would avoid
-that repeat. No broader process change is warranted.
+that repeat. Native review exposed validation that covered present sections but
+not missing sections and a loop bound placed outside its inner scan; an
+inventory comparison and inner-loop bound address those exact gaps. No broader
+process change is warranted.

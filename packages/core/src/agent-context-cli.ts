@@ -84,10 +84,16 @@ function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit
     return [];
   }
   const hits: Hit[] = [];
+  const inventories = [...content.matchAll(/<!-- openlup-context-inventory (\[[^\n]*\]) -->\n/gu)];
+  if (inventories.length !== 1) throw new Error(`Invalid corpus inventory in ${file}`);
+  const inventory: unknown = JSON.parse(inventories[0][1]);
+  if (!Array.isArray(inventory) || !inventory.length) throw new Error(`Invalid corpus inventory in ${file}`);
+  const sections: unknown[] = [];
   const pattern = /<!-- openlup-context (\{[^\n]*\}) -->\n/g;
   for (const match of content.matchAll(pattern)) {
     const metadata = JSON.parse(match[1]) as { id: string; source: string; heading: string; sha256: string };
     if (!/^[a-z0-9-]+$/u.test(metadata.id) || !/^[\w./-]+\.md$/u.test(metadata.source) || metadata.source.split("/").includes("..")) throw new Error(`Invalid corpus source in ${file}`);
+    sections.push(metadata);
     const start = match.index + match[0].length;
     const end = content.indexOf("<!-- /openlup-context -->", start);
     if (end < 0) throw new Error(`Unclosed agent context section in ${file}`);
@@ -97,7 +103,12 @@ function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit
     const score = relevance(`${metadata.id} ${title}`, excerpt, query, terms);
     if (score > 0) hits.push({ title, file, start: lineNumber(content, start), end: lineNumber(content, end - 1), owner: metadata.source, packageName: item.name, score, reason: "canonical owner excerpt" });
   }
-  if (!hits.length && !content.includes("<!-- openlup-context ")) throw new Error(`No indexed sections in ${file}`);
+  if ((content.match(/^<!-- openlup-context(?=\s)/gmu) ?? []).length !== sections.length ||
+      (content.match(/^<!-- \/openlup-context(?=\s)/gmu) ?? []).length !== sections.length ||
+      JSON.stringify(sections) !== JSON.stringify(inventory) ||
+      new Set(sections.map((section) => (section as { id: string }).id)).size !== sections.length) {
+    throw new Error(`Invalid corpus inventory or markers in ${file}`);
+  }
   return hits;
 }
 
@@ -142,6 +153,7 @@ function declarationHits(item: InstalledPackage, query: string): Hit[] {
   while (pending.length && seen < 1200) {
     const directory = pending.pop()!;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (seen >= 1200) break;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) pending.push(path);
       else if (entry.isFile() && path.endsWith(".d.ts")) {
@@ -182,6 +194,7 @@ function applicationHits(cwd: string, query: string, terms: string[]): Hit[] {
   while (pending.length && seen < 2500) {
     const directory = pending.pop()!;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (seen >= 2500) break;
       if (entry.name.startsWith(".") || skippedDirectories.has(entry.name)) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) { pending.push(path); continue; }

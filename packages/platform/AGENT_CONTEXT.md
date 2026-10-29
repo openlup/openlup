@@ -6,6 +6,8 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
+<!-- openlup-context-inventory [{"id":"compose-host","source":"README.md","heading":"What the application supplies","startLine":862,"endLine":877,"sha256":"deb4047f3ba076d281605ebb20f8947b59c975d80077632b8825ec5bf3eaab67"},{"id":"install-ledger","source":"README.md","heading":"Job-run ledger SQL","startLine":878,"endLine":886,"sha256":"d002ddfa72249b6e925c0ceefa22b128b491e47c69b640681203c86b22ebf050"},{"id":"select-peers","source":"README.md","heading":"Optional peers","startLine":887,"endLine":901,"sha256":"7745abe92140f29cab75998c89c1102d24bcd17f4ff5ef7e9c3ae27d73371847"},{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":512,"endLine":541,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"}] -->
+
 ## compose-host: Supply application host bindings
 
 <!-- openlup-context {"id":"compose-host","source":"README.md","heading":"What the application supplies","startLine":862,"endLine":877,"sha256":"deb4047f3ba076d281605ebb20f8947b59c975d80077632b8825ec5bf3eaab67"} -->
