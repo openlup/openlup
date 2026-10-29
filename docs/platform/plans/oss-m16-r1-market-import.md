@@ -97,8 +97,8 @@ Money readers require caller fallback currency, region and fiscal facts.
 keeps the exponent-derived floor. Environment keys, blank/absent/malformed
 semantics, validation order and error names/messages/fields are retained. No
 currency/region/fiscal/display-language constants or language selector remain
-in the package. Exponent lookup reads ICU's currency metadata without selecting
-a display locale; formatters still require the caller's locale and currency.
+in the package. Exponent lookup retains the reference's fixed technical lookup
+locale (not a display-language or market default); formatters still require the caller's locale and currency.
 Reference ambient initialization, national rules, fiscal facts and all production
 callers remain byte-identical to the original task base. R2 chooses pack homes;
 R3 delegates application composition. No issued SQL or cap is edited.
@@ -120,7 +120,9 @@ The two absent selectors are server/adapters/mfVat/mfVatLookupClient.test.ts and
 server/adapters/gusCeidg/gusCeidgLookupClient.test.ts: neither contributes a case.
 The quote file's 19 cases concern application quote factories, eager module
 observation and promotion composition. R1 packages none of those factories and
-changes none of their consumers, so they are later:R3. Package settlement, fiscal,
+changes none of their consumers, so they are later:R3. These 19 quote cases have
+no public counterpart today. R3 must author their neutral public witness before
+it swaps src/lib/currency or quote composition to package delegation. Package settlement, fiscal,
 floor refusal and historical formatting remain covered now by the money witness
 files, including explicit fallback facts. O5 resources/routes/namespaces are
 later:R2, since R1 adds no locale runtime or route composition. These explicit
@@ -128,19 +130,19 @@ exclusions are not material proof gaps in the packaged R1 boundary.
 
 | Donor file and case (source ordinal) | Public home and case | Status / reason |
 | --- | --- | --- |
-| donor:server/domains/company-identity/companyIdentityService.test.ts #1: returns unsupported_country without a registered strategy | packages/platform/test/company-identity/companyIdentityService.test.ts → returns unsupported_country without a registered strategy | carried-R1: same engine expectations, synthetic rule input |
-| donor:server/domains/company-identity/companyIdentityService.test.ts #2: allows custom identifiers only as manual_unverified | packages/platform/test/company-identity/companyIdentityService.test.ts → allows custom identifiers only as manual_unverified | carried-R1: same engine expectations, synthetic rule input |
-| donor:server/domains/company-identity/companyIdentityService.test.ts #3: rejects invalid national identifier before provider calls | packages/platform/test/company-identity/companyIdentityService.test.ts → rejects invalid synthetic identifier before provider calls | carried-R1: same engine expectations, synthetic rule input |
-| donor:server/domains/company-identity/companyIdentityService.test.ts #4: continues from MF not_found to GUS complete data | packages/platform/test/company-identity/companyIdentityService.test.ts → continues from first absent source to later complete data | carried-R1: same engine expectations, synthetic rule input |
-| donor:server/domains/company-identity/companyIdentityService.test.ts #5: continues past a complete MF personal-name JDG record and prefers a fuller CEIDG name | packages/platform/test/company-identity/companyIdentityService.test.ts → continues past a complete first personal-name record and prefers a fuller later name | carried-R1: same engine expectations, synthetic rule input |
-| donor:server/domains/company-identity/companyIdentityService.test.ts #6: does not call later providers when MF returns a complete company legal name | packages/platform/test/company-identity/companyIdentityService.test.ts → does not call later providers when the first provider returns a complete company legal name | carried-R1: same engine expectations, synthetic rule input |
+| donor:server/domains/company-identity/companyIdentityService.test.ts #1: returns unsupported_country without a registered strategy | server/domains/company-identity/companyIdentityService.test.ts → #1: returns unsupported_country without a registered strategy (unchanged public app case); packages/platform/test/company-identity/companyIdentityService.test.ts → returns unsupported_country without a registered strategy | identical-public + carried-R1: same engine expectations, synthetic rule input |
+| donor:server/domains/company-identity/companyIdentityService.test.ts #2: allows custom identifiers only as manual_unverified | server/domains/company-identity/companyIdentityService.test.ts → #2: allows custom identifiers only as manual_unverified (unchanged public app case); packages/platform/test/company-identity/companyIdentityService.test.ts → allows custom identifiers only as manual_unverified | identical-public + carried-R1: same engine expectations, synthetic rule input |
+| donor:server/domains/company-identity/companyIdentityService.test.ts #3: rejects invalid national identifier before provider calls | server/domains/company-identity/companyIdentityService.test.ts → #3: rejects invalid national identifier before provider calls (unchanged public app case); packages/platform/test/company-identity/companyIdentityService.test.ts → rejects invalid synthetic identifier before provider calls | identical-public + carried-R1: same engine expectations, synthetic rule input |
+| donor:server/domains/company-identity/companyIdentityService.test.ts #4: continues from MF not_found to GUS complete data | server/domains/company-identity/companyIdentityService.test.ts → #4: continues from MF not_found to GUS complete data (unchanged public app case); packages/platform/test/company-identity/companyIdentityService.test.ts → continues from first absent source to later complete data | identical-public + carried-R1: same engine expectations, synthetic rule input |
+| donor:server/domains/company-identity/companyIdentityService.test.ts #5: continues past a complete MF personal-name JDG record and prefers a fuller CEIDG name | server/domains/company-identity/companyIdentityService.test.ts → #5: continues past a complete MF personal-name JDG record and prefers a fuller CEIDG name (unchanged public app case); packages/platform/test/company-identity/companyIdentityService.test.ts → continues past a complete first personal-name record and prefers a fuller later name | identical-public + carried-R1: same engine expectations, synthetic rule input |
+| donor:server/domains/company-identity/companyIdentityService.test.ts #6: does not call later providers when MF returns a complete company legal name | server/domains/company-identity/companyIdentityService.test.ts → #6: does not call later providers when MF returns a complete company legal name (unchanged public app case); packages/platform/test/company-identity/companyIdentityService.test.ts → does not call later providers when the first provider returns a complete company legal name | identical-public + carried-R1: same engine expectations, synthetic rule input |
 | donor:server/domains/company-identity/companyIdentityService.test.ts #7: retains ordered unavailable/not-found evidence without inventing a company | packages/platform/test/company-identity/companyIdentityService.test.ts → retains ordered unavailable and absent evidence | carried-R1: same engine expectations, synthetic rule input |
 | donor:server/domains/company-identity/companyIdentityService.test.ts #8: keeps a partial company and its source when later enrichment is unavailable | packages/platform/test/company-identity/companyIdentityService.test.ts → retains partial identity when enrichment is unavailable | carried-R1: same engine expectations, synthetic rule input |
 | donor:server/domains/company-identity/companyIdentityService.test.ts #9: distinguishes an exhausted absent chain from an unavailable provider | packages/platform/test/company-identity/companyIdentityService.test.ts → distinguishes exhausted absence from unavailability | carried-R1: same engine expectations, synthetic rule input |
 | donor:server/domains/company-identity/companyIdentityService.test.ts #10: propagates a provider fault instead of recording a successful registry observation | packages/platform/test/company-identity/companyIdentityService.test.ts → propagates provider throws and never calls the next provider | carried-R1: same engine expectations, synthetic rule input |
-| donor:server/domains/company-identity/companyIdentityHandlers.test.ts #1: coalesces concurrent identical provider lookups | packages/platform/test/company-identity/companyIdentityHandlers.test.ts → coalesces concurrent identical provider lookups | carried-R1: same HTTP/cache/error expectations |
-| donor:server/domains/company-identity/companyIdentityHandlers.test.ts #2: serves a short TTL cache for repeated identical lookup keys | packages/platform/test/company-identity/companyIdentityHandlers.test.ts → serves a short TTL cache for repeated identical lookup keys | carried-R1: same HTTP/cache/error expectations |
-| donor:server/domains/company-identity/companyIdentityHandlers.test.ts #3: evicts expired cache entries so the map stays bounded over time | packages/platform/test/company-identity/companyIdentityHandlers.test.ts → evicts expired cache entries so the map stays bounded over time | carried-R1: same HTTP/cache/error expectations |
+| donor:server/domains/company-identity/companyIdentityHandlers.test.ts #1: coalesces concurrent identical provider lookups | server/domains/company-identity/companyIdentityHandlers.test.ts → #1: coalesces concurrent identical provider lookups (unchanged public app case); packages/platform/test/company-identity/companyIdentityHandlers.test.ts → coalesces concurrent identical provider lookups | identical-public + carried-R1: same HTTP/cache/error expectations |
+| donor:server/domains/company-identity/companyIdentityHandlers.test.ts #2: serves a short TTL cache for repeated identical lookup keys | server/domains/company-identity/companyIdentityHandlers.test.ts → #2: serves a short TTL cache for repeated identical lookup keys (unchanged public app case); packages/platform/test/company-identity/companyIdentityHandlers.test.ts → serves a short TTL cache for repeated identical lookup keys | identical-public + carried-R1: same HTTP/cache/error expectations |
+| donor:server/domains/company-identity/companyIdentityHandlers.test.ts #3: evicts expired cache entries so the map stays bounded over time | server/domains/company-identity/companyIdentityHandlers.test.ts → #3: evicts expired cache entries so the map stays bounded over time (unchanged public app case); packages/platform/test/company-identity/companyIdentityHandlers.test.ts → evicts expired cache entries so the map stays bounded over time | identical-public + carried-R1: same HTTP/cache/error expectations |
 | donor:server/domains/company-identity/companyIdentityHandlers.test.ts #4: refuses methods before parsing or calling the lookup port | packages/platform/test/company-identity/companyIdentityHandlers.test.ts → refuses the method before parsing or lookup | carried-R1: same HTTP/cache/error expectations |
 | donor:server/domains/company-identity/companyIdentityHandlers.test.ts #5: rejects an invalid body without provider work: empty body | packages/platform/test/company-identity/companyIdentityHandlers.test.ts → refuses invalid input before lookup: empty body | carried-R1: same HTTP/cache/error expectations |
 | donor:server/domains/company-identity/companyIdentityHandlers.test.ts #6: rejects an invalid body without provider work: invalid country | packages/platform/test/company-identity/companyIdentityHandlers.test.ts → refuses invalid input before lookup: invalid country | carried-R1: same HTTP/cache/error expectations |
@@ -302,7 +304,15 @@ exclusions are not material proof gaps in the packaged R1 boundary.
 | donor:scripts/m16-address-directory-parity.test.ts #4: executes locality/street prefix reads against the actual schema with parent scope, limits and provenance | tests/postgres/marketDirectoryPreservation.test.ts → retains actual prefix, parent, limit and provenance predicates | carried-R1: same scenario over actual current directory objects and role closure |
 | donor:scripts/m16-address-directory-parity.test.ts #5: distinguishes an empty directory probe from a failed SQL grant | tests/postgres/marketDirectoryPreservation.test.ts → distinguishes probe failure from empty and restores after rollback | carried-R1: same scenario over actual current directory objects and role closure |
 | donor:scripts/m16-address-directory-parity.test.ts #6: refuses unsupported country/postal shapes at the actual schema boundary | tests/postgres/marketDirectoryPreservation.test.ts → refuses unsupported country and postal shapes without persisting a change | carried-R1: same scenario over actual current directory objects and role closure |
-Mapping counts (224 total, including six PG): **carried-R1: 34**, **identical-public: 57**, **public-equivalent: 10**, **later:R3: 19**, **later:R2: 104**.
+Mapping counts (224 distinct cases, including six PG): **identical-public: 57**,
+**identical-public + carried-R1: 9**, **carried-R1: 25**, **public-equivalent: 10**,
+**later:R3: 19**, **later:R2: 104**. The combined status counts each of its nine
+cases once; inclusive witness totals are 66 identical-public and 34 carried-R1.
+The unchanged public service cases #1–#6 and handler cases #1–#3 remain the
+reference witness for the national rule bodies, identifier checksum/normalization
+and personal-name continuation. R2/R3 must keep these app cases unchanged when
+routing those rules through CompanyIdentityRules; package engine tests complement
+rather than replace them.
 All packaged/touched classes have a current public witness; zero unmapped cases.
 
 ## Continuation evidence
@@ -338,6 +348,39 @@ for the committed candidate; no native action is authorized or run.
 Self-retro: a per-case inventory distinguishes out-of-scope application composition
 from a packaged-boundary proof gap; explicit policy inputs close neutrality without
 changing the reference application's behaviour or weakening a scanner.
+
+## Lead review repair (heavy-stage hold)
+
+The lead review of ec8b287f identified an unrecorded exponent lookup change and
+incomplete dual-home witness citations. Restored the original fixed technical
+lookup locale and call: currencyExponent code is identical to its reference app
+file apart from comments. Rechecked all four package currency modules against
+their app originals: remaining code differences are explicit fallback injection,
+removed market defaults/display-language helpers and the formatter import path.
+Reference production and test expectations remain unchanged. Nine mapping rows
+now cite the unchanged app case alongside the package engine case; the quote
+paragraph makes the missing public witness and R3's pre-delegation duty explicit.
+
+Fresh policy pin: `6828103f4e8d56ca18808cfc27f606b82ea4ddba`; code fork unchanged.
+The new instruction delta concerns disposable-container cleanup and its review
+lesson; this repair creates no container. The coordinator's heavy-stage hold
+supersedes the pending draft verify: no full/draft verify, broad tests, pgTAP,
+pack builds, lint or API builds are authorized until lifted. This repair runs
+only neutrality and individual package money test files with one worker, then
+DCO commit, ordinary push and stop. Prior tarball hashes and measurements above
+identify the earlier candidate and are not remeasured under this hold.
+
+Repair evidence: neutrality PASS with zero increases; four package money test
+files PASS individually with --maxWorkers 1 (8 fiscal, 8 formatter, 20
+settlement and 3 fit cases; 39 total), using Node 24.21.0. Exponent code equality
+was confirmed with comments excluded; formatter equality was confirmed after
+removing display-language helpers and adjusting its import path. The settlement
+and fiscal diffs contain only the approved fallback/default changes and comments.
+No heavy gate was started during this repair. An initial log redirection used
+the wrong relative directory and was corrected before any test process started.
+Self-retro: fixed technical constants preserve behavior; neutrality does not
+justify changing them. Dual-home mappings preserve national-rule witnesses as
+well as neutral engine coverage for the next delegation step.
 
 ## First-candidate evidence (387ab436; retained history)
 

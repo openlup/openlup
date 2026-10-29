@@ -1,4 +1,6 @@
 /** ICU currency metadata lookup; no display locale or settlement policy is selected. */
+const EXPONENT_LOOKUP_LOCALE = "en-US";
+
 /** Raised when the runtime cannot say how many minor units a currency has. */
 export class UnresolvableCurrencyExponentError extends Error {
   readonly currency: string;
@@ -31,7 +33,7 @@ export class UnresolvableCurrencyExponentError extends Error {
  * `10 ** exponent` and rendering every amount as `NaN`.
  */
 export function currencyExponent(code: string): number {
-  const { minimumFractionDigits } = new Intl.NumberFormat(undefined, {
+  const { minimumFractionDigits } = new Intl.NumberFormat(EXPONENT_LOOKUP_LOCALE, {
     style: "currency",
     currency: code,
   }).resolvedOptions();
