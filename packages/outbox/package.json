@@ -16,6 +16,7 @@
   "packageManager": "npm@11.19.0",
   "sideEffects": false,
   "files": [
+    "AGENT_CONTEXT.md",
     "dist/**",
     "src/**",
     "sql/**",

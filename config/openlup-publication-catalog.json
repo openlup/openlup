@@ -1334,6 +1334,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/agent-context-mvp-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/autonomous-reviewed-delivery-intent.md",
       "class": "platform-documentation"
     },
@@ -1595,6 +1599,10 @@
     },
     {
       "path": "packages/core/AGENTS.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/AGENT_CONTEXT.md",
       "class": "public-output"
     },
     {
@@ -1886,6 +1894,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/agent-context-cli.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/bundle/contracts.ts",
       "class": "public-output"
     },
@@ -1959,6 +1971,10 @@
     },
     {
       "path": "packages/core/src/marketing/research/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/openlup-context.js",
       "class": "public-output"
     },
     {
@@ -2170,6 +2186,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/agent-context-cli.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/assertNoZeroCoverage.ts",
       "class": "public-output"
     },
@@ -2306,6 +2326,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/outbox/AGENT_CONTEXT.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/outbox/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -2435,6 +2459,10 @@
     },
     {
       "path": "packages/outbox/vitest.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/AGENT_CONTEXT.md",
       "class": "public-output"
     },
     {
@@ -8459,6 +8487,18 @@
     },
     {
       "path": "scripts/agent-ci-queued-diagnose.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-context/evaluate.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-context/generate.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-context/generate.test.mjs",
       "class": "public-output"
     },
     {
@@ -26541,7 +26581,7 @@
     },
     {
       "name": "oss:published-tree",
-      "command": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
+      "command": "node scripts/agent-context/generate.mjs --check && node --experimental-strip-types scripts/oss-published-tree-check.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -26603,11 +26643,11 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-2da068abaa57f528453853e6551da796a6a5d6e96f9bbb407c01493fdafac3c7"
+      "digest": "sha256-603435d758079376c31fba3b643e3c24c22b587309d461d7e7bbb4de483d99e1"
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-2880595670a09c961ad3366588800d97e303f2fff4f111ec2ac18a1defd86c02"
+      "digest": "sha256-0a01b40d765409dc9810d29839ecd6a82345ac8095d47e74e997dffa53f0e615"
     },
     {
       "path": "packages/outbox/package.json",

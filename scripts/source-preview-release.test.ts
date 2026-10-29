@@ -319,7 +319,7 @@ const SYNTHETIC_TREE: Record<string, string> = {
   "src/integrations/supabase/types.ts": "export type SyntheticDatabase = never;\n",
   "package.json": json({ name: "synthetic-root", private: true, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }),
   "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3 }),
-  "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS }),
+  "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS, bin: { "openlup-context": "./src/openlup-context.js" } }),
   "packages/core/package-lock.json": json({ name: "synthetic-core", lockfileVersion: 3 }),
   "packages/outbox/package.json": json({ name: "synthetic-outbox", scripts: OUTBOX_SCRIPTS }),
   "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS }),

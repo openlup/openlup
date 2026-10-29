@@ -69,6 +69,29 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The small installed `AGENT_CONTEXT.md` corpora in core, outbox and platform are
+generated from selected canonical owner sections by
+[`scripts/agent-context/generate.mjs`](../../scripts/agent-context/generate.mjs).
+Run `node scripts/agent-context/generate.mjs` after changing a selected owner;
+`node scripts/agent-context/generate.mjs --check` refuses stale or missing
+snapshots without writing; `npm run oss:published-tree -- --policy` runs this
+freshness check before the publication and documentation policy. Packaging consumes the checked-in Markdown and never
+generates context during prepack. The generator's focused witness runs with
+`node --test scripts/agent-context/generate.test.mjs`.
+Each excerpt retains its original Markdown bytes, source path, one-based
+inclusive line span and SHA-256. Package-local owner paths are relative to the
+installed package; `docs/platform` owner paths remain repository-relative.
+Relative links retain the original
+source file's base. These small task routes support offline reading; they do
+not certify an installed runtime, hosted qualification or compatibility with
+another revision. Canonical owners remain authoritative and the source map
+continues to own broad source navigation.
+The cycle task routes retain the core engine's late-payment clamp and the
+canonical late-delivery/replacement alignment boundary as separate owner
+excerpts; retrieval must not conflate payment timing with delivery confirmation.
+The delivery excerpt stops before the native translation paragraph; its cited
+line span and hash describe only the retained verbatim guidance.
+
 The exact-shipment native G17 host binding and its local unit/native witnesses
 route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
 The [data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) defines its
