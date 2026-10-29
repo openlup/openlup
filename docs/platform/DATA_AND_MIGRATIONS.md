@@ -400,13 +400,17 @@ The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation
 and before status, dry-run or pending SQL. It can refuse changed host/login facts;
 it shares the source's existing database capability, not a sandbox or per-unit
-provisioning boundary. Sources omitting it retain their existing queries and
-execution. With a hook present, the preceding lock/hash and ledger-existence
-functions bind to `pg_catalog` before admission; release uses the same bound
-lock identity. The later qualified source owns its finite read-only checks.
-For a fresh qualified installation, catalog-only revalidation precedes a
-read-only snapshot shared by session facts and the selected-catalog observation;
-an installed ledger remains protected by its admitted relation lock.
+provisioning boundary. For every source, the shared runner binds its advisory
+lock and ledger checks to `pg_catalog` and admits the ledger's catalog shape
+before reading its contents; release uses the same bound lock identity. Sources
+omitting the hook skip only its session checks and retain their migration
+execution semantics. The later qualified source owns its finite read-only
+checks. For a fresh qualified installation with no ledger, the runner ends its
+initial read-only observation, begins a read-only `REPEATABLE READ` transaction,
+and rechecks ledger absence using only the catalog before the hook runs. The
+hook's session facts and selected-catalog observation then share that snapshot;
+a newly present ledger at the recheck is refused. An installed ledger remains
+protected by its admitted relation lock through the qualified observation.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
