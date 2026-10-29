@@ -1943,3 +1943,38 @@ The 2026-10-29 maintainer release-control read accepted staged tree
 reasons before DCO. Its record is retained at ignored
 `.context/scratch/m15-release-032/maintainer-read-20261029.md`. This evidence
 pointer adds no release metadata or control change.
+
+CD-M15-8 directs S1 to include merged PR #439 in the 0.32.0 set. On
+2026-10-29 the supervisor signed-merged actual `origin/main` at
+`6e7adb51e742a132b879a94ef07e5cfed60f694c` without rebase or force
+push. The owner's merged addition packages Core's Node-only offline
+`openlup-context` lookup command and root `AGENT_CONTEXT.md` guidance snapshots
+in all three packages. S1 updates the adjacent release text and refreshes the
+source contract for these bound publication inputs. Existing M15 risk and
+privacy entries, release caps and browser limits remain unchanged. The prior
+read and verification cover the pre-#439 candidate only; the revised exact
+tree requires another release-control read before DCO, fresh full reviews and
+new canonical verification. Dispatch and protected approval remain separate.
+
+Working-tree measurement after the merge and generated context refresh:
+Core 182,402 B packed / 761,195 B unpacked / 229 files (code gzip 152,474 B,
+216 files; docs gzip 23,639 B, 11 files); Outbox 40,806 B packed /
+141,632 B unpacked / 42 files (code gzip 21,433 B, 33 files; docs gzip
+14,605 B, seven files); Platform 1,966,093 B packed / 9,177,488 B unpacked /
+2,681 files (code gzip 1,697,305 B, 2,625 files; docs gzip 56,030 B,
+six files). All unchanged aggregate, class, growth and 18 browser limits pass;
+CD-M15-6a is not triggered. The generated Core and Outbox context source spans
+were refreshed after the adjacent READMEs shifted their line numbers.
+Six focused release, fragment, size, source and documentation test files pass
+(272 tests); lint passes with zero errors and 33 existing warnings. Source
+contract check, manifest, inventory, structural scan and neutrality pass. The
+remaining pre-DCO evidence and exact staged identity are in the new read packet.
+Self-retro for this stopped pre-DCO run: main advanced while the previous full
+proof was running, which made its receipt unusable. The exact main merge and
+fresh source measurements exposed that drift before delivery. The existing
+snapshot generator and package checker handled #439 without a new mechanism;
+no useful process change is needed beyond checking live main at receipt.
+The CD-M15-8 maintainer read accepted staged tree
+`6397c0d2c515ec6a85f90d52247d901038674ee8` and the proposed Outbox
+impact trailer before DCO; its ignored record is
+`.context/scratch/m15-release-032/maintainer-read-20261029-cd-m15-8.md`.

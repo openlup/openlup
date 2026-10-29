@@ -15,6 +15,13 @@ in the source repository.
 - Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
   `openlup-platform-v0.32.0`.
 
+### Installed agent context
+
+- Package a root `AGENT_CONTEXT.md` with excerpts of canonical platform
+  guidance, source paths, line ranges and excerpt digests. Core's installed
+  offline `openlup-context` command can find it; check the cited source before
+  relying on an excerpt. It adds no dependency or runtime activation.
+
 ### Generic risk controls
 
 - Add experimental `@openlup/platform/risk`, type-only `risk/contracts` and
