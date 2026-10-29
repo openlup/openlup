@@ -424,7 +424,13 @@ nonowners. The mode-specific expected inventories are fixed in the manifest,
 not learned from the installation being checked. The
 [local production-path witness](../../tests/postgres/m14QualifiedAdminComposition.test.ts)
 applies, resumes and replays both modes with actual migration/runtime/restore
-logins; hosted and connected-restore qualification remain separate.
+logins. Connected restore selects this generation's mode-specific manifest.
+A host-declared trusted provider control plane may use a non-superuser bootstrap
+login with CREATEROLE and CREATEDB and named outside elevated roles. Admission
+checks that those roles do not enter the application role graph and keeps the
+application ownership, runtime/restore limits and selected catalogue checks.
+Local PG16 role emulation leaves actual hosted privilege behavior and provider
+role inventory for later hosted receipts.
 
 The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
 check the actual login, owner, held lock, protected role graph, default ACLs,

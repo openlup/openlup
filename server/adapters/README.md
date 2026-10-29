@@ -39,24 +39,29 @@ The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
 the `qualified-admin` fresh generation for a PostgreSQL 16 database owner that
 is not a superuser. The [session admission](postgres/qualifiedInstall.ts) checks
 the real migration session, exact ledger prefix and protected role graph before
-normalizing declared names into either fixed mode-specific inventory. It reuses
+normalizing declared names into either fixed mode-specific inventory. A host may
+declare a finite trusted control-plane role inventory for a non-superuser
+bootstrap login with CREATEROLE and CREATEDB and an elevated provider-role
+membership. Outside provider roles may enter
+the protected graph only through that bootstrap login; an edge into an
+application principal still
+refuses. The actual role flags and graph are checked before normalization. It reuses
 the existing package executor, advisory lock, per-unit transaction and final
 inventory comparison. Installer-managed M creates the six fixed groups;
 operator-provisioned M receives declared ADMIN edges without CREATEROLE. M is
 a trusted administrator retaining those ADMIN edges; the runtime and restore
-logins remain restricted nonowners. This binding does not qualify a hosted
-endpoint or connected store restore.
+logins remain restricted nonowners. Local role emulation does not qualify a
+hosted endpoint.
 
 ## Native retained-store transfer preparation
 
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
 [target restore](postgres/connectedStoreRestore.ts) compose one finite native
-profile prepared for the selected 91-unit qualified-v2 installation with restore
-binding. The finite native 91-unit witness passed with two owned installations
-and actual restricted runtime media access, using the superuser migration owner
-for administrative restore;
+profile for explicitly selected qualified PostgreSQL 16 installations with a
+restore binding. The earlier finite native witness passed with two owned
+`qualified-v2` installations and actual restricted runtime media access;
 the earlier 90-unit attempt stopped during source runtime media confirmation.
-The fixed 73-table graph preserves PostgreSQL JSON text, including bigint and
+The fixed selected graph preserves PostgreSQL JSON text, including bigint and
 timestamp precision. Capture observes one actual read-only repeatable-read
 transaction and checks all non-system user schemas. Unknown nonempty business
 tables, including acquisition-private business data, refuse rather than being
@@ -66,10 +71,17 @@ hashed or logged by transfer.
 
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
-writer. The current profile observes cluster identity through
-`pg_control_system` as the existing superuser migration login. It does not
-qualify a restricted installer or a managed host. Pristine-row equality is a
-precondition inside the target transaction, not independent freshness evidence.
+writer. The connected observation uses ordinary-session database incarnation
+facts: postmaster start time, server address/port and database OID, with the
+database name checked separately. A restart requires a new pristine target
+capture. The host still supplies distinct source and target installations;
+the observed identity is a refusal check, not independent host attestation.
+Restricted M may temporarily reacquire acquisition-owner inheritance for the
+read-only capture census, then seal it. Restore temporarily inherits that owner
+and the retained-import owner transactionally after checking the sealed
+catalogue, then seals both edges before final catalogue comparison. Pristine-row
+equality is a precondition inside the target transaction, not independent
+freshness evidence.
 The target rechecks the selected canonical catalogue and ledger. The complete
 ledger path, checksum and position sequence follows the selected manifest rather
 than a fixed unit count or tail pin. It locks tables,
@@ -98,7 +110,7 @@ populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
 snapshot and completeness; the mapper does not collect managed auth subjects or
 certify issuer control. Full managed audit rows and source-keyed acquisition
-history remain with item 8, outside the fixed 73-table graph. The task decision
+history remain with item 8, outside the fixed selected graph. The task decision
 and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 
