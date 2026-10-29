@@ -503,14 +503,15 @@ it.each(["repeatable read", "serializable"])("preserves a pending unit's configu
   } finally { await pool.end(); }
 });
 
-it("sees a ledger replacement committed while the pending unit waits for its first lock", async () => {
+it.each(["read committed", "repeatable read", "serializable"])("sees a ledger replacement committed while the pending unit waits for its first lock (%s)", async isolation => {
   await resetLedger(ledgerDefinition);
   await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
     [entries[0]!.file, entries[0]!.sha256]);
   const blocker = await admin.connect();
   const pool = new Pool({ connectionString: container!.connectionString, max: 1 });
+  await pool.query(`SET default_transaction_isolation TO '${isolation}'`);
   const lockAttempted = signal();
-  let armed = false, lockCompleted = false, postLockCatalogRead = false;
+  let armed = false, lockCompleted = false, postLockCatalogRead = false, unitSqlStarted = false;
   const racingPool = {
     async connect() {
       const client = await pool.connect();
@@ -530,6 +531,7 @@ it("sees a ledger replacement committed while the pending unit waits for its fir
             return result;
           }
           if (lockCompleted && sql.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,")) postLockCatalogRead = true;
+          if (sql === migrations[1]!.content) unitSqlStarted = true;
           return client.query(sql, values);
         },
         release: client.release.bind(client),
@@ -549,6 +551,7 @@ it("sees a ledger replacement committed while the pending unit waits for its fir
     await blocker.query("COMMIT");
     expect(await result).toMatchObject({ message: expect.stringContaining("not safe to read") });
     expect(postLockCatalogRead).toBe(true);
+    expect(unitSqlStarted).toBe(false);
     expect(await invocationCount()).toBe(0);
   } finally {
     await blocker.query("ROLLBACK").catch(() => {});
