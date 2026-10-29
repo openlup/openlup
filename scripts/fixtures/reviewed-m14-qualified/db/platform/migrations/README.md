@@ -28,8 +28,8 @@ An actual PostgreSQL 16 parse-and-apply attempt found a syntax error in the
 approved actor bytes. Those twelve approval rows and their fixtures stay
 unchanged. Four new inert `qb_` fixtures parenthesize the CASE sums in the
 actor, acquisition, runtime and import units. The reader accepts their paths
-only as an atomic positions 13–16 append. They still require a separate
-exact-byte approval with a two-mode disposable parse-and-apply witness; they
+only as an atomic positions 13–16 append. This separate checkpoint approves
+their exact bytes after a two-mode disposable parse-and-apply witness. They
 are not active installation files in this checkpoint. The restricted generation
 will select the `qa_` baseline and four `qb_` replacements, then reuse the
 issued completion tail without the qualified owner-path forward. See the

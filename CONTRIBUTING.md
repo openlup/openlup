@@ -185,6 +185,11 @@ restricted-bootstrap positions. Its fixed function preimages and exact forward
 bytes were approved before SQL introduction; the control witness refuses
 changed bodies, extra definitions and an earlier position. The active SQL is
 byte-identical to that approved fixture.
+The restricted-bootstrap control witness admits the four corrected `qb_`
+identities only as an atomic positions 13–16 append after all twelve earlier
+approvals, checks their exact fixture hashes, and rejects prior repins or
+co-located active SQL. These approvals are inert until a separate selected
+generation passes its installation and runtime proofs.
 The
 [native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the existing runner and container helper: an interrupted canonical prefix

@@ -126,14 +126,17 @@ cannot certify item 8's full archive; the host must retain it before activation.
 ## Execution, handoff and self-retro
 
 Dedicated branch: `codex/oss-m14-identity-mapping`. Initial `npm ci` completed.
-Current `main` (`92cc5e17ae2c7b28b25ed5c1f2843d5f3373331d`) was merged first
-as signed-off commit `ee2c7cecb66f07457f6b8381d4c4d8c00b0ff0f9` before
-phase 2 changes. Policy pin is that current main; review base remains the
-original fork point unless a later applicable review action changes it.
-No DCO for implementation, native review session, counted reviewer verdict,
-canonical verification, PR, receipt or queue result is claimed. No repair cycle
-or queue retry has been consumed by this new task. A later API/security-control
-implementation requires its stabilized maintainer read before DCO.
+Main `92cc5e17ae2c7b28b25ed5c1f2843d5f3373331d` was merged first as
+signed-off commit `ee2c7cecb66f07457f6b8381d4c4d8c00b0ff0f9` before
+phase 2 changes. The current instruction pin is
+`e5ba63ab1e77643968d79ec0c37e3bfdbea8d90a`, separately from the prior
+review base `92cc5e17ae2c7b28b25ed5c1f2843d5f3373331d`. That main
+revision changed `CONTRIBUTING.md`, so native carry-over failed and the active
+supervisor merged it before another full review. The coordinator accepted the
+first API/security-control read of tree `e8d14d9c` and the second read of
+repair tree `7a84048e` before their DCO commits. Native cycle 1 and two
+completed, non-passing candidate evaluations are retained. No queue retry has
+been consumed. Canonical verification, PR, receipt and queue remain outstanding.
 
 Working checks on the current cut-over/audit source: the selected real-PG suite
 passed five of five cases, including source replay, target drain refusal with no
