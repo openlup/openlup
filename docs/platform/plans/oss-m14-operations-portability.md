@@ -287,3 +287,76 @@ Self-retro: repeated integration transcripts obscured the current source/release
 boundary. One current record with pinned history preserves failures and authority
 without making old measurements look like proof of the repaired transfer tree.
 No implementation, test, review or delivery result was created by compaction.
+
+### Qualified owner path hardening (F5)
+
+Status: control preparation landed in [PR #418](https://github.com/openlup/openlup/pull/418),
+and exact forward approval landed in [PR #420](https://github.com/openlup/openlup/pull/420).
+The active SQL checkpoint is prepared for its separate maintainer read. The bounded outcome is to pin name resolution in the owner-executed
+acquisition and retained-import paths of the current qualified-v2 installation.
+Preserve its issued 91-unit prefix and six approval rows; introduce only one
+separately reviewed forward with exact function and file identities. Both
+declared role modes retain their ordinary behavior.
+
+Bart Roszkowski is the accountable owner. The active supervisor may prepare,
+verify, commit, submit and merge this parcel after the required read and native
+review. Release dispatch, npm publication, deployment, settings, credentials
+and adopter activation remain separate owner actions. The corrected package
+release is outside this parcel.
+
+Acceptance requires the forward to change only the fixed owner-executed
+definitions, keep selected metadata, migration ledger and object inventory
+coherent, and pass real PostgreSQL negative and ordinary behavior proof on
+both affected paths and role modes. Existing source controls and package gates
+remain binding. First deliver the fixed forward reader as a separate control
+change, then bind the exact forward and prove the qualified chain. Adjacent M14
+work may require a signed main integration and renewed review. Execution
+evidence and a short self-retro will be recorded here at completion.
+
+Control-preparation checkpoint: the pre-integration tree passed 26 focused
+tests, native review by two fresh reviewers and canonical verification with
+pgTAP. Main then added the restricted-bootstrap reader on overlapping control
+paths. Its required signed integration caused three textual conflicts; the
+resolved working tree keeps the six active approvals and the 91-unit selected
+qualified plan. The pending qualified forward takes approval position seven,
+before the five restricted-bootstrap reservations. It has no active
+SQL or pin in this control preparation. The integrated control needs its own
+maintainer read before DCO, review and verification.
+
+Self-retro for this stopped run: the pre-integration proof could not carry over
+the overlapping reader landing. Resolving its fixed approval order in one
+control change preserves the existing qualification boundary; the integrated
+tree needs fresh evidence before delivery.
+
+Control delivery: corrected tree `2dcd783a1a0f1994e237065d3a44cc2a259414a2`
+passed two fresh FULL reviews and canonical verification with pgTAP. Source and
+merge-group checks passed; PR #418 merged as `bc4299bba72aff58159c2739e81a6b69f507b900`.
+The next checkpoint adds only the exact seventh approval and an inert copy of
+its forward bytes for review. The current selected plan remains 91 units; SQL
+introduction and installation proof are the later checkpoint.
+
+Pin delivery: the approved pin tree `de0e1d8904af5b451dfdf3e0149c023045451711`
+was integrated with main without changing the nine-path F5 delta. The integrated
+tree `cd86ab561f80dbfea2d0c7d92d3f85afa2e09e8a` passed two new FULL
+reviews and canonical verification with pgTAP. Source and merge-group checks
+passed; PR #420 merged as `3fbd95565ed665c68f3819a9fe27dc14f5bf9c85`.
+The seventh approval and inert fixture are now on main; the SQL checkpoint
+selects the byte-identical forward as unit 92 and binds its measured inventories.
+
+SQL checkpoint preparation: the active forward is byte-identical to the seventh
+approved fixture and appends unit 92 after the issued 91-unit prefix. Fresh
+PostgreSQL 16 installations measured inventory SHA-256
+`c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b`
+for the aliased bootstrap/migration shape and
+`624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82`
+for the separate migration shape, identically across both declared role modes.
+The four-case composition passes status, apply, replay, owner-path resolution
+and ordinary runtime and restore behavior, with unchanged selected metadata,
+ledger and inventory after the regression probes. The package dry run still
+measures 2,628 files against its 2,628-file cap, so no budget change is needed.
+The active SQL and package change note await a separate maintainer read before
+DCO, review, verification and delivery.
+
+Self-retro for this stopped checkpoint: extending the existing four-case
+production composition covered the new owner paths without creating a second
+installation harness or changing the issued qualification prefix.

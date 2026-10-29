@@ -888,7 +888,7 @@ export interface AdvisoryLock {
     /** Release the dedicated session when the host stops; safe to call repeatedly. */
     close(): Promise<void>;
 }
-/** Minimal pg-query surface (a `pg` Pool/Client satisfies this) — keeps `pg` out of the import graph. */
+/** Minimal query surface; the caller must supply a session-affine client, never Pool.query. */
 export interface AdvisoryLockQuerier {
     query<T = unknown>(text: string, values?: unknown[]): Promise<{
         rows: T[];
@@ -905,7 +905,9 @@ export declare function advisoryLockKey(jobId: string): number;
  * pg-backed advisory lock. Uses `pg_try_advisory_lock` (session-scoped, non-blocking) on acquire
  * and `pg_advisory_unlock` on release. NOTE: session-scoped locks require the same connection for
  * acquire+release, so the supplied querier should be a single dedicated client/connection, not a
- * pool that hands out a different connection per query.
+ * pool that hands out a different connection per query. Each grant is checked in a separate
+ * statement against the backend PID and pg_locks before protected work is admitted. This detects
+ * observed transport violations; it cannot certify a pooler's future routing configuration.
  */
 export declare function createPgAdvisoryLock(client: AdvisoryLockQuerier, closeClient?: () => Promise<void>): AdvisoryLock;
 /**

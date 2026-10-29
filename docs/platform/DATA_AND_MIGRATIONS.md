@@ -19,6 +19,31 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Connection roles
+
+Use the [runtime connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+to separate restricted pooled request work, direct migration/admin work and
+session-affine scheduler locks. Migration and privileged administration connect
+directly to PostgreSQL, bypassing external transaction and session poolers. The
+existing migration runner takes `{ connectionString: directConnectionString }`;
+its internal `pg.Pool` leases one connection for the whole operation and its
+session advisory lock. That local client pool is distinct from a proxy that
+reassigns PostgreSQL backends between statements. Do not feed a pooled runtime
+URL through `resolvePostgresMigrationRunnerEnv` into a migration runner: that
+helper continues to read `DATABASE_URL`, with no implicit direct-endpoint lookup.
+Supply the migration port explicitly through the composition root's `migrations`
+binder, including when the Node host migrates before listening.
+
+Connection separation preserves the selected installation's principal/grant
+contract; it grants no runtime DDL or migrator isolation. The current
+qualified-v2 profile still requires its declared privileged migration principal.
+The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+installs/replays all 91 selected units through the direct endpoint, then exercises
+the pooled request and dedicated session-lock recipe through the restricted
+runtime login. Restricted-bootstrap installation is a separate qualification
+and will reuse these connection roles when it lands. Hosted endpoints remain
+unqualified by this local witness.
+
 ## Compatible data transfer
 
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
@@ -145,6 +170,21 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+
+The package runner admits the migration ledger only when its system-catalog
+shape matches the canonical baseline ledger: a permanent heap table with the
+expected owner, columns, defaults, constraints and indexes, without partition
+or inheritance links, triggers, rules, row policies or extended statistics.
+The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
+major with different catalog expression trees is refused until separately qualified.
+It checks this before reading applied rows, keeps the admitted relation stable
+through qualified session admission and complete inventory projection, and
+reads only rows belonging to the ledger itself. These checks apply to legacy
+and qualified sources. Legacy
+bootstrap ownership remains accepted; qualified session admission still
+requires its declared migration owner. Each applied unit is recorded after a
+fresh ledger check within that unit's transaction. Individual migration
+transactions and exact-prefix/replay behavior remain.
 
 Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and
@@ -385,10 +425,21 @@ The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation
 and before status, dry-run or pending SQL. It can refuse changed host/login facts;
 it shares the source's existing database capability, not a sandbox or per-unit
-provisioning boundary. Sources omitting it retain their existing queries and
-execution. With a hook present, the preceding lock/hash and ledger-existence
-functions bind to `pg_catalog` before admission; release uses the same bound
-lock identity. The later qualified source owns its finite read-only checks.
+provisioning boundary. For every source, the shared runner binds its advisory
+lock and ledger checks to `pg_catalog` and admits the ledger's catalog shape
+before reading its contents; release uses the same bound lock identity. Sources
+omitting the hook skip only its session checks and retain their migration
+execution semantics. The later qualified source owns its finite read-only
+checks. For a fresh qualified installation with no ledger, the runner ends its
+initial read-only observation, begins a read-only `REPEATABLE READ` transaction,
+and rechecks ledger absence using only the catalog before the hook runs. The
+hook's session facts and selected-catalog observation then share that snapshot;
+a newly present ledger at the recheck is refused. An installed ledger remains
+protected by its admitted relation lock through the qualified observation.
+For a pending unit with an installed ledger, the runner takes the write lock
+before its first catalog read in that unit transaction, then rechecks the
+prefix before and after the unit SQL. The SQL retains the connection's configured
+transaction isolation.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
@@ -435,24 +486,24 @@ separately from historical grant spellings or inherited CLI defaults.
 ### Co-located SQL and approval pins
 
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
-for four bootstrap units, an optional retained-import unit and the exact runtime
-completion tail. Even expand-only
+for four bootstrap units, an optional retained-import unit, the runtime
+completion tail and the owner-path forward. Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain six exact bound units, including the
+retain seven exact bound units, including the
 [runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
-now selected as the final qualified tail. Reader preparation landed before the
+selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) prepares
 five further fixed identities for a separate approval. Its inert fixture bytes
-are not approved or active; the six issued rows and current 91-unit manifest
+are not approved or active; the seven issued rows and current 92-unit manifest
 remain unchanged. The future generation reuses the issued completion tail and
 requires two new fixed role-mode inventories. Its migration login is a trusted
 administrator retaining ADMIN membership, not an isolated principal.
-All six approval rows and their byte identities remain unchanged. The tail grants
+All six earlier approval rows and their byte identities remain unchanged. The runtime-completion tail grants
 the existing runtime group context INSERT on its four columns, UPDATE on its
 three non-key columns and DELETE, plus review-command receipt SELECT/INSERT.
 Its local guard requires an unswitched installer owning both targets, the
@@ -460,6 +511,13 @@ existing restricted runtime/group binding and a declared role mode. The complete
 role graph still belongs to the trusted source's preflight; the common tail
 adds no SUPERUSER requirement or alternate installer. A future non-superuser
 profile still needs its own qualification.
+
+The reader reserves the qualified owner-path forward after runtime completion,
+at approval position seven before the five reserved restricted-bootstrap
+positions. Its prior approval binds the exact file and nine function preimages
+and definitions. The active forward pins name resolution on those definitions;
+the selected plan has 92 units. Earlier qualified units and their approvals
+remain immutable.
 
 Delivery uses three separately landed checkpoints. First prepare the exact
 sixth identity's reader/order support, inert fixture and refusals without
@@ -471,8 +529,8 @@ actual main, append the exact sixth hash in a pin-only change. Only after that
 approval is actual main may a feature introduce the identical active SQL and
 append its selected manifest row. Keep all trusted co-location checks intact.
 
-The active schema-2 manifest preserves legacy 88 units and appends only the exact
-completion after the entire qualified F90 prefix, selecting 91 units. Its two
+The active schema-2 manifest preserves legacy 88 units and the issued qualified
+91-unit prefix, then appends the exact owner-path forward as unit 92. Its two
 restore-bound inventories were measured independently on clean PostgreSQL16
 references with migration/bootstrap aliased and distinct. The historical F90
 expectations and raw evidence remain retained; reference measurements do not
@@ -1137,8 +1195,9 @@ separate from both this probe and application-file upgrades.
 ## Compatibility lifecycle
 
 The runtime-completion forward follows the entire qualified F90 prefix, preserving
-all issued identities while selecting 91 units and two newly measured restore-bound
-inventories. It completes the existing normal-runtime preparation context writes
+all earlier issued identities. The owner-path forward follows it as unit 92,
+with two newly measured restore-bound inventories. Runtime completion provides
+the existing normal-runtime preparation context writes
 and review replay-receipt reads/appends. Its column grants exclude context key
 updates, and receipt UPDATE/DELETE/TRUNCATE remain denied. Apply the complete
 selected catalogue through the existing executor and ledger; this exact grant

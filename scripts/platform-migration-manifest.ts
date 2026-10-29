@@ -10,6 +10,7 @@ export const QUALIFIED_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20
 export const QUALIFIED_RUNTIME_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261026130000_runtime_capabilities.sql`;
 export const QUALIFIED_IMPORT_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261026140000_retained_client_subscription_import.sql`;
 export const QUALIFIED_RUNTIME_COMPLETION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261028100000_runtime_capability_completion.sql`;
+export const QUALIFIED_OWNER_PATH_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261029100000_owner_path_name_resolution.sql`;
 export const ADMIN_BASELINE_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_00000000000000_platform_baseline.sql`;
 export const ADMIN_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20260810180001_self_host_actor_auth.sql`;
 export const ADMIN_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20260816140000_acquisition_case_foundation.sql`;
@@ -19,7 +20,7 @@ const LEGACY_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260810180001_self_h
 const LEGACY_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260816140000_acquisition_case_foundation.sql`;
 const QUALIFIED_AFTER_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20261026120000_account_support_operator_authority.sql`;
 const ADMIN_FILES = new Set([ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE]);
-const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, ...ADMIN_FILES]);
+const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ...ADMIN_FILES]);
 const PLATFORM_FILE_RE = /^db\/platform\/migrations\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/;
 export type AddedMigration = { file: string; content: string };
 export type PlatformMigrationManifestEntry = { file: string; sha256: string };
@@ -132,27 +133,29 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
   for (const { file } of input.migrations) if (!union.has(file)) errors.push(`platform migration manifest: unmanifested catalog file ${file}`);
   if (errors.length) return errors;
   const current = raw as Exclude<PlatformMigrationManifest, PlatformMigrationPlan>;
-  function qualifiedOrder(plan: QualifiedPlan | AdminPlan, baseline: string, actor: string, acquisition: string, runtime: string, retainedImport: string, files: Set<string>, requireImport: boolean) {
+  function qualifiedOrder(plan: QualifiedPlan | AdminPlan, baseline: string, actor: string, acquisition: string, runtime: string, retainedImport: string, files: Set<string>, requireImport: boolean, ownerPath: boolean) {
     const replacements = new Map([[actor, LEGACY_ACTOR_FILE], [acquisition, LEGACY_ACQUISITION_FILE]]);
-    const tails = new Set([runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE]);
+    const tails = new Set([runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE, ...(ownerPath ? [QUALIFIED_OWNER_PATH_FILE] : [])]);
     const shared = plan.forward.filter(({ file }) => !tails.has(file));
     if (shared.length !== current.forward.length || shared.some((entry, index) => {
       const legacyEntry = current.forward[index]!;
       return replacements.has(entry.file) ? replacements.get(entry.file) !== legacyEntry.file : JSON.stringify(entry) !== JSON.stringify(legacyEntry);
     })) errors.push("qualified plan must reuse the complete legacy order with only its two exact bootstrap replacements");
     for (const file of [actor, acquisition, runtime, ...(requireImport ? [retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE] : [])]) if (!files.has(file)) errors.push(`qualified plan is missing ${file}`);
-    const own = new Set([baseline, actor, acquisition, runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE]);
+    const own = new Set([baseline, actor, acquisition, runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE, ...(ownerPath ? [QUALIFIED_OWNER_PATH_FILE] : [])]);
     if ([...files].some(file => !legacyFiles.has(file) && !own.has(file))) errors.push("qualified plan contains a wrong-generation fresh identity");
     const at = (file: string) => plan.forward.findIndex(row => row.file === file);
     if (at(QUALIFIED_AFTER_FILE) < 0 || at(runtime) <= at(QUALIFIED_AFTER_FILE)) errors.push("qualified runtime capabilities must follow the complete ownership closure");
     if (at(retainedImport) >= 0 && at(retainedImport) <= at(runtime)) errors.push("qualified retained import must follow runtime role sealing");
-    if (at(QUALIFIED_RUNTIME_COMPLETION_FILE) >= 0 && (at(retainedImport) < 0 || at(QUALIFIED_RUNTIME_COMPLETION_FILE) <= at(retainedImport) || at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== plan.forward.length - 1)) errors.push("qualified runtime completion must follow retained import");
+    const ownerPosition = ownerPath ? at(QUALIFIED_OWNER_PATH_FILE) : -1;
+    if (at(QUALIFIED_RUNTIME_COMPLETION_FILE) >= 0 && (at(retainedImport) < 0 || at(QUALIFIED_RUNTIME_COMPLETION_FILE) <= at(retainedImport) || (ownerPosition < 0 && at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== plan.forward.length - 1))) errors.push("qualified runtime completion must follow retained import");
+    if (ownerPosition >= 0 && (at(QUALIFIED_RUNTIME_COMPLETION_FILE) < 0 || ownerPosition !== at(QUALIFIED_RUNTIME_COMPLETION_FILE) + 1 || ownerPosition !== plan.forward.length - 1)) errors.push("qualified owner path forward must be the final tail after runtime completion");
     if (requireImport && (at(runtime) !== current.forward.length || at(retainedImport) !== current.forward.length + 1
       || at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== current.forward.length + 2)) errors.push("qualified 91-unit tails must follow the complete shared order exactly");
   }
-  qualifiedOrder(current.qualified, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, qFiles, current.schemaVersion === 3);
+  qualifiedOrder(current.qualified, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, qFiles, current.schemaVersion === 3, true);
   if (current.schemaVersion === 3) {
-    qualifiedOrder(current.qualifiedAdmin, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, aFiles, true);
+    qualifiedOrder(current.qualifiedAdmin, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, aFiles, true, false);
     if (!qFiles.has(QUALIFIED_RUNTIME_COMPLETION_FILE)) errors.push("the issued runtime completion tail must be selected by both qualified plans");
   }
   if ([...legacyFiles].some(isQualifiedPlatformMigrationPath)) errors.push("legacy migration plan cannot select a qualified identity");

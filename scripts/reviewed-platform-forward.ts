@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
@@ -42,7 +42,18 @@ const portableCreationPaths = [
   "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
 ];
 type PortableCreationBinding = { path: string; sha256: string };
-const qualifiedInstallationPaths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
+const qualifiedInstallationPaths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
+const qualifiedOwnerPathSignatures = [
+  "acquisition_private.keyed_digest(text,jsonb)",
+  "acquisition_private.case_projection(uuid)",
+  "acquisition_private.refuse_append_only_mutation()",
+  "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamptz)",
+  "public.acquisition_case_operator_list_v1(uuid,timestamptz,uuid,integer)",
+  "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamptz)",
+  "public.acquisition_case_active_count_v1()",
+  "public.customer_subject_capture_lifecycle()",
+  "public.subscription_delivery_alignment_guard_cycle_insert()",
+] as const;
 type FunctionBinding = { signature: string; beforeSha256: string | null; afterSha256: string };
 type PolicyBinding = { table: string; name: string; beforeSha256: string };
 type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPolicies?: PolicyBinding[] };
@@ -50,7 +61,7 @@ type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding
 export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: string; sql?: string }[] };
 export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraints?: { table: string; name: string; beforeSha256: string; beforeSql: string }[] };
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
-export type ReviewedForwardRegistry = { qualifiedInstallations?: PortableCreationBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
+export type ReviewedForwardRegistry = { qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -159,9 +170,18 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
   if (raw.qualifiedInstallations !== undefined) {
-    if (!Array.isArray(raw.qualifiedInstallations) || ![4, 5, 6, 11].includes(raw.qualifiedInstallations.length)) throw new Error("qualified installation approval requires one exact issued prefix or all five restricted-bootstrap replacements");
+    if (!Array.isArray(raw.qualifiedInstallations) || ![4, 5, 6, 7, 12].includes(raw.qualifiedInstallations.length)) throw new Error("qualified installation approval requires one exact issued prefix and optional final owner path forward");
     for (const [index, entry] of raw.qualifiedInstallations.entries()) {
-      if (!entry || Object.keys(entry).sort().join(",") !== "path,sha256" || entry.path !== qualifiedInstallationPaths[index] || !hash(entry.sha256)) throw new Error("qualified installation approval has an invalid fixed identity or hash");
+      if (!entry || entry.path !== qualifiedInstallationPaths[index] || !hash(entry.sha256)) throw new Error("qualified installation approval has an invalid fixed identity or hash");
+      if (index !== 6) {
+        if (Object.keys(entry).sort().join(",") !== "path,sha256") throw new Error("qualified installation approval has an invalid fixed identity or hash");
+      } else {
+        const forward = entry as ForwardBinding;
+        if (Object.keys(forward).sort().join(",") !== "functions,path,sha256"
+          || !Array.isArray(forward.functions)
+          || JSON.stringify(forward.functions.map(fn => fn?.signature)) !== JSON.stringify(qualifiedOwnerPathSignatures)
+          || forward.functions.some(fn => !fn || Object.keys(fn).sort().join(",") !== "afterSha256,beforeSha256,signature" || !hash(fn.beforeSha256) || !hash(fn.afterSha256))) throw new Error("qualified installation approval has an invalid owner path function binding");
+      }
       paths.add(entry.path);
     }
   }
@@ -292,6 +312,39 @@ export function sqlStatements(sql: string, dump = false, creation = false): stri
   }
   if (start >= 0) throw new Error("reviewed replacement SQL requires terminated statements");
   return statements;
+}
+
+function qualifiedFunctionIdentity(statement: string): string | null {
+  const header = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|acquisition_private)\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s/iu.exec(statement);
+  if (!header) return null;
+  const args = header[2]!.trim();
+  const types = args ? args.split(",").map(argument => {
+    const match = /^(?:[a-z_][a-z0-9_]*\s+)?(uuid|text|jsonb|integer|bigint|boolean|timestamptz)$/iu.exec(argument.trim());
+    if (!match) throw new Error("qualified owner path forward has an unsupported function identity");
+    return match[1]!.toLowerCase();
+  }) : [];
+  return `${header[1]!.toLowerCase()}(${types.join(",")})`;
+}
+
+/** The reviewed tail may only replace the nine exact definitions with a pinned path. */
+export function assertQualifiedOwnerPathForward(binding: ForwardBinding, bytes: Buffer, issuedSources: readonly Buffer[]): void {
+  if (binding.path !== QUALIFIED_OWNER_PATH_FILE || sqlSha256(bytes) !== binding.sha256) throw new Error("qualified owner path forward path or bytes drifted");
+  const previous = new Map<string, string>();
+  for (const source of issuedSources) for (const statement of sqlStatements(source.toString("utf8"))) {
+    const signature = qualifiedFunctionIdentity(statement);
+    if (signature && qualifiedOwnerPathSignatures.includes(signature as typeof qualifiedOwnerPathSignatures[number])) previous.set(signature, statement);
+  }
+  const statements = sqlStatements(bytes.toString("utf8"));
+  if (statements.length !== qualifiedOwnerPathSignatures.length || previous.size !== statements.length) throw new Error("qualified owner path forward has a missing or extra definition");
+  for (const [index, statement] of statements.entries()) {
+    const pin = binding.functions[index]!, signature = qualifiedOwnerPathSignatures[index]!;
+    const prior = previous.get(signature);
+    if (!prior || qualifiedFunctionIdentity(statement) !== signature || pin.signature !== signature
+      || sqlSha256(prior) !== pin.beforeSha256 || sqlSha256(statement) !== pin.afterSha256) throw new Error("qualified owner path function identity or preimage drifted");
+    const expected = prior.replace(/^CREATE FUNCTION /u, "CREATE OR REPLACE FUNCTION ")
+      .replace(/SET search_path = pg_catalog(\s+AS\b)/u, "SET search_path = pg_catalog, pg_temp$1");
+    if (expected === prior || statement !== expected) throw new Error("qualified owner path forward changes more than the pinned name-resolution attribute");
+  }
 }
 
 /** Hash the raw CREATE statement, including its terminating semicolon; argument names/defaults are not identity. */
@@ -857,6 +910,12 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   if (isQualifiedPlatformMigrationPath(path)) {
     assertUnchangedForwardApproval(root, approval, head, path);
+    if (path === QUALIFIED_OWNER_PATH_FILE) {
+      const acquisition = blob(root, head, QUALIFIED_ACQUISITION_FILE);
+      const retained = blob(root, head, QUALIFIED_IMPORT_FILE);
+      if (!acquisition || !retained) throw new Error("qualified owner path forward requires both issued definition sources");
+      assertQualifiedOwnerPathForward(forward as ForwardBinding, bytes, [acquisition, retained]);
+    }
     return;
   }
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;

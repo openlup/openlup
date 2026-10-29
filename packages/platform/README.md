@@ -70,8 +70,11 @@ timestamp used in the webhook's idempotency key.
 
 The experimental migration source may supply `assertSession` to observe host
 facts once under the existing advisory lock, after exact ledger-prefix admission
-and before status, dry-run or pending SQL. Sources without it retain current
-execution. The [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and before status, dry-run or pending SQL. Every source uses catalog-bound locks
+and admits only the canonical baseline ledger catalog shape before reading its
+exact prefix. A pending unit locks an installed ledger before its first catalog
+read in that transaction and preserves the connection's isolation setting. The
+[migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
 
@@ -776,8 +779,20 @@ uses a real local listener and bridge request across that shutdown boundary.
 
 The PostgreSQL lock adapter also reserves each numeric advisory key locally
 before acquisition. This prevents reentry on the same session, including pending
-acquisitions and colliding job IDs. Failed acquisition releases the reservation;
-failed unlock retains it until session disposal. The
+acquisitions and colliding job IDs. Contention releases the reservation;
+uncertain acquisition refuses that job and further grants with an actionable
+error, retaining its reservation until session disposal. Each acquired key is
+observed on the same backend in a separate statement before the job runs. A
+changed PID or missing lock ownership refuses with
+`OPENLUP_E_ADVISORY_SESSION_AFFINITY`; release also checks the backend and
+requires an actual unlock. Failed unlock retains the reservation. Use a dedicated
+direct connection or session-mode pooler, never `Pool.query` or transaction
+pooling; a finite check cannot certify a pooler's configuration. Follow the
+[connection recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+when runtime `DATABASE_URL` uses a transaction pooler. The
+[qualified PG16 witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+proves pooled requests, session exclusion and backend-switch/reset refusal before
+the body, plus refusal to unlock another backend's grant. The
 [disposable PostgreSQL witness](../../tests/postgres/nodeHostRuntimeDrain.test.ts)
 checks same-session exclusion and replacement-host admission after drain.
 This graceful-stop contract does not fence an old host at external provider I/O
