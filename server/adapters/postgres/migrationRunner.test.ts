@@ -45,7 +45,7 @@ function stubPool(input: { ledger?: AppliedRow[]; bodies: readonly string[] }) {
             ledger.push({ catalog_path: String(values?.[0]), sha256: String(values?.[1]), position: Number(values?.[2]) });
             return { rows: [] };
           }
-          if (text === "BEGIN ISOLATION LEVEL READ COMMITTED" || text === "COMMIT" || text === "ROLLBACK") return { rows: [] };
+          if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return { rows: [] };
           if (input.bodies.includes(text)) {
             executed.push(text);
             if (text === input.bodies[0]) ledgerExists = true;

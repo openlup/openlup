@@ -444,7 +444,7 @@ it("rechecks the same ledger under the migration transaction before a pending in
         return {
           async query(sql: string, values?: unknown[]) {
             const result = await client.query(sql, values);
-            if (sql === migrations[1]!.content) {
+            if (sql === "COMMIT") {
               await admin.query(`DROP TABLE public.platform_schema_migrations; ${replacement}`);
             }
             return result;
@@ -464,6 +464,100 @@ it("rechecks the same ledger under the migration transaction before a pending in
   }
 });
 
+it.each(["repeatable read", "serializable"])("preserves a pending unit's configured %s isolation", async isolation => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+    [entries[0]!.file, entries[0]!.sha256]);
+  const forward = { file: "db/platform/migrations/20261029000000_synthetic_isolation.sql",
+    content: "SHOW transaction_isolation" };
+  const forwardEntry = { file: forward.file, sha256: digest(forward.content) };
+  const isolatedSource: PlatformMigrationSource = {
+    ...source(undefined),
+    readMigrations: () => ({ migrations: [migrations[0]!, forward], errors: [] }),
+    readManifest: () => ({ ...manifest, forward: [forwardEntry] }),
+  };
+  const pool = new Pool({ connectionString: container!.connectionString, max: 1 });
+  let observed: string | undefined;
+  const observingPool = {
+    async connect() {
+      const client = await pool.connect();
+      return {
+        async query(sql: string, values?: unknown[]) {
+          const result = await client.query(sql, values);
+          if (sql === forward.content) observed = result.rows[0]?.transaction_isolation;
+          return result;
+        },
+        release: client.release.bind(client),
+      };
+    },
+  } as unknown as Pool;
+  try {
+    await pool.query(`SET default_transaction_isolation TO '${isolation}'`);
+    const runner = createPostgresMigrationRunner({ connectionString: "owned synthetic pool" }, {
+      lockName: "synthetic-ledger-isolation", poolFactory: () => observingPool, source: isolatedSource,
+      catalogProjectionPayload: async () => inventory,
+    });
+    await expect(runner.apply()).resolves.toEqual({ applied: [forward.file] });
+    expect(observed).toBe(isolation);
+    expect(await invocationCount()).toBe(0);
+  } finally { await pool.end(); }
+});
+
+it("sees a ledger replacement committed while the pending unit waits for its first lock", async () => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+    [entries[0]!.file, entries[0]!.sha256]);
+  const blocker = await admin.connect();
+  const pool = new Pool({ connectionString: container!.connectionString, max: 1 });
+  const lockAttempted = signal();
+  let armed = false, lockCompleted = false, postLockCatalogRead = false;
+  const racingPool = {
+    async connect() {
+      const client = await pool.connect();
+      return {
+        async query(sql: string, values?: unknown[]) {
+          if (sql === "COMMIT" && !armed) {
+            const result = await client.query(sql);
+            await blocker.query("BEGIN");
+            await blocker.query("LOCK TABLE ONLY public.platform_schema_migrations IN ACCESS EXCLUSIVE MODE");
+            armed = true;
+            return result;
+          }
+          if (sql === "LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE" && !lockCompleted) {
+            lockAttempted.resolve();
+            const result = await client.query(sql);
+            lockCompleted = true;
+            return result;
+          }
+          if (lockCompleted && sql.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,")) postLockCatalogRead = true;
+          return client.query(sql, values);
+        },
+        release: client.release.bind(client),
+      };
+    },
+  } as unknown as Pool;
+  const result = fixtureRunner(racingPool, false).apply().catch(error => error);
+  try {
+    await Promise.race([lockAttempted.promise, result.then(error => { throw error; })]);
+    await expect.poll(async () => (await admin.query(`SELECT pg_catalog.count(*)::pg_catalog.int4 AS waiting
+      FROM pg_catalog.pg_locks WHERE mode OPERATOR(pg_catalog.=) 'ShareRowExclusiveLock'::pg_catalog.text
+        AND NOT granted`)).rows[0].waiting, { timeout: 3_000 }).toBeGreaterThan(0);
+    await blocker.query(`ALTER TABLE public.platform_schema_migrations RENAME TO synthetic_old_ledger;
+      CREATE VIEW public.platform_schema_migrations AS SELECT
+        'synthetic'::pg_catalog.text AS catalog_path, 'synthetic'::pg_catalog.text AS sha256,
+        0::pg_catalog.int4 AS position`);
+    await blocker.query("COMMIT");
+    expect(await result).toMatchObject({ message: expect.stringContaining("not safe to read") });
+    expect(postLockCatalogRead).toBe(true);
+    expect(await invocationCount()).toBe(0);
+  } finally {
+    await blocker.query("ROLLBACK").catch(() => {});
+    blocker.release();
+    await Promise.allSettled([result]);
+    await pool.end();
+  }
+});
+
 it("refuses a changed applied prefix before a pending migration commits", async () => {
   await resetLedger(ledgerDefinition);
   await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)", [entries[0]!.file, entries[0]!.sha256]);
@@ -474,7 +568,7 @@ it("refuses a changed applied prefix before a pending migration commits", async 
       return {
         async query(sql: string, values?: unknown[]) {
           const result = await client.query(sql, values);
-          if (sql === migrations[1]!.content) await admin.query("DELETE FROM public.platform_schema_migrations");
+          if (sql === "COMMIT") await admin.query("DELETE FROM public.platform_schema_migrations");
           return result;
         },
         release: client.release.bind(client),
@@ -528,6 +622,60 @@ it("holds the pending write lock against a concurrent trigger change", async () 
   } finally {
     allowInsert.resolve();
     await Promise.allSettled([result]);
+    await Promise.all([pool.end(), ddlPool.end()]);
+  }
+});
+
+it("keeps ledger DDL blocked until the pending unit commits", async () => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+    [entries[0]!.file, entries[0]!.sha256]);
+  const oid = (await admin.query("SELECT 'public.platform_schema_migrations'::pg_catalog.regclass::pg_catalog.oid AS oid")).rows[0].oid;
+  const beforeInsert = signal(), allowInsert = signal();
+  const pool = probePool();
+  const ddlPool = new Pool({ connectionString: container!.connectionString, max: 1 });
+  let inserted = false, committed = false, ddlCompleted = false;
+  let ddl: Promise<unknown> | undefined;
+  const gatedPool = {
+    async connect() {
+      const client = await pool.connect();
+      return {
+        async query(sql: string, values?: unknown[]) {
+          if (sql.startsWith("INSERT INTO public.platform_schema_migrations")) {
+            beforeInsert.resolve();
+            await allowInsert.promise;
+            inserted = true;
+          }
+          const result = await client.query(sql, values);
+          if (sql === "COMMIT" && inserted) {
+            committed = true;
+            await ddl;
+          }
+          return result;
+        },
+        release: client.release.bind(client),
+      };
+    },
+  } as unknown as Pool;
+  const result = fixtureRunner(gatedPool, false).apply().catch(error => error);
+  try {
+    await Promise.race([beforeInsert.promise, result.then(error => { throw error; })]);
+    ddl = ddlPool.query("ALTER TABLE public.platform_schema_migrations ADD COLUMN synthetic_after_commit pg_catalog.text")
+      .then(value => { ddlCompleted = true; return value; });
+    await expect.poll(async () => (await admin.query(`SELECT pg_catalog.count(*)::pg_catalog.int4 AS waiting
+      FROM pg_catalog.pg_locks WHERE relation OPERATOR(pg_catalog.=) $1::pg_catalog.oid
+        AND mode OPERATOR(pg_catalog.=) 'AccessExclusiveLock'::pg_catalog.text AND NOT granted`, [oid])).rows[0].waiting,
+    { timeout: 3_000 }).toBe(1);
+    expect({ committed, ddlCompleted }).toEqual({ committed: false, ddlCompleted: false });
+    allowInsert.resolve();
+    expect(await result).toMatchObject({ message: expect.stringContaining("not safe to read") });
+    expect({ committed, ddlCompleted }).toEqual({ committed: true, ddlCompleted: true });
+    expect((await admin.query("SELECT pg_catalog.count(*)::pg_catalog.int4 AS count FROM public.platform_schema_migrations")).rows)
+      .toEqual([{ count: 2 }]);
+    expect(await invocationCount()).toBe(0);
+  } finally {
+    allowInsert.resolve();
+    await Promise.allSettled([result, ...(ddl ? [ddl] : [])]);
     await Promise.all([pool.end(), ddlPool.end()]);
   }
 });

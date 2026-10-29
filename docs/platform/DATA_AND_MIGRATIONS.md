@@ -411,6 +411,10 @@ and rechecks ledger absence using only the catalog before the hook runs. The
 hook's session facts and selected-catalog observation then share that snapshot;
 a newly present ledger at the recheck is refused. An installed ledger remains
 protected by its admitted relation lock through the qualified observation.
+For a pending unit with an installed ledger, the runner takes the write lock
+before its first catalog read in that unit transaction, then rechecks the
+prefix before and after the unit SQL. The SQL retains the connection's configured
+transaction isolation.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and

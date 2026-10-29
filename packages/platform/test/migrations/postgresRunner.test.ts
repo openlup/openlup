@@ -16,7 +16,7 @@ const identitySql = expect.stringContaining("SELECT c.oid::pg_catalog.text AS le
 const isIdentitySql = (sql: string) => sql.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,");
 const readBeginSql = "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY";
 const readLockSql = "LOCK TABLE ONLY public.platform_schema_migrations IN ACCESS SHARE MODE";
-const writeBeginSql = "BEGIN ISOLATION LEVEL READ COMMITTED";
+const writeBeginSql = "BEGIN";
 const writeLockSql = "LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE";
 const ledgerSql = "SELECT catalog_path, sha256, position FROM ONLY public.platform_schema_migrations ORDER BY position";
 const insertSql = "INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ($1, $2, $3)";
@@ -193,7 +193,9 @@ describe("PostgreSQL migration runner", () => {
     expect(s.query.mock.calls).toEqual([
       [acquireSql, [lockName]], ...readQueries(false),
       ...bodies.flatMap((sql, index) => [
-        [writeBeginSql], [sql], [identitySql], [writeLockSql], [identitySql], [ledgerSql],
+        [writeBeginSql],
+        ...(index === 0 ? [] : [[writeLockSql], [identitySql], [writeLockSql], [identitySql], [ledgerSql]]),
+        [sql], [identitySql], [writeLockSql], [identitySql], [ledgerSql],
         [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
       ]),
       ...readQueries(), [releaseSql, [lockName]],

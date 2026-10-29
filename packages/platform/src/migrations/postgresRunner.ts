@@ -196,11 +196,20 @@ export function createPostgresMigrationRunner(
         const appliedNow: string[] = [];
         let expectedOid = initial.oid;
         for (const unit of pending) {
-          await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+          await client.query("BEGIN");
           try {
+            if (expectedOid !== null) {
+              // LOCK is the first statement: under stronger caller defaults,
+              // the catalog snapshot must begin after any competing DDL settles.
+              await client.query(`LOCK TABLE ONLY ${LEDGER} IN SHARE ROW EXCLUSIVE MODE`);
+              const beforeSql = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
+              if (beforeSql.oid !== expectedOid || beforeSql.applied.length !== unit.position) {
+                throw new Error("platform migration ledger changed before write");
+              }
+            }
             await client.query(unit.sql);
-            // Validate the same prefix after the unit SQL, under the lock that
-            // remains in force through the ledger insert and COMMIT.
+            // The baseline creates its ledger; later units retain the lock
+            // through this post-SQL recheck, insert and COMMIT.
             const beforeWrite = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
             if (beforeWrite.oid === null || (expectedOid !== null && beforeWrite.oid !== expectedOid)
               || beforeWrite.applied.length !== unit.position) {
