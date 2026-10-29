@@ -2108,10 +2108,11 @@ the existing overview health unknown. Raw domain payloads stay with the ledger.
 
 Alert and pipeline reads retain their existing typed handlers and administrator
 authorization before port access. The Node host admits the exact configured Host
-before body reading, then places the existing observed-route wrapper around the
-BFF dispatcher and admin preflight. Public deployment policy runs first; alerts
-method refusal then precedes admin preflight, and safe request references
-correlate its response headers/errors with one route log. The existing pipeline
+before body reading, then enters the existing observed-route wrapper on the
+decorated raw request. Public deployment policy and alerts method refusal run
+before request adaptation; the existing BFF dispatcher and admin preflight run
+after it. Adaptation failures use the bounded BFF error response, and safe request
+references correlate response headers/errors with one route log. The existing pipeline
 route is classified as a mutation by public deployment policy and is refused
 before authorization; the alert overview is the available admin readback on this host.
 Request bodies, authorization values, query contents and upstream exception prose

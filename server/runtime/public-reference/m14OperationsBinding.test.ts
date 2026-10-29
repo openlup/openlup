@@ -62,7 +62,8 @@ describe("portable operations reference default", () => {
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
-      expect((await httpRead(origin, "/api/bff/admin/platform/pipeline")).status).toBe(503);
+      const malformedCookie = "private=synthetic-person@example.invalid%";
+      expect((await httpRead(origin, "/api/bff/admin/platform/pipeline", { cookie: malformedCookie })).status).toBe(503);
       expect(preflightAuthorize).not.toHaveBeenCalled();
       const alerts = await httpRead(origin, "/api/bff/admin/platform/alerts", { authorization: "Bearer valid-token", "x-request-id": canary });
       expect(alerts.status).toBe(200);
@@ -75,10 +76,25 @@ describe("portable operations reference default", () => {
       expect(unauthorized.status).toBe(401);
       expect(unauthorized.headers["x-request-id"]).toBe(canary);
       expect(unauthorized.body).toMatchObject({ meta: { requestId: canary } });
+      const malformedCanary = `${canary}-malformed`;
+      const beforeMalformed = preflightAuthorize.mock.calls.length;
+      const malformed = await httpRead(origin, "/api/bff/admin/platform/alerts", { cookie: malformedCookie, "x-request-id": malformedCanary });
+      expect(malformed.status).toBe(503);
+      expect(malformed.headers["x-request-id"]).toBe(malformedCanary);
+      expect(malformed.body).toMatchObject({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE" }, meta: { requestId: malformedCanary } });
+      expect(preflightAuthorize).toHaveBeenCalledTimes(beforeMalformed);
+      expect(logs().filter(row => row.request_id === malformedCanary)).toEqual([
+        expect.objectContaining({ route: "/api/bff/admin/platform/alerts", status: 503, outcome: "error" }),
+      ]);
+      expect(JSON.stringify([malformed, logs()])).not.toContain(malformedCookie);
       const beforeMethod = preflightAuthorize.mock.calls.length;
-      const method = await httpRead(origin, "/api/bff/admin/platform/alerts", {}, "POST");
+      const method = await httpRead(origin, "/api/bff/admin/platform/alerts", { "content-type": "text/plain" }, "POST", "x".repeat(32769));
       expect(method.status).toBe(405);
       expect(method.headers.allow).toBe("GET");
+      expect(preflightAuthorize).toHaveBeenCalledTimes(beforeMethod);
+      const incomplete = await httpReadBeforeBody(origin, "/api/bff/admin/platform/alerts");
+      expect(incomplete.status).toBe(405);
+      expect(incomplete.headers.allow).toBe("GET");
       expect(preflightAuthorize).toHaveBeenCalledTimes(beforeMethod);
       f.authorizeAdmin.mockResolvedValue({ ok: true });
       const beforeHost = preflightAuthorize.mock.calls.length;
@@ -252,7 +268,7 @@ async function fixture(overrides: Partial<Parameters<typeof createM14OperationsR
   return { binding, ledgerPort, snapshot, collectSnapshot, notifications, writes: () => writeCount, recordHeartbeat, authorizeAdmin, readPipeline, listLiveAlerts };
 }
 
-async function httpRead(origin: string, path: string, headers: Record<string, string> = {}, method = "GET") {
+async function httpRead(origin: string, path: string, headers: Record<string, string> = {}, method = "GET", body?: string) {
   const target = new URL(origin);
   return new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Record<string, unknown> }>((resolve, reject) => {
     const req = httpRequest({ host: target.hostname, port: target.port, path, method, headers: { host: "operations.example", ...headers } }, res => {
@@ -264,7 +280,21 @@ async function httpRead(origin: string, path: string, headers: Record<string, st
       });
     });
     req.on("error", reject);
-    req.end();
+    req.end(body);
+  });
+}
+
+async function httpReadBeforeBody(origin: string, path: string) {
+  const target = new URL(origin);
+  return new Promise<{ status: number; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+    const req = httpRequest({ host: target.hostname, port: target.port, path, method: "POST",
+      headers: { host: "operations.example", "content-length": "32769" } }, res => {
+      res.resume();
+      res.on("end", () => { resolve({ status: res.statusCode ?? 0, headers: res.headers }); req.destroy(); });
+    });
+    req.on("error", reject);
+    req.setTimeout(2000, () => req.destroy(new Error("method guard waited for body")));
+    req.flushHeaders();
   });
 }
 

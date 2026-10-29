@@ -380,9 +380,9 @@ The [portable Node serving entry](../../server/runtime/public-reference/serve.ts
 also accepts an explicitly constructed operations binding on its ordinary
 reference host. That selection mounts only the existing alert and pipeline
 admin read paths; it requires `APP_BASE_URL` for exact Host admission. The
-existing observed-route wrapper surrounds the BFF dispatcher/admin preflight,
-so policy refusal precedes authorization, alert method refusal precedes preflight,
-and preflight failures carry safe correlated request logs. The pipeline path
+existing observed-route wrapper starts on the decorated raw request, so policy
+and alert method refusal precede adaptation and authorization. Adaptation and
+preflight failures retain bounded errors and safe correlated request logs. The pipeline path
 retains its public mutation-policy refusal; the alert path supplies admin
 readback through its typed handler.
 It refuses combination with another reference profile or identity admission.

@@ -89,11 +89,15 @@ sorted rows; no operations security/API source changed in that main merge.
 The second native evaluation on the signed #416-integrated tree received one
 PASS and one FAIL. It closed the four original mechanisms but opened
 M14-OPS-005 (preflight refusal correlation/method order) and M14-OPS-006
-(pipeline policy/auth ordering). The next unsigned repair moves one observed
-wrapper around host dispatch; its HTTP witness passes the discriminating cases.
-This security/logging surface needs another exact-tree maintainer read before
-DCO, then two new FULL reviewers and canonical verification. Native repair
-cycles consumed: one; queue retries: none. At this working boundary,
+(pipeline policy/auth ordering). The cycle-2 signed repair moved one observed
+wrapper around host dispatch, but two fresh FULL reviewers found request
+adaptation still preceded observation. The r2 security/logging read matched
+that signed tree; the r3 regroup technique read accepted moving the same
+wrapper to the decorated raw request before adaptation or body read. That
+unsigned repair passes the new real HTTP refusals and ordinary route cases.
+It needs another exact-tree maintainer read before DCO, then two new FULL
+reviewers and canonical verification. Native repair cycles consumed: two;
+queue retries: none. At this working boundary,
 the separately refreshed policy revision is
 `527c7c0deca500a04b28aa98e8b744b15347527c`; its changed instructions were
 inspected and its overlapping catalogue/documentation paths integrated before
@@ -138,3 +142,48 @@ POST must return 405 with Allow; success must log once. The selected operations
 branch still must leave every other admin route's preflight intact. The focused
 composed suite passed all ten cases after the wrapper move. Lesson:
 observing inside dispatch → observe the host boundary that contains dispatch.
+
+Regroup after native cycle 2: the signed wrapper-placement repair closed the
+ordinary-path policy and correlation failures, but two fresh FULL reviewers
+found the same remaining route-contract gap. `adaptRequest` still precedes the
+generic `withObservedRoute` boundary. A malformed cookie makes adaptation throw
+on GET, and an oversized unsupported POST can fail body buffering before the
+method guard; both reach the plain host 503 path without the required route
+correlation, and POST misses 405/Allow. M14-OPS-005 remains open for this failure
+path; M14-OPS-007 records the shared pre-observation adaptation mechanism.
+Cycle 2 consumed the second automatic repair cycle (2 of 3); both reviewers
+returned FAIL. Canonical verification and delivery remain unrun.
+
+This is new information relative to the prior regroup: moving observation
+around dispatch did not include request adaptation. The public host owns the
+gap. The smaller sufficient route is the existing generic observed-route
+wrapper around the decorated raw request, with deployment policy and method
+guard before adaptation, then the existing dispatcher and bounded BFF failure
+response inside that one wrapper. No new host policy or second observer is
+needed. The next discriminating proof is real Node requests with a malformed
+cookie GET and oversized POST: each must preserve the route request reference
+and safe log; POST must produce 405/Allow before body read; pipeline mutation
+policy must refuse before adaptation or auth. Recheck ordinary success, wrong
+Host, other admin preflight, capture cadence and exactly one log. The coordinator
+accepted this regroup technique before the route changed. After repair,
+stabilize and obtain the exact-tree security/API read before DCO.
+Lesson: adaptation before observation → enter the generic route wrapper on the
+decorated raw request, then adapt only after policy and method admission.
+
+Working proof for the unsigned r3 technique repair: the composed default passes
+10/10 focused tests; the broader reference host, admin preflight and observation
+regression selection passes 258/258 across 24 files. The real HTTP witnesses
+include a malformed-cookie GET with a bounded correlated 503 and one safe log,
+an oversized POST and a POST that sends headers without a body returning
+405/Allow without preflight, pipeline mutation refusal before adaptation or auth,
+and existing valid read, wrong Host, capture cadence and single-log outcomes.
+Policy/docs-update answered all three obligations; inventory, neutrality and
+structural checks passed. Lint had zero errors and 33 existing warnings; the
+five-project published-tree type check had zero unresolved edges and consumer
+errors. This is working evidence; no canonical verify, PR, receipt or queue
+state is claimed.
+
+Self-retro for this repair: ordinary valid requests did not exercise the raw
+request adapter failure path. Moving the existing observation boundary before
+adaptation and testing actual incomplete-body HTTP requests closed that proof
+gap without another wrapper, control, budget or service.

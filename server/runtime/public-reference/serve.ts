@@ -5,7 +5,7 @@ import { preflightAdminBffRoute, type AdminAuthBindingOptions } from "../auth/ad
 import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
 import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
 import { withObservedRoute } from "../../_lib/observability/route.js";
-import { sendMethodNotAllowed } from "../../_lib/bff/response.js";
+import { sendBffError, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { createReferenceBffDispatcher } from "../bffDispatch.js";
 import { admitReferenceIdentity, type ReferenceIdentity, type ReferenceIdentityAdmission } from "../auth/referenceIdentity.js";
 import type { admitReferenceOutbox } from "../outbox/candidateAdmission.js";
@@ -21,7 +21,7 @@ import { loadSiteRouteManifest } from "../../../scripts/site-routes.mjs";
 import { createSubscriptionProfile, SUBSCRIPTION_PAGES } from "./subscriptionProfile.js";
 
 import { IDENTITY_PAGES, IDENTITY_ROUTES, identityLocalOrigin, withIdentityReferencePolicy, type IdentityReferenceProfile } from "../auth/referenceIdentityPolicy.js";
-import { adaptRequest, decorateResponse } from "../../adapters/node/httpRequestAdapter.js";
+import { adaptRequest, decorateRequest, decorateResponse } from "../../adapters/node/httpRequestAdapter.js";
 
 /** The disposable profile augments the same admitted candidate used by other hosts. */
 export type ReferenceIdentityRuntime = ReferenceIdentityAdmission & {
@@ -156,9 +156,14 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
       for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
       const observed = withObservedRoute({ route: pathname, domain: "platform", surface: "admin", risk: pathname.endsWith("/pipeline") ? "mutation" : "read" }, async (req, decorated) => {
         if (req.method !== "GET") return sendMethodNotAllowed(decorated, ["GET"]);
-        await dispatch([{ route: pathname, pattern: /^\/api\/bff\/admin\/platform\/(?:alerts|pipeline)$/, params: [], handler: operationsRead }], req, decorated);
+        try {
+          await dispatch([{ route: pathname, pattern: /^\/api\/bff\/admin\/platform\/(?:alerts|pipeline)$/, params: [], handler: operationsRead }], await adaptRequest(request, pathname, false, 32768), decorated);
+        } catch {
+          if (!res.headersSent) sendBffError(decorated, "UPSTREAM_UNAVAILABLE", "Operations unavailable", { status: 503 });
+          else res.destroy();
+        }
       });
-      void adaptRequest(request, pathname, false, 32768).then(req => observed(req, decorateResponse(res))).catch(() => {
+      void observed(decorateRequest(request), decorateResponse(res)).catch(() => {
         if (!res.headersSent) response(res, 503, "Operations unavailable\n"); else res.destroy();
       });
       return;
