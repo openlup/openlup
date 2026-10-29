@@ -92,6 +92,8 @@ and one hosted cluster needs serial fresh-catalogue phases with cleanup of
 test-owned roles and databases. The strict freshness check also needs explicit,
 read-approved provider-object allowances for stock Neon/RDS databases and roles
 (for example `rdsadmin` and `neon_*`) before those targets can be admitted.
+Provider monitoring connections will also trigger the no-other-client-backend
+check; 10N/10R need a read-approved allowance for those sessions.
 These hosted limits are not conditions on this local 10A proof.
 Main `eb1a0584` was integrated in DCO merge `3bf686c6` after a separate
 accepted read of the adjacent `CONTRIBUTING.md` paragraph resolution. Its
@@ -166,6 +168,13 @@ Build, lint (zero errors, 33 existing warnings), published-tree typecheck (zero
 unresolved edges or consumer errors), documentation policy and structural
 checks passed. The focused suite waited 1,921 seconds for the M15-priority host
 gate; that delay did not consume a review cycle.
+The coordinator accepted the cycle-1 repair read at staged tree `b017bff9`
+(patch SHA-256 `0d66740da8475ec53dce5229abcbdd6731f7f936111e9e4bfee043ae08c659d6`).
+DCO commit `8cb22378` has exactly that tree. Known limit: the random password
+appears in the `CREATE ROLE` statement text and may be recorded by target
+statement logging. The role uses a single-use credential, and the proof
+attempts role and grant removal in `finally`; operator teardown remains required
+after a cleanup failure or abrupt process kill.
 
 Self-retro: the first local proof exposed a predecessor manifest path error,
 which was repaired before the successful proof. The reboot erased its earlier
