@@ -171,6 +171,21 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+The package runner admits the migration ledger only when its system-catalog
+shape matches the canonical baseline ledger: a permanent heap table with the
+expected owner, columns, defaults, constraints and indexes, without partition
+or inheritance links, triggers, rules, row policies or extended statistics.
+The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
+major with different catalog expression trees is refused until separately qualified.
+It checks this before reading applied rows, keeps the admitted relation stable
+through qualified session admission and complete inventory projection, and
+reads only rows belonging to the ledger itself. These checks apply to legacy
+and qualified sources. Legacy
+bootstrap ownership remains accepted; qualified session admission still
+requires its declared migration owner. Each applied unit is recorded after a
+fresh ledger check within that unit's transaction. Individual migration
+transactions and exact-prefix/replay behavior remain.
+
 Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and
 `20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
@@ -410,10 +425,21 @@ The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation
 and before status, dry-run or pending SQL. It can refuse changed host/login facts;
 it shares the source's existing database capability, not a sandbox or per-unit
-provisioning boundary. Sources omitting it retain their existing queries and
-execution. With a hook present, the preceding lock/hash and ledger-existence
-functions bind to `pg_catalog` before admission; release uses the same bound
-lock identity. The later qualified source owns its finite read-only checks.
+provisioning boundary. For every source, the shared runner binds its advisory
+lock and ledger checks to `pg_catalog` and admits the ledger's catalog shape
+before reading its contents; release uses the same bound lock identity. Sources
+omitting the hook skip only its session checks and retain their migration
+execution semantics. The later qualified source owns its finite read-only
+checks. For a fresh qualified installation with no ledger, the runner ends its
+initial read-only observation, begins a read-only `REPEATABLE READ` transaction,
+and rechecks ledger absence using only the catalog before the hook runs. The
+hook's session facts and selected-catalog observation then share that snapshot;
+a newly present ledger at the recheck is refused. An installed ledger remains
+protected by its admitted relation lock through the qualified observation.
+For a pending unit with an installed ledger, the runner takes the write lock
+before its first catalog read in that unit transaction, then rechecks the
+prefix before and after the unit SQL. The SQL retains the connection's configured
+transaction isolation.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
