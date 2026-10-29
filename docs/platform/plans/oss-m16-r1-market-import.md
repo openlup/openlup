@@ -405,6 +405,45 @@ Self-retro: declaration comment attachment can change a generated API report
 without changing signatures; regenerate it after restoring private declarations.
 No full/draft verify, broad tests, pgTAP, pack builds or lint is run.
 
+## Package tooling follow-up (fix 3)
+
+The coordinator's draft-verify-3 on 373481a4 ran 2,172 files / 22,400 tests
+and reported four failures: the sanctioned server-module inventory, two browser
+entry inventory refusals, and the already deferred platform pack file caps.
+Following 6ad6c530, the expected server extras now include company-identity/server;
+that is the only edit in eslint-import-map.test.ts. Following b9808a96, a NEW
+browserEntries budget key for ./company-identity/contracts is added for the
+coordinator's budget read. This is not a raise of any existing cap or budget.
+
+The actual existing browserEntryBytes tooling, over the current built
+./dist/company-identity/contracts/index.js entry, measured **20 minified+gzip
+bytes**: the type-only entry produces an empty bundle. The new key is therefore
+20, matching the actual measurement, rather than the anticipated 32. No tool,
+contract source, other budget or file cap changes. Known platform file findings
+remain code 2,610/2,574 and total 2,664/2,628, pending coordinator disposition.
+The measurement is recorded locally in fix3-browser-entry.json under this task's
+scratch directory; no package rebuild is needed for this configuration-only fix.
+
+Fresh instruction pin: `8046797ace978e148556c30767d8ed231a0dd6e3`, code fork
+unchanged. The instruction delta adds scoped documentation/link review and
+updates disposable cleanup; no native review or container work is in this fix.
+The heavy hold is lifted, but this assignment remains light: run each specified
+tooling test file alone with --maxWorkers 1, then neutrality and publication
+policy, DCO commit, ordinary push and stop. The coordinator owns draft verify.
+
+Fix 3 evidence: the two files ran separately with --maxWorkers 1 on Node
+24.21.0. eslint-import-map: 122/122 PASS (13.33 seconds); package-size-policy:
+46/47 PASS (3.72 seconds), with only the unchanged platform file-cap case
+failing on the two known excesses above. Both browser-entry inventory refusals
+and the new actual contracts browser bundle check PASS. Neutrality and policy
+results: neutrality PASS with zero increases. Initial publication policy found
+one fresh tooling obligation because the inventory test changed; this commit
+supplies its scoped no-impact trailer, checked again after commit. The platform
+README already documents the experimental subpaths and existing budget route.
+The added key is explicitly submitted for the coordinator budget read above;
+no previously allocated cap is increased.
+Self-retro: the focused selection missed the package tooling tests that enumerate module directories and browser entries; include scripts/packages/{eslint-import-map,package-size-policy}.test.ts whenever subpaths or module directories are added.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness
