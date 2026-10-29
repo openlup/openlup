@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { sweep } from "./disposable-docker.mjs";
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
@@ -71,8 +73,10 @@ if (tempCoverageDir) {
   rmSync(tempCoverageDir, { recursive: true, force: true });
 }
 
+const disposableRun = randomUUID();
 const env = {
   ...process.env,
+  OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER: disposableRun,
   ...(tempCoverageDir ? { VITEST_COVERAGE_DIR: tempCoverageDir } : {}),
 };
 delete env.AI_RESOURCE_GATE_WAIT_SECONDS_FILE;
@@ -132,7 +136,38 @@ if (!env.VITEST_MAX_WORKERS && process.env.CI !== "true") {
   else if (highLoad) env.VITEST_MAX_WORKERS = "50%";
 }
 
-process.exitCode = await runVitest();
+let activeChild, interrupted, childSignal, stopTimer, swept;
+function interrupt(signal) {
+  if (interrupted) return;
+  interrupted = signal;
+  activeChild?.kill(signal);
+  if (activeChild) stopTimer = setTimeout(() => activeChild?.kill("SIGKILL"), 30_000);
+}
+const onInt = () => interrupt("SIGINT"), onTerm = () => interrupt("SIGTERM");
+process.on("SIGINT", onInt); process.on("SIGTERM", onTerm);
+async function reapRun() {
+  // Every owner in this run has exited by now (interrupted workers too), so the
+  // age floor would only retain fresh dead-owner containers; liveness still keeps
+  // a surviving descendant's container.
+  swept ??= sweep({ mode: "remove", selector: `dev.disposable.run=${disposableRun}`, minAgeSeconds: 0 });
+  await swept;
+}
+const dispatchSignals = () => new Promise(resolve => setImmediate(resolve));
+let status = await runVitest();
+// Coverage copy/removal is synchronous; dispatch queued signals before deciding
+// the outcome and before removing handlers, just like owned stack finalization.
+await dispatchSignals();
+// Vitest global teardown precedes pool close. A passing run can still have
+// live workers there, so reap once more after the child has actually exited.
+await reapRun();
+await dispatchSignals();
+if (interrupted) await reapRun();
+clearTimeout(stopTimer);
+process.removeListener("SIGINT", onInt); process.removeListener("SIGTERM", onTerm);
+if (interrupted) status = interrupted === "SIGINT" ? 130 : 143;
+process.exitCode = status;
+// Preserve a child signal's original process-level exit semantics after cleanup.
+if (childSignal && !interrupted) process.kill(process.pid, childSignal);
 
 async function runVitest() {
   try {
@@ -141,14 +176,15 @@ async function runVitest() {
       if (tempCoverageDir) rmSync(join(coverageDir, "coverage-summary.json"), { force: true });
     }
     let result = await runCommand(buildCoverageGateArgs(true));
-    if (result.signal) { process.kill(process.pid, result.signal); return 1; }
+    if (result.signal) { childSignal = result.signal; return 1; }
+    if (interrupted) return 1;
     if (result.code !== 0) return result.code ?? 1;
 
     if (coverageStageBinding && !existsSync(activeCoverageSummaryPath)
       && !restoreCoverageSummaryFromSingleflight()) {
       console.error("coverage singleflight artifact unavailable; executing through ordinary broker admission");
       result = await runCommand(buildCoverageGateArgs(false));
-      if (result.signal) { process.kill(process.pid, result.signal); return 1; }
+      if (result.signal) { childSignal = result.signal; return 1; }
       if (result.code !== 0) return result.code ?? 1;
     }
     if (expectsCoverageSummary && !existsSync(activeCoverageSummaryPath)) {
@@ -176,8 +212,10 @@ function runCommand(gateArgs) {
       shell: process.platform === "win32",
       env,
     });
-    child.on("exit", (code, signal) => complete({ code, signal }));
-    child.on("error", (error) => { console.error(error); complete({ code: 1, signal: null }); });
+    activeChild = child;
+    if (interrupted) child.kill(interrupted);
+    child.on("exit", (code, signal) => { activeChild = undefined; clearTimeout(stopTimer); complete({ code, signal }); });
+    child.on("error", (error) => { activeChild = undefined; clearTimeout(stopTimer); console.error(error); complete({ code: 1, signal: null }); });
   });
 }
 

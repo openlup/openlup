@@ -45,6 +45,9 @@ one-time public-root projection is not an ongoing authoring route. -->
 
 - Check the accepted outcome, failure boundaries and unnecessary maintenance
   cost. Report concrete mechanisms and effects, not style preferences or a quota.
+- Include the `documentation` assessment in each native review report: canonical
+  sections, related instructions/examples and no-impact reasoning; compare
+  documentation-only claims with their source as well.
 - AI assistance (agents and what they did, or none):
 - Publication authority (actual maintainer task or bounded delivery scope):
 - Native review evidence for the exact committed candidate, as required by the

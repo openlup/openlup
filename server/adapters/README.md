@@ -37,6 +37,19 @@ There is one package handler cache owner; rule/provider identity does not isolat
 cache entries between compositions. This recipe claims no concurrent cache
 partitioning or live directory/registry qualification.
 
+## PostgreSQL domain bindings
+
+Most modules under [`postgres/`](postgres/) implement domain persistence and
+control-plane ports: they read or write existing application rows, map query
+results, and preserve the caller's transaction and replay boundary. Examples
+include catalogue reads, commerce/order stores, customer and subscription
+operations, payment truth, outbox delivery, and job-run ledger bindings. Their
+query/building and executor surfaces do not by themselves establish an
+installation, role graph, database-wide compatibility or a connected-store
+transfer. The migration-runner and qualified-session files have the narrower
+installer owner below; connected-store capture/restore has the separate
+transfer owner.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
@@ -136,6 +149,11 @@ retain the separate managed identity/history, effective access, all-writer
 retirement and external-effect recovery obligations. These adapters neither
 establish that global fence nor activate a target executor.
 
+The [S3 conformance fixture](s3/objectStorageConformance.test.ts) labels its
+owned disposable service for the [dead-owner cleanup contract](../../CONTRIBUTING.md#test-scope-and-diagnostics).
+Docker start and removal calls each have a 30-second hard deadline; interrupted
+cleanup never authorizes removal of an unlabeled service.
+
 ## S3 object source preparation
 
 The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an
@@ -171,6 +189,14 @@ registration adds no command, job or provider capability. That source is not a p
 qualification; no live source or credential operation is implied.
 
 ## Owns
+
+Risk's native and managed adapters now re-export the existing structural factories
+from `@openlup/platform/risk/server`. SQL calls, evidence reads, fingerprints,
+error identities and readback stay unchanged. Managed admin decisions still
+re-read detail and return `replayed: false`; native decisions preserve the SQL
+replay field. Hosts still construct clients and executors, authorize operators
+and map their trusted identities to the selected rail. No adapter activates risk.
+
 
 The reference [migration binding](postgres/migrationRunner.ts) delegates ledger
 validation and row reads to `@openlup/platform/migrations`. Its mock witness
@@ -342,6 +368,74 @@ has only a pure presentation binding and no activated sender.
 | Scheduler/runtime | `@openlup/platform/http`, `/scheduler` and `/job-ledger`, bound by `server/adapters/node/httpRequestAdapter.ts`, `server/adapters/scheduler/jobRegistry.ts`, `server/adapters/postgres/platformJobRunLedger.ts` and `server/adapters/supabase/platformJobRunLedger.ts` | Scheduled job registration/execution and platform runtime seams. The job registry binding names `config/platform-runtime.json` as its default source. | `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md`, `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md` |
 | Auth and identity | `supabase/`, `postgres/operatorInvitations.ts`, `email/adminRoleNotificationPort.ts` | Admin/customer verification and account linking. Direct operator invitations retain the package transaction lane and pending lifecycle. Managed invitations insert active membership immediately, recover duplicate inserts, retain identities on failure and refuse revoked-member reinvitation. Managed verification and removal use actor clients without lifecycle metadata or compensation. Managed mail describes active membership without pending/deadline copy and uses `admin-membership:<principalId>:<role>` for delivery and timeline identity; direct mail retains the invitation-attempt key and deadline. Reference invite/remove runners pass their message catalogue to the package, and the invite runner selects the role-mail locale through the existing input. Notification delivery remains application-owned. | `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md`, `../../docs/platform/CANONICAL_CONTRACTS.md` |
 | Simulators/noops | `noop_payment/`, `noop_shipping/`, `noop_newsletter/`, `accounting/` test provider | Deterministic local/preview behavior that proves domain contracts without live provider side effects. | Owning domain README and [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md); adopter configuration is separate deployment evidence. |
+
+### Payment execution and reconciliation
+
+Payment adapters translate control actions and external observations to the
+neutral payment boundary; simulator adapters support local contract execution.
+Provider selection, retry policy and settlement admission stay with the payment
+owner and host composition.
+
+### Fulfillment execution
+
+Fulfillment adapters translate carrier or 3PL operations and tracking
+observations to neutral delivery contracts. They do not decide whether a
+shipment is authorized or whether customer-facing delivery evidence is complete;
+those remain with the fulfillment and host owners.
+
+### Accounting document execution
+
+Accounting adapters implement document-provider operations or bounded
+test-provider behavior after accounting policy selects a capability. Credentials,
+seller eligibility and correction admission remain separately owned; an adapter
+does not establish an active accounting deployment.
+
+### Company identity lookup
+
+Company identity lookup adapters return registry enrichment through the
+company-identity boundary. A lookup result is provider evidence, not proof of
+seller authority, account ownership or local policy approval.
+
+### Communications delivery and sync
+
+Communications adapters bind delivery and sync ports, including provider-
+neutral receipts where selected. Hosts retain copy, consent, sender and egress
+policy; a captured or no-op result is not an external delivery.
+
+### Storage and blob
+
+Object-storage adapters implement the selected storage ports. They do not infer
+namespace completeness, writer exclusion or customer access. The filesystem
+transfer inventory/reader/restore family uses the stricter connected-store
+owner above; the object-source capture profile has its own section.
+
+### Managed data and domain bindings
+
+Database-backed adapters bind customer, commerce, subscription, inventory,
+communications and support ports to a selected host client. They translate
+persisted rows and command results; they do not select a deployment's
+authorization policy or independently qualify its schema and effective grants.
+PostgreSQL domain bindings are documented separately because their connection
+and transaction surfaces differ.
+
+### Scheduler and host runtime
+
+HTTP request adaptation, scheduler bindings and runtime adapters connect
+declared handlers and jobs to host execution surfaces. The host supplies
+route/job admission, security policy, deadlines, environment and lifecycle; a
+listed handler or schedule is not thereby an active endpoint.
+
+### Authentication and identity
+
+The JWT verifier adapts provider-neutral identity claims at the auth boundary.
+Signature validation and claim parsing do not by themselves authorize an actor;
+the identity owner and host policy define subject verification and permissions.
+
+### Simulators and captured adapters
+
+Captured results and no-op behavior make narrow contracts executable in local
+or preview paths without a live provider effect. Their evidence remains bounded
+to the selected fixture and adapter behavior, not a hosted capability claim.
 
 ## Public navigation and availability
 

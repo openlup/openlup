@@ -264,3 +264,135 @@ artifact evidence.
 Source contributors record notable changes in package changelog fragments;
 release preparation assembles the shipped CHANGELOG. Follow the
 [public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+
+## Readiness contract
+
+The `./readiness` export evaluates inert package contributions against a complete
+host inventory and bounded schema observation. Its grouped PostgreSQL probe
+preserves request ordinals and distinguishes legitimate absence from malformed
+or incomplete results. Readiness evaluation calls the host's schema observation
+port; `createSchemaProbe` invokes the supplied identity callback and SQL executor.
+The grouped query builder and result decoder perform no I/O. The application
+retains database access, transaction and admission policy; these helpers do not
+run migrations, schedule work or activate a module.
+
+## Bundle contracts
+
+The `./bundle` export defines commerce composition: `Bundle` contains `coreLines`,
+`addonLines` and a `CompositionConstraint`. Its `BundleLineRef` identifies a line,
+and `CompositionRulesPort` supplies the application's composition rules. These
+are commerce bundle contracts. Platform bundle identifiers, descriptors and
+readiness composition belong to `./platform-runtime`.
+
+## Commerce data contracts
+
+Product identity, stock position, price decisions and promotion rules have
+separate owners. Membership, persistence, checkout composition and final
+selection remain host responsibilities.
+
+### Catalog identifiers
+
+The `./catalog` export provides bounded shape validators for product, SKU,
+variant and slug identifiers. Those open formats do not determine whether an
+identifier exists in a catalogue; the host's catalog read port owns membership
+and current product data.
+
+### Inventory availability
+
+The `./inventory` export calculates available-to-promise results from supplied
+stock lines, reservations, unavailable quantities, safety stock and lot facts.
+It selects a single location when possible and reports review-required or
+unsupported results when the request cannot be fulfilled under its declared
+no-split policy. It reads or reserves no inventory itself.
+
+### Price resolution and breakdown
+
+The `./pricing` export defines the asynchronous price-resolution port and pure
+pricing breakdown builders. The host resolves price-list entries and owns any
+fallback choice; the builders emit line and order components whose totals
+reconcile to the supplied resolved prices, discounts and shipping amount.
+
+### Promotion evaluation and adjustments
+
+The `./promo` export evaluates time-, region- and cart-eligible candidates with
+separate product and shipping lanes, including coupon and stacking rules. Its
+adjustment engine selects bounded winners and returns payable amounts and
+rejection facts. It performs no persistence or checkout activation.
+
+## Delivery contracts
+
+Delivery facts and shipping-rule results are separate inputs to host order and
+fulfillment workflows.
+
+### Fulfillment fact and status contracts
+
+The `./fulfillment` export defines canonical local statuses, normalized fact
+parsing, progress presentation and parcel precedence. These helpers normalize
+and order supplied evidence; they do not dispatch a shipment or establish that
+a parcel reached the customer.
+
+### Shipping rule resolution
+
+The `./shipping` export resolves active rules for the supplied region, currency,
+cart mode and time, then snapshots shipping amount and VAT treatment. A missing
+rule returns no result for the host to handle. Carrier choice, pickup points,
+labels and shipment execution remain outside the kernel.
+
+## Partner and risk contracts
+
+Identity lookup, partner inquiry state and risk assessment are distinct neutral
+contracts; host policy supplies authority and decides how to act on each result.
+
+### Company identity lookup contracts
+
+The `./company-identity` export defines lookup request and response shapes,
+purpose, per-source outcomes and verification levels. The host selects supported
+identifier kinds and decides whether the resulting trust level satisfies the
+lookup purpose; the schemas neither query registries nor approve a seller.
+
+### Partner lifecycle contracts
+
+The `./partners` export defines inquiry lifecycle statuses and the update
+request/acknowledgement port. Inquiry payloads, contact data and downstream CRM
+identifiers remain host-owned; a successful acknowledgement records the port
+result, not an independent qualification decision.
+
+### Risk evaluation contracts
+
+The `./risk` export matches supplied signals to deterministic rules and returns
+score, severity, reason codes and mode-dependent enforcement facts. The host
+supplies signals and selects whether a result is shadowed, reviewed or enforced;
+the evaluator does not authorize an order or payment by itself.
+
+## Payment contracts
+
+The `./payment` export defines provider-neutral payment status and money-path
+contracts. Host adapters translate provider results and retain authorization,
+verification and settlement policy; the kernel performs no provider I/O.
+
+## Marketing contracts
+
+The `./marketing/research` export represents consent-aware research evidence and
+its neutral projection contracts. Applications supply collection, retention,
+consent and persistence policy; the package does not activate collection.
+
+## Outbox contracts
+
+The `./outbox` export defines the shared event row, handler outcomes, execution
+context, inert handler descriptors, abort signal, handler interface and event
+vocabulary. Handlers must keep effects idempotent and honor the abort signal.
+The separate `@openlup/outbox` rail owns claiming and settlement ports; its host
+adapter and worker supply durable storage, transactions and external delivery.
+
+## Platform runtime contracts
+
+The `./platform-runtime` export describes shared host capabilities and runtime
+configuration inputs. It does not construct a server or read deployment
+configuration; the application binds and admits its own runtime.
+
+## Standard schema contracts
+
+The `./standard-schema` export exposes the framework-neutral schema interface
+used by package contracts. It keeps browser-safe consumers independent of a
+schema library runtime; validation behavior still belongs to each declared
+schema and its consumer.
