@@ -197,10 +197,15 @@ customer's invoice and expects refusal, then checks a same-order invoice and
 intent-only and payment-only links remain capturable. With all three links null,
 the pre-repair result remains `invalid_input` on the settlement batch: it has
 an item with no subject owners, so the full retained capture cannot establish
-privacy coverage. The initial repair required both intent and payment and was
-not accepted because all three links are nullable in the managed baseline;
-the bounded correction awaits a second maintainer read before DCO. Native
-review cycle 3 is the last automatic cycle; CD-M14-34 authorizes one `continue`
-only after this corrected repair is accepted and DCO committed. This is a
-privacy coverage correction within parcel 8A's existing outcome and does not
-extend the hosted qualification boundary.
+privacy coverage. This all-null refusal is a known boundary owned by 8D-2:
+that parcel will check the real managed source read-only and, if such items
+exist, resolve their disposition under its own read (for example, retained
+business history without a personal subject); if none exist, it will record
+that observation and keep the refusal. The initial repair required both
+intent and payment and was not accepted because all three links are nullable
+in the managed baseline. The bounded correction was accepted in the
+2026-10-29 settlement-privacy maintainer read and DCO committed at `967c4de`
+with tree `78df4d1957bb56891fac077ebcbd049fcb784ca6`. CD-M14-34 authorizes
+one native-review `continue` after that read and DCO. This remains a privacy
+coverage correction within parcel 8A's existing outcome and does not extend
+the hosted qualification boundary.
