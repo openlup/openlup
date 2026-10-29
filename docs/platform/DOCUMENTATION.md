@@ -375,8 +375,11 @@ owner as well as its new owner; changing the route must not hide an obligation.
 its subsections until the next heading of the same or higher level. Selectors
 support exact paths, `*` within a path component and recursive `**` components.
 New platform domains need an explicit route and registry entry; a broad category
-cannot hide an unregistered domain. A shared domain README is the default owner;
-narrow workflow routes should explain significant internal decisions.
+cannot hide an unregistered domain. A short single-contract domain README may own the complete page. A page covering
+several module contracts should use specific heading owners, so an unrelated
+section edit cannot answer their source changes. Production module selectors
+should not silently fall back to a package-wide README; narrow workflow routes
+should explain significant internal decisions.
 Historical exemption applies to Markdown documents, not executable or configuration
 inputs placed under a plan/history directory. Those inputs still owe impact review.
 
@@ -402,6 +405,21 @@ For a source change:
 4. If the section remains correct, record a scoped no-impact explanation as a
    commit trailer in the change itself, tied to the source delta and its owner.
 5. Regenerate navigation, then run the structural and impact checks.
+
+Each new native review report carries its short `documentation` assessment in
+the existing report. Check affected canonical sections and search related
+instructions/examples for changed public exports, options and commands. Assess
+no-impact reasoning against the source, not just its fingerprint. Documentation-
+only changes still need consequential claims checked against the selected code
+and contracts. A stale secondary example is not settled by a correct owner page.
+Prefer canonical links over unnecessary repeated explanations; package guides
+and versioned examples must remain self-contained for their installed artifact.
+
+The same policy entrypoint validates local Markdown link targets and fragments,
+including ordinary references outside the owner map, using the existing heading
+slugger and explicit HTML IDs. Fenced examples are not link instructions. No
+external website availability is required. These checks establish structure;
+nonempty assessments and source fingerprints do not prove semantic truth.
 
 The policy check uses an explicit full base SHA or a local merge base with
 `origin/main`. An optional local `OPENLUP_STACK_BASE` supplies the exact pinned

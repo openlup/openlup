@@ -88,7 +88,18 @@ it.runIf(interruptFixture)("interrupt fixture holds a helper container", async (
   await new Promise(() => {});
 }, postgresSetupTimeoutMs);
 
-describe.skipIf(interruptFixture)("real disposable Docker ownership", () => {
+// The teardown witness runs this case in plain Vitest (no wrapper): a helper child
+// creates one run-labelled container and exits, so only global teardown can reclaim it.
+const teardownFixture = processEnvironment.OPENLUP_DISPOSABLE_TEARDOWN_FIXTURE === "1";
+it.runIf(teardownFixture)("teardown fixture leaves an exited helper's container", async () => {
+  const name = `openlup-reap-teardown-${randomUUID()}`;
+  const source = `import {execFile} from 'node:child_process'; import {disposableLabelArgs} from './scripts/disposable-docker.mjs';
+    execFile('docker',['create','--name',${JSON.stringify(name)},...disposableLabelArgs(),'--tmpfs','/var/lib/postgresql/data',${JSON.stringify(image)}],{timeout:30000,killSignal:'SIGKILL'},error=>process.exit(error?1:0));`;
+  await exec(process.execPath, ["--input-type=module", "-e", source], { timeout: 35_000, killSignal: "SIGKILL" });
+  expect((await inspect(name)).Config.Labels["dev.disposable.run"]).toBe(processEnvironment.OPENLUP_DISPOSABLE_RUN);
+}, postgresSetupTimeoutMs);
+
+describe.skipIf(interruptFixture || teardownFixture)("real disposable Docker ownership", () => {
   for (const kind of ["run", "create"] as const) it(`reclaims a SIGKILLed ${kind} owner and proves the pre-sweep leak`, async context => {
     if (!available) { context.skip("Docker socket unavailable; real reclaim proof not executed"); return; }
     const { child, id } = await owner(kind);
@@ -148,6 +159,21 @@ describe.skipIf(interruptFixture)("real disposable Docker ownership", () => {
     const [code] = await exited;
     expect(code).toBe(signal === "SIGINT" ? 130 : 143);
     expect(await docker(["ps", "-a", "-q", "--filter", `label=dev.disposable.run=${run}`])).toBe("");
+  }, postgresSetupTimeoutMs);
+  it("removes an exited helper's young container in plain Vitest teardown", async context => {
+    if (!available) { context.skip("Docker socket unavailable; real reclaim proof not executed"); return; }
+    // The known run id stands in for the wrapper's; plain Vitest has no post-exit sweep.
+    const run = randomUUID();
+    const vitest = spawn(process.execPath, ["node_modules/vitest/vitest.mjs", "run", "tests/postgres/disposableDockerReap.test.ts", "-t", "teardown fixture", "--maxWorkers=1"],
+      { env: { ...processEnvironment, OPENLUP_DISPOSABLE_REAP: "off", OPENLUP_DISPOSABLE_TEARDOWN_FIXTURE: "1", OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER: run }, stdio: ["ignore", "pipe", "pipe"] });
+    children.add(vitest);
+    let out = ""; vitest.stdout!.on("data", data => { out += data; }); vitest.stderr!.on("data", data => { out += data; });
+    const [code] = await once(vitest, "exit");
+    const left = (await docker(["ps", "-a", "-q", "--no-trunc", "--filter", `label=dev.disposable.run=${run}`])).split("\n").filter(Boolean);
+    for (const id of left) ids.add(id);
+    expect(code, out).toBe(0);
+    expect(out).toContain("1 passed");
+    expect(left).toEqual([]);
   }, postgresSetupTimeoutMs);
   it("retains a young dead owner's container under the default age floor", async context => {
     if (!available) { context.skip("Docker socket unavailable; real reclaim proof not executed"); return; }

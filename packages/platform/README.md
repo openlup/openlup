@@ -174,6 +174,25 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 
+## HTTP runtime and security contract
+
+The Node-only `./http` entry builds a request handler around host-supplied route
+tables, dispatch, entrypoint loaders, deadlines, security-header policy, robots
+content and static-asset reader. Its request order is fixed: apply security
+headers, handle canonical trailing-slash redirects and declared entrypoints,
+dispatch the BFF and scheduled routes, refuse unknown API paths, then apply
+host-declared redirects and static-document rules. The package does not infer
+which application routes are authorized or supply deployment-specific header
+policy.
+
+Buffered requests retain the exact raw bytes for signature verification while
+also exposing parsed JSON to handlers; the platform CSP-report entrypoint and
+explicitly marked stream-first handlers retain their live stream instead. Body
+size/deadline boundaries remain explicit. Static serving returns 404 for a
+missing asset, serves only declared route documents or an enabled SPA fallback,
+and leaves route admission to the host. These helpers define the HTTP adapter
+contract; they do not certify a deployed route or security policy.
+
 ## Marketing contracts
 
 `./marketing` provides acquisition address references, historical case projections,
@@ -1458,3 +1477,11 @@ the existing commerce registry's risk slot once. `createRiskContribution` in
 handlers or schedules. The [reference recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
 selects nothing by default and requires schema readiness before effects. Hosts
 still mount any selected callables and own their authorization/actor mapping.
+
+`risk/server` also exports `createRiskPrivacyContributor` and
+`createRiskPrivacyBinding`. Supply the read-only resource owner and explicit
+retention policy, then append the contributor to M03's existing registry with
+`risk` required. Unbound policy remains unresolved. No risk deletion or retention
+period is supplied, and managed identity erasure remains unavailable. Portability
+is deferred unless a host supplies its own opaque binding; the helper neither
+invokes it nor claims transfer/restore support.

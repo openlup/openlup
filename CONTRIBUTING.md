@@ -165,6 +165,15 @@ Changes to its executable surface, publication controls or
 package gate budgets require the applicable maintainer read before sign-off;
 passing the inventory check does not establish that read or authorize release.
 
+The existing policy/self-check also validates ordinary local Markdown file links
+and fragments, beyond mapped owner anchors. Source ownership is narrowed by
+module/contract section so an unrelated README edit does not settle an affected
+contract. The [documentation maintenance rules](docs/platform/DOCUMENTATION.md#impact)
+define scoped no-impact answers and review of related examples. New native
+reports include the short documentation assessment described under
+[native review](#native-review-and-accountability); prior recorded reports retain
+their history and expiry. These checks add no job, reviewer floor or gate budget.
+
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the production package runner to check ledger admission, stable reads,
 write admission, complete inventory projection and compatibility for status,
@@ -1873,11 +1882,11 @@ the owner PID, host-clock start epoch, short hostname and (on Linux) PID namespa
 with `dev.disposable.*`, plus the fresh test run ID. A same-host sweep reclaims
 only `dev.disposable=1` containers at least 60 seconds old whose owner is gone
 or whose PID start differs by more than two seconds; uncertainty keeps them.
-`OPENLUP_DISPOSABLE_REAP=report` (default), `remove` or `off` controls the
+`OPENLUP_DISPOSABLE_REAP=remove` (default), `report` or `off` controls the
 once-per-run host sweep; `CI=true` disables that sweep. Teardown and the wrapper
-sweep only their own run selector under the same liveness rule, including on CI;
-after its Vitest child exits, the wrapper skips the age floor because every
-owner of that run has exited, so a container started just before Ctrl-C goes too.
+sweep only their own run selector under the same liveness rule, including on CI,
+without the age floor: an exited helper child's container goes at teardown, and
+after its Vitest child exits the wrapper removes one started just before Ctrl-C.
 Nested runs get independent IDs. Unlabeled containers are never removed.
 The container-helper regression checks exact owned container and volume IDs
 for normal teardown and port-bind failure, without relying on global counts.
@@ -2743,6 +2752,18 @@ manual. Explain material deviations, evidence and remaining limitations. Review
 must assess correctness, approved scope and whether unnecessary complexity adds
 maintenance cost; findings need a concrete mechanism and effect, not a quota.
 
+Each newly recorded native report must include a concise `documentation` string
+(up to 4096 characters): identify the canonical sections checked, relevant
+secondary instructions/examples and the assessment of no-impact reasoning.
+For documentation-only edits, compare consequential claims with the selected
+source/contracts rather than assuming no source delta means no risk. Search
+related documentation for changed public exports, options and commands. Explain
+why no related update is needed where that is the result; a bare “OK” does not
+satisfy the review contract. The supervisor assesses substance, not just presence.
+Existing recorded version-2 reports remain valid without rewriting history or
+resetting cycles, findings or expiry; the requirement applies at new `record`
+calls. Risk floors and the receipt format are unchanged.
+
 Include the affected documentation owners and what changed in their explanations.
 For a scoped no-impact record, challenge its reasoning as well as its fresh
 fingerprint: a hash identifies the delta and its owner, not semantic correctness.
@@ -2802,6 +2823,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, documentation routing: duplicating a capability inventory in
+  ownership selectors → route to its canonical section and specialize the
+  neutral contracts, without introducing another registry or scanner exception.
 
 - 2026-10-29, disposable Docker cleanup: same-module mocks hid per-project
   state and queued-signal failures → prove lifecycle invariants through actual

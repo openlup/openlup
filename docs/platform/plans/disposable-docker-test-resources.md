@@ -1,8 +1,8 @@
 # Disposable Docker test resources reclaim themselves
 
 Status: approved 2026-10-29 (owner decisions D1–D7 below); merge cut-line
-implemented on this branch, delivery under D4 in progress. Activation (D2) and
-the worker-cap measurement (D3) follow the merge.
+landed in #432. Activation (D2) is recorded under "Activation evidence"; the
+worker-cap measurement (D3) follows.
 
 ## Outcome and boundary
 
@@ -113,7 +113,8 @@ make a live owner look recycled. No locale-dependent token is stored.
   at most 1); for a live PID, missing or malformed `owner_start` keeps too.
   ESRCH proves death without a start-time parse, matching the shared reader;
 - a different host;
-- an age under 60 s;
+- an age under 60 s, for the host-wide sweep (run-scoped sweeps of a run's own
+  label skip this floor; see Design 5);
 - an unanswering daemon;
 - on Linux, a sweeper whose PID namespace differs from the one recorded in the
   creator's `dev.disposable.pidns` label, or a missing label. Example: a
@@ -174,8 +175,9 @@ the inspected ID only.
    the child received from a value it passes down;
    it never uses an inherited one.
 5. **Sweep mode.** `OPENLUP_DISPOSABLE_REAP` takes `report`, `remove` or `off`.
-   The run-scoped sweep always removes (only its own run, liveness-checked). The
-   host-wide dead-owner sweep ships as `report`; activation flips it to `remove`.
+   The run-scoped sweep always removes (only its own run, liveness-checked,
+   without the age floor). The host-wide dead-owner sweep shipped as `report`;
+   activation (D2) made `remove` the default. An unrecognised value reports.
    With `CI=true`, the host-wide sweep is `off`, so hosted CI behaviour stays
    unchanged.
 6. **Signal-safe stack runners.** These install SIGINT and SIGTERM handlers that
@@ -282,8 +284,9 @@ the inspected ID only.
 5. A second case SIGKILLs the owner during `docker create`, leaving the
    container in `Created` state, and proves the same reclaim.
 
-The test may lower the 60 s floor through a test-only argument. One case keeps
-the default and proves the 60 s keep.
+The test may lower the 60 s floor through the `minAgeSeconds` argument, which
+the run-scoped sweeps also use. One case keeps the default and proves the 60 s
+keep.
 
 **E3. Locale and clock.**
 
@@ -393,13 +396,14 @@ must hold before removal:
 
 - the label is present;
 - same host, and on Linux the same PID namespace;
-- age of at least 60 s;
+- for the host-wide sweep, age of at least 60 s;
 - the owner is dead, by `ESRCH` or by a start time more than 2 s from
   `owner_start`.
 
-Any uncertain reading means keep. Run cleanup follows the same rule. The
-host-wide sweep ships in `report`, so the first real removal follows a
-reviewed set.
+Any uncertain reading means keep. Run cleanup follows the same rule except the
+age floor: it selects only its own run's label, whose owners have exited. The
+host-wide sweep shipped in `report`; it became `remove` only after a recorded
+report set (D2, under "Activation evidence").
 
 **Assumption most likely false: the owner pid is long-lived.** If a Vitest
 worker were recycled while its container was still in use, the sweep would see
@@ -513,7 +517,8 @@ Implementation choices:
   inherited `OPENLUP_DISPOSABLE_RUN` is always discarded.
 - Vitest closes its worker pool after global teardown, so the wrapper also runs
   the run-scoped sweep after every child exit, including success. Both sweeps
-  keep the liveness and age rules. Run-scoped cleanup stays on in CI.
+  keep the liveness rule; since activation neither applies the age floor.
+  Run-scoped cleanup stays on in CI.
 - One owned-stack helper ([owned-stack-cleanup.mjs](../../../scripts/owned-stack-cleanup.mjs))
   shares the existing checked cleanup between signals and `finally`, with a 30 s
   cleanup budget. Long CLI stages run asynchronously so a signal can interrupt
@@ -533,4 +538,32 @@ Evidence (Node 24.21.0, Docker 29.8.2 under OrbStack, this host):
 | E8 | 7 files, 84 passed, including `postgresContainer*` and the S3 conformance on the real daemon. A second focused set passed 402 tests: publication check, image pull, identity, OIDC and wrapper suites. |
 | Parity | `classify` keeps containers labelled `com.supabase.cli.project`, matching the shared shell reaper (cycle 0 advice). |
 | E9 | Pending: lint, typecheck, `verify-local`, native counted review. |
+
+## Activation evidence (D2)
+
+Host sweep on 2026-10-29 at 12:58Z against `origin/main` `4ec36fde`, after #432
+landed, on the maintainer host (Docker 29.8.2 under OrbStack):
+
+- the shared reaper's `docker-reap --dry-run --json`:
+  `would_remove` 0, `kept_live` 0, `kept_unknown` 0, `kept_young` 0,
+  `skipped_foreign` 0, `failed` 0;
+- OpenLup's own `sweep({ mode: "report", selector: "dev.disposable=1" })`:
+  an empty set;
+- the host held 10 other containers, all unlabeled Supabase CLI services of
+  another project. Neither sweep listed them, and nothing was removed.
+
+The set had no live-owner or unexpected entry, so under D2 the host-wide sweep
+now defaults to `remove`. The set was empty, not a set of dead owners; the
+removal path itself is proven by the real-daemon witnesses above.
+
+The same change drops the 60 s floor from the run-scoped teardown sweep
+(coordinator review of #432). Plain Vitest has no wrapper post-exit sweep, so a
+container created by a helper child that exited seconds before teardown stayed
+behind. `disposableDockerReap.test.ts` now runs plain Vitest over an env-gated
+fixture whose helper child creates one run-labelled container and exits. With
+the floor the container survives; without it the run leaves nothing. Lifecycle
+tests pin the new `remove` default and the `report` fallback for an
+unrecognised mode. If the Docker VM clock runs ahead of the host, the zero-floor
+sweep still keeps a just-created container as too young; the next host sweep
+reclaims it after 60 s.
 

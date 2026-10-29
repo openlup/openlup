@@ -6182,6 +6182,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/risk/server/privacyContributor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/risk/server/riskAdminCasesHandler.ts",
       "class": "public-output"
     },
@@ -8294,6 +8298,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/risk/privacyContributor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/privacyPortFit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/scheduler/advisoryLock.test.ts",
       "class": "public-output"
     },
@@ -8759,6 +8771,10 @@
     },
     {
       "path": "scripts/documentation-impact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-links.test.ts",
       "class": "public-output"
     },
     {

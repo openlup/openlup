@@ -1,6 +1,6 @@
 # Installed agent context MVP task
 
-Status: local implementation in progress; development preview.
+Status: local MVP proven; integration and delivery in progress; development preview.
 
 Outcome: an adopter can retrieve a small set of source-backed task guidance
 from its installed package set without a network service. Scope is a bounded
@@ -12,12 +12,15 @@ documentation duplication and any stable-framework or deployment qualification.
 The active supervisor coordinates implementation and independent review in
 `codex/agent-context-mvp`, based on
 `8faa3232c6858cd219cfa1f16173a9ad00fe7ca6`. Generator and package integration
-workers own disjoint files. This record covers local work; it grants no
-submission, merge, publication, release dispatch or adopter activation.
+workers own disjoint files. The initial record covered local work only; the
+later owner decision below extends delivery for this same bounded MVP.
 The supervisor retains actual authority and current policy-read evidence.
 The fetched instruction-policy revision at task start was `origin/main`
 `8faa3232c6858cd219cfa1f16173a9ad00fe7ca6`, recorded separately from
 the candidate's review base even though both currently name that commit.
+At the delivery continuation, the fetched instruction-policy revision was
+`origin/main` `8046797ace978e148556c30767d8ed231a0dd6e3`; the updated
+documentation-review rule was read before this integration.
 The new public executable and any package budget/control change require the
 applicable maintainer read of the stabilized API and publishing surface before
 DCO sign-off, as required by the public agent guide. Computed catalogue digests
@@ -27,8 +30,17 @@ freshness command, platform `maxFiles` change and local proof, the maintainer
 directly approved all actions within this session's task scope and plan. This
 satisfies the required read for this candidate and permits the supervisor's
 local DCO commit, native review and final local verification. The request
-explicitly excluded PR submission, merge and publication; no such grant is
-recorded. A later material API, control or budget delta needs its own read.
+explicitly excluded PR submission, merge and publication at that time. On
+2026-10-29, after the completed local MVP and complex dogfood were reported,
+the maintainer asked to promote this MVP into the application and move it to
+merge. This later direct instruction authorizes the active supervisor to push
+the same bounded candidate, open a ready PR, post its source receipt and request
+queue merge after required proof. It also decides to continue the existing native
+review session after its three automatic cycles were used: current `main` has a
+conflict that must be integrated and freshly reviewed. The supervisor recorded
+that continuation in the same append-only session. No release dispatch, npm
+publication, settings change, credential operation or adopter activation is
+authorized. A later material API, control or budget delta needs its own read.
 
 Acceptance: generation is deterministic and bounded; every excerpt binds exact
 canonical bytes with source path, line span and SHA-256; freshness refuses
