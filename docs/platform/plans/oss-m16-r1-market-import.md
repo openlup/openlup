@@ -613,6 +613,72 @@ a passing warm-image run does not establish safe cold acquisition or bounded
 teardown. This repair applies the existing rule rather than adding another
 cleanup mechanism or changing any preservation assertion.
 
+## S1 priority dequeue and 0.32.0 integration (CD-M16-17/18)
+
+The coordinator dequeued PR #431 under CD-M16-17 to let M15 S1 land first.
+That release-preparation PR #440 is now main at
+`eb1a0584f035774251a8c296e82f3b9ffd68180b` (0.32.0), the freshly read
+AGENTS/CONTRIBUTING and documentation policy pin for this continuation. The
+owner's active-supervisor grant remains M16 PROC-27 with CD-M16-1 through 18.
+CD-M16-18 gives ready M14 remainder work priority only when ready at the same
+time; R1 does not wait for unready work and never jumps the queue. The previous
+queue entry and successful full proof are retained as history, not reused as
+current admission. Native session history stays append-only at cycle 1 of 3
+before this new candidate is prepared. No continue or state recreation is used.
+The prior earliest current-candidate PASS is 2026-10-29 15:22:33Z, with source
+coverage expiry 2026-10-30 15:22:33Z; integration cannot renew it. If admission
+cannot precede that deadline, use prepare --new and fresh full review/proof.
+
+Signed merge 091638f0854b2dd3065efb68513956c5998bd778 has exact parents
+18f71994475a30963050944b0ebc6fcbb29603ea and the S1 main pin above. Git
+merged it cleanly: S1's package versions, baseline, changelogs, consumed M15
+fragments, agent excerpts and release-contract snapshot remain main's exact
+inputs; the four M16 exports, pending m16-r1 fragment, caps 2,774/2,718 with
+their capReason and contracts browser budget 20 remain present. Runtime and
+preservation witnesses are byte-identical to the prior reviewed head. Core
+build and platform API regeneration are rerun; the regenerated API and source
+map bytes remain unchanged. The ordinary module PR leaves S1's committed
+release-contract snapshot intact; the policy checker derives the live binding
+and reports its expected staleness until separate release preparation.
+
+The merge tree initially equals Git's mechanical merge result. Current policy
+requires a fresh ownership no-impact trailer because #439 changed the routing
+file's before-image; this task evidence is a separate DCO commit. Native prepare
+must decide actual integration eligibility on the resulting lineage. If it does
+not supply candidate.integration, obtain two fresh full reviews, without
+copying reports or assuming a mechanical exemption. The unchanged intent and
+44-path scope remain the acceptance boundary.
+
+The existing measurePack/checkPackBudget tools inspect the actual merged 0.32.0
+platform tarball, including AGENT_CONTEXT.md. Every cap is met:
+
+| Metric | Measured | Cap |
+| --- | ---: | ---: |
+| Total files | 2,717 | 2,774 |
+| Code files | 2,661 | 2,718 |
+| Docs files | 6 | 10 |
+| Packed bytes | 1,986,329 | 2,029,568 |
+| Unpacked bytes | 9,257,135 | 9,447,424 |
+| Code gzip bytes | 1,714,330 | 1,743,872 |
+| Docs gzip bytes | 56,939 | 73,728 |
+
+Tarball SHA-256:
+`564e2e0fb1c4dc7ca0df846f0825697825a1f24689a99ddedf605c98fb6dfa09`.
+Local pack/measurement evidence is retained in this task's post-s1-pack scratch
+folder. No cap is edited. The task-evidence commit changes no packed input.
+Cheap gates: focused ast-grep PASS; lint PASS (zero errors, 33 existing
+warnings); platform API check PASS; neutrality PASS (zero increases against
+S1 main); redacted Gitleaks PASS (1,115 commits, no leaks); focused two-worker
+Vitest PASS, 28 files / 3,062 cases in 14.10 seconds. Policy/excerpt generation
+passes structurally and needs only the refreshed ownership trailer supplied by
+this evidence commit; the final policy check follows that commit. Actual review
+mode/cycle, reports, final proof,
+receipt and queue observations stay in ignored evidence after source freeze.
+
+Self-retro: the clean Git merge preserved the release/cap union, while the
+changed routing before-image still required a fresh scoped impact answer.
+Measure root documentation files as well as code after packaged guidance lands.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness
