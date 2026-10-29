@@ -45,6 +45,13 @@ Local fixtures cannot prove the actual hosted control-plane membership graph,
 provider SQL privilege behavior, managed role inventory, grantor semantics,
 connection routing or service policy. Neon and RDS confirmation remains in the
 later hosted receipts; local PostgreSQL evidence does not close that boundary.
+The incarnation observation is weaker than a cluster system identifier: two
+clusters behind one address and port with the same postmaster start time and
+database OID are indistinguishable. Unix-socket sessions return NULL address
+and port, weakening the observation further. A postmaster restart refuses
+restore until a new pristine capture is made. In Neon, a compute suspend or
+restart between capture and restore has this effect; the hosted Neon receipt
+plans for it. These are known limits, not acceptance conditions for this parcel.
 
 ## Execution and self-retro
 
@@ -56,7 +63,13 @@ a fresh target. Both require negative discriminators.
 
 An interrupted preliminary local run supplied no durable qualification result;
 all witnesses were rerun for the current tree. No native review or DCO commit
-exists yet. `npm ci` passed on the pinned toolchain.
+existed before the read. The maintainer delegate accepted the exact tree
+`efeba337599436747ad01904f636e4979b2de758` for API and security control
+before DCO; the local read record is
+`.context/scratch/oss-m14-restricted-connected-restore/maintainer-read-20261029.md`.
+The accepted tree was committed as `99dab83b66132fc07ed53cecfa834a77cd7a57f9`
+with the documented test-guidance impact trailer. `npm ci` passed on the pinned
+toolchain.
 
 The first rebuilt full case exposed a test-fixture mistake: its cleanup tried to
 delete an append-only client record after a correctly refused target conflict.
@@ -72,11 +85,14 @@ lint command passed with zero errors; its 33 warnings are outside this delta.
 The structural scan, redacted source/history scans, public neutrality, tracked
 inventory and whitespace checks passed. The policy checker found the two
 affected canonical owner sections updated; its remaining test-guidance
-obligation needs a scoped no-impact trailer in this change's later signed
-commit. No package publication input, issued SQL identity or approval pin
-changed; the inspected
-publication caps require no raise. Canonical verification, native review and
-submission follow the maintainer read.
+obligation was addressed by a scoped no-impact trailer in the signed
+commit. No package files, issued SQL identity or approval pin changed; the
+inspected publication caps require no raise. Once the two new files became
+tracked, the public output inventory required two `public-output` rows in
+`config/openlup-publication-catalog.json`. This is the only publication-control
+delta; policy and tracked inventory now pass. A fresh exact-tree maintainer read
+for that control delta precedes its DCO commit and native review. Canonical
+verification and submission follow review.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. A durable early snapshot and a reversible settings
