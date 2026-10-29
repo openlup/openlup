@@ -528,7 +528,7 @@ and five static-lane cases remain a registered follow-up, outside C2.
 
 ### Frozen R2 witness inventory
 
-The following 44 source blobs are pinned to merged R2 head `5de94694`.
+The following 44 source blobs are pinned to merged R2 head `c346f015`.
 Since the original R2 witness inventory, the predecessor supplied the test-only
 cache reset and main/R1 updated the package-boundary, cold-consumer unit and
 PostgreSQL fixture witnesses. New R3 cases remain in new files.
@@ -693,3 +693,28 @@ increases), gitleaks and DCO pass. The pack measures 2,719/2,774 total files,
 fixture passed 6/6 real-PostgreSQL cases after load admission at 5.58 with no
 other verify/vitest/pgTAP process. Full draft verification remains held until
 R2 lands.
+
+### R3 post-S1 predecessor integration
+
+R2 advanced to `c346f015a2e06a3c685ca838e4ba1063b6e9ca5f` (tree
+`b686cf3e11e0018a700ebd85bb7fbe7292ae8fec`), carrying M15 S1 and
+package version 0.32.0. Sign-off merge `89ec702f` resolved the sole conflict
+in this record by retaining the predecessor text verbatim and appending R3.
+The publication catalog and architecture guide merged automatically. The
+source-span generator refreshed `packages/core/AGENT_CONTEXT.md` after a line
+shift in the merged architecture guide; no excerpt text changed. No R2 source
+or witness changed, and no PG-relevant file moved.
+
+All 44 frozen R2 blobs match the new head; the quote witness remains
+byte-identical to `0a29474a`. After `npm ci`, focused Vitest passed 47 files /
+3,257 cases with two workers. Five-project typecheck has zero unresolved edges
+and zero consumer-side errors. Lint (zero errors, 33 existing warnings),
+ast-grep, platform API, publication policy (eight answered obligations),
+publication inventory, neutrality (zero increases) and gitleaks pass. The
+platform pack measures 2,720/2,774 total files, 2,664/2,718 code files,
+1,986,993/2,029,568 packed bytes and 9,259,463/9,447,424 unpacked bytes;
+code gzip is 1,714,663/1,743,872 and docs gzip is 57,123/73,728. No cap
+finding. Real-PG was not rerun: this predecessor has no PG-relevant delta.
+Full draft verification remains held for the lead; no ready, prepare or
+receipt was performed. Self-retro: the sole delay was regenerating the merged
+source-span index before typecheck. Its owner script made the repair mechanical.
