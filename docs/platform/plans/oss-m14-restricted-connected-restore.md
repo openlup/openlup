@@ -152,8 +152,12 @@ closed `8C-REPLAY-LEDGER` but found one new material documentation issue,
 `8C-DOC-QUALIFICATION`: a later canonical data paragraph still said connected
 restore was unqualified without distinguishing the local witness from hosted
 confirmation. The repair names the local PostgreSQL 16 witness and retains the
-separate hosted boundary. It needs an exact-tree maintainer read, then fresh
-full review before final verification.
+separate hosted boundary. The maintainer delegate accepted tree
+`859c9932efddeb24696b75238deb642276e17408`, recorded in
+`.context/scratch/oss-m14-restricted-connected-restore/maintainer-read-20261029-5.md`;
+the correction was DCO committed as `305e018e671b3f835a63ed37b8e4234111be1da2`.
+The documentation policy passes with no unanswered obligations. Fresh full
+review and final verification follow.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. The replay finding exposed a missing final check;
