@@ -40,6 +40,8 @@ import { promisify } from "node:util";
 import type { Pool } from "pg";
 import { imageReference, pullWithRetry, readCiImage, readCiImages, resolvePinnedImage } from "../../scripts/ci-image-pull.mjs";
 
+import { disposableLabelArgs } from "../../scripts/disposable-docker.mjs";
+
 const exec = promisify(execFile);
 const defaultPin = readCiImage("test-postgres");
 export const defaultPostgresImage = `${defaultPin.repository.replace(/^library\//u, "")}:${defaultPin.tag}@${defaultPin.digest}`;
@@ -177,6 +179,8 @@ export type PostgresContainerSpec = {
   /** Passed as POSTGRES_DB. Omit to leave the cluster with only `postgres`. */
   database?: string;
   image?: string;
+  /** Extra fixture selectors; ownership labels are always supplied by the helper. */
+  labels?: Record<string, string>;
 };
 
 export type PostgresContainer = {
@@ -215,6 +219,8 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
     const port = await reservePort();
     const args = [
       "run", "-d", "--name", spec.name,
+      ...Object.entries(spec.labels ?? {}).filter(([key]) => !key.startsWith("dev.disposable")).flatMap(([key, value]) => ["--label", `${key}=${value}`]),
+      ...disposableLabelArgs(),
       // Cover the image's VOLUME before create: even a SIGKILL between create
       // and start cannot allocate an anonymous PostgreSQL data volume. This is
       // disposable test data, like the existing installed-consumer fixtures.

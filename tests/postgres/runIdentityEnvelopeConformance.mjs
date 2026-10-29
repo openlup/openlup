@@ -1,4 +1,5 @@
 // Opt-in identity envelope and first-login proof. Own every stack, keep Auth/API/mail, and refuse missing prerequisites.
+import { ownedStackCleanup } from "../../scripts/owned-stack-cleanup.mjs";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -65,9 +66,12 @@ async function main() {
       throw new Error("Identity conformance refuses an already owned project");
     }
     // A unique random project is never reused; cleanup is limited to this CLI workdir.
-    let cleanupError;
+    const cleanup = ownedStackCleanup(options => {
+      must("supabase", ["stop", "--workdir", directory, "--no-backup"], options());
+      rmSync(directory, { recursive: true });
+    });
     try {
-      must("supabase", ["start", "--workdir", directory, "--exclude", "realtime,storage-api,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor"]);
+      await cleanup.start("supabase", ["start", "--workdir", directory, "--exclude", "realtime,storage-api,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor"]);
       const env = parseEnv(must("supabase", ["status", "--workdir", directory, "-o", "env"]));
       if (env.API_URL !== `http://127.0.0.1:${base + 1}` || !env.ANON_KEY || !env.SERVICE_ROLE_KEY) throw new Error("Owned identity stack credentials unavailable");
       const container = `supabase_db_${project}`;
@@ -101,10 +105,7 @@ async function main() {
       readManagedMigrationChain(root);
       console.log(`Identity envelope ${scenario}: passed`);
     } finally {
-      try { must("supabase", ["stop", "--workdir", directory, "--no-backup"]); }
-      catch (error) { cleanupError = error; }
-      if (!cleanupError) rmSync(directory, { recursive: true });
-      if (cleanupError) throw cleanupError;
+      await cleanup.finish();
     }
   }
 }
