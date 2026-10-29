@@ -181,7 +181,7 @@ The SQL feature still needs its own runtime and inventory evidence. The
 prepared reader additionally reserves one qualified owner-path forward after
 the runtime-completion tail, at approval position seven before the five
 restricted-bootstrap positions. Its fixed function preimages and exact forward
-bytes require approval before SQL introduction; the control witness refuses
+bytes are approved before SQL introduction; the control witness refuses
 changed bodies, extra definitions and an earlier position. This preparation
 does not add the forward to the selected 91-unit plan.
 The

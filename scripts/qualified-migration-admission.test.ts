@@ -99,6 +99,12 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   const approved = { ...f.approved, qualifiedInstallations: [...f.approved.qualifiedInstallations.slice(0, 6), binding, ...f.approved.qualifiedInstallations.slice(7)] };
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
   expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
+  const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
+  expect(registry.qualifiedInstallations).toHaveLength(7);
+  expect(registry.qualifiedInstallations![6]).toEqual(binding);
+  const reviewedBytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_OWNER_PATH_FILE}`);
+  expect(reviewedBytes).toEqual(bytes);
+  expect(() => assertQualifiedOwnerPathForward(registry.qualifiedInstallations![6] as typeof binding, reviewedBytes, sources)).not.toThrow();
   const wrongBody = Buffer.from(bytes.toString("utf8").replace("RAISE EXCEPTION 'acquisition_append_only'", "RAISE EXCEPTION 'changed'"));
   expect(() => assertQualifiedOwnerPathForward({ ...binding, sha256: sqlSha256(wrongBody) }, wrongBody, sources)).toThrow("function identity or preimage drifted");
   const wrongAttribute = Buffer.from(bytes.toString("utf8").replace("SECURITY DEFINER", "SECURITY INVOKER"));
@@ -125,7 +131,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(reordered)))).toThrow("qualified installation approval");
 });
 
-it("preserves six issued identities while preparing five inert restricted bytes", () => {
+it("preserves six issued identities and the reviewed owner forward while preparing five restricted bytes", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
   const issued = registry.qualifiedInstallations!;
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
@@ -133,7 +139,7 @@ it("preserves six issued identities while preparing five inert restricted bytes"
     const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${entry.path}`);
     expect(sqlSha256(bytes), entry.path).toBe(entry.sha256);
   }
-  // Fixture integrity does not approve this future pin in the active registry.
+  // The issued completion identity stays pinned across the new approval.
   const completion = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_RUNTIME_COMPLETION_FILE}`);
   expect(sqlSha256(completion)).toBe("ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e");
   const pendingHashes = [

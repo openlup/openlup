@@ -1398,6 +1398,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-portable-operations-defaults.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-restricted-bootstrap.md",
       "class": "public-output"
     },
@@ -8759,6 +8763,10 @@
     },
     {
       "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
       "class": "public-output"
     },
     {
@@ -17815,6 +17823,14 @@
     },
     {
       "path": "server/runtime/public-reference/m12SupportReadBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m14OperationsBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m14OperationsBinding.ts",
       "class": "public-output"
     },
     {

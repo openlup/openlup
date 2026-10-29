@@ -15,6 +15,11 @@ Only after the exact sixth approval lands may the SQL feature introduce the
 identical file and append its selected row.
 Observed installation hashes cannot replace prior source approval.
 
+The seventh inert file binds the qualified owner-path forward's exact nine
+definitions. Its reviewed file and function hashes are approved before the
+identical SQL is introduced into the active migration directory. The current
+qualified selection remains 91 units until that separate introduction.
+
 Five additional `qa_` files are inert restricted-bootstrap candidates. Their
 whole bytes are present for a later separate approval; none is in the current
 registry or active migration manifest. The issued completion tail is reused

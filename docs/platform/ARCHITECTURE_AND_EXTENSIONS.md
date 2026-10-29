@@ -2094,6 +2094,35 @@ or activation evidence. The [module record](plans/oss-m14-operations-portability
 retains the remaining M14 evaluator/default portability, role, lifecycle and
 transfer obligations; this bounded slice does not complete that programme.
 
+The maintained [portable reference binding](../../server/runtime/public-reference/m14OperationsBinding.ts)
+composes that retained evaluator and job catalogue with host-supplied evidence,
+ledger, heartbeat and report ports. Its default sink captures each invocation's
+alert ID, dedupe key, severity and time in memory. `delivery: "captured"`
+identifies an in-memory observation, not notification delivery: `notified` stays
+zero, and capture records no notification attempt or delivery cadence in the
+host ledger. A later selected sink can attempt delivery immediately. An explicitly
+selected sink remains an adapter, and its failures/backoff remain visible in the kernel result.
+Check-only evaluation neither records heartbeat nor writes notifications/alerts.
+Missing evidence yields a bounded unavailable result; absent heartbeat keeps
+the existing overview health unknown. Raw domain payloads stay with the ledger.
+
+Alert and pipeline reads retain their existing typed handlers and administrator
+authorization before port access. The Node host admits the exact configured Host
+before body reading, then enters the existing observed-route wrapper on the
+decorated raw request. Public deployment policy and alerts method refusal run
+before request adaptation; the existing BFF dispatcher and admin preflight run
+after it. Adaptation failures use the bounded BFF error response, and safe request
+references correlate response headers/errors with one route log. The existing pipeline
+route is classified as a mutation by public deployment policy and is refused
+before authorization; the alert overview is the available admin readback on this host.
+Request bodies, authorization values, query contents and upstream exception prose
+are excluded from those logs. Unsafe caller references are replaced by the
+existing request-ID policy. This callable composition mounts no routes or jobs
+and creates no database privileges; hosts own those selections. The portable
+Node reference host can explicitly mount its two existing admin reads as a
+separate composition, without adding a watchdog HTTP entrance. Money, order,
+identity and provider truth remain with their domain owners.
+
 The [operations witnesses](../../packages/platform/test/operations/) preserve the
 existing behavior assertions. The existing
 [installed consumer](../../scripts/packages/platform-cold-consumer.ts) exercises
