@@ -1,7 +1,7 @@
 # M14 connection and pooling recipe
 
-Status: implementation and affected proof complete; awaiting pre-DCO maintainer read.
-M14 remains open.
+Status: implementation, pre-DCO read and affected proof complete; native review
+and final verification pending. M14 remains open.
 
 ## Outcome and boundary
 
@@ -26,6 +26,12 @@ remain required after that read. No adopter endpoint is in scope.
 
 Policy revision and initial source base:
 `5433b61c19809f749b3c0ffb08b254eafc406f96` (2026-10-29).
+Current policy pin: `3fbd95565ed665c68f3819a9fe27dc14f5bf9c85`.
+The maintainer read accepted staged tree
+`e76a3d0325e8f23a7726a8091ddcf3bc392faf30` before DCO.
+The signed integration of that source with current main is `d4d47475f1211aa103e592fa51763dc7cf3407d2`.
+It preserved the accepted lock source, witness and API snapshots; main's
+independent owner-path approval remains outside the selected 91-unit plan.
 
 ## Acceptance and proof plan
 
@@ -71,8 +77,9 @@ the corrected launch produced the final passing result above.
 Simplicity pre-check: explicit existing connection injection plus one ownership
 observation per successful acquisition is sufficient. Documentation alone cannot
 refuse observed backend switching; a new pool API or coordinator is unnecessary.
-No review cycles consumed; no DCO, submission or release performed. Native review,
-full verification/coverage and delivery remain after the required maintainer read.
+No review cycles consumed; DCO source and merge commits are signed. Native
+review, full verification/coverage and authorized delivery remain. No submission
+or release has occurred.
 
 Self-retro: exclusive heavy-window waits were 541 seconds for affected proof and
 661 seconds for lint.
