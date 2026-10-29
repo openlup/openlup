@@ -90,9 +90,11 @@ commit. No package files, issued SQL identity or approval pin changed; the
 inspected publication caps require no raise. Once the two new files became
 tracked, the public output inventory required two `public-output` rows in
 `config/openlup-publication-catalog.json`. This is the only publication-control
-delta; policy and tracked inventory now pass. A fresh exact-tree maintainer read
-for that control delta precedes its DCO commit and native review. Canonical
-verification and submission follow review.
+delta; policy and tracked inventory now pass. The maintainer delegate accepted
+that exact-tree delta before DCO, recorded in
+`.context/scratch/oss-m14-restricted-connected-restore/maintainer-read-20261029-2.md`.
+It was committed as `a0b23ca21bf58911ca64b0b1de6ba0839d86f9b6`.
+Native review, canonical verification and submission follow.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. A durable early snapshot and a reversible settings
