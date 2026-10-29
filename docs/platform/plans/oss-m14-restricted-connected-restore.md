@@ -2,7 +2,7 @@
 
 Status: development-preview parcel 8C, local work in progress. The code review
 base is `15a708a6b5b34f8a6d27b25f4867787425084bf7`; the freshly fetched
-policy revision is `6e7adb51e742a132b879a94ef07e5cfed60f694c`. The only
+policy revision is `eb1a0584f035774251a8c296e82f3b9ffd68180b`. The only
 relevant instruction delta in `CONTRIBUTING.md` was read; it adds offline
 context-command policy and does not alter this parcel's authority.
 
@@ -134,6 +134,18 @@ DCO, recorded in
 Commit `c67e5c89183e06cb63625ddddab393d75f167e84` contains that exact tree
 and the scoped `tests` no-impact trailer; policy has three obligations and
 none unanswered.
+
+After the 0.32.0 mainline release preparation, native prepare again refused
+carry-over. A forced conflict-free merge had no manual resolution or owned-byte
+change. The signed merge `1878ec88e124f911b6a454bd0f1620d61a4c6112`
+has parents `6fbd561f7c19c5865ad379f0e5178ce6969654e1` and
+`eb1a0584f035774251a8c296e82f3b9ffd68180b`, tree
+`1a1983fce366c91e2604462d3d92e1c64205d572`. The 8C patch excluding
+this task record has stable patch-id
+`9cd951b3223716762a49ffad0ec86ff06456ee7a` against the old base
+`6e7adb51e742a132b879a94ef07e5cfed60f694c` and the same
+`9cd951b3223716762a49ffad0ec86ff06456ee7a` against new main. This is
+the clean forced-main-merge case under CD-M14-30; full native review follows.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. The replay finding exposed a missing final check;
