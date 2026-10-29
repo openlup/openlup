@@ -64,6 +64,27 @@ it("reconciles source rows with final, pending partial and cleanup obligations",
   ] })).toThrow(expect.objectContaining({ code: "integrity_conflict" }));
 });
 
+it("binds a present cleanup file to retained observed bytes while retaining an absent cleanup duty", async () => {
+  const f = await fixture();
+  const complete = await f.store.writeTemp("cleanup", body("final"), 5, "2999-01-01T00:00:00Z");
+  await f.store.promote(complete.tempRef, "cleanup/media");
+  const census = await capture(f.root);
+  const object = census.objects[0]!;
+  const reference: OrderReviewMediaSourceReference = {
+    mediaReference: "order-review-media:123e4567-e89b-12d3-a456-426614174099",
+    state: "cleanup_pending", objectKey: object.key,
+    observedDigest: object.sha256, observedByteLength: object.bytes, observedContentType: "image/webp",
+    tempKey: null, writerReference: null, cleanupReceipt: "cleanup:1", nextAttemptAt: "2030-01-01T00:00:00Z",
+  };
+  expect(reconcileOrderReviewMediaFilesystem({ census, references: [reference] }).retained).toEqual([reference]);
+  expect(() => reconcileOrderReviewMediaFilesystem({ census, references: [{ ...reference, observedDigest: "0".repeat(64) }] }))
+    .toThrow(expect.objectContaining({ code: "integrity_conflict" }));
+  expect(() => reconcileOrderReviewMediaFilesystem({ census, references: [{ ...reference, observedByteLength: 6 }] }))
+    .toThrow(expect.objectContaining({ code: "integrity_conflict" }));
+  expect(reconcileOrderReviewMediaFilesystem({ census: { objects: [], temporary: [] }, references: [reference] }).retained)
+    .toEqual([reference]);
+});
+
 it("refuses unknown nonempty source layout instead of omitting it", async () => {
   const f = await fixture();
   await writeFile(join(f.root, "unowned"), "retain me", { mode: 0o600 });

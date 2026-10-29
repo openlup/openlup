@@ -112,8 +112,9 @@ hashing bounded bytes. Its `posix-owner-mode` label describes these observed
 checks, not additional filesystem ACLs, domain grants or HTTP authorization.
 The source-reference reconciliation checks the same fenced source snapshot's
 retained media rows against every final and partial file. It refuses missing
-stored/confirmed objects, observed digest or byte-length disagreement, and
-unexplained files. It carries pending and cleanup row identities with selected
+stored/confirmed objects, observed digest or byte-length disagreement for any
+present final file including cleanup work, and unexplained files. It carries
+pending and cleanup row identities with selected
 writer, receipt and scheduling references; the full business-row lease/claim
 state remains part of the database transfer.
 
@@ -131,7 +132,7 @@ serving root and refuses a name collision with that root. The later host activat
 the verified generation only after its other barriers pass. The route probe
 compares actual
 customer and operator media handlers for anonymous, owner, other customer and
-operator requests on source and target against independent source-domain grant
+operator requests on each route at source and target against independent source-domain grant
 facts, binding each route media reference to the retained source row. It refuses
 any grant change, observed content-type mismatch or changed
 served bytes; a POSIX label alone is not access evidence.

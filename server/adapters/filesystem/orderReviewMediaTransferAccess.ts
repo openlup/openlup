@@ -4,10 +4,13 @@ import type { OrderReviewMediaSourceReference } from "./orderReviewMediaTransfer
 
 type Actor = "anonymous" | "customer-owner" | "customer-other" | "operator";
 const actors: readonly Actor[] = ["anonymous", "customer-owner", "customer-other", "operator"];
+type Route = "customer" | "admin";
+const routes: readonly Route[] = ["customer", "admin"];
 
 export interface MediaServingProbe {
   key: string;
   actor: Actor;
+  route: Route;
   /** Independent source-domain grant fact for this actor and media reference. */
   expectedAllowed: boolean;
   source: Request;
@@ -28,7 +31,7 @@ export async function reconcileOrderReviewMediaServing(input: {
 }): Promise<{ observed: number; allowed: number; denied: number }> {
   const { objects, references, probes } = input;
   if (!Array.isArray(objects) || objects.length > 10000 || !Array.isArray(references) || !Array.isArray(probes)
-    || probes.length !== objects.length * actors.length) {
+    || probes.length !== objects.length * actors.length * routes.length) {
     throw new ObjectTransferError("invalid_input");
   }
   const expected = new Map<string, TransferObject>();
@@ -61,11 +64,11 @@ export async function reconcileOrderReviewMediaServing(input: {
   let sourceOrigin: string | undefined, targetOrigin: string | undefined;
   let allowed = 0;
   for (const probe of probes) {
-    if (!probe || !expected.has(probe.key) || !actors.includes(probe.actor)
+    if (!probe || !expected.has(probe.key) || !actors.includes(probe.actor) || !routes.includes(probe.route)
       || typeof probe.expectedAllowed !== "boolean"
       || !(probe.source instanceof Request) || !(probe.target instanceof Request)
       || probe.source.method !== "GET" || probe.target.method !== "GET") throw new ObjectTransferError("invalid_input");
-    const identity = JSON.stringify([probe.key, probe.actor]);
+    const identity = JSON.stringify([probe.key, probe.actor, probe.route]);
     if (seen.has(identity)) throw new ObjectTransferError("invalid_input");
     seen.add(identity);
     const sourceBearer = probe.source.headers.get("authorization"), targetBearer = probe.target.headers.get("authorization");
@@ -79,10 +82,14 @@ export async function reconcileOrderReviewMediaServing(input: {
     }
     if (probe.actor !== "anonymous") {
       const pair = identities.get(probe.key) ?? {};
-      pair[probe.actor as Exclude<Actor, "anonymous">] = [sourceAuth!, targetAuth!];
+      const actor = probe.actor as Exclude<Actor, "anonymous">;
+      if (pair[actor] && (pair[actor]![0] !== sourceAuth || pair[actor]![1] !== targetAuth)) {
+        throw new ObjectTransferError("invalid_input");
+      }
+      pair[actor] = [sourceAuth!, targetAuth!];
       identities.set(probe.key, pair);
     }
-    const admin = probe.actor === "operator";
+    const admin = probe.route === "admin";
     const sourceUrl = new URL(probe.source.url), targetUrl = new URL(probe.target.url);
     if (sourceUrl.origin === targetUrl.origin || sourceUrl.pathname !== targetUrl.pathname
       || sourceUrl.search !== "" || targetUrl.search !== ""

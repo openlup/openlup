@@ -26,24 +26,27 @@ const reference: OrderReviewMediaSourceReference = { mediaReference: ref, state:
   tempKey: null, writerReference: null, cleanupReceipt: null, nextAttemptAt: null };
 
 function probes(): MediaServingProbe[] {
-  return (["anonymous", "customer-owner", "customer-other", "operator"] as const).map(actor => {
-    const route = actor === "operator" ? `/api/bff/admin/order-review/media/${ref}` : `/api/bff/order-review/media/${ref}`;
+  return (["customer", "admin"] as const).flatMap(route => (["anonymous", "customer-owner", "customer-other", "operator"] as const).map(actor => {
+    const path = route === "admin" ? `/api/bff/admin/order-review/media/${ref}` : `/api/bff/order-review/media/${ref}`;
     const bearer = actor === "customer-owner" ? grant : actor === "customer-other"
       ? "review-grant:123e4567-e89b-12d3-a456-426614174002" : actor === "operator" ? "operator" : undefined;
-    return { key: object.key, actor, expectedAllowed: actor === "customer-owner" || actor === "operator",
-      source: new Request(`https://source.test${route}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }),
-      target: new Request(`https://target.test${route}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }) };
-  });
+    return { key: object.key, actor, route, expectedAllowed: route === "customer" && actor === "customer-owner"
+      || route === "admin" && actor === "operator",
+      source: new Request(`https://source.test${path}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }),
+      target: new Request(`https://target.test${path}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }) };
+  }));
 }
 
 function routeFetch(options: { widenTarget?: boolean; loseTarget?: boolean; loseSource?: boolean; corruptTarget?: boolean;
+  widenTargetAdminAnonymous?: boolean;
   sourceStore?: OrderReviewMediaObjectStore; targetStore?: OrderReviewMediaObjectStore } = {}): typeof fetch {
   return (async (request: Request) => {
     const target = new URL(request.url).hostname === "target.test";
     const admin = new URL(request.url).pathname.includes("/admin/");
     const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
     const permitted = admin ? token === "operator" : token === grant;
-    const allowed = target && options.widenTarget ? true : target && options.loseTarget ? false
+    const adminAnonymous = target && admin && !token && options.widenTargetAdminAnonymous;
+    const allowed = adminAnonymous || target && options.widenTarget ? true : target && options.loseTarget ? false
       : !target && options.loseSource ? false : permitted;
     const binding = {
       authorizeCustomerMedia: async () => allowed ? { media, open: async () => target && options.corruptTarget
@@ -54,7 +57,12 @@ function routeFetch(options: { widenTarget?: boolean; loseTarget?: boolean; lose
         ?? (async function* () { yield bytes; })() } : null,
     };
     const handler = admin ? createAdminOrderReviewMediaBffHandler({
-      env: { PLATFORM_BUNDLE: "node-postgres" }, authorize: async () => token === "operator" ? "operator" : null,
+      env: { PLATFORM_BUNDLE: "node-postgres" }, authorize: async (_req, response) => {
+        if (token === "operator") return "operator";
+        if (adminAnonymous) return "anonymous";
+        response.status(403).json({ error: "denied" });
+        return null;
+      },
       resolveBinding: async () => binding as never,
     }) : createOrderReviewMediaBffHandler(async () => binding as never, { PLATFORM_BUNDLE: "node-postgres" });
     const headers = new Headers(); const chunks: Uint8Array[] = []; let status = 200;
@@ -87,7 +95,7 @@ it("compares effective anonymous, owner, cross-customer and operator access thro
       temporary: createOrderReviewMediaTransferReader({ root: sourceRoot, maximumObjectBytes: 1024, area: "tmp" }), ...limits });
     const targetStore = await OrderReviewMediaObjectStore.create(staged.generationRoot);
     expect(await reconcileOrderReviewMediaServing({ objects: census.objects, references: [reference], probes: probes(),
-      fetchRoute: routeFetch({ sourceStore, targetStore }) })).toEqual({ observed: 4, allowed: 2, denied: 2 });
+      fetchRoute: routeFetch({ sourceStore, targetStore }) })).toEqual({ observed: 8, allowed: 2, denied: 6 });
   } finally { await rm(parent, { recursive: true, force: true }); }
 });
 
@@ -100,6 +108,8 @@ it("refuses target access widening, loss and divergent served bytes", async () =
     .rejects.toMatchObject({ code: "denied" });
   await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: probes(), fetchRoute: routeFetch({ corruptTarget: true }) }))
     .rejects.toMatchObject({ code: "integrity_conflict" });
+  await expect(reconcileOrderReviewMediaServing({ objects: [object], references: [reference], probes: probes(),
+    fetchRoute: routeFetch({ widenTargetAdminAnonymous: true }) })).rejects.toMatchObject({ code: "denied" });
 });
 
 it("binds every route probe to the retained media reference and observed type", async () => {

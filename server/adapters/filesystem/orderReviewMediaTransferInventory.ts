@@ -63,11 +63,14 @@ export function reconcileOrderReviewMediaFilesystem(input: {
       throw new ObjectTransferError("absent");
     }
     if (row.state === "stored" || row.state === "confirmed") {
-      const object = objects.get(row.objectKey)!;
-      if (row.observedDigest === null || row.observedByteLength === null || row.observedContentType === null
-        || object.sha256 !== row.observedDigest || object.bytes !== row.observedByteLength) {
+      if (row.observedDigest === null || row.observedByteLength === null || row.observedContentType === null) {
         throw new ObjectTransferError("integrity_conflict");
       }
+    }
+    const observed = objects.get(row.objectKey);
+    if (observed && row.observedDigest !== null
+      && (observed.sha256 !== row.observedDigest || observed.bytes !== row.observedByteLength)) {
+      throw new ObjectTransferError("integrity_conflict");
     }
     if (row.state === "pending" && row.observedDigest !== null) throw new ObjectTransferError("integrity_conflict");
     if (row.state === "pending" && row.tempKey !== null && !temporary.has(row.tempKey.slice(4))) {

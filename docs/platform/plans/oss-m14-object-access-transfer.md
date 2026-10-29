@@ -1,6 +1,6 @@
 # M14 object access transfer task
 
-Status: review repair accepted for DCO; native review and final verification pending. This is a bounded development-preview parcel of the existing-store transfer programme.
+Status: second review repair in local proof; renewed security-control read pending. This is a bounded development-preview parcel of the existing-store transfer programme.
 
 ## Outcome and boundary
 
@@ -27,6 +27,8 @@ Working checks on pinned Node 24.21.0/npm 11.19.0: `npm ci` completed; policy wi
 
 Known limits from those reads: the census compares JSON strings. Captured keys are sorted by the same lexical comparison as reference keys, and captured metadata keys are sorted before comparison to sorted reference metadata; an unexpected ordering mismatch refuses rather than qualifying. The serving probe requires an exact `Content-Length`, so chunked serving without one refuses. Versioned S3 source admission belongs to a separately read 10O profile; this parcel refuses it. The inactive-root collision check compares strings after `servingRoot` is normalized with `resolve()` and `generationRoot` is derived from that normalized root's parent. It catches an identical configured path; a pre-existing alias through a serving-root symlink remains a host-exclusion obligation rather than an adapter-proved guarantee.
 
+Native cycle 1 used two new FULL reviewers. The original five material cards were closed under the declared host exclusion, while review found two further material gaps: unauthorized identities had not been probed at the admin serving route, and a retained cleanup row with a present file had not been compared to its observed bytes. The current uncommitted repair covers both. On this tree, lint passed with zero errors and 33 existing warnings, focused tests passed 42/42, the pinned Versity fixture passed 6/6, API TypeScript passed, and policy, inventory, structural, neutrality and redacted secret checks passed. It needs a new security-control read and fresh review before final verification.
+
 Risk: a storage ACL label is not an effective serving grant. Route observations and independent source references must be binding facts, or the transfer refuses. Inactive staging and cleanup obligations require explicit readback before any later activation.
 
-Self-retro: A direct Vitest attempt after a clean install could not resolve unbuilt workspace exports. Running the existing lint prerequisite built them; the focused and Versity tests then passed. Review exposed that physical key presence and a syntactically valid route were weaker than the retained source row. Direct row-to-object and row-to-route comparisons close those gaps without a new transfer abstraction.
+Self-retro: A direct Vitest attempt after a clean install could not resolve unbuilt workspace exports. Running the existing lint prerequisite built them; the focused and Versity tests then passed. Review exposed that physical key presence and a syntactically valid route were weaker than the retained source row, and that an actor sample did not cover every serving route. Direct row comparisons and the full actor-by-route matrix close those gaps without a new transfer abstraction.
