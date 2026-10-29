@@ -2412,7 +2412,9 @@ with a [persisted recovery boundary](../../tests/postgres/m14OlderSnapshotRecove
 It drains and retires the media application, pauses three dispatches after their
 real DB admission, and saves the DB packet and complete private media copy before
 provider acceptance. It waits approximately 60 real seconds, then releases
-acceptance, loses the acknowledgment and induces executor unavailability.
+acceptance, loses the acknowledgment and induces executor failure. For the
+conservative RTO, unavailability starts earlier at planned application
+retirement, before the snapshot.
 Restore reloads those saved bytes; a later source census is diagnostic only.
 The target remains inactive until publications, later privacy obligations,
 authorization and authenticated effect reconciliation agree. Existing identity
@@ -2426,13 +2428,14 @@ recovered through the durable independent synthetic provider ledger, a late
 authenticated delivery observation extends the cycle once, and one uncertain
 dispatch remains visibly fenced while ordinary work executes and replays.
 The private report records snapshot age and effective RPO in seconds from the
-consistent pre-effect boundary to induced unavailability. RTO runs from that
+consistent pre-effect boundary to induced failure. RTO runs from the earlier
 unavailability through restore, object publication, privacy, reconciliation,
 authorization, serving and ordinary-job readback; this declared readiness allows
 the named uncertain operation's refusal. Individual refusals have null RTO.
 Counts, fixture bytes and human/access waits accompany the measured times.
-These are finite local measurements, without an SLO, universal exactly-once or
-hosted qualification claim. Code rollback does not recover data.
+These are declared-scope fixture measurements, not an SLO or hosted claim;
+they establish no universal exactly-once guarantee. Code rollback does not
+recover data.
 
 The qualified runtime-completion witness uses the existing
 [preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)

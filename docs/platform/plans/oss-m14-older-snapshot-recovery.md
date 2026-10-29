@@ -132,7 +132,16 @@ edges and consumer errors), lint (zero errors, 33 existing warnings), structural
 scan, whitespace, documentation policy (two obligations, none unanswered),
 the 6,627-path inventory, neutrality (zero increases) and redacted history/diff
 secret scans. Both new paths have catalogue rows and navigation was regenerated.
-No DCO, counted native review, canonical verification, PR or queue action has
-occurred. The final pre-read candidate is preserved in a private WIP ref.
+At the time of those working checks, no DCO, counted native review, canonical
+verification, PR or queue action had occurred. The final pre-read candidate
+is preserved in a private WIP ref.
 The maintainer accepted its exact identity and 63-second allowance on
-2026-10-29; the only subsequent delta is the claim-narrowing prose above.
+2026-10-29; subsequent deltas are claim-narrowing prose recorded here.
+
+Native review cycle 0: two independent full reviews found the same material
+prose error in the architecture owner: it named induced unavailability as the
+RPO endpoint, while the executable uses the later induced failure. Cycle 1
+corrects that endpoint and clarifies that conservative RTO starts at planned
+retirement. One optional incomplete-run diagnostic label remains outside this
+successful fixture's acceptance. No code, fixture or control changed in the
+repair; two fresh full reviews of the repaired tree remain required.
