@@ -1010,3 +1010,10 @@ combine publication registrations, runtime recipes, adapter ownership and task
 history. Preserve M14 operations/migration content alongside R2 risk delegation.
 No runtime edit or cap delta. Lockfile changes require npm ci. Regenerate
 existing API/navigation outputs and run the requested focused checks.
+
+R2 focused result: ast-grep, lint (zero errors, 33 warnings), all workspace
+API checks and 42/42 risk tests pass. Exact-predecessor documentation policy
+found one stale tooling no-impact digest after M14 integration. The R2 delta
+only extends the existing installed-artifact harness with risk workflow cases;
+the contributor section's commands and required gates remain correct. Record
+a fresh scoped trailer without changing the harness or its controls.
