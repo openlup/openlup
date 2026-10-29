@@ -2,10 +2,6 @@
   "schemaVersion": 3,
   "publicPaths": [
     {
-      "path": ".agent-protocol.yml",
-      "class": "public-output"
-    },
-    {
       "path": ".dockerignore",
       "class": "public-output"
     },
@@ -1430,6 +1426,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-object-access-transfer.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -1447,6 +1447,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-restricted-bootstrap.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-restricted-connected-restore.md",
       "class": "public-output"
     },
     {
@@ -10139,6 +10143,14 @@
     },
     {
       "path": "server/adapters/filesystem/orderReviewMediaObjectStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferAccess.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/filesystem/orderReviewMediaTransferAccess.ts",
       "class": "public-output"
     },
     {
@@ -26235,6 +26247,10 @@
     },
     {
       "path": "tests/postgres/m14ReleasedSchemaUpgradeChild.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
       "class": "public-output"
     },
     {
