@@ -34,7 +34,7 @@ async function fixture(reviewed = true, nodePin = process.versions.node) {
     const state = JSON.parse(await readFile(join(scratch, 'agent-review', 'session.json'), 'utf8'));
     const report = join(scratch, 'report.json');
     await writeFile(report, JSON.stringify({ reviewer: 'cold-reviewer', cold: true, tree: state.candidate.tree,
-      verdict: 'PASS', findings: [], closes: [] }));
+      verdict: 'PASS', findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
     await sessionMain(['record', report], { cwd, env });
   }
   const result = async () => {

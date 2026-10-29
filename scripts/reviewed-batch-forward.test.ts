@@ -477,7 +477,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       f.git("update-ref", "refs/remotes/origin/main", f.base);
       const candidate = await captureCommittedReviewCandidate(f.root, f.base, head);
       let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "Exact co-located SQL/pins" }, authorSessionId: "fixture-author" }, 1000);
-      for (const reviewer of ["fixture-a", "fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [] }, 1000);
+      for (const reviewer of ["fixture-a", "fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [], documentation: "Fixture assessment: reviewed canonical guidance and secondary examples; no impact." }, 1000);
       const receipt = receiptSummary(session, 12, 1000);
       const merged = f.git("commit-tree", candidate.tree, "-p", f.base, "-p", head, "-m", "Event merge");
       f.git("checkout", "--detach", merged);
@@ -1232,7 +1232,7 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
       f.git("update-ref", "refs/remotes/origin/main", control);
       const candidate = await captureCommittedReviewCandidate(f.root, control, introduced);
       let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "M12 exact two-file support authority introduction" }, authorSessionId: "m12-fixture-author" }, 1000);
-      for (const reviewer of ["m12-fixture-a", "m12-fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [] }, 1000);
+      for (const reviewer of ["m12-fixture-a", "m12-fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [], documentation: "Fixture assessment: reviewed canonical guidance and secondary examples; no impact." }, 1000);
       const receipt = receiptSummary(session, 12, 1000);
       const merged = f.git("commit-tree", candidate.tree, "-p", control, "-p", introduced, "-m", "M12 event merge");
       f.git("checkout", "--detach", merged);

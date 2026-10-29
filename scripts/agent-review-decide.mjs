@@ -80,6 +80,7 @@ export function prepareCandidate(session, observed, now, fresh = false) {
 export function recordReport(session, report, now) {
   stateValid(session); demand(session.cycle <= session.allowedCycles, 'record an owner continuation with continue "<note>"', 'needs_owner');
   demand(report && identity(report.reviewer) && !authorIds(session).has(report.reviewer) && report.cold === true, 'reviewer must be cold and independent of the author');
+  demand(identity(report.documentation), 'documentation assessment is required');
   demand(!session.history.some(event => event.type === 'report' && event.report.reviewer === report.reviewer), 'reviewer id already used in this session');
   demand(report.tree === session.candidate.tree && ['PASS', 'FAIL'].includes(report.verdict), 'report tree or verdict differs');
   demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'report time is invalid');
