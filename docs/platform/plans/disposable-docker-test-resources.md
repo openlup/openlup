@@ -434,7 +434,9 @@ accordingly). The coordinator relayed the resulting decisions to this task:
   unexpected entry appears, stop and report.
 - **D3. Yes.** Accept the measured worker-cap default under the decision rule
   above. The start limiter ships only if no worker cap meets the bar. The 6 h
-  and 18-run caps apply.
+  and 18-run caps apply. The coordinator, under this delegation, chose the
+  measured 6-worker cell over the speed-only reading; see "Worker-cap evidence
+  (D3)".
 - **D4. Yes.** Delivery grant: local work, commits (OpenLup identity), push, PR
   and merge after the required gates and OpenLup's native counted review.
   Production and credentials stay excluded.
@@ -587,18 +589,19 @@ latency sampled every 5 s; "load" is the peak host 1-minute load.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `tests/postgres` (62 files) | 12 (75%) | 103 s | 108 s | 19–20 | 2.4–2.9 GiB | 29–43 ms | 12–16 |
 | `tests/postgres` | 8 | 96 s | 97 s | 15–17 | 2.4 GiB | 27–29 ms | 9–11 |
-| `tests/postgres` | 6 (50%) | 93 s | 93 s | 14–15 | 2.4 GiB | 25 ms | 8–10 |
+| `tests/postgres` | 6 (37.5%) | 93 s | 93 s | 14–15 | 2.4 GiB | 25 ms | 8–10 |
 | `tests/postgres` | 4 | 113 s | 113 s | 9 | 1.8 GiB | 22–23 ms | 6–7 |
 | two concurrent subset runs | 12 each | 140 s | 140 s | 40 | 4.8 GiB | 55 ms | 22 |
 | two concurrent subset runs | 6 each | 119 s | 120 s | 29 | 3.3 GiB | 39 ms | 14 |
 | whole `npm test` (2174 files) | 12 (75%) | 404 s | 406 s | 12–15 | 1.9 GiB | 41–48 ms | 54–57 |
-| whole `npm test` | 6 (50%) | 415 s | 409 s | 7–8 | 1.7 GiB | 23–25 ms | 19–26 |
+| whole `npm test` | 6 (37.5%) | 415 s | 409 s | 7–8 | 1.7 GiB | 23–25 ms | 19–26 |
 
 Every cell met the reliability bar, so no start limiter ships. Read literally,
 the speed-only rule keeps 75%: no cell was 10% faster on both whole-suite
-samples, and 50% was 1–3% slower there. The coordinator, under the owner's D3
-delegation, chose 50% because the outcome also requires that a local run not
-overload the shared machine. Against 75%, 50%:
+samples, and 6 workers was 1–3% slower there. The coordinator, under the
+owner's D3 delegation, chose the 6-worker cell because the outcome also requires
+that a local run not overload the shared machine. Against 75% (12 workers), 6
+workers:
 
 - halves the peak host load of a whole-suite run (57 to 26) for about 2% more
   time;
@@ -607,11 +610,16 @@ overload the shared machine. Against 75%, 50%:
   container memory (3.3 GiB against 4.8 GiB). Overlap is the normal case when
   several sessions share one host.
 
-So the plain local default is 50%, the same as the coverage default. Explicit
+The default is stated as a percentage so it scales with other hosts: 37.5%,
+which Vitest 4.1 resolves to 6 of this host's 16 cores (it reads the integer
+percent, 37, and rounds 5.92 to 6). (50% would give 8 workers
+here; at 8 only the subset was measured, 96–97 s.) Coverage keeps its 50%
+default. Explicit
 `VITEST_MAX_WORKERS` and `OPENLUP_VITEST_MAX_WORKERS` pins and the broker
 verification defaults are unchanged. CI sets no plain local cap, and its
 coverage shards keep their own worker counts, so hosted CI is unaffected. The
-wrapper's former high-load lowering of plain runs to 50% is now the default
-and was removed. `scripts/run-vitest.test.ts` pins the default by loading
-`vitest.config.ts` through Vite's loader; it fails with 75%.
+wrapper's former high-load lowering of plain runs to 50% was removed, since it
+would now raise them above the 37.5% default. `scripts/run-vitest.test.ts` pins
+the default by loading `vitest.config.ts` through Vite's loader; it fails with
+75%.
 

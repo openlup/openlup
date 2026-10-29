@@ -63,16 +63,17 @@ function readExactExclusions(): string[] {
 
 const exactExclusions = readExactExclusions();
 
-// Local runs default to 50% of cores so overlapping runs on one shared machine
-// and Docker engine stay responsive: measured on 16 cores, 50% halved host load
-// for about 2% more whole-suite time than 75% and was faster when two runs
-// overlapped (docs/platform/plans/disposable-docker-test-resources.md). The
-// percentage is vitest-native and floors at one worker. Set VITEST_MAX_WORKERS
+// Local runs default to 37.5% of cores (6 of 16 on the measured host) so
+// overlapping runs on one shared machine and Docker engine stay responsive: 6
+// workers halved host load for about 2% more whole-suite time than 75% and was
+// faster when two runs overlapped
+// (docs/platform/plans/disposable-docker-test-resources.md). Vitest rounds the
+// percentage of available cores and floors at one worker. Set VITEST_MAX_WORKERS
 // (an integer like "4" or a percentage like "100%") to override per machine.
 // CI is intentionally left untouched so the dedicated coverage-shard worker
 // counts below stay authoritative; see CONTRIBUTING.md#test-scope-and-diagnostics.
 const localWorkerCap =
-  process.env.VITEST_MAX_WORKERS ?? (process.env.CI === "true" ? undefined : "50%");
+  process.env.VITEST_MAX_WORKERS ?? (process.env.CI === "true" ? undefined : "37.5%");
 
 export default defineConfig({
   plugins: [react()],

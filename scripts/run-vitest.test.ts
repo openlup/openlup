@@ -47,7 +47,7 @@ it("reports the effective explicit worker pin before any child fixture output", 
   }
 });
 
-it("defaults local config workers to 50% and keeps explicit pins and CI scheduling", () => {
+it("defaults local config workers to 37.5% and keeps explicit pins and CI scheduling", () => {
   const configWorkers = (overrides: NodeJS.ProcessEnv) => {
     const env: NodeJS.ProcessEnv = { ...processEnvironment };
     for (const name of ["CI", "VITEST_MAX_WORKERS"]) delete env[name];
@@ -58,7 +58,7 @@ it("defaults local config workers to 50% and keeps explicit pins and CI scheduli
     expect(output.status, output.stderr).toBe(0);
     return JSON.parse(output.stdout.trim().split("\n").at(-1)!).workers;
   };
-  expect(configWorkers({})).toBe("50%");
+  expect(configWorkers({})).toBe("37.5%");
   expect(configWorkers({ VITEST_MAX_WORKERS: "3" })).toBe("3");
   expect(configWorkers({ CI: "true" })).toBeNull();
 }, 60_000);

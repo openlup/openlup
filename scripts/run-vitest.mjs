@@ -130,7 +130,7 @@ if (!env.VITEST_MAX_WORKERS && process.env.CI !== "true") {
   const cores = Math.max(1, cpus().length);
   const highLoad = loadavg()[0] > cores;
   const dockerHeavyActive = hasActiveLane("docker-heavy");
-  // Plain runs already default to 50% in the config.
+  // Plain runs default to 37.5% in the config, below any former high-load cap.
   if (isCoverageRun) {
     env.VITEST_MAX_WORKERS = highLoad || dockerHeavyActive ? "40%" : "50%";
   }
