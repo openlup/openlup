@@ -22,6 +22,8 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 ## Implementation plans
 
+Plans and task records are plain Markdown under `plans/`. There is no plan template, generator or Plan Protocol validator; reviewing the record is its acceptance, and limits a plan states are enforced only where a named check runs them.
+
 - [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
 
 - [Payments and money truth](plans/oss-m07-payments-money-truth.md) — prepared attempts and neutral adapter contracts; later truth/store/repair work remains pending.
