@@ -194,16 +194,19 @@ not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
 
-The restricted-bootstrap reader preparation adds five fixed `qa_` identities
-to the existing classifier and approval reader without changing the active
-schema-2 manifest or the then-six issued approval rows. Its schema-3 parser requires a
-separate 91-unit generation, the issued runtime-completion tail and exactly two
-fixed role-mode inventory digests. The manifest and admission witnesses reject
-missing/reordered tails, wrong-generation paths, malformed modes, issued-prefix
-repins and partial approval sets. The five fixture files are inert source bytes;
-their exact approval follows the reader and owner-path forward in a separate
-checkpoint, and active SQL follows that approval. No new
-test command or CI job is introduced by reader preparation.
+The restricted-bootstrap reader initially accepted five fixed `qa_` identities
+and their exact approval now occupies positions 8–12. A disposable PostgreSQL
+install found that the approved actor SQL does not parse. The four corrected
+`qb_` actor, acquisition, runtime and import fixtures are separate inert
+identities; this additive reader accepts only their complete positions 13–16
+append and leaves all twelve issued rows unchanged. Its schema-3 parser selects
+the `qa_` baseline with those four `qb_` replacements, the issued
+runtime-completion tail and two fixed role-mode inventory digests. The manifest
+and admission witnesses reject missing/reordered tails, wrong-generation paths,
+issued-prefix repins and partial approvals. A disposable PostgreSQL 16
+parse-and-apply witness of the exact proposed bytes in both role modes is
+required before the separate four-byte approval packet; active SQL follows
+that approval. This reader checkpoint adds no active migration or CI job.
 
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;

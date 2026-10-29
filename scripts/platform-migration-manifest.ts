@@ -16,10 +16,17 @@ export const ADMIN_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_202608101800
 export const ADMIN_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20260816140000_acquisition_case_foundation.sql`;
 export const ADMIN_RUNTIME_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20261026130000_runtime_capabilities.sql`;
 export const ADMIN_IMPORT_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20261026140000_retained_client_subscription_import.sql`;
+// The earlier qa_ approvals remain immutable; the restricted generation selects
+// these corrected identities only after their separate exact-byte approval.
+export const REVISED_ADMIN_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qb_20260810180001_self_host_actor_auth.sql`;
+export const REVISED_ADMIN_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qb_20260816140000_acquisition_case_foundation.sql`;
+export const REVISED_ADMIN_RUNTIME_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qb_20261026130000_runtime_capabilities.sql`;
+export const REVISED_ADMIN_IMPORT_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qb_20261026140000_retained_client_subscription_import.sql`;
 const LEGACY_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260810180001_self_host_actor_auth.sql`;
 const LEGACY_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260816140000_acquisition_case_foundation.sql`;
 const QUALIFIED_AFTER_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20261026120000_account_support_operator_authority.sql`;
-const ADMIN_FILES = new Set([ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE]);
+const ADMIN_FILES = new Set([ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE,
+  REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE]);
 const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ...ADMIN_FILES]);
 const PLATFORM_FILE_RE = /^db\/platform\/migrations\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/;
 export type AddedMigration = { file: string; content: string };
@@ -155,7 +162,8 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
   }
   qualifiedOrder(current.qualified, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, qFiles, current.schemaVersion === 3, true);
   if (current.schemaVersion === 3) {
-    qualifiedOrder(current.qualifiedAdmin, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, aFiles, true, false);
+    qualifiedOrder(current.qualifiedAdmin, ADMIN_BASELINE_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE,
+      REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, aFiles, true, false);
     if (!qFiles.has(QUALIFIED_RUNTIME_COMPLETION_FILE)) errors.push("the issued runtime completion tail must be selected by both qualified plans");
   }
   if ([...legacyFiles].some(isQualifiedPlatformMigrationPath)) errors.push("legacy migration plan cannot select a qualified identity");

@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  ADMIN_ACQUISITION_FILE,
-  ADMIN_ACTOR_FILE,
   ADMIN_BASELINE_FILE,
-  ADMIN_IMPORT_FILE,
-  ADMIN_RUNTIME_FILE,
+  REVISED_ADMIN_ACQUISITION_FILE,
+  REVISED_ADMIN_ACTOR_FILE,
+  REVISED_ADMIN_IMPORT_FILE,
+  REVISED_ADMIN_RUNTIME_FILE,
   evaluatePlatformMigrationManifest,
   evaluatePlatformMigrationManifestHistory,
   evaluateSelectedPlatformMigrationManifest,
@@ -54,12 +54,13 @@ function fixture() {
 describe("canonical qualified migration selection", () => {
   it("admits a separate 91-unit restricted generation with fixed role-mode inventories", () => {
     if (raw.schemaVersion !== 2) throw new Error("current qualified source must be schema 2");
-    const files = [ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
+    const files = [ADMIN_BASELINE_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE,
+      REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE];
     const source = files.map((file, index) => ({ file, content: `-- synthetic restricted unit ${index}\nSELECT 1;\n` }));
     const entries = new Map(source.map(({ file, content }) => [file, { file, sha256: sha256(content) }]));
     const replacement = new Map([
-      [QUALIFIED_ACTOR_FILE, ADMIN_ACTOR_FILE], [QUALIFIED_ACQUISITION_FILE, ADMIN_ACQUISITION_FILE],
-      [QUALIFIED_RUNTIME_FILE, ADMIN_RUNTIME_FILE], [QUALIFIED_IMPORT_FILE, ADMIN_IMPORT_FILE],
+      [QUALIFIED_ACTOR_FILE, REVISED_ADMIN_ACTOR_FILE], [QUALIFIED_ACQUISITION_FILE, REVISED_ADMIN_ACQUISITION_FILE],
+      [QUALIFIED_RUNTIME_FILE, REVISED_ADMIN_RUNTIME_FILE], [QUALIFIED_IMPORT_FILE, REVISED_ADMIN_IMPORT_FILE],
     ]);
     const admin = {
       baseline: entries.get(ADMIN_BASELINE_FILE)!,
