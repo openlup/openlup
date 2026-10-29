@@ -242,3 +242,130 @@ Integration checks PASS: platform workspace API check; publication policy with
 five answered obligations; zero-increase neutrality; ast-grep; six focused
 files / 32 cases with two workers. The final stacked DCO range is checked before
 submission. No native or heavy verification was run under the retained hold.
+
+## R3 reference delegation — fit and quote witness
+
+R3 is assigned to one writer on `claude/oss-m16-r3-market-delegation`, stacked
+on provisional R2 draft #434 at `51f01976639f775740a6e9e496debd74d7fd8a9a`
+(tree `f82ddc79fde3201de489d10b32320937cd0cbc79`), itself on R1 draft #431.
+Instruction freshness was checked at fetched `origin/main`
+`4ec36fdeb67115216dd422262660679d27ec5c18`, separately from the code base.
+CD-M16-1..13 authorize a stacked draft; native review, ready, receipt, merge,
+release and activation remain later boundaries. No new platform API/file, SQL,
+route mounting, fallback, provider, control or budget is in R3 scope.
+
+The source fit at R2 retains complete host company extensions; core strict parsing
+would reject them. Service order is validation, manual, country strategy,
+sequential providers/source accumulation and early completion. Rules import the
+existing service name helpers, so delegation must retain those function exports
+and avoid eager use before module initialization. Handler order remains method,
+request parse, shared cache/lookup, output parse, existing responder. The package
+must be the sole cache owner (normalized identifier/day key, ten-minute TTL,
+5,000 oldest-insertion cap, manual bypass, failed-flight retry); cache insertion
+precedes output validation. Company route construction is module-time, accounting
+construction request-time. Formatter retains its ambient currency import edge.
+Ambient settlement remains app-owned with same-profile repeat/conflict refusal
+before money parsing. Draft serialization keeps permitted address fields and
+identities but excludes invoice lookup and accepted identity; historical amounts
+keep their own currency. Directory order stays env, gateway, adapter, probe,
+handler, with success-only availability metadata; the managed PostgREST transport
+is unchanged and remains unproven by public CI. Existing R2 recipe and descriptor
+provide the opt-in unmounted composition. The broad call-site inventory in the
+R3 task brief was checked against these actual owners; no caller is moved to a
+new route or initialization lifetime.
+
+Simplicity pre-check: use existing package exports and reference rules/recipe,
+keep the existing constant owners, and make one explicit composition point. No
+new cache, provider factory, currency state or route selector is needed.
+
+### Quote donor-to-public mapping (CD-M16-13)
+
+The 19 donor cases map as follows. `quoteCurrencyReference.test.ts` is the new
+neutral public witness (12 cases) and passed 12/12 on the unchanged R2 tree.
+Related pricing/binding tests stay frozen; they did not exactly establish the
+reference profile and import timing cases below. The seven donor-only cases are
+a registered donor/public divergence, not new C2 behavior or a completion claim.
+
+| Donor case | Public witness | Mapping |
+| --- | --- | --- |
+| DB whole quote: current profile | `server/domains/commerce/quoteCurrencyReference.test.ts` | new |
+| DB whole quote: configured profile A | same | new |
+| DB whole quote: configured profile B | same | new |
+| Static whole quote: current profile | — | no public counterpart |
+| Static whole quote: configured profile A | — | no public counterpart |
+| Static whole quote: configured profile B | — | no public counterpart |
+| Factory-feeder default-currency scan | `server/domains/commerce/quoteCurrencyReference.test.ts` | new |
+| DB mismatched price list refusal | same | new |
+| DB agreeing price list pricing | same | new |
+| Static mismatched price book refusal | — | no public counterpart |
+| Static agreeing price book pricing | — | no public counterpart |
+| Shared floor at first module evaluation | `server/domains/commerce/quoteCurrencyReference.test.ts` | new, current preview owner |
+| No eager administrative preview | — | no public counterpart; current imports evaluate preview |
+| Malformed floor at separate floor-owner import | — | no public counterpart; separate owner absent |
+| Malformed floor at preview import | `server/domains/commerce/quoteCurrencyReference.test.ts` | new |
+| Malformed floor at automatic-promotion import | same | new |
+| Malformed floor at code-adjustment import | same | new |
+| Malformed floor at DB quote import | same | new |
+| Later settlement versus imported promotion floor | `server/domains/commerce/quoteCurrencyReference.test.ts` | new DB lane; static portion has no public counterpart |
+
+CD-M16-13 explicitly preserves the current public observation boundary: the
+floor belongs to `promotionCodePreview.ts`; quote entries evaluate it on import;
+malformed configuration refuses at each existing import; later configuration
+cannot move the imported floor. The separate donor floor owner, import isolation
+and five static-lane cases remain a registered follow-up, outside C2.
+
+### Frozen R2 witness inventory
+
+The following 44 source blobs were recorded at R2_HEAD and verified byte-identical
+before the R3 swap. New cases go in new files.
+
+| File | R2_HEAD blob |
+| --- | --- |
+| `packages/platform/test/company-identity/cacheFit.test.ts` | `97464d29a75bdd8855a707c5fbc439543c69c8e9` |
+| `packages/platform/test/company-identity/companyIdentityHandlers.test.ts` | `8d870fd30c21b37ea388659a254fcf5c173b3f98` |
+| `packages/platform/test/company-identity/companyIdentityService.test.ts` | `b03ee633e13b052273d8a0fa908f27d163011092` |
+| `packages/platform/test/company-identity/contracts.test.ts` | `75bd06b7db599f085b1ba6c00e68221681cde550` |
+| `packages/platform/test/company-identity/fixtures.ts` | `3247f97c08c81b8c9c29372e024805759e496cb5` |
+| `packages/platform/test/market-packs/fiscalProfile.test.ts` | `a0aebb430bf047beca03ef363d7d652d2d3482d2` |
+| `packages/platform/test/market-packs/fixtures.ts` | `b3d0d4c2dd76530b4a122121580805f88b2cf8a6` |
+| `packages/platform/test/market-packs/formatMinor.test.ts` | `1690e8c26b363703daf4fd52dbd2e8b776d48227` |
+| `packages/platform/test/market-packs/marketDescriptor.test.ts` | `033084995b0dce4b3ad8dc69e4d0c4e61d587039` |
+| `packages/platform/test/market-packs/portFit.test.ts` | `c5c82da9ceb4c6c198c7048a67f4f0c3e9d69932` |
+| `packages/platform/test/market-packs/settlementProfile.test.ts` | `c8355d401ba8d356ef6f59a90370d12ab0c5596d` |
+| `packages/platform/test/packageBoundary.test.ts` | `a9f121689e05f42b9e2a217a889860c35d1c45ab` |
+| `packages/platform/test/pricing/dbBackedCommerceQuotePort.test.ts` | `ff22493078edf0b2833fb74f8147a635527b885d` |
+| `packages/platform/test/shipping/addressConformance.test.ts` | `dd9bb27736f028a4bd97fae074b1c3dba7251191` |
+| `scripts/packages/market-pack-consumer-proof.ts` | `341ef6cecbdeddaf25e47b372a829a89c5deacf4` |
+| `scripts/packages/platform-cold-consumer.test.ts` | `a1b92f3560db2df217b1a5b85da152e614b7bbfd` |
+| `server/_lib/coreSchemaReuse.test.ts` | `c980671a27618030ee8827e47e64d4fd1702f3e8` |
+| `server/adapters/market-packs/marketRecipe.test.ts` | `a037ba9b9eb101da41698c3226edbc067d262b91` |
+| `server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts` | `b741067b061d99404b57b0f0f0a9651616a9acec` |
+| `server/adapters/market-packs/referenceCompanyIdentityProviders.test.ts` | `6cd218c1bac43fc614f17ab37b8c5b3b26df833b` |
+| `server/adapters/market-packs/referenceCompanyIdentityRules.test.ts` | `88c3b4bf6b2f3c2b92088719950e48f4eb4a7540` |
+| `server/adapters/supabase/address-canon/addressCanonLookup.test.ts` | `f97f460cfffff92ba35c39bf0790927fca76b4c0` |
+| `server/bff/accounting/invoice-data-lookup.test.ts` | `b59947ef19ddb8757c34afac74b6b290b758c7e2` |
+| `server/bff/address-canon/shared.test.ts` | `1512ef1c111499daf43d260651a7416cda81b1f4` |
+| `server/domains/address-canon/addressCanonLookupHandler.test.ts` | `9547f0c447681809766f0a19944159aa2f3732a4` |
+| `server/domains/commerce/orderEmailLines.test.ts` | `751001b6a4368f8d23c983e2be30b65f6f6b0ce6` |
+| `server/domains/commerce/quoteFoundationPackageBinding.test.ts` | `f5a2589f5a72adf30a4f75c570e5daa7c9eb8ed2` |
+| `server/domains/company-identity/companyIdentityHandlers.test.ts` | `19111e99f1f7d4d0a8cd546b6f6d95d11dede8fc` |
+| `server/domains/company-identity/companyIdentityService.test.ts` | `0be80129b52c1e04d90953543e352464daac29c2` |
+| `server/runtime/settlementProfileBootstrap.test.ts` | `09ef0a9702e25e0596878db70982776703b52dd4` |
+| `src/checkout/composer/configuratorDraftCodec.test.ts` | `4b113f3308b2fe3b8650353f020535d10cf74b67` |
+| `src/checkout/composer/configuratorPricing.test.ts` | `d9646bbb8e674e5d99f7a6eaf59bae2b85871d4a` |
+| `src/checkout/composer/marketIdentityPersistence.test.ts` | `cfc7dba7ba703102735d5238ace44a96a335cfa0` |
+| `src/components/shipping/shippingConsumer.test.tsx` | `6cfb2ff6da2424523b551acf76439bc31231a9a9` |
+| `src/domains/address-canon/addressCanonClient.test.ts` | `5d98d8406f20f3920be14a9b91697bfc53d96c5b` |
+| `src/domains/address-canon/contracts.test.ts` | `7e410e8b917d86ab779dc042088ee29640912a22` |
+| `src/lib/currency/fiscalProfile.test.ts` | `a7d0cd8816a24f2cc45f92f9e376b0727e05c49a` |
+| `src/lib/currency/formatMinor.test.ts` | `3e2e12935ca40768943759dc94e5a074d4f198f5` |
+| `src/lib/currency/platformCurrency.test.ts` | `cbb615dd102df197dac16f12585e6b0e33b28817` |
+| `src/public-reference/i18n/marketResources.test.ts` | `83a7f4d7155c3351795be5de02aef3749fba2e6c` |
+| `src/public-reference/subscription-main.test.tsx` | `3fb8d233bf5deb0efcbc4f779337b7dcf37659dc` |
+| `src/public-reference/subscriptionMessages.test.tsx` | `9143824ada4ee2d6c3b7abd2c1a4b15033e1a8ce` |
+| `tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts` | `aae9bbc7561be3b034ab4894e0b03a1c48281eee` |
+| `tests/postgres/marketDirectoryPreservation.test.ts` | `4c7974a8e36a628d13ef69c534f1e106cfedbaa9` |
+
+### R3 implementation and evidence
+
+Pending delegation. Quote pre-swap witness: 1 file / 12 cases PASS (Node 24.21.0, Vitest two workers). Ast-grep and neutrality passed at this stage.

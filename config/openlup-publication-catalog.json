@@ -15578,6 +15578,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/quoteCurrencyReference.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/quoteFoundationPackageBinding.test.ts",
       "class": "public-output"
     },
