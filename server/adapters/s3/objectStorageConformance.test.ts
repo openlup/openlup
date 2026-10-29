@@ -40,8 +40,14 @@ function composeStorageImage(): string {
 
 const SCRIPT = String.raw`
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createBundleComposer } from "@openlup/platform/composition";
 import { getBundleDescriptor } from "@openlup/platform/kernel";
+import { copyTransferObjects, createFilesystemTransferObjects } from "@openlup/platform/portability";
+import { createS3TransferObjectSource } from "./server/adapters/s3/transferObjectSource.ts";
 const sdk = createRequire(import.meta.url)("@aws-sdk/client-s3");
 const [endpoint, bucket, access, secret, step] = process.argv.slice(1);
 const client = (key) => new sdk.S3Client({ region: "us-east-1", endpoint, forcePathStyle: true, credentials: { accessKeyId: access, secretAccessKey: key } });
@@ -75,12 +81,47 @@ if (step === "bucket") {
   try { await client("wrongsecret00000000").send(new sdk.PutObjectCommand({ Bucket: bucket, Key: "intruder.txt", Body: Buffer.from("x") })); out.wrongSecretStatus = 200; }
   catch (error) { out.wrongSecretStatus = error.$metadata?.httpStatusCode; }
   out.intruderExists = await blob.exists("intruder.txt");
+  await client(secret).send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: "private/secret.txt" }));
+} else if (step === "transfer") {
+  const key = "transfer/retained.txt", value = Buffer.from("retained source bytes");
+  const sourceClient = client(secret);
+  const metadata = { "s3.content-type": "text/plain", "s3.user.retained": "yes" };
+  const sha256 = createHash("sha256").update(value).digest("hex");
+  const version = "sha256:" + createHash("sha256").update(JSON.stringify({ sha256, bytes: value.length, metadata })).digest("hex");
+  const root = await mkdtemp(join(await realpath(tmpdir()), "openlup-s3-transfer-"));
+  try {
+    await sourceClient.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key, Body: value,
+      ContentType: "text/plain", Metadata: { retained: "yes" } }));
+    const source = createS3TransferObjectSource({ client: sourceClient, bucket, maximumObjectBytes: 1024,
+      maximumTotalBytes: 4096, maximumFiles: 10, maximumPages: 4 });
+    const reference = { bucket, snapshotId: "source-owned-record", features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" },
+      objects: [{ key, version, bytes: value.length, sha256, metadata }], obligations: [] };
+    const census = await source.captureAgainstReferences(async () => reference);
+    const destination = await createFilesystemTransferObjects({ root: join(root, "inactive"),
+      maximumObjectBytes: 1024, access: "private-target" });
+    const transfer = { inventory: { sourceId: "versity-source", snapshot: { kind: "quiesced", id: reference.snapshotId }, objects: census.objects },
+      source, destination, accessMapping: { "authenticated-source-read": "private-target" },
+      maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
+    try { await copyTransferObjects({ ...transfer, checkpoint: async () => { throw new Error("interrupted checkpoint"); } }); }
+    catch (error) { if (error.message !== "interrupted checkpoint") throw error; }
+    out.resume = await copyTransferObjects(transfer);
+    const retained = await destination.read(key);
+    out.readback = Buffer.from(await (async () => { const chunks = []; for await (const chunk of retained.body) chunks.push(chunk); return Buffer.concat(chunks); })()).toString();
+    out.referenceSnapshotId = census.referenceSnapshotId;
+    const anonymous = await fetch(endpoint + "/" + bucket + "/" + key);
+    out.anonymousStatus = anonymous.status;
+    out.anonymousLeaks = (await anonymous.text()).includes(value.toString());
+  } finally {
+    await sourceClient.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => {});
+    sourceClient.destroy();
+    await rm(root, { recursive: true, force: true });
+  }
 }
 process.stdout.write(JSON.stringify(out));
 `;
 
 async function runStep(step: string): Promise<Record<string, unknown>> {
-  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", SCRIPT, endpoint, BUCKET, ACCESS_KEY, SECRET_KEY, step], {
+  const { stdout } = await exec(process.execPath, ["--import", "tsx", "--input-type=module", "-e", SCRIPT, endpoint, BUCKET, ACCESS_KEY, SECRET_KEY, step], {
     // An empty environment: no ambient credentials or loader options reach the storage steps.
     cwd: ROOT, env: {}, timeout: 60_000,
   });
@@ -151,5 +192,15 @@ describe("s3 blob capability on the reference object storage", () => {
     expect(await runStep("refusal")).toEqual({
       anonymousOk: false, anonymousLeaks: false, wrongSecretStatus: 403, intruderExists: false,
     });
+  }, 120_000);
+
+  it("reconciles a source-owned record and resumes S3 to an inactive private filesystem generation", async (ctx) => {
+    requireStorage(ctx, infrastructureAvailable, ready);
+    const result = await runStep("transfer");
+    expect(result).toMatchObject({
+      resume: { copied: 0, replayed: 1, verifiedKeys: ["transfer/retained.txt"] },
+      readback: "retained source bytes", referenceSnapshotId: "source-owned-record", anonymousLeaks: false,
+    });
+    expect([400, 401, 403, 404]).toContain(result.anonymousStatus);
   }, 120_000);
 });
