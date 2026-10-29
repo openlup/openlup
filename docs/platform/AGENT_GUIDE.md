@@ -26,6 +26,14 @@ Read these documents before changing a related boundary:
 Treat code, tests, and machine-readable contracts as the implementation truth. Keep documentation aligned when a public boundary changes.
 Do not copy a deployment-specific assumption into a platform contract.
 
+## Choose evidence for the task
+
+- If a path, exported symbol or error is known, open it or run scoped `rg`, then read its implementation and nearest tests. Stop searching when the affected contract and failure boundary are clear.
+- If the owner is unclear, use the [source map](SOURCE_MAP.md) and `config/doc-routing.json` to find owner pages and code paths. Search repository documentation for the missing concept, then open cited pages. Check each page's stated maturity and limits against its owner code; a hit is a lead, not proof that every constraint was found.
+- For changes across modules, migrations or architecture, trace each owner's code, callers, invariants and tests. Check ordered migrations and replay or compatibility boundaries when relevant.
+- In an adopter application, follow its own instructions and use `openlup-context` from the **installed** `@openlup/*` version. Use its opt-in `--package-code` scan only when installed package source is needed. Do not treat this checkout's documentation as the contract of a different installed version.
+- Search old plans or changelog history explicitly when investigating a past decision. Check any historical claim against current owners and code. Translate a freeform Polish task into concise repository terms if lexical search misses it; an empty result never proves that an API or seam is absent.
+
 ## Architecture rules
 
 - Before planning a module or npm name, follow the canonical [package placement decision](ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).

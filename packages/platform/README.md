@@ -894,6 +894,11 @@ The package carries no deployment identity. The application passes it every valu
 
 `createBundleComposer` binds the blob slot by default; pass `createBundleComposer({ createSupabaseClient })` to enable its Supabase Storage binding when the data-gateway settings and bucket are present. Without that client Supabase Storage stays unbound. A custom `blob` binder still overrides the default. The HTTP, scheduler, data, migrations, analytics and transactional slots stay `null` until the application supplies their binders; `createDataBindings` builds the data binder from the application's database client factory.
 
+For payment and fulfillment provider adapters, the host supplies clients and
+policy and composes only declared port capabilities and refusals. Read the
+installed `./payments/contracts` or `./fulfillment/contracts` declarations and
+their maturity before binding; an exported adapter does not activate a provider.
+
 ## Job-run ledger SQL
 
 `JOB_RUN_LEDGER_MIGRATIONS` lists the two files a fresh installation applies, in order, through its own migration chain:
@@ -1003,6 +1008,9 @@ in both resolution modes with all three optional peers absent.
 ## Identity import candidate
 
 `./identity` provides server identity services; `./identity/contracts` supplies browser-shareable contracts.
+This is a development-preview import candidate, not an activated adopter contract.
+Installed exports alone do not mount routes or establish host readiness; the
+application must verify its selected identity composition and capabilities.
 See the [identity recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#identity-import-candidate) for composition, migrations and operator invitations.
 
 ## Personal data

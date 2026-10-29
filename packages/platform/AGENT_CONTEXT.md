@@ -6,62 +6,7 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"compose-host","source":"README.md","heading":"What the application supplies","startLine":881,"endLine":896,"sha256":"deb4047f3ba076d281605ebb20f8947b59c975d80077632b8825ec5bf3eaab67"},{"id":"install-ledger","source":"README.md","heading":"Job-run ledger SQL","startLine":897,"endLine":905,"sha256":"d002ddfa72249b6e925c0ceefa22b128b491e47c69b640681203c86b22ebf050"},{"id":"select-peers","source":"README.md","heading":"Optional peers","startLine":906,"endLine":920,"sha256":"7745abe92140f29cab75998c89c1102d24bcd17f4ff5ef7e9c3ae27d73371847"},{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":512,"endLine":541,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"}] -->
-
-## compose-host: Supply application host bindings
-
-<!-- openlup-context {"id":"compose-host","source":"README.md","heading":"What the application supplies","startLine":881,"endLine":896,"sha256":"deb4047f3ba076d281605ebb20f8947b59c975d80077632b8825ec5bf3eaab67"} -->
-## What the application supplies
-
-The package carries no deployment identity. The application passes it every value that names a deployment or a domain:
-
-- the BFF route table, the not-found response, the request preflight and the per-request hook;
-- how a request reference is chosen, and the health payload with its strict contract;
-- the security header policy, including the content security policy, the production hosts and the robots.txt body;
-- its own entrypoints, by exact path or by path rule;
-- the job configuration file or object, the direct job bindings and the host admission check;
-- the migration catalogue, the migration lock name and the object-inventory projector;
-- the release correlation, default failure reason and read-failure messages that the job-run ledgers record;
-- the environment, passed explicitly, and the provider clients it needs (the Supabase `createClient`, the `@vercel/blob` module, optionally its own PostgreSQL gateway factory), so the package itself reads no environment variable (an injected SDK may read its own credentials; the static and migration roots default to the working directory). Its optional PostgreSQL peers are `pg` at runtime and `@types/pg` for declarations; `@aws-sdk/client-s3` is loaded lazily by the default S3 client. Blob declarations use structural types and need no S3 SDK;
-- an optional scheduler profile for the Node host: a fenced projection of the declared jobs with its own bindings and validation hooks.
-
-`createBundleComposer` binds the blob slot by default; pass `createBundleComposer({ createSupabaseClient })` to enable its Supabase Storage binding when the data-gateway settings and bucket are present. Without that client Supabase Storage stays unbound. A custom `blob` binder still overrides the default. The HTTP, scheduler, data, migrations, analytics and transactional slots stay `null` until the application supplies their binders; `createDataBindings` builds the data binder from the application's database client factory.
-
-<!-- /openlup-context -->
-
-## install-ledger: Install the job ledger
-
-<!-- openlup-context {"id":"install-ledger","source":"README.md","heading":"Job-run ledger SQL","startLine":897,"endLine":905,"sha256":"d002ddfa72249b6e925c0ceefa22b128b491e47c69b640681203c86b22ebf050"} -->
-## Job-run ledger SQL
-
-`JOB_RUN_LEDGER_MIGRATIONS` lists the two files a fresh installation applies, in order, through its own migration chain:
-
-1. [`sql/20260809150000_job_run_ledger.sql`](sql/20260809150000_job_run_ledger.sql): the job controls, runs, and the v2 claim and finish; its bytes and migration identity equal the reference application's platform migration of that name.
-2. [`sql/20260809150001_job_run_ledger_v3.sql`](sql/20260809150001_job_run_ledger_v3.sql): the v3 claim and finish the PostgreSQL ledger calls, as `CREATE OR REPLACE`, with bodies byte-equal to the reference chain's definitions.
-
-The package SQL and the reference application's platform migration chain are alternative install paths, never applied together: the reference chain defines all four job-control functions itself, with plain `CREATE FUNCTION`, so it fails on a database where the package SQL already created them. The package file `20260809150001_job_run_ledger_v3` has a migration identity no reference migration uses. Importing the package never applies SQL.
-
-<!-- /openlup-context -->
-
-## select-peers: Select optional provider peers
-
-<!-- openlup-context {"id":"select-peers","source":"README.md","heading":"Optional peers","startLine":906,"endLine":920,"sha256":"7745abe92140f29cab75998c89c1102d24bcd17f4ff5ef7e9c3ae27d73371847"} -->
-## Optional peers
-
-`pg`, `@types/pg` and `@aws-sdk/client-s3` are optional peers. Install `pg` and
-`@types/pg` alongside this package when selecting PostgreSQL adapters; install
-`@aws-sdk/client-s3` when selecting S3 blob storage. Loading an unselected adapter
-never installs or initializes its SDK. The PostgreSQL scheduler lock also loads
-`pg` only on its first operation.
-
-A selected capability whose SDK is absent rejects its first loading operation
-with `OPENLUP_E_PEER_MISSING: <package> is required by <capability>; install it
-alongside @openlup/platform`. The original module-resolution error is the cause.
-A broken SDK, a missing transitive dependency or a provider error propagates
-unchanged. Blob `exists` retains its boolean contract and returns false on a
-failed HEAD; use an upload or list operation to observe an S3 loading refusal.
-
-<!-- /openlup-context -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":512,"endLine":541,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":21,"sha256":"378f7a9d94b35b6a66030b967c58c8496fa555177b2b4159ce82d537665b9e52"},{"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":130,"endLine":152,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":273,"endLine":285,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
@@ -95,5 +40,100 @@ the protected case and schedule unchanged.
 
 These are source and persistence contracts, not evidence that any hosted
 deployment, provider adapter, or public release has activated the rail.
+
+<!-- /openlup-context -->
+
+## migration-data-ownership: Keep adopter data in its owned schema
+
+<!-- openlup-context {"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":21,"sha256":"378f7a9d94b35b6a66030b967c58c8496fa555177b2b4159ce82d537665b9e52"} -->
+## Data ownership
+
+The platform owns its schema, migration history, and documented data contracts.
+An adopter owns tables and migrations for its own extensions in the `app` schema.
+The platform never writes there; the adopter owns extension compatibility and
+migration ordering. Extension data must live beside platform data through explicit foreign keys, ports, or events rather
+than by editing platform rows with undocumented assumptions.
+
+The published platform shape must expose a reproducible baseline and ordered
+forward migrations. Development convenience at process startup is not a
+coordination mechanism for a multi-instance deployment.
+
+The preview source release deliberately ships an unbound database-type seam at
+`src/integrations/supabase/types.ts`; replace it with adopter-generated types
+before enabling database adapters. It is not evidence of schema compatibility.
+
+<!-- /openlup-context -->
+
+## migration-forward-path: Follow the ordered additive migration path
+
+<!-- openlup-context {"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":130,"endLine":152,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
+## Additive forward release path
+
+A development preview may append expand-only platform forwards to either chain:
+
+- Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
+  with `config/platform-migration-manifest.json` preserving the baseline and all
+  previous forward rows as an exact prefix and binding the added files by SHA-256.
+- Managed Supabase: `supabase/migrations/<14-digit-version>_<name>.sql` after
+  the frozen `00000000000000_platform_schema_baseline.sql` baseline.
+
+Each new version must exceed every preceding version in its own chain. Existing
+migration bytes and modes are immutable. The schema-5 release inventory binds
+forward bytes; the source contract binds the extended portable manifest digest.
+Database types, policy registry and bootstrap SQL remain frozen for this path.
+Required pull-request and merge-group self-check compares the exact event base
+with the candidate commit for this append-only migration rule. The preview
+producer separately compares the selected release commit with the prior preview;
+the earlier check does not replace that release-time comparison.
+The self-check validates the manifest's shape and history, while the portable
+runner checks `objectInventorySha256` against its live selected catalogue after
+applying the chain. That runtime check remains required for database acceptance.
+Both gates refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL).
+
+<!-- /openlup-context -->
+
+## checkout-payment-outbox-idempotency: Preserve repeatable checkout effects
+
+<!-- openlup-context {"id":"checkout-payment-outbox-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
+## Idempotency
+The native bundle contention witness characterizes the existing global event
+key, without adding payload/entity binding. Two absent-key transactions on
+disjoint bundles can block at the unique key index: after the first commits,
+the second raises `23505` and its attempted composition is rolled back. If the
+first rolls back, the second can commit. A later same-key call recognizes the
+key before validating changed payload, entity or routine. This is incumbent
+recognition, not a stronger exactly-once or payload-fingerprint guarantee.
+Catalog draft receipts retain their separate canonical-command fingerprint and
+revision behavior; moving their adapter does not change either protocol.
+
+
+Every externally repeatable write has an idempotency scope, a stable operation
+identity, and a request fingerprint. Replaying the same logical request returns
+the established result without a second durable effect. Reusing a key for a
+different fingerprint is a conflict, not permission to overwrite history.
+
+Idempotency keys are opaque values with documented derivation and scope. An
+operation, a provider attempt, a customer journey, and an inbound event may
+require different keys; do not collapse them into one user-controlled value.
+Persist the ledger before reporting success, and make concurrent repeats resolve
+to one canonical effect.
+
+<!-- /openlup-context -->
+
+## host-provider-adapter-capability-refusal: Compose declared provider capabilities through ports
+
+<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":273,"endLine":285,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"} -->
+## Provider adapters
+
+Domain code depends on a port, not on a provider SDK. An adapter translates the
+provider protocol, verification evidence, and failure facts into the port's
+neutral contract. It must carry the platform's identity fields without changing
+their meaning and expose declared capabilities rather than relying on provider
+name checks in domain policy.
+
+An adapter needs conformance coverage for success, refusal, malformed or missing
+evidence, duplicate delivery, out-of-order delivery, and retry/replay. Reference
+fixtures demonstrate these behaviours without live provider access; they do not
+prove a provider integration, release, or support tier.
 
 <!-- /openlup-context -->
