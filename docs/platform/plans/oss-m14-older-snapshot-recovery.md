@@ -1,10 +1,10 @@
 # M14 older-snapshot recovery
 
-Status: development-preview local parcel, working proof passed and maintainer
-read accepted; committed native review and canonical verification pending. Code
-predecessor and stacked review base: `613091a91b0029d34846f1b922e42fed30f99d3e`.
-Current instruction revision: `b5451b24c2dbb753f54965226d9c40972d70f356` (main); tracked instructions are read
-separately from the stacked code base.
+Status: development-preview local parcel, working proof and prior native review
+passed; main integration review and final verification pending. The predecessor
+`613091a91b0029d34846f1b922e42fed30f99d3e` landed on main. The integrated
+review base is main parent `9195f281a741ca83c7974dd956a33a41d32cf8a4`;
+the stack pin is removed. Current instruction revision is that same main head.
 
 ## Outcome and authority
 
@@ -19,9 +19,9 @@ fenced; readiness explicitly permits that refusal while ordinary work resumes.
 The active supervisor is the single writer in the assigned task worktree.
 Authorized actions are local implementation, DCO after the required maintainer
 read, two independent fresh FULL reviews, verification and delegated submission
-and merge after all gates. Ready submission waits for the stacked predecessor
-to land and the current queue window to close. Merge an exact predecessor
-repair, never rebase; after predecessor landing merge main and remove the pin.
+and merge after all gates. Draft PR #451 is open against main; readiness and
+queue admission wait for the current queue window to close. Main integration
+uses a signed merge, never a rebase.
 Hosted recovery, release, settings, credentials and production are excluded.
 The managed retained-history sidecar is owned by the separate managed journey:
 if it lands before delivery, integrate and reapply its privacy obligations;
@@ -90,8 +90,8 @@ once and replayed without another effect. New execution refused before recovery;
 the exact terminally retired old executor could not restart after transfer.
 Each refusal has null RTO. Cleanup failures: zero.
 
-Fresh main still lacks the stacked predecessor and the managed retained-history
-continuation. This proof selects the native graph; managed-sidecar recovery
+At the first proof, main lacked the stacked predecessor and the managed retained-
+history continuation. This proof selects the native graph; managed-sidecar recovery
 remains covered by that continuation's own restore/redaction proof unless it
 lands before this parcel's delivery, when integration and replay are required.
 No ready PR, queue action, hosted target or release has been attempted.
@@ -144,4 +144,20 @@ RPO endpoint, while the executable uses the later induced failure. Cycle 1
 corrects that endpoint and clarifies that conservative RTO starts at planned
 retirement. One optional incomplete-run diagnostic label remains outside this
 successful fixture's acceptance. No code, fixture or control changed in the
-repair; two fresh full reviews of the repaired tree remain required.
+repair; two fresh full reviews passed the repaired tree with both material
+documentation findings closed. Canonical `verify-local --pgtap` then passed
+14/14 phases on that clean tree, including 2,178 root test files / 22,524 tests
+and 226 pgTAP files / 5,199 assertions. Draft PR #451 used the stacked head.
+
+After the predecessor landed, native receipt preflight refused source-review
+carry-over, so main integration was required. The automatic merge had no
+conflicts or manual resolution. Its parents are parcel head
+`ff0208f2043cd569af2b372c160c050835d29d9f` and main
+`9195f281a741ca83c7974dd956a33a41d32cf8a4`; its pre-note automatic tree
+was `8df5e960af40002014185f2a7981dbafa6f04c98`. The stable parcel patch-id,
+excluding only this task record, was
+`499a6af9ac66dd7abac566116080568b5614159a` against both the former stack
+base and the new main parent. This task-record note is the only extra merge
+edit. Integration review and canonical verification must use the unpinned main
+fork point. The managed retained-history continuation remains absent from main;
+its own restore/redaction proof retains that boundary until it lands.

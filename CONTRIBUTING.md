@@ -165,6 +165,15 @@ Changes to its executable surface, publication controls or
 package gate budgets require the applicable maintainer read before sign-off;
 passing the inventory check does not establish that read or authorize release.
 
+The opt-in [recipe conformance runner](tests/postgres/runM14RecipeConformance.mjs)
+uses the existing restricted-install and released-schema proofs with three
+explicitly disposable external PG16 targets. Its private-file/target/refusal
+regressions run with `npm test -- tests/postgres/m14RecipeConformance.test.ts`.
+The [runtime owner](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+defines input, TLS, mutation and pending-receipt limits. Its execution entry is
+part of the ordinary closed public command inventory; it adds no default hosted
+or destructive CI target.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected

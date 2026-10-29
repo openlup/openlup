@@ -143,6 +143,23 @@ describe("hidden address canon BFF route dataAvailable hint", () => {
     });
   });
 
+  it("runs the managed availability probe before downstream method refusal", async () => {
+    withServiceEnv();
+    mockedCreateGateway.mockReturnValue({ asService: gatewayAsService } as never);
+    const transcript: string[] = [];
+    mockedCreatePort.mockReturnValue(stubPort(async () => { transcript.push("probe"); return true; }));
+    const factory = () => async (_req: VercelRequest, response: VercelResponse) => {
+      transcript.push("handler");
+      response.status(405).json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } });
+    };
+    const res = createResponse();
+    const jsonSpy = vi.mocked(res.json);
+    await createHiddenAddressCanonRoute(factory)(request("POST"), res);
+    expect(transcript).toEqual(["probe", "handler"]);
+    expect(res.status).toHaveBeenCalledWith(405);
+    expect(jsonSpy).toHaveBeenCalledWith({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } });
+  });
+
   it("leaves error envelopes from the downstream handler untouched", async () => {
     withServiceEnv();
     mockedCreateGateway.mockReturnValue({ asService: gatewayAsService } as never);

@@ -1,6 +1,6 @@
 # M14 connected catch-up journey
 
-Status: development-preview parcel 8D-1, review repair committed. Code base:
+Status: development-preview parcel 8D-1, main integration review pending. Code base:
 `c31cc19bfd1a1108bf14535337fbca167a82f835`. Fresh policy revision:
 `d1800393caad3b101173f8c100625d1c974c451f`; the relevant instruction
 files have no delta from that code base. Main integration followed a native
@@ -164,3 +164,17 @@ The repair was signed as `6e9e2c32ab29bb97d94da9dedaf603214b019120`;
 two new FULL reviews must close `DOC-1` on the resulting candidate before
 canonical proof. The managed continuation waits for the lead's explicit
 predecessor-landing notice and its separate PR.
+
+At head `613091a91b0029d34846f1b922e42fed30f99d3e`, cycle 1 received two
+new FULL PASS reports, closed `DOC-1`, and passed the 14-phase local
+`verify-local --pgtap` gate in 746.7 seconds. PR #447's required source checks
+passed and its native receipt was posted. After main advanced, receipt preflight
+refused source-review carry-over. The forced CD-M14-30 merge of parents
+`613091a91b0029d34846f1b922e42fed30f99d3e` and
+`7e8a80f313cb58d39722227121e913754a02dfbf` had no conflict or manual
+resolution; its pre-note tree is `9d8a62c857237ec07f836f21069b192937c21338`.
+Excluding only this task record, the parcel's stable patch ID against the old
+base is `281ebc4322f29839bfbc8143ae5ef418278369a5` and against new main is
+`281ebc4322f29839bfbc8143ae5ef418278369a5`. No other parcel edit was
+made. The accepted read remains applicable; fresh integration review and
+verification must bind the merged candidate before a new receipt or queue.
