@@ -68,6 +68,16 @@
       "anchor": "#ownership"
     },
     {
+      "id": "agent-context",
+      "when": "Generated offline adopter context, source spans and freshness",
+      "paths": [
+        "scripts/agent-context/**",
+        "packages/*/AGENT_CONTEXT.md"
+      ],
+      "doc": "docs/platform/DOCUMENTATION.md",
+      "anchor": "#ownership"
+    },
+    {
       "id": "browser",
       "when": "Browser components, routes, clients and application composition",
       "paths": [
@@ -197,6 +207,16 @@
       ],
       "doc": "packages/core/README.md",
       "anchor": ""
+    },
+    {
+      "id": "core-agent-context",
+      "when": "Installed offline agent context lookup and its command launcher",
+      "paths": [
+        "packages/core/src/agent-context-cli.ts",
+        "packages/core/src/openlup-context.js"
+      ],
+      "doc": "packages/core/README.md",
+      "anchor": "#agent-context-lookup"
     },
     {
       "id": "core-readiness",

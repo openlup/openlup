@@ -94,7 +94,12 @@ delta; policy and tracked inventory now pass. The maintainer delegate accepted
 that exact-tree delta before DCO, recorded in
 `.context/scratch/oss-m14-restricted-connected-restore/maintainer-read-20261029-2.md`.
 It was committed as `a0b23ca21bf58911ca64b0b1de6ba0839d86f9b6`.
-Native review, canonical verification and submission follow.
+Review preparation observed a mainline move to `6e7adb51e742a132b879a94ef07e5cfed60f694c`.
+The native preflight refused carry-over because main changed the publication
+catalogue and publication machinery. A mechanical merge of that mainline tree
+has no conflict and preserves the two 8C catalogue rows and all 8C source
+changes. It awaits an exact-tree maintainer read before DCO; native review,
+canonical verification and submission follow the committed integration.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. A durable early snapshot and a reversible settings

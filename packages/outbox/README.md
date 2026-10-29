@@ -11,6 +11,16 @@ than `0.29.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
 Size comparison uses the published `0.30.0` tarball; preparation grants no
 publication or installation proof.
 
+## Installed agent context
+
+The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical outbox
+guidance. Its metadata records source paths, line ranges and excerpt digests.
+Read the version from the installed `package.json` and check the cited source
+before relying on an excerpt. Core's installed
+`openlup-context` command discovers this local snapshot and returns source
+citations offline. The snapshot adds no dependency, worker or runtime activation,
+and grants no application policy, publication or execution authority.
+
 ## Package Surface Maturity
 
 | Export | Role | Maturity |
