@@ -131,7 +131,9 @@
       "paths": [
         "db/**",
         "supabase/**",
-        "src/integrations/**"
+        "src/integrations/**",
+        "tests/postgres/m14ReleasedSchemaUpgrade.test.ts",
+        "tests/postgres/m14ReleasedSchemaUpgradeChild.ts"
       ],
       "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
       "anchor": "#compatibility-lifecycle"

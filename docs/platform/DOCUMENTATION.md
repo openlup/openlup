@@ -90,6 +90,11 @@ approval inputs and five additional inert restricted-bootstrap fixtures retain t
 The package entry and contributor witness descriptions link to that boundary;
 publication inventory includes the control witnesses and inert fixtures without
 admitting the five separately approved replacements to the canonical installation catalogue.
+The released legacy upgrade witness and its child process route to the same
+[data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle). Its published
+predecessor pin, real backfill and code-rollback limit belong there; contributor
+guidance owns the process-kill test invocation and the child's execution-path
+registration. This adds no qualified-v2 upgrade lineage or migration SQL.
 
 Application lifecycle source, owner-local witnesses and its API report route
 to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
