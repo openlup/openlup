@@ -382,6 +382,29 @@ Self-retro: fixed technical constants preserve behavior; neutrality does not
 justify changing them. Dual-home mappings preserve national-rule witnesses as
 well as neutral engine coverage for the next delegation step.
 
+## API report follow-up (heavy-stage hold)
+
+The coordinator authorized platform API update/check and publication policy checks
+for this follow-up only; the wider heavy-stage hold remains active. Policy was
+freshly fetched at `6828103f4e8d56ca18808cfc27f606b82ea4ddba`, unchanged from the
+repair pin. Existing core declarations satisfied the prerequisite, so no core
+rebuild was needed. Platform api:update rebuilt its declarations and removed one
+module-overview comment from market-packs.api.md: after the fixed lookup constant
+was restored, that comment precedes a private declaration and is legitimately
+absent from the public API report. The exported error class retains its own
+precise documentation. No source, signature or runtime behavior changes here;
+exponent code remains identical to the app original apart from comments.
+There is no root api:check script; the platform workspace owns this check.
+
+Follow-up evidence: platform api:update and api:check PASS; neutrality PASS
+with zero increases; oss:published-tree --policy PASS with seven documentation
+obligations and zero unanswered. No navigation regeneration was requested.
+The source-release binding snapshot remains release-preparation-owned, as
+reported by the existing checker; no publication control is changed.
+Self-retro: declaration comment attachment can change a generated API report
+without changing signatures; regenerate it after restoring private declarations.
+No full/draft verify, broad tests, pgTAP, pack builds or lint is run.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness
