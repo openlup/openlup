@@ -162,6 +162,13 @@ The package README is the short import entry point; the public M14 module record
 retains programme scope and lane records retain candidate evidence. Navigation
 adds no activation or hosted-provider claim.
 
+Risk package sources, API reports, sparse SQL projection and neutral witnesses
+route to the [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts).
+The package README owns its three experimental entry summaries; migration
+guidance owns full-catalogue installation and unchanged SQL identities. The
+publication catalogue inventories these files; generated navigation establishes
+no activation, managed parity, privacy reconciliation or installation claim.
+
 
 The plain Vitest worker-policy witness is a public tooling source in the
 publication catalogue; its embedded child CLI is also a declared execution

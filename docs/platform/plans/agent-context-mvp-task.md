@@ -124,6 +124,16 @@ JavaScript and deterministic fake ports; it does not prove PostgreSQL fencing,
 live provider effects or deployment readiness. Trial reports and verifier are
 under `/private/tmp/openlup-context-complex-20261029/`.
 
+Before native review, refreshed `origin/main` advanced to `6943ac89` with the
+M15 risk subpaths. Native merge preflight refused the earlier candidate. The
+required merge retained both new risk exports and the agent corpus inclusion;
+the sole textual conflict was Platform's aggregate `maxFiles`. The integrated
+package dry run measured 2669 files, below main's 2712 limit, so the resolved
+tree keeps that existing budget without an increase. The earlier one-file bump
+was necessary against the old base but is unnecessary on current main.
+Integrated package and policy checks are required before counting review or
+final proof.
+
 Research and independent Astra counter-review support choosing retrieval by
 the evidence needed, rather than imposing one method on every task.
 [Agent Retrieval Bench](https://arxiv.org/abs/2607.24882) reports different

@@ -1815,6 +1815,17 @@ observation host binding through its actual restricted runtime login. Setup
 prepares an already-submitted request; recovery read/ACK, observation/status,
 replay and conflicting-ID refusal use R. See [Compatibility lifecycle](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle). No new grant, install shape or provider qualification is added.
 
+Risk's unchanged import uses `packages/platform/test/risk/` for schemas,
+assessor, adapter and browser boundaries, and
+`tests/postgres/riskControl.conformance.test.ts` for seven scenarios on each
+existing SQL rail. The fixture applies the hash-checked native prefix or frozen
+managed baseline, exercises separate non-superuser runtime/browser sessions,
+and runs the existing `supabase/tests/risk_blocklist_test.sql` pgTAP assertions.
+Its native grants are fixture composition only. The shared cold-consumer harness
+executes packed risk assessment and missing-payment refusal without optional
+runtime peers; this preliminary trial does not establish adopter acceptance.
+
+
 Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Start with the affected behavior, then complete [required and raw checks](#required-and-raw-checks). Focused tests do not replace required package, lint, policy or verification gates.
 
 #### Run and inspect
