@@ -24,8 +24,15 @@ positions 8–12; no `qa_` SQL or schema-3 plan enters the active migration
 catalogue. The nine owner-executed definitions shared with the qualified
 owner-path forward carry its pinned name-resolution attributes in these bytes;
 the two retained-import definers already use the same pinned search path.
-The restricted generation reuses the issued completion tail unchanged and
-selects its own five replacements, without the qualified owner-path forward. See the
+An actual PostgreSQL 16 parse-and-apply attempt found a syntax error in the
+approved actor bytes. Those twelve approval rows and their fixtures stay
+unchanged. Four new inert `qb_` fixtures parenthesize the CASE sums in the
+actor, acquisition, runtime and import units. The reader accepts their paths
+only as an atomic positions 13–16 append. They still require a separate
+exact-byte approval with a two-mode disposable parse-and-apply witness; they
+are not active installation files in this checkpoint. The restricted generation
+will select the `qa_` baseline and four `qb_` replacements, then reuse the
+issued completion tail without the qualified owner-path forward. See the
 [restricted-bootstrap task](../../../../../../docs/platform/plans/oss-m14-restricted-bootstrap.md).
 
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
