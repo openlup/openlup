@@ -524,6 +524,65 @@ ready transition, verification or arming.
 Self-retro: integration must preserve scoped documentation ownership as well as
 module inventories; regenerating output exposes missing owner selectors early.
 
+## Authorized delivery and CD-M16-16 cap allocation
+
+The owner's direct 2026-10-29 continuation installs this task's active Codex
+supervisor as the R1 author/delivery supervisor under the M16 PROC-27 module
+merge grant, after M15 landing. The coordinator is the owner's delegate under
+master §1.0; CD-M16-1 through 16 and the recorded GO bind this continuation.
+The grant now includes DCO commit/push, two fresh native reviews, official local
+verification, PR body/readiness, receipt posting, arming and the bounded direct
+enqueue fallback. Stop at actual queue confirmation or merge. This supersedes
+the earlier draft-only stops; no release, activation, adopter change or unrelated
+scope is added. This same thread is the sole implementation/supervisor context;
+its CODEX_THREAD_ID is used by native prepare and retained in ignored evidence.
+No reviewer context has implemented or supervised this candidate. Initial native
+review has not yet been prepared; no native cycles or reviewer contexts have
+been consumed in this task. Preserve any subsequently discovered session history.
+
+Current fetched policy revision is
+`8046797ace978e148556c30767d8ed231a0dd6e3`, separately from the candidate
+identity; R1 is independent with OPENLUP_STACK_BASE unset. The assigned arming
+runbook is read in full. Its snapshot predates #433: current rules additionally
+require each actual native report's documentation assessment. The live native
+scripts match main and implement that requirement. Pinned Node 24.21.0,
+npm 11.19.0, Gitleaks 8.30.1, Docker and Supabase CLI 2.98.2 are available.
+No openlup-dev installation is found, so the public native verify-local route
+applies. Task evidence after candidate freeze stays in ignored scratch or PR
+records; no tracked after-review bookkeeping edit is planned.
+
+CD-M16-16 records the coordinator's maintainer/budget read and authorizes only
+platform file caps: total 2,712 → 2,774 and code 2,656 → 2,718. Derivation:
+ceil(2,719 × 1.02) = 2,774; ceil(2,664 × 1.02) = 2,718. Byte caps, docs caps,
+browser budgets (including identity contracts 20) and all other gates stay
+unchanged. The exact supplied reason is:
+
+M16 company-identity + market-packs subpaths; measured full M16 stack on M15 main (integration f05668d6) at 2,719 total / 2,664 code files; ×1.02 rounded up (CD-M15-6a rule, CD-M16-16)
+
+The current JSON and M15's original cap commit have no cap-reason member; retain
+the derivation as pack.capReason metadata alongside these caps and in this task
+record. No parser/scanner/control is changed. The committed-package checker
+requires clean package inputs, so run the focused real-pack witness and other
+working-tree checks, make the DCO cap commit, then run packages:check before
+pushing. Working-tree cap checks: package-size-policy 48/48 PASS, including
+the real platform pack; policy/docs-update PASS (10 obligations, zero unanswered);
+neutrality PASS (zero increases); lint PASS (zero errors, 33 existing warnings).
+All required checks and final official verification still apply.
+
+The smallest adequate alternative considered was keeping market defaults in the
+package behind a neutrality allowance. The coordinator refused that allowance;
+with none, the injected rules/fallback seam is the smallest neutral route.
+Review criteria retain unchanged engine/cache/money order and effects, explicit
+policy inputs, reference callers unchanged, full C1 mapping with no R1 proof gap,
+zero neutrality increases, identity browser budget 20 and the approved file caps.
+Policy extraction, caller swap, R2/R3 pack homes and core widening stay excluded.
+Three native repair cycles are available; do not use continue. After two
+nonconverging evaluations, follow the existing regroup rule before further work.
+
+Self-retro: cap approval follows measured full-stack evidence; reserve the final
+tracked authority/criteria packet before native review so bookkeeping cannot
+invalidate the verified tree. Later execution observations remain in scratch.
+
 ## First-candidate evidence (387ab436; retained history)
 
 Implemented four experimental subpaths, API snapshots, required package witness
