@@ -1,6 +1,6 @@
 # M14 connected catch-up journey
 
-Status: development-preview parcel 8D-1, committed local candidate. Code base:
+Status: development-preview parcel 8D-1, review repair awaiting exact-tree read. Code base:
 `c31cc19bfd1a1108bf14535337fbca167a82f835`. Fresh policy revision:
 `d1800393caad3b101173f8c100625d1c974c451f`; the relevant instruction
 files have no delta from that code base. Main integration followed a native
@@ -149,5 +149,12 @@ the stable parcel patch ID is identical against old and new bases:
 `9c333a8c687db77d00f61e7d87c76f7330f160f9`. The only added parcel edit
 is this status/timing note. CD-M14-30 and CD-M14-31 therefore keep the accepted
 read applicable; the integrated candidate still needs two new FULL reviews and
-canonical proof before submission. The managed continuation waits for the
+canonical proof before submission. The first integrated native evaluation at
+cycle 0 recorded one independent PASS and one FAIL with open material finding
+`DOC-1`: the canonical docs described migration-owner or closed bootstrap
+administration at final capture, while catch-up opens a new bootstrap-principal
+session configured read-only by default. The scoped prose repair states the
+actual principal, session lifecycle and local qualification limit. The source
+and existing journey proof are unchanged; the user requires another exact-tree
+read before DCO of this repair and renewed FULL reviews. The managed continuation waits for the
 lead's explicit predecessor-landing notice and its separate PR.

@@ -2377,7 +2377,10 @@ before egress exclusion; a separate admitted partial body remains pending and
 is copied exactly. The original H1/H2 crash-boundary mode remains unchanged.
 Restricted M does not gain backend-inspection privileges: the already-held
 fixture bootstrap administrator observes and retires the exact source backend
-identities, then closes before read-only recapture.
+identities, then closes that pool. Final recapture opens a new bootstrap-principal
+session configured read-only by default for capture/census and closes it before
+target publication; this local superuser step does not qualify a restricted
+source-capture login.
 Interrupted snapshot export restarts its atomic capture;
 interrupted database import rolls back and retries the same packet, with exact
 replay. After the declared H1/H2 process/backend retirement and coordinator

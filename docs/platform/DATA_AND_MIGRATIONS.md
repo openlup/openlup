@@ -56,8 +56,13 @@ and changed retained rows refuse rather than becoming business status updates.
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
 takes its final connected73-table graph and application's complete private
 `objects/tmp` capture only after its finite source writers and observed server
-backends retire. Its migration-owner capture is read-only; actual source and
-target domain commands use the qualified restricted runtime. The existing
+backends retire. The default crash-boundary mode captures with a read-only
+migration-owner session. In catch-up mode the fixture closes its bootstrap
+administrator pool after retiring source backends, then opens a new
+bootstrap-principal session configured read-only by default for the final
+capture/census and closes it afterward. This local superuser fixture step does
+not qualify a restricted source-capture login; actual source and target domain
+commands use the qualified restricted runtime. The existing
 canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
 uploads, partial bytes, cleanup obligations and leases without copying schema,
 roles, private installation-key payloads or migration history. Database and

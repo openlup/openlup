@@ -92,8 +92,11 @@ Target composition follows verified graph and complete private-root publication.
 The optional `--catch-up` mode drains admitted media I/O before egress exclusion
 and retains a separately admitted partial upload. Its restricted M obtains no
 extra backend-inspection grant: the existing fixture bootstrap administrator
-observes and retires exact source sessions, then closes before final read-only
-capture. The [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+observes and retires exact source sessions, then closes that pool. Final
+catch-up capture/census uses a new bootstrap-principal session configured
+read-only by default and closes it before target publication. Default mode
+instead uses its migration-owner capture session. The
+[transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 owns preliminary-generation refusal and the final DB/object/access/drain/effect
 barrier; it is a finite local journey, not an adopter-host fencing service.
 This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
