@@ -448,9 +448,10 @@ and five static-lane cases remain a registered follow-up, outside C2.
 
 ### Frozen R2 witness inventory
 
-The following 44 source blobs are pinned to merged R2 head `740c4e72`.
-Its only change from the original R2 witness inventory is the test-only cache
-reset in `referenceCompanyIdentityHandlers.test.ts`. New cases go in new files.
+The following 44 source blobs are pinned to merged R2 head `5de94694`.
+Since the original R2 witness inventory, the predecessor supplied the test-only
+cache reset and main/R1 updated the package-boundary, cold-consumer unit and
+PostgreSQL fixture witnesses. New R3 cases remain in new files.
 
 | File | Merged R2 blob |
 | --- | --- |
@@ -465,11 +466,11 @@ reset in `referenceCompanyIdentityHandlers.test.ts`. New cases go in new files.
 | `packages/platform/test/market-packs/marketDescriptor.test.ts` | `033084995b0dce4b3ad8dc69e4d0c4e61d587039` |
 | `packages/platform/test/market-packs/portFit.test.ts` | `c5c82da9ceb4c6c198c7048a67f4f0c3e9d69932` |
 | `packages/platform/test/market-packs/settlementProfile.test.ts` | `c8355d401ba8d356ef6f59a90370d12ab0c5596d` |
-| `packages/platform/test/packageBoundary.test.ts` | `a9f121689e05f42b9e2a217a889860c35d1c45ab` |
+| `packages/platform/test/packageBoundary.test.ts` | `c545dd247c8d61dba9b96a2b6c72853122f2ff64` |
 | `packages/platform/test/pricing/dbBackedCommerceQuotePort.test.ts` | `ff22493078edf0b2833fb74f8147a635527b885d` |
 | `packages/platform/test/shipping/addressConformance.test.ts` | `dd9bb27736f028a4bd97fae074b1c3dba7251191` |
 | `scripts/packages/market-pack-consumer-proof.ts` | `341ef6cecbdeddaf25e47b372a829a89c5deacf4` |
-| `scripts/packages/platform-cold-consumer.test.ts` | `a1b92f3560db2df217b1a5b85da152e614b7bbfd` |
+| `scripts/packages/platform-cold-consumer.test.ts` | `f9bb24551669d29905a13d066c991ce72fe546e0` |
 | `server/_lib/coreSchemaReuse.test.ts` | `c980671a27618030ee8827e47e64d4fd1702f3e8` |
 | `server/adapters/market-packs/marketRecipe.test.ts` | `a037ba9b9eb101da41698c3226edbc067d262b91` |
 | `server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts` | `1dfa4a525583d093ae08ab7320a493894b0520af` |
@@ -497,7 +498,7 @@ reset in `referenceCompanyIdentityHandlers.test.ts`. New cases go in new files.
 | `src/public-reference/subscription-main.test.tsx` | `3fb8d233bf5deb0efcbc4f779337b7dcf37659dc` |
 | `src/public-reference/subscriptionMessages.test.tsx` | `9143824ada4ee2d6c3b7abd2c1a4b15033e1a8ce` |
 | `tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts` | `aae9bbc7561be3b034ab4894e0b03a1c48281eee` |
-| `tests/postgres/marketDirectoryPreservation.test.ts` | `4c7974a8e36a628d13ef69c534f1e106cfedbaa9` |
+| `tests/postgres/marketDirectoryPreservation.test.ts` | `4b2baf418e185063f8352b35c1baec1d39e53f39` |
 
 ### R3 implementation and evidence
 
@@ -588,3 +589,27 @@ Five-project typecheck (zero consumer-side errors), lint, ast-grep, platform API
 publication policy (eight answered obligations), zero-increase neutrality,
 gitleaks and DCO pass. No PG-relevant path changed, so the prior real-PG 6/6
 proof was retained. Full draft verification remains held for the lead.
+
+### R3 main and allocated-budget integration
+
+R2 advanced to `5de946944f0d70b637384a9261890cb1a6c841ad` (tree
+`e364e5419d9c2030f34a4a0e81b6c24ddce25b70`), carrying landed main,
+CD-M16-16 caps and the PG fixture repair. Sign-off merge `02581c42` resolved
+three content conflicts as additive unions: the runtime guide retains M15 risk
+and R3 binding/BFF prose; this record retains the predecessor verbatim before
+R3; the cold consumer retains every predecessor risk case plus R3's invoice
+declaration/runtime proof. No semantic choice, rebase or other conflict. The
+lockfile did not move. Publication inventory, generated documentation and API
+report checks produced no output delta.
+
+All 44 R2 witness blobs match `5de94694`; the corrected quote witness remains
+byte-identical to `0a29474a`. Focused Vitest passed 46 files / 3,209 cases,
+and package-size-policy passed 48/48, each with two workers. Five-project
+typecheck has zero consumer-side errors; lint (zero errors, 33 existing
+warnings), ast-grep, platform API, publication inventory, neutrality (zero
+increases), gitleaks and DCO pass. The pack measures 2,719/2,774 total files,
+2,664/2,718 code files, 1,990,177/2,029,568 packed bytes and
+9,277,699/9,447,424 unpacked bytes; every size check passes. The repaired PG
+fixture passed 6/6 real-PostgreSQL cases after load admission at 5.58 with no
+other verify/vitest/pgTAP process. Full draft verification remains held until
+R2 lands.

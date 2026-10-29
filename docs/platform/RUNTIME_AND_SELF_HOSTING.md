@@ -348,6 +348,12 @@ dispatch through the unreleased `@openlup/platform` dispatcher, bound in
 `server/runtime/bffDispatch.ts` with this application's settlement bootstrap,
 admin preflight, and not-found envelope. Shared cron entrypoints
 use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
+Company lookup BFF composition still reads the existing mode and provider
+environment at its established construction points, then passes the selected
+ports to the package-backed domain facade. Hidden address routes still read the
+service environment, create the gateway, probe availability and invoke the
+handler in that order; they inject the reference schema bundle without changing
+route admission or success-only availability metadata.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
