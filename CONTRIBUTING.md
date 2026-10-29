@@ -194,6 +194,18 @@ not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_
 and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 own the separate control-before-installation boundary.
 
+The [released schema-upgrade witness](tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
+uses the same canonical runner with a published 77-unit legacy predecessor.
+Its [owned child](tests/postgres/m14ReleasedSchemaUpgradeChild.ts) is an exact
+public execution entry: one SIGKILL aborts the in-progress backfill transaction,
+and another lands between committed units. Run the focused PostgreSQL 16 case
+with `npm test -- tests/postgres/m14ReleasedSchemaUpgrade.test.ts`. A local
+`OPENLUP_M14_RELEASED_PAYMENTS` path to the published 0.23.0
+`dist/payments/index.js` additionally runs prior package code against the
+upgraded database; an unset path does not claim that code-rollback observation.
+The [data owner](docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+defines the applicable history and limits.
+
 The restricted-bootstrap reader initially accepted five fixed `qa_` identities
 and their exact approval now occupies positions 8–12. A disposable PostgreSQL
 install found that the approved actor SQL does not parse. The four corrected
