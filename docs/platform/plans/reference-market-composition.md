@@ -246,8 +246,9 @@ submission. No native or heavy verification was run under the retained hold.
 ## R3 reference delegation — fit and quote witness
 
 R3 is assigned to one writer on `claude/oss-m16-r3-market-delegation`, stacked
-on provisional R2 draft #434 at `51f01976639f775740a6e9e496debd74d7fd8a9a`
-(tree `f82ddc79fde3201de489d10b32320937cd0cbc79`), itself on R1 draft #431.
+on provisional R2 draft #434. It started at `51f01976639f775740a6e9e496debd74d7fd8a9a`
+and sign-off-merged R2's test-only `740c4e725d3443b4beece579628f60a2adf657a4`
+(tree `092dd1f002e397963dfbdc2113c3d4e5fa1316e3`), itself on R1 draft #431.
 Instruction freshness was checked at fetched `origin/main`
 `4ec36fdeb67115216dd422262660679d27ec5c18`, separately from the code base.
 CD-M16-1..13 authorize a stacked draft; native review, ready, receipt, merge,
@@ -316,10 +317,11 @@ and five static-lane cases remain a registered follow-up, outside C2.
 
 ### Frozen R2 witness inventory
 
-The following 44 source blobs were recorded at R2_HEAD and verified byte-identical
-before the R3 swap. New cases go in new files.
+The following 44 source blobs are pinned to merged R2 head `740c4e72`.
+Its only change from the original R2 witness inventory is the test-only cache
+reset in `referenceCompanyIdentityHandlers.test.ts`. New cases go in new files.
 
-| File | R2_HEAD blob |
+| File | Merged R2 blob |
 | --- | --- |
 | `packages/platform/test/company-identity/cacheFit.test.ts` | `97464d29a75bdd8855a707c5fbc439543c69c8e9` |
 | `packages/platform/test/company-identity/companyIdentityHandlers.test.ts` | `8d870fd30c21b37ea388659a254fcf5c173b3f98` |
@@ -339,7 +341,7 @@ before the R3 swap. New cases go in new files.
 | `scripts/packages/platform-cold-consumer.test.ts` | `a1b92f3560db2df217b1a5b85da152e614b7bbfd` |
 | `server/_lib/coreSchemaReuse.test.ts` | `c980671a27618030ee8827e47e64d4fd1702f3e8` |
 | `server/adapters/market-packs/marketRecipe.test.ts` | `a037ba9b9eb101da41698c3226edbc067d262b91` |
-| `server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts` | `b741067b061d99404b57b0f0f0a9651616a9acec` |
+| `server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts` | `1dfa4a525583d093ae08ab7320a493894b0520af` |
 | `server/adapters/market-packs/referenceCompanyIdentityProviders.test.ts` | `6cd218c1bac43fc614f17ab37b8c5b3b26df833b` |
 | `server/adapters/market-packs/referenceCompanyIdentityRules.test.ts` | `88c3b4bf6b2f3c2b92088719950e48f4eb4a7540` |
 | `server/adapters/supabase/address-canon/addressCanonLookup.test.ts` | `f97f460cfffff92ba35c39bf0790927fca76b4c0` |
@@ -379,10 +381,9 @@ the delegation swap. The API typecheck has zero unresolved edges and zero
 consumer-side errors against its zero ceiling.
 
 CD-M16-13 and the lead's subsequent disposition resolved the cache witness
-conflict. The package owns the sole cache. R2 will reset both caches between its
-two equivalence invocations, test-only, then the lead will sign-off-merge that
-new R2 head. Until then its `found` and `invalid_output` variants alone are
-accepted pending-predecessor failures. R3 never edits that witness.
+conflict. The package owns the sole cache. R2 added a test-only reset between
+the two equivalence invocations; the sign-off merge was conflict-free. R3 did
+not edit that witness, and all five variants now pass.
 
 The application facades now delegate service, handler, contract, money and
 address-schema behavior to the R1/R2 exports. Environment selection and invoice
@@ -411,11 +412,12 @@ exclusion/historical currency. The existing selected-object real-PG witness
 covers the directory predicate set; no public gap justified a new PG case.
 Managed PostgREST transport remains unchanged and unproven by public CI.
 
-All 44 frozen source blobs still match R2_HEAD. Focused Vitest over their test
-files (excluding real PG) and new/adjacent suites: 45 files, 3,028/3,030 cases
-passed; only the two predecessor-pending variants above failed. Quote witness
-remains byte-identical to test-only `0a29474a` and passed. Ast-grep
-and lint pass (33 pre-existing warnings). Platform `api:check` reports no
+All 44 frozen source blobs match merged R2. Focused Vitest over their test
+files (excluding real PG) and new/adjacent suites passed 45 files and 3,030/3,030
+cases, including all 12 quote cases and the new four-file, 12-case proof set.
+The quote witness remains byte-identical to test-only `0a29474a`.
+Five-project typecheck has zero consumer-side errors; ast-grep and lint pass
+(33 pre-existing warnings). Platform `api:check` reports no
 delta. Neutrality inventories 6,566 text paths with zero count increases;
 gitleaks finds no leak. The platform pack measures 1,956,340/2,029,568 packed
 bytes, 9,093,916/9,447,424 unpacked bytes, 2,667/2,628 files, 1,689,283/
@@ -429,8 +431,10 @@ address, company and reference runtime responsibilities are updated; the
 consumer-proof tooling follows the existing cold-consumer contract with no
 change to the documented check interface.
 
-The three R3 tooling paths have a scoped no-impact trailer prepared for commit
-2; documentation policy will evaluate it after that commit.
+The three R3 tooling paths have a scoped no-impact trailer in commit 2;
+documentation policy reports eight obligations answered. All four R3 commits,
+including the predecessor merge, pass DCO sign-off. Native review and full draft
+verification remain pending for the stacked draft.
 
 Self-retro: the shared-cache equivalence test needed a test-only reset once both
 reference and package factories intentionally shared one owner. Checking it
