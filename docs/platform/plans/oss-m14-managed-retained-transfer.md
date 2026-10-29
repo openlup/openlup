@@ -150,6 +150,17 @@ Excluding this task record, the stable parcel patch ID is
 `c31cc19` base and new main. The only extra parcel edit in the merge is this
 lineage note. Full native review remains required on the merged tree.
 
+Cycle 1 obtained two fresh full PASS reports and closed the stored-object
+readback finding. Canonical verification passed policy, inventory, DCO,
+Gitleaks, install and lint, then stopped at typecheck: 54 errors, all in this
+parcel's managed adapter. A function declaration for the existing `never`
+failure helper restores TypeScript control-flow narrowing. An equivalent null
+comparison and numeric checks for settlement cents close the remaining three
+errors; malformed nonnumeric money now refuses before projection. All five raw
+TypeScript projects pass on this repair. Because the numeric check tightens a
+runtime refusal, the exact repair awaits a maintainer read before DCO and fresh
+full review; the prior review and failed canonical result remain in evidence.
+
 Self-retro at this stop: the first actual managed extraction revealed a pending
 welcome outbox item and email timeline that synthetic projection alone missed;
 using the pinned local stack made the missing duty observable. A short finite
@@ -158,3 +169,6 @@ was removed from the final test.
 The first native review found that checking assembled bytes did not prove stored
 retention; requiring the existing object-reader port and a missing-object witness
 is the smaller repair than adding another object adapter or transfer runner.
+The canonical gate exposed strict TypeScript errors that focused PG execution
+did not; running the existing public typecheck before a sensitive read would
+have found them without another control or test harness.

@@ -77,9 +77,9 @@ const credentials = new Set([
 const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
 const identity = /^[a-z][a-z0-9_]{0,62}$/;
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
-const fail = (code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never => {
+function fail(code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never {
   throw new PostgresTransferError(code, relation);
-};
+}
 const descriptorDigest = (object: TransferObject): string => {
   try { return digest(JSON.stringify(object)); }
   catch { fail("invalid_input"); }
@@ -553,7 +553,7 @@ export async function mapManagedRetainedBusiness(input: {
       || matchedSettlement?.length !== 1
       || work.status !== "pending"
       || work.attempt_count !== 0 || work.processed_at !== null
-      || ![null, undefined].includes(work.next_attempt_at)
+      || work.next_attempt_at !== null && work.next_attempt_at !== undefined
       || invoice.status !== "issue_requested" || invoice.provider_kind !== work.provider_kind
       || invoice.provider_invoice_id !== null || invoice.provider_invoice_number !== null
       || invoice.ksef_number !== null || invoice.ksef_required !== false
@@ -661,7 +661,8 @@ export async function mapManagedRetainedBusiness(input: {
   for (const batch of settlementBatches) {
     const entries = settlementItems.filter(item => item.batch_id === batch.id);
     if (!entries.length || entries.some(item => item.provider_kind !== batch.provider_kind
-      || item.currency !== batch.currency || item.gross_cents !== item.net_cents + item.fee_cents
+      || item.currency !== batch.currency || typeof item.net_cents !== "number" || typeof item.fee_cents !== "number"
+      || item.gross_cents !== item.net_cents + item.fee_cents
       || !intents.some(intent => intent.id === item.payment_intent_id && intent.status === "succeeded"
         && intent.payment_id === item.payment_id && intent.provider_payment_id === item.provider_payment_id
         && intent.amount_cents === item.gross_cents))
