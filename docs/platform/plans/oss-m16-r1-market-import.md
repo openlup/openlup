@@ -740,3 +740,65 @@ that setup failure. Publication validation caught an unregistered documentation
 link and fragment over-registration; explicit catalogue rows and existing
 fragment pattern admission fixed them without changing controls. Keep those
 failures distinct from the unresolved neutrality/witness and cap decisions.
+
+## Replacement-branch preparation (CD-M16-19 through 21)
+
+The coordinator, acting under the owner's delegate grant, authorized a new
+branch without rewriting history, one native continuation, and preparation
+only until M14 10A lands. Current policy and integration base:
+`c31cc19bfd1a1108bf14535337fbca167a82f835`; applicable instructions are unchanged
+from the previously read policy. The reserved enqueue window starts later;
+this preparation does not authorize starting its review or verification early.
+
+In this same worktree, branch `claude/oss-m16-r1-market-import-2` starts at
+`bed312633fcf2b89475c35202a623b0604cf0127`, whose commit message carries
+`Signed-off-by: Bart Roszkowski <dev@openlup.com>`. The original branch and
+unsigned integration `03c077cb87f7dc365ff3b30348444edd4fdf88be` remain untouched
+and that unsigned commit is absent from the replacement branch's ancestry.
+Signed merge `dd9c80805d0ab842826491a1f38c74bd8de9bcec` integrates current main.
+The canonical publication-catalogue generator produces the exact union of
+6,654 rows, preserving all non-inventory fields. API reports and navigation
+were regenerated without additional tracked byte changes. Package behavior,
+witnesses, S1 release metadata, caps and the pending fragment remain unchanged.
+
+Replacement draft [#445](https://github.com/openlup/openlup/pull/445) retains
+the neutral scope, AI disclosure and authority, and explicitly distinguishes
+historical proof from pending current-candidate proof. PR #431 is closed with
+the requested pointer; neither its branch nor any history was deleted.
+
+Cheap checks pass: focused structural scan; lint (zero errors, 33 existing
+warnings); platform API check; policy (10 obligations, zero unanswered);
+neutrality (zero increases against the new fork point); redacted Gitleaks;
+and two-worker focused Vitest (27 files, 3,134 cases, including six real-PG
+preservation cases). All pack measurements remain within their unchanged caps:
+
+| Metric | Measured | Cap |
+| --- | ---: | ---: |
+| Total files | 2,717 | 2,774 |
+| Code files | 2,661 | 2,718 |
+| Docs files | 6 | 10 |
+| Packed bytes | 1,986,329 | 2,029,568 |
+| Unpacked bytes | 9,257,135 | 9,447,424 |
+| Code gzip bytes | 1,714,330 | 1,743,872 |
+| Docs gzip bytes | 56,939 | 73,728 |
+
+Tarball SHA-256:
+`564e2e0fb1c4dc7ca0df846f0825697825a1f24689a99ddedf605c98fb6dfa09`.
+Before the initial replacement push, all 14 outgoing commits were individually
+confirmed to carry Bart's sign-off. The DCO command requires full commit
+digests, so resolving literal HEAD gives its passing 14/14 result. Both the
+requested trailer log and the resolved-digest DCO gate are required again
+before every later push, including this preparation-record commit.
+
+The exact CD-M16-20 continuation ran once in the existing native session:
+allowedCycles increased from 3 to 6; cycle remains 3; history grew from 13 to
+14 events. Prior candidates, reports, findings and expiry were retained.
+There is no new prepare, reviewer, official verification, readiness, receipt or
+enqueue in this preparation. Resume only after the explicit 10A-merged signal
+and within the reserved CD-M16-21 window.
+
+Self-retro: a conflicted merge needs an explicit `git commit -s` when completed;
+the initiating merge's option alone did not protect the earlier commit.
+Unsigned integration plus no-rewrite authority led to this replacement branch,
+not a bypass. Moving main during long proof led to the reserved enqueue window,
+not another uncontrolled verification loop.
