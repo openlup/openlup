@@ -135,12 +135,22 @@ not restore the old schema or backfill state. Qualified-v2 fresh installation
 remains separately qualified; no older qualified upgrade is claimed.
 
 The first full committed-tree verification passed its broad tests but refused
-at tree neutrality: reading an optional package path through `process.env`
+at tree neutrality: reading an optional package path through an environment lookup
 increased `ui-9` for the new test. The test now detects the same pinned package
 at its ignored local installation path without an environment read. The
 predecessor package is installed there for the local proof. This repair changes
 neither upgrade nor migration behavior; the new tree needs fresh review and
 full verification.
+
+Regroup after two neutrality refusals: the first full gate found the lookup in
+the test; after replacing it, a direct committed-tree check found the exact
+forbidden spelling repeated in this diagnostic note. The remaining gap belongs
+to the existing tree-neutrality contract. The simpler fix is to describe the
+lookup without reproducing its scanned token, then run the committed-tree
+neutrality checker before fresh reviews. Expected result: zero increases, with
+the focused old-package probe still passing. Lesson: diagnostic prose that
+repeats a forbidden token → describe the mechanism without reproducing the
+scanner match.
 
 Working-tree publication policy, inventory, ast-grep, lint (0 errors, 33
 existing warnings), five-project typecheck and redacted Gitleaks directory

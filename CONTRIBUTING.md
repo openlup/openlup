@@ -2744,6 +2744,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-29, M14 schema-upgrade proof: diagnostic prose repeated a scanned
+  token after the code fix → describe the mechanism without reproducing the
+  scanner match, then check the committed tree.
+
 - 2026-10-29, M14 ledger admission: successive special-case metadata checks
   left an untested catalog shape → use the canonical comparison and
   [single-deviation witness](#development-preview-checks) for this boundary.
