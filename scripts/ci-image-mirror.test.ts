@@ -1,14 +1,15 @@
+import type { OwnedCiImage } from "./ci-image-mirror.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { env as processEnvironment } from "node:process";
 import { describe, expect, it, vi } from "vitest";
-import { cliImages, cliPin, inspect, mirrorImage, mirrorImages, ownedImages, plannedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
+import { cliImages, cliPin, inspect, mirrorImage, mirrorImages, ownedImages, pinnedCliImages, plannedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
 import { execFileSync } from "node:child_process";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 
 const digest = `sha256:${"a".repeat(64)}`;
 const different = `sha256:${"b".repeat(64)}`;
-const pin = "      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359\n        with:\n          version: 2.98.2\n";
+const pin = "      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359\n        with:\n          version: 2.122.0\n";
 const services = ["supabase/postgres", "supabase/gotrue", "supabase/realtime", "supabase/storage-api"]
   .map((name) => ({ name, local: "1.2.3" }));
 const binary = "public.ecr.aws supabase/pg_prove:3.36\0supabase/pg_prove:3.36\0";
@@ -16,7 +17,11 @@ const image = { repository: "library/postgres", tag: "16", digest, sources: ["do
 const resolved = { source: `docker.io/library/postgres@${digest}`, target: "ghcr.io/openlup/library/postgres:16", digest };
 const pgtapSource = readFileSync("scripts/public-ci-pgtap.mjs", "utf8");
 const batchSource = readFileSync("tests/postgres/reviewedBatchForwards.test.ts", "utf8");
-const ownedConfig = () => JSON.parse(readFileSync("config/ci-images.json", "utf8"));
+const actualConfig = () => JSON.parse(readFileSync("config/ci-images.json", "utf8")) as { images: OwnedCiImage[]; cliImages: OwnedCiImage[] };
+const ownedConfig = (images = cliImages(services, binary, pgtapSource)) => ({
+  images: actualConfig().images,
+  cliImages: images.map(image => ({ ...image, name: `cli-${image.repository.split("/").at(-1)!.replaceAll("_", "-")}`, digest, sources: [`public.ecr.aws/${image.repository}`, `docker.io/${image.repository}`] })),
+});
 
 function assertSingleOwner(source: string) {
   expect(source).not.toMatch(/sha256:[a-f0-9]{64}/u);
@@ -33,10 +38,10 @@ describe("CI image derivation and digest preservation", () => {
   });
 
   it("reads exactly one literal CLI pin, including the actual pgTAP workflow", () => {
-    expect(cliPin(pin)).toBe("2.98.2");
+    expect(cliPin(pin)).toBe("2.122.0");
     expect(cliPin(readFileSync(".github/workflows/published-tree-ci.yml", "utf8"))).toMatch(/^\d+\.\d+\.\d+$/u);
-    expect(cliPin(pin.replace("- uses:", "- name: Setup\n        uses:"))).toBe("2.98.2");
-    for (const invalid of ["", pin + pin, pin + pin.replace("- uses:", "- name: Setup\n        uses:"), pin.replace("version: 2.98.2", "version: latest"), pin.replace("version: 2.98.2", "version: 2.98.2\n          version: 2.98.2")]) {
+    expect(cliPin(pin.replace("- uses:", "- name: Setup\n        uses:"))).toBe("2.122.0");
+    for (const invalid of ["", pin + pin, pin + pin.replace("- uses:", "- name: Setup\n        uses:"), pin.replace("version: 2.122.0", "version: latest"), pin.replace("version: 2.122.0", "version: 2.122.0\n          version: 2.122.0")]) {
       expect(() => cliPin(invalid)).toThrow("exactly one literal");
     }
   });
@@ -69,6 +74,26 @@ describe("CI image derivation and digest preservation", () => {
     }
   });
 
+  it("binds every derived CLI image to its digest and keeps writer sources upstream-only", () => {
+    const config = actualConfig();
+    const derived = config.cliImages.map(({ repository, tag }) => ({ repository, tag }));
+    const pinned = pinnedCliImages(derived, config);
+    expect(pinned.map(image => image.digest)).toEqual(config.cliImages.map(image => image.digest));
+    expect(pinned.map(image => image.sources)).toEqual(config.cliImages.map(image => image.sources));
+    expect(pinned.every(image => image.sources.every(source => !source.startsWith("ghcr.io/openlup/")))).toBe(true);
+    for (const invalid of [derived.slice(1), [...derived, derived[0]], [derived[0], ...derived.slice(0, -1)], [{ ...derived[0], tag: "moved" }, ...derived.slice(1)]]) {
+      expect(() => pinnedCliImages(invalid, config)).toThrow();
+    }
+    for (const pins of [undefined, config.cliImages.slice(1), [config.cliImages[0], ...config.cliImages.slice(0, -1)],
+      [{ ...config.cliImages[0], digest: "invalid" }, ...config.cliImages.slice(1)],
+      [{ ...config.cliImages[0], sources: ["evil.test/supabase/postgres"] }, ...config.cliImages.slice(1)]]) {
+      expect(() => pinnedCliImages(derived, { cliImages: pins })).toThrow();
+    }
+    const inspectPin = vi.fn().mockImplementation((ref: string) => ref.split("@")[1]);
+    resolvePlan(JSON.stringify(derived), config, inspectPin);
+    expect(inspectPin.mock.calls.slice(0, 5).map(([ref]) => ref)).toEqual(pinned.map(image => `${image.sources[0]}:${image.tag}@${image.digest}`));
+  });
+
   it("validates the owned pins and refuses duplicates, mutable or unsafe refs", () => {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
     expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres", "managed-batch-postgres"]);
@@ -89,8 +114,8 @@ describe("CI image derivation and digest preservation", () => {
       { repository: "supabase/postgres", tag: "17.1", sources: ["public.ecr.aws/supabase/postgres", "docker.io/supabase/postgres"] },
     ]);
     const lookup = vi.fn().mockImplementation((ref: string) => ref.includes("@") ? ref.split("@")[1] : digest);
-    expect(resolvePlan(JSON.stringify([{ repository: "supabase/pg_prove", tag: "3.36" }]), ownedConfig(), lookup)).toHaveLength(4);
-    expect(lookup.mock.calls[0]).toEqual(["public.ecr.aws/supabase/pg_prove:3.36"]);
+    expect(resolvePlan(JSON.stringify([{ repository: "supabase/pg_prove", tag: "3.36" }]), ownedConfig([{ repository: "supabase/pg_prove", tag: "3.36" }]), lookup)).toHaveLength(4);
+    expect(lookup.mock.calls[0]).toEqual([`public.ecr.aws/supabase/pg_prove:3.36@${digest}`]);
   });
 
   it("refuses every malformed plan before any exec or registry call", () => {

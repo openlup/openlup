@@ -1478,6 +1478,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/supabase-cli-bump-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "eslint.config.js",
       "class": "public-output"
     },

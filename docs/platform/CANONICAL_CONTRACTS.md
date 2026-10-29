@@ -726,9 +726,9 @@ evidence; existing admission classes keep their prior behavior.
 
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
-for the non-CLI mirror inputs. It records the install-proof database, disposable
-test default and managed-batch database pins; Supabase CLI images remain derived
-as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
+for the owned and CLI mirror inputs. It records the install-proof database,
+disposable test default, managed-batch database and five CLI digest pins. Supabase
+CLI images are independently derived as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
 reference config. The pgTAP runner's exclusions constrain long-running services;
 they never remove enabled GoTrue, Realtime or Storage API schema-init images.
 The derived set contains those three images, Postgres and the binary's `pg_prove`.
@@ -737,12 +737,14 @@ The write job validates those untrusted pairs against a closed repository allowl
 before any exec or registry call, reads typed owned pins from its own checkout,
 and builds upstream sources and mirror targets itself. It runs only pinned
 first-party actions plus the repository script, re-resolves source digests, skips
-identical targets, refuses moved tags and verifies every copy. CLI images are
-trust-on-first-use. The shared reader prepends the single mirror
+identical targets, refuses moved tags and verifies every copy. The derived CLI
+set must match the reviewed inventory exactly before runtime pulls or mirror
+resolution; source resolution must preserve each pinned digest. The shared reader prepends the single mirror
 registry to inventory sources for consumers; mirror copying still uses only
 upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
-these pins, preserving the exact digest on every fallback. Their source order
-is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR for native.
+these pins, preserving the exact digest on every fallback. In CI and locally,
+source order is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR
+for native.
 The default helper uses the test pin, resolves once per exact ref per process and
 runs the successful digest-qualified source with `--pull=never`; explicit
 non-inventory overrides keep their existing behavior. Before any shared pull,
@@ -753,12 +755,16 @@ share, while shorter waits are capped to preserve non-GHCR fallback.
 A Docker-free guard rejects literal digests or registry source lists in the gate test.
 An explicit source tag must match the entry's tag and is preserved during
 resolution. Mirror absence/private access immediately advances to upstream;
-it does not require credentials or make CI depend on mirror publication.
+these consumers do not depend on organization package access or publication.
 The pgTAP runner uses the same CLI derivation as mirror planning and pre-pulls
-all five derived tags with mirror/GHCR/ECR/Docker Hub fallback before start. Those CLI tags have
-no pinned inventory digest; a derived digest, when present, is verified. Local
-aliases reconcile mixed successful registries with the CLI's requested names.
-Other launchers and the install-proof service remain unchanged. These changes
+all five derived tags at their reviewed index digests before start. Acquisition
+tries the organization mirror, upstream GHCR, ECR and Docker Hub in that order;
+a GHCR outage can recover from ECR or Docker Hub only at the same pinned digest.
+Local aliases reconcile mixed successful registries with the CLI's requested
+names. Mirror planning retains its ECR then Docker Hub upstream order.
+The install-proof service retains its unchanged Docker Hub PostgreSQL 17 digest
+and needs no organization package before steps run.
+Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.

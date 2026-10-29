@@ -454,7 +454,7 @@ node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint
 ```
 
 It requires Node 24, npm 11.19.0, Docker with a running daemon, Supabase CLI
-2.98.2, installed dependencies (including the existing SDK and TS loader), built
+2.122.0, installed dependencies (including the existing SDK and TS loader), built
 core/platform artifacts, the complete unchanged committed managed migration
 chain, a writable temporary directory and free loopback port blocks. CLI images
 must be available or downloadable in the supervisor's environment. Missing
@@ -999,7 +999,7 @@ node tests/identity/runAcceptance.mjs --bundle node-supabase
 Both commands require the composed identity runtime, installed Node 24 and npm
 11.19.0, Docker and installed browser tooling. The direct command requires a
 cached `postgres:16` image. Managed execution additionally requires installed
-Supabase CLI 2.98.2; its owned migration replay includes the committed identity
+Supabase CLI 2.122.0; its owned migration replay includes the committed identity
 service-role capabilities forward.
 Missing prerequisites fail; neither command silently skips. Each run owns a
 random installation id, allocated ports, build directory and captured mail.
@@ -1032,7 +1032,7 @@ server binds to `127.0.0.1` in both bundles. The direct mailbox remains a filesy
 sink without a listening socket.
 
 The managed stack's ports, including its mail-capture API, are published by the
-Supabase CLI 2.98.2 on all host interfaces for the duration of the run. The stack
+Supabase CLI 2.122.0 on all host interfaces for the duration of the run. The stack
 holds only synthetic identities and must run on a host not reachable from
 untrusted networks. The CLI provides no publication-bind setting. Managed
 containers must have the run's project label, and every published host port must

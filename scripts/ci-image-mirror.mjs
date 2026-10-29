@@ -31,7 +31,7 @@ export function cliImages(services, binary, pgtapSource) {
   if (exclusions.length !== 1 || (pgtapSource.match(/"--exclude", excluded/gu) ?? []).length !== 1) throw new Error("expected exactly one literal pgTAP exclusion list and use");
   const excluded = new Set(exclusions[0][1].split(","));
   if (excluded.has("postgres") || excluded.size !== exclusions[0][1].split(",").length) throw new Error("invalid pgTAP exclusion list");
-  // CLI e4a7ace: internal/start/start.go:218-246 filters running services only.
+  // CLI 5afad870: apps/cli/src/commands/start/start.gates.ts filters running services only.
   // Refuse a broader startup set: services omits kong/mailpit/imgproxy/vector.
   if ([...services.map((service) => service.name).filter((name) => !cliRepositories.includes(name)),
     "library/kong", "axllent/mailpit", "darthsim/imgproxy", "timberio/vector"]
@@ -46,7 +46,7 @@ export function cliImages(services, binary, pgtapSource) {
   const prove = [...new Set(binary.match(/supabase\/pg_prove:[0-9][0-9A-Za-z._-]+/gu))];
   if (prove.length !== 1) throw new Error("expected exactly one supabase/pg_prove tag in the CLI binary");
   images.push({ repository: "supabase/pg_prove", tag: prove[0].split(":")[1] });
-  // CLI e4a7ace: internal/db/start/start.go:268-352 initializes enabled auth,
+  // CLI 5afad870: apps/cli/src/command-internal/db-bootstrap initializes enabled auth,
   // realtime and storage with these images even when their services are excluded.
   // The rendered reference config enables all three; never subtract --exclude.
   return images;
@@ -90,6 +90,20 @@ export function ownedImages(config) {
     names.add(image.name);
   }
   return config.images;
+}
+
+// Bind the runtime-derived set to reviewed digests; never silently accept tag drift.
+export function pinnedCliImages(images, config) {
+  const pins = ownedImages({ images: config?.cliImages });
+  if (pins.length !== images.length || new Set(images.map(image => image.repository)).size !== images.length
+    || new Set(pins.map(pin => pin.repository)).size !== pins.length) {
+    throw new Error("CLI image pins must cover the exact derived set");
+  }
+  return images.map(image => {
+    const pin = pins.find(pin => pin.repository === image.repository && pin.tag === image.tag);
+    if (!pin) throw new Error(`missing CLI image digest pin: ${image.repository}:${image.tag}`);
+    return { ...image, digest: pin.digest, sources: image.sources ?? [...pin.sources] };
+  });
 }
 
 function command(file, args) {
@@ -166,7 +180,9 @@ export function deriveCliImages(root, directory) {
 
 // Validate both inputs completely before the first exec or registry request.
 export function resolvePlan(input, config, registryInspect = inspect) {
-  const images = [...plannedImages(input), ...ownedImages(config)];
+  const planned = plannedImages(input);
+  const owned = ownedImages(config);
+  const images = [...pinnedCliImages(planned, config), ...owned];
   const resolved = new Map();
   for (const image of images.map((image) => resolveImage(image, registryInspect))) {
     if (resolved.has(image.target) && resolved.get(image.target).digest !== image.digest) throw new Error(`conflicting derived target: ${image.target}`);
