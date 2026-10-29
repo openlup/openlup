@@ -119,6 +119,11 @@ retain the separate managed identity/history, effective access, all-writer
 retirement and external-effect recovery obligations. These adapters neither
 establish that global fence nor activate a target executor.
 
+The [S3 conformance fixture](s3/objectStorageConformance.test.ts) labels its
+owned disposable service for the [dead-owner cleanup contract](../../CONTRIBUTING.md#test-scope-and-diagnostics).
+Docker start and removal calls each have a 30-second hard deadline; interrupted
+cleanup never authorizes removal of an unlabeled service.
+
 ## S3 object source preparation
 
 The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an

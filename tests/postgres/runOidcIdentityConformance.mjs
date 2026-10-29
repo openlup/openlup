@@ -1,4 +1,5 @@
 // Opt-in only. No pulls, shared installations, external issuers or default-CI activation.
+import { ownedStackCleanup } from "../../scripts/owned-stack-cleanup.mjs";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -20,8 +21,9 @@ export function assertOidcOwned(container, runId, project, imageId) {
   assert.equal(container.Image, imageId, "OIDC running image identity mismatch");
   assertPortBindings(container);
 }
+let cleanupOptions;
 function must(command, args, options = {}) {
-  const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 240000, ...options });
+  const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 240000, ...options, ...(cleanupOptions?.() ?? {}) });
   if (result.error || result.status !== 0) throw new Error(`OIDC conformance operation failed: ${command} (exit ${result.status ?? "unavailable"}); credential-bearing output suppressed`);
   return result.stdout.trim();
 }
@@ -58,22 +60,9 @@ export async function main(args = process.argv.slice(2)) {
     return container;
   });
   let started = false;
-  try {
-    assert.equal(ids().length, 0, "OIDC project must be new");
-    for (const kind of ["network", "volume"]) assert.equal(must("docker", [kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`]), "", "OIDC project resources already exist");
-    started = true;
-    must("docker", [...composeArgs, "up", "--detach", "--pull", "never"]);
-    const containers = owned(); assert.equal(containers.length, 2, "OIDC conformance requires both owned services");
-    const issuer = containers.find(container => container.Config.Labels["com.docker.compose.service"] === "issuer");
-    const issuerBindings = issuer.NetworkSettings.Ports["8080/tcp"];
-    assert.equal(issuerBindings.length, 1); assert.equal(issuerBindings[0].HostIp, "127.0.0.1"); assert.equal(issuerBindings[0].HostPort, String(port));
-    const database = containers.find(container => container.Config.Labels["com.docker.compose.service"] === "database");
-    const bindings = database.NetworkSettings.Ports["5432/tcp"];
-    assert.equal(bindings.length, 1); assert.equal(bindings[0].HostIp, "127.0.0.1");
-    await runOidcIdentityConformance({ issuerOrigin: `http://127.0.0.1:${port}`, adminPassword,
-      directory, runId, database: `postgresql://postgres:${databasePassword}@127.0.0.1:${bindings[0].HostPort}/postgres`, assertOwned: owned });
-    console.log("OIDC real-issuer conformance: passed");
-  } finally {
+  const cleanup = ownedStackCleanup(options => {
+    cleanupOptions = options;
+    try {
     if (started) {
       owned();
       // Compose can leave only its labelled network after partial startup; refuse foreign networks/volumes.
@@ -88,6 +77,25 @@ export async function main(args = process.argv.slice(2)) {
       must("docker", [...composeArgs, "down", "--volumes", "--timeout", "10"]);
     }
     rmSync(directory, { recursive: true });
+    } finally { cleanupOptions = undefined; }
+  });
+  try {
+    assert.equal(ids().length, 0, "OIDC project must be new");
+    for (const kind of ["network", "volume"]) assert.equal(must("docker", [kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`]), "", "OIDC project resources already exist");
+    started = true;
+    await cleanup.start("docker", [...composeArgs, "up", "--detach", "--pull", "never"]);
+    const containers = owned(); assert.equal(containers.length, 2, "OIDC conformance requires both owned services");
+    const issuer = containers.find(container => container.Config.Labels["com.docker.compose.service"] === "issuer");
+    const issuerBindings = issuer.NetworkSettings.Ports["8080/tcp"];
+    assert.equal(issuerBindings.length, 1); assert.equal(issuerBindings[0].HostIp, "127.0.0.1"); assert.equal(issuerBindings[0].HostPort, String(port));
+    const database = containers.find(container => container.Config.Labels["com.docker.compose.service"] === "database");
+    const bindings = database.NetworkSettings.Ports["5432/tcp"];
+    assert.equal(bindings.length, 1); assert.equal(bindings[0].HostIp, "127.0.0.1");
+    await runOidcIdentityConformance({ issuerOrigin: `http://127.0.0.1:${port}`, adminPassword,
+      directory, runId, database: `postgresql://postgres:${databasePassword}@127.0.0.1:${bindings[0].HostPort}/postgres`, assertOwned: owned });
+    console.log("OIDC real-issuer conformance: passed");
+  } finally {
+    await cleanup.finish();
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => {

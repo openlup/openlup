@@ -1,5 +1,6 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import ts from "typescript";
+import { disposableLabelArgs } from "../disposable-docker.mjs";
 import { buildSync } from "esbuild";
 import { createRequire, stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
@@ -1646,7 +1647,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
   const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
   try {
     // Complete catalogue fingerprints use the repository harness's PostgreSQL 16 profile.
-    docker(["run","--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust","postgres:16"]);
+    docker(["run",...disposableLabelArgs(),"--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust","postgres:16"]);
     const port = docker(["port",name,"5432/tcp"]).split(":").at(-1)!;
     const connectionString = `postgresql://postgres@127.0.0.1:${port}/postgres`;
     // Host TCP readiness, through the same repository harness as the real-PG witness.

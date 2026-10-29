@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { env as processEnvironment } from "node:process";
 
+import { ownedStackCleanup } from "./owned-stack-cleanup.mjs";
 import { deriveCliImages, MIRROR_REGISTRY } from "./ci-image-mirror.mjs";
 import { IMAGE_PULL_BUDGET_MS, imageIo, pullWithRetry } from "./ci-image-pull.mjs";
 
@@ -137,20 +138,33 @@ async function main() {
   const cliOptions = { env: { ...processEnvironment, SUPABASE_INTERNAL_IMAGE_REGISTRY: registry } };
   let cleanupFailed = false;
   let testStatus = 1;
+  const cleanup = ownedStackCleanup(options => {
+    let result;
+    try { result = run("supabase", ["stop", "--workdir", directory, "--no-backup"], { ...cliOptions, ...options() }); }
+    catch (error) { cleanupFailed = true; console.error(`Owned stack cleanup failed: ${error instanceof Error ? error.message : String(error)}`); throw error; }
+    if (result.status !== 0) { cleanupFailed = true; console.error(`Owned stack cleanup failed: ${result.stderr}`); throw new Error("Owned stack cleanup failed"); }
+  });
+  // Preserve the runner's existing unbounded CLI/test calls; only cleanup is budgeted.
+  const command = async (executable, args, options = {}) => cleanup.command(executable, args, { cwd: root, timeout: 0, ...options });
+  const checked = async (executable, args, options) => {
+    const result = await command(executable, args, options);
+    if (result.error || result.status !== 0) throw new Error(`${executable} ${args.join(" ")} failed: ${result.stderr}`);
+    return result.stdout;
+  };
   try {
     console.log(`Starting owned managed baseline ${projectId} with Supabase CLI ${cliVersion}`);
-    must("supabase", ["start", "--workdir", directory, "--exclude", excluded], cliOptions);
+    await checked("supabase", ["start", "--workdir", directory, "--exclude", excluded], { cwd: root, ...cliOptions });
     // supabase/supautils#214: enhanced denial hints crash this pinned image.
     // Disable only hint formatting in this disposable database. Role identities,
     // grants, RLS and the actual 42501 refusal remain unchanged and are tested.
-    must("docker", ["exec", "-e", "PGPASSWORD=postgres", "-i", `supabase_db_${projectId}`, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres"], {
+    await checked("docker", ["exec", "-e", "PGPASSWORD=postgres", "-i", `supabase_db_${projectId}`, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres"], {
       input: "ALTER SYSTEM SET supautils.hint_roles = '';",
     });
     // This formatter setting is postmaster-scoped in the pinned image.
-    must("docker", ["restart", `supabase_db_${projectId}`]);
+    await checked("docker", ["restart", `supabase_db_${projectId}`]);
     let ready = false;
     for (let attempt = 0; attempt < 60; attempt++) {
-      const probe = run("docker", ["exec", "-e", "PGPASSWORD=postgres", `supabase_db_${projectId}`, "psql", "-X", "-U", "supabase_admin", "-d", "postgres", "-Atqc", "SELECT current_setting('supautils.hint_roles') = ''"]);
+      const probe = await command("docker", ["exec", "-e", "PGPASSWORD=postgres", `supabase_db_${projectId}`, "psql", "-X", "-U", "supabase_admin", "-d", "postgres", "-Atqc", "SELECT current_setting('supautils.hint_roles') = ''"]);
       if (probe.status === 0) {
         if (probe.stdout.trim() !== "t") throw new Error("denial-hint formatter workaround did not take effect");
         ready = true;
@@ -187,21 +201,21 @@ async function main() {
       END $$;`,
     ].join("\n");
     // This is the CLI's fixed disposable-development password, not a stored credential.
-    must("docker", ["exec", "-e", "PGPASSWORD=postgres", "-i", `supabase_db_${projectId}`, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres", "-1"], { input: sql });
+    await checked("docker", ["exec", "-e", "PGPASSWORD=postgres", "-i", `supabase_db_${projectId}`, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres", "-1"], { input: sql });
     // The CLI mounts only the tests directory. Preserve committed replay bytes
     // there as includes; pg_prove discovers .sql/.pg tests, never .inc files.
     for (const { name, contents } of migrations) writeFileSync(join(directory, "supabase/tests", `${name}.inc`), contents);
     console.log("Managed baseline replayed transactionally; running every shipped pgTAP test");
     // Explicit SET ROLE assertions still test the baseline's browser/runtime ACLs.
     const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${base + 2}/postgres`;
-    const result = run("supabase", ["test", "db", "--workdir", directory, "--db-url", databaseUrl], cliOptions);
+    const result = await command("supabase", ["test", "db", "--workdir", directory, "--db-url", databaseUrl], cliOptions);
     writeFileSync(join(scratch, "latest.log"), `${result.stdout}\n${result.stderr}`);
     process.stdout.write(result.stdout);
     process.stderr.write(result.stderr);
     testStatus = result.status ?? 1;
   } finally {
-    const cleanup = run("supabase", ["stop", "--workdir", directory, "--no-backup"], cliOptions);
-    if (cleanup.status !== 0) { cleanupFailed = true; console.error(`Owned stack cleanup failed: ${cleanup.stderr}`); }
+    // A cleanup failure is logged and fails the exit code without replacing the original error.
+    try { await cleanup.finish(); } catch { cleanupFailed = true; }
   }
   process.exitCode = cleanupFailed ? 1 : testStatus;
 }

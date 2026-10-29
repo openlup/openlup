@@ -11,6 +11,9 @@ mkdirSync(bin);
 const executable = join(bin, "vitest");
 writeFileSync(executable, `#!${process.execPath}\nimport {env} from 'node:process'; console.log(JSON.stringify({workers:env.VITEST_MAX_WORKERS,args:process.argv.slice(2)}));\n`);
 chmodSync(executable, 0o700);
+const docker = join(bin, "docker");
+writeFileSync(docker, `#!${process.execPath}\n`);
+chmodSync(docker, 0o700);
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 function witness(overrides: NodeJS.ProcessEnv) {

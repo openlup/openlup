@@ -1857,7 +1857,17 @@ creation, so an interrupted worker cannot leave an anonymous data volume.
 Normal and failed-start teardown still removes the owned container with
 `docker rm -f -v`; other anonymous mounts are removed too. A worker killed
 with `SIGKILL` can still leave a container, including one in `Created` state:
-temporary data storage prevents the volume leak, but does not reap containers.
+temporary data storage prevents the volume leak. Disposable creators also label
+the owner PID, host-clock start epoch, short hostname and (on Linux) PID namespace
+with `dev.disposable.*`, plus the fresh test run ID. A same-host sweep reclaims
+only `dev.disposable=1` containers at least 60 seconds old whose owner is gone
+or whose PID start differs by more than two seconds; uncertainty keeps them.
+`OPENLUP_DISPOSABLE_REAP=report` (default), `remove` or `off` controls the
+once-per-run host sweep; `CI=true` disables that sweep. Teardown and the wrapper
+sweep only their own run selector under the same liveness rule, including on CI;
+after its Vitest child exits, the wrapper skips the age floor because every
+owner of that run has exited, so a container started just before Ctrl-C goes too.
+Nested runs get independent IDs. Unlabeled containers are never removed.
 The container-helper regression checks exact owned container and volume IDs
 for normal teardown and port-bind failure, without relying on global counts.
 
@@ -1969,7 +1979,8 @@ them behind. Docker retains named volumes with this operation. The
 [cleanup regression](tests/postgres/postgresContainerCleanup.test.ts) uses its own
 unique containers and volumes against a real Docker daemon, checks bind-conflict
 retry and other startup errors, and preserves a named volume and another
-container. This lifecycle does not authorize pruning other test runs' resources.
+container. Cross-run reclamation is limited to the labelled dead-owner contract
+above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
 Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
@@ -2780,6 +2791,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, disposable Docker cleanup: same-module mocks hid per-project
+  state and queued-signal failures → prove lifecycle invariants through actual
+  Vitest project loaders and subprocess interruptions.
 
 - 2026-10-29, M14 managed identity mapping: boundary edge gaps in a fixed
   mapper/control → validate existing input and command ordering at outer route
