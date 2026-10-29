@@ -16,5 +16,6 @@
   "invoicing": { "defaultEnabled": false, "registration": "explicit-host", "executor": "accountingRuntime", "routes": [] },
   "accountSupport": { "defaultEnabled": false, "registration": "explicit-host", "routes": [], "commerceRecovery": "selectable-when-host-binds", "configuredPurchase": "selectable-when-host-binds" },
   "accountSupportRecovery": { "defaultEnabled": false, "registration": "explicit-host", "binding": "createM12OperatorRecoveryBinding", "routes": [], "graphs": ["managed", "native"], "nativeRefusal": "operator_subscription_authority_unavailable" },
+  "risk": { "defaultEnabled": false, "registration": "explicit-host", "binding": "createM15RiskReferenceBinding", "routes": [], "executor": "existing-commerce-order-paid-risk-slot" },
   "refuses": ["admin", "api", "bff", "checkout", "cron", "mutation", "subscription"]
 }

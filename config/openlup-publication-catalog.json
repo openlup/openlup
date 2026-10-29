@@ -4282,6 +4282,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/riskContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/shippingContribution.ts",
       "class": "public-output"
     },
@@ -6122,6 +6126,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/risk/server/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/risk/server/index.ts",
       "class": "public-output"
     },
@@ -6139,6 +6147,10 @@
     },
     {
       "path": "packages/platform/src/risk/server/postgresRiskControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/riskAdminCasesHandler.ts",
       "class": "public-output"
     },
     {
@@ -8231,6 +8243,10 @@
     },
     {
       "path": "packages/platform/test/risk/adapters.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/adminHandlers.test.ts",
       "class": "public-output"
     },
     {
@@ -17982,6 +17998,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m15RiskBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m15RiskBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/readiness.ts",
       "class": "public-output"
     },
@@ -24615,6 +24639,10 @@
     },
     {
       "path": "src/public-reference/main.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/riskReviewRoutes.test.tsx",
       "class": "public-output"
     },
     {

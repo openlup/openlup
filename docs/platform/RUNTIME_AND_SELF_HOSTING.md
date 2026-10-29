@@ -439,6 +439,30 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The [M15 risk recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
+is default-off and mounts no BFF route. A selected host supplies the existing
+managed or native package ports, trusted admin authorization/actor mapping,
+mutation policy, version, schema requirement and readiness observer. Only
+explicit `selectedRoutes` are advertised. Unknown/unsatisfied schema readiness
+returns unavailable before admin authorization or retries paid processing before
+evidence and fulfillment; disabled selection observes no schema or risk port.
+Pass the recipe's `outboxRisk` once into the existing commerce dispatch registry.
+Its risk contribution has no event handler or schedule, so no second
+`commerce.order.paid` executor exists. Checkout keeps its existing optional
+blocklist callback; this recipe changes no checkout admission or flag.
+
+The [reference witness](../../server/runtime/public-reference/m15RiskBinding.test.ts)
+characterizes allow/review/block/retry/fatal through that registry. Shadow
+review/block can acknowledge without fulfillment even when SQL opens no hold.
+Admin factories retain method → authorization → mutation policy (decisions only)
+→ strict schema → port → response-validation order. The host responder preserves
+request references and error envelopes; clients and the hidden UI remain source
+consumers. The [browser witness](../../src/public-reference/riskReviewRoutes.test.tsx)
+pins the captured escalated UI refusal even when the server's action eligibility
+allows actions. Managed replay still projects `false`; no policy correction,
+route activation or privacy/portability integration is implied.
+
+
 The [portable Node serving entry](../../server/runtime/public-reference/serve.ts)
 also accepts an explicitly constructed operations binding on its ordinary
 reference host. That selection mounts only the existing alert and pipeline

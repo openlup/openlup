@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { riskSubjectHash } from "./riskFingerprint.js";
+import { safeRiskString as packagedSafeRiskString } from "@openlup/platform/risk/server";
+import { riskSubjectHash, safeRiskString } from "./riskFingerprint.js";
 
 describe("riskSubjectHash", () => {
   it("is deterministic for the same kind + value", () => {
+    expect(safeRiskString).toBe(packagedSafeRiskString);
     expect(riskSubjectHash("email", "a@b.com")).toBe(riskSubjectHash("email", "a@b.com"));
   });
 

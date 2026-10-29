@@ -1438,3 +1438,12 @@ operator authorization and actor mapping, clients, mode and hash secret.
 The [risk contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
 explains the preserved rail differences and sparse SQL descriptor. These entries
 register no route, worker or schedule and do not activate risk.
+
+R2 adds `createRiskBindings` and the unchanged admin handler factories in
+`risk/server`; supply the host BFF responder, trusted authorization, admin port,
+mutation policy and already constructed assessment port. Pass `outboxRisk` into
+the existing commerce registry's risk slot once. `createRiskContribution` in
+`composition` describes selected routes and the assessment callable, with no
+handlers or schedules. The [reference recipe](../../server/runtime/public-reference/m15RiskBinding.ts)
+selects nothing by default and requires schema readiness before effects. Hosts
+still mount any selected callables and own their authorization/actor mapping.

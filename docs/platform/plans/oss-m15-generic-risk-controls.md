@@ -428,6 +428,487 @@ is unchanged, so no npm ci. The smallest adequate resolution is the existing
 registration union and generators, without a helper or runtime edit.
 Logs and retained artifacts use `.context/scratch/m15-main-current/` per tree.
 
+## R2 — reference delegation, captured workflow and inert composition
+
+Approved outcome: one packaged implementation serves reference risk hashing,
+paid-order assessment, persistence and admin handlers; a default-off recipe binds
+the existing commerce outbox risk slot once. Preserve captured checkout/client/UI,
+trusted actor injection and all donor differences, including managed admin
+`replayed: false`, shadow fulfillment suppression and timestamp fingerprints.
+No corrections, SQL, privacy implementation, M14 paths, activation, versions,
+pushes or PRs belong to this run. O3's approved bounded privacy contributor stays
+with R3; no retention period or managed erasure claim is introduced here.
+
+Authority: Bart Roszkowski is the accountable author. The direct R2 instruction
+allows reading, editing and small local DCO-signed commits in the assigned
+`claude/oss-m15-r2-risk-reference-delegation` worktree. It expressly prohibits tests,
+Vitest, pgTAP, builds, installs, lint and compiler execution while another machine
+verification runs. That instruction overrides pre-sign-off execution for this
+local authoring handoff; it grants no submission, merge or release authority.
+The coordinator retains the verify slot, counted reviews and subsequent delivery.
+
+Stack/code base: `2e7d70ad` (R1). Instruction freshness pin:
+`ef861a76dad97c0b744f6f25c04b04f4ac44c5fe` (freshly fetched `origin/main`,
+2026-10-27); relevant instruction paths are unchanged. No rebase or main merge.
+The complete fit report §4 and coordinator stack plan were read before editing.
+
+Smallest adequate solution: named compatibility exports, the unchanged handler
+with injected existing BFF responder, direct bound callables and an inert
+contribution with no handlers or schedules. The host passes the returned
+`outboxRisk` into its existing `createOutboxDispatchRegistry`; a second executor,
+worker, registry or default BFF route would add behavior and is excluded.
+
+Acceptance/proof plan: retain the existing five handler guards, reference client/UI,
+R1 adapter/SQL/timestamp witnesses; add 19 neutral admin cases, eight composition
+cases, four browser/client cases and four installed-artifact/compiler/isolation
+cases. Each independent table row counts. Refusals must precede the relevant
+port/effect, actor identity must come from authorization, and one paid event must
+assess once before at most one fulfillment. Execution, API generation and docs
+navigation remain deferred under the machine rule; written tests are no PASS
+claim. Preliminary read-only review will inspect the signed candidate and its
+preserved donor statements; it creates no native admission or review expiry.
+
+### R2 execution continuation — 2026-10-27
+
+The direct continuation instruction lifts the earlier machine execution hold:
+dependencies are installed and this run owns serial generators, the listed
+focused/compiler/lint/API/package and real-PG checks, R2-only repairs, generated
+outputs and local DCO-signed commits. Vitest uses at most two workers. The
+endpoint remains local commits and measured evidence; no push, donor behavior
+correction, R3 or M14 change is authorized. Counted native review, full root
+verification, budget approval and delivery remain with the coordinator.
+
+Execution starts from `04907f22`; the full R1 stack pin above is unchanged.
+Refreshed `origin/main` still resolves to
+`ef861a76dad97c0b744f6f25c04b04f4ac44c5fe`, with no applicable instruction delta.
+The existing preliminary finding/review history remains intact. Command logs
+and measurements are retained under ignored `.context/scratch/m15-r2/` and the
+results below distinguish local observations from outstanding delivery gates.
+
+Initial execution found one R2-only defect: the browser route fixture annotated
+its result with schema-inferred types under the app's non-strict-null compiler
+profile. Its nullable event fields then became optional and failed assignment
+to the explicit package port. Using `AdminRiskCaseDetail` from the type-only
+package contracts fixes the fixture without changing values or donor semantics.
+The app compiler and all four affected cases pass after that change.
+
+API regeneration changes only `composition.api.md` and `risk-server.api.md`.
+The latter includes the existing HTTP/BFF declaration closure through type
+imports; it introduces no runtime edge to those modules. Initial policy and
+docs-update commands refuse three unanswered impact obligations; the next
+commit supplies delta-bound no-impact trailers for configuration, repository
+and tooling, preserving their existing compatibility/check contracts. Navigation
+generation and policy are rerun after those trailers become readable in Git.
+
+Local focused results at this checkpoint: 79/79 risk/reference/browser cases,
+5/5 selected M15 installed cases (86 unrelated cases filtered), 2,671/2,671
+boundary/import-map cases, 14/14 real-PG cases including the existing managed
+pgTAP assertions, and the four repaired browser cases pass. API/server, tooling,
+app and strict risk contract compiler checks pass. Lint passes with zero errors
+and 33 warnings; the structural scan and platform API check pass.
+
+Discovery confirms 19 admin, eight composition, four browser and four packed
+R2 cases, plus nine instances in the existing per-source boundary tables:
+**R2 +44; R1 +77; combined +121**, exceeding the unchanged +100 allowance by
+**21**. No finite budget exception or hosted timing approval is inferred.
+
+One API compiler attempt overlapped the tail of the boundary run; both passed,
+but the API compiler was rerun alone and that serial pass is the counted result.
+Subsequent execution is serial. Full command results and pack reconciliation
+follow below after the clean-commit artifact check.
+
+### R2 executed proof and artifact reconciliation — 2026-10-27
+
+The local execution candidate is
+`bcfec20f0aadde0e5f309149bda3338482f9b807` —
+`fix(risk): verify browser fixture and generate API reports (M15 R2)`.
+Its DCO sign-off is Bart Roszkowski's instructed sign-off. The final evidence-only
+commit changes this task record; package inputs remain identical. Every command
+below uses the full R1 `OPENLUP_STACK_BASE`; direct Vitest uses `--maxWorkers=2`.
+The root has no `api:check` script, so the platform workspace owns that command.
+
+| Command | Observed local result |
+| --- | --- |
+| `npm run pretest` | PASS; Core, Outbox and Platform build |
+| `npm --workspace @openlup/platform run api:update` | PASS; only `composition.api.md` (+24 lines) and `risk-server.api.md` (+504 lines) change |
+| `npm run oss:published-tree -- --policy` | Initial exit 1 for three missing impact answers; after the scoped trailers, PASS, eight obligations and zero unanswered |
+| `npm run oss:published-tree -- --policy --docs-update` | Same initial refusal; after the trailers, PASS; regenerated navigation has no byte delta |
+| `npx --no -- vitest run packages/platform/test/risk server/domains/risk server/adapters/postgres/riskControl.test.ts server/adapters/supabase/riskAdminPort.test.ts server/adapters/supabase/riskOrderPaid.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx src/domains/risk/riskClient.test.ts src/pages/admin/RiskReviewPage.test.tsx --maxWorkers=2` | PASS, 15 files / 79 cases |
+| `npx --no -- vitest run scripts/packages/platform-cold-consumer.test.ts -t M15 --maxWorkers=2` | PASS, five selected cases; 86 unrelated cases filtered, no new source skips |
+| `npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2` | PASS, two files / 2,671 cases |
+| `npx --no -- tsc -p tsconfig.api.json` | PASS; repeated serially after the initial overlap noted above |
+| `npx --no -- tsc -p tsconfig.node.json` | PASS |
+| `npx --no -- tsc -p tsconfig.app.json` | Initial exit 2 on the R2 fixture; PASS after the type-only fix |
+| `npx --no -- tsc --ignoreConfig --noEmit --skipLibCheck --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --resolveJsonModule --allowImportingTsExtensions packages/platform/test/risk/*.test.ts tests/postgres/riskControl.conformance.test.ts` | PASS, including the unchanged schema/contract type witness |
+| `npx --no -- vitest run src/public-reference/riskReviewRoutes.test.tsx --maxWorkers=2` | PASS, all four affected cases after the fixture fix |
+| `npm run lint` | PASS, zero errors / 33 warnings; includes package builds and eight structural-rule fixture suites |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS after the source change and after lint |
+| `npm --workspace @openlup/platform run api:check` | PASS |
+| `npx --no -- vitest run tests/postgres/riskControl.conformance.test.ts --maxWorkers=2` | PASS, 14 cases on the two actual PostgreSQL rails, including reused managed pgTAP assertions; 11.70 s summed test time |
+| `npx --no -- vitest list packages/platform/test/risk tests/postgres/riskControl.conformance.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx scripts/packages/platform-cold-consumer.test.ts packages/platform/test/packageBoundary.test.ts --maxWorkers=2 --json` | PASS; discovery confirms R1 +77, R2 +44, combined +121; JSON retained in ignored evidence |
+| `npm run packages:check -- --out .context/scratch/m15-r2/artifacts` | PASS on the clean committed candidate, three packages and no findings; retained actual tarballs and producer manifest |
+| `node --experimental-strip-types .context/scratch/m15-r2/measure.mjs .context/scratch/m15-r2/artifacts` | PASS; existing `measurePack`/`checkPackBudget` functions on the extracted official tarballs, no findings |
+| `npm run oss:published-tree -- --inventory` | PASS, 6,459 tracked public paths |
+| `git diff --check` | PASS |
+| `npm run check:dco-signoff -- "$OPENLUP_STACK_BASE" HEAD` | Exit 2: the historical deferred spelling supplies a symbolic endpoint, which this checker refuses |
+| `npm run check:dco-signoff -- "$OPENLUP_STACK_BASE" "$(git rev-parse HEAD)"` | PASS, all six R2 commits through the execution candidate signed off; use the full-digest spelling for the final evidence commit too |
+
+The producer manifest binds the retained pack proof to the exact execution
+candidate above. All values below are measured/cap; no cap or package control
+changed. This evidence reserves no M14 or R3 headroom.
+
+| Metric | Core | Outbox | Platform |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 167,341 / 327,680 | 39,165 / 81,920 | 1,898,755 / 1,925,000 |
+| Unpacked bytes | 712,626 / 1,392,640 | 133,216 / 266,240 | 8,890,843 / 8,970,000 |
+| Files | 224 / 420 | 41 / 90 | 2,571 / 2,580 |
+| Code gzip bytes | 143,737 / 276,480 | 20,930 / 43,008 | 1,623,846 / 1,648,000 |
+| Code files | 213 / 400 | 33 / 70 | 2,517 / 2,520 |
+| Docs gzip bytes | 17,213 / 49,152 | 13,216 / 26,624 | 63,969 / 73,728 |
+| Docs files | 10 / 20 | 6 / 12 | 5 / 10 |
+
+The type-only `risk/contracts` browser bundle measures 20 gzip bytes against
+32. Relative to recorded R1, Platform adds 3,548 packed bytes, 16,896 unpacked
+bytes, nine files, 2,476 code gzip bytes, nine code files and 230 docs gzip bytes.
+Platform headroom is 26,245 packed bytes, 79,157 unpacked bytes, nine total files,
+24,154 code gzip bytes, three code files and 9,759 docs gzip bytes.
+
+Two independent fresh-context read-only reviewers (`r2_final_review_a` and
+`r2_final_review_b`) inspected the complete R1-to-execution-candidate delta,
+including the generated declarations and repaired browser fixture. Both returned
+PASS with no material findings or optional advice, independently closed the two
+earlier finding cards, and considered direct delegation/the incumbent slot/the
+existing harness the smallest adequate approach. They ran no tests, builds or
+generators and changed no review-session state. These are preliminary local
+semantic reviews, not counted native admission or a new expiry/counter history.
+
+Remaining delivery gates: the combined +121 discovery increase exceeds the
+programme's +100 allowance by 21; the coordinator must obtain the finite budget
+decision and hosted-time reconciliation. Full root verification/coverage and
+counted native review remain coordinator-owned. The checker also reports the
+pre-existing committed binding snapshot as stale and explicitly reserves its
+refresh for release preparation; local policy/inventory pass. No release-prep
+snapshot, donor behavior, R3 privacy, M14 file, cap, timeout, source skip, version,
+SQL, activation or external state changed. No push was attempted.
+
+Self-retro: executing the app compiler caught one fixture-only type defect missed
+by static authoring and the server compiler. The direct type-only import fixed
+it without an assertion, abstraction or behavior change. One initial compiler
+overlap required a 7.6-second serial rerun; subsequent commands waited for actual
+process completion. The deferred DCO spelling required full endpoint resolution.
+No formal rethink or additional process was justified.
+
+### R2 authored cases and deferred commands
+
+The written witness has **35 explicit new cases**: `adminHandlers.test.ts` has
+15 individual cases plus four independent decision rows (19);
+`m15RiskBinding.test.ts` has three individual cases plus five independent outcome
+rows (8); `riskReviewRoutes.test.tsx` has four; the existing cold-consumer suite
+has four independent `RISK_WORKFLOW_PROOFS` rows (admin, NodeNext, Bundler,
+isolation). The installed admin scenario exercises the actual managed readback
+through the handler and deliberately expects `replayed: false` after a SQL reply
+of true. Existing five handler guards, client/UI cases, R1 adapter/SQL and managed
+timestamp-conflict witnesses remain unchanged.
+
+Three new production package files also expand the existing three per-source
+boundary tables by an expected nine instances. That makes an expected R2
+**44-case discovery increase**, pending actual discovery. R1 recorded 77, so the
+combined expected increase is 121 before R3, above the +100 programme allowance.
+No cap, skip, timeout or budget changed here; the coordinator must reconcile the
+actual discovery/hosted time and obtain the finite budget read before delivery.
+
+Run the following serially from this worktree **after the machine rule is lifted**.
+Keep `OPENLUP_STACK_BASE` pinned to the full R1 predecessor:
+
+```sh
+export OPENLUP_STACK_BASE=2e7d70ad25aeea42736394aebbf0e87f0b9a4c79
+npm run pretest
+npm --workspace @openlup/platform run api:update
+npm --workspace @openlup/platform run api:check
+npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression
+npm run lint
+npx --no -- tsc -p tsconfig.api.json
+npx --no -- tsc -p tsconfig.node.json
+npx --no -- vitest run packages/platform/test/risk server/domains/risk server/adapters/postgres/riskControl.test.ts server/adapters/supabase/riskAdminPort.test.ts server/adapters/supabase/riskOrderPaid.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx src/domains/risk/riskClient.test.ts src/pages/admin/RiskReviewPage.test.tsx --maxWorkers=2
+npx --no -- vitest run tests/postgres/riskControl.conformance.test.ts --maxWorkers=2
+npx --no -- vitest run scripts/packages/platform-cold-consumer.test.ts -t M15 --maxWorkers=2
+npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2
+npm run packages:check
+npm run oss:published-tree -- --policy --docs-update
+npm run oss:published-tree -- --policy
+npm run oss:published-tree -- --inventory
+git diff --check
+npm run check:dco-signoff -- "$OPENLUP_STACK_BASE" HEAD
+```
+
+API generation is intentionally deferred, rather than hand-writing a generated
+snapshot. Expected affected reports are `risk-server.api.md` and
+`composition.api.md`; the new BFF/HTTP declaration closure must be reviewed.
+Do not accept unrelated sibling regeneration. The installed compiler cases use
+strict NodeNext/Bundler consumers with `skipLibCheck` for optional peer declaration
+closures; they prove the entrance's requests/results and required actor/responder,
+not absence of all optional peer declaration dependencies. The isolation case
+separately bundles actual installed browser/contracts entries, refuses the server
+browser bundle and private paths, and proves that pg is absent.
+
+Required full verification, coverage, API and navigation generation, actual
+case/time/pack measurements and counted review remain with the coordinator. No
+execution, hosted PASS, installation proof or budget exception is claimed here.
+
+### R2 preliminary review history
+
+Two independent cold read-only reviewers inspected the full
+`2e7d70ad25aeea42736394aebbf0e87f0b9a4c79..583c3f49f2fc6a75ded17636384e7a0ff52bd367`
+comparison with the binding criteria and simplicity pre-check. Both used reads
+and Git only; no suite, compiler or generator ran. They identified two material
+cards, repaired in the next signed candidate:
+
+- **R2-P1 / reviewer A:** the fingerprint delegate omitted the existing public
+  `safeRiskString` helper. An existing source importer would fail, violating
+  unchanged delegation. Restore the named package export and extend the existing
+  fingerprint case with an identity assertion; no new behavior case is needed.
+- **R2-P2 / reviewers A and B (B1):** the selected-route witness called a
+  `Contribution` descriptor's erased `(...args: never[]) => unknown` signature
+  with HTTP arguments. The server compiler includes this test and would reject
+  it. Recover `typeof binding.services.list` at that witness boundary, as in the
+  existing M12 pattern; preserve the metadata API and actual callable.
+
+This is one preliminary repair iteration, not a native prepare/admission cycle.
+No existing native session, findings, counter or expiry was reset or inferred.
+Fresh reviewers must inspect the repaired committed candidate and explicitly
+close both cards. All deferred execution obligations remain open.
+
+### R2 local authoring handoff — 2026-10-27
+
+Signed implementation commits:
+
+- `d86106821614ec4ce395312051f463ef4b313dc2` — reference runtime/schema/port delegation.
+- `273ca0ac` — captured admin workflow, inert composition and 31 written cases.
+- `583c3f49f2fc6a75ded17636384e7a0ff52bd367` — four packed workflow cases and deferred command ledger.
+- `6684d9fd692830f3323c3d6d4e964d441fc2cd2e` — close preliminary helper-export and route-witness findings.
+
+Two new independent fresh-context reviewers inspected the **complete** repaired
+base-to-`6684d9fd692830f3323c3d6d4e964d441fc2cd2e` comparison. Both returned
+preliminary static PASS, explicitly closing R2-P1 and R2-P2 with no further
+material findings. They considered direct delegates, responder injection and the
+existing slot the smallest adequate solution. All four review contexts used
+reads/Git only. No native receipt, admission or evidence expiry is established;
+the coordinator retains the later counted review and verification route.
+
+Observed local proof is limited to clean Git whitespace checks and DCO trailers
+on the instructed local commits. A handoff fetch still resolves `origin/main` to
+the instruction pin above with no relevant instruction delta. No tests, pgTAP,
+builds, install, lint, compiler, API generation, policy checker or broad verify ran.
+The tree is an authored candidate, not a verified delivery candidate.
+
+Fit-report placement adjustments: the eight cross-boundary composition cases
+live beside `m15RiskBinding.ts`, where they exercise the actual existing commerce
+registry; the four installed/compiler/isolation cases extend the existing
+cold-consumer harness. Separate package `bindings.test.ts` and a new consumer
+harness would duplicate those proofs. The admin case suite calls the packaged
+binding directly. No behavioral requirement was narrowed. The captured escalated
+UI refusal is preserved even though the server advertises allowed actions.
+Generated snapshots/navigation remain unmodified because their commands require
+the deferred build/verification slot. These are explicit remaining gates, not
+accepted deviations from behavior or proof requirements.
+
+Small add-only shared-companion edits:
+
+- `packages/platform/src/risk/server/index.ts`: export the new handler and binding.
+- `packages/platform/src/composition/index.ts`: export the inert risk contribution.
+- `eslint.config.js`: add only the risk schema value edge and HTTP/BFF type edges
+  to `risk/server`; no other graph permission changes.
+- `scripts/packages/platform-cold-consumer.ts`: add installed workflow proofs,
+  their existing-esbuild import and invocation in the official consumer run.
+- `scripts/packages/platform-cold-consumer.test.ts`: add four independent rows.
+- `config/openlup-publication-catalog.json`: add seven public-output records.
+- `packages/platform/README.md`: append the binding/slot recipe.
+- `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`: append R2's delegation contract.
+- `docs/platform/plans/oss-m15-generic-risk-controls.md`: append this R2 task/evidence
+  record; retain R1's history unchanged.
+
+No package.json export, R1 fragment, API snapshot, release gate, version, lockfile,
+SQL, M14 source or default BFF router changed. Remaining coordinator decisions:
+actual case/time/pack reconciliation and any finite budget exception; after the
+machine rule is lifted, run the exact commands above, review generated API/docs
+deltas, then complete required verification and counted reviews. No open R2 code
+or donor-policy question is identified by the static reviews.
+
+Changed paths (complete R2 delta):
+
+```text
+config/openlup-publication-catalog.json
+config/public-reference-capability-manifest.json
+docs/platform/ARCHITECTURE_AND_EXTENSIONS.md
+docs/platform/RUNTIME_AND_SELF_HOSTING.md
+docs/platform/plans/oss-m15-generic-risk-controls.md
+eslint.config.js
+packages/platform/README.md
+packages/platform/changes/m15-r2.md
+packages/platform/src/composition/index.ts
+packages/platform/src/composition/riskContribution.ts
+packages/platform/src/risk/server/bindings.ts
+packages/platform/src/risk/server/index.ts
+packages/platform/src/risk/server/riskAdminCasesHandler.ts
+packages/platform/test/risk/adminHandlers.test.ts
+scripts/packages/platform-cold-consumer.test.ts
+scripts/packages/platform-cold-consumer.ts
+server/adapters/README.md
+server/adapters/postgres/riskControl.ts
+server/adapters/supabase/riskAdminPort.ts
+server/adapters/supabase/riskOrderPaid.ts
+server/domains/risk/orderPaidRiskPort.ts
+server/domains/risk/riskAdminCasesHandler.ts
+server/domains/risk/riskFingerprint.test.ts
+server/domains/risk/riskFingerprint.ts
+server/runtime/public-reference/m15RiskBinding.test.ts
+server/runtime/public-reference/m15RiskBinding.ts
+src/domains/risk/README.md
+src/domains/risk/contracts.ts
+src/domains/risk/ports.ts
+src/public-reference/riskReviewRoutes.test.tsx
+```
+
+Self-retro: the first static review caught an omitted compatibility helper and
+an erased descriptor signature in a new witness. Restoring the named export and
+recovering the known callable type closed both without changing public metadata
+or donor behavior. The lesson is to compare the complete exported surface and
+use the established concrete-callable witness pattern; no new abstraction or
+process was justified, and no formal rethink was needed. Machine contention
+prevented execution evidence, so no runtime delay or performance claim is made.
+
+### R2 predecessor integration — 2026-10-27
+
+Direct maintainer instruction authorizes the local no-fast-forward merge of
+`claude/oss-m15-r1-risk-import` at `7a1886aa599a96a9d1fef90769583e7251342aa3`
+into R2 at `c88f5894`, conflict resolution preserving M14 and both M15 slices,
+serial generation, the requested focused checks with two Vitest workers, and
+separate DCO-signed merge/regeneration commits. No push, cap change, release,
+behavior correction or counted review is in this continuation. Bart Roszkowski
+remains the accountable author; the coordinator retains subsequent delivery.
+
+Instruction freshness: freshly fetched `origin/main` is
+`80cb0e7063206a9fead36b4e6680c9a83fa3e108`, separate from the original R1 stack
+base. The predecessor contains that main commit and M14 #397. The only merge
+conflict is this record's append point: retain predecessor R1 integration
+evidence before the entire R2 record. Source and configuration merge without
+conflicts; preserve generated inputs and regenerate outputs in the next commit.
+Acceptance is the two local signed commits, preserved source intent, focused
+check results and exact Platform pack measurements against unchanged caps.
+Known M14 size excess remains reportable and blocks a passing package gate;
+this instruction grants no budget waiver.
+
+Integration merge: `aadc7b072547dedfe033dd613b0c478297ba2c2a`; parents are
+`c88f589435676743e5a603fce1eac68a6945141e` and
+`7a1886aa599a96a9d1fef90769583e7251342aa3`. The merge has the instructed
+Bart Roszkowski DCO trailer. Comparing the merge against its parents confirms
+R2 risk/composition sources and M14 operations sources/tests are unchanged.
+Release-gate bytes equal the predecessor's; no cap was adjusted.
+
+Serial regeneration completed successfully: Platform `api:update`, followed by
+`oss:published-tree -- --policy`, then `--policy --docs-update`. Every generated
+output is byte-identical to the merged inputs, so this separate regeneration
+commit records the result rather than inventing generated changes. The policy
+comparison now uses main `80cb0e70`, with nine obligations and zero unanswered.
+The pre-merge policy probe used the older HEAD's merge-base and reported one
+unanswered configuration obligation; committing the merge restores the actual
+main comparison and the existing scoped impact answer without a policy edit.
+
+Focused results for the merge candidate (Node 24.22.1, npm 11.19.1; command logs
+and measurement JSON under ignored `.context/scratch/m15-r2-predecessor-merge/`):
+
+| Command | Result |
+| --- | --- |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS; structural scan used `RAYON_NUM_THREADS=2` |
+| `npm run lint` | PASS; zero errors, 33 warnings, all eight structural-rule fixture suites pass |
+| `npm run api:check --workspaces --if-present` | PASS for Core, Outbox and Platform; root has no standalone API script |
+| `npx --no -- vitest run packages/platform/test/risk --maxWorkers=2` | PASS, 42 tests in five files |
+| `npm run packages:check` | FAIL, exactly five Platform size-cap findings; all three packages packed with no other findings |
+| `node --experimental-strip-types .context/scratch/m15-r2-predecessor-merge/measure.mjs` | PASS as measurement; all five budget findings reproduced with the existing `measurePack` and `checkPackBudget` functions |
+| `git diff --check` | PASS |
+
+The independent Platform tarball integrity equals the official gate's integrity:
+`sha512-M2LKdqqc/yAl0uhbNlipnbiQvLQSGuyLoMn4lGL2VVQpy7XZXamsNKXpc63biJ6AVq97oDPu88O+NaPQqlf/yQ==`.
+The follow-up evidence changes only this non-packed task record; package inputs
+and measurements remain those of the merge candidate.
+
+| Platform metric | Measured | Unchanged cap | Result |
+| --- | ---: | ---: | --- |
+| Packed bytes | 1,936,088 | 1,925,000 | Exceeds by 11,088 |
+| Unpacked bytes | 9,061,171 | 8,970,000 | Exceeds by 91,171 |
+| Files | 2,656 | 2,628 | Exceeds by 28 |
+| Code gzip bytes | 1,656,903 | 1,648,000 | Exceeds by 8,903 |
+| Code files | 2,601 | 2,574 | Exceeds by 27 |
+| Docs gzip bytes | 64,499 | 73,728 | Within by 9,229 |
+| Docs files | 5 | 10 | Within by 5 |
+
+The requested local integration is complete with the known package gate failure
+reported. Full verification, counted review, budget reconciliation and later
+delivery remain with the coordinator; no push, waiver or release is claimed.
+
+Self-retro: the single append conflict needed only preservation of both evidence
+sections. Existing generators confirmed that no generated-byte repair was
+necessary, avoiding manual output edits. The initial policy probe's old base
+resolved after the merge commit; retain that distinction when interpreting a
+mid-merge policy result. No extra mechanism or successor work was added.
+
+### R2 M14 #400 cascade — 2026-10-27
+
+Current direct local grant and policy pin are recorded in the M14 #400 stack
+integration section above; this continuation supersedes prior cap exclusions
+only through CD-M15-6a. Merge local R1 `c722a154` into R2, preserving both
+architecture additions and complete task histories (the two conflict files).
+M14 source comes from main unchanged; R2 runtime remains unchanged. Regenerate
+API/navigation and execute the requested focused checks with two workers.
+No package-lock delta or reinstall; no push, counted admission or full verify.
+
+R2 integration candidate `73a0e110`: all requested focused checks pass—two-thread
+ast-grep, lint (zero errors, 33 warnings), all workspace API checks and 42/42
+risk tests in five files with `--maxWorkers=2`. API regeneration and both
+documentation policy commands pass with no generated-byte changes. This final
+merge adds only R1's non-packed evidence to the checked tree; its sole conflict
+is the task record append point, preserving both histories. Package inputs,
+runtime and tests are identical to the focused-check candidate. Logs remain in
+`.context/scratch/m15-main400/`. Full verify/admission remain deferred.
+
+Self-retro: the shared task record's append point causes evidence-only merge
+conflicts; retaining whole sections preserves the audit history with no runtime
+repair, helper or new tracking mechanism. No further improvement is justified.
+
+Final R2 policy against the exact new R1 stack base initially refused two stale
+delta digests: the M14 merge changed shared ESLint/cold-consumer bytes. Refresh
+only the existing scoped no-impact answers in this evidence commit; the risk
+architecture still owns the graph and the existing consumer command still owns
+these added witnesses. No checker, command, test selection or control changes.
+
+### R2 lifecycle/tmpfs cascade — 2026-10-27
+
+Continue the direct local grant above by merging R1 `c9f6978e` into R2.
+Two conflict files: retain R2 risk delegation before M14 lifecycle architecture,
+and retain complete predecessor and R2 task histories. M14 source/test files
+and inherited caps come unchanged from R1; R2 risk/composition behavior is
+unchanged. No lockfile delta or reinstall. Regenerate and run requested focused
+checks with two workers; logs use `.context/scratch/m15-main406/`.
+
+R2 candidate `a2923b45`: API/navigation regeneration, both documentation
+commands, two-thread ast-grep, lint (zero errors, 33 warnings), all workspace
+API checks and 42/42 risk tests in five files with `--maxWorkers=2` pass.
+The explicit new R1-base policy correctly detects two expired fingerprints
+for the merged ESLint and cold-consumer delta. Refresh the existing scoped
+repository/tooling explanations in this normal signed evidence commit; their
+meaning is unchanged and the checker is unchanged. No package input changes.
+
+Self-retro: checking the exact predecessor catches stale scoped documentation
+evidence that a main-relative check can mask. Preserve complete task append
+sections and renew only the changed fingerprints; no new mechanism is needed.
+
+### R2 current-main cascade — 2026-10-27
+
+Merge R1 `2319e024` into R2 under the current local grant above. The sole
+conflict is this task record's append point; preserve complete R1 and R2
+histories. Source, exports, APIs and caps merge without conflict. Lockfile
+unchanged; no install. Regenerate and run focused checks serially, with
+two Vitest workers and exact predecessor documentation comparison.
 ### M14 qualification and 0.30.0 stack maintenance — 2026-10-28
 
 Direct maintainer continuation: maintain the existing R1/R2/R3 draft stack by
@@ -452,6 +933,15 @@ new mechanism is needed. Evidence is retained per tree under ignored
 `.context/scratch/m15-main-fea0854a/`. Completion results and self-retro follow
 in this existing record after the final full-stack measurement.
 
+### R2 qualification/release cascade — 2026-10-28
+
+Merge local R1 `3d32517c` under the direct local grant above. Resolve only the
+task-record append conflict by preserving the complete R1 and R2 sections.
+M14 source/release metadata and R2 risk delegation remain intact. The changed
+lockfile requires npm ci. Regenerate with the existing commands, run the
+requested focused checks with two workers, and commit with DCO sign-off.
+Exact-predecessor policy runs after the merge commit establishes ancestry.
+
 ### Current-main draft stack maintenance — 2026-10-28
 
 Direct maintainer continuation authorizes local non-fast-forward DCO merges
@@ -473,6 +963,15 @@ no changed value. The lockfile is unchanged, so no npm ci. The smallest adequate
 solution uses the existing merge and generators without a runtime change or
 new mechanism. Logs and retained artifacts: `.context/scratch/m15-main-4ff46904/`
 per worktree. Completion results follow after the full-stack measurement.
+
+### R2 current-main cascade — 2026-10-28
+
+Merge local R1 `5affb9c4` under the direct grant above. The only textual
+conflict is the task-record append point; preserve both complete histories.
+Risk delegation and all M14 content remain unchanged. No lockfile delta or
+cap change. Regenerate using the existing commands, run focused checks with
+two workers, then make the local DCO merge. Run final documentation policy
+against the exact R1 predecessor after commit establishes its ancestry.
 
 ### Draft stack maintenance — 2026-10-29
 
@@ -505,3 +1004,16 @@ for 0.31.0, requiring npm ci in each worktree. The smallest adequate solution
 is the existing registration union and generators, without a runtime change
 or new mechanism. Logs/artifacts: `.context/scratch/m15-main-8faa3232/` per tree.
 Completion evidence and self-retro follow after checks and full-stack measurement.
+
+R2 maintenance (2026-10-29): merge local R1 `0790e968`. Four conflicts
+combine publication registrations, runtime recipes, adapter ownership and task
+history. Preserve M14 operations/migration content alongside R2 risk delegation.
+No runtime edit or cap delta. Lockfile changes require npm ci. Regenerate
+existing API/navigation outputs and run the requested focused checks.
+
+R2 focused result: ast-grep, lint (zero errors, 33 warnings), all workspace
+API checks and 42/42 risk tests pass. Exact-predecessor documentation policy
+found one stale tooling no-impact digest after M14 integration. The R2 delta
+only extends the existing installed-artifact harness with risk workflow cases;
+the contributor section's commands and required gates remain correct. Record
+a fresh scoped trailer without changing the harness or its controls.
