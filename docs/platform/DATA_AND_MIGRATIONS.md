@@ -500,9 +500,10 @@ sixth approval row, and that approval landed before this SQL introduction.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) has
 five further fixed approvals at positions 8–12. Those `qa_` fixtures remain
 inert. A PostgreSQL parse failure in the approved actor unit requires four
-new `qb_` replacement identities. This additive reader checkpoint accepts
-their exact future paths only as a complete positions 13–16 append; neither
-the new approvals nor any `qa_`/`qb_` SQL or schema-3 plan is active here.
+new `qb_` replacement identities. The preceding reader checkpoint accepts
+their fixed paths only as a complete positions 13–16 append. This separate
+approval checkpoint adds those four exact whole-file identities; no `qa_`/`qb_`
+SQL or schema-3 plan is active here.
 The future 91-unit restricted generation selects the `qa_` baseline and four
 `qb_` replacements, reuses the issued completion tail, and excludes the
 qualified owner-path forward. It requires two fixed role-mode inventories.
