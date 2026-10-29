@@ -161,6 +161,18 @@ TypeScript projects pass on this repair. Because the numeric check tightens a
 runtime refusal, the exact repair awaits a maintainer read before DCO and fresh
 full review; the prior review and failed canonical result remain in evidence.
 
+The accepted typecheck repair was DCO committed as `3fc2d640` (tree
+`2d388f7527c3c1196dc317ff3b2b07cbc8cfda74`). Two new full cycle-2
+reviews passed and native verification reported `reviewed`. During the
+load-gated canonical run, main advanced to `b5451b24c2dbb753f54965226d9c40972d70f356`;
+the policy phase refused review carry-over before running its command. The
+forced main merge was conflict-free with mechanical `merge-tree` result
+`2942225dea774d5f7ab0ab1a1e1f5d896f177eb2`, parents `3fc2d640` and
+`b5451b24`. Excluding this task record, the stable parcel patch ID is
+`346bd3775510776ca657fd34e7c650c7d7e321cd` against both the old
+`d1800393` base and new main. This lineage note is the only parcel edit.
+Full native review and canonical verification remain required on the merge.
+
 Self-retro at this stop: the first actual managed extraction revealed a pending
 welcome outbox item and email timeline that synthetic projection alone missed;
 using the pinned local stack made the missing duty observable. A short finite
