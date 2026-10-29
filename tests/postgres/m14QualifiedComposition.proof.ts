@@ -86,7 +86,7 @@ async function proveOwnerPathResolution(bootstrap: Pool): Promise<void> {
   }
   const parent = await fixture(bootstrap);
   const snapshot = async () => {
-    const rows = [];
+    const rows: Array<{ rows: number; tuples: string }> = [];
     for (const table of ["clients", "subscriptions", "subscription_cycles", "customer_subject_lifecycle_events"]) {
       rows.push((await bootstrap.query(`SELECT count(*)::pg_catalog.int4 AS rows,
         coalesce(pg_catalog.md5(pg_catalog.string_agg(xmin::pg_catalog.text || ':' || ctid::pg_catalog.text, ',' ORDER BY ctid)),'empty') AS tuples
