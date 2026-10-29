@@ -46,3 +46,19 @@ it("reports the effective explicit worker pin before any child fixture output", 
     expect(JSON.parse(output.stdout).workers).toBe(workers);
   }
 });
+
+it("defaults local config workers to 50% and keeps explicit pins and CI scheduling", () => {
+  const configWorkers = (overrides: NodeJS.ProcessEnv) => {
+    const env: NodeJS.ProcessEnv = { ...processEnvironment };
+    for (const name of ["CI", "VITEST_MAX_WORKERS"]) delete env[name];
+    // Vite's own loader bundles the config, as Vitest does (it relies on __dirname).
+    const output = spawnSync(process.execPath, ["--input-type=module", "-e",
+      "import { loadConfigFromFile } from 'vite'; const { config } = await loadConfigFromFile({ command: 'serve', mode: 'test' }, 'vitest.config.ts'); console.log(JSON.stringify({ workers: config.test.maxWorkers ?? null }));"],
+    { cwd: resolve("."), env: { ...env, ...overrides }, encoding: "utf8", timeout: 30_000 });
+    expect(output.status, output.stderr).toBe(0);
+    return JSON.parse(output.stdout.trim().split("\n").at(-1)!).workers;
+  };
+  expect(configWorkers({})).toBe("50%");
+  expect(configWorkers({ VITEST_MAX_WORKERS: "3" })).toBe("3");
+  expect(configWorkers({ CI: "true" })).toBeNull();
+}, 60_000);
