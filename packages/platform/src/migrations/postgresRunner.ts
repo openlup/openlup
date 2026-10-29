@@ -71,7 +71,8 @@ const RELEASE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_unlo
 // The expected catalog projection is pinned to the ledger CREATE TABLE in
 // db/platform/migrations/00000000000000_platform_baseline.sql. The raw catalog
 // expression trees keep operator, function, type and constant identities; only
-// source locations are normalized. PostgreSQL 16 and 17 produce this same shape.
+// source locations and a signed varlena header byte are normalized. PostgreSQL
+// 16 and 17 produce this same shape on both amd64 and arm64.
 const EXPECTED_LEDGER_CATALOG_SHAPE = {
   "relation": ["r","p",false,"0",false,false,false,false,true,3,"d",false,false,"heap",null],
   "columns": [[1,"catalog_path","25",-1,"100",true,"","",false,false,0,false,"x","",null,null],[2,"sha256","25",-1,"100",true,"","",false,false,0,false,"x","",null,null],[3,"position","23",-1,"0",true,"","",false,false,0,false,"p","",null,null],[4,"executed_at","1184",-1,"0",true,"","",true,false,0,false,"p","",null,null]],
@@ -105,8 +106,11 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
       'constraints', (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(
         co.conname, co.contype, co.condeferrable, co.condeferred, co.convalidated,
         co.connoinherit, co.conislocal, co.coninhcount, co.conkey,
-        CASE WHEN co.conbin IS NULL THEN NULL ELSE pg_catalog.regexp_replace(co.conbin::pg_catalog.text,
-          ':location -?[0-9]+'::pg_catalog.text, ':location ?'::pg_catalog.text, 'g'::pg_catalog.text) END,
+        CASE WHEN co.conbin IS NULL THEN NULL ELSE pg_catalog.replace(
+          pg_catalog.regexp_replace(co.conbin::pg_catalog.text,
+            ':location -?[0-9]+'::pg_catalog.text, ':location ?'::pg_catalog.text, 'g'::pg_catalog.text),
+          ':constvalue 59 [ -20 0 0 0'::pg_catalog.text,
+          ':constvalue 59 [ 236 0 0 0'::pg_catalog.text) END,
         ci.relname) ORDER BY co.conname), '[]'::pg_catalog.jsonb)
         FROM pg_catalog.pg_constraint co
         LEFT JOIN pg_catalog.pg_class ci ON ci.oid OPERATOR(pg_catalog.=) co.conindid
