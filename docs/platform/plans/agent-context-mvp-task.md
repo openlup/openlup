@@ -149,6 +149,20 @@ After that repair commit, `main` advanced to `511216f6` (M15 R2); native
 preflight required integration. The clean merge added no conflict resolution
 or task feature beyond carrying the approved candidate onto that base.
 
+Regroup after two completed candidate evaluations: cycle 0 native review found
+the missing corpus inventory and inner scan bounds; cycle 1 received two PASS
+reviews closing those findings, but full local verification stopped at the
+Outbox package-contract test after 22,397 passing tests. The remaining gap is
+the package test's explicit packed-file allowlist: it omitted this task's
+`AGENT_CONTEXT.md` even though the package manifest and cold package gate
+admit that file. The cause is one unsynchronized existing allowlist, so the
+smallest adequate repair is adding that exact filename to the assertion, not
+adding another packaging mechanism. The next discriminating step is the
+focused Outbox contract test; its expected result is a passing pack inventory
+with all other filename refusals intact, followed by a fresh reviewed full
+gate. Lesson: new packed guidance → update every explicit package inventory
+before the broad gate.
+
 Research and independent Astra counter-review support choosing retrieval by
 the evidence needed, rather than imposing one method on every task.
 [Agent Retrieval Bench](https://arxiv.org/abs/2607.24882) reports different
@@ -179,4 +193,6 @@ its first comparison; checking the executable before cold trials would avoid
 that repeat. Native review exposed validation that covered present sections but
 not missing sections and a loop bound placed outside its inner scan; an
 inventory comparison and inner-loop bound address those exact gaps. No broader
-process change is warranted.
+process change is warranted. The 22,400-case root suite found an Outbox
+packed-file allowlist omitted by the narrower cold package gate; run that
+existing direct contract test before the broad gate when adding a packed file.
