@@ -1199,6 +1199,20 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The [released-history witness](../../tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
+selects the nearest published predecessor with an applicable portable data
+backfill: platform 0.23.0, whose 77-unit legacy manifest is an exact prefix of
+the current 88-unit legacy manifest. The invoicing durable-duties forward copies
+existing settlement and shipment-operation identities into `invoicing_cutover`
+so historical sources do not become new duties. It kills the canonical runner
+while that unit waits inside its transaction and again after the unit commits,
+then checks exact ledger replay, retained rows, and subscription alignment.
+An opt-in local binding to the published 0.23.0 package exercises prior payment
+code against the upgraded database. The 0.23.0 release has no qualified-v2
+history, so this is a legacy upgrade witness; the separate qualified-v2 fresh
+installation checks retain their own scope. Code rollback does not restore the
+earlier database schema or reverse the backfilled cutover rows.
+
 The runtime-completion forward follows the entire qualified F90 prefix, preserving
 all earlier issued identities. The owner-path forward follows it as unit 92,
 with two newly measured restore-bound inventories. Runtime completion provides

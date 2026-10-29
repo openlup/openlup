@@ -1418,6 +1418,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-schema-upgrade-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -25975,6 +25979,14 @@
     },
     {
       "path": "tests/postgres/m14QualifiedSession.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ReleasedSchemaUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ReleasedSchemaUpgradeChild.ts",
       "class": "public-output"
     },
     {
