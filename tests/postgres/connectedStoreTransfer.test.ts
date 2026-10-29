@@ -145,6 +145,16 @@ beforeAll(async () => {
   identity = await identityFixture();
   graph = await fixture(source.owner);
   const retainedGraph = await fixture(source.owner);
+  const product = randomUUID(), sku = randomUUID(), priceList = randomUUID();
+  await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'retained-product','Retained product')", [product]);
+  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,net_weight_g,sellable_in_subscription) VALUES($1,$2,'retained-sku','Retained SKU',100,true)", [sku, product]);
+  await source.owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [product, sku]);
+  await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Retained list','ZZ','XXX')", [priceList]);
+  await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor) VALUES($1,$2,100)", [priceList, sku]);
+  await source.owner.query("UPDATE public.subscriptions SET price_list_id=$2,currency_code='XXX' WHERE id=$1", [graph.subscription, priceList]);
+  await source.owner.query(`INSERT INTO public.subscription_lines
+    (subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code)
+    VALUES($1,$2,1,0,100,'XXX')`, [graph.subscription, sku]);
   await source.owner.query("UPDATE public.clients SET principal_id=$2,email='retained@example.invalid',lifecycle_stage='customer' WHERE id=$1", [graph.client, identity.principal.principalId]);
   await source.owner.query("UPDATE public.subscriptions SET next_cycle_at='2027-01-01T12:00:00.123456Z' WHERE id=$1", [graph.subscription]);
   await openCase(source.owner, graph);
@@ -175,6 +185,26 @@ beforeAll(async () => {
   await source.owner.query("INSERT INTO public.invoicing_seller_revisions(duty_id,eligibility_version) VALUES($1,'invoicing.seller.v1')", [parent]);
   await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,attempts)
     VALUES('subscription',$1,'retained.owed','original-effect-key','{"frozen":9007199254740993}','processing',3)`, [graph.subscription]);
+  const fingerprint = createHash("sha256").update("retained-recipient@example.invalid").digest("hex");
+  await source.owner.query(`INSERT INTO public.communication_recipient_consents
+    (recipient_fingerprint,purpose,state,captured_at,updated_at)
+    VALUES($1,'marketing_newsletter','suppressed','2026-01-01','2026-01-02')`, [fingerprint]);
+  const syncId = (await source.owner.query<{ id: string }>(`INSERT INTO public.outbox_events
+    (aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,attempts)
+    VALUES('communication_native_sync',$1,$2,'retained-sync:1','{}','pending',2) RETURNING id`,
+  [randomUUID(), `communication.native.sync.${fingerprint}`])).rows[0]!.id;
+  await source.owner.query(`INSERT INTO public.communication_native_sync_state
+    (work_id,binding,provider_kind,contact_id,normalized_email,purpose,event_kind,command_fingerprint)
+    VALUES($1,'retained-binding','synthetic-provider','retained-contact','retained-recipient@example.invalid',
+      'marketing_newsletter','suppress',$2)`, [syncId, fingerprint]);
+  const sendId = (await source.owner.query<{ id: string }>(`INSERT INTO public.communication_native_sends
+    (binding,source_key,message_id,recipient_fingerprint,template_reference,accepted_at)
+    VALUES('retained-binding','retained-send:1','provider-message:1',$1,'retained-template','2026-01-01') RETURNING id`,
+  [fingerprint])).rows[0]!.id;
+  await source.owner.query(`INSERT INTO public.communication_native_observations
+    (binding,observation_key,send_id,kind,occurred_at,source,fact_fingerprint)
+    VALUES('retained-binding','retained-observation:1',$1,'delayed','2026-01-02','callback',$2)`,
+  [sendId, fingerprint]);
   const admin = randomUUID(), revoked = randomUUID(); erased = randomUUID();
   await source.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'admin@example.invalid'),($2,'revoked@example.invalid')", [admin, revoked]);
   await source.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
@@ -345,7 +375,7 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
 }, 30_000);
 
-it("maps a representative managed identity projection through the qualified restore without reviving erased subjects", async () => {
+it("checks the identity mapper's erased-subject and conflict branches with synthetic records", async () => {
   const issuer = "https://issuer.example.invalid/managed";
   const liveManagedId = randomUUID(), erasedManagedId = randomUUID(), adminManagedId = randomUUID(), revokedManagedId = randomUUID();
   const liveClient = randomUUID(), erasedClient = randomUUID(), auditId = randomUUID(), erasureId = randomUUID();
@@ -381,45 +411,18 @@ it("maps a representative managed identity projection through the qualified rest
   };
   const before = await census(target.owner);
   const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
-  const sourceClient = await source.owner.connect();
-  let observed: ConnectedNativeStoreCapture["observation"];
-  let sourceProjection: typeof sourceRows;
-  try {
-    await sourceClient.query("CREATE TEMP TABLE managed_identity_projection(kind text NOT NULL,payload jsonb NOT NULL)");
-    for (const [kind, rows] of Object.entries(sourceRows)) for (const row of rows) {
-      await sourceClient.query("INSERT INTO managed_identity_projection(kind,payload) VALUES($1,$2::jsonb)", [kind, JSON.stringify(row)]);
-    }
-    await sourceClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const fact = (await sourceClient.query<{ cluster: string; database: string; login: string; snapshot: string }>(`SELECT
-      (SELECT system_identifier::text FROM pg_control_system()) AS cluster,current_database() AS database,
-      session_user::text AS login,txid_current_snapshot()::text AS snapshot`)).rows[0]!;
-    observed = fact;
-    // The local managed fixture is a PostgreSQL projection, not a provider-auth
-    // token or source-key export. Read exact stored JSON values in one snapshot.
-    const stored = async <T>(kind: string): Promise<T[]> => (await sourceClient.query<{ payload: string }>(
-      "SELECT payload::text FROM managed_identity_projection WHERE kind=$1 ORDER BY payload::text", [kind]))
-      .rows.map(row => JSON.parse(row.payload) as T);
-    sourceProjection = {
-      clients: await stored<(typeof sourceRows.clients)[number]>("clients"),
-      adminUsers: await stored<(typeof sourceRows.adminUsers)[number]>("adminUsers"),
-      revokeAudit: await stored<(typeof sourceRows.revokeAudit)[number]>("revokeAudit"),
-      erasures: await stored<(typeof sourceRows.erasures)[number]>("erasures"),
-      lifecycleEvents: await stored<(typeof sourceRows.lifecycleEvents)[number]>("lifecycleEvents"),
-    };
-    await sourceClient.query("COMMIT");
-  } catch (error) { await sourceClient.query("ROLLBACK"); throw error; }
-  finally { await sourceClient.query("DROP TABLE IF EXISTS managed_identity_projection").catch(() => undefined); sourceClient.release(); }
+  const observed = packet.observation;
   const subjects = [liveManagedId, erasedManagedId, adminManagedId, revokedManagedId]
     .map(managedId => ({ managedId, subject: managedId }));
   const evidence: ManagedIdentityMappingSource = { sourceId: "representative-managed-identity", issuer,
-    observation: observed!, subjects, ...sourceProjection! };
+    observation: observed, subjects, ...sourceRows };
   const mapped = await mapManagedIdentityForConnectedRestore({ source: evidence, freshTarget: pristine, targetOwner: target.owner });
   const otherIssuer = await mapManagedIdentityForConnectedRestore({ source: { ...evidence,
     issuer: "https://other-issuer.example.invalid/managed" }, freshTarget: pristine, targetOwner: target.owner });
   expect(otherIssuer.subjects[0]!.principalId).not.toBe(mapped.subjects[0]!.principalId);
   expect(mapped.subjects).toEqual(subjects.map(({ managedId, subject }) => ({ managedId, issuer, subject,
     principalId: deriveOidcPrincipalId(issuer, subject) })));
-  expect(mapped.packet.observation).toEqual(observed!);
+  expect(mapped.packet.observation).toEqual(observed);
   expect(mapped.auditReferences).toEqual([{ sourceId: evidence.sourceId, sourceRowId: auditId, targetAuditId: auditId }]);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: mapped.packet, freshTarget: pristine }))
     .toMatchObject({ replayed: false });

@@ -54,7 +54,7 @@ does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
-captures the connected73-table graph and the application's complete private
+captures the connected native graph and the application's complete private
 `objects/tmp` tree only after its finite source writers and observed server
 backends retire. Its migration-owner capture is read-only; actual source and
 target domain commands use the qualified restricted runtime. The existing
@@ -67,6 +67,22 @@ only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
 absence or complete upload is manufactured. This finite composition does not
 qualify an adopter's complete writer inventory or managed-history mapping.
+
+The finite native profile also admits the existing canonical catalog,
+price-list and subscription-line parents of a retained subscription, and the
+recipient-consent, native send/observation and communication-sync rows needed
+for pending communication work. These names use the same qualified-target
+catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
+checks as the rest of the profile; no arbitrary source table becomes writable.
+The managed source extractor retains full business-row text and complete
+Storage metadata under source/table/row identities in a private history object,
+while selecting only identity metadata from Auth users. It refuses unknown
+nonempty relations and refuses export of an active row whose canonical mapping
+is still unresolved. A transfer manifest binds the exact canonical row packet
+to the private object's digest; managed admission reads the object back and
+refuses missing retention before database mutation. Source-keyed acquisition receipts remain history rather
+than target command keys. This bounded local evidence does not qualify a whole
+managed installation or its object access and recovery paths.
 
 Historical insertion is not generally inert. `clients` insertion invokes
 `customer_subject_capture_lifecycle_trigger`, generating new history; cycle

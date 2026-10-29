@@ -31,7 +31,10 @@ query/building and executor surfaces do not by themselves establish an
 installation, role graph, database-wide compatibility or a connected-store
 transfer. The migration-runner and qualified-session files have the narrower
 installer owner below; connected-store capture/restore has the separate
-transfer owner.
+transfer owner. The managed retained extractor in this directory is also a
+transfer adapter: it reads a bounded source snapshot and emits a private
+history object plus a finite canonical projection, rather than serving a
+normal request or adding a provider connection.
 
 ## Restricted PostgreSQL installation binding
 
@@ -56,13 +59,22 @@ binding. The finite native 91-unit witness passed with two owned installations
 and actual restricted runtime media access, using the superuser migration owner
 for administrative restore;
 the earlier 90-unit attempt stopped during source runtime media confirmation.
-The fixed 73-table graph preserves PostgreSQL JSON text, including bigint and
+The fixed 82-table graph preserves PostgreSQL JSON text, including bigint and
 timestamp precision. Capture observes one actual read-only repeatable-read
 transaction and checks all non-system user schemas. Unknown nonempty business
 tables, including acquisition-private business data, refuse rather than being
 omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
+
+The fixed profile now includes the existing native catalog, price-list and
+subscription-line rows needed by retained subscription terms, plus recipient
+consent, native send/observation and queued communication-sync rows. Restore
+checks their exact column shapes and pristine target rows under its existing
+lock, inserts catalog parents before line references, resolves a populated
+product primary-SKU reference after its SKU exists, sends before observations,
+and sync state after its outbox work, then includes them in replay and the final
+whole-table census. The profile still refuses other nonempty tables.
 
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
@@ -87,6 +99,21 @@ pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
 
+The [managed source extractor](postgres/connectedManagedRetained.ts) reads one
+disposable managed PostgreSQL snapshot across non-system schemas, selecting
+Auth user identity metadata without credentials and retaining complete Storage
+metadata and finite business rows in a private source/table/row-keyed history
+object. Its relation census refuses unknown nonempty data. Subject ownership is
+recorded for retained rows, and an erased subject's entries are removed from a
+new hashed object whose readback checks the redaction. A provisional source
+capture cannot be exported as a publishable history object until its required
+active mapping is resolved. The managed transfer manifest binds that private
+object's digest to the exact canonical row packet; managed restore admission
+reads it back before database mutation and refuses missing or altered history.
+The current money projection admits checked pending retry and paid order cohorts;
+other active managed states refuse. This local
+adapter does not prove provider service access or complete managed activation.
+
 The [managed identity mapper](postgres/connectedStoreRestore.ts) translates an
 explicitly evidenced issuer/subject binding, customer references, human operator
 membership and the native subset of managed revoke audit, lifecycle rows and
@@ -96,9 +123,9 @@ references through the frozen OIDC derivation, and refuses conflicting audit
 fields, missing bindings, machine actors, erased rows without receipts,
 populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
-snapshot and completeness; the mapper does not collect managed auth subjects or
-certify issuer control. Full managed audit rows and source-keyed acquisition
-history remain with item 8, outside the fixed 73-table graph. The task decision
+snapshot and completeness; the mapper does not certify issuer control. Full
+managed audit rows and source-keyed acquisition history remain in the private
+retained object, outside active target-key lookup tables. The task decision
 and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 

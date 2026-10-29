@@ -1426,6 +1426,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-managed-retained-transfer.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -10539,6 +10543,10 @@
     },
     {
       "path": "server/adapters/postgres/communicationsLifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedManagedRetained.ts",
       "class": "public-output"
     },
     {
@@ -26035,6 +26043,10 @@
     },
     {
       "path": "tests/postgres/communicationsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedManagedRetained.test.ts",
       "class": "public-output"
     },
     {

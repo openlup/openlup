@@ -1,0 +1,118 @@
+# M14 D32 — managed retained transfer
+
+Status: development-preview task record; implementation and proof in progress. This record
+is not a transfer qualification.
+
+## Outcome, scope and authority
+
+Capture one disposable managed installation with synthetic data, actual Auth and
+Storage metadata, explicit issuer/subject mapping, and its complete retained
+business graph. Map active obligations into canonical target stores; retain full
+source history that has no native representation in a finite private sidecar.
+Every source relation and row class needs an explicit disposition. Unknown
+nonempty data, conflicting mapped fields, missing retention or missing privacy
+coverage must refuse publication.
+
+The active supervisor is the single writer in the assigned task worktree. The
+maintainer's bounded programme grant covers local implementation and synthetic
+proof, DCO, independent native review, submission and queue merge after required
+gates. API/security-control changes require the stabilized maintainer read before
+DCO. There is no release, hosted-resource, credential, deployment or production
+authority. The [contribution rules](../../../CONTRIBUTING.md#deliver-a-change)
+own delivery and [native review](../../../CONTRIBUTING.md#native-review-and-accountability).
+
+This parcel owns business extraction/mapping, contributors, the sidecar and the
+finite admission of four existing canonical communications tables in connected
+restore. The qualified installer and capture's cluster-identity check belong to
+a separate writer. Object
+source/serving adapters and the recipe runner are also separately owned.
+Catch-up/final recapture, the second transfer leg, complete object ACLs,
+restricted restore and measured recovery are excluded.
+
+Code base: `15a708a6b5b34f8a6d27b25f4867787425084bf7`.
+Fetched instruction revision: `ef99742de560bb88865794a8a1694884d65d06ea`.
+Canonical owners: [compatible transfer](../DATA_AND_MIGRATIONS.md#compatible-data-transfer),
+[identity mapping](oss-m14-managed-identity-mapping.md) and
+[existing transfer](oss-m14-existing-store-transfer.md).
+
+## Acceptance and proof plan
+
+Use the existing managed installation fixture or pinned local stack and a fresh
+qualified PG16 target. Replace the temporary identity-projection witness with
+actual extraction. Compare complete source/target rows, outstanding obligations,
+source-keyed receipts and sidecar records by source/table/row identity. Preserve
+the independent target installation key and the existing acquisition drain;
+source-keyed history must never enter active target-key lookup tables.
+
+Exercise sidecar export/readback and erasure/redaction, proving erased personal
+data absent from readback. Prove unknown nonempty-table, missing-coverage and
+mapped-field-conflict refusals before publication. Complete affected real-PG
+proof, cheap gates, required read, two fresh full reviews and canonical verification
+before delivery. Local PG evidence cannot establish hosted-provider acceptance.
+
+The smallest adequate route is fixed domain mapping into the existing atomic
+restore and an object-boundary sidecar. A generic importer, post-commit inserts
+or treating active obligations as archive-only history would add risk or fail
+the accepted outcome.
+
+## Finite communications admission
+
+The fixed native capture/restore profile omits the canonical communications
+stores used by the native runtime: `communication_recipient_consents`,
+`communication_native_sends`, `communication_native_observations` and
+`communication_native_sync_state`. The latter references retained `outbox_events`.
+Existing runtime reconciliation and sync read those stores, not a history sidecar.
+An outbox row without its sync state is not a complete retained obligation.
+
+Adding these tables to capture alone cannot work: restore's fixed insertion
+order does not visit them, and its complete final census would reject their
+missing rows. Inserting them before restore also fails its outside-profile
+emptiness check; inserting after commit loses atomicity and exact replay proof.
+
+The lead expanded this parcel's ownership to admit these four fixed canonical
+tables into the existing transaction, schema/column checks, insertion order and
+exact replay/final census, with sends before observations and outbox before sync
+state. Catalogue checks, unknown-table refusal, pristine-target checks and
+installation-key preservation remain binding. No arbitrary SQL callback, schema
+migration or grant is included. This change enters the required API/control read
+packet before DCO. Source-graph inspection also found five existing canonical
+tables needed to serve a mapped subscription's catalog and frozen line price:
+`catalog_products`, `catalog_skus`, `price_lists`, `price_entries` and
+`subscription_lines`. Their finite capture/admission and FK order use the same
+transaction, checks and replay census. These five names also enter the read packet.
+
+The managed source has further active classes without a matching portable
+canonical representation (notably `addresses`, `pets`, payment attempts and
+provider-backed invoice issue state). A source row in an unsupported class must
+refuse activation unless a verified mapping preserves its obligation; retaining
+the row as history alone is insufficient. The source fixture and mapping proof
+must establish which finite cohort can pass and which rows refuse.
+
+## Evidence and handoff
+
+After a host reboot removed the original temporary worktree, the assigned
+worktree was recreated under the durable repository worktree directory.
+`npm ci` was rerun, the staged candidate was recovered from Git objects, and
+private WIP refs now protect the subsequent edits. The pinned Supabase CLI
+2.98.2 disposable installation supplies actual Auth, Storage and service
+metadata; its business fixtures contain only synthetic values. The target is
+a separately installed qualified PG16 container. The finite native-profile
+transfer suite passed 5/5 after the catalog and communications additions.
+The managed test's actual extraction exposed a pending subscription welcome
+outbox item and its source email timeline. The pending item now projects to the
+canonical outbox, with its complete source timeline retained privately. The
+final post-reboot focused evidence is managed source→qualified PG16 4/4 and
+native connected transfer 5/5, including exact source/sidecar row identities,
+target rows and obligations, erasure readback, unknown nonempty relation,
+missing privacy coverage and mapped-field conflict refusals. `ast-grep`, lint
+(zero errors), publication inventory, neutrality and redacted Gitleaks passed
+on the final staged candidate. The policy
+checker leaves one test-guidance no-impact trailer for the post-read DCO
+commit. No full verification, maintainer read, review cycle, DCO commit, PR or
+receipt is yet claimed.
+
+Self-retro at this stop: the first actual managed extraction revealed a pending
+welcome outbox item and email timeline that synthetic projection alone missed;
+using the pinned local stack made the missing duty observable. A short finite
+relation-name census resolved the service-table dispositions in one run, and
+was removed from the final test.
