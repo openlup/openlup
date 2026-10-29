@@ -6,8 +6,27 @@ Kind: `kernel`.
 
 `@openlup/core` holds the I/O-free contracts and logic that more than one
 `@openlup/*` package, or an application's composition, reads. Its only runtime
-dependency is `zod`. It performs no I/O, reads no environment and starts no
+dependency is `zod`. Its kernel exports perform no I/O, read no environment and start no
 process: an application binds its ports and composes it.
+
+## Installed context lookup
+
+From the application root, invoke the installed local executable:
+
+```sh
+./node_modules/.bin/openlup-context search "subscription renewal"
+```
+
+This MVP indexes English documentation. Translate Polish or other natural-language
+tasks into concise English domain terms, or search an exact public symbol;
+freeform Polish queries may miss relevant guidance. `--code` scans a bounded
+set of local source paths and may be incomplete; direct `rg` remains available.
+
+The Node-only, tool-only executable reads the installed packages' local context
+snapshots when invoked. It is not imported by any kernel export and adds no
+runtime dependency. Results locate source evidence; they grant no application
+policy, tool permission or external-write authority. The application's own
+instructions govern.
 
 ## Subpath maturity
 
