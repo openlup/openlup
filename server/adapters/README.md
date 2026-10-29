@@ -74,6 +74,21 @@ pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
 
+The [managed identity mapper](postgres/connectedStoreRestore.ts) translates an
+explicitly evidenced issuer/subject binding, customer references, human operator
+membership and the native subset of managed revoke audit, lifecycle rows and
+privacy erasure receipts into the fixed connected restore packet. It retains
+customer and audit row IDs as stable source references, translates revoker
+references through the frozen OIDC derivation, and refuses conflicting audit
+fields, missing bindings, machine actors, erased rows without receipts,
+populated managed-only preferences and other unsupported shapes. Equal email
+addresses establish no identity relationship. The host must prove its source
+snapshot and completeness; the mapper does not collect managed auth subjects or
+certify issuer control. Full managed audit rows and source-keyed acquisition
+history remain with item 8, outside the fixed 73-table graph. The task decision
+and remaining proof boundary are in the
+[managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
+
 The [filesystem census](filesystem/orderReviewMediaTransferInventory.ts) and
 [reader](filesystem/orderReviewMediaTransferReader.ts) include both the actual
 `objects/<key>` tree and reconstructible `tmp/<writer-hash>-part` files. They
