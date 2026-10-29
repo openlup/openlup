@@ -131,8 +131,20 @@ excludes merge-commit trailers. The public policy and documentation check passes
 against the new main base. Full canonical verification, native review, PR and
 receipt are not yet claimed.
 
+Native review cycle 0 of tree `dd98de8cfa964412381e576b73ea8398245db0dd`
+returned one PASS and one material FAIL: the admission route checked only
+caller-held sidecar bytes, allowing restore when the private object was absent.
+The proposed repair requires a versioned object reader, checks its descriptor
+and complete bytes before database mutation, and exercises absence and actual
+private-store readback in the managed PG16 witness. This material repair awaits
+a new maintainer read before DCO and fresh full review; cycle 0 evidence and
+the open finding remain in the native session history.
+
 Self-retro at this stop: the first actual managed extraction revealed a pending
 welcome outbox item and email timeline that synthetic projection alone missed;
 using the pinned local stack made the missing duty observable. A short finite
 relation-name census resolved the service-table dispositions in one run, and
 was removed from the final test.
+The first native review found that checking assembled bytes did not prove stored
+retention; requiring the existing object-reader port and a missing-object witness
+is the smaller repair than adding another object adapter or transfer runner.

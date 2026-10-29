@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
-import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferObject } from "@openlup/platform/portability";
+import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferObject, type TransferObjectReader } from "@openlup/platform/portability";
 import type { InvoiceFacts } from "@openlup/platform/invoicing/contracts";
 import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
 import { restoreConnectedNativeStore } from "./connectedStoreRestore.js";
@@ -788,6 +789,7 @@ export function assembleManagedRetainedTransfer(input: {
 /** The managed admission route requires exact retained-object readback before DB mutation. */
 export async function restoreManagedRetainedTransfer(input: Omit<Parameters<typeof restoreConnectedNativeStore>[0], "packet"> & {
   transfer: ManagedRetainedTransfer;
+  retainedObjects: TransferObjectReader;
 }): ReturnType<typeof restoreConnectedNativeStore> {
   const { transfer } = input;
   if (!transfer?.manifest || !transfer.retainedObject || !transfer.packet
@@ -801,7 +803,19 @@ export async function restoreManagedRetainedTransfer(input: Omit<Parameters<type
     || transfer.retainedObject.object.bytes !== transfer.retainedObject.bytes.byteLength
     || transfer.retainedObject.object.access !== "private-retained-history")
     fail("invalid_input");
-  const retained = readManagedRetainedHistory(transfer.retainedObject.bytes, transfer.retainedObject.sha256);
+  if (!input.retainedObjects || typeof input.retainedObjects.read !== "function") fail("invalid_input");
+  const stored = await input.retainedObjects.read(body.retainedKey, transfer.retainedObject.object.version);
+  if (!isDeepStrictEqual(stored.object, transfer.retainedObject.object)) fail("invalid_input");
+  const chunks: Buffer[] = [];
+  let length = 0;
+  for await (const chunk of stored.body) {
+    if (!(chunk instanceof Uint8Array)) fail("invalid_input");
+    length += chunk.byteLength;
+    if (length > transfer.retainedObject.object.bytes || length > 64 * 1024 * 1024) fail("limit_exceeded");
+    chunks.push(Buffer.from(chunk));
+  }
+  if (length !== transfer.retainedObject.object.bytes) fail("invalid_input");
+  const retained = readManagedRetainedHistory(Buffer.concat(chunks, length), transfer.retainedObject.sha256);
   if (retained.sourceId !== body.sourceId || retained.sourceId !== transfer.packet.compatible.sourceId
     || body.retainedKey !== `retained-history/${digest(retained.sourceId)}/${retained.sha256}.json`
     || transfer.retainedObject.object.version !== retained.sha256

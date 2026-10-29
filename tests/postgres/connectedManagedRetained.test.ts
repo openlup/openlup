@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { PostgresTransferError } from "@openlup/platform/portability";
+import { createFilesystemTransferObjects, PostgresTransferError } from "@openlup/platform/portability";
 import { deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { assembleManagedRetainedTransfer, captureManagedRetainedHistory, exportManagedRetainedHistory,
   managedIdentityEvidence, mapManagedRetainedBusiness, readManagedRetainedHistory,
@@ -22,6 +22,7 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const run = promisify(execFile);
+const retainedObjectRoots: string[] = [];
 const managed = (() => {
   const operator = randomUUID();
   let owner: Pool | undefined, directory: string | undefined, cliRegistry: string | undefined;
@@ -221,7 +222,10 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
   try { await managed.stop(); }
-  finally { await closePostgres(targetContainer, [targetOwner, targetBootstrap]); }
+  finally {
+    try { await closePostgres(targetContainer, [targetOwner, targetBootstrap]); }
+    finally { for (const root of retainedObjectRoots) await rm(root, { recursive: true, force: true }); }
+  }
 }, postgresTeardownTimeoutMs);
 
 async function capture() {
@@ -282,10 +286,25 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     sha256: object.sha256, bytes: object.bytes.byteLength });
   expect(readManagedRetainedHistory(object.bytes, object.sha256)).toEqual(mapped.retained);
   const transfer = assembleManagedRetainedTransfer(mapped);
+  const objectRoot = await mkdtemp(join(process.cwd(), ".context/scratch/m14-retained-object-"));
+  retainedObjectRoots.push(objectRoot);
+  const retainedObjects = await createFilesystemTransferObjects({ root: join(objectRoot, "objects"),
+    maximumObjectBytes: 64 * 1024 * 1024, access: "private-retained-history" });
   await expect(restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer: {
     ...transfer, retainedObject: { ...transfer.retainedObject, bytes: new Uint8Array() },
-  }, freshTarget: fresh })).rejects.toMatchObject({ code: "invalid_input" } satisfies Partial<PostgresTransferError>);
-  expect(await restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer, freshTarget: fresh }))
+  }, retainedObjects, freshTarget: fresh })).rejects.toMatchObject({ code: "invalid_input" } satisfies Partial<PostgresTransferError>);
+  await expect(restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer,
+    retainedObjects, freshTarget: fresh })).rejects.toMatchObject({ code: "absent" });
+  expect((await targetOwner!.query("SELECT count(*)::int AS rows FROM public.commerce_orders")).rows[0]?.rows).toBe(0);
+  await retainedObjects.createIfAbsent(transfer.retainedObject.object, transfer.retainedObject.bytes);
+  const altered = Buffer.from(transfer.retainedObject.bytes);
+  altered.writeUInt8(altered.readUInt8(0) ^ 1, 0);
+  await expect(restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer,
+    retainedObjects: { read: async (key, version) => ({ ...(await retainedObjects.read(key, version)),
+      body: (async function* () { yield altered; })() }) }, freshTarget: fresh }))
+    .rejects.toMatchObject({ code: "invalid_input" } satisfies Partial<PostgresTransferError>);
+  expect((await targetOwner!.query("SELECT count(*)::int AS rows FROM public.commerce_orders")).rows[0]?.rows).toBe(0);
+  expect(await restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer, retainedObjects, freshTarget: fresh }))
     .toMatchObject({ replayed: false });
   expect((await targetOwner!.query("SELECT id,status,total_amount_minor::text FROM public.commerce_orders ORDER BY id")).rows)
     .toEqual([{ id: orderId, status: "pending_payment", total_amount_minor: "900" },
@@ -324,16 +343,19 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     if (entry.disposition === "credential-excluded" || entry.disposition === "service-installation-history") continue;
     expect(source.rows.filter(row => row.relation === entry.relation), entry.relation).toHaveLength(entry.rows);
   }
-  expect((await restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer, freshTarget: fresh })).replayed)
+  expect((await restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer, retainedObjects, freshTarget: fresh })).replayed)
     .toBe(true);
   const targetPrincipal = deriveOidcPrincipalId("https://issuer.example.invalid/managed", userId);
   expect(mapped.retained.rows.filter(row => row.subjects.includes(targetPrincipal)).length).toBeGreaterThan(2);
   const redacted = redactManagedRetainedHistory(mapped.retained, targetPrincipal);
   const redactedTransfer = assembleManagedRetainedTransfer({ packet: mapped.packet, retained: redacted });
   const redactedObject = redactedTransfer.retainedObject;
+  await retainedObjects.createIfAbsent(redactedObject.object, redactedObject.bytes);
+  const redactedChunks: Uint8Array[] = [];
+  for await (const chunk of (await retainedObjects.read(redactedObject.key, redactedObject.object.version)).body) redactedChunks.push(chunk);
   expect(redactedTransfer.manifest.retainedSha256).not.toBe(transfer.manifest.retainedSha256);
   expect(Buffer.from(redactedObject.bytes).toString("utf8")).not.toContain(email);
-  expect(readManagedRetainedHistory(redactedObject.bytes, redactedObject.sha256).rows.some(row =>
+  expect(readManagedRetainedHistory(Buffer.concat(redactedChunks), redactedObject.sha256).rows.some(row =>
     row.subjects.includes(userId) || row.subjects.includes(targetPrincipal))).toBe(false);
 }, postgresSetupTimeoutMs);
 
