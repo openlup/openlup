@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { classify, disposableLabelArgs, ownerStart, parseOwnerStart, sweep } from "./disposable-docker.mjs";
+import { env as processEnvironment } from "node:process";
 
 const exec = promisify(execFile), now = Date.UTC(2026, 9, 29, 12) / 1000;
 const start = "Thu Oct 29 11:00:00 2026", epoch = parseOwnerStart(start);
@@ -66,11 +67,11 @@ it("parses real lstart independently of inherited locale and agrees with a live 
   try {
     const token = await new Promise<number>(resolve => child.stdout.once("data", data => resolve(Number(String(data).trim()))));
     await new Promise<void>(resolve => shell.stdout.once("data", () => resolve()));
-    const starts = await Promise.all(["pl_PL.UTF-8", "en_GB.UTF-8", "C"].map(locale => ownerStart(child.pid!, { ...process.env, LANG: locale, LC_ALL: locale })));
+    const starts = await Promise.all(["pl_PL.UTF-8", "en_GB.UTF-8", "C"].map(locale => ownerStart(child.pid!, { ...processEnvironment, LANG: locale, LC_ALL: locale })));
     expect(new Set(starts).size).toBe(1);
     expect(Math.abs(starts[0] - token)).toBeLessThanOrEqual(2);
     const shellStart = await ownerStart(shell.pid!);
-    const { stdout } = await exec("ps", ["-p", String(shell.pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" } });
+    const { stdout } = await exec("ps", ["-p", String(shell.pid), "-o", "lstart="], { env: { ...processEnvironment, LC_ALL: "C", TZ: "UTC" } });
     expect(parseOwnerStart(stdout)).toBe(shellStart);
     expect(Number.isFinite(shellStart)).toBe(true);
   } finally {

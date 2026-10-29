@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { disposableLabelArgs, sweep } from "../../scripts/disposable-docker.mjs";
 import { defaultPostgresImage, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer } from "../helpers/postgresContainer.js";
+import { env as processEnvironment } from "node:process";
 
 const exec = promisify(execFile);
 const docker = async (args: string[]) => (await exec("docker", args, { timeout: 30_000, killSignal: "SIGKILL" })).stdout.trim();
@@ -43,7 +44,7 @@ async function owner(kind: "run" | "create") {
     console.log(JSON.stringify({id:JSON.parse(stdout)[0].Id})); setInterval(()=>{},1000);
   `;
   const run = randomUUID();
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { env: { ...process.env, OPENLUP_DISPOSABLE_RUN: run }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { env: { ...processEnvironment, OPENLUP_DISPOSABLE_RUN: run }, stdio: ["ignore", "pipe", "pipe"] });
   children.add(child);
   const id = await new Promise<string>((resolve, reject) => {
     let out = "", err = "";
@@ -81,7 +82,7 @@ afterAll(async () => {
 
 // The interrupt witness runs this file in a nested wrapper with only this case,
 // which holds one helper container until the wrapper's process group is signalled.
-const interruptFixture = process.env.OPENLUP_DISPOSABLE_INTERRUPT_FIXTURE === "1";
+const interruptFixture = processEnvironment.OPENLUP_DISPOSABLE_INTERRUPT_FIXTURE === "1";
 it.runIf(interruptFixture)("interrupt fixture holds a helper container", async () => {
   await runPostgresContainer({ name: `openlup-reap-interrupt-${randomUUID()}`, password: "disposable", image });
   await new Promise(() => {});
@@ -128,7 +129,7 @@ describe.skipIf(interruptFixture)("real disposable Docker ownership", () => {
     // A detached wrapper leads its own process group; its workers share it, so the
     // run's containers are identified by owner pgid without touching other runs.
     const wrapper = spawn(process.execPath, ["scripts/run-vitest.mjs", "run", "tests/postgres/disposableDockerReap.test.ts", "-t", "interrupt fixture", "--maxWorkers=1"],
-      { detached: true, env: { ...process.env, OPENLUP_DISPOSABLE_REAP: "off", OPENLUP_DISPOSABLE_INTERRUPT_FIXTURE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+      { detached: true, env: { ...processEnvironment, OPENLUP_DISPOSABLE_REAP: "off", OPENLUP_DISPOSABLE_INTERRUPT_FIXTURE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
     children.add(wrapper);
     let err = ""; wrapper.stdout!.resume(); wrapper.stderr!.on("data", data => { err += data; });
     const exited = once(wrapper, "exit");

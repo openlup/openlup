@@ -24,7 +24,7 @@ A start-slot limiter ships only if the measurement shows that worker caps alone
 are insufficient.
 
 OpenLup stays provider-neutral. No new code depends on a maintainer's local
-broker. A host broker that implements the same contract, such as Velipet's
+broker. A host broker that implements the same contract, such as the reference adopter's
 `ai-resource-gate docker-reap`, reclaims the same containers; neither side calls
 the other. The existing wrapper already reads the broker's lock directory when
 one is present (`run-vitest.mjs` `hasActiveLane`). That optional read is
@@ -76,7 +76,7 @@ The 2026-10-29 audit was taken on an older checkout. At the base:
 currently says the container lifecycle "does not authorize pruning other test
 runs' resources". This plan changes that statement, so it needs D1.
 
-## Ownership contract (shared with Velipet)
+## Ownership contract (shared with the reference adopter)
 
 A disposable container carries these labels at creation:
 
@@ -89,7 +89,7 @@ A disposable container carries these labels at creation:
 
 Node computes `owner_start` as `Date.now() - process.uptime() * 1000`, rounded
 to seconds; shell owners compute it from the UTC `lstart` parse below. The
-owner decided this contract jointly for Velipet and OpenLup on 2026-10-29 (D7).
+owner decided this contract jointly for the reference adopter and OpenLup on 2026-10-29 (D7).
 
 OpenLup also adds `dev.disposable.run=<run id>`, which readers of the shared
 contract ignore.
@@ -244,7 +244,7 @@ the inspected ID only.
 - labelling the outbox proof containers;
 - pinning tag-only `postgres:16` by digest (a separate supply-chain change);
 - legacy unlabeled garbage, image pruning and launchd or cron agents;
-- any call into Velipet's broker;
+- any call into the reference adopter's broker;
 - hosted CI changes.
 
 ## Acceptance evidence
@@ -294,7 +294,7 @@ the default and proves the 60 s keep.
   cycle.
 - For a live Node owner and a live shell owner, the label's `owner_start` and
   the parsed `lstart` agree within 2 s. If they do not, stop and raise it with
-  Velipet: the shared 2 s rule would misjudge live owners.
+  the reference adopter: the shared 2 s rule would misjudge live owners.
 - The host-to-VM offset only affects the 60 s age floor. If it exceeds 30 s,
   record it as a residual risk.
 
@@ -415,7 +415,7 @@ both repositories. D1 decides whether that is allowed.
 
 ## Owner decisions
 
-Decided 2026-10-29. The owner instructed, in the coordinating Velipet session:
+Decided 2026-10-29. The owner instructed, in the coordinating reference-adopter session:
 "jakie decyzje odnosnie Openlup? zarekomenduj najlepsze rozwiazania i podejmij
 decyzje zgodnie z rkeomendacjami" (recommend the best options and decide
 accordingly). The coordinator relayed the resulting decisions to this task:
@@ -440,11 +440,11 @@ accordingly). The coordinator relayed the resulting decisions to this task:
   harness files stay out of scope. Merge timing avoids changing the helper
   under an in-flight M14 proof run, for example by landing between M14
   checkpoints.
-- **D7. Resolved 2026-10-29** in the Velipet session, for the shared
+- **D7. Resolved 2026-10-29** in the reference-adopter session, for the shared
   contract: the `owner_start` label compared within 2 s ("owner_start label
   (Recommended)"), and the Linux-only `pidns` label ("Yes, on Linux
-  (Recommended)"). Velipet implements the same contract in
-  ProteineResources/velipet#4597.
+  (Recommended)"). The reference adopter implements the same
+  contract in its companion change.
 
 ## Independent challenge
 

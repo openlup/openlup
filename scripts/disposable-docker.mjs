@@ -4,12 +4,13 @@ import { execFile } from "node:child_process";
 import { readlinkSync } from "node:fs";
 import { hostname } from "node:os";
 import { promisify } from "node:util";
+import { env as processEnvironment } from "node:process";
 
 const exec = promisify(execFile);
 const standaloneRun = randomUUID();
 const shortHost = () => hostname().split(".")[0];
 const pidNamespace = () => process.platform === "linux" ? readlinkSync("/proc/self/ns/pid") : undefined;
-export const currentRunId = () => process.env.OPENLUP_DISPOSABLE_RUN;
+export const currentRunId = () => processEnvironment.OPENLUP_DISPOSABLE_RUN;
 export function disposableLabelArgs({ run = currentRunId() ?? standaloneRun } = {}) {
   const labels = {
     "dev.disposable": "1",
@@ -33,7 +34,7 @@ export function parseOwnerStart(value) {
     || date.toUTCString().slice(0, 3) !== match[1]) return NaN;
   return date.getTime() / 1000;
 }
-export async function ownerStart(pid, env = process.env, timeout = 10_000) {
+export async function ownerStart(pid, env = processEnvironment, timeout = 10_000) {
   const { stdout } = await exec("ps", ["-p", String(pid), "-o", "lstart="], {
     env: { ...env, LC_ALL: "C", TZ: "UTC" }, timeout, killSignal: "SIGKILL",
   });
@@ -95,7 +96,7 @@ export async function sweep({ mode = "report", selector, docker = "docker", minA
         if (/^[1-9]\d{0,8}$/u.test(pid ?? "") && Number(pid) > 1) {
           try { process.kill(Number(pid), 0); } catch (error) { killError = error; }
           if (!killError) {
-            try { started = (await exec("ps", ["-p", pid, "-o", "lstart="], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, timeout: remaining(), killSignal: "SIGKILL" })).stdout; } catch { /* Unreadable start keeps. */ }
+            try { started = (await exec("ps", ["-p", pid, "-o", "lstart="], { env: { ...processEnvironment, LC_ALL: "C", TZ: "UTC" }, timeout: remaining(), killSignal: "SIGKILL" })).stdout; } catch { /* Unreadable start keeps. */ }
           }
         }
         const verdict = classify(container, { platform: process.platform, hostname: shortHost, pidns: pidNamespace,

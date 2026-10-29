@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, expect, it, vi } from "vitest";
+import { env as processEnvironment } from "node:process";
 
 const scratch = mkdtempSync(join(tmpdir(), "disposable-lifecycle-")), bin = join(scratch, "bin");
 mkdirSync(bin);
@@ -13,10 +14,10 @@ function executable(name: string, source: string) {
 }
 const log = join(scratch, "docker.log");
 executable("docker", `import {appendFileSync} from 'node:fs';appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');`);
-executable("vitest", `console.log(process.env.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER);if(process.argv.includes('signal-child'))process.kill(process.pid,'SIGTERM');else if(process.argv.includes('hang')){process.on('SIGTERM',()=>process.exit(0));process.on('SIGINT',()=>process.exit(0));setInterval(()=>{},1000)}else process.exit(Number(process.argv.at(-1))||0);`);
+executable("vitest", `import {env as childEnv} from 'node:process';console.log(childEnv.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER);if(process.argv.includes('signal-child'))process.kill(process.pid,'SIGTERM');else if(process.argv.includes('hang')){process.on('SIGTERM',()=>process.exit(0));process.on('SIGINT',()=>process.exit(0));setInterval(()=>{},1000)}else process.exit(Number(process.argv.at(-1))||0);`);
 async function wrapper(arg: string, signal?: NodeJS.Signals) {
   const child = spawn(process.execPath, [resolve("scripts/run-vitest.mjs"), arg], { cwd: scratch,
-    env: { ...process.env, CI: "true", OPENLUP_DISPOSABLE_RUN: "parent-run", OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER: "inherited-wrapper", PATH: `${bin}:${process.env.PATH}` } });
+    env: { ...processEnvironment, CI: "true", OPENLUP_DISPOSABLE_RUN: "parent-run", OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER: "inherited-wrapper", PATH: `${bin}:${processEnvironment.PATH}` } });
   let out = "", err = "";
   child.stderr.on("data", data => { err += data; });
   const exited = once(child, "exit");
@@ -58,19 +59,19 @@ it("reaps and re-raises an independently signalled child exit", async () => {
 it("runs setup only once across inherited projects and reaps the same run on teardown, including CI", async () => {
   const sweep = vi.fn().mockResolvedValue([]);
   vi.doMock("./disposable-docker.mjs", () => ({ currentRunId: () => "setup-witness", sweep }));
-  const previousCi = process.env.CI, previousMode = process.env.OPENLUP_DISPOSABLE_REAP;
+  const previousCi = processEnvironment.CI, previousMode = processEnvironment.OPENLUP_DISPOSABLE_REAP;
   try {
-    process.env.CI = "false"; process.env.OPENLUP_DISPOSABLE_REAP = "report";
+    processEnvironment.CI = "false"; processEnvironment.OPENLUP_DISPOSABLE_REAP = "report";
     const { default: setup } = await import("../tests/setup/disposable-docker.ts");
     const [teardown, duplicate] = await Promise.all([setup(), setup()]);
     expect(duplicate).toBeUndefined();
     expect(sweep).toHaveBeenCalledExactlyOnceWith({ mode: "report" });
-    process.env.CI = "true";
+    processEnvironment.CI = "true";
     await teardown!();
     expect(sweep).toHaveBeenLastCalledWith({ mode: "remove", selector: "dev.disposable.run=setup-witness" });
   } finally {
-    if (previousCi === undefined) delete process.env.CI; else process.env.CI = previousCi;
-    if (previousMode === undefined) delete process.env.OPENLUP_DISPOSABLE_REAP; else process.env.OPENLUP_DISPOSABLE_REAP = previousMode;
+    if (previousCi === undefined) delete processEnvironment.CI; else processEnvironment.CI = previousCi;
+    if (previousMode === undefined) delete processEnvironment.OPENLUP_DISPOSABLE_REAP; else processEnvironment.OPENLUP_DISPOSABLE_REAP = previousMode;
     vi.doUnmock("./disposable-docker.mjs");
   }
 });
@@ -80,9 +81,9 @@ it("preserves one wrapper identity and one setup across real Vitest project load
   writeFileSync(join(ownBin, "docker"), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';appendFileSync(${JSON.stringify(calls)},JSON.stringify(process.argv.slice(2))+'\\n');`, { mode: 0o700 });
   const config = join(directory, "vitest.config.mts"), run = `project-witness-${Date.now()}`;
   writeFileSync(config, `import base from ${JSON.stringify(resolve("vitest.config.ts"))}; export default {...base, test: {...base.test, root:${JSON.stringify(directory)},setupFiles:[],globalSetup:[${JSON.stringify(resolve("tests/setup/disposable-docker.ts"))}],projects:[{extends:true,test:{name:'one',include:['one.test.ts']}},{extends:true,test:{name:'two',include:['two.test.ts']}}]}};`);
-  for (const project of ["one", "two"]) writeFileSync(join(directory, `${project}.test.ts`), `import {it,expect} from ${JSON.stringify(resolve("node_modules/vitest/dist/index.js"))}; import {writeFileSync} from 'node:fs';it('identity',()=>{expect(process.env.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER).toBeUndefined();writeFileSync(${JSON.stringify(join(directory, `${project}.run`))},process.env.OPENLUP_DISPOSABLE_RUN)});`);
+  for (const project of ["one", "two"]) writeFileSync(join(directory, `${project}.test.ts`), `import {it,expect} from ${JSON.stringify(resolve("node_modules/vitest/dist/index.js"))}; import {writeFileSync} from 'node:fs';import {env as childEnv} from 'node:process';it('identity',()=>{expect(childEnv.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER).toBeUndefined();writeFileSync(${JSON.stringify(join(directory, `${project}.run`))},childEnv.OPENLUP_DISPOSABLE_RUN)});`);
   const child = spawn(process.execPath, [resolve("node_modules/vitest/vitest.mjs"), "run", "--config", config, "--maxWorkers=1"], {
-    env: { ...process.env, CI: "false", OPENLUP_DISPOSABLE_REAP: "report", OPENLUP_DISPOSABLE_RUN: "parent", OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER: run, PATH: `${ownBin}:${process.env.PATH}` },
+    env: { ...processEnvironment, CI: "false", OPENLUP_DISPOSABLE_REAP: "report", OPENLUP_DISPOSABLE_RUN: "parent", OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER: run, PATH: `${ownBin}:${processEnvironment.PATH}` },
   });
   let output = ""; child.stdout.on("data", data => { output += data; }); child.stderr.on("data", data => { output += data; });
   const timer = setTimeout(() => child.kill("SIGKILL"), 20_000);
@@ -102,11 +103,11 @@ it("preserves one wrapper identity and one setup across real Vitest project load
 it("handles SIGTERM queued during synchronous coverage finalization", async () => {
   const directory = mkdtempSync(join(scratch, "coverage-")), ownBin = join(directory, "bin"), calls = join(directory, "docker.log");
   mkdirSync(ownBin);
-  writeFileSync(join(ownBin, "vitest"), `#!${process.execPath}\nimport {mkdirSync,writeFileSync} from 'node:fs';mkdirSync(process.env.VITEST_COVERAGE_DIR,{recursive:true});writeFileSync(process.env.VITEST_COVERAGE_DIR+'/witness','coverage');`, { mode: 0o700 });
+  writeFileSync(join(ownBin, "vitest"), `#!${process.execPath}\nimport {mkdirSync,writeFileSync} from 'node:fs';import {env as childEnv} from 'node:process';mkdirSync(childEnv.VITEST_COVERAGE_DIR,{recursive:true});writeFileSync(childEnv.VITEST_COVERAGE_DIR+'/witness','coverage');`, { mode: 0o700 });
   writeFileSync(join(ownBin, "docker"), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';appendFileSync(${JSON.stringify(calls)},JSON.stringify(process.argv.slice(2))+'\\n');`, { mode: 0o700 });
   const preload = join(directory, "copy-signal.mjs");
   writeFileSync(preload, `import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';const copy=fs.cpSync;fs.cpSync=(...args)=>{process.kill(process.pid,'SIGTERM');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200);return copy(...args)};syncBuiltinESMExports();`);
-  const env = { ...process.env, CI: "true", PATH: `${ownBin}:${process.env.PATH}` };
+  const env = { ...processEnvironment, CI: "true", PATH: `${ownBin}:${processEnvironment.PATH}` };
   for (const key of ["VITEST_COVERAGE_DIR", "OPENLUP_COVERAGE_PROOF_PATH", "OPENLUP_COVERAGE_SINGLEFLIGHT_MARKER", "VITEST_COVERAGE_SUMMARY_ONLY"]) delete env[key];
   const child = spawn(process.execPath, ["--import", preload, resolve("scripts/run-vitest.mjs"), "run", "--coverage"], { cwd: directory, env });
   let errors = ""; child.stderr.on("data", data => { errors += data; });
