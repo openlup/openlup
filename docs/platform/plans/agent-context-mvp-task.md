@@ -163,6 +163,18 @@ with all other filename refusals intact, followed by a fresh reviewed full
 gate. Lesson: new packed guidance → update every explicit package inventory
 before the broad gate.
 
+Second regroup after the next full gate: the package allowlist repair passed
+its focused test and the full 22,398 passing / two skipped root tests, but the
+final neutrality phase rejected a new direct environment read in the CLI test
+subprocess setup (`ui-9`). The two latest completed evaluations therefore
+left distinct mandatory gaps: the Outbox allowlist, now closed, and this test
+fixture's environment override. The test does not need to change the child
+environment; removing that option is simpler than a policy exception or a
+scanner change. The next discriminating step is the focused CLI test followed
+by the unmodified neutrality command, then fresh review and the full gate.
+Lesson: a CLI smoke child process that can inherit its environment → omit an
+unneeded override rather than create a new neutrality exception.
+
 Research and independent Astra counter-review support choosing retrieval by
 the evidence needed, rather than imposing one method on every task.
 [Agent Retrieval Bench](https://arxiv.org/abs/2607.24882) reports different
@@ -196,3 +208,6 @@ inventory comparison and inner-loop bound address those exact gaps. No broader
 process change is warranted. The 22,400-case root suite found an Outbox
 packed-file allowlist omitted by the narrower cold package gate; run that
 existing direct contract test before the broad gate when adding a packed file.
+The next run reached neutrality after all root tests; running that existing
+read-only check before the full gate would have caught an unnecessary test
+environment override at much lower cost.

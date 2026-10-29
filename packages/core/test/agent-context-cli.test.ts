@@ -105,7 +105,7 @@ describe("installed agent context", () => {
     const root = fixture();
     expect(searchContext(root, "unmatchedneedle").hits).toEqual([]);
     const cli = fileURLToPath(new URL("../src/agent-context-cli.ts", import.meta.url));
-    const run = spawnSync(process.execPath, [cli, "search", "unmatchedneedle"], { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } });
+    const run = spawnSync(process.execPath, [cli, "search", "unmatchedneedle"], { cwd: root, encoding: "utf8" });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toContain("does not prove a public seam is absent");
   });
