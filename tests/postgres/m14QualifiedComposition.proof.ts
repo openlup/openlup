@@ -97,8 +97,15 @@ async function proveOwnerPathResolution(bootstrap: Pool): Promise<void> {
   const before = await snapshot();
   const runtime = pool(loginUrl(selection.runtimeLogin));
   const caller = await runtime.connect();
+  const addressId = randomUUID();
+  const addressReference = `address:${addressId}`;
+  let addressInserted = false;
   try {
     await installOwnerPathShadows(caller, selection.runtimeLogin);
+    await bootstrap.query(`INSERT INTO acquisition_private.address_references
+      (id,source,reference,revision,provenance) VALUES($1,'fixture',$2,'v1','fixture')`,
+    [addressId, addressReference]);
+    addressInserted = true;
     for (const [sql, code] of [
       ["SELECT public.acquisition_case_submit_v1(NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)", "22023"],
       ["SELECT public.acquisition_case_operator_list_v1(NULL,NULL,NULL,3)", "22023"],
@@ -115,7 +122,51 @@ async function proveOwnerPathResolution(bootstrap: Pool): Promise<void> {
       await caller.query("SET LOCAL ROLE platform_acquisition_runtime");
       assert.equal(typeof (await caller.query("SELECT public.acquisition_case_active_count_v1() AS count")).rows[0].count, "string");
     } finally { await caller.query("ROLLBACK"); }
-  } finally { caller.release(); }
+    await caller.query("BEGIN");
+    try {
+      await caller.query("SET LOCAL ROLE platform_acquisition_runtime");
+      const submitSql = `SELECT public.acquisition_case_submit_v1(
+        $1::pg_catalog.text,$2::pg_catalog.text,$3::pg_catalog.text,NULL::pg_catalog.text,
+        true,'v1','v1','en','/tester-application','fixture',$4::pg_catalog.text,
+        'v1','fixture',$5::pg_catalog.timestamptz) AS response`;
+      const submitValues = [`submit:${randomUUID()}`, `requester:${randomUUID()}`,
+        `${randomUUID()}@example.invalid`, addressReference, "2026-10-29T12:00:00Z"];
+      const created = (await caller.query(submitSql, submitValues)).rows[0].response;
+      assert.equal(created.outcome, "created");
+      assert.equal(created.replayed, false);
+      assert.equal(created.acquisitionCase.caseRef, created.caseRef);
+      assert.equal(created.acquisitionCase.state, "submitted");
+      const submitReplay = (await caller.query(submitSql, submitValues)).rows[0].response;
+      assert.equal(submitReplay.outcome, "replayed");
+      assert.equal(submitReplay.replayed, true);
+      assert.deepEqual(submitReplay.acquisitionCase, created.acquisitionCase);
+
+      const actor = randomUUID();
+      const list = (await caller.query(`SELECT public.acquisition_case_operator_list_v1(
+        $1::pg_catalog.uuid,NULL::pg_catalog.timestamptz,NULL::pg_catalog.uuid,3) AS response`, [actor])).rows[0].response;
+      assert.equal(list.contractVersion, "tester_application_v1");
+      assert.deepEqual(list.cases.map((value: { caseRef: string }) => value.caseRef), [created.caseRef]);
+      assert.equal(list.nextCursor, null);
+
+      const transitionSql = `SELECT public.acquisition_case_transition_v1(
+        $1::pg_catalog.uuid,$2::pg_catalog.text,1,'approved',NULL::pg_catalog.text,
+        $3::pg_catalog.text,$4::pg_catalog.timestamptz) AS response`;
+      const transitionValues = [actor, created.caseRef, `transition:${randomUUID()}`, "2026-10-29T12:01:00Z"];
+      const transitioned = (await caller.query(transitionSql, transitionValues)).rows[0].response;
+      assert.equal(transitioned.outcome, "transitioned");
+      assert.equal(transitioned.replayed, false);
+      assert.equal(transitioned.acquisitionCase.state, "approved");
+      assert.equal(transitioned.acquisitionCase.version, 2);
+      const transitionReplay = (await caller.query(transitionSql, transitionValues)).rows[0].response;
+      assert.equal(transitionReplay.outcome, "replayed");
+      assert.equal(transitionReplay.replayed, true);
+      assert.deepEqual(transitionReplay.acquisitionCase, transitioned.acquisitionCase);
+      assert.equal((await caller.query("SELECT public.acquisition_case_active_count_v1() AS count")).rows[0].count, "1");
+    } finally { await caller.query("ROLLBACK"); }
+  } finally {
+    caller.release();
+    if (addressInserted) await bootstrap.query("DELETE FROM acquisition_private.address_references WHERE id=$1", [addressId]);
+  }
 
   // The same session owns its temporary objects as the restricted caller while
   // each direct private-body check executes with the installed owner identity.
