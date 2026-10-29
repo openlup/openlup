@@ -34,7 +34,7 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
   try {
     const [info] = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--cache", cache, "--pack-destination", scratch], { cwd: directory, encoding: "utf8" }));
     const files = info.files.map((f: { path: string }) => f.path);
-    expect(files.every((f: string) => /^(dist\/|src\/|sql\/|AGENTS.md$|README.md$|CHANGELOG.md$|LICENSE$|release-gates.json$|package.json$)/.test(f))).toBe(true);
+    expect(files.every((f: string) => /^(dist\/|src\/|sql\/|AGENTS.md$|AGENT_CONTEXT.md$|README.md$|CHANGELOG.md$|LICENSE$|release-gates.json$|package.json$)/.test(f))).toBe(true);
     const extracted=join(scratch,"extracted");mkdirSync(extracted);
     execFileSync("tar",["-xzf",join(scratch,info.filename),"-C",extracted]);
     const budget=JSON.parse(readFileSync(join(directory,"release-gates.json"),"utf8")).pack;

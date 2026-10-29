@@ -154,6 +154,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The installed `openlup-context` command uses the tracked core
+[launcher](packages/core/src/openlup-context.js) and compiled
+retrieval code. The public execution catalogue binds that exact executable
+inventory and its package scripts/bin digest; the launcher does not admit
+additional executable paths. This offline command adds no runtime dependency,
+package or service. `npm run oss:published-tree -- --policy` also checks that
+the committed agent excerpts still match their canonical owner sections.
+Changes to its executable surface, publication controls or
+package gate budgets require the applicable maintainer read before sign-off;
+passing the inventory check does not establish that read or authorize release.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected
