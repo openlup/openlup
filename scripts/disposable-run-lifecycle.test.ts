@@ -68,7 +68,23 @@ it("runs setup only once across inherited projects and reaps the same run on tea
     expect(sweep).toHaveBeenCalledExactlyOnceWith({ mode: "report" });
     processEnvironment.CI = "true";
     await teardown!();
-    expect(sweep).toHaveBeenLastCalledWith({ mode: "remove", selector: "dev.disposable.run=setup-witness" });
+    expect(sweep).toHaveBeenLastCalledWith({ mode: "remove", selector: "dev.disposable.run=setup-witness", minAgeSeconds: 0 });
+  } finally {
+    if (previousCi === undefined) delete processEnvironment.CI; else processEnvironment.CI = previousCi;
+    if (previousMode === undefined) delete processEnvironment.OPENLUP_DISPOSABLE_REAP; else processEnvironment.OPENLUP_DISPOSABLE_REAP = previousMode;
+    vi.doUnmock("./disposable-docker.mjs");
+  }
+});
+it("defaults the host sweep to remove when no mode is set", async () => {
+  const sweep = vi.fn().mockResolvedValue([]);
+  vi.resetModules(); // The previous case cached the setup module with its own mock.
+  vi.doMock("./disposable-docker.mjs", () => ({ currentRunId: () => "default-mode-witness", sweep }));
+  const previousCi = processEnvironment.CI, previousMode = processEnvironment.OPENLUP_DISPOSABLE_REAP;
+  try {
+    processEnvironment.CI = "false"; delete processEnvironment.OPENLUP_DISPOSABLE_REAP;
+    const { default: setup } = await import("../tests/setup/disposable-docker.ts");
+    await setup();
+    expect(sweep).toHaveBeenCalledExactlyOnceWith({ mode: "remove" });
   } finally {
     if (previousCi === undefined) delete processEnvironment.CI; else processEnvironment.CI = previousCi;
     if (previousMode === undefined) delete processEnvironment.OPENLUP_DISPOSABLE_REAP; else processEnvironment.OPENLUP_DISPOSABLE_REAP = previousMode;

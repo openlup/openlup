@@ -510,9 +510,10 @@ in host-clock epoch seconds, short hostname, Linux PID namespace and OpenLup run
 ID. Only a same-host, same-namespace owner proved dead (or a recycled PID whose
 start differs by more than two seconds) is reclaimable after a 60-second floor.
 Uncertain ownership and unlabeled resources are retained. The root test lifecycle
-runs one host sweep: `OPENLUP_DISPOSABLE_REAP=report` by default, `remove` or `off`;
+runs one host sweep: `OPENLUP_DISPOSABLE_REAP=remove` by default, `report` or `off`;
 CI disables the host sweep. Teardown and interrupted wrappers remove only their
-own fresh run ID through the same liveness and age rules, including on CI.
+own fresh run ID through the same liveness rule without the age floor, including
+on CI.
 Supabase CLI and compose runners stop their own stacks once on interruption;
 after SIGKILL those stacks still need reviewed manual cleanup.
 

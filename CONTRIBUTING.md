@@ -1871,11 +1871,11 @@ the owner PID, host-clock start epoch, short hostname and (on Linux) PID namespa
 with `dev.disposable.*`, plus the fresh test run ID. A same-host sweep reclaims
 only `dev.disposable=1` containers at least 60 seconds old whose owner is gone
 or whose PID start differs by more than two seconds; uncertainty keeps them.
-`OPENLUP_DISPOSABLE_REAP=report` (default), `remove` or `off` controls the
+`OPENLUP_DISPOSABLE_REAP=remove` (default), `report` or `off` controls the
 once-per-run host sweep; `CI=true` disables that sweep. Teardown and the wrapper
-sweep only their own run selector under the same liveness rule, including on CI;
-after its Vitest child exits, the wrapper skips the age floor because every
-owner of that run has exited, so a container started just before Ctrl-C goes too.
+sweep only their own run selector under the same liveness rule, including on CI,
+without the age floor: an exited helper child's container goes at teardown, and
+after its Vitest child exits the wrapper removes one started just before Ctrl-C.
 Nested runs get independent IDs. Unlabeled containers are never removed.
 The container-helper regression checks exact owned container and volume IDs
 for normal teardown and port-bind failure, without relying on global counts.
