@@ -97,9 +97,18 @@ It was committed as `a0b23ca21bf58911ca64b0b1de6ba0839d86f9b6`.
 Review preparation observed a mainline move to `6e7adb51e742a132b879a94ef07e5cfed60f694c`.
 The native preflight refused carry-over because main changed the publication
 catalogue and publication machinery. A mechanical merge of that mainline tree
-has no conflict and preserves the two 8C catalogue rows and all 8C source
-changes. It awaits an exact-tree maintainer read before DCO; native review,
-canonical verification and submission follow the committed integration.
+had no conflict and preserved the two 8C catalogue rows and all 8C source
+changes. The maintainer delegate accepted the two-parent integration tree in
+`.context/scratch/oss-m14-restricted-connected-restore/maintainer-read-20261029-3.md`
+before DCO. The signed merge `8931508adf64a089efd9fbe44e08652b6bcb0b72`
+has parents `62e12aad936380a5082f0043381283673e192d12` and
+`6e7adb51e742a132b879a94ef07e5cfed60f694c`, and tree
+`b15a468d0718a7c2ba1276683708ee5493f7a98c`. The 8C change excluding
+this task record has stable patch-id
+`ef63e864825d6a76c338b7520015bb9f053a9934` both before and after the
+merge. The documentation policy passes against the new main base with three
+obligations and none unanswered. Native review, canonical verification and
+submission follow.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. A durable early snapshot and a reversible settings
