@@ -147,8 +147,18 @@ this task record has stable patch-id
 `9cd951b3223716762a49ffad0ec86ff06456ee7a` against new main. This is
 the clean forced-main-merge case under CD-M14-30; full native review follows.
 
+The next full review of tree `9ec4949605be3cf42e6ff7f6db7f8fe38278da4e`
+closed `8C-REPLAY-LEDGER` but found one new material documentation issue,
+`8C-DOC-QUALIFICATION`: a later canonical data paragraph still said connected
+restore was unqualified without distinguishing the local witness from hosted
+confirmation. The repair names the local PostgreSQL 16 witness and retains the
+separate hosted boundary. It needs an exact-tree maintainer read, then fresh
+full review before final verification.
+
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. The replay finding exposed a missing final check;
 one shared comparison on both success paths is the smallest repair. The race
 fixture's query-object omission cost two failed focused runs, then the full
-case passed. No further process change is justified within this parcel.
+case passed. A later canonical paragraph repeated a stale qualification claim;
+the smallest correction states the local and hosted boundaries together. No
+further process change is justified within this parcel.

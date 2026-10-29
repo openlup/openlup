@@ -1281,8 +1281,11 @@ The separate `qualified-admin` 91-unit catalogue is a fresh installation
 generation. It is not an upgrade, relabel or migration-history conversion from
 legacy or `qualified-v2`. Its interrupted-prefix proof resumes only the same
 selected generation under the same actual migration login and fixed role mode;
-replay after completion applies no units. Connected restore and hosted upgrades
-remain unqualified.
+replay after completion applies no units. The [local PostgreSQL 16 connected
+restore witness](../../tests/postgres/m14RestrictedConnectedRestore.test.ts)
+covers this generation in both role modes with emulated provider control-plane
+roles. Actual hosted connected restore and hosted upgrades remain unqualified
+pending separate hosted receipts.
 
 The existing qualified target/separate-restore witness connects the native G17
 observation host binding through actual restricted R. Bootstrap setup seeds the
