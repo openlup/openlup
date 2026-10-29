@@ -1,10 +1,11 @@
 // Read-only planning and digest-preserving copies. No dependency install or Docker daemon required.
 import { execFileSync } from "node:child_process";
-import { env as processEnvironment } from "node:process";
+import { arch, platform, env as processEnvironment } from "node:process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const MIRROR_REGISTRY = "ghcr.io/openlup";
@@ -172,7 +173,28 @@ export function deriveCliImages(root, directory) {
       writeFileSync(join(directory, "supabase/config.toml"), config);
     }
     const services = JSON.parse(command("supabase", ["services", "--workdir", directory, "-o", "json"]));
-    const binary = readFileSync(command("which", ["supabase"]).trim()).toString("latin1");
+    let executable = realpathSync(command("which", ["supabase"]).trim());
+    if (executable.endsWith(".js")) {
+      // setup-cli v3 installs the npm launcher. Match CLI 2.122.0's bin.ts
+      // resolution from that launcher's location, including its explicit override.
+      const require = createRequire(executable);
+      const suffix = `${platform === "win32" ? "windows" : platform}-${arch}`;
+      let packagePath;
+      if (!processEnvironment.SUPABASE_CLI_BINARY_OVERRIDE) {
+        try { packagePath = require.resolve(`@supabase/cli-${suffix}/package.json`); } catch (error) {
+          if (platform !== "linux" || error.code !== "MODULE_NOT_FOUND") throw error;
+          packagePath = require.resolve(`@supabase/cli-${suffix}-musl/package.json`);
+        }
+      }
+      executable = processEnvironment.SUPABASE_CLI_BINARY_OVERRIDE
+        || join(dirname(packagePath), "bin", platform === "win32" ? "supabase.exe" : "supabase");
+      if (!executable.includes("/") && (platform !== "win32" || !executable.includes("\\"))) {
+        try { executable = command("which", ["--", executable]).replace(/\r?\n$/, ""); } catch {
+          throw new Error(`SUPABASE_CLI_BINARY_OVERRIDE not found on PATH: ${executable}`);
+        }
+      }
+    }
+    const binary = readFileSync(executable).toString("latin1");
     const pgtapSource = readFileSync(join(root, "scripts/public-ci-pgtap.mjs"), "utf8");
     return cliImages(services, binary, pgtapSource);
   } finally { if (temporary) rmSync(directory, { recursive: true, force: true }); }

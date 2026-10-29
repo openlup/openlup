@@ -1,8 +1,10 @@
 import type { OwnedCiImage } from "./ci-image-mirror.mjs";
-import { existsSync, readFileSync } from "node:fs";
-import { env as processEnvironment } from "node:process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, relative } from "node:path";
+import { arch, platform, env as processEnvironment } from "node:process";
 import { describe, expect, it, vi } from "vitest";
-import { cliImages, cliPin, inspect, mirrorImage, mirrorImages, ownedImages, pinnedCliImages, plannedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
+import { cliImages, cliPin, deriveCliImages, inspect, mirrorImage, mirrorImages, ownedImages, pinnedCliImages, plannedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
 import { execFileSync } from "node:child_process";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
@@ -29,6 +31,57 @@ function assertSingleOwner(source: string) {
 }
 
 describe("CI image derivation and digest preservation", () => {
+  it.each(["native", "npm", "npm-override", "npm-relative-override", "npm-path-override", "npm-path-space-override", ...(platform === "win32" ? [] : ["npm-path-backslash-override"]), "npm-path-missing", "npm-missing", "npm-registry-drift"])("inspects the executed binary for a %s installation", async (installation) => {
+    const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const which = actual.execFileSync("which", ["which"], { encoding: "utf8" }).trim();
+    const directory = mkdtempSync(join(tmpdir(), "cli-install-layout-"));
+    const executable = join(directory, "supabase");
+    const native = join(directory, "native");
+    const overrideName = `${basename(directory)}${installation === "npm-path-backslash-override" ? "\\override" : "-override"}${installation === "npm-path-space-override" ? " " : ""}`;
+    const cwdOverride = join(process.cwd(), overrideName);
+    vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", "");
+    try {
+      writeFileSync(native, binary);
+      if (installation === "native") symlinkSync(native, executable);
+      else {
+        const launcher = join(directory, "node_modules/supabase/dist/supabase.js");
+        mkdirSync(join(directory, "node_modules/supabase/dist"), { recursive: true });
+        // setup-cli v3 exposes this symlinked Node launcher, not the ELF/Mach-O binary.
+        writeFileSync(launcher, '#!/usr/bin/env node\nimport { spawn } from "node:child_process";\n');
+        symlinkSync(launcher, executable);
+        if (installation === "npm-override") vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", native);
+        else if (installation === "npm-relative-override") vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", relative(process.cwd(), native));
+        else if (installation === "npm-path-override" || installation === "npm-path-space-override" || installation === "npm-path-backslash-override" || installation === "npm-path-missing") {
+          // A valid but different cwd binary must never win over the launcher's PATH lookup.
+          writeFileSync(cwdOverride, binary.replaceAll("3.36", "9.99"), { mode: 0o755 });
+          if (installation !== "npm-path-missing") writeFileSync(join(directory, overrideName), binary, { mode: 0o755 });
+          vi.stubEnv("PATH", directory);
+          vi.stubEnv("SUPABASE_CLI_BINARY_OVERRIDE", overrideName);
+        }
+        else if (installation !== "npm-missing") {
+          const packageDirectory = join(directory, `node_modules/@supabase/cli-${platform}-${arch}`);
+          mkdirSync(join(packageDirectory, "bin"), { recursive: true });
+          writeFileSync(join(packageDirectory, "package.json"), '{}');
+          writeFileSync(join(packageDirectory, "bin/supabase"), installation === "npm-registry-drift" ? binary.replace("public.ecr.aws", "other") : binary);
+        }
+      }
+      vi.mocked(execFileSync).mockImplementation((file, args) => {
+        if (file === "which") return args?.[0] === "supabase" ? executable : actual.execFileSync(which, args, { encoding: "utf8" });
+        if (args?.[0] === "services") return JSON.stringify(services);
+        throw new Error(`unexpected command: ${file}`);
+      });
+      if (installation === "npm-missing") expect(() => deriveCliImages(process.cwd(), directory)).toThrow("Cannot find module");
+      else if (installation === "npm-path-missing") expect(() => deriveCliImages(process.cwd(), directory)).toThrow(`SUPABASE_CLI_BINARY_OVERRIDE not found on PATH: ${overrideName}`);
+      else if (installation === "npm-registry-drift") expect(() => deriveCliImages(process.cwd(), directory)).toThrow("upstream registry changed");
+      else expect(deriveCliImages(process.cwd(), directory)).toEqual(cliImages(services, binary, pgtapSource));
+    } finally {
+      vi.unstubAllEnvs();
+      vi.mocked(execFileSync).mockReset();
+      rmSync(cwdOverride, { force: true });
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("keeps reviewed-batch pins and source lists in the JSON reader only", () => {
     assertSingleOwner(batchSource);
     expect(batchSource).toContain('readCiImage("test-postgres")');

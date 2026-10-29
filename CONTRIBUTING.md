@@ -1155,7 +1155,12 @@ bootstrap service tags with the pgTAP job's
 single pinned CLI and rendered reference Supabase config, then checks the exclusion list read directly from `scripts/public-ci-pgtap.mjs`
 for uncovered runtime images. Exclusions remove long-running services, but not
 the enabled GoTrue, Realtime and Storage API schema-init jobs. Those three images,
-the database image and `pg_prove` from that CLI binary are mirrored.
+the database image and `pg_prove` from that CLI binary are mirrored. For CLI
+2.122.0, setup-cli exposes the npm Node launcher; derivation follows its symlink
+and resolves the platform binary package (or its `SUPABASE_CLI_BINARY_OVERRIDE`)
+before inspecting registry and `pg_prove` strings. Bare overrides resolve through
+PATH and refuse if absent; paths containing `/` (or `\` on Windows) are read directly. Standalone
+binaries work directly.
 Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
 derivation. The inventory also binds the exact five derived CLI repository/tag
 pairs to reviewed SHA-256 index digests. A missing, extra or changed pair refuses
@@ -1238,7 +1243,7 @@ migrations, tests and cleanup; phase exhaustion refuses before starting a stack.
 CLI pulls and local reuse require the exact pinned index digest. Verified
 digest references are aliased to the exact tags the CLI will request. The
 selected registry is passed explicitly to start/test/stop with
-`SUPABASE_INTERNAL_IMAGE_REGISTRY`, overriding setup-cli's GHCR default. When
+`SUPABASE_INTERNAL_IMAGE_REGISTRY`, overriding any inherited registry setting. When
 images succeed at different registries, the first image's successful registry
 wins; local tag aliases make every exact CLI-requested name available without
 additional pulls. Docker Hub retains the original `supabase/<name>:<tag>`;
@@ -1323,7 +1328,9 @@ failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
 The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
 job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
-fails the job. The pinned Supabase setup action selects ghcr.io for CLI 2.122.0;
+fails the job. The pinned Supabase setup action leaves the registry override
+unset for CLI 2.122.0, whose Compose backend defaults to ECR; pgTAP explicitly
+selects the first successfully pre-pulled registry as described above.
 `install-proof` retains its Docker Hub service, which is pulled before steps run.
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.

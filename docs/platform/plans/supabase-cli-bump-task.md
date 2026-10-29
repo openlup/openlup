@@ -1,7 +1,7 @@
 # Supabase CLI pin update
 
-Status: local fix round 2 implementation and required proof complete after two
-independent re-review FAIL reports; uncommitted handoff to Claude; development preview.
+Status: hosted pgTAP derivation repair and requested local proof complete;
+uncommitted handoff to Claude; development preview. Earlier evidence is retained.
 
 Outcome: one Supabase CLI 2.122.0 pin across active CI, disposable SQL runners,
 tests and current contributor instructions, with exact image tags and verified
@@ -324,3 +324,121 @@ low cost. The earlier GHCR restriction was unnecessary: preserve acquisition
 semantics first, then add digest verification without changing recovery.
 The only shared-machine delay was the measured 41-second pgTAP lane wait.
 No process change or successor work is introduced.
+
+## Hosted pgTAP derivation repair
+
+The owner requested the bounded repair of PR #443's pgTAP failure at committed
+head `e886cfd497b5055ce26136e53048746ee528846b`, run `40949649115`, job
+`123714062198`. Scope and authority remain local edits and requested proof;
+Claude retains all commit/PR/native-review work. No external write, hosted
+Supabase operation or shared-resource cleanup is authorized. The review base
+remains `6e7adb51e742a132b879a94ef07e5cfed60f694c`. The separately fetched current
+policy revision is `c31cc19bfd1a1108bf14535337fbca167a82f835`; applicable instruction
+changes since the assigned head are the CLI-specific contributor guidance,
+which was read with the current owners. No counted review session or retry
+budget was created or reset.
+
+Root cause: `deriveCliImages` scanned setup-cli v3's symlinked npm Node launcher
+instead of the native platform executable, so `cliImages` falsely reported
+missing upstream-registry strings before any Docker pull.
+
+The pinned action source installs `supabase@2.122.0` using npm into a temporary
+prefix and exposes `node_modules/.bin`. Its launcher resolves the native binary
+from `@supabase/cli-<platform>-<arch>` (Linux also tries the musl package), or
+honors `SUPABASE_CLI_BINARY_OVERRIDE`. Standalone archive installs expose the
+native executable directly. The repair follows the real launcher path and the
+same resolution rules; the existing registry/tag/exclusion refusals, digest
+binding, pull order, aliases, deadlines and owned cleanup remain intact.
+This is smaller than changing workflow installation or acquiring another CLI.
+
+Contrary to the earlier setup-action assumption above, the pinned action exports
+GHCR only for versions >=1.28.0 and <2.108.0. It leaves the registry override
+unset for 2.122.0. The Compose backend defaults to ECR; pgTAP still explicitly
+passes the first successfully pre-pulled registry. Contributor guidance now
+describes the actual action behavior. No image, digest, mirror or TOML edit is
+needed for this repair.
+
+Fresh release API metadata again selects stable v2.122.0. Downloads of both
+archive aliases and checksums match the API IDs/digests in the existing table
+and the versioned names in checksums.txt. Evidence for this repair is under
+`/private/tmp/openlup-ci-fix/`.
+
+Linux reproduction uses an owned `docker run --rm --platform linux/amd64`
+container, Node 24.21.0, `CI=true`, `GITHUB_ACTIONS=true`, Linux/X64 runner values,
+the unchanged rendered reference config, the action's exact npm installation
+options, and no registry override. It mounts the source read-only and has no
+Docker socket or hosted credentials. Before repair, npm derivation exits 1 with
+the hosted error while the official Linux archive derives the expected five
+images. After repair, npm derivation exits 0 and its output equals the archive
+output byte for byte. Both Linux native executables independently hash to
+`cb6a371c6ca17c3d2e2fc382348762f570cef2cb94a6da3c69735925adb7a0d0`.
+Full Linux service output is retained in `linux-services.json`.
+
+The installation-layout regression uses real temporary symlinks and package
+resolution, covering standalone, npm, explicit override, missing platform
+package and changed native registry strings. Before repair it exits 1 with
+three failures (19 passing); npm and override cases reproduce the false refusal.
+The initial policy/docs and focused structural checks pass. Remaining proof:
+complete affected Vitest files, lint/typecheck, final policy/docs regeneration
+and local pgTAP, serially through the existing resource gate where heavy.
+
+Completion evidence for this repair (all heavy commands ran serially through
+`ai-resource-gate run --wait --queue-timeout 3600`):
+
+- Affected full Vitest files (`ci-image-mirror`, `ci-image-pull`,
+  `oss-published-tree-check`): exit 0, 254 tests / three files passed, 44.30 seconds
+  in Vitest. The earlier red regression run above is retained.
+- `npm run lint`: exit 0, zero errors / 33 existing warnings, 28.6 seconds.
+- `npm run oss:published-tree -- --typecheck`: exit 0, five projects, zero
+  unresolved edges / consumer-side errors, 24.6 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0, 226 SQL files / 5199 assertions
+  passed, transactional replay and owned cleanup completed, 32.7 seconds. All
+  five verified GHCR digest references were reused; fallback paths are exercised
+  by the affected Vitest lifecycle cases. The supplied TOML required no change.
+- `--policy --docs-update` and subsequent policy check: exit 0, five obligations,
+  none unanswered; navigation has no generated byte delta. Focused ast-grep,
+  cross-platform service/plan comparisons, exact inventory binding and
+  `git diff --check` pass. Frozen source/config hashes are unchanged throughout
+  the heavy checks. The default Homebrew CLI remains 2.120.0.
+
+Logs and exact heavy commands/exits are in `verification-results.json` and the
+phase logs under the repair evidence directory. All resource admissions reported
+zero queue wait. Hosted CI rerun, full Linux stack execution and committed native
+review remain unexecuted; Claude owns subsequent delivery. No owner decision,
+mirror publication, pin change or settings action is needed for this repair.
+
+Self-retro: standalone binary fixtures missed the npm installation layout despite
+an identical CLI version. A real symlink/package-layout witness plus the Linux
+reproduction caught the boundary without changing acquisition behavior or adding
+a new installer. No broader process change or successor work is introduced.
+
+Cold-review follow-up: bare `SUPABASE_CLI_BINARY_OVERRIDE` now uses PATH lookup
+and clearly refuses absent executables; absolute/relative paths with separators
+remain unchanged. Real conflicting cwd/PATH files, a cwd-only refusal and a
+relative override extend the existing installation regression. Local edits only;
+no commit/push or new review cycle. All 25 `ci-image-mirror.test.ts` cases,
+policy/docs regeneration and check, focused ast-grep and `git diff --check`
+pass (exit 0). Logs: `/private/tmp/openlup-ci-fix/path-override-*.log`.
+Earlier attempts: the direct runner lacked npm's binary PATH (exit 1); the first
+regression run exposed a Buffer/string mock mismatch (exit 1), corrected before
+the passing rerun. The unnecessarily selected coverage queue waited over 244
+seconds; its owned wrapper was cancelled by exact PID (exit 137), then the
+tooling-gated test ran immediately. Self-retro: reuse the existing executable
+lookup and select the tooling profile for focused tests.
+
+Minor separator follow-up (2026-10-29): the owner requested this uncommitted
+repair and regression only, with the mirror test file, policy/docs and whitespace
+checks; no commit, push or pattern kills. Freshly fetched policy remains
+`c31cc19bfd1a1108bf14535337fbca167a82f835`, with no applicable instruction delta.
+The tagged upstream `apps/cli/src/shared/cli/bin.ts` passes the override directly
+to Node's `spawn`: `/` selects a path on POSIX; Windows also recognizes `\`.
+The existing condition now follows that platform distinction. Contributor
+guidance states the same rule. The existing fixture adds a POSIX backslash name
+with conflicting cwd/PATH binaries; before repair it read cwd's `9.99` instead
+of PATH's `3.36` (exit 1, 25 other cases passed). After repair all 26 cases pass
+(exit 0, one worker, 200 ms Vitest duration). Focused structural scans and
+policy/docs regeneration pass (exit 0; five obligations, none unanswered).
+Logs: `/private/tmp/openlup-ci-fix/backslash-*.log`. The red run waited for the
+tooling lane; the green run had zero queue wait. Self-retro: extending the
+existing fixture reproduced this separator boundary without another resolver
+or test harness. No review session, delivery or shared-resource cleanup occurred.
