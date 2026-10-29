@@ -2,7 +2,7 @@
 
 Status: development-preview parcel 8C, local work in progress. The code review
 base is `15a708a6b5b34f8a6d27b25f4867787425084bf7`; the freshly fetched
-policy revision is `eb1a0584f035774251a8c296e82f3b9ffd68180b`. The only
+policy revision is `ab00a8a1664badd38ce1372179330b0352bf2683`. The only
 relevant instruction delta in `CONTRIBUTING.md` was read; it adds offline
 context-command policy and does not alter this parcel's authority.
 
@@ -158,6 +158,25 @@ separate hosted boundary. The maintainer delegate accepted tree
 the correction was DCO committed as `305e018e671b3f835a63ed37b8e4234111be1da2`.
 The documentation policy passes with no unanswered obligations. Fresh full
 review and final verification follow.
+
+Two full native reviewers then passed tree
+`ec17c33741244d00f1eede571a1126109193f123` and closed the documentation
+card. Canonical `node scripts/verify-local.mjs --pgtap` passed all 14 phases on
+head `92cb4cda420aa8092663d80d55a5efab0783e0b6`. PR #444 was ready with
+the source receipt and armed for auto-merge. Main then advanced to M14 object
+transfer `ab00a8a1664badd38ce1372179330b0352bf2683`, and the receipt
+preflight refused carry-over across shared catalogue and adapter documentation
+paths. A forced conflict-free merge had no manual resolution or owned-byte
+change. Signed merge `8dff4a9c516845c0f15ca5c3e47258c30d8c3e60` has
+parents `92cb4cda420aa8092663d80d55a5efab0783e0b6` and
+`ab00a8a1664badd38ce1372179330b0352bf2683`, tree
+`e88c8d06e4069d0cd2ed9735be99ce5049778652`. The 8C patch excluding
+this task record has stable patch-id
+`b26affb1f8309db6533ffc15c4e3dbe36992c4a1` against the old base
+`eb1a0584f035774251a8c296e82f3b9ffd68180b` and the same
+`b26affb1f8309db6533ffc15c4e3dbe36992c4a1` against new main. This is
+CD-M14-30's clean forced-merge case; new full review and applicable verification
+are required before updating the PR head.
 
 Self-retro: the disrupted preliminary work and append-only cleanup mistake
 cost two local setup runs. The replay finding exposed a missing final check;
