@@ -280,10 +280,15 @@ to retain the erased principal in client, delivery and customer-read audit
 provenance; the same real fixture first proves a dangling delivery Auth ID
 without the receipt refuses `target_conflict`. The real
 managed readback confirms no Auth row is recreated, and redacting the erased
-principal removes every linked private row and the synthetic email. This is
-a source-level privacy change and needs its own maintainer delta read before DCO.
+principal removes every linked private row and the synthetic email. This
+source-level privacy change received its maintainer delta read before DCO.
 Self-retro: the explicit no-receipt refusal guards against turning arbitrary
 dangling Auth references into accepted erased-subject provenance.
+Real managed sources lack `identity_privacy_erasures` in the pinned managed
+schema. The 8D-2 read-only staging check owns counting dangling-Auth rows on
+actual managed data alongside all-null settlement items and resolving their
+disposition from actual source erasure evidence under its own read before
+hosted acceptance; W4's temporary receipt relation does not qualify that leg.
 
 Rows with one direct subject parent (`commerce_payments`, order items, invoice
 outboxes, subscription lines, payment external refs) use
