@@ -12,8 +12,8 @@ ordinary push and a stacked draft PR only. Native review/prepare/receipt/ready
 and heavy draft verification remain held; no queue, merge, release, activation
 or adopter work is authorized by this continuation.
 
-Current code/stack base: `f05668d67b50a211e89a98f578cc37bb57b68fd6`, R1
-head (draft #431), tree `d75883b282aa18ed0b0f2b22f10f24fc729f9f98`.
+Current code/stack base: `18f71994475a30963050944b0ebc6fcbb29603ea`, R1
+head (draft #431), tree `4a81ab795a94ea674a01279cdb4dcd5c092a05e6`.
 Initial implementation base was `c723bb73c57c65e3a77324c943faf1712d1f0a4c`
 (tree `b785e3e907bd67b306a751702c18749212a52e54`). Instructions were read
 at that head and refreshed at the policy pin below, separately from the code
@@ -104,7 +104,7 @@ updates; original blob identities remain in the earlier task commits.
 | `src/lib/currency/fiscalProfile.test.ts` | `a7d0cd8816a24f2cc45f92f9e376b0727e05c49a` |
 | `src/lib/currency/formatMinor.test.ts` | `3e2e12935ca40768943759dc94e5a074d4f198f5` |
 | `src/lib/currency/platformCurrency.test.ts` | `cbb615dd102df197dac16f12585e6b0e33b28817` |
-| `tests/postgres/marketDirectoryPreservation.test.ts` | `4c7974a8e36a628d13ef69c534f1e106cfedbaa9` |
+| `tests/postgres/marketDirectoryPreservation.test.ts` | `4b2baf418e185063f8352b35c1baec1d39e53f39` |
 | `scripts/packages/platform-cold-consumer.test.ts` | `f9bb24551669d29905a13d066c991ce72fe546e0` |
 | `src/domains/address-canon/contracts.test.ts` | `7e410e8b917d86ab779dc042088ee29640912a22` |
 | `src/domains/address-canon/addressCanonClient.test.ts` | `5d98d8406f20f3920be14a9b91697bfc53d96c5b` |
@@ -327,3 +327,49 @@ Self-retro: inspecting saved conflict resolutions prevented lost reference prose
 Using the existing capability-map owner closed the documentation gap without
 adding routing controls. The load wait cost seven minutes; the only remaining
 package finding is the explicitly deferred file-cap allocation.
+
+## Allocated budget and fixture predecessor
+
+Predecessor `18f71994475a30963050944b0ebc6fcbb29603ea` is reachable from the
+fetched R1 remote and descends from `f05668d67b50a211e89a98f578cc37bb57b68fd6`.
+The prior main-integration merge was confirmed on the pushed R2 branch before
+sign-off merge `076a97ee35170283a44d31413ec83bef04b026e3`, which had no conflicts.
+The package pack object matches R1 exactly: CD-M16-16 allocated 2,774 total
+and 2,718 code files, with its capReason; byte/docs caps are unchanged. This task
+made no independent cap edit. Earlier file-cap findings remain historical.
+The predecessor also owns the bounded PostgreSQL fixture lifecycle repair;
+its current blob is recorded in the frozen table, with all scenario assertions
+unchanged. No other frozen blob advanced in this continuation.
+Current instruction/main pin is `15a708a6b5b34f8a6d27b25f4867787425084bf7`,
+separate from the stack base. Its worker-default guidance was read; this task
+still selects two workers explicitly and admits each test phase only below
+one-minute load eight. No native or heavy verification is authorized here.
+
+
+Allocated-budget proof: both companion files PASS, 171/171 cases (ESLint
+import-map 123; package-size-policy 48, including the formerly failing real-pack
+budget case). Admission loads were 6.88 and 7.70 for companion and reference
+phases, with no polling delay. The six reference files PASS 32/32 cases.
+The existing measurePack/checkPackBudget helpers, over the same npm working-tree
+pack dry-run entries as the required real-pack witness, report zero findings:
+
+| Measure | Current candidate | Incoming R1 cap |
+| --- | ---: | ---: |
+| Total files | 2,719 | 2,774 |
+| Code files | 2,664 | 2,718 |
+| Packed bytes | 1,990,177 | 2,029,568 |
+| Unpacked bytes | 9,277,699 | 9,447,424 |
+| Code gzip bytes | 1,714,663 | 1,743,872 |
+| Docs gzip bytes | 60,705 | 73,728 |
+| Docs files | 5 | 10 |
+
+API, six answered documentation obligations, neutrality with zero increases,
+ast-grep and full lint PASS (zero errors, 33 existing warnings). Build-dependent
+checks were serialized after the tests. All 29 current frozen witnesses match
+the requested predecessor, including its fixture repair. No generated output
+or cap value was edited by this continuation. Native/heavy verification remains
+held; the fixture scenarios were not rerun beyond the requested focused selection.
+Self-retro: consuming the delegated budget unchanged closed the real-pack
+finding without weakening its assertion. This integration needed no conflict
+resolution, test repair or load wait; only the predecessor identity and its
+fixture blob advanced in the current record.
