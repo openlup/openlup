@@ -558,7 +558,7 @@ The intended distribution roles are:
 
 | Distribution | Role and adoption boundary |
 | --- | --- |
-| `@openlup/core` | Existing I/O-free kernel; retain its published coordinates and exports. |
+| `@openlup/core` | Existing I/O-free kernel and the isolated, tool-only installed-context executable; retain its published coordinates and kernel exports. |
 | `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
 | `@openlup/platform` | Development-preview backend distribution for the runnable foundation and declared module subpaths, including identity. |
 | UI | Target distribution role; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
@@ -572,6 +572,15 @@ registry evidence establish publication. Identity currently lives in
 subpaths. Use the isolated contracts entry for browser-safe contracts and
 verify the installed version's exports. Only genuinely shared contracts belong
 in core; importing platform as a whole is not a browser-safety guarantee.
+
+The `openlup-context` executable is a narrow tool-only distribution decision:
+core already reaches installed consumers, so it carries offline context lookup
+without a new package or service. Its Node built-ins read local installed
+snapshots only when explicitly invoked. No kernel export imports the executable;
+all kernel imports remain I/O-free and browser-safe. Package-root
+`AGENT_CONTEXT.md` snapshots ship with their owning packages. Lookup results
+locate evidence and grant no policy or execution authority. This exception does
+not permit Node dependencies or I/O in kernel contracts or logic.
 
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future

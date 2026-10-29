@@ -8,12 +8,12 @@ Single writer in the assigned worktree; accountable maintainer Bart Roszkowski
 <dev@openlup.com>. Direct assignment and CD-M16-1..12 authorize implementation,
 checks and staging. The coordinator accepted the exact-tree API/budget read;
 the later direct grant authorized its DCO commit, then predecessor integration,
-ordinary push and a stacked draft PR only. Native review/prepare/receipt/ready
-and heavy draft verification remain held; no queue, merge, release, activation
-or adopter work is authorized by this continuation.
+ordinary push and a stacked draft PR only. That preparation continuation held
+native review and heavy verification. The continuation below records the later
+direct grant and its current restriction under CD-M16-17.
 
-Current code/stack base: `18f71994475a30963050944b0ebc6fcbb29603ea`, R1
-head (draft #431), tree `4a81ab795a94ea674a01279cdb4dcd5c092a05e6`.
+Current code/stack base: `81943d73c6683ff7e001efce16c3c4ef628fe305`, R1
+post-S1 head (#431), tree `468d9c9e705d277d61bceadda4ecc9a7ceb41a5c`.
 Initial implementation base was `c723bb73c57c65e3a77324c943faf1712d1f0a4c`
 (tree `b785e3e907bd67b306a751702c18749212a52e54`). Instructions were read
 at that head and refreshed at the policy pin below, separately from the code
@@ -373,6 +373,86 @@ Self-retro: consuming the delegated budget unchanged closed the real-pack
 finding without weakening its assertion. This integration needed no conflict
 resolution, test repair or load wait; only the predecessor identity and its
 fixture blob advanced in the current record.
+
+
+## Native review before the post-S1 predecessor
+
+The owner assigned Codex as active supervisor for PR #434 in the existing
+`claude/oss-m16-r2-market-packs` worktree. The later arming grant under CD-M16-1
+permits delivery after the required predecessor. CD-M16-17 dequeued R1 until
+the M15 S1 0.32.0 release PR merges; R1 will integrate main and acquire a new
+head. The binding follow-up limits this run to the task-record update, Bart
+Roszkowski <dev@openlup.com> DCO commits, fast-forward pushes, native prepare
+and two independent fresh counted reviews on the current exact R1 pin.
+Full local verification, ready/main retargeting, receipt and queue/merge wait
+for R1's post-S1 head to be merged into R2 and integration-reviewed. Heavy
+priority is M15, then M14, then M16. This run does not invoke canonical
+`verify-local --pgtap` or make ready, receipt or queue writes.
+
+Current policy revision is `ef99742de560bb88865794a8a1694884d65d06ea`, separate
+from the unchanged exact stack pin
+`18f71994475a30963050944b0ebc6fcbb29603ea`. No catch-up main merge or rebase
+is authorized here. The supplied arming runbook governs the permitted steps;
+exact-candidate native history and terminal evidence remain under
+`.context/scratch/agent-review/`. There is no earlier native session or consumed
+repair cycle. Three changed-tree repair cycles are permitted, with no automatic
+continuation. New functionality, changed fallbacks, accepted regressions,
+settings, credentials, releases and caps remain owner-reserved. The existing
+maintainer read and CD-M16-10/11/12/14 remain applicable; CD-M16-16 is consumed
+unchanged through R1. No adopter endpoint is in scope.
+
+Acceptance remains the frozen R1 witness bytes, host extension fields, provider
+and validation order, shared cache scope, defaults, fallbacks and refusals.
+The descriptor and language/currency/pricing-region/fiscal inputs remain
+independent; bilingual data and the source recipe remain opt-in and unmounted.
+No caller swap, SQL/migration, vendor change, export-key addition, neutrality
+increase or cap edit is admitted. This run requires two counted fresh PASS
+reports and native `reviewed`. Those reports provide prior source coverage for
+the later integration review, subject to native lineage and expiry checks;
+they do not prove the future integrated tree or replace its required final
+verification. Terminal evidence, remaining work and self-retro extend this
+task's ignored execution summary without changing reviewed tracked inputs.
+
+
+## Post-S1 predecessor integration and delivery continuation
+
+The owner resumed the same native session after the host reboot and authorized
+integration of exactly `81943d73c6683ff7e001efce16c3c4ef628fe305`, followed by
+cheap and focused checks, DCO commits, fast-forward push, two fresh counted
+reviews, full canonical verification including pgTAP and the runbook's ready,
+receipt and queue steps once that exact predecessor is on main. The arming and
+merge grant remains CD-M16-1 / the M16 module PROC-27 grant. CD-M16-18 gives
+ready M14 remainder PRs priority when ready at the same moment; otherwise M16
+does not idle. No R1 branch, settings, credentials, releases or caps may change.
+New functionality, changed fallbacks and accepted regressions remain reserved.
+
+The fetched R1 ref equals the authorized head and descends from the prior exact
+pin `18f71994475a30963050944b0ebc6fcbb29603ea`. Current policy main is
+`eb1a0584f035774251a8c296e82f3b9ffd68180b` (M15 S1, package set 0.32.0),
+separate from the new stack base. R1 contains the main integration and preserves
+its measured caps, capReason and contracts browser budget. Shared registration
+files retain main/M15/S1 plus R1 and R2 entries; the sole textual conflict in
+CONTRIBUTING preserves both the descriptor proof and incoming offline-context
+guidance. Generated API/navigation output is regenerated only by its owners.
+The frozen witness table is checked against the new predecessor; predecessor
+changes do not authorize R2 witness edits.
+
+Prior native coverage binds head `9549e98e29e1682f2f0c1336349b44b2fd56fe41`,
+tree `ba143ccb6a9578065430726cb2a6d5f8e3939188`, with earliest PASS
+2026-10-29T16:03:02.200Z and original expiry 2026-10-30T16:03:02.200Z.
+Use the required `prepare --new`; count focused integration coverage only if
+native prepare actually supplies it, otherwise obtain two fresh full reviews.
+Repair history and the three-cycle total allowance remain append-only. There
+is no prior full local PASS anchor, so full canonical proof remains required.
+
+All new logs, temporary working files and verification outputs use durable
+`.context/scratch/` paths, including TMPDIR. Supabase CLI 2.98.2 is selected
+from the durable user tools installation. Final verification waits for load
+below 8 (one minute) and 10 (five minutes), no other verifier/Vitest/pg_prove,
+and M15/M14 priority, for at most three hours. A load-induced timeout permits
+one quiet-machine retry; caps are never repaired here. Terminal evidence and
+self-retro remain in the ignored execution summary to keep reviewed inputs
+frozen during final proof and delivery.
 
 ## R3 reference delegation — fit and quote witness
 
