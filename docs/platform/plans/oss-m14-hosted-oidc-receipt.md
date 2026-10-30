@@ -201,6 +201,23 @@ accepted control bytes are preserved. Current main uses stock PostgreSQL 17 for
 canonical pgTAP; the instruction refresh was read separately from the code base.
 The freeze is lifted and this parcel is first in the hosted landing order.
 
+Two new full reviews passed tree `c6314bc090718b6179f82d523e090d1b50e3a76b`
+and closed `hosted-oidc-public-origin-trailing-dot`. The direct canonical
+`node scripts/verify-local.mjs --pgtap` passed all 14 phases on head
+`1082f4e97dd3c78c24cbc7e3fab931b64fdeb1e0` in 662.064 seconds; its result is
+`.context/scratch/verify-local-odELQG/result.json`. PR #457's seven required
+source checks passed and its receipt admitted the source. The first queue group
+passed its six mechanical checks, then refused native carry-over because main
+advanced through PR #455. No implementation failure or new finding was reported.
+Queue recovery 1 of 2 merges parents
+`1082f4e97dd3c78c24cbc7e3fab931b64fdeb1e0` and
+`78f340db40ee6abcdaa97c7f01ccd2a857403b8f`. The automatic merge tree before
+this note is `eaee55132dfc0d5006a736fcb7220d236007f1ce`. There was no manual
+resolution or union separator. The parcel patch ID excluding this record is
+`70d2d82a5876a9245c0ee5d75d9c55db7e284f2a` against both bases. Fresh reviews
+and canonical verification of the integrated tree remain required; prior proof
+is retained rather than claimed for the new tree.
+
 Self-retro: check vendor provenance and a single execution UID before installing
 or launching a hosted fixture. Ambiguous provisioning can leave unconfirmed
 issuer state → require the existing dedicated-container teardown and absence

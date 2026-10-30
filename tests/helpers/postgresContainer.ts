@@ -181,6 +181,10 @@ export type PostgresContainerSpec = {
   image?: string;
   /** Extra fixture selectors; ownership labels are always supplied by the helper. */
   labels?: Record<string, string>;
+  /** Extra `docker run` options before the image, such as a read-only mount, an environment value or an entrypoint. */
+  runOptions?: string[];
+  /** Arguments after the image, passed to its entrypoint. */
+  command?: string[];
 };
 
 export type PostgresContainer = {
@@ -228,8 +232,10 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       ...(pulled ? ["--pull=never"] : []),
       "-e", `POSTGRES_PASSWORD=${spec.password}`,
       ...(spec.database ? ["-e", `POSTGRES_DB=${spec.database}`] : []),
+      ...(spec.runOptions ?? []),
       "-p", `127.0.0.1:${port}:5432`,
       image,
+      ...(spec.command ?? []),
     ];
     try {
       await docker(args, `start ${spec.name}`, remaining());
