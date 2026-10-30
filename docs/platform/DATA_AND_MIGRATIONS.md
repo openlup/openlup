@@ -101,8 +101,10 @@ the typed payment; provider reference rows of settled or terminal unpaid
 payments and their raw payloads stay in the operator archive. Nonempty unknown
 relations, incomplete typed obligations and other settlement or idempotency
 states refuse transfer. Standard nonpublic managed Storage buckets with no
-Storage access policies can be projected through the existing object path;
-other active Storage semantics refuse. Source-keyed terminal effects
+Storage access policies can be projected through the existing object path into
+its private filesystem store. Local S3 probes corroborate bytes and access;
+they do not establish exact S3 destination metadata. Other active Storage
+semantics refuse. Source-keyed terminal effects
 do not become active target command keys. Managed capture is local evidence
 only; it does not qualify hosted managed data, object access or recovery.
 

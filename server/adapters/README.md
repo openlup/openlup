@@ -143,8 +143,9 @@ then captures. Provider payment identifiers of settled payments are carried
 with the typed payment; provider reference rows of settled or terminal unpaid
 payments and their raw payloads stay in the operator archive. Other settlement
 or idempotency states refuse. Standard nonpublic managed Storage buckets with
-no Storage access policies use the existing object path. Other active Storage
-semantics refuse. Unknown
+no Storage access policies use the existing object path and private filesystem
+destination. Local S3 probes corroborate bytes and access only; an S3 destination
+store is a separate contract. Other active Storage semantics refuse. Unknown
 nonempty relations and source state that the typed path cannot carry also
 refuse before restore. This local adapter does not prove provider service access
 or complete managed activation.

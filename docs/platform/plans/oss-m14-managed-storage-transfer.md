@@ -1,6 +1,6 @@
 # M14 D32 — managed Storage object projection
 
-Status: implementation in progress, 30 October 2026; no installation
+Status: maintainer read accepted, 30 October 2026; no installation
 qualification. Audience: transfer implementers and reviewers. This parcel remains
 in development preview and does not establish whole-M14 completion.
 
@@ -48,8 +48,9 @@ this object leg requires a main merge and another read.
 listing/GET and reference reconciliation. The existing
 [access reconciler](../../../server/adapters/filesystem/orderReviewMediaTransferAccess.ts)
 checks typed order-review media references at customer/admin serving routes.
-This managed cohort has no such reference. Its effective access is proven by
-managed Storage API and target S3 actor probes; no customer route is added.
+This managed cohort has no such reference. Its portable destination is the
+existing private filesystem `TransferObjectStore`. Managed Storage API and local
+S3 actor probes corroborate access and bytes; no customer route is added.
 The existing S3 label is `authenticated-source-read` at
 [`transferObjectSource.ts`](../../../server/adapters/s3/transferObjectSource.ts);
 it records an authenticated GET, not an ACL. There is no existing anonymous-read
@@ -130,8 +131,8 @@ strict reader while retaining partial-response and content-integrity refusals.
    and the existing object/reference/access receipts; retain unrelated refusals.
 2. On the real pinned disposable managed source, use a mapped owner, null owner,
    unrelated customer and operator identities and at least two real API-created
-   objects. Transfer to qualified PG16 plus local S3 using existing clients and
-   domain serving composition. A metadata-only seed or mocked byte source fails
+   objects. Transfer to qualified PG16 plus the existing private filesystem store,
+   with local S3 access/byte corroboration. A metadata-only seed or mocked byte source fails
    this acceptance.
 3. Prove exact descriptors, streamed byte equality and counts/owner provenance;
    verify effective source/target access through the Storage API and S3 actor
@@ -188,14 +189,20 @@ and redacted staged-tree secret scan pass. A WIP snapshot preserves the candidat
 Maintainer read, DCO, native review, canonical verification and external
 delivery have not run for this parcel; no repair cycle is consumed.
 
-Read decision: the existing 8B destination is a private filesystem store.
-The local S3 mirror proves bytes and actor access but its pinned gateway omits
-cache control on returned GET after PUT. It cannot be cited as exact target
-metadata proof. The coordinator must decide whether the existing 8B filesystem
-destination is the portable target for this parcel; requiring local S3 as the
-exact metadata destination needs another authorized contract decision.
+Maintainer read CD-M14-68 accepted staged tree
+`9afc03ce9a50c02093c22353e43878a833b1b066` and binary diff SHA-256
+`307fc600826e204c2c45bd24a0b062a764b77bac5569c9275a78f601ba1e6687`
+against `5289e6e482c37043dedb1432f89c4b50ca96546c`; the coordinator recomputed
+both identities and found them equal. DCO commit
+`45959a4550851eda936eb2bdf4d068a2ef59675e` preserves that exact tree.
+The accepted destination is the existing 8B private filesystem store. Local S3
+corroborates bytes and actor access; its pinned gateway omits cache control on
+returned GET after PUT, so no exact S3-target-metadata claim is made. An S3
+destination store is a separate contract and is unnecessary for this parcel.
+This prose-only correction narrows the documentation to that evidence under
+CD-M14-31; it changes no implementation, test, catalogue or refusal.
 
-Next: stabilize the transfer-contract read before DCO. The managed-journey
+Next: carry the accepted predecessor lineage and obtain full native review. The managed-journey
 object leg follows its separately owned fixture parcel after that lands.
 Self-retro: direct pinned-service proof caught an older migration column name,
 an optional empty response header and the local S3 metadata gap. Keep exact
