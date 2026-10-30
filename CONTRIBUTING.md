@@ -154,6 +154,21 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The opt-in [local self-host recipe](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+calls the existing installation, schema, catch-up and older-snapshot witnesses,
+then real issuer, local gateway and Node/OCI fixture compositions. Its plain-Node
+storage proof body is shared with the ordinary S3 conformance test; the public
+execution inventory includes that body and the bundled synthetic host actor.
+The focused recipe input/disposition tests run with
+`npm test -- tests/postgres/m14RecipeConformance.test.ts`; a COMPLETE local
+receipt additionally requires the destructive opt-in command and all its
+prerequisites. Neither focused tests nor a local receipt establish hosted
+qualification, and the three operator-declared database targets need their
+separate operator teardown.
+
+The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
+joins the existing installed platform cold-consumer selection.
+
 The installed `openlup-context` command uses the tracked core
 [launcher](packages/core/src/openlup-context.js) and compiled
 retrieval code. The public execution catalogue binds that exact executable
@@ -338,6 +353,21 @@ one-shot fixture, not a required job or serving runtime. In its allocated local
 slot, use Node24.21.0, own installed/built dependencies, local Docker and an
 already-local immutable Node24.21.0 image:
 `node --import tsx tests/postgres/runM14EffectHandover.ts sha256:<local-image-id>`.
+Add `--catch-up` to that command for the finite local portable-to-portable
+journey on qualified-admin installations. Its private worktree-local report adds
+per-table/object counts, interruption/resume, final-generation agreement,
+refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+owns the exact boundary; managed history, older-snapshot measurement and hosted
+provider qualification remain separate. The final target is distinct from the
+preliminary copy and remains inactive through the DB/object/access barriers.
+Use `--older-snapshot` instead for the bounded local recovery measurement. It
+persists the consistent DB/private-media backup before provider acceptance,
+waits approximately 60 real seconds, restores those saved bytes after induced
+unavailability and reapplies later privacy obligations before serving. Its
+private `recovery-measurement.json` reports numeric snapshot age, effective RPO,
+scoped RTO, counts, fixture bytes and separate human/access waits. Declared
+readiness includes ordinary-job readback and permits the named uncertain
+dispatch to remain fenced. A safe refusal has null RTO; no SLO is asserted.
 The host's existing esbuild API emits one ESM for the application child; plain
 Node in Linux loads audited existing JS dependencies without a host-native tsx
 binary, Linux install or image build. Retain the real metafile, source/output
@@ -2865,6 +2895,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-29, M14 connected catch-up: fixture labels for observation authority
+  or media visibility → use the existing bootstrap observer and exact domain
+  SQL states before composing retirement and access expectations.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the

@@ -769,12 +769,69 @@
       ],
       "entrypoint": "dist/lifecycle/index.d.ts",
       "snapshot": "api/lifecycle.api.md"
+    },
+    "./company-identity": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/company-identity/companyIdentityService.test.ts",
+        "test/company-identity/companyIdentityHandlers.test.ts",
+        "test/company-identity/contracts.test.ts",
+        "test/company-identity/cacheFit.test.ts"
+      ],
+      "entrypoint": "dist/company-identity/index.d.ts",
+      "snapshot": "api/company-identity.api.md"
+    },
+    "./company-identity/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/company-identity/companyIdentityService.test.ts",
+        "test/company-identity/companyIdentityHandlers.test.ts",
+        "test/company-identity/contracts.test.ts",
+        "test/company-identity/cacheFit.test.ts"
+      ],
+      "entrypoint": "dist/company-identity/contracts/index.d.ts",
+      "snapshot": "api/company-identity-contracts.api.md"
+    },
+    "./company-identity/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/company-identity/companyIdentityService.test.ts",
+        "test/company-identity/companyIdentityHandlers.test.ts",
+        "test/company-identity/contracts.test.ts",
+        "test/company-identity/cacheFit.test.ts"
+      ],
+      "entrypoint": "dist/company-identity/server/index.d.ts",
+      "snapshot": "api/company-identity-server.api.md"
+    },
+    "./market-packs": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/market-packs/fiscalProfile.test.ts",
+        "test/market-packs/formatMinor.test.ts",
+        "test/market-packs/portFit.test.ts",
+        "test/market-packs/settlementProfile.test.ts",
+        "test/market-packs/marketDescriptor.test.ts"
+      ],
+      "entrypoint": "dist/market-packs/index.d.ts",
+      "snapshot": "api/market-packs.api.md"
     }
   },
   "pack": {
     "code": {
       "maxPackedBytes": 1743872,
-      "maxFiles": 2656
+      "maxFiles": 2718
     },
     "docs": {
       "maxPackedBytes": 73728,
@@ -782,7 +839,8 @@
     },
     "maxPackedBytes": 2029568,
     "maxUnpackedBytes": 9447424,
-    "maxFiles": 2712,
+    "maxFiles": 2774,
+    "capReason": "M16 company-identity + market-packs subpaths; measured full M16 stack on M15 main (integration f05668d6) at 2,719 total / 2,664 code files; ×1.02 rounded up (CD-M15-6a rule, CD-M16-16)",
     "baseline": {
       "version": "0.31.0",
       "packedBytes": 1935051
@@ -805,7 +863,8 @@
       "./operations/contracts": 32,
       "./operations": 30720,
       "./marketing/contracts": 32,
-      "./risk/contracts": 32
+      "./risk/contracts": 32,
+      "./company-identity/contracts": 20
     }
   }
 }

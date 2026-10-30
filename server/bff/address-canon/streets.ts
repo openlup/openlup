@@ -3,8 +3,8 @@ import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { createAddressCanonStreetsHandler } from "../../domains/address-canon/addressCanonLookupHandler.js";
 import { createHiddenAddressCanonRoute } from "./shared.js";
 
-const addressCanonStreetsHandler = createHiddenAddressCanonRoute((lookupPort) =>
-  createAddressCanonStreetsHandler({ lookupPort }),
+const addressCanonStreetsHandler = createHiddenAddressCanonRoute((lookupPort, schemas) =>
+  createAddressCanonStreetsHandler({ lookupPort, schemas }),
 );
 
 function handler(req: VercelRequest, res: VercelResponse): Promise<void> {

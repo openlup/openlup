@@ -1225,8 +1225,9 @@ ledger, runs reconcile and own/cross-customer reads, provisions a derived operat
 through the invitation lifecycle, then checks active, restricted and revoked
 membership. It exercises real token expiry/refresh, new signing kids, removed
 keys after cache expiry, foreign realm, wrong audience and unverified email.
-The removed-key probe advances the verifier clock past the JWKS cache bound;
-token expiry and refresh checks use wall time and real issuer tokens. Replay must
+The removed-key probe waits past the five-minute upper JWKS cache bound using
+real elapsed time, then distinguishes removed-key refusal from token expiry;
+token expiry and refresh checks also use wall time and real issuer tokens. Replay must
 leave the ledger and legacy contact, active subscription, administrator and
 machine rows unchanged.
 These assertions require an actual successful run; unit tests with synthetic
