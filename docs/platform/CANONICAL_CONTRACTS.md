@@ -781,8 +781,11 @@ install-proof `postgres:17` digest without the Supabase CLI or its images. Its
 and arm64, at immutable PostgreSQL apt-archive paths. Each file's committed
 SHA-256 is verified before the bytes are cached or installed; an unpinned
 architecture, a path that does not match its version or a checksum mismatch
-refuses, and no apt index is read. The packages install only into the disposable
-container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
+refuses, and no apt index is read. The job restores the downloads through a
+SHA-pinned `actions/cache` step keyed by the pin file, so only a cold cache reaches
+the apt archive, and every cached file is re-verified before use. The job does not
+reuse main-push evidence, because the shared probe does not cover its own
+merge-group result. The packages install only into the disposable container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
 is the only file that creates the managed environment for that lane; the runner
 keeps only the replay identity and grants it shares with the CLI lane. It is test
 infrastructure, never a runtime bootstrap or a supported-host claim.

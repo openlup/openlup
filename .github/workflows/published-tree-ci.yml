@@ -381,12 +381,8 @@ jobs:
         with:
           node-version: 24.21.0
           package-manager-cache: false
-      - name: Check completed merge-group evidence for this main push
-        id: reused
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/public-ci-reuse.mjs
+      # No main-push reuse: the shared probe does not cover this shadow job's own
+      # merge-group result, so every event runs the lane.
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -394,13 +390,19 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - name: Authenticate GitHub Container Registry pulls
-        if: steps.reused.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      # Restore the checksum-pinned packages; the runner re-verifies every cached file.
+      - name: Restore pinned PostgreSQL test packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .context/scratch/cache/pgtap-debs
+          key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
       - name: Every shipped pgTAP test on stock PostgreSQL with the managed-compat adapter
-        if: steps.reused.outputs.reuse != 'true'
+        env:
+          OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
         run: node scripts/public-ci-pgtap-postgres.mjs
 
   native-review:

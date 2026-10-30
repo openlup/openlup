@@ -342,13 +342,18 @@ const result = spawnSync(real, args, { stdio: "inherit" });
 process.exit(result.status ?? 1);
 `;
 
+/** Parse `cli-lane --supabase <absolute path> [--sabotage <name>]`; each flag takes the next argument. */
+export function parseCliLaneArgs(rest) {
+  const value = flag => (rest.includes(flag) ? rest[rest.indexOf(flag) + 1] : undefined);
+  const sabotage = value("--sabotage");
+  if (rest.includes("--sabotage") && !sabotageSql(sabotage)) throw new Error(`sabotage ${sabotage} has no SQL form for the CLI lane`);
+  const real = value("--supabase");
+  if (!real || !isAbsolute(real)) throw new Error("pass the verified Supabase CLI 2.122.0 as --supabase <absolute path>");
+  return { real, sabotage };
+}
+
 function cliLaneCommand(rest) {
-  const sabotage = rest[rest.indexOf("--sabotage") + 1];
-  if (rest.includes("--sabotage")) {
-    if (!sabotageSql(sabotage)) throw new Error(`sabotage ${sabotage} has no SQL form for the CLI lane`);
-  }
-  const real = rest[rest.indexOf("--supabase") + 1];
-  if (!rest.includes("--supabase") || !real || !isAbsolute(real)) throw new Error("pass the verified Supabase CLI 2.122.0 as --supabase <absolute path>");
+  const { real, sabotage } = parseCliLaneArgs(rest);
   accessSync(real, constants.X_OK);
   const out = join(root, ".context/scratch/pgtap-parity/cli" + (sabotage ? `-${sabotage}` : ""));
   const shim = join(out, "shim");

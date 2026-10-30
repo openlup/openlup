@@ -306,7 +306,9 @@ describe("complete public CI", () => {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
-      expect(login).toContain("        if: steps.reused.outputs.reuse != 'true'\n");
+      // The shadow lane always runs; reused jobs skip the login with their tests.
+      if (name !== "pgtap-postgres") expect(login).toContain("        if: steps.reused.outputs.reuse != 'true'\n");
+      else expect(login).not.toContain("if:");
       expect(login).toContain("        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_ACTOR: ${{ github.actor }}\n");
       expect(login.split("run:")[1]).not.toContain("${{");
       expect(login).toContain('run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin');
@@ -396,7 +398,7 @@ describe("complete public CI", () => {
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
     expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "bash scripts/install-supabase-cli-ci.sh 2.122.0", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
     // The non-required stock-PostgreSQL shadow needs no CLI and no npm dependencies.
-    expect(workflowCommands(workflowJob("pgtap-postgres"))).toEqual(["node scripts/public-ci-reuse.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap-postgres.mjs"]);
+    expect(workflowCommands(workflowJob("pgtap-postgres"))).toEqual(['echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap-postgres.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
@@ -509,7 +511,9 @@ describe("what the workflow may not contain", () => {
 
 describe("the workflow stays in step with what it claims to run", () => {
   it("allows only expensive main-push work to reuse exact-commit group proof", () => {
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) {
+    // The shadow lane never reuses: the probe does not cover its own group result.
+    expect(workflowJob("pgtap-postgres")).not.toMatch(/reused|public-ci-reuse/u);
+    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
       const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
