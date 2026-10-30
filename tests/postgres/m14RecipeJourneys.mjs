@@ -61,20 +61,24 @@ export async function runLocalJourney(root, image, recovery = false) {
   return journeyReceipt(JSON.parse(readFileSync(join(directory, "report.json"), "utf8")), recovery);
 }
 
-export async function runLocalOidc(root) {
+export async function runLocalOidc(root, hosted) {
   return new Promise((done, reject) => {
     const child = spawn(process.execPath, ["--input-type=module", "-e",
-      "import { main } from './tests/postgres/runOidcIdentityConformance.mjs'; main([]).then(value => process.send(value, () => process.disconnect())).catch(() => { process.exitCode = 1; process.disconnect(); });"], {
-      cwd: root, env: { PATH: readProcessEnvironment().PATH }, stdio: ["ignore", "ignore", "ignore", "ipc"], timeout: 600000,
+      "import { main } from './tests/postgres/runOidcIdentityConformance.mjs'; let input = ''; for await (const chunk of process.stdin) input += chunk; main([], JSON.parse(input)).then(value => process.send(value, () => process.disconnect())).catch(() => { process.exitCode = 1; process.disconnect(); });"], {
+      cwd: root, env: { PATH: readProcessEnvironment().PATH }, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000,
     });
     let message;
     child.on("message", value => { message = value; });
     child.once("error", () => reject(new Error("local_oidc_unavailable")));
     child.once("close", code => {
       if (code !== 0 || message?.status !== "PASS" || message.cacheExpiryClock !== "wall"
-        || !(message.cacheElapsedSeconds >= 300) || message.cleanup?.status !== "PASS") {
+        || !(message.cacheElapsedSeconds >= 300) || message.cleanup?.status !== "PASS"
+        || (hosted && (message.issuer !== "hosted test Keycloak" || message.image !== hosted.issuerImage
+          || message.tls?.status !== "PASS" || message.tls.ordinaryTrustStore !== true
+          || message.tls.hostnameVerified !== true || message.cleanup.realmsAbsent !== true))) {
         reject(new Error("local_oidc_failed; raw output suppressed"));
       } else done(message);
     });
+    child.stdin.end(JSON.stringify(hosted ?? null));
   });
 }

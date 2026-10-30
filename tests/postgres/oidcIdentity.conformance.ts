@@ -23,9 +23,10 @@ async function untilExpired(token: string) {
   assert(delay < 15000, "Real issuer test requires its short access-token profile");
   if (delay > 0) await sleep(delay);
 }
-export async function runOidcIdentityConformance(setup: { issuerOrigin: string; database: string; adminPassword: string; directory: string; runId: string; assertOwned(): unknown }) {
+export async function runOidcIdentityConformance(setup: { issuerOrigin: string; database: string; adminPassword: string; directory: string; runId: string; assertOwned(): unknown; hosted?: boolean }) {
   const pool = new Pool({ connectionString: setup.database });
   let poolFailed = false; pool.on("error", () => { poolFailed = true; });
+  let closeIssuer: (() => Promise<void>) | undefined;
   let closeRp: (() => Promise<void>) | undefined;
   let binding: ReturnType<typeof createOidcComposition> | undefined;
   const invitations = createDirectOperatorInvitationStore({ connectionString: setup.database });
@@ -53,7 +54,8 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
       machine: (await pool.query("SELECT * FROM public.platform_control_operators WHERE principal_id = $1", [M])).rows,
       administrator: (await pool.query("SELECT * FROM public.platform_human_memberships WHERE principal_id = $1", [A])).rows });
     const before = await preserved();
-    const issuer = await createOidcIssuerFixture(setup.issuerOrigin, setup.adminPassword, rp.redirectUri);
+    const issuer = await createOidcIssuerFixture(setup.issuerOrigin, setup.adminPassword, rp.redirectUri, setup.hosted ? `m14-${setup.runId}-` : "");
+    closeIssuer = issuer.close;
     const login = async (realm = "reference", client = "customer-rp", username = "customer") => {
       const context = await browser.newContext();
       try {
@@ -77,7 +79,7 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     const customerGateway = createPostgresDataGateway({ connectionString: setup.database }, { poolFactory: () => pool });
     binding = loaded.createOidcComposition({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: setup.database,
       IDENTITY_OIDC_ISSUER: issuer.issuer, IDENTITY_OIDC_CUSTOMER_AUDIENCE: "customer-api", IDENTITY_OIDC_OPERATOR_AUDIENCE: "operator-api" }, {
-      allowLoopbackHttp: true, customerGateway,
+      allowLoopbackHttp: !setup.hosted, customerGateway,
       fetch: async (url, init) => { if (String(url).endsWith("/certs")) transportCounts.keys++; return fetch(url, init); },
     });
     const selected = binding;
@@ -112,7 +114,7 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     stage = "new_signing_kid_is_accepted_after_bounded_refresh";
     const oldToken = tokens.access_token;
     const oldKid = decodeProtectedHeader(oldToken).kid;
-    const removalProbe = createOidcIdentityVerifier({ issuer: issuer.issuer, audience: "customer-api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600, allowLoopbackHttp: true }, { loadJwt: () => import("jose") });
+    const removalProbe = createOidcIdentityVerifier({ issuer: issuer.issuer, audience: "customer-api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600, allowLoopbackHttp: !setup.hosted }, { loadJwt: () => import("jose") });
     const removalCacheStarted = performance.now();
     assert((await removalProbe.verifyToken(oldToken)).ok);
     await issuer.rotate();
@@ -191,11 +193,14 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     assert.deepEqual((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows, ledger);
     assert.equal(readFileSync("config/platform-migration-manifest.json", "utf8"), manifestBytes);
     assert(!poolFailed, "Database emitted an error during conformance"); setup.assertOwned();
-    return { status: "PASS", issuer: "local Keycloak", loginSessionLogout: true,
+    return { status: "PASS", issuer: setup.hosted ? "hosted test Keycloak" : "local Keycloak", loginSessionLogout: true,
       realRefreshAndExpiry: true, customerOperatorSeparation: true, membershipDenial: true,
       signingKeyRotation: true, retiredKeyRefusal: "OIDC_JWKS_REFRESH_RATE_LIMITED",
       cacheExpiryClock: "wall", cacheElapsedSeconds: (performance.now() - removalCacheStarted) / 1000,
       hostedQualification: false };
   } catch { throw new Error(`OIDC conformance failed at stage: ${stage}`); }
-  finally { await browser.close(); await closeRp?.(); await binding?.close(); await invitations.close(); await pool.end(); }
+  finally {
+    try { await closeIssuer?.(); }
+    finally { await browser.close(); await closeRp?.(); await binding?.close(); await invitations.close(); await pool.end(); }
+  }
 }

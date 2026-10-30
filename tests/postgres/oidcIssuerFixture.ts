@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 export type OidcTokens = { access_token: string; refresh_token: string; id_token: string };
 /** Real issuer administration. Credentials and token responses never enter diagnostics. */
-export async function createOidcIssuerFixture(origin: string, adminPassword: string, redirectUri: string) {
+export async function createOidcIssuerFixture(origin: string, adminPassword: string, redirectUri: string, prefix = "") {
   const request = async (path: string, init: RequestInit = {}) => {
     const response = await fetch(`${origin}${path}`, { ...init, redirect: "error", signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error("Owned issuer operation refused");
@@ -16,35 +16,49 @@ export async function createOidcIssuerFixture(origin: string, adminPassword: str
   assert(ready, "Owned issuer startup deadline exceeded");
   const adminToken = () => request("/realms/master/protocol/openid-connect/token", { method: "POST", body: new URLSearchParams({ grant_type: "password", client_id: "admin-cli", username: "conformance-admin", password: adminPassword }) });
   const password = randomBytes(24).toString("hex");
-  const realms = ["reference", "foreign"];
+  const realmName = (name: string) => `${prefix}${name}`;
+  const realms = ["reference", "foreign"].map(realmName);
+  const created: string[] = [];
   const adminRequest = async (path: string, method = "GET", body?: unknown) => request(`/admin${path}`, {
     method, headers: { authorization: `Bearer ${(await adminToken()).access_token}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  for (const realm of realms) {
-    await adminRequest("/realms", "POST", { realm, enabled: true, sslRequired: "none", accessTokenLifespan: 8,
-      ssoSessionIdleTimeout: 1800, ssoSessionMaxLifespan: 3600, revokeRefreshToken: false,
-      clients: ["customer-rp", "operator-rp", "foreign-rp"].map(clientId => ({ clientId, enabled: true, publicClient: true,
-        standardFlowEnabled: true, directAccessGrantsEnabled: false, defaultClientScopes: ["basic", "profile", "email"], redirectUris: [redirectUri], webOrigins: [new URL(redirectUri).origin],
-        attributes: { "pkce.code.challenge.method": "S256" },
-        protocolMappers: [{ name: "api-audience", protocol: "openid-connect", protocolMapper: "oidc-audience-mapper", config: {
-          "included.custom.audience": clientId === "customer-rp" ? "customer-api" : clientId === "operator-rp" ? "operator-api" : "foreign-api",
-          "id.token.claim": "false", "access.token.claim": "true",
-        } }],
-      })),
-      users: [true, false].map(verified => ({ username: verified ? "customer" : "unverified", enabled: true, email: `${verified ? "customer" : "unverified"}@example.com`,
-        firstName: "Example", lastName: "User", emailVerified: verified, credentials: [{ type: "password", value: password, temporary: false }] })),
-    });
-  }
-  const issuer = `${origin}/realms/reference`;
-  return { issuer, password, issuerFor: (realm: string) => `${origin}/realms/${realm}`,
+  const close = async () => {
+    for (const realm of [...created].reverse()) {
+      await adminRequest(`/realms/${realm}`, "DELETE");
+      const response = await fetch(`${origin}/realms/${realm}/.well-known/openid-configuration`, { redirect: "error", signal: AbortSignal.timeout(5000) });
+      assert.equal(response.status, 404, "Owned realm remains after teardown");
+      created.splice(created.indexOf(realm), 1);
+    }
+  };
+  try {
+    for (const realm of realms) {
+      await adminRequest("/realms", "POST", { realm, enabled: true, sslRequired: "none", accessTokenLifespan: 8,
+        ssoSessionIdleTimeout: 1800, ssoSessionMaxLifespan: 3600, revokeRefreshToken: false,
+        clients: ["customer-rp", "operator-rp", "foreign-rp"].map(clientId => ({ clientId, enabled: true, publicClient: true,
+          standardFlowEnabled: true, directAccessGrantsEnabled: false, defaultClientScopes: ["basic", "profile", "email"], redirectUris: [redirectUri], webOrigins: [new URL(redirectUri).origin],
+          attributes: { "pkce.code.challenge.method": "S256" },
+          protocolMappers: [{ name: "api-audience", protocol: "openid-connect", protocolMapper: "oidc-audience-mapper", config: {
+            "included.custom.audience": clientId === "customer-rp" ? "customer-api" : clientId === "operator-rp" ? "operator-api" : "foreign-api",
+            "id.token.claim": "false", "access.token.claim": "true",
+          } }],
+        })),
+        users: [true, false].map(verified => ({ username: verified ? "customer" : "unverified", enabled: true, email: `${verified ? "customer" : "unverified"}@example.com`,
+          firstName: "Example", lastName: "User", emailVerified: verified, credentials: [{ type: "password", value: password, temporary: false }] })),
+      });
+      created.push(realm);
+    }
+  } catch (error) { await close(); throw error; }
+  const reference = `/realms/${realmName("reference")}`;
+  const issuer = `${origin}${reference}`;
+  return { issuer, password, close, issuerFor: (realm: string) => `${origin}/realms/${realmName(realm)}`,
     async rotate() {
-      const realm = await adminRequest("/realms/reference");
-      await adminRequest("/realms/reference/components", "POST", { name: "rotated-signing-key", parentId: realm.id,
+      const realm = await adminRequest(reference);
+      await adminRequest(`${reference}/components`, "POST", { name: "rotated-signing-key", parentId: realm.id,
         providerId: "rsa-generated", providerType: "org.keycloak.keys.KeyProvider", config: { priority: ["200"], enabled: ["true"], active: ["true"], algorithm: ["RS256"], keySize: ["2048"] } });
     },
     async removePreviousKeys() {
-      const components = await adminRequest("/realms/reference/components?type=org.keycloak.keys.KeyProvider");
-      for (const component of components) if (component.name !== "rotated-signing-key" && component.providerId === "rsa-generated") await adminRequest(`/realms/reference/components/${encodeURIComponent(component.id)}`, "DELETE");
+      const components = await adminRequest(`${reference}/components?type=org.keycloak.keys.KeyProvider`);
+      for (const component of components) if (component.name !== "rotated-signing-key" && component.providerId === "rsa-generated") await adminRequest(`${reference}/components/${encodeURIComponent(component.id)}`, "DELETE");
     },
     async logout(refreshToken: string, clientId: string) {
       const response = await fetch(`${issuer}/protocol/openid-connect/logout`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(5000), body: new URLSearchParams({ client_id: clientId, refresh_token: refreshToken }) });

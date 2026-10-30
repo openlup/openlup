@@ -189,6 +189,13 @@ defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
 
+Its explicit `hosted-oidc` selection reuses the real-issuer lifecycle witness
+against an operator-declared disposable HTTPS issuer. The
+[identity recipe](docs/platform/IDENTITY.md#real-issuer-oidc-recipe) owns that
+declaration, ordinary TLS verification and separate operator teardown boundary.
+The focused input tests cover its pre-connection refusals; actual hosted PASS
+also requires real browser login, expiry/rotation and owned realm absence.
+
 The required [managed source projection suite](tests/postgres/connectedManagedRetained.test.ts)
 uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified PG16 target.
 It compares typed target rows and obligations with the restore packet, checks

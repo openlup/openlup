@@ -881,3 +881,15 @@ any-difference condition, this addition is returned for read before DCO.
 No source repair or cycle-11 review was started. Self-retro: measuring the
 common consumers and reporting the added suite separately distinguishes a
 suite-set addition from a shared-adapter regression without assuming a baseline.
+
+The next native preparation required integration with main `1e8d8f3a`.
+The merge parents are `7c909b0bc453f855fb9c96175249c7da5b926686`
+and `1e8d8f3a27163c69ac14e6ff0c9744b2985fef39`; the resolved tree before
+this evidence note is `9f35ea222c6e4a2836df8f649047a1bdcb4c9e14`.
+The only conflict was the CONTRIBUTING proof-command prose: main's hosted-issuer
+paragraph and the managed-source paragraph were both retained verbatim, with
+main's paragraph remaining adjacent to its recipe antecedent. The resolved file
+removes no main line. All non-doc per-file changes remain identical; the combined
+stable patch ID excluding this record and CONTRIBUTING is
+`8cabae1ce3987b458a9dfe76f1a2086d0c92d071` against both bases.
+This is the approved prose-only verbatim union; no implementation claim changed.
