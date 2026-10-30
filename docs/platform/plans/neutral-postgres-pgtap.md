@@ -110,7 +110,7 @@ Other facts that bind the design:
   the CLI in required `test` (`reviewedBatchForwards`, `riskControlFixture`,
   several `*Managed*` suites). That image remains a CI dependency until a later
   wave (D2).
-- `ui-11` counts only `@supabase/` text. The CLI action reference, the bare
+- `ui-11` counts only the Supabase npm scope prefix. The CLI action reference, the bare
   word `supabase` and Docker repository names do not match it. Today's lane adds
   no `ui-11` debt. The pressure in #443 came from a launcher route that the
   neutral lane makes unnecessary, not from an exception to remove here.
