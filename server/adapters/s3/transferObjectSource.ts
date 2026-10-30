@@ -69,7 +69,8 @@ export function createS3TransferObjectSource(input: {
         try {
           if (!Number.isSafeInteger(response.ContentLength) || response.ContentLength! < 0
             || response.ContentLength! > maximumObjectBytes) throw new ObjectTransferError("invalid_input");
-          if (response.ContentRange !== undefined || response.DeleteMarker === true) throw new ObjectTransferError("integrity_conflict");
+          if (response.ContentRange !== undefined && response.ContentRange !== "" || response.DeleteMarker === true)
+            throw new ObjectTransferError("integrity_conflict");
           // An observed tag dependency is unsupported, never silently discarded.
           if (response.TagCount !== undefined && response.TagCount !== 0) throw new ObjectTransferError("invalid_input");
           if (response.MissingMeta !== undefined && response.MissingMeta !== 0) throw new ObjectTransferError("integrity_conflict");
@@ -218,7 +219,7 @@ function capturedMetadata(response: GetObjectCommandOutput): Record<string, stri
   ] as const;
   for (const [field, key] of fields) if (response[field] !== undefined) {
     if (typeof response[field] !== "string") throw new ObjectTransferError("integrity_conflict");
-    result[key] = response[field]!;
+    if (response[field] !== "") result[key] = response[field]!;
   }
   if (response.Expires !== undefined) result["s3.expires-date"] = date(response.Expires);
   if (response.VersionId !== undefined) {

@@ -48,10 +48,10 @@ query/building and executor surfaces do not by themselves establish an
 installation, role graph, database-wide compatibility or a connected-store
 transfer. The migration-runner and qualified-session files have the narrower
 installer owner below; connected-store capture/restore has the separate
-transfer owner. The managed retained extractor in this directory is also a
-transfer adapter: it reads a bounded source snapshot and emits a private
-history object plus a finite canonical projection, rather than serving a
-normal request or adding a provider connection.
+transfer owner. The managed source extractor in this directory is also a
+transfer adapter: it reads a bounded source snapshot and emits a finite typed
+canonical projection, rather than serving a normal request or adding a
+provider connection.
 
 ## Restricted PostgreSQL installation binding
 
@@ -128,20 +128,26 @@ pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
 
-The [managed source extractor](postgres/connectedManagedRetained.ts) reads one
-disposable managed PostgreSQL snapshot across non-system schemas, selecting
-Auth user identity metadata without credentials and retaining complete Storage
-metadata and finite business rows in a private source/table/row-keyed history
-object. Its relation census refuses unknown nonempty data. Subject ownership is
-recorded for retained rows, and an erased subject's entries are removed from a
-new hashed object whose readback checks the redaction. A provisional source
-capture cannot be exported as a publishable history object until its required
-active mapping is resolved. The managed transfer manifest binds that private
-object's digest to the exact canonical row packet; managed restore admission
-reads it back before database mutation and refuses missing or altered history.
-The current money projection admits checked pending retry and paid order cohorts;
-other active managed states refuse. This local
-adapter does not prove provider service access or complete managed activation.
+The [managed source extractor](postgres/connectedManagedRetained.ts) inventories
+one disposable managed PostgreSQL snapshot across non-system schemas, selecting
+Auth identity metadata without credentials. Its finite typed projection maps
+eligible business obligations into the existing connected restore packet.
+Full managed audit and business history remains in the operator's source
+backup or snapshot, under the operator's own access, retention and erasure
+controls. The existing `retained-history` disposition records history with no
+target obligation; no private row-history object or managed history manifest
+is produced. Reconciled provider settlement rows and completed source
+idempotency receipts after expiry remain in that archive; the operator waits
+until outstanding idempotency windows expire and quiesces in-flight checkouts,
+then captures. Provider payment identifiers of settled payments are carried
+with the typed payment; provider reference rows of settled or terminal unpaid
+payments and their raw payloads stay in the operator archive. Other settlement
+or idempotency states refuse. Standard nonpublic managed Storage buckets with
+no Storage access policies use the existing object path. Other active Storage
+semantics refuse. Unknown
+nonempty relations and source state that the typed path cannot carry also
+refuse before restore. This local adapter does not prove provider service access
+or complete managed activation.
 
 The [managed identity mapper](postgres/connectedStoreRestore.ts) translates an
 explicitly evidenced issuer/subject binding, customer references, human operator
@@ -153,11 +159,9 @@ fields, missing bindings, machine actors, erased rows without receipts,
 populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
 snapshot and completeness; the mapper does not certify issuer control. Full
-managed audit rows and source-keyed acquisition history remain in the private
-retained object, outside active target-key lookup tables. Sidecar subject tags
-come from retained typed links; target-principal redaction resolves to source
-IDs through the explicit item-7 identity mapping. The task decision
-and remaining proof boundary are in the
+managed audit rows and source-keyed acquisition history remain in the
+operator-controlled source archive, outside active target-key lookup tables.
+The task decision and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 
 The [filesystem census](filesystem/orderReviewMediaTransferInventory.ts) and
@@ -255,6 +259,8 @@ or proof of conditional GET support. A returned native version ID is retained
 as metadata and bound into the logical version. The adapter retains
 returned user metadata, content type/encoding/disposition/language, cache
 control, expiry representations and website redirect without supplying defaults.
+An empty optional response header is absent metadata; a nonempty range response
+still refuses as a partial read.
 Declared missing metadata and observed nonzero tags refuse. Native version
 history, ACLs, tags and provider-private metadata remain outside this export;
 the selected profile cannot qualify them by omission. The fixed

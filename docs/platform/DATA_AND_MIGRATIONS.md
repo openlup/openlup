@@ -84,28 +84,27 @@ recipient-consent, native send/observation and communication-sync rows needed
 for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
-The managed source extractor retains business-row history and Storage metadata
-under source/table/row identities in a private history object, while selecting
-only identity metadata from Auth users. At capture, fields capable of carrying
-an unrelated person's identity, and JSON without a known own-subject or catalog
-shape, are replaced by a fixed marker with a per-field reason. Own-subject
-history, structural values and catalog rows remain verbatim. Capture and private
-readback apply the same finite field rule: a populated minimised field must
-contain the marker and its reason fact, including conditional audit fields.
-Readback derives subject tags, field facts and row mapping from retained typed
-links; IDs found only inside minimised JSON do not tag the private row. A target
-principal resolves to its source identifier through the explicit managed
-identity mapping before sidecar redaction. Marker-equal catalog text remains
-verbatim when its field is classified verbatim.
-The in-process native projection
-uses the original source values, so this sidecar narrowing does not alter active
-target obligations. It refuses unknown
-nonempty relations and refuses export of an active row whose canonical mapping
-is still unresolved. A transfer manifest binds the exact canonical row packet
-to the private object's digest; managed admission reads the object back and
-refuses missing retention before database mutation. Source-keyed acquisition receipts remain history rather
-than target command keys. This bounded local evidence does not qualify a whole
-managed installation or its object access and recovery paths.
+The managed source extractor inventories one disposable managed snapshot,
+including Auth identity metadata and Storage metadata relations. It projects
+only the finite typed obligations into a qualified canonical target. Full
+managed audit and business history is not transferred: it remains in the
+operator's source backup or snapshot, under the operator's access, retention
+and erasure controls. The existing `retained-history` disposition identifies
+source history with no remaining typed obligation; it creates no target row or
+private history object. Reconciled provider settlement batches and matched
+items stay in the operator's source archive while their settled money state is
+carried in typed target rows. Completed source idempotency receipts stay in
+that archive only after their windows expire. The operator waits until
+outstanding idempotency windows expire and quiesces in-flight checkouts, then
+captures. Provider payment identifiers of settled payments are carried with
+the typed payment; provider reference rows of settled or terminal unpaid
+payments and their raw payloads stay in the operator archive. Nonempty unknown
+relations, incomplete typed obligations and other settlement or idempotency
+states refuse transfer. Standard nonpublic managed Storage buckets with no
+Storage access policies can be projected through the existing object path;
+other active Storage semantics refuse. Source-keyed terminal effects
+do not become active target command keys. Managed capture is local evidence
+only; it does not qualify hosted managed data, object access or recovery.
 
 In `--older-snapshot` mode, recovery instead reloads a persisted pre-provider-
 acceptance DB packet and complete private media snapshot. Media writers have
@@ -116,7 +115,7 @@ replays its independently retained later erasure obligation through the existing
 restricted-runtime privacy transaction, including retained-text redaction and
 authentication refusal. The older backup itself remains private and immutable.
 The [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
-defines its measured RPO/RTO, visible uncertainty and separate managed-sidecar
+defines its measured RPO/RTO, visible uncertainty and separate managed-source
 proof boundary; this adds no schema, table admission or general backup service.
 
 Historical insertion is not generally inert. `clients` insertion invokes
