@@ -2379,6 +2379,74 @@ resource retirement and host limits, and the
 state and lossless rows. It adds no production fencing API, role model, scheduler,
 host framework or all-adopter writer-completeness guarantee.
 
+The same executable accepts `--catch-up` for the local portable-to-portable
+[journey composition](../../tests/postgres/m14ConnectedCatchup.ts). It uses
+qualified-admin installations and a disposable preliminary generation while the
+source changes. Its admitted media requests drain through the real runtime
+before egress exclusion; a separate admitted partial body remains pending and
+is copied exactly. The original H1/H2 crash-boundary mode remains unchanged.
+Restricted M does not gain backend-inspection privileges: the already-held
+fixture bootstrap administrator observes and retires the exact source backend
+identities, then closes that pool. Final recapture opens a new bootstrap-principal
+session configured read-only by default for capture/census and closes it before
+target publication; this local superuser step does not qualify a restricted
+source-capture login.
+Interrupted snapshot export restarts its atomic capture;
+interrupted database import rolls back and retries the same packet, with exact
+replay. After the declared H1/H2 process/backend retirement and coordinator
+freeze, a full recapture restores into a separate fresh inactive database and
+media generation. The earlier generation is never patched or activated.
+Complete row/file readback checks updated and new values and deleted absence;
+source DB media references reconcile physical files and pending cleanup. Actual
+customer/admin BFF handlers use native DB authorization and private file reads
+under the anonymous, owner, other-customer and synthetic operator identities.
+This is local handler and explicit host-authentication proof, not hosted OIDC
+or adopter authentication qualification.
+
+The fixture activation barrier requires source retirement, qualified DB and
+object publication, serving access, bounded acquisition drain and reconciled
+effect disposition. The preliminary activation attempt refuses and retains the
+source as authority. Final takeover preserves active subscriptions, frozen
+renewal terms, unsettled money and outstanding invoice/outbox/dispatch duties;
+one uncertain dispatch remains fenced. The structured `journey` section of its
+private `report.json` records per-table counts, object/partial counts, observed
+installation identities, timings, refusals, rollback and takeover. Evidence is
+kept under the invoking worktree's `.context/scratch`; cleanup still removes
+only the run's owned resources. The managed first leg and retained-history
+sidecar are separate, as are hosted provider receipts.
+No CDC, generic upsert/delete engine or production activation coordinator is
+introduced; capture/restore's finite table regions are unchanged.
+
+The executable's `--older-snapshot` mode composes that same finite native graph
+with a [persisted recovery boundary](../../tests/postgres/m14OlderSnapshotRecovery.ts).
+It drains and retires the media application, pauses three dispatches after their
+real DB admission, and saves the DB packet and complete private media copy before
+provider acceptance. It waits approximately 60 real seconds, then releases
+acceptance, loses the acknowledgment and induces executor failure. For the
+conservative RTO, unavailability starts earlier at planned application
+retirement, before the snapshot.
+Restore reloads those saved bytes; a later source census is diagnostic only.
+The target remains inactive until publications, later privacy obligations,
+authorization and authenticated effect reconciliation agree. Existing identity
+erasure operations reapply a post-snapshot erasure and retained free-text
+redaction before serving; earlier erasure receipts remain present. The managed
+retained-history sidecar's own restore/redaction proof is a separate boundary.
+
+The retired old executor's exact identity cannot restart after transfer; the
+new worker refuses before its recovery barrier opens. Two accepted effects are
+recovered through the durable independent synthetic provider ledger, a late
+authenticated delivery observation extends the cycle once, and one uncertain
+dispatch remains visibly fenced while ordinary work executes and replays.
+The private report records snapshot age and effective RPO in seconds from the
+consistent pre-effect boundary to induced failure. RTO runs from the earlier
+unavailability through restore, object publication, privacy, reconciliation,
+authorization, serving and ordinary-job readback; this declared readiness allows
+the named uncertain operation's refusal. Individual refusals have null RTO.
+Counts, fixture bytes and human/access waits accompany the measured times.
+These are declared-scope fixture measurements, not an SLO or hosted claim;
+they establish no universal exactly-once guarantee. Code rollback does not
+recover data.
+
 The qualified runtime-completion witness uses the existing
 [preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 and its role-free transaction lane for actual restricted-runtime context insert,
@@ -2423,6 +2491,22 @@ A successful write is insufficient: target bytes and descriptor must match
 before checkpoint. Resume recognizes the exact retained object after a lost
 write ACK or checkpoint interruption and refuses a divergent existing key.
 This first slice has no remote inventory traversal or live object-delta protocol.
+The server [S3 transfer source](../../server/adapters/s3/transferObjectSource.ts)
+adds bounded authenticated traversal and can reconcile it against an independently
+read source-store reference snapshot. Matching principal-visible listings alone
+do not establish completeness. The reference snapshot must account for pending,
+partial and cleanup keys, and a fenced caller must retain all corresponding
+business rows. The [filesystem media adapter](../../server/adapters/filesystem/orderReviewMediaTransferInventory.ts)
+reconciles its final and partial files against those rows, including retained
+observed bytes when a cleanup file remains present. Its staging entry
+point builds a separate inactive generation and refuses a serving-root name
+collision; the host still owns activation
+after database and access reconciliation. Route probes exercise both actual customer
+and operator serving handlers under anonymous, owner, other-customer and
+operator identities, bind each route reference to the source row, and refuse
+effective access changes or served-byte and observed content-type drift.
+These finite source checks do not grant hosted bucket qualification or a whole
+connected-store cutover.
 
 The [private filesystem capability](../../packages/platform/src/portability/filesystemObjects.ts)
 publishes bytes and metadata through exclusive files, fsync and one directory

@@ -12,8 +12,10 @@ ordinary push and a stacked draft PR only. That preparation continuation held
 native review and heavy verification. The continuation below records the later
 direct grant and its current restriction under CD-M16-17.
 
-Current code/stack base: `81943d73c6683ff7e001efce16c3c4ef628fe305`, R1
-post-S1 head (#431), tree `468d9c9e705d277d61bceadda4ecc9a7ceb41a5c`.
+Current review base and policy main: `9195f281a741ca83c7974dd956a33a41d32cf8a4`. R1 landed
+via #445 (`7e8a80f313cb58d39722227121e913754a02dfbf`), including final
+R1 head `f4d6cf74eb9486a1f87ee1424d6416ea3cc42872`. R2 now integrates
+main directly and uses its merge base, with no OPENLUP_STACK_BASE override.
 Initial implementation base was `c723bb73c57c65e3a77324c943faf1712d1f0a4c`
 (tree `b785e3e907bd67b306a751702c18749212a52e54`). Instructions were read
 at that head and refreshed at the policy pin below, separately from the code
@@ -453,6 +455,55 @@ and M15/M14 priority, for at most three hours. A load-induced timeout permits
 one quiet-machine retry; caps are never repaired here. Terminal evidence and
 self-retro remain in the ignored execution summary to keep reviewed inputs
 frozen during final proof and delivery.
+
+
+## CD-M16-22 exclusive delivery window
+
+The owner resumed the same native session and authorized one signed merge of
+main after M14 8D-1 #447. The earlier unpushed local merge was discarded by the
+lead; the resumed tree/ref matched the pushed reviewed c346f015 candidate and
+native history remained intact. R1 is landed via #445; PR #434 is against main.
+This continuation integrates main directly, not an unlanded predecessor.
+
+MAIN_AT_MERGE is `9195f281a741ca83c7974dd956a33a41d32cf8a4`; signed merge is
+`4e19c2ebb625ae6d5182ffb4855bf2ef02eb3e0d`. WINDOW_START is
+2026-10-29T23:43:07Z and the 2.5-hour deadline is 2026-10-30T02:13:07Z.
+CD-M16-22 covers cap measurement, DCO/push, prepare, two fresh counted reviews,
+canonical verification including pgTAP, ready, source receipt and enqueue under
+the existing M16 module PROC-27 grant. This decision supersedes the earlier
+separate GO-file gate. Any later main movement stops this run without another
+merge. Window expiry before enqueue aborts delivery. Any cap overflow stops for
+coordinator reading; no cap is changed. Other branches/PRs, settings, credentials
+and releases remain outside authority; new functionality, changed fallbacks and
+accepted regressions remain owner-reserved.
+
+The merge completed without conflicts. Shared registrations retain main entries
+plus R2. Generated outputs use their owners; frozen witnesses are compared with
+actual main. Required cheap checks and focused suites use two workers, followed
+by full exact-candidate native review/proof. prepare --new may narrow inspection
+only if it actually proves eligible integration coverage before inherited expiry;
+otherwise two fresh full reviews are required. Native cycle history and the
+three-cycle limit remain append-only. Every push first checks DCO and each
+origin/main..HEAD commit for Bart Roszkowski <dev@openlup.com> sign-off.
+
+All scratch, logs and temporary outputs remain durable under .context/scratch.
+Supabase CLI 2.98.2 is selected from the durable user installation. Canonical
+verification alone waits for load below 8/10 and no other verifier, Vitest or
+pg_prove, bounded by this window. Only a load-induced timeout permits one retry
+within the deadline. Before readiness, receipt and enqueue, recheck the live
+exact head, native identity/expiry and unchanged main. Terminal evidence and
+self-retro extend the ignored execution summary, preserving tracked proof inputs.
+
+Merged working-tree package measurement uses a real npm tarball and the existing
+measurePack/checkPackBudget helpers: 2,720 files / 2,774 cap; 2,664 code files /
+2,718 cap; 1,986,993 tarball bytes; 9,259,463 unpacked bytes; 1,714,663 code
+gzip bytes; 57,123 docs gzip bytes across six docs files. All class and aggregate
+budgets pass with zero findings. All three complete package pack-budget objects
+are identical to main. These are merged working-tree package measurements, not
+the later cold committed package proof or a release claim. API, owner generation,
+policy (six answered obligations), structural scan and lint pass; lint retains
+33 existing warnings and zero errors. Full proof and delivery outcomes remain
+in durable scratch evidence.
 
 ## R3 reference delegation — fit and quote witness
 

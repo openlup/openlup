@@ -1,0 +1,220 @@
+// Opt-in destructive recipe proof. Credentials and raw witness output never leave the worker.
+import { spawn, execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { checkServerIdentity } from "node:tls";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const modes = ["installer-managed", "operator-provisioned", "schema"];
+const targets = ["self-host", "neon", "rds"];
+const hash = bytes => createHash("sha256").update(bytes).digest("hex");
+const refuse = code => { throw new Error(code); };
+const git = args => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const npmVersion = () => execFileSync(process.execPath,
+  [realpathSync(resolve(dirname(process.execPath), "npm")), "--version"], { encoding: "utf8" }).trim();
+const pending = owner => ({ status: "PENDING", owner });
+function directoryDigest(directory) {
+  const files = [];
+  const visit = (base, prefix = "") => {
+    for (const item of readdirSync(base, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = prefix + item.name;
+      if (item.isDirectory()) visit(resolve(base, item.name), `${path}/`);
+      else if (item.isFile()) files.push([path, hash(readFileSync(resolve(base, item.name)))]);
+      else refuse("artifact_symlink_refused");
+    }
+  };
+  visit(directory);
+  return hash(JSON.stringify(files));
+}
+function sourceDigest() {
+  const paths = git(["ls-files", "--cached", "--others", "--exclude-standard"]).split("\n").filter(Boolean).sort();
+  return hash(JSON.stringify(paths.map(path => [path, hash(readFileSync(resolve(root, path)))])));
+}
+
+export function loadCredentials(path, target) {
+  try {
+    if (!targets.includes(target) || !isAbsolute(path)) refuse("target_input_required");
+    const actual = realpathSync(path);
+    if (lstatSync(path).isSymbolicLink()) refuse("credential_symlink_refused");
+    // External means outside every Git checkout, including other worktrees.
+    let inRepository = false;
+    try { execFileSync("git", ["-C", dirname(actual), "rev-parse", "--show-toplevel"], { stdio: "ignore" }); inRepository = true; } catch { /* Expected for external files. */ }
+    if (inRepository) refuse("credential_file_must_be_external");
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let value;
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o777) !== 0o600 || stat.size > 128 * 1024) refuse("credential_file_requires_owner_mode_600");
+      value = JSON.parse(readFileSync(fd, "utf8"));
+    } finally { closeSync(fd); }
+    if (value.schemaVersion !== 1 || value.target !== target || value.disposable !== true) refuse("explicit_disposable_target_required");
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/u.test(value.region ?? "")) refuse("region_required");
+    if (!value.installations || Object.keys(value.installations).sort().join() !== [...modes].sort().join()) refuse("three_installations_required");
+    for (const mode of modes) {
+      const entry = value.installations[mode];
+      if (entry?.disposable !== true || !/^[0-9]{10,30}$/u.test(entry.systemIdentifier ?? "")) refuse("installation_declaration_required");
+      if (!/^sha256:[a-f0-9]{64}$/u.test(entry.ociDigest ?? "")) refuse("oci_digest_required");
+      const url = new URL(entry.connectionString);
+      // Bootstrap/database names are explicit target data. Provider admission stays in the installer.
+      if (!["postgres:", "postgresql:"].includes(url.protocol) || !/^[a-z_][a-z0-9_]*$/u.test(decodeURIComponent(url.username)) || !/^\/[a-z_][a-z0-9_]*$/u.test(decodeURIComponent(url.pathname))
+        || !url.password || url.search || url.hash || !entry.ca?.includes("-----BEGIN CERTIFICATE-----")) refuse("verified_tls_bootstrap_input_required");
+    }
+    if (new Set(modes.map(mode => value.installations[mode].systemIdentifier)).size !== 3) refuse("separate_clusters_required");
+    if (!isAbsolute(value.previousApplicationPath ?? "")) refuse("previous_application_required");
+    return value;
+  } catch (error) {
+    const known = ["target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
+      "explicit_disposable_target_required", "region_required", "three_installations_required", "installation_declaration_required",
+      "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required"];
+    refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
+  }
+}
+
+export function initialReceipt(target) {
+  return { schemaVersion: 1, target, status: "INCOMPLETE", startedAt: new Date().toISOString(),
+    identity: pending("10A"), install: pending("10A"), connections: pending("10A"), schema: pending("10A"),
+    transfer: pending("8D/10P"), recovery: pending("9A/10P"), oidc: pending("10I"), s3: pending("10O"),
+    nodeHosts: pending("10H"), effortCleanup: pending("10H/10S") };
+}
+
+const poolLimits = { max: 4, connectionTimeoutMillis: 5000, statement_timeout: 15000, query_timeout: 20000, idleTimeoutMillis: 1000 };
+// The proof creates cluster-global roles, so admission must inspect more than
+// the selected database's public tables before the first write to any target.
+export async function assertFreshClusterCatalogue(pool, selectedDatabase, bootstrapLogin) {
+  const row = (await pool.query(`SELECT
+    (SELECT array_agg(datname::text ORDER BY datname) FROM pg_catalog.pg_database
+      WHERE datname NOT IN ('template0','template1')) AS ordinary_databases,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
+      WHERE nspname NOT IN ('pg_catalog','pg_toast','information_schema','public')) AS extra_schemas,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public') AS public_relations,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public') AS public_functions,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
+      WHERE n.nspname='public') AS public_types,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname<>'plpgsql') AS extra_extensions,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+      WHERE rolname !~ '^pg_' AND rolname NOT IN ('postgres',$1)) AS extra_roles,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity
+      WHERE backend_type='client backend' AND pid<>pg_backend_pid()) AS other_client_sessions`, [bootstrapLogin])).rows[0];
+  if (row.ordinary_databases?.length !== 1 || row.ordinary_databases[0] !== selectedDatabase
+    || row.extra_schemas || row.public_relations || row.public_functions || row.public_types
+    || row.extra_extensions || row.extra_roles || row.other_client_sessions) refuse("fresh_cluster_required");
+}
+async function executeRecipe(config, receipt) {
+  const { tsImport } = await import("tsx/esm/api");
+  const { Pool } = await import("pg");
+  const { runQualifiedAdminCompositionProof } = await tsImport("./m14QualifiedAdminComposition.proof.ts", import.meta.url);
+  const { runReleasedSchemaUpgradeProof } = await tsImport("./m14ReleasedSchemaUpgrade.proof.ts", import.meta.url);
+  const sourceSha256 = sourceDigest();
+  const databases = Object.fromEntries(modes.map(mode => [mode, { connectionString: config.installations[mode].connectionString,
+    ssl: { ca: config.installations[mode].ca, rejectUnauthorized: true, checkServerIdentity: (_host, cert) => checkServerIdentity(new URL(config.installations[mode].connectionString).hostname, cert) }, ...poolLimits }]));
+  const observed = [];
+  // Admit every declared cluster before any proof mutates one of them.
+  for (const mode of modes) {
+    receipt.activePhase = `admission:${mode}`;
+    const pool = new Pool(databases[mode]);
+    try {
+      const facts = (await pool.query(`SELECT s.system_identifier::text AS identity,
+        current_setting('server_version') AS version, current_setting('server_version_num') AS version_num,
+        current_user AS login, current_database() AS database,
+        (SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid()) AS tls
+        FROM pg_catalog.pg_control_system() s`)).rows[0];
+      if (facts.identity !== config.installations[mode].systemIdentifier || !/^16/u.test(facts.version_num) || !facts.tls) refuse("target_identity_or_tls_refused");
+      await assertFreshClusterCatalogue(pool, facts.database, facts.login);
+      observed.push({ mode, ...facts });
+      // A trusted certificate plus the wrong hostname must refuse before SQL.
+      const bad = new Pool({ ...databases[mode], ssl: { ...databases[mode].ssl, checkServerIdentity: (_host, cert) => checkServerIdentity("wrong-host.example.invalid", cert) } });
+      try {
+        let refused = false;
+        try { await bad.query("SELECT 1"); } catch (error) { refused = error.code === "ERR_TLS_CERT_ALTNAME_INVALID"; }
+        if (!refused) refuse("tls_hostname_refusal_missing");
+      } finally { await bad.end(); }
+    } finally { await pool.end(); }
+  }
+  const packageIdentities = ["core", "outbox", "platform"].map(name => {
+    const bytes = readFileSync(resolve(root, `packages/${name}/package.json`));
+    return { name: `@openlup/${name}`, version: JSON.parse(bytes).version, manifestSha256: hash(bytes), compiledSha256: directoryDigest(resolve(root, `packages/${name}/dist`)), artifact: "workspace-build" };
+  });
+  const previous = resolve(dirname(config.previousApplicationPath), "../../package.json");
+  const previousBytes = readFileSync(previous);
+  const previousManifest = JSON.parse(previousBytes);
+  if (previousManifest.name !== "@openlup/platform" || previousManifest.version !== "0.23.0") refuse("previous_application_identity_refused");
+  receipt.identity = { status: "PASS", region: config.region, sourceCommit: git(["rev-parse", "HEAD"]),
+    sourceTree: git(["rev-parse", "HEAD^{tree}"]), workingDiffSha256: hash(git(["diff", "HEAD", "--binary"])), sourceSha256,
+    node: process.versions.node, npm: npmVersion(),
+    packages: packageIdentities, previousApplication: { name: previousManifest.name, version: previousManifest.version, manifestSha256: hash(previousBytes), compiledSha256: directoryDigest(resolve(config.previousApplicationPath, "../..")) },
+    installations: observed, oci: modes.map(mode => ({ mode, operatorDeclaredDigest: config.installations[mode].ociDigest,
+      verification: "external endpoint; image identity declared by operator" })),
+    limits: ["PostgreSQL 16 only", "three disposable fresh clusters; bootstrap login and database supplied in each URL",
+      "workspace source proof; no installed-current-package claim", "backend switching; no PgBouncer qualification", "no hosted qualification inferred", "operator owns target teardown"] };
+  receipt.install = { status: "RUNNING", modes: [] };
+  for (const mode of modes.slice(0, 2)) {
+    const inventory = mode === "installer-managed" ? "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" : "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d";
+    receipt.activePhase = `install:${mode}`;
+    const result = await runQualifiedAdminCompositionProof({ roleMode: mode, inventory, database: databases[mode] });
+    receipt.install.modes.push(result);
+  }
+  receipt.install.status = "PASS";
+  receipt.connections = { status: "PASS", tls: "verified CA and hostname; wrong-host refused on each cluster",
+    paths: ["runtime pool", "direct migration/admin", "read-only runtime transaction", "dedicated runtime session lock"],
+    poolLimits, rlsRoleDenials: true, contention: true, badAffinityRefusal: true,
+    limits: ["one direct endpoint per cluster; no external pooler or independent read replica exercised"] };
+  receipt.activePhase = "schema";
+  receipt.schema = { status: "RUNNING" };
+  receipt.schema = { status: "PASS", ...await runReleasedSchemaUpgradeProof({ database: databases.schema,
+    previousApplicationPath: config.previousApplicationPath, requirePreviousApplication: true }) };
+  if (sourceDigest() !== sourceSha256
+    || packageIdentities.some(item => directoryDigest(resolve(root, `packages/${item.name.split("/")[1]}/dist`)) !== item.compiledSha256)
+    || directoryDigest(resolve(config.previousApplicationPath, "../..")) !== receipt.identity.previousApplication.compiledSha256)
+    refuse("source_changed_during_proof");
+  receipt.status = "PASS_INITIAL_PHASES";
+  delete receipt.activePhase;
+}
+
+export async function main(args = process.argv.slice(2)) {
+  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds --credentials /external/file.json --receipt /new/receipt.json");
+  const [, target, , credentials, , destination] = args;
+  if (process.versions.node !== "24.21.0" || npmVersion() !== "11.19.0") refuse("pinned_tools_required");
+  loadCredentials(credentials, target); // Refuse bad declarations before spawning or connecting.
+  const fd = openSync(destination, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  const receipt = initialReceipt(target);
+  try {
+    const result = await new Promise((done, reject) => {
+      const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker"], {
+        cwd: root, env: {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
+      let message;
+      child.on("message", value => { message = value; });
+      child.once("error", () => reject(new Error("recipe_worker_unavailable")));
+      child.once("exit", code => code === 0 && message ? done(message) : reject(new Error("recipe_worker_failed")));
+      child.stdin.end(JSON.stringify({ credentials, target }));
+    });
+    Object.assign(receipt, result);
+  } catch { receipt.status = "FAIL"; receipt.failure = "recipe_worker_failed; credential-bearing details suppressed"; }
+  finally {
+    receipt.finishedAt = new Date().toISOString();
+    writeFileSync(fd, `${JSON.stringify(receipt, null, 2)}\n`); closeSync(fd);
+  }
+  if (receipt.status !== "PASS_INITIAL_PHASES") refuse("recipe_conformance_failed; inspect redacted receipt");
+  return receipt;
+}
+
+if (process.argv[2] === "--worker" && typeof process.send === "function") {
+  const receipt = initialReceipt("self-host");
+  try {
+    let payload = "";
+    for await (const chunk of process.stdin) payload += String(chunk);
+    const { credentials, target } = JSON.parse(payload);
+    receipt.target = target;
+    await executeRecipe(loadCredentials(credentials, target), receipt);
+  } catch (error) {
+    receipt.status = "FAIL"; receipt.failure = "recipe_phase_failed; credential-bearing details suppressed";
+    receipt.diagnostic = { source: error?.stack?.match(/(?:runM14RecipeConformance\.mjs|m14QualifiedAdminComposition\.proof\.ts|m14ReleasedSchemaUpgrade\.proof\.ts):[0-9]+:[0-9]+/u)?.[0] ?? null };
+  }
+  process.send(receipt, () => process.disconnect());
+} else if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().then(() => { console.log("Recipe conformance initial phases: passed; later sections pending"); })
+    .catch(() => { console.error("Recipe conformance refused or failed; credential-bearing details suppressed. Check target declaration, private external file, fresh PG16 clusters, TLS and built dependencies."); process.exitCode = 1; });
+}

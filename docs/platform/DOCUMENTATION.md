@@ -147,12 +147,15 @@ Data guidance retains canonical import-trigger/identity limitations; runtime
 guidance retains effect-time fencing and host capability ownership. Navigation
 and selected-row/local-object evidence do not close the full M14 store outcome.
 
-The five local handover sources (entry, cohort helper, dispatch actor,
+The local handover sources (entry, cohort and catch-up helpers, dispatch actor,
 application actor and provider) route to that same transfer architecture owner.
 Runtime guidance explains exact process/backend retirement and the frozen
 coordinator; data guidance preserves interrupted graph/media state. Contributor
 guidance owns the opt-in command, four executable carriers and retained
-handover proof. Exact publication and generated navigation add no execution,
+handover proof. The optional catch-up mode adds the finite preliminary/final-generation
+journey and its structured local report under the same transfer owner; it does
+not extend managed-history or hosted qualification. Exact publication and
+generated navigation add no execution,
 adopter-host qualification or delivered-predecessor claim.
 
 Operations source, owner-local witnesses, the unchanged control-plane SQL

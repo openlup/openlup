@@ -56,24 +56,29 @@ The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
 the `qualified-admin` fresh generation for a PostgreSQL 16 database owner that
 is not a superuser. The [session admission](postgres/qualifiedInstall.ts) checks
 the real migration session, exact ledger prefix and protected role graph before
-normalizing declared names into either fixed mode-specific inventory. It reuses
+normalizing declared names into either fixed mode-specific inventory. A host may
+declare a finite trusted control-plane role inventory for a non-superuser
+bootstrap login with CREATEROLE and CREATEDB and an elevated provider-role
+membership. Outside provider roles may enter
+the protected graph only through that bootstrap login; an edge into an
+application principal still
+refuses. The actual role flags and graph are checked before normalization. It reuses
 the existing package executor, advisory lock, per-unit transaction and final
 inventory comparison. Installer-managed M creates the six fixed groups;
 operator-provisioned M receives declared ADMIN edges without CREATEROLE. M is
 a trusted administrator retaining those ADMIN edges; the runtime and restore
-logins remain restricted nonowners. This binding does not qualify a hosted
-endpoint or connected store restore.
+logins remain restricted nonowners. Local role emulation does not qualify a
+hosted endpoint.
 
 ## Native retained-store transfer preparation
 
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
 [target restore](postgres/connectedStoreRestore.ts) compose one finite native
-profile prepared for the selected 91-unit qualified-v2 installation with restore
-binding. The finite native 91-unit witness passed with two owned installations
-and actual restricted runtime media access, using the superuser migration owner
-for administrative restore;
+profile for explicitly selected qualified PostgreSQL 16 installations with a
+restore binding. The earlier finite native witness passed with two owned
+`qualified-v2` installations and actual restricted runtime media access;
 the earlier 90-unit attempt stopped during source runtime media confirmation.
-The fixed 73-table graph preserves PostgreSQL JSON text, including bigint and
+The fixed selected graph preserves PostgreSQL JSON text, including bigint and
 timestamp precision. Capture observes one actual read-only repeatable-read
 transaction and checks all non-system user schemas. Unknown nonempty business
 tables, including acquisition-private business data, refuse rather than being
@@ -83,10 +88,17 @@ hashed or logged by transfer.
 
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
-writer. The current profile observes cluster identity through
-`pg_control_system` as the existing superuser migration login. It does not
-qualify a restricted installer or a managed host. Pristine-row equality is a
-precondition inside the target transaction, not independent freshness evidence.
+writer. The connected observation uses ordinary-session database incarnation
+facts: postmaster start time, server address/port and database OID, with the
+database name checked separately. A restart requires a new pristine target
+capture. The host still supplies distinct source and target installations;
+the observed identity is a refusal check, not independent host attestation.
+Restricted M may temporarily reacquire acquisition-owner inheritance for the
+read-only capture census, then seal it. Restore temporarily inherits that owner
+and the retained-import owner transactionally after checking the sealed
+catalogue, then seals both edges before final catalogue comparison. Pristine-row
+equality is a precondition inside the target transaction, not independent
+freshness evidence.
 The target rechecks the selected canonical catalogue and ledger. The complete
 ledger path, checksum and position sequence follows the selected manifest rather
 than a fixed unit count or tail pin. It locks tables,
@@ -115,7 +127,7 @@ populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
 snapshot and completeness; the mapper does not collect managed auth subjects or
 certify issuer control. Full managed audit rows and source-keyed acquisition
-history remain with item 8, outside the fixed 73-table graph. The task decision
+history remain with item 8, outside the fixed selected graph. The task decision
 and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 
@@ -127,6 +139,13 @@ they do not turn those states into absence or successful delivery. The reader
 checks actual owner UID, private modes, single links and file continuity while
 hashing bounded bytes. Its `posix-owner-mode` label describes these observed
 checks, not additional filesystem ACLs, domain grants or HTTP authorization.
+The source-reference reconciliation checks the same fenced source snapshot's
+retained media rows against every final and partial file. It refuses missing
+stored/confirmed objects, observed digest or byte-length disagreement for any
+present final file including cleanup work, and unexplained files. It carries
+pending and cleanup row identities with selected
+writer, receipt and scheduling references; the full business-row lease/claim
+state remains part of the database transfer.
 
 [Filesystem restore](filesystem/orderReviewMediaTransferRestore.ts) prepares
 and verifies the complete private tree in a sibling directory, syncs files and
@@ -137,6 +156,15 @@ it does not publish partial runtime files. Source and target must stay under
 the actual host's writer exclusion. Database and filesystem publication are
 separate operations: the target remains inactive until both are verified.
 Copying does not reset leases, complete cleanup or manufacture domain facts.
+The staging entry point derives a fresh hidden generation beside the configured
+serving root and refuses a name collision with that root. The later host activation must bind
+the verified generation only after its other barriers pass. The route probe
+compares actual
+customer and operator media handlers for anonymous, owner, other customer and
+operator requests on each route at source and target against independent source-domain grant
+facts, binding each route media reference to the retained source row. It refuses
+any grant change, observed content-type mismatch or changed
+served bytes; a POSIX label alone is not access evidence.
 
 The colocated filesystem tests exercise the actual runtime layout and refusal/
 replay boundaries. The prepared [connected PostgreSQL witness](../../tests/postgres/connectedStoreTransfer.test.ts)
@@ -165,9 +193,22 @@ then repeats the listing. Duplicate keys, repeated/missing cursors, unexpected
 common prefixes, byte disagreement and changed listing facts refuse. The host
 must still prove full-namespace read authority and hold actual writer exclusion;
 two matching principal-visible listings do not establish either fact.
+For the declared object profile, `captureAgainstReferences` requires a stable
+source-store reference snapshot independent of ListObjectsV2 and bound to the
+selected bucket. It compares every
+listed key, logical version, byte digest and metadata field with those records,
+and preserves explicit pending-upload, partial-object and cleanup references
+with their source-record identities.
+The source-store snapshot must explicitly establish that this finite profile
+has no retained native version history, object tags or in-progress multipart
+uploads; a missing feature fact refuses qualification. Pending logical uploads
+may still exist before bytes are materialized and remain retained obligations.
+Pending or cleanup work can name a not-yet-materialized key; a partial object
+must be listed. Missing or extra physical keys and changed references refuse.
 
-Logical versions hash content and captured returned metadata. They are not ETag,
-native version IDs or proof of conditional GET support. The adapter retains
+Logical versions hash content and captured returned metadata. They are not ETag
+or proof of conditional GET support. A returned native version ID is retained
+as metadata and bound into the logical version. The adapter retains
 returned user metadata, content type/encoding/disposition/language, cache
 control, expiry representations and website redirect without supplying defaults.
 Declared missing metadata and observed nonzero tags refuse. Native version
@@ -176,6 +217,8 @@ the selected profile cannot qualify them by omission. The fixed
 `authenticated-source-read` classification means only that authenticated GET
 succeeded. Bucket policy, public access, RLS and domain access require their
 independent owner facts and probes before any complete-store claim.
+The qualified reference path refuses any returned native version ID, since its
+current-object listing cannot establish the retained version history.
 
 Only a recognized NoSuchKey means absence. NoSuchBucket and ambiguous 404/NotFound
 responses remain unavailable; authentication denial, cancellation, truncated

@@ -243,6 +243,8 @@ export type QualifiedAdminPostgresInstallation = {
   bootstrapLogin: string;
   runtimeLogin: string;
   restoreLogin: string;
+  /** Host-declared trusted provider role inventory; only this bootstrap may join it. */
+  trustedControlPlane?: { roleNames: readonly string[] };
 } & ({ roleMode: "installer-managed"; operatorLogin?: never }
   | { roleMode: "operator-provisioned"; operatorLogin: string });
 
@@ -262,13 +264,23 @@ export function assertQualifiedAdminPostgresSelection(input: QualifiedAdminPostg
   if (!input || typeof input !== "object" || Array.isArray(input)) refuse("invalid_selection");
   if (input.generation !== "qualified-admin" || !["installer-managed", "operator-provisioned"].includes(input.roleMode)) refuse("invalid_selection");
   const keys = ["generation", "roleMode", "migrationLogin", "bootstrapLogin", "runtimeLogin", "restoreLogin",
-    ...(input.roleMode === "operator-provisioned" ? ["operatorLogin"] : [])].sort();
+    ...(input.roleMode === "operator-provisioned" ? ["operatorLogin"] : []),
+    ...(input.trustedControlPlane === undefined ? [] : ["trustedControlPlane"])].sort();
   if (JSON.stringify(Object.keys(input).sort()) !== JSON.stringify(keys)) refuse("invalid_selection_keys");
   const names = [input.migrationLogin, input.bootstrapLogin, input.runtimeLogin, input.restoreLogin,
     ...(input.roleMode === "operator-provisioned" ? [input.operatorLogin] : [])];
   if (names.some(name => typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u.test(name)
     || name.toUpperCase() === "PUBLIC" || name.startsWith("pg_") || groups.includes(name as typeof groups[number]))) refuse("invalid_principal_name");
   if (new Set(names).size !== names.length) refuse("principal_alias_not_permitted");
+  if (input.trustedControlPlane !== undefined) {
+    const plane = input.trustedControlPlane;
+    if (!plane || typeof plane !== "object" || Array.isArray(plane)
+      || JSON.stringify(Object.keys(plane)) !== JSON.stringify(["roleNames"])
+      || !Array.isArray(plane.roleNames) || plane.roleNames.length === 0 || plane.roleNames.length > 64
+      || plane.roleNames.some(name => typeof name !== "string" || !SAFE_NAME.test(name)
+        || name.toUpperCase() === "PUBLIC" || name.startsWith("pg_") || groups.includes(name as typeof groups[number])
+        || names.includes(name)) || new Set(plane.roleNames).size !== plane.roleNames.length) refuse("invalid_control_plane_declaration");
+  }
 }
 /** Identifier-only transport; the selected generation never falls back to v2. */
 export function qualifiedAdminPostgresStartupOptions(input: QualifiedAdminPostgresInstallation): string {
@@ -304,17 +316,18 @@ export type AdminObservedMembership = Readonly<{
   adminOption: boolean; inheritOption: boolean; setOption: boolean;
 }>;
 /** Fixed expected rows for equality checking. This does not synthesize GRANT SQL. */
-export function expectedQualifiedAdminMemberships(input: QualifiedAdminPostgresInstallation, phase: AdminPrefixPhase): readonly AdminObservedMembership[] {
+export function expectedQualifiedAdminMemberships(input: QualifiedAdminPostgresInstallation, phase: AdminPrefixPhase,
+  clusterRootLogin = input.bootstrapLogin): readonly AdminObservedMembership[] {
   assertQualifiedAdminPostgresSelection(input);
   const rows: AdminObservedMembership[] = ["pg_read_all_settings", "pg_read_all_stats", "pg_stat_scan_tables"].map(grantedRole => ({
-    grantedRole, memberRole: "pg_monitor", grantorRole: input.bootstrapLogin,
+    grantedRole, memberRole: "pg_monitor", grantorRole: clusterRootLogin,
     adminOption: false, inheritOption: true, setOption: true,
   }));
   for (const role of [...(phase.actorPresent ? actorGroups : []), ...(phase.acquisitionPresent ? acquisitionGroups : [])]) {
-    if (input.roleMode === "installer-managed") rows.push({ grantedRole: role, memberRole: input.migrationLogin, grantorRole: input.bootstrapLogin,
+    if (input.roleMode === "installer-managed") rows.push({ grantedRole: role, memberRole: input.migrationLogin, grantorRole: clusterRootLogin,
       adminOption: true, inheritOption: false, setOption: false });
     else {
-      rows.push({ grantedRole: role, memberRole: input.operatorLogin, grantorRole: input.bootstrapLogin,
+      rows.push({ grantedRole: role, memberRole: input.operatorLogin, grantorRole: clusterRootLogin,
         adminOption: true, inheritOption: false, setOption: false });
       rows.push({ grantedRole: role, memberRole: input.migrationLogin, grantorRole: input.operatorLogin,
         adminOption: true, inheritOption: false, setOption: false });
@@ -332,13 +345,45 @@ export function expectedQualifiedAdminMemberships(input: QualifiedAdminPostgresI
 // The new strict session/projector uses these rows only after actual role flags,
 // owner, lock, defaults, DDL/replication and canonical visibility have been checked.
 // The importer temporary edge is never a committed-prefix state: its unit is atomic.
-type AdminCheckedCatalog = CheckedCatalog & { phase: AdminPrefixPhase };
+type AdminCheckedCatalog = CheckedCatalog & { phase: AdminPrefixPhase; clusterRootLogin: string };
 function assertAdminFlags(row: CatalogRow | undefined, createRole: boolean): void {
   if (!row) refuse("required_role_missing");
   const a = attributes(row);
   if (a.login !== true || a.inherit !== false || a.superuser !== false || a.createRole !== createRole
     || ["createDb", "replication", "bypassRls"].some(key => a[key] !== false)
     || a.connectionLimit !== -1 || a.validUntil !== null) refuse("admin_role_flags_differ");
+}
+function assertTrustedBootstrapFlags(row: CatalogRow | undefined): void {
+  if (!row) refuse("required_role_missing");
+  const a = attributes(row);
+  if (a.login !== true || a.inherit !== true || a.superuser !== false
+    || a.createRole !== true || a.createDb !== true || a.bypassRls !== false
+    || typeof a.replication !== "boolean" || a.connectionLimit !== -1
+    || a.validUntil !== null && a.validUntil !== "infinity") refuse("control_plane_bootstrap_flags_differ");
+}
+async function trustedExtensionMembers(client: PoolClient): Promise<ReadonlySet<string>> {
+  // A trusted extension executes its script as the cluster root on stock PG16.
+  // Limit that root's selected-catalog references to actual pg_trgm members;
+  // the final pinned inventory still compares every definition and ACL.
+  const rows = (await client.query<{ kind: string; schema: string; name: string; arguments: string[] }>(String.raw`
+    SELECT 'function'::pg_catalog.text AS kind,n.nspname::pg_catalog.text AS schema,p.proname::pg_catalog.text AS name,
+      ARRAY(SELECT pg_catalog.format_type(input_type,NULL) FROM pg_catalog.unnest(p.proargtypes::pg_catalog.oid[])
+        WITH ORDINALITY AS input_arguments(input_type,ordinal) ORDER BY ordinal) AS arguments
+    FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_proc p ON d.classid='pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid=p.oid
+      JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid
+    WHERE d.refclassid='pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype='e' AND e.extname='pg_trgm'
+    UNION ALL
+    SELECT 'type',n.nspname::pg_catalog.text,t.typname::pg_catalog.text,ARRAY[]::pg_catalog.text[]
+    FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_type t ON d.classid='pg_catalog.pg_type'::pg_catalog.regclass AND d.objid=t.oid
+      JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid
+    WHERE d.refclassid='pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype='e' AND e.extname='pg_trgm'
+    UNION ALL
+    SELECT 'type',n.nspname::pg_catalog.text,a.typname::pg_catalog.text,ARRAY[]::pg_catalog.text[]
+    FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_type t ON d.classid='pg_catalog.pg_type'::pg_catalog.regclass AND d.objid=t.oid
+      JOIN pg_catalog.pg_type a ON a.oid=t.typarray
+      JOIN pg_catalog.pg_namespace n ON n.oid=a.typnamespace JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid
+    WHERE d.refclassid='pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype='e' AND e.extname='pg_trgm'`)).rows;
+  return new Set(rows.map(row => stable([row.kind,row.schema,row.name,row.arguments])));
 }
 async function checkedQualifiedAdminCatalog(client: PoolClient, selection: QualifiedAdminPostgresInstallation, applied: readonly Applied[], lockName: string): Promise<AdminCheckedCatalog> {
   assertQualifiedAdminPostgresSelection(selection);
@@ -347,7 +392,8 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
   if (!facts || !Array.isArray(facts.effective_search_path) || facts.effective_search_path.length !== 2
     || facts.effective_search_path[0] !== "pg_catalog" || facts.effective_search_path[1] !== "public") refuse("canonical_search_path_required");
   if (facts.current_user !== selection.migrationLogin || facts.session_user !== selection.migrationLogin
-    || facts.database_owner !== selection.migrationLogin || facts.bootstrap_login !== selection.bootstrapLogin) refuse("actual_login_or_owner_mismatch");
+    || facts.database_owner !== selection.migrationLogin
+    || selection.trustedControlPlane === undefined && facts.bootstrap_login !== selection.bootstrapLogin) refuse("actual_login_or_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) refuse("postgresql_16_required");
   if (facts.session_lock_held !== true) refuse("migration_session_lock_not_held");
   if (facts.replication_role !== "origin" || facts.runtime_unsafe !== false || facts.restore_unsafe !== false
@@ -371,7 +417,8 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
   const rows = await readSelectedCatalogRowsForQualifiedInstall(client);
   selectedCatalogRowsPayloadForQualifiedInstall(rows);
   const roles = new Map(rows.filter(row => row.kind === "role").map(row => [row.name,row]));
-  assertFlags(roles.get(selection.bootstrapLogin), {login:true,inherit:true,superuser:true,elevated:true});
+  if (selection.trustedControlPlane === undefined) assertFlags(roles.get(selection.bootstrapLogin), {login:true,inherit:true,superuser:true,elevated:true});
+  else assertTrustedBootstrapFlags(roles.get(selection.bootstrapLogin));
   assertAdminFlags(roles.get(selection.migrationLogin),selection.roleMode === "installer-managed");
   if (selection.roleMode === "operator-provisioned") assertAdminFlags(roles.get(selection.operatorLogin),true);
   for (const name of [selection.runtimeLogin,selection.restoreLogin]) assertFlags(roles.get(name), {login:true,inherit:false,superuser:false,elevated:false});
@@ -386,14 +433,30 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
     if (a.login !== false || a.superuser !== false || ["createRole","createDb","replication","bypassRls"].some(key => a[key] !== false)) refuse("predefined_role_elevated");
   }
   const protectedNames = new Set([...GROUPS,...PREDEFINED,selection.migrationLogin,selection.bootstrapLogin,selection.runtimeLogin,selection.restoreLogin,...(operator ? [operator] : [])]);
+  const controlPlaneNames = new Set(selection.trustedControlPlane?.roleNames ?? []);
+  if (selection.trustedControlPlane && facts.bootstrap_login !== selection.bootstrapLogin
+    && !controlPlaneNames.has(String(facts.bootstrap_login))) refuse("control_plane_root_undeclared");
+  for (const name of controlPlaneNames) if (!roles.has(name)) refuse("control_plane_role_missing");
+  const elevatedControlPlaneNames = new Set([...controlPlaneNames].filter(name => {
+    const a = attributes(roles.get(name)!);
+    return ["superuser", "createRole", "createDb", "replication", "bypassRls"].some(key => a[key] === true);
+  }));
   for (const [name,row] of roles) if (!protectedNames.has(name)) {
+    if (controlPlaneNames.has(name)) continue;
     const a = attributes(row);
     if (name.startsWith("pg_") || ["superuser","createRole","createDb","replication","bypassRls"].some(key => a[key] !== false)) refuse("outside_role_has_host_authority");
   }
-  const expected = expectedQualifiedAdminMemberships(selection,phase);
+  const expected = expectedQualifiedAdminMemberships(selection,phase,
+    selection.trustedControlPlane ? String(facts.bootstrap_login) : selection.bootstrapLogin);
   const actual: AdminObservedMembership[] = [];
+  let trustedBootstrapMemberships = 0;
   for (const row of rows.filter(row => row.kind === "role-membership")) {
     const a = attributes(row);
+    if (controlPlaneNames.has(String(a.grantedRole)) && a.memberRole === selection.bootstrapLogin) {
+      if (a.grantorRole !== selection.bootstrapLogin && !controlPlaneNames.has(String(a.grantorRole))) refuse("control_plane_grantor_undeclared");
+      if (elevatedControlPlaneNames.has(String(a.grantedRole))) trustedBootstrapMemberships++;
+      continue;
+    }
     if (protectedNames.has(String(a.grantedRole)) || protectedNames.has(String(a.memberRole))) actual.push({
       grantedRole:String(a.grantedRole),memberRole:String(a.memberRole),grantorRole:String(a.grantorRole),
       adminOption:a.adminOption as boolean,inheritOption:a.inheritOption as boolean,setOption:a.setOption as boolean,
@@ -401,14 +464,27 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
     else if (protectedNames.has(String(a.grantorRole)) && a.grantorRole !== selection.bootstrapLogin
       && a.grantorRole !== selection.migrationLogin && a.grantorRole !== operator) refuse("protected_grantor_has_outside_edge");
   }
+  if (selection.trustedControlPlane && trustedBootstrapMemberships === 0) refuse("control_plane_membership_missing");
   if (stable(actual.map(stable).sort()) !== stable(expected.map(stable).sort())) refuse("protected_membership_graph_differs");
+  const extensionMembers = selection.trustedControlPlane ? await trustedExtensionMembers(client) : new Set<string>();
   for (const row of rows) {
     if (row.kind === "role" || row.kind === "role-membership") continue;
     const a = attributes(row);
     if (row.kind === "default-privilege") refuse("canonical_default_privileges_required");
     const principals = [a.owner,a.ownerRole,a.grantor,a.grantee,...(row.kind === "policy" && Array.isArray(a.roles) ? a.roles : [])];
-    if (principals.some(name => typeof name === "string" && name !== "PUBLIC" && !protectedNames.has(name))) refuse("outside_principal_references_selected_catalog");
-    if (typeof a.owner === "string" && ![selection.migrationLogin,selection.bootstrapLogin,"pg_database_owner","platform_acquisition_owner","openlup_retained_import_owner"].includes(a.owner)) refuse("runtime_operator_or_actor_owns_selected_object");
+    const trustedBuiltinOwner = row.kind === "extension" && row.name === "plpgsql"
+      && controlPlaneNames.has(String(a.owner)) && a.owner === facts.bootstrap_login;
+    const identity = row.kind === "acl-grant" ? a.targetIdentity as Record<string, unknown> : row;
+    const extensionMember = identity && typeof identity === "object"
+      && extensionMembers.has(stable([identity.kind,identity.schema,identity.name,identity.arguments]));
+    const trustedExtensionReference = extensionMember && row.schema === "public"
+      && (row.kind === "function" || row.kind === "type" ? a.owner === facts.bootstrap_login
+        : row.kind === "acl-grant" && a.grantor === facts.bootstrap_login && a.grantee !== facts.bootstrap_login);
+    if (principals.some(name => typeof name === "string" && name !== "PUBLIC" && !protectedNames.has(name)
+      && !(trustedBuiltinOwner && name === a.owner)
+      && !(trustedExtensionReference && name === (row.kind === "acl-grant" ? a.grantor : a.owner)))) refuse("outside_principal_references_selected_catalog");
+    if (typeof a.owner === "string" && ![selection.migrationLogin,selection.bootstrapLogin,"pg_database_owner","platform_acquisition_owner","openlup_retained_import_owner"].includes(a.owner)
+      && !trustedBuiltinOwner && !trustedExtensionReference) refuse("runtime_operator_or_actor_owns_selected_object");
     if (a.owner === "openlup_retained_import_owner" && (!phase.retainedImportPresent || row.kind !== "function" || row.schema !== "public"
       || !["client_import_retained_row","subscription_cycle_import_retained_row"].includes(row.name))) refuse("unexpected_import_owner_object");
     if (row.kind === "schema" && !["public","auth","acquisition_private"].includes(row.name)) refuse("unsupported_selected_schema");
@@ -420,7 +496,7 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
       || row.kind === "acl-grant" && a.targetClass === "schema" && row.name === "public") continue;
     refuse("fresh_generation_requires_empty_database");
   }
-  return {rows,protectedNames,phase};
+  return {rows,protectedNames,phase,clusterRootLogin:String(facts.bootstrap_login)};
 }
 export async function assertQualifiedAdminPostgresSession(client: PoolClient, applied: readonly Applied[], selection: QualifiedAdminPostgresInstallation, lockName: string): Promise<void> {
   await checkedQualifiedAdminCatalog(client,selection,applied,lockName);
@@ -428,21 +504,30 @@ export async function assertQualifiedAdminPostgresSession(client: PoolClient, ap
 /** Distinct payload; checks above precede all principal field normalization. */
 export async function qualifiedAdminPostgresCatalogPayload(client: PoolClient, selection: QualifiedAdminPostgresInstallation, lockName: string): Promise<string> {
   const applied = (await client.query<{file:string;sha256:string;position:number}>("SELECT catalog_path AS file,sha256,position FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
-  const {rows,protectedNames} = await checkedQualifiedAdminCatalog(client,selection,applied,lockName);
+  const {rows,protectedNames,clusterRootLogin} = await checkedQualifiedAdminCatalog(client,selection,applied,lockName);
   const bindings = new Map<string,string>([
     [selection.migrationLogin,"@qa:migrator"],[selection.bootstrapLogin,"@qa:bootstrap"],
     [selection.runtimeLogin,"@qa:runtime"],[selection.restoreLogin,"@qa:restore"],
     ...(selection.roleMode === "operator-provisioned" ? [[selection.operatorLogin,"@qa:operator"] as [string,string]] : []),
+    ...(selection.trustedControlPlane && clusterRootLogin !== selection.bootstrapLogin
+      ? [[clusterRootLogin,"@qa:bootstrap"] as [string,string]] : []),
   ]);
   const principal = (value: unknown): unknown => typeof value === "string" ? bindings.get(value) ?? value : value;
   const normalized: CatalogRow[] = [];
   for (const row of rows) {
     const a = attributes(row);
     if (row.kind === "role" && !protectedNames.has(row.name)) continue;
+    if (row.kind === "role-membership" && selection.trustedControlPlane?.roleNames.includes(String(a.grantedRole))
+      && a.memberRole === selection.bootstrapLogin) continue;
     if (row.kind === "role-membership" && !protectedNames.has(String(a.grantedRole)) && !protectedNames.has(String(a.memberRole))) continue;
     let name = row.name; const args = [...row.arguments];
     if (typeof a.owner === "string") a.owner = principal(a.owner);
     if (row.kind === "role") name = String(principal(name));
+    if (row.kind === "role" && row.name === selection.bootstrapLogin && selection.trustedControlPlane) {
+      // The trusted external control plane occupies the canonical bootstrap
+      // slot; its actual flags were checked above before this comparison.
+      Object.assign(a, {superuser:true,createRole:true,createDb:true,replication:true,bypassRls:true,validUntil:null});
+    }
     if (row.kind === "role-membership") {
       name=String(principal(name)); args[0]=String(principal(args[0])); args[1]=String(principal(args[1]));
       a.grantedRole=principal(a.grantedRole); a.memberRole=principal(a.memberRole); a.grantorRole=principal(a.grantorRole);
