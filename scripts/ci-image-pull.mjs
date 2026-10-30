@@ -37,7 +37,7 @@ export function readCiImage(name) {
 }
 
 export function imageReference(image, source = image.sources[0]) {
-  return `${source.includes(":") ? source : `${source}:${image.tag}`}${image.digest ? `@${image.digest}` : ""}`;
+  return `${source.includes(":") ? source : `${source}:${image.tag}`}@${image.digest}`;
 }
 
 export function mirrorUnavailable(source, message) {
@@ -75,11 +75,10 @@ export async function pullWithRetry(image, io = imageIo, budgetMs = IMAGE_PULL_B
     if (remaining <= 0) throw new Error(`Image pull budget exhausted for ${image.repository}`);
     return io.exec(args, Math.max(1, Math.ceil(Math.min(timeout, remaining))));
   } };
-  // Missing digests are permitted only for CLI-derived tags, whose exact tag is
-  // obtained from the installed version-checked CLI, just as in mirror planning.
+  // Every pull is digest-pinned; a tag alone never selects an image.
   if (!/^[a-z0-9]+(?:[._/-][a-z0-9]+)+$/u.test(image.repository)
     || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(image.tag)
-    || (image.digest !== undefined && !/^sha256:[a-f0-9]{64}$/u.test(image.digest))
+    || typeof image.digest !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(image.digest)
     || !Array.isArray(image.sources) || image.sources.length === 0
     || image.sources.some(source => !/^(?:ghcr\.io|docker\.io|public\.ecr\.aws)\/[a-z0-9]+(?:[._/-][a-z0-9]+)+(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?$/u.test(source) || (source.includes(":") && source.split(":")[1] !== image.tag))) {
     throw new Error("malformed CI image reference");
@@ -95,9 +94,8 @@ export async function pullWithRetry(image, io = imageIo, budgetMs = IMAGE_PULL_B
       if (!localFailure.test(message) && /no such image/iu.test(message)) continue;
       throw error;
     }
-    // Tag-only CLI inputs reuse only this exact CLI-requestable tag, never a
-    // nearby tag or an unrelated RepoDigest. Pinned inputs require index equality.
-    if (!image.digest || matchesPin(JSON.parse(result), reference, image.digest)) return reference;
+    // Reuse requires index equality, never a nearby tag or an unrelated RepoDigest.
+    if (matchesPin(JSON.parse(result), reference, image.digest)) return reference;
   }
   const failures = [];
   const reserve = Math.min(IMAGE_PULL_FALLBACK_RESERVE_MS, budgetMs / 5);
@@ -132,9 +130,7 @@ export async function pullWithRetry(image, io = imageIo, budgetMs = IMAGE_PULL_B
         continue;
       }
       // Inspection is deliberately outside retries, including its transport errors.
-      if (image.digest) {
-        await verifyPinnedImage(reference, image.digest, boundedIo);
-      }
+      await verifyPinnedImage(reference, image.digest, boundedIo);
       return reference;
     }
   }

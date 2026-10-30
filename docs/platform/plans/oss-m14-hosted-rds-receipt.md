@@ -1,7 +1,7 @@
 # M14 hosted RDS recipe receipt
 
 Status: hosted WIP conformance passed; the required control read is accepted.
-Authority tightening is locally verified; DCO, full native review and canonical
+Authority tightening is locally verified and DCO committed; full native review and canonical
 verification remain pending. No production qualification.
 Audience: contributors evaluating the source-only PostgreSQL recipe.
 
@@ -244,3 +244,19 @@ lint and focused tests were admitted separately and ran serially. No native
 review cycle was used. Self-retro: stock provider names do not all convey
 bootstrap authority → retain the shared stock inventory and count only the
 singleton authority role alongside the unchanged elevated-flag path.
+
+Native prepare refused source-review carry-over against refreshed main. The
+forced main integration was conflict-free, with parents
+`98cbc2c372a544cc862d2e5cdb730aea2571637a` and
+`78f340db40ee6abcdaa97c7f01ccd2a857403b8f`. Its computed source tree before this
+task note is `ef2cbe3f88c4d9240c366319e5fcc95dd6799843`. The stable patch-id,
+excluding only this task record, is
+`7aac8e0ba7daa3711f3c6b2520b696992a58ef03` both before integration against
+`4fd84bfead64e11f76e0555117fe072d39807182` and afterwards against the refreshed
+main parent. No manual resolution or owned-source change was needed. Main
+supplies the stock PostgreSQL 17 canonical pgTAP lane; the recipe witness keeps
+its PostgreSQL 16 target. The sensitive read and singleton tightening remain
+the approved source scope; fresh full security-control reviews still follow.
+The pre-merge-HEAD whitespace check reported four unchanged lines imported from
+main's managed-compatibility fixture. Its staged blob equals main exactly;
+the owned delta against the new review base passes the whitespace check.

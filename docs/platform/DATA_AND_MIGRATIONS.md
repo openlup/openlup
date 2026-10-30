@@ -551,8 +551,11 @@ runs one host sweep: `OPENLUP_DISPOSABLE_REAP=remove` by default, `report` or `o
 CI disables the host sweep. Teardown and interrupted wrappers remove only their
 own fresh run ID through the same liveness rule without the age floor, including
 on CI.
-Supabase CLI and compose runners stop their own stacks once on interruption;
-after SIGKILL those stacks still need reviewed manual cleanup.
+The opt-in Supabase CLI and compose runners stop their own stacks once on
+interruption; after SIGKILL those stacks still need reviewed manual cleanup.
+The raw pgTAP runner starts one disposable-labelled stock PostgreSQL container
+and removes it on every exit path it controls. An interrupted run leaves that
+labelled container for the dead-owner sweep.
 
 A selected test may supply neutral settlement, format, provider, location and
 stock rows in its own transaction. Concurrency connections need the same declared
@@ -755,7 +758,8 @@ stock-seam claims. The zero-valued exposure hooks do not establish that parity.
 
 The lexer is only a pre-filter. The mandatory
 [real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
-uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies
+uses native PostgreSQL 16 and, for the managed rail, stock PostgreSQL 17 with
+pgTAP and the managed-compatibility adapter. Per rail it applies
 all committed rail files in filename order through the last pin, including
 unpinned files interleaved between pins. Pins use landed or fixture bytes exactly
 once; landed pins must form a prefix before the absent fixture suffix. A landed
