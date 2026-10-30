@@ -171,7 +171,7 @@ function gitLog(root: string, args: string[]): GitLog {
 }
 
 /**
- * The `document#glob` pairs the wave plans THIS CHANGE writes answer with `attested_watchers:`.
+ * The `document#glob` pairs the plans THIS CHANGE writes under `plan/` answer with `attested_watchers:`.
  *
  * Only plans changed under review are read, so a plan already sitting on `main` can never
  * discharge an obligation the change under review introduced, and an answer expires with the branch
@@ -215,7 +215,7 @@ function planAnsweredWatchers(root: string, base: ReviewBase, planDirectory: str
  * a document that records one real drift keeps the gate over every other path it watches. Drift a
  * branch merely inherited from `main` stays a report; drift the change under review introduced
  * into a document it does not touch is a failure its author can always discharge - by touching the
- * document, or by naming that one `document#glob` pair in this branch's own wave plan.
+ * document, or by naming that one `document#glob` pair in a plan this branch writes.
  */
 function watchStaleness(
   root: string,
@@ -252,7 +252,7 @@ function watchStaleness(
             : pathsUnderReview(root, base, outstanding);
           if (drifted.error) return unreadable(drifted.error);
           if (drifted.paths.length > 0) {
-            const message = `${relPath}: ${drifted.paths.length} path(s) under review touched watched paths (${outstanding.join(", ")}) without touching the document - re-attest it, correct it, name the glob under 'Known drifts:', or answer the drifted glob in this branch's wave plan as 'attested_watchers: ${relPath}#<glob>'`;
+            const message = `${relPath}: ${drifted.paths.length} path(s) under review touched watched paths (${outstanding.join(", ")}) without touching the document - re-attest it, correct it, name the glob under 'Known drifts:', or answer the drifted glob in a plan this branch writes as 'attested_watchers: ${relPath}#<glob>'`;
             return { failures: [{ id: "docs-header-stale", message }], reports: [] };
           }
         }
@@ -274,7 +274,7 @@ function watchStaleness(
  *
  * `docs-header-stale` is a FAILURE only for drift the change under review introduced: a watched
  * path changed in the committed/index/worktree proposal, the document was not touched there, and
- * no wave plan this change writes answers that exact `document#glob` pair - see
+ * no plan this change writes answers that exact `document#glob` pair - see
  * `planAnsweredWatchers`. Inherited drift,
  * measured from the attested SHA, stays a report, because a watched path can change without
  * invalidating the sentence a document attests to and nobody on this branch caused it; a plan

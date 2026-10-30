@@ -14,8 +14,8 @@ export type DocumentationIndexConfig = {
  * The only subtrees of the documentation directory whose documents the index must classify,
  * alongside the top level: both hold documents an agent is routed to as current guidance, so an
  * unindexed file in either is the same failure as an unindexed top-level document. Every other
- * `docs/` subtree is out of scope by name and for a stated reason - `plan/` has its own lifecycle
- * contract (Plan Protocol, `npm run audit:plan-status`); `archive/` is by definition not active
+ * `docs/` subtree is out of scope by name and for a stated reason - `plan/` holds task records,
+ * which are reviewed, not routed to; `archive/` is by definition not active
  * guidance; `evidence/`, `audit/` and `fixtures/` hold dated artifacts that are cited, never
  * routed to; `legal/`, `local-runtime/`, `templates/` and `sql/` hold non-prose or
  * machine-consumed material. Widening this list is a decision, not a side effect: add the
