@@ -785,6 +785,11 @@ refuses, and no apt index is read. The packages install only into the disposable
 container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
 is the only file that encodes the managed host for that lane. It is test
 infrastructure, never a runtime bootstrap or a supported-host claim.
+[The managed-compat test helper](../../tests/helpers/managedCompatPostgres.ts)
+boots the same image, packages, server settings and adapter for the
+managed-rail `tests/postgres` suites that have moved off the managed-batch
+image. The only addition is a login for the `supabase_admin` placeholder, the
+identity those suites use as their owner session.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 

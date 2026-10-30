@@ -3,9 +3,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { createManagedStockAvailability } from "@openlup/platform/inventory";
-import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
-import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 
 const forward = "supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql";
 let container: PostgresContainer | undefined;
@@ -20,8 +20,7 @@ const reader = createManagedStockAvailability({ async rpc(name, args) {
 } }, { now: () => asOf });
 
 beforeAll(async () => {
-  const pin = readCiImage("managed-batch-postgres");
-  container = await runPostgresContainer({ name: `f3-managed-${process.pid}`, password: "synthetic-conformance", image: imageReference(pin, pin.sources.at(-1)) });
+  container = await runManagedCompatPostgres({ name: `f3-managed-${process.pid}`, password: "synthetic-conformance" });
   expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
   pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1,
     connectionTimeoutMillis: 5_000, query_timeout: 30_000 });

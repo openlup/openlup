@@ -8,6 +8,7 @@ import { expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { batchSnapshot } from "./reviewedBatchCatalog.js";
@@ -26,8 +27,9 @@ it.each(["native", "managed"] as const)("upgrades the complete %s prefix, proves
   if (portable) expect(readFileSync(`packages/platform/sql/${path.split("/").at(-1)}`)).toEqual(fixture);
   const pin = registry.supportAuthorityForwards![portable ? 0 : 1]!;
   expect(sha(fixture)).toBe(pin.sha256);
-  const image = readCiImage(portable ? "test-postgres" : "managed-batch-postgres");
-  const container = await runPostgresContainer({ name: `m12-upgrade-${graph}-${process.pid}`, password: "synthetic-conformance", image: imageReference(image, image.sources.at(-1)) });
+  const image = readCiImage("test-postgres");
+  const spec = { name: `m12-upgrade-${graph}-${process.pid}`, password: "synthetic-conformance" };
+  const container = portable ? await runPostgresContainer({ ...spec, image: imageReference(image, image.sources.at(-1)) }) : await runManagedCompatPostgres(spec);
   let pool: Pool | undefined; let scratch: string | undefined;
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("M12 PostgreSQL unavailable");

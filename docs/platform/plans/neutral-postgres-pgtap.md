@@ -204,7 +204,7 @@ under the same context name.
 | W1 | Adapter, extension supply, runner, parity tooling and a non-required `pgtap-postgres` job beside the unchanged `pgtap`. No other CI change. | The parity proof passes locally and on the first hosted run. |
 | W1s | Shadow window: both lanes run on every PR, merge group and main push. | D6's window is met with zero unexplained divergence. |
 | W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and `scripts/install-supabase-cli-ci.sh` if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
-| W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. |
+| W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. Draft: six consumers moved; two need the owner decisions W3a and W3b in [W3 evidence](#w3-evidence), and the pin stays until then. |
 
 W1 and W2 are separate PRs so that the shadow evidence comes from the merged W1
 lane, not from a candidate branch.
@@ -339,6 +339,73 @@ Still open for W1: the first hosted `pgtap-postgres` run. The job is skipped on
 draft pull requests, as `pgtap` is. An Actions cache for the package downloads
 is also open: W1 adds no new action pin, the runner verifies
 `OPENLUP_PGTAP_DEB_CACHE` or its scratch cache, and the files total about 300 KB.
+
+## W3 evidence
+
+Local proof on 2026-10-30 for the W3 candidate (branch `claude/neutral-pgtap-w3`,
+stacked on W1), Docker Desktop on arm64. The new
+[managed-compat helper](../../../tests/helpers/managedCompatPostgres.ts) boots the
+install-proof `postgres:17` digest with W1's package pins, server flags, initdb
+locale and adapter. It reuses the W1 runner's exported package selection, download
+cache and settings. It verifies each package's SHA-256 again on the bytes it
+stages for one container, so the shared cache, `OPENLUP_PGTAP_DEB_CACHE` or the
+ignored `.context/scratch/cache/pgtap-postgres-debs`, is never trusted
+unverified. The suites log in as `postgres` and `supabase_admin` exactly as they
+did on the managed image. The helper gives the adapter's `supabase_admin`
+placeholder a login with the container password, the same identity the managed
+image gave them. The bootstrap superuser stays internal to the helper.
+
+Parity method: each suite ran serially on the managed-batch pin before the change
+and on the helper after it, with the Vitest JSON reporter. The comparison covers
+the ordered full test names and each status.
+
+| Suite | Managed pin | Helper | Result |
+|---|---:|---:|---|
+| `accountSupportUpgrade` | 2/2 | 2/2 | identical; moved |
+| `commerceManagedRail` | 26/26 | 26/26 | identical; moved |
+| `newPurchaseStockManaged` | 10/10 | 10/10 | identical; moved |
+| `starterGraduationCadence` | 14/14 | 14/14 | identical; moved |
+| `subscriptionManagedStock` | 12/12 | 12/12 | identical; moved |
+| `riskControl.conformance` (`riskControlFixture`) | 14/14 | 14/14 | identical; moved |
+| `dunningAttemptReplay` | 20/20 | 0/20 (setup refused) | blocked; stays on the pin |
+| `reviewedBatchForwards` | 107/107 | 106/107 | blocked; stays on the pin |
+
+Both blocked suites depend on supautils grants that stock PostgreSQL cannot
+express at the same scope. Each needs an owner decision (W3a or W3b below):
+
+- **W3a, `dunningAttemptReplay`.** Setup copies the image's `postgres` database
+  schema with `pg_dump` into a template database as `postgres`. On the stock lane
+  that dump contains the adapter's `dblink` extension, and a non-superuser cannot
+  create it (`permission denied to create extension "dblink"`). On the managed host,
+  `supautils.privileged_extensions` allows it, and the managed image's
+  `postgres` database has no dblink. The proposed fix strips the dblink
+  `CREATE EXTENSION` and `COMMENT` lines in the suite's setup, as it already strips
+  pg_cron's. It changes no assertion or tested SQL. A local probe passes 20/20 with
+  identical names.
+- **W3b, `reviewedBatchForwards`.** The test "managed proves the M12 finite catalog
+  delta, observer refusals and installation rollback" plants
+  `DROP TRIGGER customer_support_identity_email_ownership ON auth.users` as
+  `postgres`. On the managed host, `supautils.drop_trigger_grants` lets
+  `postgres` drop triggers on `auth.users`, which it does not own. Stock PostgreSQL
+  allows this only for the owner or a member of the owner role, and
+  supautils lists `supabase_auth_admin` among the reserved memberships. A local probe with
+  `GRANT supabase_auth_admin TO postgres WITH INHERIT TRUE, SET FALSE` passes
+  107/107, but that grant gives `postgres` full ownership rights over every
+  `auth` object. That is broader than the managed host (risk R3). The
+  options are: accept that helper-only grant; edit the plant to run that one
+  statement as `supabase_admin`, which is a test edit; or keep this suite on the
+  managed pin.
+
+Until both are decided, the `managed-batch-postgres` pin remains in
+`config/ci-images.json`, so CI still pulls the managed image for these two suites.
+`scripts/ci-image-mirror.test.ts` and `scripts/ci-image-pull.test.ts` keep their
+references to it.
+
+Timing with warm images: the moved suites take within about 3 s of their
+old times (helper/old: 8/7, 9/6, 4/3, 3/3, 3/4 and 5/4 s). Package staging and
+`dpkg` add about 1–3 s per container. With a cold runner, the stock image is
+about 150 MB against 1.75 GB for the managed image, but that pull saving needs
+W3a and W3b. The about 300 KB of packages is downloaded once per cache.
 
 ## Risks
 

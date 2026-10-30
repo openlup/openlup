@@ -26146,6 +26146,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/managedCompatPostgres.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },

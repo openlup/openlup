@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
+import { runManagedCompatPostgres } from "./managedCompatPostgres.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
 export const AT = "2026-01-15T12:00:00.000Z";
 export const evaluation = (decision = "manual_review") => ({ decision, score: decision === "allow" ? 0 : 65, severity: decision === "allow" ? "low" : "high", reasonCodes: decision === "allow" ? [] : ["bundle_discount_review"], matchedRules: [] });
@@ -16,8 +17,9 @@ export function riskControlFixture(rail: "native" | "managed") {
         async start() {
             if (!await dockerAvailable())
                 throw new Error("risk preservation requires real Docker PostgreSQL");
-            const image = readCiImage(native ? "test-postgres" : "managed-batch-postgres");
-            container = await runPostgresContainer({ name: `m15-risk-${rail}-${process.pid}`, password: "synthetic-risk-proof", image: imageReference(image, image.sources.at(-1)) });
+            const image = readCiImage("test-postgres");
+            const spec = { name: `m15-risk-${rail}-${process.pid}`, password: "synthetic-risk-proof" };
+            container = native ? await runPostgresContainer({ ...spec, image: imageReference(image, image.sources.at(-1)) }) : await runManagedCompatPostgres(spec);
             if (!await waitForPostgresTcpReady(container.connectionString))
                 throw new Error("risk PostgreSQL unavailable");
             owner = new Pool({ connectionString: native ? container.connectionString : container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1 });
