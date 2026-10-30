@@ -162,7 +162,11 @@ execution inventory includes that body and the bundled synthetic host actor.
 The focused recipe input/disposition tests run with
 `npm test -- tests/postgres/m14RecipeConformance.test.ts`; a COMPLETE local
 receipt additionally requires the destructive opt-in command and all its
-prerequisites. Neither focused tests nor a local receipt establish hosted
+prerequisites. The same runner has a separately declared
+[hosted S3 target](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+with prefix-scoped object and elapsed-lifecycle evidence. Its focused declaration
+and source-admission refusals do not require live provider access. Neither
+focused tests nor a local receipt establish hosted
 qualification, and the three operator-declared database targets need their
 separate operator teardown.
 
@@ -193,6 +197,13 @@ The [runtime owner](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance
 defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
+
+Its explicit `hosted-oidc` selection reuses the real-issuer lifecycle witness
+against an operator-declared disposable HTTPS issuer. The
+[identity recipe](docs/platform/IDENTITY.md#real-issuer-oidc-recipe) owns that
+declaration, ordinary TLS verification and separate operator teardown boundary.
+The focused input tests cover its pre-connection refusals; actual hosted PASS
+also requires real browser login, expiry/rotation and owned realm absence.
 
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by

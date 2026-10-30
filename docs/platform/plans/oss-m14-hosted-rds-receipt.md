@@ -20,7 +20,7 @@ Bart Roszkowski <dev@openlup.com>, submission, receipt and merge after required
 gates. Hosted use is synthetic, in the approved region, within the existing
 seven-day lifetime and USD 40 ceiling. Resource deletion, account/IAM/settings,
 release dispatch, npm publication and production remain owner actions. The
-hosted landing order prevents ready/queue actions. Exact target identities
+hosted predecessors have landed; ready/queue delivery follows passing review and verification. Exact target identities
 and access material remain external or in private scratch.
 
 ## Scope, acceptance and proof
@@ -260,3 +260,37 @@ the approved source scope; fresh full security-control reviews still follow.
 The pre-merge-HEAD whitespace check reported four unchanged lines imported from
 main's managed-compatibility fixture. Its staged blob equals main exactly;
 the owned delta against the new review base passes the whitespace check.
+
+The lead clarified the integration rules before review: zero-context patch-ids
+cover adjacent-context drift, the catalogue is compared as parsed entries,
+and the hosted-runner routing/redaction union is pre-approved. The earlier
+unsigned OIDC merge remains preserved in its WIP ref and was aborted. Current
+main includes both hosted predecessors; submission and queue delivery are now
+authorized after the remaining gates. No new sensitive read is required.
+
+Latest merge parents: `204ed0611216ad08f8a4558c2a694bf8a49bf089` and
+`4c392262f40a1bce54562492e667d7586c4f6c66`. Computed source tree before this
+task note: `e46d283fcc88bb088ed795714b59993f081141d8`. Zero-context patch-id before
+and after, excluding this task record, parsed catalogue and approved runner
+lines: `90f13a74a1988c180afaf31ba032fce96e39d9b5` = `90f13a74a1988c180afaf31ba032fce96e39d9b5`.
+The runner raw zero-context ids are `88fe2eee518ec036fc09775b6f96bba0250cc63e`
+and `cf7147f50a151d15f843f1cdea62c14893eb3497`; its delta outside the approved
+worker routing, redacted source allowlist and final status selection is identical
+(SHA-256 `8c011e82e5e72ab1fc3fec343b788da892c19e7fefad44693c16fb66e1619194`).
+All added refusal predicates from both sides remain verbatim. Every other
+non-catalogue source path has equal per-file zero-context patch-ids. Parsed
+catalogue additions are exactly the RDS task record, RDS stock-role inventory
+and RDS phase helper, all public-output; there are no removals or value changes.
+
+Union hunks: (1) catalogue keeps complete OIDC, S3 and RDS record objects and
+their separators; (2) conformance test imports and the RDS/S3 test blocks remain
+verbatim, including the RDS block's blank separator; (3) runner imports keep
+all existing target modules; (4) redacted refusal/source-file allowlists retain
+all existing codes and file names, with the original SQLSTATE guard unchanged;
+(5) isolated-worker environment routing selects RDS's named password and TMPDIR,
+S3's null shared-profile paths, or the existing empty environment; (6) output
+selection retains the existing S3, local, RDS and OIDC messages and conditions.
+The shared target list/usage and one final success-status check are inherited
+from main. No declaration refusal predicate was edited or removed. The required
+cross-target declaration refusal matrix follows in a test-only commit before
+review. Exact comparisons and resolved hunks are retained in private evidence.

@@ -8,10 +8,14 @@ import { checkServerIdentity } from "node:tls";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runLocalJourney, runLocalOidc } from "./m14RecipeJourneys.mjs";
 import { rdsControlRoles, runRdsRecipe } from "./m14RdsRecipe.mjs";
+import { OIDC_IMAGE } from "./runOidcIdentityConformance.mjs";
+import { isIP } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const modes = ["installer-managed", "operator-provisioned", "schema"];
-const targets = ["self-host", "neon", "rds"];
+const targets = ["self-host", "neon", "rds", "s3", "hosted-oidc"];
+// With other AWS inputs absent, the SDK reaches VM instance metadata only.
+export const hostedS3WorkerEnvironment = Object.freeze({ AWS_CONFIG_FILE: "/dev/null", AWS_SHARED_CREDENTIALS_FILE: "/dev/null" });
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const refuse = code => { throw new Error(code); };
 const git = args => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -53,7 +57,27 @@ export function loadCredentials(path, target, environment = env) {
       value = JSON.parse(readFileSync(fd, "utf8"));
     } finally { closeSync(fd); }
     if (value.schemaVersion !== 1 || value.target !== target || value.disposable !== true) refuse("explicit_disposable_target_required");
+    if (target === "s3" ? !/^[a-z]{2}(-[a-z]+)+-\d+$/u.test(value.region ?? "")
+      : !/^[a-z0-9][a-z0-9-]{0,63}$/u.test(value.region ?? "")) refuse("region_required");
+    if (target === "s3") {
+      const allowed = ["schemaVersion", "target", "disposable", "region", "bucket", "prefix", "lifecycleStatePath", "sourceCommit", "sourceTree"];
+      if (Object.keys(value).some(key => !allowed.includes(key))
+        || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/u.test(value.bucket ?? "")
+        || !/^m14-10o\/[a-zA-Z0-9-]{1,80}\/$/u.test(value.prefix ?? "")
+        || !isAbsolute(value.lifecycleStatePath ?? "") || value.lifecycleStatePath.startsWith(root + "/")
+        || !/^[a-f0-9]{40}$/u.test(value.sourceCommit ?? "") || !/^[a-f0-9]{40}$/u.test(value.sourceTree ?? "")) refuse("hosted_s3_declaration_refused");
+      return value;
+    }
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/u.test(value.region ?? "")) refuse("region_required");
+    if (target === "hosted-oidc") {
+      const issuer = new URL(value.issuerOrigin);
+      if (issuer.protocol !== "https:" || issuer.origin !== value.issuerOrigin || issuer.username || issuer.password
+        || isIP(issuer.hostname) || !issuer.hostname.includes(".") || issuer.hostname.endsWith(".") || issuer.hostname.endsWith(".localhost")
+        || issuer.hostname.endsWith(".local") || issuer.hostname.endsWith(".internal")) refuse("public_https_issuer_required");
+      if (value.issuerImage !== OIDC_IMAGE || typeof value.adminPassword !== "string" || value.adminPassword.length < 24)
+        refuse("disposable_pinned_issuer_required");
+      return value;
+    }
     if (!value.installations || Object.keys(value.installations).sort().join() !== [...modes].sort().join()) refuse("three_installations_required");
     if (target === "rds" && (value.layout !== "serial-cluster" || !/^[a-z]{2}(-[a-z]+)+-\d+$/u.test(value.region ?? ""))) refuse("rds_serial_declaration_required");
     for (const mode of modes) {
@@ -77,8 +101,8 @@ export function loadCredentials(path, target, environment = env) {
     if (target === "self-host" && !/^sha256:[a-f0-9]{64}$/u.test(value.localNodeImage ?? "")) refuse("local_node_image_required");
     return value;
   } catch (error) {
-    const known = ["target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
-      "explicit_disposable_target_required", "region_required", "three_installations_required", "installation_declaration_required",
+    const known = ["hosted_s3_declaration_refused", "target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
+      "explicit_disposable_target_required", "region_required", "public_https_issuer_required", "disposable_pinned_issuer_required", "three_installations_required", "installation_declaration_required",
       "rds_serial_declaration_required", "rds_password_environment_required", "one_rds_cluster_required",
       "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required", "local_node_image_required", "local_self_host_endpoint_required"];
     refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
@@ -210,7 +234,7 @@ async function executeRecipe(config, receipt) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds --credentials /external/file.json --receipt /new/receipt.json");
+  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds|s3|hosted-oidc --credentials /external/file.json --receipt /new/receipt.json");
   const [, target, , credentials, , destination] = args;
   if (process.versions.node !== "24.21.0" || npmVersion() !== "11.19.0") refuse("pinned_tools_required");
   const config = loadCredentials(credentials, target); // Refuse bad declarations before spawning or connecting.
@@ -220,11 +244,42 @@ export async function main(args = process.argv.slice(2)) {
   const receipt = initialReceipt(target);
   const started = performance.now();
   try {
+    if (target === "s3" && process.platform !== "linux") refuse("hosted_s3_vm_required");
+    if (target === "hosted-oidc") {
+      const frozenSource = sourceDigest();
+      const packages = ["core", "outbox", "platform"].map(name => {
+        const bytes = readFileSync(resolve(root, `packages/${name}/package.json`));
+        return { name: `@openlup/${name}`, version: JSON.parse(bytes).version, manifestSha256: hash(bytes),
+          compiledSha256: directoryDigest(resolve(root, `packages/${name}/dist`)), artifact: "workspace-build" };
+      });
+      receipt.identity = { status: "PASS", sourceHead: git(["rev-parse", "HEAD"]), sourceSha256: frozenSource,
+        sourceTree: git(["rev-parse", "HEAD^{tree}"]), workingDiffSha256: hash(git(["diff", "HEAD", "--binary"])), packages,
+        region: config.region, target: "hosted test issuer", node: process.versions.node, npm: npmVersion(),
+        issuerImage: config.issuerImage, imageVerification: "operator declaration; running digest readback recorded separately",
+        limits: ["single synthetic issuer on a test VM", "local supporting database and browser", "no production qualification or SLO"] };
+      receipt.activePhase = "oidc";
+      receipt.oidc = await runLocalOidc(root, config);
+      if (sourceDigest() !== frozenSource || packages.some(item => directoryDigest(resolve(root,
+        `packages/${item.name.split("/")[1]}/dist`)) !== item.compiledSha256)) refuse("source_changed_during_proof");
+      receipt.hostedRecipes["10I"] = { ...receipt.oidc, claim: "hosted OIDC recipe receipt (single synthetic issuer on a test VM)" };
+      receipt.effortCleanup = { status: "PASS", wallSeconds: (performance.now() - started) / 1000,
+        witnessLaunches: 1, automaticRetries: 0, interventions: [], cleanup: receipt.oidc.cleanup,
+        actions: ["verify public TLS chain and hostname", "launch local disposable PostgreSQL",
+          "execute existing browser/token/membership/rotation lifecycle", "delete owned realms and verify absence", "remove local fixture stack"],
+        sourceFilesChanged: git(["diff", "--name-only", git(["merge-base", "HEAD", "origin/main"])]).split("\n").filter(Boolean),
+        exclusions: ["operator VM provisioning, TLS issuance, image caching and teardown; recorded separately",
+          "supporting PostgreSQL and browser are local disposable fixtures; no hosted database qualification"],
+        claim: "declared-scope fixture measurement, not an SLO" };
+      receipt.status = "PASS_HOSTED_OIDC";
+      receipt.claim = receipt.hostedRecipes["10I"].claim;
+      delete receipt.activePhase;
+      return receipt;
+    }
     const result = await new Promise((done, reject) => {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker"], {
         cwd: root, env: target === "rds" ? { TMPDIR: workerTmp, ...Object.fromEntries(modes.map(mode => {
           const name = config.installations[mode].passwordEnv; return [name, env[name]];
-        })) } : {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
+        })) } : target === "s3" ? hostedS3WorkerEnvironment : {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
       let message;
       child.on("message", value => { message = value; });
       child.once("error", () => reject(new Error("recipe_worker_unavailable")));
@@ -275,7 +330,7 @@ export async function main(args = process.argv.slice(2)) {
     receipt.finishedAt = new Date().toISOString();
     writeFileSync(fd, `${JSON.stringify(receipt, null, 2)}\n`); closeSync(fd);
   }
-  if (!["PASS_INITIAL_PHASES", "COMPLETE"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
+  if (!["PASS_INITIAL_PHASES", "COMPLETE", "PENDING-OBSERVATION", "PASS_HOSTED_OIDC"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
   return receipt;
 }
 
@@ -286,18 +341,41 @@ if (process.argv[2] === "--worker" && typeof process.send === "function") {
     for await (const chunk of process.stdin) payload += String(chunk);
     const { credentials, target } = JSON.parse(payload);
     receipt.target = target;
-    await executeRecipe(loadCredentials(credentials, target), receipt);
+    const config = loadCredentials(credentials, target);
+    if (target === "s3") {
+      receipt.activePhase = "s3";
+      const sourceSha256 = sourceDigest();
+      if (git(["write-tree"]) !== config.sourceTree || git(["diff", "--name-only"]) !== "") refuse("hosted_source_identity_refused");
+      const packages = ["core", "outbox", "platform"].map(name => ({ name: `@openlup/${name}`,
+        version: JSON.parse(readFileSync(resolve(root, `packages/${name}/package.json`))).version,
+        compiledSha256: directoryDigest(resolve(root, `packages/${name}/dist`)) }));
+      const { runHostedStorage } = await import("./m14HostedStorage.mjs");
+      receipt.s3 = await runHostedStorage(config, resolve(root, ".context/scratch/hosted-s3"));
+      if (sourceDigest() !== sourceSha256 || packages.some(item => directoryDigest(resolve(root,
+        `packages/${item.name.split("/")[1]}/dist`)) !== item.compiledSha256)) refuse("source_changed_during_proof");
+      receipt.hostedRecipes["10O"] = receipt.s3;
+      receipt.identity = { status: "PASS", target: "hosted S3", region: config.region,
+        sourceCommit: config.sourceCommit, sourceTree: config.sourceTree, sourceSha256,
+        node: process.versions.node, npm: npmVersion(),
+        packages,
+        credentialSource: "VM instance metadata; inherited environment and shared profiles excluded" };
+      receipt.status = receipt.s3.status === "PASS" ? "COMPLETE" : "PENDING-OBSERVATION";
+      receipt.claim = receipt.s3.claim;
+      delete receipt.activePhase;
+    } else await executeRecipe(config, receipt);
   } catch (error) {
     receipt.status = "FAIL"; receipt.failure = "recipe_phase_failed; credential-bearing details suppressed";
-    receipt.diagnostic = { source: error?.stack?.match(/(?:runM14RecipeConformance\.mjs|m14RdsRecipe\.mjs|m14QualifiedAdminComposition\.proof\.ts|m14ReleasedSchemaUpgrade\.proof\.ts):[0-9]+:[0-9]+/u)?.[0] ?? null,
+    receipt.diagnostic = { source: error?.stack?.match(/(?:runM14RecipeConformance\.mjs|m14RdsRecipe\.mjs|m14HostedStorage\.mjs|transferObjectSource\.ts|m14QualifiedAdminComposition\.proof\.ts|m14ReleasedSchemaUpgrade\.proof\.ts):[0-9]+:[0-9]+/u)?.[0] ?? null,
       sqlstate: /^[0-9A-Z]{5}$/u.test(error?.code ?? "") ? error.code : null };
   }
   process.send(receipt, () => process.disconnect());
 } else if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().then(receipt => { console.log(receipt.status === "COMPLETE"
+  main().then(receipt => { console.log(receipt.target === "s3"
+    ? `Hosted S3 recipe receipt: ${receipt.status}` : receipt.status === "COMPLETE"
     ? "Local self-host recipe receipt: COMPLETE; managed first leg and hosted recipes remain pending"
     : receipt.hostedRecipes["10R"].status === "PASS"
       ? "Hosted RDS PG16 recipe receipt (single synthetic instance): PASS; transfer/recovery pending owner 10P"
+    : receipt.status === "PASS_HOSTED_OIDC" ? "Hosted OIDC recipe receipt: PASS; other recipe sections remain pending"
       : "Recipe conformance initial phases: passed; later sections pending"); })
     .catch(() => { console.error("Recipe conformance refused or failed; credential-bearing details suppressed. Check the redacted receipt, target declaration, private external file, fresh PG16 clusters, TLS, built dependencies and cached image/browser prerequisites."); process.exitCode = 1; });
 }
