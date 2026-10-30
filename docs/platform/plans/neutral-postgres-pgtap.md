@@ -4,7 +4,8 @@ Status: owner go-ahead on 2026-10-30 to prepare W1, W2 and W3 as stacked draft
 pull requests; merges wait for the owner. The recommendations below are the
 provisional decisions (see [Recorded decisions](#recorded-decisions)). W1 adds
 the shadow lane. W2 is prepared as a draft stacked on W1 (see
-[W2 evidence](#w2-evidence)); it waits for W1's merge and D6's shadow window.
+[W2 evidence](#w2-evidence)). On 2026-10-30 the owner instructed merging the
+whole stack in order, which replaces D6's shadow-window wait.
 Read the [intent](neutral-postgres-pgtap-intent.md) first.
 Audience: the maintainer and the agents implementing the programme.
 
@@ -344,7 +345,8 @@ is also open: W1 adds no new action pin, the runner verifies
 ## W2 evidence
 
 Prepared on 2026-10-30 as a draft stacked on W1 (branch `claude/neutral-pgtap-w2`).
-It merges only after W1 is merged and D6's shadow window has passed.
+It merges after W1, by the owner's 2026-10-30 instruction to merge the whole
+stack without the D6 shadow window.
 
 The switch:
 
@@ -382,8 +384,7 @@ Local proof on the W2 tree, Docker Desktop on arm64:
 - The `auth-uid-null` and `drop-rls-policy` sabotages fail, with 48 and 6
   `not ok` results as in W1. No runner container is left behind.
 
-Still open for W2: the first green hosted `pgtap` run on the switched lane,
-after the shadow window.
+Still open for W2: the first green hosted `pgtap` run on the switched lane.
 
 ## Risks
 
@@ -439,9 +440,10 @@ On 2026-10-30 the owner asked for W1, W2 and W3 to be prepared by Claude Opus
 agents as draft pull requests, stacked one on another, with merges deferred until
 other sessions finish. This is the go-ahead for D1 and for W3 under D2.
 Every other decision provisionally takes the recommendation in the table above.
-D6's shadow window cannot start until W1 is merged, so W2 stays a draft until
-the window passes. Local parity evidence on the W1 branch is the pre-merge proof.
-Merging any wave remains an exact-PR owner act (D10).
+Later on 2026-10-30 the owner instructed merging the whole stack, #449 → #453 →
+#454 → #455, in order through the ordinary queue. That instruction is the
+exact-PR merge act for D10 and replaces D6's shadow-window wait. Local parity
+evidence on the W1 and W2 branches is the pre-merge proof.
 
 ## Documentation impact
 
