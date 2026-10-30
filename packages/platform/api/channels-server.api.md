@@ -3465,7 +3465,7 @@ export declare const CHANNEL_INGEST_MIGRATIONS: readonly [{
     readonly id: "20261030122000_channel_purchased_source";
     readonly catalogPath: "db/platform/migrations/20261030122000_channel_purchased_source.sql";
     readonly position: 89;
-    readonly sha256: "596c403db40acb5ad49c0d01f6ae5764defd617eea48766cbc4fb8baad5bc67d";
+    readonly sha256: "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2";
     readonly url: URL;
 }];
 ```

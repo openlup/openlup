@@ -1570,6 +1570,14 @@ and MCP callers receive only their declared entrypoints. Generic outbox source
 evidence omits normalized buyer/address bodies; authorized capture reads recover
 the original protected data. Privacy lifecycle export/erasure is unavailable.
 
+Fresh captures bind the normalized slug to their scoped channel and the raw-source
+digest to the original page event. Raw admission checks the existing normalized
+buyer, address and shipping scalar contract before persistence. Page watermarks
+use the public millisecond comparison and retain the original string on ties.
+Retained conversion readback verifies permanent holds by item, SKU, key and total
+quantity, including split local lots; recovery retains the sealed original order
+and holds when the channel's current delivery provider changes.
+
 `CHANNEL_INGEST_MIGRATIONS` projects the two canonical native units with exact
 SHA-256 identities and package SQL assets. It is a sparse projection, not an
 installation chain: install the complete selected catalogue and verify its

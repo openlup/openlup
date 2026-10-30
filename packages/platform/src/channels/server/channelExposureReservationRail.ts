@@ -44,13 +44,19 @@ export function createChannelExposureReservationRail(input: {
         command.payload.purchasedSets !== line.quantity) throw new ChannelControlError("response_invalid");
       const actual = await input.read.lineItems(order.orderId, line.externalLineRef);
       const holds = (await input.read.reservations(order.orderId)).filter(hold => actual.some(item => item.orderItemId === hold.order_item_id));
-      if (!actual.length || holds.length !== actual.length || actual.some(item => !holds.some(hold => hold.order_item_id === item.orderItemId &&
-        hold.sku_id === item.skuId && hold.quantity === item.quantity && hold.metadata.providerKind === order.providerKind &&
-        hold.idempotency_key === `ch:${capture.scope.channelId}:ord:${capture.externalOrderRef}:inventory:${item.orderItemId}`)) ||
+      // The sealed conversion used the order's original delivery provider. Local allocation may
+      // split one item across lots and records only source metadata; current channel policy is
+      // neither the allocation receipt nor a reason to reject those already committed holds.
+      if (!actual.length || actual.some(item => {
+        const itemHolds = holds.filter(hold => hold.order_item_id === item.orderItemId);
+        return !itemHolds.length || itemHolds.some(hold => hold.sku_id !== item.skuId || hold.status !== "reserved" || hold.expires_at !== null ||
+          hold.idempotency_key !== `ch:${capture.scope.channelId}:ord:${capture.externalOrderRef}:inventory:${item.orderItemId}`) ||
+          itemHolds.reduce((quantity, hold) => quantity + hold.quantity, 0) !== item.quantity;
+      }) ||
         actual.some(item => !order.items.some(known => known.orderItemId === item.orderItemId && known.skuId === item.skuId && known.quantity === item.quantity))) {
         throw new ChannelControlError("response_invalid");
       }
-      reservedItemCount += holds.length;
+      reservedItemCount += actual.length;
     }
     if (reservedItemCount !== order.items.length) throw new ChannelControlError("response_invalid");
     return { reservedItemCount };

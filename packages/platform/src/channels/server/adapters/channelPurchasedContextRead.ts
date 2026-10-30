@@ -29,8 +29,8 @@ export function createManagedChannelPurchasedContextRead(input: {
     async contexts(capture: ChannelPurchaseCapture): Promise<ChannelRetainedPurchaseContext[]> {
       const connection = z.object({ application_ref: z.string().min(1) }).parse(await read(input.client.from("sales_channel_connections")
         .select("application_ref").eq("id", capture.scope.connectionId).maybeSingle()));
-      const channel = z.object({ connection_id: id, channel_external_ref: z.string().nullable() }).parse(await read(input.client.from("sales_channels")
-        .select("connection_id,channel_external_ref").eq("id", capture.scope.channelId).maybeSingle()));
+      const channel = z.object({ connection_id: id, channel_external_ref: z.string().nullable(), slug: z.string() }).parse(await read(input.client.from("sales_channels")
+        .select("connection_id,channel_external_ref,slug").eq("id", capture.scope.channelId).maybeSingle()));
       if (channel.connection_id !== capture.scope.connectionId) throw new ChannelControlError("input_conflict");
       const namespace = { applicationRef: connection.application_ref, channelExternalRef: channel.channel_external_ref };
       const result: ChannelRetainedPurchaseContext[] = [];
@@ -45,7 +45,7 @@ export function createManagedChannelPurchasedContextRead(input: {
         if (!detail.firstApproval || !detail.firstQualification) throw new ChannelControlError("input_conflict");
         const value = await input.bundles.read(detail.listing.bundleId);
         if (!value) throw new ChannelControlError("input_conflict");
-        result.push({ scope: channelScopeSchema.parse(detail.listing.scope), namespace, channelSlug: capture.normalized.channelSlug,
+        result.push({ scope: channelScopeSchema.parse(detail.listing.scope), namespace, channelSlug: channel.slug,
           listing: detail.listing, firstApproval: detail.firstApproval, firstQualification: detail.firstQualification,
           bundle: channelBundleBindingSchema.parse(value) });
       }

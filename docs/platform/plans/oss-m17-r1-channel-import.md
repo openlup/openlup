@@ -1158,3 +1158,132 @@ The launcher failure was avoidable: invoke the repository test wrapper with its
 local executable directory on PATH. Reusing the existing artifact checker with
 a separate output directory preserved read evidence and was sufficient; no new
 verification mechanism or successor task was needed.
+
+## CD-M17-16: bounded R1 pre-mortem repair bundle
+
+The completed eight-row triage in the R3 task record precedes this repair.
+P1/P2/P3/P4/P5/P7 close existing Part C C2/C5/C9/C11/C12/C13/C16 obligations;
+P6 belongs to R3 and P8 is the donor-identical ordinary settled-to-done follow-up.
+The imported saga is unchanged. The active implementation authority permits this
+single R1 repair bundle and local evidence, with no DCO/commit/push until the
+root supervisor obtains the stabilized control read. No native review, canonical
+full verification, CI retry, provider access, release, merge or adoption occurs.
+Root retains integration and delivery coordination. The current policy pin is
+`6747206c239d3c1f5822e38732be96c9ac5e6d4a`, separately from code/stack base
+`2b4092475a4ca7d68a76c12539009b4a91331464`; the intervening policy delta concerns
+M14 proof/documentation and changes no M17 authority. No main integration is used
+for instruction freshness.
+
+The smallest adequate correction reads the existing allocation rather than
+introducing another allocator or provider decision. The sealed conversion and
+order's original physical items remain authoritative; readback sums all existing
+per-item lot holds and validates SKU, key, reserved status and permanent expiry,
+then counts items. It no longer demands provider metadata absent from local
+allocation or compares original holds against the channel's mutable provider.
+The managed historical reader obtains the actual scoped channel slug. Fresh raw
+captures refuse a mismatched normalized slug before ledger/order/buyer effects,
+and require the original page event's exact raw-source digest.
+
+The two unissued purchased-source drafts change only four existing function
+bodies: packet validation, existing scope validation, page recording and captured inbound admission. Their
+signatures, attributes, ordered statement positions, grants and owner bindings
+remain unchanged. Page recording reduces expected watermark and event times with
+Date.parse millisecond precision and strict greater-than comparison, keeping the
+original string on ties. Fractional digits are truncated before PostgreSQL parses
+them, avoiding its sub-millisecond rounding. Direct scalar predicates mirror the
+existing normalized buyer/address/shipping type, trim, UTF-16 length, country and
+reference bounds; no schema engine, helper API or validation grammar is added.
+These are explicit C12/C13 material-proof-gap corrections, including donor gaps,
+not a claim of unchanged malformed-input behavior. Valid normalized behavior and
+original retained provenance remain unchanged.
+
+The existing 48-assertion pgTAP alias fixture authored next watermark 07:16 while
+retaining its predecessor event time 07:15. Only that alias event's occurredAt is
+corrected to 07:16. All 48 assertions remain unchanged. The seven frozen package
+witness/fixture files, M06 allocator/public entry and all issued SQL/classes are
+untouched. The native package SQL twin, registry pins, catalogue SHA projections,
+API hash projection and selected runtime inventories must agree before read.
+R0a's unchanged shape checker admits the body-only delta without a class or
+checker amendment.
+
+At source stabilization, ast-grep, focused ESLint, whitespace and the actual
+existing four-forward lexical admission over complete same-rail prefixes pass.
+The added real-PG witnesses distinguish single/split local allocation, original
+provider recovery, malformed hold identities/totals, raw slug/digest mismatches,
+empty future/mismatched page progress, fractional/tie timestamp strings and
+hostile normalized scalar copies with freshly computed canonical digests.
+Unicode/null capture readback remains a positive control. Gated execution,
+selected runtime-inventory refresh, full affected suites and artifact measurements
+are pending; no unexecuted witness is represented as passing evidence.
+
+### Repair execution evidence and read boundary
+
+Five actual shared-gate admissions returned `ADMITTED` with rc 0 after 271, 331,
+0, 120 and 0 seconds, respectively (722 seconds waiting). Every heavy stage
+followed its actual admission; all selected Vitest runs used at most two workers.
+The original R1 head remains `87b467e326f5ec0d520497aafec3ae722d3feb01`.
+A temporary baseline overlay retained the new tests and demonstrated all eleven
+predicted failures in 4.55 seconds: wrong slug, raw digest, future watermark and
+nested buyer email were accepted, while valid local holds and provider-drift
+recovery were rejected. The overlay restored every authored snapshot SHA-256 and
+left the real index unchanged. This is intentional red evidence, not review.
+
+The first repaired run had four passes and seven failures. The managed closed
+writer could not see a new direct channel SELECT through existing RLS. Reusing
+`s` in the existing trusted scope function fixed that placement without granting
+access or adding a policy. Two fixture assumptions also needed correction:
+portable has no managed buyer-reference table, and a resolver-refusal test must
+remove already-bound retained rows. The next run had eight passes and three new
+assertion failures because the existing payment owner annotates paid holds. The
+correct witness preserves IDs, item/SKU/key/quantity/status/expiry and original
+provider while allowing that existing annotation. The final eleven discriminators
+then passed in 4.72 seconds. Failed attempts retain their own logs.
+
+Final local evidence:
+
+- Full lint/prebuild: zero errors and 33 existing warnings. Immediate projected
+  typechecking: all five projects, zero unresolved edges and consumer errors.
+  Platform API check passes; its only report delta is the native SQL hash literal.
+- All 137 unchanged channel package witnesses plus 45 inventory cases pass
+  (182 across 15 files). All seven frozen files remain byte-identical to R1 HEAD.
+- All 29 paired purchased-source cases pass, including the unchanged 48 pgTAP
+  assertions, 12 dispatch assertions and six M06 replay assertions. Eight native
+  inventory, five independently installed inventory/grant/runtime profiles,
+  19 manifest cases and both channel restore/installation cases also pass.
+- The five catalogue expectations were refreshed only from real measurements;
+  independent fresh installs then matched every digest and replayed without new
+  units. Counts remain legacy 90, qualified 94/94 and restricted 93/93.
+- Both isolated installed-consumer cases pass (8.01 seconds): NodeNext/Bundler,
+  runtime exports without optional peers, and exact packed native SQL executing
+  capture/read/CAS with named physical refusal.
+
+The initial broader node selection had 713 passes and one unrelated historical
+M12 fixture failure. Its pre-introduction manifest retained later M17 rows that
+its copied prefixes omitted, then appended the earlier M12 unit out of order.
+The supervisor explicitly authorized only filtering that fixture's manifest to
+`row.file < support[0]!.path` and correcting its comment. Every existing assertion
+is preserved; no checker, class, issued SQL or approval logic changes. The original
+M12 case passed independently, followed by all 651 reviewed-batch cases in 157.06
+seconds. The other 63 already-passing node cases needed no rerun for this fixture-
+only correction. No native review session or repair counter was opened.
+
+Native purchased-source SQL and its package twin now hash to
+`4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2`;
+the managed unit hashes to
+`37a5b0860aae4404e582963d620af5632f368ce843b09ac658d6a181b7959c1a`.
+Registry/function/statement pins, three native manifest rows, selected inventories,
+package projection and API hash agree. The existing four-forward lexical checker
+retains its unchanged class and headers. M06 owner bytes remain untouched.
+Package budgets are unchanged; final integrated-stack artifact measurement belongs
+to the root supervisor. This is local evidence, not hosted qualification or a
+canonical full-verification receipt. The stabilized control read remains required
+before DCO, commit or push; this run stops unsigned for that boundary.
+
+Self-retro: resource admission accounted for 722 seconds of measured delay. The
+useful rethink was to place the slug predicate beside the existing trusted scope
+read rather than add access for the closed writer. Real selected-role SQL exposed
+that placement defect before review. Comparing hold identity and quantities while
+respecting the existing payment owner's annotation made the recovery witness
+accurate. The M12 fixture needed its actual historical prefix, not a live tail.
+No new allocator, policy, validation framework, dependency or follow-up wave was
+needed.
