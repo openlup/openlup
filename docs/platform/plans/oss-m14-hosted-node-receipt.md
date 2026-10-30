@@ -333,3 +333,15 @@ permits final verification, neutral PR, readiness, receipt and queue after PASS;
 the prior fourth-landing hold is satisfied. No hosted VM rerun is claimed.
 Self-retro: moving shared-runner integration → wait for predecessor landing,
 then preserve each admission branch and prove cross-target isolation once.
+
+Pre-review checks on integrated code/test commit
+`d413dd396bd4c303fec0dacb6ca2a682a1f85cfa` (tree
+`b446daebb0ce08270b217e907d68afa3f86b7233`) passed: publication policy with
+documentation regeneration, inventory, structural rules, neutrality and redacted
+all-ref Gitleaks (1,418 commits; no findings). The shared `10h` gate admitted
+strict typecheck first (all five projects, zero errors), then lint (zero errors,
+33 existing warnings), then the complete recipe conformance file (22/22 tests,
+including real PostgreSQL freshness and all six selectable targets). Gate wait
+was 61 seconds; subsequent stages admitted immediately. This task-note-only
+commit records evidence before fresh full review. Canonical verification remains
+pending until native PASS; no prior verification stamp is reused.
