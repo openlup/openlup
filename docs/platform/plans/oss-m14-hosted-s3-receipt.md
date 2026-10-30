@@ -1,6 +1,6 @@
 # M14 hosted S3 recipe receipt
 
-Status: development-preview implementation and hosted functional proof complete; control/API read and lifecycle observation pending. No delivery-qualified PASS is claimed.
+Status: development-preview implementation and hosted functional proof complete; maintainer reads accepted, native review and lifecycle observation pending. No delivery-qualified PASS is claimed.
 
 ## Outcome and authority
 
@@ -31,9 +31,11 @@ Pinned `npm ci` completed. Initial policy/catalogue/documentation checks passed 
 
 ## Stabilized proof and remaining work
 
-CD-M14-53 maintainer read accepted the candidate under the required declared-region repair. The coordinator recomputed equal identities: HEAD `4fd84bfe`, tree `0d217f16c1cd355101692191efc5383bc18f2c55`, and SHA-256 of `git diff --binary HEAD 0d217f16` `5bab2cc9d251a5018e098bdcdafb34575992cb1fd2c09baf4e87147d5786adca`. The region repair removes the fixed-region admission, requires AWS region syntax, uses synthetic test data, and describes a declared region in public instructions. DCO and review remain pending the delta read.
+CD-M14-53 maintainer read accepted the candidate under the required declared-region repair. The coordinator recomputed equal identities: HEAD `4fd84bfe`, tree `0d217f16c1cd355101692191efc5383bc18f2c55`, and SHA-256 of `git diff --binary HEAD 0d217f16` `5bab2cc9d251a5018e098bdcdafb34575992cb1fd2c09baf4e87147d5786adca`. The region repair removes the fixed-region admission, requires AWS region syntax, uses synthetic test data, and describes a declared region in public instructions. DCO and review were pending the delta read at this point.
 
-After this repair, publication policy/catalogue/impact (2 obligations, 0 unanswered), inventory, structural scan, neutrality, redacted secret scan, strict all-project typecheck, lint (0 errors, 33 existing warnings) and the focused S3 declaration/refusal test passed. The staged delta needs its own maintainer read before DCO.
+After this repair, publication policy/catalogue/impact (2 obligations, 0 unanswered), inventory, structural scan, neutrality, redacted secret scan, strict all-project typecheck, lint (0 errors, 33 existing warnings) and the focused S3 declaration/refusal test passed. The staged delta required its own maintainer read before DCO.
+
+CD-M14-55 accepted that region-only re-read. The coordinator recomputed equal identities: repaired tree `2a35b0e4af811831d697ebb9ee79c4c90f6ba5db` and SHA-256 `c587113375513c17399d58c96a50789b89ab36033d924db470f330432e922a8b` for `git diff --binary 0d217f16 2a35b0e4`. Signed commit `950ad6498a7da85f48256e4173e1bf3c0b3ab13e` has exactly that tree. This record note adds no claim or control change.
 
 The hosted run on `2026-10-30T08:40:50.523Z`–`2026-10-30T08:40:55.846Z` passed serving, authorization/anonymous/cross-user refusal through the real customer BFF with synthetic host grants, actual anonymous bucket denial, bounded-byte and source-record content-type conflict refusal, native-version/deletion and single-current admission refusals. The retained older-snapshot object resumed after checkpoint interruption and served correctly; the later-erased key remained absent from the private destination. This is not IAM cross-account, hosted database/RLS, generic upload-policy or whole-store hosted RPO/RTO qualification. The adapter owner records these limits.
 
@@ -43,6 +45,6 @@ Checks: policy/catalogue/inventory, documentation regeneration/impact (2 obligat
 
 The final witness took 2.624 seconds (runner 5.323 seconds), with 42 direct SDK actions and 9 blob-port actions, no witness retry or run-time intervention. Provisioning, dependency installation and lifecycle wait are excluded. The direct client has maxAttempts=1; the blob client retains the SDK default retry policy. The baseline readback was enabled, with noncurrent expiration 1 day and incomplete multipart abort 1 day; no rule was changed. Functional cleanup read back 0 versions and 0 delete markers; private restore directories were absent. The whole run prefix remains PENDING-OBSERVATION with exactly two dedicated lifecycle keys (three noncurrent versions, one current version and one delete marker). No public listener, container or database was created.
 
-Remaining: maintainer read before DCO; two new fresh FULL reviewers, canonical Mac verification, neutral PR and receipt-readiness. Native reviews/cycles have not started; no finding cards, PR or queue entry exist. S1 freeze remains active. After elapsed observation, direct old-version absence and whole-prefix cleanup must pass before any lifecycle PASS claim. The parcel is idle between the stated observation times; no lifecycle daemon is running. Resource teardown remains owner-held.
+Remaining: two new fresh FULL reviewers, canonical Mac verification, neutral PR and receipt-readiness. Native reviews/cycles have not started; no finding cards, PR or queue entry exist. S1 freeze remains active. After elapsed observation, direct old-version absence and whole-prefix cleanup must pass before any lifecycle PASS claim. The parcel is idle between the stated observation times; no lifecycle daemon is running. Resource teardown remains owner-held.
 
 Self-retro: early seeding removed implementation time from the lifecycle wait. Mac load gating delayed the build about 2 minutes and lint about 3 minutes before proof moved to the permitted worker. The worker's direct test-wrapper launch initially lacked its local binary PATH and failed before tests; adding the worktree binary directory resolved it without a source repair. Existing npm test entrypoints supply that PATH. Along with the empty-body CLI correction above, these were two setup interventions; neither reset lifecycle evidence or spent a native review cycle.
