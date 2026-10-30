@@ -157,6 +157,55 @@ BEGIN
               OR NOT coalesce(node->>'vatRateBps' ~ '^[0-9]+$' AND (node->>'vatRateBps')::numeric<=10000,false))) THEN
             RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
         END LOOP;
+        -- Match the existing normalized buyer/address/shipping scalar contract before copying it.
+        part:=body#>'{normalized,buyer}';
+        IF jsonb_typeof(part->'emailIsMasked') IS DISTINCT FROM 'boolean'
+          OR (part->'externalCustomerRef'<>'null'::jsonb AND (jsonb_typeof(part->'externalCustomerRef') IS DISTINCT FROM 'string'
+            OR char_length(part->>'externalCustomerRef')+char_length(regexp_replace(part->>'externalCustomerRef',U&'[^\+010000-\+10FFFF]','','g')) NOT BETWEEN 1 AND 128
+            OR part->>'externalCustomerRef'<>btrim(part->>'externalCustomerRef',U&' \0009\000A\000B\000C\000D\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'))) THEN
+          RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        FOREACH key IN ARRAY ARRAY['email','firstName','lastName','phone','taxId','companyName'] LOOP
+          atom:=part->key;
+          ceiling:=CASE key WHEN 'email' THEN 320 WHEN 'firstName' THEN 120 WHEN 'lastName' THEN 120
+            WHEN 'phone' THEN 40 WHEN 'taxId' THEN 32 ELSE 200 END;
+          IF atom='null'::jsonb THEN CONTINUE; END IF;
+          -- Zod counts UTF-16 code units; supplementary characters occupy two units.
+          IF jsonb_typeof(atom) IS DISTINCT FROM 'string'
+            OR char_length(atom#>>'{}')+char_length(regexp_replace(atom#>>'{}',U&'[^\+010000-\+10FFFF]','','g'))>ceiling
+            OR atom#>>'{}'<>btrim(atom#>>'{}',U&' \0009\000A\000B\000C\000D\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF') THEN
+            RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        END LOOP;
+        part:=body#>'{normalized,shipTo}';
+        IF jsonb_typeof(part->'countryCode') IS DISTINCT FROM 'string' OR part->>'countryCode' !~ '^[A-Z]{2}$' THEN
+          RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        FOREACH key IN ARRAY ARRAY['recipientName','line1','line2','postalCode','city','phone','pickupPointRef'] LOOP
+          atom:=part->key;
+          IF atom='null'::jsonb AND key IN ('line2','phone','pickupPointRef') THEN CONTINUE; END IF;
+          ceiling:=CASE key WHEN 'postalCode' THEN 20 WHEN 'city' THEN 120 WHEN 'phone' THEN 40
+            WHEN 'pickupPointRef' THEN 120 ELSE 200 END;
+          IF jsonb_typeof(atom) IS DISTINCT FROM 'string'
+            OR char_length(atom#>>'{}')+char_length(regexp_replace(atom#>>'{}',U&'[^\+010000-\+10FFFF]','','g'))>ceiling
+            OR (key IN ('recipientName','line1','postalCode','city') AND char_length(atom#>>'{}')=0)
+            OR atom#>>'{}'<>btrim(atom#>>'{}',U&' \0009\000A\000B\000C\000D\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF') THEN
+            RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        END LOOP;
+        part:=body#>'{normalized,shipping}';
+        FOREACH key IN ARRAY ARRAY['grossMinor','discountMinor'] LOOP
+          atom:=part->key;
+          IF jsonb_typeof(atom) IS DISTINCT FROM 'number' OR NOT coalesce(atom::text ~ '^[0-9]+$' AND atom::numeric<=9007199254740991,false) THEN
+            RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        END LOOP;
+        IF part->'grossMinor' IS DISTINCT FROM body#>'{normalized,totals,shippingGrossMinor}'
+          OR part->'discountMinor' IS DISTINCT FROM body#>'{normalized,totals,shippingDiscountMinor}' THEN
+          RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        FOREACH key IN ARRAY ARRAY['methodLabel','carrierHint'] LOOP
+          atom:=part->key; ceiling:=CASE key WHEN 'methodLabel' THEN 120 ELSE 64 END;
+          IF atom='null'::jsonb THEN CONTINUE; END IF;
+          IF jsonb_typeof(atom) IS DISTINCT FROM 'string'
+            OR char_length(atom#>>'{}')+char_length(regexp_replace(atom#>>'{}',U&'[^\+010000-\+10FFFF]','','g'))>ceiling
+            OR atom#>>'{}'<>btrim(atom#>>'{}',U&' \0009\000A\000B\000C\000D\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF') THEN
+            RAISE EXCEPTION 'channel_purchase_nested_shape' USING ERRCODE='22023'; END IF;
+        END LOOP;
         part:=body#>'{normalized,payment}';
         IF jsonb_typeof(part->'state') IS DISTINCT FROM 'string' OR jsonb_typeof(part->'externalPaymentRef') IS DISTINCT FROM 'string'
           OR (part->'methodLabel'<>'null'::jsonb AND (jsonb_typeof(part->'methodLabel')<>'string'
@@ -232,6 +281,7 @@ BEGIN
   IF c.id IS NULL OR s.id IS NULL OR ((p_body->'scope')-'connectionVersion'-'registryVersion') IS DISTINCT FROM (expected-'connectionVersion'-'registryVersion') OR p_body->'namespace' IS DISTINCT FROM
     jsonb_build_object('applicationRef',c.application_ref,'channelExternalRef',s.channel_external_ref)
     OR (p_fresh AND ((p_body#>>'{execution,actorId}')::uuid IS DISTINCT FROM p_actor OR p_body->'scope' IS DISTINCT FROM expected))
+    OR (p_fresh AND p_body ? 'normalized' AND p_body#>>'{normalized,channelSlug}' IS DISTINCT FROM s.slug)
     OR (p_body#>>'{execution,jobRunId}')::uuid IS DISTINCT FROM p_job THEN
     RAISE EXCEPTION 'channel_purchase_scope_conflict' USING ERRCODE='P0001'; END IF;
   -- Existing installer-definer owns job read/row-lock authority; the closed writer gets no job-table grant.
@@ -325,7 +375,7 @@ CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox
 CREATE FUNCTION public.channel_pull_page_record(p_connection_id uuid,p_actor_id uuid,p_job_run_id uuid,
   p_page_packet_id uuid,p_canonical_text text,p_input_digest text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
-DECLARE body jsonb; c uuid; original public.outbox_events%ROWTYPE;
+DECLARE body jsonb; c uuid; original public.outbox_events%ROWTYPE; event jsonb; watermark text;
 BEGIN
   body:=public.channel_purchase_packet(p_canonical_text,p_input_digest,'channel.pull-page.v1');
   IF body ? 'cursorReceipt' THEN RAISE EXCEPTION 'channel_purchase_authored_receipt' USING ERRCODE='22023'; END IF;
@@ -338,9 +388,20 @@ BEGIN
       RAISE EXCEPTION 'channel_pull_packet_conflict' USING ERRCODE='23505'; END IF;
   ELSE
     PERFORM public.channel_purchase_scope(body,p_actor_id,p_job_run_id,true);
+    watermark:=body#>>'{expected,watermark}';
+    -- The public schema reduces at Date.parse millisecond precision, retaining the
+    -- original timestamp string on ties. Truncate text before PostgreSQL parses
+    -- it, so sub-millisecond rounding cannot choose a different event.
+    FOR event IN SELECT value FROM jsonb_array_elements(body->'events') LOOP
+      IF watermark IS NULL OR regexp_replace(event->>'occurredAt','(\.[0-9]{1,3})[0-9]*','\1')::timestamptz>
+        regexp_replace(watermark,'(\.[0-9]{1,3})[0-9]*','\1')::timestamptz THEN
+        watermark:=event->>'occurredAt';
+      END IF;
+    END LOOP;
     IF body#>'{request,from}' IS DISTINCT FROM body#>'{expected,cursor}' OR (body#>>'{request,limit}')::int NOT BETWEEN 1 AND 1000
       OR jsonb_array_length(body->'events')>(body#>>'{request,limit}')::int OR body#>>'{next,cursor}' IS DISTINCT FROM
       coalesce(body#>>ARRAY['events',(jsonb_array_length(body->'events')-1)::text,'providerEventId'],body#>>'{expected,cursor}')
+      OR body#>>'{next,watermark}' IS DISTINCT FROM watermark
       OR (body#>>'{next,generation}')::bigint<>(body#>>'{expected,generation}')::bigint+1 THEN
       RAISE EXCEPTION 'channel_pull_packet_shape' USING ERRCODE='22023'; END IF;
     INSERT INTO public.outbox_events(id,aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
@@ -451,7 +512,8 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.outbox_events page CROSS JOIN LATERAL jsonb_array_elements(page.payload->'events') event
     WHERE page.id=(body->>'pagePacketRef')::uuid AND page.event_type='channel.pull-page.v1' AND page.aggregate_id=c
       AND event->>'providerEventId'=p_provider_event_id AND event->>'captureRef'=body->>'captureId'
-      AND event->>'externalOrderRef'=p_external_order_ref AND event->>'externalOrderRevision' IS NOT DISTINCT FROM p_external_order_revision) THEN
+      AND event->>'externalOrderRef'=p_external_order_ref AND event->>'externalOrderRevision' IS NOT DISTINCT FROM p_external_order_revision
+      AND event->>'rawSourceDigest'=body->>'rawSourceDigest') THEN
     RAISE EXCEPTION 'channel_purchase_original_page_required' USING ERRCODE='P0001'; END IF;
   total_count:=jsonb_array_length(p_normalized->'lines');
   IF total_count NOT BETWEEN 1 AND 100 OR jsonb_array_length(body->'products')<>total_count

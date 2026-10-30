@@ -2,8 +2,8 @@ import { createHash,randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { canonicalChannelSource,channelSourceDigest,createChannelPurchasedSourceStore,createManagedChannelIngestReservations,bindChannelPurchasedRows,acknowledgeChannelPurchasedOutcome,createChannelWebhookPort } from "@openlup/platform/channels/server";
-import type { ChannelIngestBuyer } from "@openlup/platform/channels";
+import { canonicalChannelSource,channelSourceDigest,createChannelPurchasedSourceStore,createManagedChannelIngestReservations,createChannelExposureReservationRail,bindChannelPurchasedRows,acknowledgeChannelPurchasedOutcome,createChannelWebhookPort } from "@openlup/platform/channels/server";
+import type { ChannelIngestBuyer, ChannelPullPage, ChannelPurchaseCapture } from "@openlup/platform/channels";
 import { createManagedStockAvailability } from "@openlup/platform/inventory";
 import { channelInstallerWitness } from "../helpers/channelInstallerWitness.js";
 import { channelManagedIngestFixture } from "../helpers/channelManagedIngestFixture.js";
@@ -12,6 +12,17 @@ import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const forwards = ["20261030121000_channel_retained_basis.sql", "20261030122000_channel_purchased_source.sql"];
+function rawPage(page: ChannelPullPage) {
+  const text = canonicalChannelSource(page);
+  return { p_connection_id: page.scope.connectionId, p_actor_id: page.execution.actorId, p_job_run_id: page.execution.jobRunId,
+    p_page_packet_id: page.pagePacketId, p_canonical_text: text, p_input_digest: channelSourceDigest(text) };
+}
+function rawCapture(capture: ChannelPurchaseCapture) {
+  capture.normalizedDigest = channelSourceDigest(canonicalChannelSource(capture.normalized));
+  const text = canonicalChannelSource(capture);
+  return { p_channel_id: capture.scope.channelId, p_external_order_ref: capture.externalOrderRef, p_external_order_revision: capture.externalOrderRevision,
+    p_provider_event_id: capture.providerEventId, p_normalized: capture.normalized, p_capture_text: text, p_capture_digest: channelSourceDigest(text) };
+}
 describe.each(["portable", "managed"] as const)("channel purchased-source SQL: %s", rail => {
   let container: PostgresContainer | undefined, pool: Pool, db: PoolClient;
   let committedFixture: Awaited<ReturnType<typeof channelPurchaseFixture>> | undefined;
@@ -95,6 +106,188 @@ describe.each(["portable", "managed"] as const)("channel purchased-source SQL: %
       await expect(f.asRole("service_role",()=>db.query("INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload) VALUES('channel_connection',$1,'channel.purchase-source.v1','forged','{}')",[f.capture.scope.connectionId]))).rejects.toMatchObject({code:rail==="managed"?"P0001":"42501"});
       if(rail==="portable")await expect(f.source.originalConversion({ledgerId:randomUUID(),externalLineRef:"line",jobRunId:f.job,canonicalText:null})).rejects.toThrow("channel_purchase_physical_unavailable");
     }finally{await db.query("ROLLBACK");}
+  });
+
+  it("binds fresh raw captures to the scoped channel slug before durable effects", async () => {
+    await db.query("BEGIN");
+    try {
+      const f = await channelPurchaseFixture(db, rail);
+      await f.source.recordPage(f.page);
+      const wrongSlug = structuredClone(f.capture); delete wrongSlug.retainedRows; wrongSlug.normalized.channelSlug = "other-surface";
+      expect((await f.rpc("channel_ingest_record_inbound_event", rawCapture(wrongSlug))).error)
+        .toMatchObject({ code: "P0001", message: "channel_purchase_scope_conflict" });
+      if (rail === "managed") {
+        const h = await channelManagedIngestFixture(db, f);
+        const contexts = await h.read.contexts(wrongSlug);
+        expect(contexts[0].channelSlug).toBe(f.capture.normalized.channelSlug);
+        expect(() => bindChannelPurchasedRows({ capture: wrongSlug, contexts })).toThrow();
+      }
+      expect((await db.query("SELECT count(*)::int n FROM public.channel_order_ingests WHERE channel_id=$1", [f.capture.scope.channelId])).rows[0].n).toBe(0);
+      if (rail === "managed") expect((await db.query("SELECT count(*)::int n FROM public.customer_external_refs WHERE provider_kind=$1", ["channel:other-surface"])).rows[0].n).toBe(0);
+      expect((await db.query("SELECT count(*)::int n FROM public.commerce_orders WHERE source_channel_id=$1", [f.capture.scope.channelId])).rows[0].n).toBe(0);
+    } finally { await db.query("ROLLBACK"); }
+  });
+
+  it("binds typed and raw captures to the original page raw digest before durable effects", async () => {
+    await db.query("BEGIN");
+    try {
+      const f = await channelPurchaseFixture(db, rail); await f.source.recordPage(f.page);
+      const wrongDigest = structuredClone(f.capture);
+      wrongDigest.rawSourceDigest = channelSourceDigest("different-original-source");
+      wrongDigest.normalized.payloadDigest = wrongDigest.rawSourceDigest;
+      rawCapture(wrongDigest);
+      await expect(f.source.recordCapture(wrongDigest)).rejects.toMatchObject({ code: "input_conflict" });
+      expect((await f.rpc("channel_ingest_record_inbound_event", rawCapture(wrongDigest))).error)
+        .toMatchObject({ code: "P0001", message: "channel_purchase_original_page_required" });
+      expect((await db.query("SELECT count(*)::int n FROM public.channel_order_ingests WHERE channel_id=$1", [f.capture.scope.channelId])).rows[0].n).toBe(0);
+      expect((await db.query("SELECT count(*)::int n FROM public.commerce_orders WHERE source_channel_id=$1", [f.capture.scope.channelId])).rows[0].n).toBe(0);
+      expect((await db.query("SELECT count(*)::int n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('channel.purchase-source.v1','channel.purchase-line.v1')", [f.page.scope.connectionId])).rows[0].n).toBe(0);
+      expect((await db.query("SELECT pull_cursor,pull_page_generation::int FROM public.sales_channel_connections WHERE id=$1", [f.page.scope.connectionId])).rows[0])
+        .toEqual({ pull_cursor: null, pull_page_generation: 0 });
+      await f.source.recordCapture(f.capture);
+      expect((await f.source.commitPage(f.page)).outcome).toBe("applied");
+    } finally { await db.query("ROLLBACK"); }
+  });
+
+  it("derives raw page watermarks with public millisecond comparison and exact original tie strings", async () => {
+    await db.query("BEGIN");
+    try {
+      const f = await channelPurchaseFixture(db, rail);
+      const future = structuredClone(f.page); future.pagePacketId = randomUUID(); future.events = []; future.observedHead = null;
+      future.next = { cursor: null, watermark: "2030-01-01T00:00:00Z", generation: 1 };
+      const mismatch = structuredClone(f.page); mismatch.pagePacketId = randomUUID(); mismatch.next.watermark = "2030-01-01T00:00:00Z";
+      for (const page of [future, mismatch]) {
+        await expect(f.source.recordPage(page)).rejects.toMatchObject({ code: "command_invalid" });
+        expect((await f.rpc("channel_pull_page_record", rawPage(page))).error).toMatchObject({ code: "22023", message: "channel_pull_packet_shape" });
+        expect((await db.query("SELECT count(*)::int n FROM public.outbox_events WHERE id=$1", [page.pagePacketId])).rows[0].n).toBe(0);
+      }
+      const page = structuredClone(f.page); page.pagePacketId = randomUUID();
+      page.events = ["2026-02-12T07:15:00.1230001Z", "2026-02-12T08:15:00.1239999+01:00", "2026-02-12T07:15:00.1240001Z", "2026-02-12T07:15:00.1249999Z"]
+        .map((occurredAt, index) => ({ ...f.page.events[0], providerEventId: `timestamp:${index}`, occurredAt, disposition: "unresolved" as const, captureRef: null }));
+      page.next = { cursor: "timestamp:3", watermark: "2026-02-12T07:15:00.1240001Z", generation: 1 };
+      const recorded = await f.source.recordPage(page);
+      expect((await f.rpc("channel_pull_page_record", rawPage(page))).error).toBeNull();
+      const read = await f.source.readPage({ connectionId: page.scope.connectionId, pagePacketId: page.pagePacketId, actorId: f.actor, inputDigest: recorded.inputDigest });
+      expect(read?.page.next.watermark).toBe("2026-02-12T07:15:00.1240001Z");
+      expect((await f.source.commitPage(page)).outcome).toBe("applied");
+      expect((await f.source.commitPage(page)).outcome).toBe("replayed");
+      const tied = structuredClone(page); tied.pagePacketId = randomUUID(); tied.expected = page.next; tied.request.from = page.next.cursor;
+      tied.events = [{ ...page.events[0], providerEventId: "timestamp:tie", occurredAt: "2026-02-12T08:15:00.12499999+01:00" }];
+      tied.next = { ...tied.expected, cursor: "timestamp:tie", generation: 2 };
+      await f.source.recordPage(tied);
+      expect((await f.source.commitPage(tied)).result.after.watermark).toBe(page.next.watermark);
+      expect((await f.source.commitPage(tied)).outcome).toBe("replayed");
+    } finally { await db.query("ROLLBACK"); }
+  });
+
+  it("rejects malformed normalized scalar copies atomically and roundtrips Unicode and nullable values", async () => {
+    await db.query("BEGIN");
+    try {
+      const f = await channelPurchaseFixture(db, rail); await f.source.recordPage(f.page);
+      const invalid: readonly ["buyer" | "shipTo" | "shipping", string, unknown][] = [
+        ["buyer", "email", { nested: "private@example.invalid" }], ["buyer", "firstName", []], ["buyer", "lastName", true],
+        ["buyer", "phone", 7], ["buyer", "emailIsMasked", "false"], ["buyer", "externalCustomerRef", {}],
+        ["buyer", "externalCustomerRef", "x".repeat(129)], ["buyer", "email", "x".repeat(321)],
+        ["buyer", "firstName", "x".repeat(121)], ["buyer", "firstName", "😀".repeat(61)], ["buyer", "lastName", "x".repeat(121)],
+        ["buyer", "phone", "x".repeat(41)], ["buyer", "taxId", "x".repeat(33)], ["buyer", "companyName", "x".repeat(201)],
+        ["buyer", "firstName", "\tUntrimmed"], ["buyer", "externalCustomerRef", "\u00a0untrimmed"],
+        ["shipTo", "recipientName", {}], ["shipTo", "line1", []], ["shipTo", "line2", false], ["shipTo", "city", null],
+        ["shipTo", "recipientName", ""], ["shipTo", "recipientName", "x".repeat(201)], ["shipTo", "line1", "x".repeat(201)],
+        ["shipTo", "line2", "x".repeat(201)], ["shipTo", "postalCode", "x".repeat(21)], ["shipTo", "city", "x".repeat(121)],
+        ["shipTo", "phone", "x".repeat(41)], ["shipTo", "pickupPointRef", "x".repeat(121)],
+        ["shipTo", "city", "Trailing\u3000"], ["shipTo", "countryCode", true], ["shipTo", "countryCode", "de"],
+        ["shipping", "methodLabel", {}], ["shipping", "carrierHint", []], ["shipping", "carrierHint", true],
+        ["shipping", "methodLabel", "x".repeat(121)], ["shipping", "carrierHint", "x".repeat(65)],
+        ["shipping", "methodLabel", "\uFEFFUntrimmed"], ["shipping", "grossMinor", "7"], ["shipping", "discountMinor", -1],
+      ];
+      for (const [section, key, value] of invalid) {
+        const capture = structuredClone(f.capture); Object.assign(capture.normalized[section], { [key]: value });
+        expect((await f.rpc("channel_ingest_record_inbound_event", rawCapture(capture))).error, `${section}.${key}: ${JSON.stringify(value)}`)
+          .toMatchObject({ code: "22023", message: "channel_purchase_nested_shape" });
+        expect((await db.query("SELECT count(*)::int n FROM public.channel_order_ingests WHERE channel_id=$1", [capture.scope.channelId])).rows[0].n).toBe(0);
+        expect((await db.query("SELECT count(*)::int n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('channel.purchase-source.v1','channel.purchase-line.v1')", [capture.scope.connectionId])).rows[0].n).toBe(0);
+      }
+      f.capture.normalized.buyer.firstName = "Zoë 字 😀"; f.capture.normalized.buyer.lastName = null;
+      f.capture.normalized.buyer.companyName = "😀".repeat(100);
+      f.capture.normalized.shipTo.city = "Łódź 字"; f.capture.normalized.shipTo.line2 = null;
+      f.capture.normalized.shipping.methodLabel = "取件 😀"; f.capture.normalized.shipping.carrierHint = null;
+      rawCapture(f.capture);
+      await f.source.recordCapture(f.capture);
+      expect((await f.source.readCapture({ channelId: f.capture.scope.channelId, providerEventId: f.capture.providerEventId, actorId: f.actor }))?.capture).toEqual(f.capture);
+    } finally { await db.query("ROLLBACK"); }
+  });
+
+  if (rail === "managed") it.each([false, true])("settles local allocation with split lots %s and counts items while preserving exact holds on replay", async split => {
+    await db.query("BEGIN");
+    try {
+      const f = await channelPurchaseFixture(db, rail), h = await channelManagedIngestFixture(db, f);
+      const capture = structuredClone(f.capture); delete capture.retainedRows;
+      capture.normalized.lines[0] = { ...capture.normalized.lines[0], quantity: 6, lineGrossMinor: 18, lineDiscountMinor: 8 };
+      capture.normalized.totals = { ...capture.normalized.totals, itemsGrossMinor: 18, itemsDiscountMinor: 8, grandTotalMinor: 15 };
+      capture.normalizedDigest = channelSourceDigest(canonicalChannelSource(capture.normalized));
+      f.capture = bindChannelPurchasedRows({ capture, contexts: [f.context] });
+      await db.query("UPDATE public.sales_channels SET delivery_selection=$2 WHERE id=$1", [capture.scope.channelId, { providerKind: "synthetic_local", serviceCode: "LOCAL" }]);
+      const location = randomUUID(), sku = f.context.bundle.components[0].skuId;
+      await db.query("INSERT INTO public.inventory_locations(id,code,display_name,kind,status,region,fulfillable) VALUES($1,'channel-local','Synthetic local stock','internal_warehouse','active','DE',true)", [location]);
+      for (const [index, quantity] of (split ? [1, 119] : [120]).entries()) {
+        const lot = randomUUID();
+        await db.query("INSERT INTO public.inventory_lots(id,sku_id,lot_code,expires_at) VALUES($1,$2,$3,now()+$4::int*interval '1 day')", [lot, sku, `local:${index}`, 10 + index]);
+        await db.query("INSERT INTO public.inventory_balances(sku_id,location_id,lot_id,on_hand) VALUES($1,$2,$3,$4)", [sku, location, lot, quantity]);
+      }
+      await f.source.recordPage(f.page);
+      const ledgerId = (await f.source.recordCapture(f.capture) as { ingest: { id: string } }).ingest.id;
+      const outcome = await h.run(ledgerId); expect(outcome).toMatchObject({ kind: "settled" });
+      if (outcome.kind !== "settled") throw new Error("local allocation did not settle");
+      const holds = await h.read.reservations(outcome.orderId);
+      expect(holds).toHaveLength(split ? 4 : 3);
+      expect(holds.every(hold => hold.metadata.providerKind === undefined && hold.metadata.holdKind === "paid_order_hold" && hold.expires_at === null)).toBe(true);
+      expect(holds.reduce((sum, hold) => sum + hold.quantity, 0)).toBe(6);
+      const items = await h.options.rails!.orderItems.readOrderItems(outcome.orderId);
+      const order = { idempotencyKey: "unused-sealed-replay", orderId: outcome.orderId, items, providerKind: "synthetic_local" };
+      const reservations = createChannelExposureReservationRail({ jobRunId: f.job, ledgerId, capture: f.capture, source: f.source, read: h.read, newId: randomUUID });
+      expect(await reservations.reserveChannelOrderItems(order)).toEqual({ reservedItemCount: 3 });
+      for (const change of [{ quantity: holds[0].quantity + 1 }, { sku_id: randomUUID() }, { order_item_id: randomUUID() }, { idempotency_key: "wrong-hold-key" }]) {
+        const malformed = createChannelExposureReservationRail({ jobRunId: f.job, ledgerId, capture: f.capture, source: f.source,
+          read: { ...h.read, async reservations() { return [{ ...holds[0], ...change }, ...holds.slice(1)]; } }, newId: randomUUID });
+        await expect(malformed.reserveChannelOrderItems(order)).rejects.toMatchObject({ code: "response_invalid" });
+      }
+      for (const patch of ["status='released'", "expires_at=now()+interval '1 hour'"]) {
+        await db.query("SAVEPOINT malformed_hold");
+        try {
+          await db.query(`UPDATE public.inventory_reservations SET ${patch} WHERE id=$1`, [holds[0].id]);
+          await expect(reservations.reserveChannelOrderItems(order)).rejects.toThrow();
+        } finally { await db.query("ROLLBACK TO SAVEPOINT malformed_hold; RELEASE SAVEPOINT malformed_hold"); }
+      }
+      expect(await h.run(ledgerId)).toMatchObject({ kind: "replayed", orderId: outcome.orderId });
+      expect(await h.read.reservations(outcome.orderId)).toEqual(holds);
+      expect((await db.query("SELECT count(*)::int n FROM public.commerce_payment_intents WHERE order_id=$1", [outcome.orderId])).rows[0].n).toBe(1);
+      expect((await db.query("SELECT count(*)::int n FROM public.inventory_stock_movements WHERE reservation_id=ANY($1::uuid[])", [holds.map(hold => hold.id)])).rows[0].n).toBe(holds.length);
+    } finally { await db.query("ROLLBACK"); }
+  });
+
+  if (rail === "managed") it("recovers the sealed original order and holds after the channel delivery provider changes", async () => {
+    await db.query("BEGIN");
+    try {
+      const f = await channelPurchaseFixture(db, rail), h = await channelManagedIngestFixture(db, f); await h.stock(120);
+      await f.source.recordPage(f.page); const ledgerId = (await f.source.recordCapture(f.capture) as { ingest: { id: string } }).ingest.id;
+      const readHolds = h.read.reservations;
+      h.read.reservations = async () => { throw new Error("synthetic_response_loss_after_committed_conversion"); };
+      await expect(h.run(ledgerId)).rejects.toThrow();
+      h.read.reservations = readHolds;
+      const orderId = (await db.query("SELECT order_id FROM public.channel_order_ingests WHERE id=$1", [ledgerId])).rows[0].order_id;
+      const holds = await readHolds(orderId);
+      const original = await f.source.originalConversion({ ledgerId, externalLineRef: "line:19", jobRunId: f.job, canonicalText: null });
+      expect(holds).toHaveLength(3); expect(holds.every(hold => hold.metadata.providerKind === f.providerKind)).toBe(true);
+      expect((await db.query("SELECT count(*)::int n FROM public.commerce_payment_intents WHERE order_id=$1", [orderId])).rows[0].n).toBe(0);
+      await db.query("UPDATE public.sales_channels SET delivery_selection=$2 WHERE id=$1", [f.capture.scope.channelId, { providerKind: "synthetic_changed", serviceCode: "CHANGED" }]);
+      expect(await h.run(ledgerId)).toMatchObject({ kind: "settled", orderId });
+      expect((await h.read.reservations(orderId)).map(hold => ({ ...hold, metadata: {} }))).toEqual(holds.map(hold => ({ ...hold, metadata: {} })));
+      expect((await h.read.reservations(orderId)).every(hold => hold.metadata.providerKind === f.providerKind && hold.metadata.holdKind === "paid_order_hold")).toBe(true);
+      expect(await f.source.originalConversion({ ledgerId, externalLineRef: "line:19", jobRunId: f.job, canonicalText: null })).toBe(original);
+      expect((await db.query("SELECT metadata#>>'{selectedDelivery,providerKind}' provider FROM public.commerce_orders WHERE id=$1", [orderId])).rows[0].provider).toBe(f.providerKind);
+      expect(await h.run(ledgerId)).toMatchObject({ kind: "replayed", orderId });
+      expect((await db.query("SELECT count(*)::int n FROM public.commerce_payment_intents WHERE order_id=$1", [orderId])).rows[0].n).toBe(1);
+    } finally { await db.query("ROLLBACK"); }
   });
 
   if(rail==="managed")it("reads actual retained context, original capture and recovery selection through the managed adapter",async()=>{
