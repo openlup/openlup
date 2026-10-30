@@ -112,7 +112,7 @@ it("preserves reference-compatible stored booleans and ordered array-like consen
 it.each([[false,false],[true,false],[false,true],[true,true]])("keeps independent consent for analytics=%s marketing=%s", (analytics, marketing) => {
   const f=fixture();
   f.store(JSON.stringify({necessary:true,functional:false,analytics,marketing}));
-  const layer=createAnalyticsDataLayer({...f.options,allowMarketingWithoutAnalytics:true});
+  const layer=createAnalyticsDataLayer({...f.options,consentPolicy:"independent"});
   expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(analytics || marketing);
   if (!analytics && !marketing) { expect(f.browser.dataLayer).toBeUndefined(); return; }
   expect((f.browser.dataLayer![1] as IArguments)[2]).toEqual({measurement:analytics?"granted":"denied",campaign:marketing?"granted":"denied",attribution:marketing?"granted":"denied",personalization:marketing?"granted":"denied"});
@@ -124,8 +124,46 @@ it.each([[false,false],[true,false],[false,true],[true,true]])("keeps independen
 it("retains the analytics requirement by default and refuses malformed opt-in consent",()=>{
   const f=fixture();f.store(JSON.stringify({necessary:true,functional:false,analytics:false,marketing:true}));
   expect(f.analytics.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(false);
-  const layer=createAnalyticsDataLayer({...f.options,allowMarketingWithoutAnalytics:true});
+  const layer=createAnalyticsDataLayer({...f.options,consentPolicy:"independent"});
   for(const raw of ['{}','null','{"marketing":true}','{"necessary":true,"functional":false,"analytics":false,"marketing":"true"}']){
     f.store(raw);expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(false);
   }
+});
+
+
+it.each([[false,false],[true,false],[false,true],[true,true]])("admits consent-aware observations without inventing grants for analytics=%s marketing=%s", (analytics,marketing)=>{
+  const f=fixture();f.store(JSON.stringify({necessary:true,functional:false,analytics,marketing}));
+  const layer=createAnalyticsDataLayer({...f.options,consentPolicy:"host-authorized"});
+  expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(true);
+  expect(Array.from(f.browser.dataLayer![0] as IArguments)).toEqual(["consent","default",{measurement:"denied",campaign:"denied",attribution:"denied",personalization:"denied"}]);
+  expect((f.browser.dataLayer![1] as IArguments)[2]).toEqual({measurement:analytics?"granted":"denied",campaign:marketing?"granted":"denied",attribution:marketing?"granted":"denied",personalization:marketing?"granted":"denied"});
+  f.store(JSON.stringify({necessary:true,functional:false,analytics:false,marketing:false}));
+  layer.pushAnalyticsConsentUpdate(true);
+  expect((f.browser.dataLayer!.at(-1) as IArguments)[2]).toEqual({measurement:"denied",campaign:"denied",attribution:"denied",personalization:"denied"});
+  expect(layer.pushAnalyticsEvent("page_view",{page_path:"/later"})).toBe(true);
+  layer.pushAnalyticsConsentUpdate(false);
+  expect((f.browser.dataLayer!.at(-1) as IArguments)[2]).toEqual({measurement:"denied",campaign:"denied",attribution:"denied",personalization:"denied"});
+});
+it.each(["bad","null","{}",'{"necessary":true,"functional":false,"analytics":"true","marketing":true}'])("consent-aware admission treats malformed choice as denial: %s",raw=>{
+  const f=fixture();f.store(raw);
+  const layer=createAnalyticsDataLayer({...f.options,consentPolicy:"host-authorized"});
+  expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(true);
+  expect((f.browser.dataLayer![1] as IArguments)[2]).toEqual({measurement:"denied",campaign:"denied",attribution:"denied",personalization:"denied"});
+});
+it("keeps absent signal/container/browser refusal for consent-aware hosts",()=>{
+  const f=fixture();
+  for(const override of [{consentSignalNames:undefined},{readContainerId:()=>null},{getWindow:()=>undefined}]){
+    const layer=createAnalyticsDataLayer({...f.options,consentPolicy:"host-authorized",...override});
+    expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(false);
+  }
+  expect(f.browser.dataLayer).toBeUndefined();
+});
+
+
+it.each(["analytics-only","independent","host-authorized"] as const)("preserves caller-update compatibility only in the default policy: %s",consentPolicy=>{
+  const f=fixture();f.store(JSON.stringify({necessary:true,functional:false,analytics:false,marketing:true}));f.browser.dataLayer=[];
+  const layer=createAnalyticsDataLayer({...f.options,consentPolicy});layer.pushAnalyticsConsentUpdate(true);
+  expect((f.browser.dataLayer![0] as IArguments)[2]).toEqual({measurement:consentPolicy==="analytics-only"?"granted":"denied",campaign:"granted",attribution:"granted",personalization:"granted"});
+  layer.pushAnalyticsConsentUpdate(false);
+  expect((f.browser.dataLayer![1] as IArguments)[2]).toEqual({measurement:"denied",campaign:"denied",attribution:"denied",personalization:"denied"});
 });

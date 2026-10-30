@@ -195,7 +195,7 @@ contract; they do not certify a deployed route or security policy.
 
 ## Marketing contracts
 
-The browser data-layer factory defaults to analytics-consent-only admission. Hosts may opt in with `allowMarketingWithoutAnalytics: true` to admit events with either stored analytics or marketing cookie consent. In this mode consent updates reflect each category independently; `pushAnalyticsConsentUpdate(false)` denies both. The host must gate every tag by its own purpose, including preventing cookieless analytics when analytics consent is denied. Queue admission does not prove delivery or attribution.
+The browser data-layer factory defaults to analytics-consent-only admission. Hosts may opt in with `consentPolicy: "independent"` to admit events with either stored analytics or marketing cookie consent. The explicit `consentPolicy: "host-authorized"` mode also admits observations when no purpose is granted, solely for hosts that authorize limited consent-aware transmission and enforce route and per-tag gates. Both nondefault modes keep consent updates tied to each stored category; `pushAnalyticsConsentUpdate(false)` denies both. The host must gate every tag by its own purpose, and may allow denied-state transmission only for explicitly authorized consent-aware tags. The factory does not inspect tag behavior or minimize event payloads; the host must authorize every admitted event and its data. Queue admission never authorizes storage or grants a purpose. In nondefault modes update(true) publishes stored flags and update(false) publishes all denial; neither switches the admission policy or fences routes. Queue admission does not prove delivery or attribution.
 
 
 `./marketing` provides acquisition address references, historical case projections,
@@ -256,12 +256,12 @@ independent. Consent commands seed default before update and
 use array-like arguments; advertising grants read marketing consent at push time.
 By default, update commands carry the caller-supplied analytics decision and
 optional events require the stored analytics flag. With
-`allowMarketingWithoutAnalytics: true`, updates additionally require each
+`consentPolicy: "independent"`, updates additionally require each
 purpose’s stored flag, and optional events accept either stored analytics or
-marketing consent. Both modes require a configured container. The host owns
+marketing consent. With `consentPolicy: "host-authorized"`, optional events are admitted even before choice or after refusal, while updates still require each purpose’s stored flag. Optional event admission in every mode requires a configured container and configured signals. Hosts must independently fence private routes and unauthorized tags. The host owns
 authorization and must not use this helper to create consent; stored flags are
 admission inputs, not consent authority.
-Revocation denies every signal. Sinks are attempted independently with failure
+An explicit all-denial update denies every signal. Sinks are attempted independently with failure
 isolation and no replay of observations made before consent. Admission booleans
 mean synchronous local acceptance only, never delivery or business acknowledgement.
 

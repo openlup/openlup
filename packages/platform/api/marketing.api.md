@@ -230,8 +230,8 @@ export type { AnalyticsSinkAttemptMask, AnalyticsSinkAdmission, AnalyticsCookieC
 import type { AnalyticsEventMap, AnalyticsEventName } from "./noop.js";
 /**
  * Each instance owns loader state; the host supplies browser, deployment policy
- * and consent decisions. Consent updates emit the caller's decision; the host
- * authorizes it.
+ * and consent policy. Nondefault policies publish stored purpose flags; the
+ * default preserves caller-authorized analytics updates. No policy validates tags.
  */
 export declare function createAnalyticsDataLayer<StepName extends string = string>(options?: AnalyticsDataLayerOptions<StepName>): {
     readCookieConsent: () => AnalyticsCookieConsent | null;
@@ -544,8 +544,8 @@ export interface AnalyticsDataLayerOptions<StepName extends string = string> {
         analytics: string;
         advertising: readonly string[];
     };
-    /** Opt in to independent analytics/advertising consent. Hosts must gate each tag by its own purpose. */
-    allowMarketingWithoutAnalytics?: boolean;
+    /** Default analytics-only preserves legacy admission. Independent requires either stored purpose; host-authorized admits every typed event even with both denied. Nondefault modes publish independent stored signals: update(true) publishes stored flags, update(false) denies all; neither changes the admission policy. Hosts must fence routes and tag purposes; denied-state transmission is only for explicitly authorized consent-aware tags. */
+    consentPolicy?: "analytics-only" | "independent" | "host-authorized";
     eventPrefix?: string;
     readContainerId?: () => string | null;
     trackDeploymentEvent?: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]) => boolean;
