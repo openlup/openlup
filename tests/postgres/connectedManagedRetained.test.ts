@@ -98,31 +98,31 @@ beforeAll(async () => {
     VALUES($1,$2,'retained-sku','Retained SKU','other','active',100,100,true)`, [skuId, productId]);
   await managed.owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [productId, skuId]);
   await managed.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,status) VALUES($1,'Retained list','ZZ','XXX','active')", [priceListId]);
-  await managed.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES($1,$2,'subscription',100)",
+  await managed.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES($1,$2,'subscription',120)",
     [priceListId, skuId]);
   await managed.owner.query(`INSERT INTO public.subscriptions
-    (id,client_id,cadence_days,currency,region_code,status,next_cycle_at,payment_method_ref,payment_method_kind)
-    VALUES($1,$2,28,'XXX','ZZ','active','2027-01-01','synthetic-method','card')`, [subscriptionId, clientId]);
+    (id,client_id,cadence_days,currency,region_code,status,next_cycle_at,payment_method_ref,payment_method_kind,created_at)
+    VALUES($1,$2,28,'XXX','ZZ','active','2027-01-01','synthetic-method','card',now()-interval '30 days')`, [subscriptionId, clientId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_method_refs
-    (client_id,subscription_id,provider_kind,method_kind,provider_method_ref,provider_mandate_ref,status,active,consent_snapshot)
-    VALUES($1,$2,'synthetic-provider','card','synthetic-method','synthetic-mandate','active',true,$3::jsonb)`,
+    (client_id,subscription_id,provider_kind,method_kind,provider_customer_ref,provider_method_ref,provider_mandate_ref,status,active,consent_snapshot)
+    VALUES($1,$2,'synthetic-provider','card','synthetic-customer','synthetic-method','synthetic-mandate','active',true,$3::jsonb)`,
   [clientId, subscriptionId, JSON.stringify({ recurringModel: "O", acceptedAt: "2026-01-01T00:00:00Z" })]);
-  await managed.owner.query("INSERT INTO public.subscription_lines(id,subscription_id,variant_id,qty,sort_order) VALUES($1,$2,$3,1,0)",
+  await managed.owner.query("INSERT INTO public.subscription_lines(id,subscription_id,variant_id,qty,sort_order,created_at) VALUES($1,$2,$3,2,2,now()-interval '29 days')",
     [lineId, subscriptionId, skuId]);
   await managed.owner.query(`INSERT INTO public.subscription_price_agreements
     (subscription_id,subscription_line_id,variant_id,currency,unit_price_gross_minor,template_version,source_action,idempotency_key)
     VALUES($1,$2,$3,'XXX',100,1,'synthetic_setup','source-price-agreement:1')`, [subscriptionId, lineId, skuId]);
   await managed.owner.query(`INSERT INTO public.subscription_cycles
     (subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key)
-    VALUES($1,0,'2026-11-01','cancelled','source-cycle:0')`, [subscriptionId]);
+    VALUES($1,3,'2026-11-01','cancelled','source-cycle:3')`, [subscriptionId]);
   await managed.owner.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
     VALUES($1,'created','source-subscription:1','{}')`, [subscriptionId]);
   await managed.owner.query(`INSERT INTO public.communication_contacts(id,normalized_email,display_email)
     VALUES($1,$2,$2)`, [contactId, email]);
   await managed.owner.query(`INSERT INTO public.communication_contact_links(contact_id,source_table,source_id)
     VALUES($1,'clients',$2)`, [contactId, clientId]);
-  await managed.owner.query(`INSERT INTO public.communication_permissions(contact_id,purpose,state,source)
-    VALUES($1,'marketing_newsletter','suppressed','synthetic_fixture')`, [contactId]);
+  await managed.owner.query(`INSERT INTO public.communication_permissions(contact_id,purpose,state,source,captured_at)
+    VALUES($1,'marketing_newsletter','suppressed','synthetic_fixture',now()-interval '28 days')`, [contactId]);
   await managed.owner.query(`INSERT INTO public.commerce_orders
     (id,client_id,status,currency,subtotal_cents,total_cents,mode,created_at)
     VALUES($1,$2,'pending_payment','XXX',900,900,'one_time',now()-interval '2 hours')`, [orderId, clientId]);
@@ -133,36 +133,36 @@ beforeAll(async () => {
   await managed.owner.query(`INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','failed',900,'XXX')`, [paymentId, orderId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_intents
-    (id,target_kind,order_id,payment_id,amount_cents,currency,status)
-    VALUES($1,'one_time_order',$2,$3,900,'XXX','failed')`, [intentId, orderId, paymentId]);
+    (id,target_kind,order_id,payment_id,amount_cents,currency,status,failure_reason,created_at)
+    VALUES($1,'one_time_order',$2,$3,900,'XXX','failed','provider_refused',now()-interval '100 minutes')`, [intentId, orderId, paymentId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_attempts
     (payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','source-attempt:1','failed',900,'XXX')`, [intentId, paymentId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_state_transitions
-    (payment_intent_id,transition_kind,from_status,to_status,reason,idempotency_key)
-    VALUES($1,'intent','created','failed','provider_refused','source-transition:1')`, [intentId]);
+    (payment_intent_id,transition_kind,from_status,to_status,reason,idempotency_key,occurred_at)
+    VALUES($1,'intent','created','failed','provider_refused','source-transition:1',now()-interval '95 minutes')`, [intentId]);
   await managed.owner.query(`INSERT INTO public.commerce_orders
-    (id,client_id,status,currency,subtotal_cents,total_cents,tax_cents,mode)
-    VALUES($1,$2,'paid','XXX',900,900,67,'one_time')`, [paidOrderId, clientId]);
+    (id,client_id,status,currency,subtotal_cents,total_cents,tax_cents,mode,metadata)
+    VALUES($1,$2,'paid','XXX',900,900,67,'one_time','{"sourceNote":"synthetic"}')`, [paidOrderId, clientId]);
   await managed.owner.query(`UPDATE public.outbox_events SET status='discarded',error='synthetic source policy skip'
     WHERE aggregate_id=$1 AND event_type='commerce.order.paid.email'`, [paidOrderId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
     (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
-    VALUES($1,$2,1,900,900,0,900,833,1)`, [paidOrderId, skuId]);
+    VALUES($1,$2,2,450,900,0,900,833,2)`, [paidOrderId, skuId]);
   await managed.owner.query(`INSERT INTO public.commerce_payments
     (id,order_id,provider,provider_payment_id,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','provider-paid:1','succeeded',900,'XXX')`, [paidPaymentId, paidOrderId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_intents
-    (id,target_kind,order_id,payment_id,amount_cents,currency,status,provider_payment_id)
-    VALUES($1,'one_time_order',$2,$3,900,'XXX','succeeded','provider-paid:1')`,
+    (id,target_kind,order_id,payment_id,amount_cents,currency,status,provider_payment_id,created_at)
+    VALUES($1,'one_time_order',$2,$3,900,'XXX','succeeded','provider-paid:1',now()-interval '100 minutes')`,
   [paidIntentId, paidOrderId, paidPaymentId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_attempts
     (payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','source-attempt:paid','succeeded',900,'XXX')`, [paidIntentId, paidPaymentId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_state_transitions
-    (payment_intent_id,transition_kind,from_status,to_status,reason,idempotency_key)
-    VALUES($1,'intent','processing','succeeded','provider_confirmed','source-transition:paid')`, [paidIntentId]);
+    (payment_intent_id,transition_kind,from_status,to_status,reason,idempotency_key,occurred_at)
+    VALUES($1,'intent','processing','succeeded','provider_confirmed','source-transition:paid',now()-interval '95 minutes')`, [paidIntentId]);
   await managed.owner.query(`INSERT INTO public.payment_external_refs
     (id,payment_id,provider_kind,provider_payment_id,provider_session_id,raw_payload)
     VALUES($1,$2,'synthetic-provider','provider-paid:1','source-session:paid',$3::jsonb),
@@ -294,7 +294,8 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(mapped.packet.compatible.tables.find(value => value.table === "commerce_settlement_transitions")?.rows).toHaveLength(2);
   expect(mapped.packet.compatible.tables.find(value => value.table === "subscription_renewal_terms")?.rows).toHaveLength(1);
   expect(mapped.packet.owned.find(value => value.table === "subscription_lines")?.rows).toHaveLength(1);
-  // Each typed relation in the obligation table is populated here; the exact row comparison after restore proves it.
+  // Each typed relation in the obligation table is populated here. The exact expected rows after restore prove
+  // the source-to-typed mapping; the packet comparison at the end proves only restore fidelity.
   for (const table of ["clients", "subscriptions", "subscription_events", "subscription_renewal_term_lines", "subscription_cycles",
     "commerce_order_items", "outbox_events", "catalog_products", "catalog_skus", "price_lists", "price_entries",
     "communication_recipient_consents", "invoicing_cutover"]) {
@@ -350,9 +351,63 @@ it("projects typed managed obligations and leaves source history in the operator
     await reminderProbe.query("DELETE FROM public.outbox_events WHERE idempotency_key=$1", [reminderKey]);
     expect((await reminderProbe.query(enqueueReminders)).rows).toEqual([{ result: { enqueued_1h: 1, enqueued_20h: 0 } }]);
   } finally { await reminderProbe.query("ROLLBACK"); reminderProbe.release(); }
-  expect((await targetOwner!.query("SELECT recipient_fingerprint,purpose,state FROM public.communication_recipient_consents")).rows)
+  const sourceRow = async (table: string, id: string) => (await managed.owner.query(`SELECT * FROM public.${table} WHERE id=$1`, [id])).rows[0];
+  const sourceSubscription = await sourceRow("subscriptions", subscriptionId), sourceLine = await sourceRow("subscription_lines", lineId);
+  const typed = async (sql: string, ...params: unknown[]) => (await targetOwner!.query(sql, params)).rows;
+  expect(await typed("SELECT id,client_id,status,next_cycle_at,cadence_days,price_list_id,currency_code FROM public.subscriptions"))
+    .toEqual([{ id: subscriptionId, client_id: clientId, status: "active", next_cycle_at: sourceSubscription.next_cycle_at,
+      cadence_days: 28, price_list_id: priceListId, currency_code: "XXX" }]);
+  expect(await typed("SELECT * FROM public.subscription_renewal_terms"))
+    .toEqual([{ subscription_id: subscriptionId, next_cycle_number: 4, currency_code: "XXX", stock_source_key: "retained-sku",
+      settlement_channel_key: "synthetic-provider", unattended_charge_authorized_at: new Date("2026-01-01T00:00:00Z"),
+      // Mandate evidence only. This does not approve it as the charge reference, which needs a later provider proof.
+      authorization_ref: "synthetic-mandate",
+      payer_account_ref: "synthetic-customer", delivery_admission: "blocked",
+      delivery_block_reason: "managed-source-address-binding-required",
+      created_at: sourceSubscription.created_at, updated_at: sourceSubscription.updated_at }]);
+  expect(await typed("SELECT * FROM public.subscription_renewal_term_lines"))
+    .toEqual([{ subscription_id: subscriptionId, line_ordinal: 3, sku: "retained-sku", quantity: 2, unit_amount_minor: "100",
+      created_at: sourceLine.created_at, updated_at: sourceLine.updated_at }]);
+  expect(await typed("SELECT id,subscription_id,variant_id,quantity,unit_price_minor,currency_code FROM public.subscription_lines"))
+    .toEqual([{ id: lineId, subscription_id: subscriptionId, variant_id: skuId, quantity: 2, unit_price_minor: "100", currency_code: "XXX" }]);
+  const sourcePaidOrder = await sourceRow("commerce_orders", paidOrderId), sourceOrder = await sourceRow("commerce_orders", orderId);
+  const sourcePaidIntent = await sourceRow("commerce_payment_intents", paidIntentId), sourceIntent = await sourceRow("commerce_payment_intents", intentId);
+  const noOrderLinks = { subscription_cycle_id: null, cancelled_at: null, refunded_at: null, source_channel_id: null, source_order_ref: null,
+    renewal_operation_id: null, renewal_operation_fingerprint: null, currency_code: "XXX", source_kind: "storefront", client_id: clientId };
+  expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", paidOrderId))
+    .toEqual([{ ...noOrderLinks, id: paidOrderId, status: "paid", created_at: sourcePaidOrder.created_at, updated_at: sourcePaidOrder.updated_at,
+      paid_at: sourcePaidIntent.updated_at, total_amount_minor: "900", metadata: { sourceNote: "synthetic" } }]);
+  expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", orderId))
+    .toEqual([{ ...noOrderLinks, id: orderId, status: "pending_payment", created_at: sourceOrder.created_at, updated_at: sourceOrder.updated_at,
+      paid_at: null, total_amount_minor: "900", metadata: {} }]);
+  const sourcePaidItem = (await managed.owner.query("SELECT * FROM public.commerce_order_items WHERE order_id=$1", [paidOrderId])).rows[0];
+  expect(await typed("SELECT * FROM public.commerce_order_items WHERE order_id=$1", paidOrderId))
+    .toEqual([{ id: sourcePaidItem.id, order_id: paidOrderId, sku_id: skuId, line_ordinal: 2, quantity: 2, unit_amount_minor: "450", line_amount_minor: "900",
+      created_at: sourcePaidItem.created_at, source_line_ordinal: null, catalog_unit_amount_minor: null, catalog_line_amount_minor: null,
+      promotion_discount_allocated_minor: null, promotion_allocation_fingerprint: null }]);
+  const managedKey = (kind: string, id: string) => `managed-transfer-${kind}:${createHash("sha256").update(JSON.stringify([sourceId, id])).digest("hex")}`;
+  const noIntentLinks = { channel_key: "synthetic-provider", amount_minor: "900", currency_code: "XXX", renewal_operation_id: null, renewal_operation_fingerprint: null };
+  expect(await typed("SELECT * FROM public.commerce_settlement_intents WHERE id=$1", paidIntentId))
+    .toEqual([{ ...noIntentLinks, id: paidIntentId, order_id: paidOrderId, status: "settled", external_ref: "provider-paid:1",
+      open_idempotency_key: managedKey("open", paidIntentId), settled_at: sourcePaidIntent.updated_at, failure_reason: null,
+      created_at: sourcePaidIntent.created_at, updated_at: sourcePaidIntent.updated_at }]);
+  expect(await typed("SELECT * FROM public.commerce_settlement_intents WHERE id=$1", intentId))
+    .toEqual([{ ...noIntentLinks, id: intentId, order_id: orderId, status: "failed", external_ref: null,
+      open_idempotency_key: managedKey("open", intentId), settled_at: null, failure_reason: "provider_refused",
+      created_at: sourceIntent.created_at, updated_at: sourceIntent.updated_at }]);
+  const sourceTransition = async (intent: string) => (await managed.owner.query(
+    "SELECT id,occurred_at FROM public.commerce_payment_state_transitions WHERE payment_intent_id=$1", [intent])).rows[0];
+  const paidTransition = await sourceTransition(paidIntentId), failedTransition = await sourceTransition(intentId);
+  expect(await typed("SELECT * FROM public.commerce_settlement_transitions WHERE intent_id=$1", paidIntentId))
+    .toEqual([{ id: paidTransition.id, intent_id: paidIntentId, from_status: "created", to_status: "settled", outcome: "succeeded",
+      idempotency_key: managedKey("transition", paidTransition.id), payload: { sourceId, sourceRowId: paidTransition.id }, occurred_at: paidTransition.occurred_at }]);
+  expect(await typed("SELECT * FROM public.commerce_settlement_transitions WHERE intent_id=$1", intentId))
+    .toEqual([{ id: failedTransition.id, intent_id: intentId, from_status: "created", to_status: "failed", outcome: "failed",
+      idempotency_key: managedKey("transition", failedTransition.id), payload: { sourceId, sourceRowId: failedTransition.id }, occurred_at: failedTransition.occurred_at }]);
+  const sourceConsent = (await managed.owner.query("SELECT captured_at,updated_at FROM public.communication_permissions WHERE contact_id=$1", [contactId])).rows[0];
+  expect((await targetOwner!.query("SELECT recipient_fingerprint,purpose,state,captured_at,updated_at FROM public.communication_recipient_consents")).rows)
     .toEqual([{ recipient_fingerprint: createHash("sha256").update(email).digest("hex"),
-      purpose: "marketing_newsletter", state: "suppressed" }]);
+      purpose: "marketing_newsletter", state: "suppressed", captured_at: sourceConsent.captured_at, updated_at: sourceConsent.updated_at }]);
   expect(JSON.stringify(mapped.packet)).not.toContain("catalog_draft_upsert");
   expect(JSON.stringify(mapped.packet)).not.toContain("source-attempt:1");
   expect(JSON.stringify(mapped.packet)).not.toContain("other-person@example.invalid");
@@ -779,6 +834,13 @@ async function mapMutated(mutation: readonly string[]) {
 
 it("refuses every row class with no typed path", async () => {
   await expect(mapMutated([])).resolves.toBeDefined();
+  await expect(mapMutated([`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitPriceGross":{"amountMinor":100},"quantity":2}}}' WHERE id='${lineId}'`]),
+    "quote line that agrees with the agreement").resolves.toBeDefined();
+  await expect(mapMutated([`INSERT INTO public.communication_email_deliveries
+    (client_id,purpose,template_slug,trigger_source,trigger_event,aggregate_type,aggregate_id,outbox_event_id,dedupe_key,status)
+    SELECT '${clientId}','transactional','t','outbox',event_type,aggregate_type,aggregate_id::text,id,'delivery:terminal','failed'
+    FROM public.outbox_events WHERE aggregate_id='${paidOrderId}' AND event_type='commerce.order.paid.email'`]),
+    "failed delivery of discarded work").resolves.toBeDefined();
   const secondSubscriptionId = randomUUID(), secondLineId = randomUUID();
   const cycle =`(SELECT id FROM public.subscription_cycles WHERE subscription_id='${subscriptionId}' LIMIT 1)`;
   const method = `UPDATE public.commerce_payment_method_refs SET`, methodWhere = `WHERE subscription_id='${subscriptionId}'`;
@@ -805,6 +867,7 @@ it("refuses every row class with no typed path", async () => {
     ["method for another reference", [`${method} provider_method_ref='method:other' ${methodWhere}`], "target_conflict", methodTable],
     ["method without recurring consent", [`${method} consent_snapshot='{}' ${methodWhere}`], "target_conflict", methodTable],
     ["method without a mandate", [`${method} provider_mandate_ref=NULL ${methodWhere}`], "target_conflict", methodTable],
+    ["consent time the target cannot hold", [`${method} consent_snapshot='{"recurringModel":"O","acceptedAt":"Feb 30 2026"}' ${methodWhere}`], "invalid_input", "subscription_renewal_terms"],
     ["method of another kind than the subscription", [`${method} method_kind='blik_payid' ${methodWhere}`], "target_conflict", methodTable],
     ["unsupported method kind with no subscription copy", [`UPDATE public.subscriptions SET payment_method_kind=NULL WHERE id='${subscriptionId}'`,
       `${method} method_kind='wallet' ${methodWhere}`], "target_conflict", methodTable],
@@ -835,10 +898,11 @@ it("refuses every row class with no typed path", async () => {
     `${agreement} subscription_id='${secondSubscriptionId}' ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
     ["quote line at another price", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitPriceGross":{"amountMinor":91}}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
     ["quote line at another legacy price", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitGrossMinor":91}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
-    ["quote line for another quantity", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"quantity":2}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
+    ["quote line for another quantity", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"quantity":3}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
     ["subscription event without a key", [`UPDATE public.subscription_events SET idempotency_key=NULL WHERE subscription_id='${subscriptionId}'`], "target_conflict", "public.subscription_events"],
     ["consent in an uncarried state", [`UPDATE public.communication_permissions SET state='unknown' WHERE contact_id='${contactId}'`], "unsupported_table", "public.communication_permissions"],
     ["contact link to another source", [`UPDATE public.communication_contact_links SET source_table='testers' WHERE contact_id='${contactId}'`], "target_conflict", "public.communication_contact_links"],
+    ["contact link to a missing client", [`UPDATE public.communication_contact_links SET source_id='${randomUUID()}' WHERE contact_id='${contactId}'`], "target_conflict", "public.communication_contact_links"],
     ["contact with no link", [`INSERT INTO public.communication_contacts(normalized_email,display_email) VALUES('loose@example.invalid','loose@example.invalid')`], "invalid_input", "public.communication_contacts"],
     ["failed delivery with work still pending", [`INSERT INTO public.communication_email_deliveries
       (client_id,purpose,template_slug,trigger_source,trigger_event,aggregate_type,aggregate_id,outbox_event_id,dedupe_key,status)

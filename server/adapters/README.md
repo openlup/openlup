@@ -156,8 +156,11 @@ with the typed payment; provider reference rows of settled or terminal unpaid
 payments and their raw payloads stay in the operator archive. Carried settled
 transitions receive `invoicing_cutover` rows, so restored history opens no new
 document duty. A terminal checkout reminder keeps only its key on the carried
-unpaid order. Carried subscriptions stay at static delivery admission `blocked`;
-keep the renewal job off until the host binds an address.
+unpaid order. Carried subscriptions stay at static delivery admission `blocked`.
+Renewals of carried subscriptions stay unsupported until a later subscription
+lifecycle carry, so keep the renewal job off for them. Product content columns,
+including allergens, are not carried; restore them from the operator's archive
+before the target serves that catalogue.
 Any managed invoice row refuses, including issued invoices, so a source with invoice
 rows cannot transfer yet. A starter-pack marker, a synthetic test subscription, a
 quote line that disagrees with its price agreement and an order item with no SKU also

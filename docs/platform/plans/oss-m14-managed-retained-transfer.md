@@ -1000,13 +1000,13 @@ later material finding must show a wrong row or a missing relation.
 | `public.identity_privacy_erasures`, `public.customer_subject_lifecycle_events` | Typed through the item 7 mapping | `tests/postgres/connectedStoreTransfer.test.ts` managed identity cases |
 | `public.admin_audit_events` | Revoke typed through item 7; other actions archive-only | projects typed managed obligations; `connectedStoreTransfer.test.ts` |
 | `public.catalog_products`, `catalog_skus`, `price_lists`, `price_entries` | Typed | projects typed managed obligations |
-| `public.subscriptions`, `subscription_lines`, `subscription_cycles`, `subscription_events` | Typed; other row classes refuse | projects typed managed obligations; refuses every row class with no typed path |
+| `public.subscriptions`, `subscription_lines`, `subscription_cycles`, `subscription_events` | Typed; other row classes refuse | projects typed managed obligations (exact rows for subscriptions and lines, count for the others); refuses every row class with no typed path |
 | `public.subscription_price_agreements` | Current typed; ended archive-only; contradiction refuses | projects typed managed obligations; keeps an ended price agreement; refuses every row class with no typed path |
-| `public.commerce_payment_method_refs` | Active typed; ended archive-only; verification or contradiction refuses | refuses a method in verification; refuses every row class with no typed path |
-| `public.commerce_orders`, `commerce_order_items` | Typed; other row classes refuse | projects typed managed obligations; refuses every row class with no typed path |
-| `public.commerce_payments`, `commerce_payment_intents`, `commerce_payment_attempts`, `commerce_payment_state_transitions` | Column matrix above | projects typed managed obligations; refuses a carried payment attempt; both cancelled-checkout tests |
+| `public.commerce_payment_method_refs` | Active typed; ended archive-only; verification or contradiction refuses | projects typed managed obligations (exact renewal term and term line rows); refuses a method in verification; refuses every row class with no typed path |
+| `public.commerce_orders`, `commerce_order_items` | Typed; other row classes refuse | projects typed managed obligations (exact rows); refuses every row class with no typed path |
+| `public.commerce_payments`, `commerce_payment_intents`, `commerce_payment_attempts`, `commerce_payment_state_transitions` | Column matrix above | projects typed managed obligations (exact settlement intent and transition rows); refuses a carried payment attempt; both cancelled-checkout tests |
 | `public.outbox_events` | Pending checked typed; terminal checkout reminder key typed without payload, error or metadata; other terminal archive-only; other refuses | projects typed managed obligations; keeps a paid order's checkout reminder; refuses every row class with no typed path |
-| `public.communication_permissions`, `communication_contacts`, `communication_contact_links` | Consent typed; contact rows archive-only; other refuses | projects typed managed obligations; refuses every row class with no typed path |
+| `public.communication_permissions`, `communication_contacts`, `communication_contact_links` | Consent typed; contact rows archive-only; other refuses | projects typed managed obligations (exact consent row); refuses every row class with no typed path |
 | `public.communication_email_deliveries` | Terminal failed archive-only; active or mismatched refuses | refuses non-reconciled settlement and active delivery; refuses every row class with no typed path |
 | `public.commerce_idempotency_keys` | Completed and expired archive-only; other refuses | projects typed managed obligations; refuses conflicting mapped fields |
 | `public.payment_provider_settlement_batches`, `payment_provider_settlement_items` | Reconciled and matched archive-only; other or contradictory refuses | projects typed managed obligations; refuses non-reconciled settlement; refuses settlement rows that contradict; refuses every row class with no typed path |
@@ -1018,11 +1018,11 @@ later material finding must show a wrong row or a missing relation.
 
 Carried settled history opening new work: `invoicing_due_sources` is empty after restore
 (projects typed managed obligations). A static read of the platform's other due readers,
-with no run against a restored store, found two that reach carried managed rows:
+with no run against a restored store, found three that reach carried managed rows:
 
 | Due reader | Carried rows | Result | Proof |
 | --- | --- | --- | --- |
-| Automatic renewal (`subscription_stock_wait_normal_due`) | Active subscription at or past `next_cycle_at` | Static admission `blocked` refuses before stock or payment, and a run records a terminal refusal for that schedule. The documented rule is to keep the renewal job off until the host binds an address | projects typed managed obligations (due row and blocked reason); `tests/postgres/subscriptionComposition.test.ts` `static` scenario (refusal, no provider call) |
+| Automatic renewal (`subscription_stock_wait_normal_due`) | Active subscription at or past `next_cycle_at` | Static admission `blocked` refuses before stock or payment, and a run records a terminal refusal for that schedule. Renewals of carried subscriptions stay unsupported until a later lifecycle carry, so the documented rule is to keep the renewal job off for them | projects typed managed obligations (due row and blocked reason); `tests/postgres/subscriptionComposition.test.ts` `static` scenario (refusal, no provider call) |
 | Checkout reminder (`commerce_enqueue_checkout_recovery_reminders`) | Unpaid order with a failed intent, 1 to 24 hours old | A terminal source reminder keeps only its key, so no second reminder. An order the source never reminded gets its first one, as it would have on the source. Every source reminder also writes a `commerce_checkout_recovery_tokens` row, an unknown relation that refuses today, so the carried key applies once that relation is purged or admitted | projects typed managed obligations (with and without the key); keeps a paid order's checkout reminder |
 | Renewal reminder (`dunning_lifecycle_renewal_reminder_scan`, `_enqueue`) | Active subscription | Writes only `subscription_reminder_ledger`, and no TypeScript caller exists, so nothing is sent. A recorded finding | Static read |
 
@@ -1052,6 +1052,21 @@ status clause, and a source-only column whose stated comparison did not exist. T
 stays the same, because this cycle added new information rather than repeating a gap.
 Each stated disposition is now checked against the code it names.
 
+Native cycle 15 closed those and raised one new card with a new cause: the renewal term
+values had no executed proof, because the comparison after restore reads the packet the
+mapper itself produced. Relations and row classes were already measured, and field values
+were not. So the third measured dimension is exact expected rows from fixtures whose values
+differ, plus one mutation run over the mapper's hand-built fields, with each survivor given
+an assertion or a reason. The run is a measurement, not a target:
+
+it covered 58 hand-built target fields, each broken in turn against the positive test. The
+first pass detected 51. The seven survivors were equal fixture values or unread fields:
+created and updated times of renewal terms, term lines and settlement intents; the settled
+time; the transition time; the consent times; and an empty order metadata. The fixture now
+separates them and the exact rows read them, and a rerun detected all seven. It found no
+mapping bug. Columns that `project` copies by name share one code path and were not
+mutated field by field.
+
 Each table row changes the source inside the transaction the capture reads, then rolls
 back. The table is criteria for this item, not a target to extend.
 
@@ -1066,7 +1081,12 @@ Refusal lines still unreached, each with its reason:
 | Cycle number not a nonnegative integer | The source `NOT NULL` and `CHECK` forbid it |
 | Two consents for one recipient and purpose | The source unique constraints on email and on contact, channel and purpose forbid it |
 | Target table missing or already populated | The identity mapping refuses a non-fresh target first; the target inventory is pinned |
-| Projected keys differ from target columns; record cast returns no row or fails | Needs target schema drift; no admitted source value fails a target cast |
+| Projected keys differ from target columns; record cast returns no row | Needs target schema drift |
+| A cast failure outside SQLSTATE classes 22 and 23 rethrows | Needs the database to fail during the cast; the run still stops |
+| `quoted` on a name over 63 bytes or holding NUL | PostgreSQL names cannot be that long or hold NUL |
+| Settlement item owner lookup (`byOrder(...) ?? fail`) | Orders and items sort before settlement, so their owner check refuses first with `invalid_input` |
+| Final `return false` of `archiveState` | Its callers pass only relations with an earlier branch |
+| Owner lookup with a dangling auth user or contact (`byClient`, `byContact`) | Source foreign keys forbid both; the erasure arm is the row above |
 
 The capture also sets `row_security = off`, so a login that row security would filter
 fails with 42501 rather than reading empty relations. `refuses a source login that row
@@ -1075,7 +1095,7 @@ without the setting. The real-source runner captures with the provider `postgres
 rights and records its `rolsuper` and `rolbypassrls`; the required adapter suite uses a
 superuser.
 
-Source-only columns of the five carried relations, measured against the target:
+Source-only columns of the carried relations, measured against the target:
 
 | Relation | Column | Disposition |
 | --- | --- | --- |
@@ -1099,3 +1119,8 @@ Source-only columns of the five carried relations, measured against the target:
 | `commerce_order_items` | `unit_price_cents`, `total_cents`, `allocation_ordinal` | Mapped |
 | | `discount_allocated_cents`, `effective_total_cents` | Compared; refuses otherwise |
 | | `product_snapshot`, `variant_snapshot`, `mode_at_line`, `size_constraint_contribution`, `vat_rate_bps`, `effective_net_cents` | Source history; `sku_id` carries the goods and a null refuses |
+| `subscription_events` | `cycle_id`, `updated_at`, `actor_kind` | Source history; the event's subscription and key carry |
+| `catalog_products` | `metadata`, `allergens` | Product content, not carried; the documented rule restores it from the operator's archive before the target serves that catalogue |
+| `catalog_skus` | `pet_type`, `metadata`, `format_code`, `unit_form_code`, `gtin`, `kcal_per_unit`, `feeding_grams_per_unit`, `requires_pet_profile` | Product content, same rule. A later parcel maps these and `allergens` |
+| `price_lists`, `price_entries`, `outbox_events` | None | Measured: every source column has a target column |
+| `clients`, `admin_users` | Measured source-only columns | Owned by the item 7 identity mapping and its suite |
