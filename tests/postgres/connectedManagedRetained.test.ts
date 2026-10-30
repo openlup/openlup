@@ -406,6 +406,40 @@ it("refuses conflicting mapped fields and an unexpired completed idempotency win
   } finally { await managed.owner.query("UPDATE public.commerce_payment_intents SET amount_cents=900 WHERE id=$1", [intentId]); }
 });
 
+it("refuses a carried payment attempt or transition linked to contradictory payment state", async () => {
+  const failedAttempt = (await managed.owner.query<{ id: string }>(
+    "SELECT id FROM public.commerce_payment_attempts WHERE payment_intent_id=$1", [intentId])).rows[0]!;
+  const paidAttempt = (await managed.owner.query<{ id: string }>(
+    "SELECT id FROM public.commerce_payment_attempts WHERE payment_intent_id=$1", [paidIntentId])).rows[0]!;
+  const failedTransition = (await managed.owner.query<{ id: string }>(
+    "SELECT id FROM public.commerce_payment_state_transitions WHERE payment_intent_id=$1", [intentId])).rows[0]!;
+  const refuses = async () => {
+    const source = await capture();
+    await expect(mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
+      freshTarget: freshBaseline, targetOwner: targetOwner! }))
+      .rejects.toMatchObject({ code: "target_conflict", table: "public.commerce_payment_intents" });
+  };
+  for (const [column, bad, original] of [
+    ["payment_id", paidPaymentId, paymentId], ["amount_cents", 901, 900],
+    ["currency", "YYY", "XXX"], ["provider", "other-provider", "synthetic-provider"],
+  ] as const) {
+    await managed.owner.query(`UPDATE public.commerce_payment_attempts SET ${column}=$1 WHERE id=$2`, [bad, failedAttempt.id]);
+    try { await refuses(); }
+    finally { await managed.owner.query(`UPDATE public.commerce_payment_attempts SET ${column}=$1 WHERE id=$2`,
+      [original, failedAttempt.id]); }
+  }
+  await managed.owner.query("UPDATE public.commerce_payment_state_transitions SET payment_attempt_id=$1 WHERE id=$2",
+    [paidAttempt.id, failedTransition.id]);
+  try { await refuses(); }
+  finally { await managed.owner.query("UPDATE public.commerce_payment_state_transitions SET payment_attempt_id=NULL WHERE id=$1",
+    [failedTransition.id]); }
+  await managed.owner.query("UPDATE public.commerce_payment_attempts SET payment_id=$1 WHERE id=$2",
+    [paymentId, paidAttempt.id]);
+  try { await refuses(); }
+  finally { await managed.owner.query("UPDATE public.commerce_payment_attempts SET payment_id=$1 WHERE id=$2",
+    [paidPaymentId, paidAttempt.id]); }
+});
+
 it("refuses non-reconciled settlement and active delivery state", async () => {
   await managed.owner.query("UPDATE public.payment_provider_settlement_batches SET status='observed' WHERE id=$1",
     [settlementBatchId]);

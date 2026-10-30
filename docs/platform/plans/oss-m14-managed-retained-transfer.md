@@ -730,3 +730,33 @@ Main's new generated agent-context check also required refreshing two line-span
 metadata values after this parcel's `DATA_AND_MIGRATIONS.md` paragraph moved
 the unchanged additive-migration excerpt. The excerpt bytes and SHA-256 did
 not change; this is a docs-only generated-metadata correction.
+
+## Native review cycle 10 payment-link repair
+
+The first integrated review returned one PASS and one material card,
+`MRL-CARRIED-PAYMENT-LINK`. Independent foreign keys in the managed baseline
+allow an attempt linked to one intent to name another payment. The prior
+carried failed/succeeded projection checked attempt status but could then emit
+typed settlement state while omitting the contradictory source attempt. The
+repair shares a finite attempt/transition link check across carried and checked
+terminal states: payment identity, amount, currency, provider and optional
+transition attempt ID must agree with the intent and payment. Any mismatch
+in a carried intent refuses as `target_conflict` before restore; checked
+archive-only terminal state continues through its existing refusal path. A pinned managed-source witness
+mutates each field and both carried statuses, then restores the fixture. This
+is a safety tightening within the accepted typed projection, with no new
+archive class, target representation or public support claim. The earlier
+sidecar privacy card closes because the sidecar was removed. A fresh
+maintainer read is required before this source repair is DCO-committed.
+
+The first managed PG run exposed a refusal-order difference: a source-only
+provider reference refused before the carried intent's mapped conflict check.
+The same shared link check now runs as a narrow preflight for carried intents,
+ahead of relation-disposition refusal. The final pinned CLI 2.122.0 managed
+source → qualified PG16 run passes 7/7, including mismatched payment, amount,
+currency, provider and transition-attempt links in failed and succeeded cases.
+Strict all-project typecheck, lint (zero errors), docs policy, ast-grep and
+redacted Gitleaks scans of the staged tree and all refs pass. No public
+capability wording changed. Self-retro: the first test failure showed that
+early archive-state refusal can mask a more precise typed conflict; placing
+the shared link check before that refusal preserved the existing error contract.
