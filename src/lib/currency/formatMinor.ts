@@ -16,10 +16,17 @@
  * currency this platform can currently reach has exponent 2, so no rendered
  * string moved.
  */
-import "./platformCurrency.js";
-import { formatCurrencyMinor } from "@openlup/platform/market-packs";
+import { currencyExponent } from "./platformCurrency.js";
 
-export { formatCurrencyMinor };
+export function formatCurrencyMinor(
+  amountMinor: number,
+  options: { currency: string; locale: string },
+): string {
+  return new Intl.NumberFormat(options.locale, {
+    style: "currency",
+    currency: options.currency,
+  }).format(amountMinor / 10 ** currencyExponent(options.currency));
+}
 
 /**
  * The language money is written in when the surface has no reader to ask.

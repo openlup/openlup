@@ -648,8 +648,9 @@ conflict. The package owns the sole cache. R2 added a test-only reset between
 the two equivalence invocations; the sign-off merge was conflict-free. R3 did
 not edit that witness, and all five variants now pass.
 
-The application facades now delegate service, handler, contract, money and
-address-schema behavior to the R1/R2 exports. Environment selection and invoice
+The application facades now delegate service, handler, contract and
+address-schema behavior to the R1/R2 exports. Browser currency formatting,
+settlement and fiscal helpers remain application-owned. Environment selection and invoice
 status collapse stay in the BFF; the address route preserves env, gateway, probe,
 handler order and success-only availability metadata. Domain facades could not
 import an adapter under the existing boundary. The reference rules therefore
@@ -815,3 +816,21 @@ for later handling, outside this bounded repair; no entry or guard change is
 made for it. The two exact inventories and their owner documentation are this
 repair's complete tracked scope. Native repair accounting, subsequent checks
 and queue outcome remain in the existing ignored task evidence.
+
+### R3 regroup and narrowed browser scope (CD-M16-25)
+
+The root `adminBinding` promotion closure, subscription profile and identity
+client profile refused the same new browser-to-`market-packs` barrel edge from
+R3's four currency facades. CD-M16-24 and CD-M16-24a had admitted six built
+files to both closed inventories; CD-M16-24b identified the separate identity
+SSR `entry-server.tsx` refusal as an identical pre-existing invocation artifact
+on main `9f998026de1e889235fb45233dbfde6328647309` (captured in
+`.context/scratch/r3-delivery/main-identity-ssr.log`). CD-M16-25 supersedes
+those reads for this delivery and narrows R3 within the M16 outcome: the four
+browser currency facades and both inventories return byte-for-byte to main.
+No control widening remains. Currency formatting, settlement and fiscal helpers
+remain application-owned in R3; browser currency delegation is removed from
+R3 acceptance. A browser-safe `market-packs` entry, with export/`browserEntries`,
+API and budget decisions, is a registered later follow-up. The identity SSR
+invocation artifact remains a separate registered follow-up; this change does
+not admit `entry-server.tsx` or alter its guard.

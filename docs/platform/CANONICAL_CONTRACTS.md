@@ -657,10 +657,6 @@ terms) and the pure shipping-terms owner. Reference quote context accepts the
 optional shipping/acquisition promises without admitting shipping handlers or
 Node HTTP declarations. A new reference import must have both browser-safe dependency
 closure and an exact inventory entry before that selected profile can build.
-The subscription and identity inventories additionally list the six exact built
-`market-packs` files—pure settlement, fiscal, money-format and market-descriptor
-helpers reached through their barrel by the reference currency facades—without
-admitting a server entry, crypto, secrets, providers or I/O.
 
 The invoicing reference capability is default-off and installs no routes or
 scheduler. Its seller migration entries are forward-only introductions of the
