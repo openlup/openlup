@@ -714,6 +714,38 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The unmounted [M17 channel recipe](../../server/runtime/public-reference/m17ChannelBinding.ts)
+returns null before reading any host binding when its separate enable argument is
+false. Managed selection requires explicit owner clients, accepted currencies,
+actor and current live job IDs, connector/token/body policy, and a historical
+bundle read port. Ordinary bundles use M05's active catalog adapter; historical
+purchases use original locked BOM, SKU identities and digest without filtering on
+current activation. A current catalog response is insufficient historical evidence.
+The host must preserve timestamp precision in its read-only historical projection.
+
+Its page callable records the page and every capture before committing progress,
+then consumes the original capture/ledger through exposure conversion and the
+existing ingest saga. An accepted event must match its stored event-specific
+capture before replay; omitted retained rows use the server-pinned original,
+while supplied rows must match exactly. Accepted aliases still consume the
+original obligation without reading current historical catalog facts.
+Only settled/replayed outcomes reach seller ACK; false ACK
+leaves captured purchased settled debt pending and recoverable until ACK.
+Ordinary normalized ingest retains a donor retry gap: an interruption after its
+settled-ledger write and before done cannot currently complete automatic retry.
+Recovery selects pending captures independently of
+fresh discovery and uses the supplied current live job for any new physical effect,
+while the capture's original execution bytes remain unchanged. The host owns job
+admission and lease liveness; this factory creates no scheduler or mounted route.
+Portable selection exposes only the existing parameterized capture/read/CAS store
+and refuses consumption with `channel_purchase_physical_unavailable`. Privacy
+lifecycle and jobs are unavailable; simulation stays off. The adjacent
+[guard tests](../../server/runtime/public-reference/m17ChannelBinding.test.ts)
+cover disabled and portable selection. The [reference proof](../../tests/postgres/m17ChannelReference.test.ts)
+uses a local managed compatibility database and actual imported locked rows;
+it does not establish hosted managed or real-provider qualification.
+
+
 The [market source recipe](../../server/adapters/market-packs/marketRecipe.ts)
 is opt-in and unmounted. Supply language, configuration and constructed provider
 ports explicitly; directory lookup is optional. The reference descriptor imports

@@ -1546,6 +1546,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m17-r3-channel-reference.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -18570,6 +18574,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m17ChannelBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m17ChannelBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/readiness.ts",
       "class": "public-output"
     },
@@ -26867,6 +26879,10 @@
     },
     {
       "path": "tests/postgres/m14SelfhostStorage.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m17ChannelReference.test.ts",
       "class": "public-output"
     },
     {
