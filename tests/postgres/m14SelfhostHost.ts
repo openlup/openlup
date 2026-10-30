@@ -1,4 +1,4 @@
-// Local composition of existing Node/HTTP, scheduler, outbox, blob and captured delivery seams.
+// Synthetic local or declared hosted composition of existing Node/HTTP, scheduler, outbox, blob and captured delivery seams.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
@@ -11,9 +11,11 @@ import { build } from "esbuild";
 import { chromium } from "@playwright/test";
 import { reservePort } from "../helpers/postgresContainer.js";
 
-export async function runSelfhostHost(input: { image: string; database: { connectionString: string; ca: string } }) {
+export async function runSelfhostHost(input: { image: string; database: { connectionString: string; ca: string }; hosted?: { origin: string; certificatePath: string; keyPath: string } }) {
   const started = performance.now();
   let dockerActions = 0;
+  const hosted = input.hosted;
+  const claim = hosted ? "hosted Node/OCI recipe receipt (single synthetic VM)" : "local self-host recipe receipt";
   const root = process.cwd(), owner = randomUUID(), label = "openlup.recipe-host.owner";
   const parent = resolve(".context/scratch/selfhost-receipt"); mkdirSync(parent, { recursive: true, mode: 0o700 });
   const scratch = mkdtempSync(join(parent, "host-"));
@@ -51,9 +53,9 @@ export async function runSelfhostHost(input: { image: string; database: { connec
     runtime = new Pool({ connectionString: url.toString(), ssl });
     assert.equal((await runtime.query("SELECT rolsuper FROM pg_roles WHERE rolname=current_user")).rows[0].rolsuper, false);
     const caPath = join(scratch, "ca.pem"); writeFileSync(caPath, input.database.ca, { mode: 0o600 });
-    const insideUrl = new URL(url); insideUrl.hostname = "host.docker.internal";
+    const insideUrl = new URL(url); if (!hosted) insideUrl.hostname = "host.docker.internal";
     const envPath = join(scratch, "runtime.env");
-    writeFileSync(envPath, `DATABASE_URL=${insideUrl}\nRECIPE_TLS_SERVER_NAME=${new URL(input.database.connectionString).hostname}\nCRON_SECRET=${randomBytes(24).toString("hex")}\nPLATFORM_BUNDLE=node-postgres\nPLATFORM_BLOB=filesystem\nBLOB_FS_ROOT=/state\nBLOB_FS_BASE_URL=http://localhost:8080/storage\nAPP_BASE_URL=http://localhost:8080\n`, { mode: 0o600 });
+    writeFileSync(envPath, `DATABASE_URL=${insideUrl}\nRECIPE_TLS_SERVER_NAME=${new URL(input.database.connectionString).hostname}\nCRON_SECRET=${randomBytes(24).toString("hex")}\n${hosted ? "RECIPE_HTTPS=true\n" : ""}PLATFORM_BUNDLE=node-postgres\nPLATFORM_BLOB=filesystem\nBLOB_FS_ROOT=/state\nBLOB_FS_BASE_URL=http://localhost:8080/storage\nAPP_BASE_URL=http://localhost:8080\n`, { mode: 0o600 });
     const bundle = join(scratch, "app.mjs");
     await build({ entryPoints: [join(root, "tests/postgres/fixtures/m14SelfhostActor.ts")], outfile: bundle,
       bundle: true, platform: "node", format: "esm", target: "node24", external: ["pg-native"],
@@ -67,16 +69,21 @@ export async function runSelfhostHost(input: { image: string; database: { connec
     }
     assert.notEqual(images[0], images[1], "A and B must be distinct immutable application images");
     browser = await chromium.launch({ headless: true });
+    let launchCount = 0;
+    const deploymentStarted = performance.now();
+    let deploymentSeconds = 0;
     const observed: { release: string; image: string; node: string; processed: number; mail: number }[] = [];
     const launch = async (index: number) => {
-      const port = await reservePort();
+      const port = hosted ? 443 : await reservePort();
       const id = docker(["run", "--detach", "--pull=never", "--label", `${label}=${owner}`,
+        ...(hosted ? ["--name", `m14-10h-host-${owner}-${++launchCount}`, "--network", "host", "--cap-add", "NET_BIND_SERVICE"] : []),
         "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--env-file", envPath,
         "--mount", `type=bind,source=${data},target=/state`, "--mount", `type=bind,source=${caPath},target=/run/ca.pem,readonly`,
-        "--publish", `127.0.0.1:${port}:8080`, images[index]]);
+        ...(hosted ? ["--mount", `type=bind,source=${hosted.certificatePath},target=/run/host-cert.pem,readonly`,
+          "--mount", `type=bind,source=${hosted.keyPath},target=/run/host-key.pem,readonly`] : ["--publish", `127.0.0.1:${port}:8080`]), images[index]]);
       assert.match(id, /^[a-f0-9]{64}$/u); containers.push(id);
       assert.equal(owned("container", id).Image, images[index]);
-      const origin = `http://127.0.0.1:${port}`;
+      const origin = hosted?.origin ?? `http://127.0.0.1:${port}`;
       const state = async () => { const response = await fetch(`${origin}/api/state`, { signal: AbortSignal.timeout(2000) }); assert(response.ok); return response.json(); };
       await until(async () => {
         if (!owned("container", id).State.Running) {
@@ -87,7 +94,8 @@ export async function runSelfhostHost(input: { image: string; database: { connec
         }
         try { await state(); return true; } catch { return false; }
       }, "Node fixture did not start");
-      assert.deepEqual(owned("container", id).NetworkSettings.Ports["8080/tcp"], [{ HostIp: "127.0.0.1", HostPort: String(port) }]);
+      if (hosted) assert.equal(owned("container", id).HostConfig.NetworkMode, "host");
+      else assert.deepEqual(owned("container", id).NetworkSettings.Ports["8080/tcp"], [{ HostIp: "127.0.0.1", HostPort: String(port) }]);
       return { id, origin, state };
     };
     const stop = async (id: string) => { owned("container", id); docker(["kill", "--signal=TERM", id]);
@@ -112,7 +120,7 @@ export async function runSelfhostHost(input: { image: string; database: { connec
     };
     const a = await launch(0); await enqueue();
     const immediate = await (await fetch(`${a.origin}/api/dispatch`)).json(); assert.equal(immediate.processed, 1);
-    await readUi(a, "A", 1);
+    await readUi(a, "A", 1); deploymentSeconds = (performance.now() - deploymentStarted) / 1000;
     const scheduled = await enqueue();
     await stop(a.id); // Queued work remains in the database while this host is absent.
     assert.equal((await runtime.query("SELECT status FROM public.outbox_events WHERE id=$1", [scheduled])).rows[0].status, "pending");
@@ -133,12 +141,12 @@ export async function runSelfhostHost(input: { image: string; database: { connec
     await readUi(b, "B", 4); await stop(b.id);
     const rollback = await launch(0); await readUi(rollback, "A", 4);
     await delay(1200); await readUi(rollback, "A", 4); await stop(rollback.id);
-    report = { status: "PASS", claim: "local self-host recipe receipt", images: { base: input.image, A: images[0], B: images[1] },
+    report = { status: "PASS", claim, tls: hosted ? "public CA and hostname verified by Node fetch and Chromium" : "local HTTP", deploymentSeconds, images: { base: input.image, A: images[0], B: images[1] },
       bundleSha256: createHash("sha256").update(readFileSync(bundle)).digest("hex"), observed,
       immediate: true, durableScheduledAfterRestart: true, admittedCallbackDrained: true, rollback: "A→B→A",
       hostSwapSeconds: (performance.now() - swapStarted) / 1000,
       storage: "retained across restart and both code swaps", capturedDeliveries: 4, duplicateDeliveries: 0,
-      limits: ["finite synthetic application composed from public host seams", "captured delivery commands; no live email provider", "preinstalled declared local TLS PostgreSQL; no production host qualification"], hostedQualification: false };
+      limits: ["finite synthetic application composed from public host seams", "captured delivery commands; no live email provider", "preinstalled declared local TLS PostgreSQL; no production host qualification", ...(hosted ? ["single synthetic VM; no availability SLO", "operator owns database, certificates and external file teardown"] : [])], hostedQualification: false };
   } finally {
     try { await browser?.close(); } catch { cleanup.push("browser"); }
     for (const id of containers.reverse()) try { owned("container", id); docker(["rm", "--force", "--volumes", id]);

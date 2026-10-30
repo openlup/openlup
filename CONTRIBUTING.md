@@ -168,7 +168,10 @@ with prefix-scoped object and elapsed-lifecycle evidence. Its focused declaratio
 and source-admission refusals do not require live provider access. Neither
 focused tests nor a local receipt establish hosted
 qualification, and the three operator-declared database targets need their
-separate operator teardown.
+separate operator teardown. The fixed `hosted-node` selector reuses the same
+Node/OCI witness over public TLS on one synthetic VM; it needs the external
+declaration, exact source archive and operator teardown described by the runtime
+owner. PaaS remains pending when access is not provided.
 
 The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
 joins the existing installed platform cold-consumer selection.
