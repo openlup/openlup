@@ -1,127 +1,53 @@
 import type { OwnedCiImage } from "./ci-image-mirror.mjs";
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { env as processEnvironment } from "node:process";
 import { describe, expect, it, vi } from "vitest";
-import { cliImages, cliPin, deriveCliImages, inspect, mirrorImage, mirrorImages, ownedImages, pinnedCliImages, plannedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
+import { inspect, mirrorImage, mirrorImages, ownedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
 import { execFileSync } from "node:child_process";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 
 const digest = `sha256:${"a".repeat(64)}`;
 const different = `sha256:${"b".repeat(64)}`;
-const pin = "      - name: Install verified native Supabase CLI\n        run: bash scripts/install-supabase-cli-ci.sh 2.122.0\n";
-const services = ["supabase/postgres", "supabase/gotrue", "supabase/realtime", "supabase/storage-api"]
-  .map((name) => ({ name, local: "1.2.3" }));
-const binary = "public.ecr.aws supabase/pg_prove:3.36\0supabase/pg_prove:3.36\0";
 const image = { repository: "library/postgres", tag: "16", digest, sources: ["docker.io/library/postgres", "public.ecr.aws/docker/library/postgres"] };
 const resolved = { source: `docker.io/library/postgres@${digest}`, target: "ghcr.io/openlup/library/postgres:16", digest };
-const pgtapSource = readFileSync("scripts/public-ci-pgtap.mjs", "utf8");
 const batchSource = readFileSync("tests/postgres/reviewedBatchForwards.test.ts", "utf8");
-const actualConfig = () => JSON.parse(readFileSync("config/ci-images.json", "utf8")) as { images: OwnedCiImage[]; cliImages: OwnedCiImage[] };
-const ownedConfig = (images = cliImages(services, binary, pgtapSource)) => ({
-  images: actualConfig().images,
-  cliImages: images.map(image => ({ ...image, name: `cli-${image.repository.split("/").at(-1)!.replaceAll("_", "-")}`, digest, sources: [`public.ecr.aws/${image.repository}`, `docker.io/${image.repository}`] })),
-});
+const actualConfig = () => JSON.parse(readFileSync("config/ci-images.json", "utf8")) as { images: OwnedCiImage[] };
 
 function assertSingleOwner(source: string) {
   expect(source).not.toMatch(/sha256:[a-f0-9]{64}/u);
   expect(source).not.toMatch(/\[[^\]\n]*["'`](?:ghcr\.io|docker\.io|public\.ecr\.aws)\//u);
 }
 
-describe("CI image derivation and digest preservation", () => {
-  it.each(["native", "symlink", "registry-drift"])("inspects the PATH executable for %s", (installation) => {
-    const directory = mkdtempSync(join(tmpdir(), "cli-install-layout-"));
-    const executable = join(directory, "supabase");
-    try {
-      const content = installation === "registry-drift" ? binary.replace("public.ecr.aws", "other") : binary;
-      if (installation === "symlink") {
-        writeFileSync(join(directory, "native"), content);
-        symlinkSync(join(directory, "native"), executable);
-      } else writeFileSync(executable, content);
-      vi.mocked(execFileSync).mockImplementation((file, args) => {
-        if (file === "which") return executable;
-        if (args?.[0] === "services") return JSON.stringify(services);
-        throw new Error(`unexpected command: ${file}`);
-      });
-      if (installation === "registry-drift") expect(() => deriveCliImages(process.cwd(), directory)).toThrow("upstream registry changed");
-      else expect(deriveCliImages(process.cwd(), directory)).toEqual(cliImages(services, binary, pgtapSource));
-    } finally {
-      vi.mocked(execFileSync).mockReset();
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
+describe("CI image mirror planning and digest preservation", () => {
   it("keeps reviewed-batch pins and source lists in the JSON reader only", () => {
     assertSingleOwner(batchSource);
     expect(batchSource).toContain('readCiImage("test-postgres")');
-    expect(batchSource).toContain('readCiImage("managed-batch-postgres")');
     expect(() => assertSingleOwner(`${batchSource}\nconst digest = "${digest}";`)).toThrow();
     expect(() => assertSingleOwner(`${batchSource}\nconst sources = ["docker.io/library/postgres"];`)).toThrow();
   });
 
-  it("reads exactly one literal CLI pin, including the actual pgTAP workflow", () => {
-    expect(cliPin(pin)).toBe("2.122.0");
-    expect(cliPin(readFileSync(".github/workflows/published-tree-ci.yml", "utf8"))).toMatch(/^\d+\.\d+\.\d+$/u);
-    expect(cliPin(pin.replace("- name: Install verified native Supabase CLI\n        run:", "- run:"))).toBe("2.122.0");
-    for (const invalid of ["", pin + pin, pin.replace("2.122.0", "latest"), pin.replace("2.122.0", "${VERSION}"),
-      pin.replace("2.122.0", "2.122.0 extra"), pin.replace("        run:", "        run: |\n          ")]) {
-      expect(() => cliPin(invalid)).toThrow("exactly one literal");
-    }
-  });
-
-  it("retains every schema-init image despite service exclusions, plus the binary pg_prove tag", () => {
-    const derived = cliImages(services, binary, pgtapSource);
-    expect(derived.map(({ repository, tag }) => `${repository}:${tag}`)).toEqual([
-      "supabase/postgres:1.2.3", "supabase/gotrue:1.2.3", "supabase/realtime:1.2.3", "supabase/storage-api:1.2.3", "supabase/pg_prove:3.36",
-    ]);
-    expect(derived).toEqual([...services.map(({ name, local }) => ({ repository: name, tag: local })), { repository: "supabase/pg_prove", tag: "3.36" }]);
-    for (const invalid of [services.slice(1), [...services, services[0]], [{ ...services[0], local: undefined }, ...services.slice(1)]]) {
-      expect(() => cliImages(invalid, binary, pgtapSource)).toThrow("exactly one local");
-    }
-    for (const invalid of ["public.ecr.aws", binary + "supabase/pg_prove:4.0", binary.replace("public.ecr.aws", "other")]) {
-      expect(() => cliImages(services, invalid, pgtapSource)).toThrow();
-    }
-  });
-
-  it("derives exclusions from pgTAP without weakening service, registry or binary refusals", () => {
-    expect(cliImages(services, binary, pgtapSource.replace('"gotrue,', '"'))).toEqual(cliImages(services, binary, pgtapSource));
-    const runtime = { name: "postgrest/postgrest", local: "v14.10" };
-    expect(cliImages([...services, runtime], binary, pgtapSource)).toHaveLength(5);
-    for (const name of ["postgrest", "kong", "mailpit", "imgproxy", "vector"]) {
-      expect(() => cliImages([...services, runtime], binary, pgtapSource.replace(`${name},`, ""))).toThrow("uncovered runtime image");
-    }
-    expect(() => cliImages(services.slice(0, -1), binary, pgtapSource)).toThrow("exactly one local");
-    for (const invalid of ["", pgtapSource + pgtapSource, pgtapSource.replace('"gotrue,', '"postgres,gotrue,'),
-      pgtapSource.replace('"gotrue,', '"gotrue,gotrue,'), pgtapSource.replace('"--exclude", excluded', '"--exclude", other')]) {
-      expect(() => cliImages(services, binary, invalid)).toThrow("pgTAP exclusion list");
-    }
-  });
-
-  it("binds every derived CLI image to its digest and keeps writer sources upstream-only", () => {
+  it("plans exactly the committed owned inventory, by pinned digest, with upstream-only sources", () => {
     const config = actualConfig();
-    const derived = config.cliImages.map(({ repository, tag }) => ({ repository, tag }));
-    const pinned = pinnedCliImages(derived, config);
-    expect(pinned.map(image => image.digest)).toEqual(config.cliImages.map(image => image.digest));
-    expect(pinned.map(image => image.sources)).toEqual(config.cliImages.map(image => image.sources));
-    expect(pinned.every(image => image.sources.every(source => !source.startsWith("ghcr.io/openlup/")))).toBe(true);
-    for (const invalid of [derived.slice(1), [...derived, derived[0]], [derived[0], ...derived.slice(0, -1)], [{ ...derived[0], tag: "moved" }, ...derived.slice(1)]]) {
-      expect(() => pinnedCliImages(invalid, config)).toThrow();
-    }
-    for (const pins of [undefined, config.cliImages.slice(1), [config.cliImages[0], ...config.cliImages.slice(0, -1)],
-      [{ ...config.cliImages[0], digest: "invalid" }, ...config.cliImages.slice(1)],
-      [{ ...config.cliImages[0], sources: ["evil.test/supabase/postgres"] }, ...config.cliImages.slice(1)]]) {
-      expect(() => pinnedCliImages(derived, { cliImages: pins })).toThrow();
-    }
-    const inspectPin = vi.fn().mockImplementation((ref: string) => ref.split("@")[1]);
-    resolvePlan(JSON.stringify(derived), config, inspectPin);
-    expect(inspectPin.mock.calls.slice(0, 5).map(([ref]) => ref)).toEqual(pinned.map(image => `${image.sources[0]}:${image.tag}@${image.digest}`));
+    expect(Object.keys(config)).toEqual(["images"]);
+    const lookup = vi.fn().mockImplementation((ref: string) => ref.split("@")[1]);
+    const plan = resolvePlan(config, lookup);
+    expect(plan.map(({ target }) => target)).toEqual(config.images.map(({ repository, tag }) => `ghcr.io/openlup/${repository}:${tag}`));
+    expect(plan.map(({ digest }) => digest)).toEqual(config.images.map(({ digest }) => digest));
+    expect(lookup.mock.calls.map(([ref]) => ref)).toEqual(config.images.map(({ sources, tag, digest }) => `${sources[0].includes(":") ? sources[0] : `${sources[0]}:${tag}`}@${digest}`));
+    expect(config.images.every(({ sources }) => sources.every(source => !source.startsWith("ghcr.io/openlup/")))).toBe(true);
+  });
+
+  it("refuses two owned pins that would write different digests to one mirror target", () => {
+    const first = { name: "first", ...image };
+    const lookup = vi.fn().mockImplementation((ref: string) => ref.split("@")[1]);
+    expect(resolvePlan({ images: [first, { ...first, name: "second" }] }, lookup)).toHaveLength(1);
+    expect(() => resolvePlan({ images: [first, { ...first, name: "second", digest: different }] }, lookup)).toThrow("conflicting mirror target");
   });
 
   it("validates the owned pins and refuses duplicates, mutable or unsafe refs", () => {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
-    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres", "managed-batch-postgres"]);
+    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres"]);
     for (const images of [[config.images[0], config.images[0]], [{ ...config.images[0], digest: "TODO" }],
       [{ ...config.images[0], sources: ["evil.test/library/postgres"] }], [{ ...config.images[0], tag: "16; echo unsafe" }]]) {
       expect(() => ownedImages({ images })).toThrow("invalid or duplicate");
@@ -131,45 +57,14 @@ describe("CI image derivation and digest preservation", () => {
     }
   });
 
-  it("accepts exactly the five derived repositories and constructs upstreams in the writer", () => {
-    const derived = cliImages(services, binary, pgtapSource);
-    expect(plannedImages(JSON.stringify(derived)).map(({ repository }) => repository)).toEqual(derived.map(({ repository }) => repository));
-    expect(() => plannedImages(JSON.stringify([...derived, { repository: "supabase/migra", tag: "3.0" }]))).toThrow("invalid CLI image plan");
-    expect(plannedImages(JSON.stringify([{ repository: "supabase/postgres", tag: "17.1" }]))).toEqual([
-      { repository: "supabase/postgres", tag: "17.1", sources: ["public.ecr.aws/supabase/postgres", "docker.io/supabase/postgres"] },
-    ]);
-    const lookup = vi.fn().mockImplementation((ref: string) => ref.includes("@") ? ref.split("@")[1] : digest);
-    expect(resolvePlan(JSON.stringify([{ repository: "supabase/pg_prove", tag: "3.36" }]), ownedConfig([{ repository: "supabase/pg_prove", tag: "3.36" }]), lookup)).toHaveLength(4);
-    expect(lookup.mock.calls[0]).toEqual([`public.ecr.aws/supabase/pg_prove:3.36@${digest}`]);
-  });
-
-  it("refuses every malformed plan before any exec or registry call", () => {
-    const valid = { repository: "supabase/postgres", tag: "17.1" };
-    const inputs = [
-      "not JSON", "null", "{}", JSON.stringify([null]), JSON.stringify([[]]),
-      ...["supabase/unknown", "supabase/migra", "supabase/postgres-meta", "supabase/studio", "supabase/edge-runtime", "evil.io/supabase/postgres", "../supabase/postgres", "supabase/../postgres", "supabase/postgres/extra"]
-        .map((repository) => JSON.stringify([{ ...valid, repository }])),
-      ...["supabase/postgres", "supabase/gotrue", "supabase/realtime", "supabase/storage-api", "supabase/pg_prove"].flatMap(repository =>
-        ["../17", "17/extra", "_17", "17:evil", "17@sha256:abc", "17; echo unsafe", "", "a".repeat(129), 17, null]
-          .map(tag => JSON.stringify([{ repository, tag }]))),
-      ...["registry", "target", "digest", "sources"].map((field) => JSON.stringify([{ ...valid, [field]: "evil" }])),
-      JSON.stringify([valid, valid]), JSON.stringify([valid, { repository: "supabase/pg_prove", tag: "3.36" }, valid]),
-    ];
-    const exec = vi.mocked(execFileSync).mockClear();
-    const lookup = vi.fn();
-    for (const input of inputs) expect(() => resolvePlan(input, ownedConfig(), lookup), input).toThrow();
-    expect(lookup).not.toHaveBeenCalled();
-    expect(exec).not.toHaveBeenCalled();
-  });
-
   it("refuses missing, empty or mistyped owned fields before any exec or registry call", () => {
     const exec = vi.mocked(execFileSync).mockClear();
     const lookup = vi.fn();
     for (const field of ["name", "repository", "tag", "digest", "sources"]) {
       for (const value of [undefined, null, "", 17, {}, []]) {
-        const changed = { ...ownedConfig().images[0], [field]: value };
+        const changed: Record<string, unknown> = { ...actualConfig().images[0], [field]: value };
         if (value === undefined) delete changed[field];
-        expect(() => resolvePlan("[]", { images: [changed] }, lookup), `${field}: ${String(value)}`).toThrow("invalid or duplicate");
+        expect(() => resolvePlan({ images: [actualConfig().images[1], changed] }, lookup), `${field}: ${String(value)}`).toThrow("invalid or duplicate");
       }
     }
     expect(lookup).not.toHaveBeenCalled();
@@ -204,11 +99,12 @@ describe("CI image derivation and digest preservation", () => {
     expect(lookup.mock.calls.map(([ref]) => ref)).toEqual(image.sources.map((source) => `${source}:16@${digest}`));
     expect(() => resolveImage(image, () => different)).toThrow("source digest mismatch");
     expect(() => resolveImage(image, () => null)).toThrow("no verified upstream");
-    expect(resolveImage({ ...image, digest: undefined }, () => digest)).toEqual(resolved);
+    expect(() => resolveImage({ ...image, digest: undefined } as unknown as typeof image, () => digest)).toThrow("pinned digest");
   });
 
-  it("preserves the managed GHCR source tag without appending a second tag", () => {
-    const managed = ownedImages(ownedConfig()).find(({ name }) => name === "managed-batch-postgres");
+  it("preserves an explicit source tag without appending a second tag", () => {
+    const [native] = ownedImages(actualConfig());
+    const managed = ownedImages({ images: [{ ...native, sources: [`ghcr.io/library/postgres:${native.tag}`, ...native.sources] }] })[0];
     const lookup = vi.fn().mockReturnValue(managed.digest);
     expect(resolveImage(managed, lookup).source).toBe(`${managed.sources[0]}@${managed.digest}`);
     expect(lookup).toHaveBeenCalledExactlyOnceWith(`${managed.sources[0]}@${managed.digest}`);

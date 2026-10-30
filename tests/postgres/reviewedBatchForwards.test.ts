@@ -7,6 +7,7 @@ import { Client, Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { assertBatchCatalog, assertManagedAcquisition, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
@@ -159,14 +160,15 @@ async function assertManagedStockReader(db: Pool) {
 
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
 const fixture = (pin: BatchedForwardBinding) => reviewedBatchBytes(process.cwd(), process.cwd(), pin);
-const managedImage = readCiImage("managed-batch-postgres"), nativeImage = readCiImage("test-postgres");
-async function pullPinnedImage(graph: "native" | "managed", io = imageIo): Promise<string> {
-  return pullWithRetry(graph === "native" ? nativeImage : managedImage, io);
+// The managed graph runs on the stock image with the managed-compat adapter.
+const nativeImage = readCiImage("test-postgres");
+async function pullPinnedImage(io = imageIo): Promise<string> {
+  return pullWithRetry(nativeImage, io);
 }
 
 describe("pinned image selection (Docker-free)", () => {
-  it.each(["native", "managed"] as const)("reuses the exact local gate pin for %s without pulling", async graph => {
-    const image = graph === "native" ? nativeImage : managedImage;
+  it("reuses the exact local gate pin for native without pulling", async () => {
+    const image = nativeImage;
     const reference = imageReference(image, image.sources.at(-1));
     const pulls: string[] = [];
     const io = {
@@ -178,7 +180,7 @@ describe("pinned image selection (Docker-free)", () => {
       sleep: async () => { throw new Error("warm gate must not wait"); },
       now: () => 0,
     };
-    expect(await pullPinnedImage(graph, io)).toBe(reference);
+    expect(await pullPinnedImage(io)).toBe(reference);
     expect(pulls).toEqual([]);
   });
 });
@@ -222,8 +224,8 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     writeFileSync(join(replayRoot, interleaved), "SELECT set_config('openlup.batch_interleaved', 'applied', false);", { flag: "wx" });
     paths = reviewedBatchPaths(replayRoot, directory, pins);
     if (!await dockerAvailable()) throw new Error("Reviewed batch gate requires real PostgreSQL and pgTAP");
-    const image = await pullPinnedImage(graph);
-    container = await runPostgresContainer({ name: `reviewed-batch-${graph}-${process.pid}`, password: "synthetic-conformance", image });
+    const name = `reviewed-batch-${graph}-${process.pid}`, password = "synthetic-conformance";
+    container = portable ? await runPostgresContainer({ name, password, image: await pullPinnedImage() }) : await runManagedCompatPostgres({ name, password });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed batch PostgreSQL unavailable");
     db = new Pool({ connectionString: portable ? container.connectionString : container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1 });
     // Keep transaction/savepoint proofs on one connection even after expected refusals.
@@ -1429,7 +1431,10 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
           "GRANT USAGE ON SEQUENCE public.customer_support_email_correction_sequence TO service_role",
           "ALTER TABLE public.customer_support_subscription_commands VALIDATE CONSTRAINT customer_support_subscription_commands_kind_check",
           "ALTER TABLE public.admin_audit_events DROP CONSTRAINT admin_audit_events_action_check; ALTER TABLE public.admin_audit_events ADD CONSTRAINT admin_audit_events_action_check CHECK (action IN ('operator_email_correction')) NOT VALID",
-          "DROP TRIGGER customer_support_identity_email_ownership ON auth.users; " + sqlStatements(bytes.toString())[8]!.replace("DEFERRABLE INITIALLY DEFERRED", "NOT DEFERRABLE INITIALLY IMMEDIATE"),
+          // Only the auth.users owner may drop its trigger; recreate it as the installing role.
+          "SELECT set_config('openlup.plant_role', current_user, true); SET LOCAL ROLE supabase_auth_admin; "
+            + "DROP TRIGGER customer_support_identity_email_ownership ON auth.users; "
+            + "SELECT set_config('role', current_setting('openlup.plant_role'), true); " + sqlStatements(bytes.toString())[8]!.replace("DEFERRABLE INITIALLY DEFERRED", "NOT DEFERRABLE INITIALLY IMMEDIATE"),
           "INSERT INTO auth.users(id,email) VALUES ('da000000-0000-4000-8000-000000000098','m12-auth-plant@example.invalid')",
         ],
       ];

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
 import { IMAGE_PULL_BUDGET_MS, IMAGE_PULL_FALLBACK_RESERVE_MS, imageIo, imageReference, mirrorUnavailable, pullWithRetry, readCiImage, resolvePinnedImage } from "./ci-image-pull.mjs";
-import { CLI_IMAGE_PULL_BUDGET_MS, prePullCliImages } from "./public-ci-pgtap.mjs";
 import { readFileSync } from "node:fs";
 
 const pin = readCiImage("test-postgres");
@@ -32,7 +31,7 @@ function witness() {
   return { io, waits, pulls, local };
 }
 
-describe.each(["test-postgres", "managed-batch-postgres"])("mirror-first CI image pulls (offline): %s", name => {
+describe.each(["test-postgres", "install-proof-postgres"])("mirror-first CI image pulls (offline): %s", name => {
   const pin = readCiImage(name);
   it.each(pin.sources)("reuses the exact local index from %s before any pull", async source => {
     const { io, local, pulls, waits } = witness();
@@ -268,6 +267,7 @@ describe.each(["test-postgres", "managed-batch-postgres"])("mirror-first CI imag
   it("refuses malformed inputs before any Docker operation", async () => {
     const { io } = witness();
     await expect(pullWithRetry({ ...pin, digest: "wrong" }, io)).rejects.toThrow("malformed");
+    await expect(pullWithRetry({ ...pin, digest: undefined } as unknown as typeof pin, io)).rejects.toThrow("malformed");
     expect(io.exec).not.toHaveBeenCalled();
   });
 });
@@ -293,113 +293,4 @@ it("retains every upstream fallback in CI when an organization mirror is private
       expect(pulls()).toEqual([imageReference(pin), imageReference(pin, image.sources[0])]);
     }
   } finally { vi.unstubAllEnvs(); }
-});
-
-describe("pgTAP pre-pull registry selection (offline)", () => {
-  const images = ["postgres", "gotrue", "realtime", "storage-api", "pg_prove"].map(name => ({ repository: `supabase/${name}`, tag: "1.2.3" }));
-  it.each(["public.ecr.aws", "docker.io"])("keeps successful %s fallback with inventory-supplied digest pins", async registry => {
-    const { io, pulls } = witness();
-    io.pull.mockImplementation(async reference => {
-      if (reference.startsWith("ghcr.io/")) throw new Error("toomanyrequests: 429");
-      if (registry === "docker.io" && reference.startsWith("public.ecr.aws/")) throw new Error("503 service unavailable");
-      return "";
-    });
-    const pinned = images.map(image => ({ ...image, digest: pin.digest, sources: [`public.ecr.aws/${image.repository}`, `docker.io/${image.repository}`] }));
-    expect(await prePullCliImages(pinned, io)).toBe(registry);
-    expect(pulls()).toEqual(pinned.flatMap(image => [
-      ...Array(3).fill(`${MIRROR_REGISTRY}/${image.repository}:${image.tag}@${pin.digest}`),
-      ...Array(3).fill(`ghcr.io/${image.repository}:${image.tag}@${pin.digest}`),
-      ...(registry === "docker.io" ? Array(3).fill(`public.ecr.aws/${image.repository}:${image.tag}@${pin.digest}`) : []),
-      `${registry}/${image.repository}:${image.tag}@${pin.digest}`,
-    ]));
-  });
-  it("bounds the whole pre-pull stage and refuses another image on expiry", async () => {
-    const { io, pulls } = witness();
-    // Two slow successful cold images consume 480s of the stage budget.
-    let cold = 0;
-    io.pull.mockImplementation(async (_reference, timeout) => {
-      cold += 1;
-      if (cold <= 2) { await io.sleep(240_000); return ""; }
-      await io.sleep(timeout!);
-      throw Object.assign(new Error("registry pull timed out"), { killed: true });
-    });
-    await expect(prePullCliImages(images, io)).rejects.toThrow("no source succeeded");
-    expect(io.now()).toBe(CLI_IMAGE_PULL_BUDGET_MS);
-    expect(pulls().some(reference => reference.includes("storage-api"))).toBe(false);
-  });
-  it("includes aliasing and final local inspection in the aggregate budget", async () => {
-    const { io } = witness();
-    const execute = io.exec.getMockImplementation()!;
-    io.exec.mockImplementation(async (args, timeout) => {
-      if (args[0] === "pull") await io.sleep(239_000);
-      if (args[1] === "tag") await io.sleep(361_000);
-      return execute(args, timeout);
-    });
-    await expect(prePullCliImages([{ ...images[0], digest: pin.digest }], io)).rejects.toThrow("600s aggregate budget");
-    expect(io.exec.mock.calls.filter(([args]) => args[1] === "inspect")).toHaveLength(5);
-  });
-  it("reaches ECR after long-hint 429s from each GHCR source per image, preserving supplied pins", async () => {
-    const { io, pulls, waits } = witness();
-    io.pull.mockImplementation(async reference => {
-      if (reference.startsWith("ghcr.io/")) throw new Error("toomanyrequests: 429 retry-after: 300, allowed: 44000/minute");
-      return "";
-    });
-    const pinned = images.map(image => ({ ...image, digest: pin.digest }));
-    expect(await prePullCliImages(pinned, io)).toBe("public.ecr.aws");
-    expect(pulls()).toEqual(pinned.flatMap(image => [
-      `${MIRROR_REGISTRY}/${image.repository}:${image.tag}@${pin.digest}`,
-      `ghcr.io/${image.repository}:${image.tag}@${pin.digest}`,
-      `public.ecr.aws/${image.repository}:${image.tag}@${pin.digest}`,
-    ]));
-    expect(waits).toEqual([]);
-  });
-  it("reuses exact local CLI tags, including ECR, with zero pulls", async () => {
-    const { io, local, pulls } = witness();
-    for (const image of images) local.add(`public.ecr.aws/${image.repository}:${image.tag}`);
-    expect(await prePullCliImages(images, io)).toBe("public.ecr.aws");
-    expect(pulls()).toEqual([]);
-  });
-  it("does not reuse a different CLI tag", async () => {
-    const { io, local, pulls } = witness();
-    local.add(`${MIRROR_REGISTRY}/${images[0].repository}:different`);
-    expect(await prePullCliImages([images[0]], io)).toBe(MIRROR_REGISTRY);
-    expect(pulls()).toEqual([`${MIRROR_REGISTRY}/${images[0].repository}:${images[0].tag}`]);
-  });
-  it("uses the mirror when it supplies all five derived tags", async () => {
-    const { io, pulls } = witness();
-    expect(await prePullCliImages(images, io)).toBe(MIRROR_REGISTRY);
-    expect(pulls()).toEqual(images.map(image => `${MIRROR_REGISTRY}/${image.repository}:${image.tag}`));
-    expect(io.exec.mock.calls.some(([args]) => args[1] === "tag")).toBe(false);
-  });
-  it("uses GHCR after empty mirror failures without any wait", async () => {
-    const { io, pulls, waits } = witness();
-    io.pull.mockImplementation(async reference => {
-      if (reference.startsWith(`${MIRROR_REGISTRY}/`)) throw new Error("unauthorized");
-      return "";
-    });
-    expect(await prePullCliImages(images, io)).toBe("ghcr.io");
-    expect(pulls()).toEqual(images.flatMap(image => [`${MIRROR_REGISTRY}/${image.repository}:${image.tag}`, `ghcr.io/${image.repository}:${image.tag}`]));
-    expect(waits).toEqual([]);
-  });
-  it("aliases mixed successes into the first image's registry without re-pulling", async () => {
-    const { io, pulls } = witness();
-    io.pull.mockImplementation(async reference => {
-      if (reference.startsWith(`${MIRROR_REGISTRY}/supabase/realtime`)) throw new Error("not found");
-      return "";
-    });
-    expect(await prePullCliImages(images, io)).toBe(MIRROR_REGISTRY);
-    expect(pulls()).toHaveLength(6);
-    expect(io.exec).toHaveBeenCalledWith(["image", "tag", "ghcr.io/supabase/realtime:1.2.3", `${MIRROR_REGISTRY}/supabase/realtime:1.2.3`], 5_000);
-    expect(io.exec.mock.calls.slice(-5).map(([args]) => args)).toEqual(images.map(image => ["image", "inspect", `${MIRROR_REGISTRY}/${image.repository}:${image.tag}`]));
-  });
-  it("aliases a verified digest pull to the CLI tag even in the same registry", async () => {
-    const { io } = witness();
-    expect(await prePullCliImages([{ ...images[0], digest: pin.digest }], io)).toBe(MIRROR_REGISTRY);
-    expect(io.exec).toHaveBeenCalledWith(["image", "tag", `${MIRROR_REGISTRY}/supabase/postgres:1.2.3@${pin.digest}`, `${MIRROR_REGISTRY}/supabase/postgres:1.2.3`], 5_000);
-  });
-  it("verifies a digest when supplied by derivation", async () => {
-    const { io } = witness();
-    io.inspect.mockResolvedValueOnce("[]");
-    await expect(prePullCliImages([{ ...images[0], digest: pin.digest }], io)).rejects.toThrow("RepoDigest");
-  });
 });

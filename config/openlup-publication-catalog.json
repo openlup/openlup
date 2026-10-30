@@ -630,6 +630,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-postgres-packages.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -1367,6 +1371,14 @@
     },
     {
       "path": "docs/platform/plans/native-review-simplification-proposal.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/neutral-postgres-pgtap-intent.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/neutral-postgres-pgtap.md",
       "class": "platform-documentation"
     },
     {
@@ -9202,14 +9214,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/install-supabase-cli-ci.sh",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/install-supabase-cli-ci.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/local-bff-soak-aggregation.ts",
       "class": "public-output"
     },
@@ -9510,6 +9514,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/pgtap-parity.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/pgtap-parity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/platform-accounting-document-lifecycle-parity.test.ts",
       "class": "public-output"
     },
@@ -9559,6 +9571,10 @@
     },
     {
       "path": "scripts/public-ci-pgtap.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -26134,6 +26150,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/managedCompatPostgres.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -26558,6 +26578,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/managed-compat/supabase.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/marketDirectoryPreservation.test.ts",
       "class": "public-output"
     },
@@ -26659,6 +26683,10 @@
     },
     {
       "path": "tests/postgres/runM14EffectHandover.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runM14ManagedSourceWitness.mjs",
       "class": "public-output"
     },
     {

@@ -767,3 +767,117 @@ CD-M14-64 accepted the cycle-10 repair with independently recomputed tree
 for `git diff --binary 1af97f95 2f0ca108`. Both computed identities matched.
 The exact accepted tree was DCO-committed as
 `8011cd8d58e10962cdc437d317b8d036db4cb0e7`; fresh full native review follows.
+
+Cycle-11 prepare refused carry-over after main's pgTAP workflow change. The
+forced merge joins `5b0843e5f3e6543e16f63ce4c96da78fa9ac74fc` and
+`8ae51d2923bcc13bb4a9a12da646bbeb8edeb684` without conflicts or manual
+resolution. Its pre-note tree is `cd75fcd8da02d1b12a6a94d3fe83be06be1a2c3d`.
+The stable parcel patch ID excluding this record is
+`2c62af7c2a621620a7b48e78e4a7ac929b53b09c` against both old and new main.
+This meets CD-M14-30; full native review covers the integrated candidate.
+
+## Cycle-11 integration blocker
+
+The integrated strict typecheck fails with one TS2305 diagnostic. Main's
+stock-PostgreSQL pgTAP change removed `deriveCliImages` from
+`scripts/ci-image-mirror.mjs` and its declaration, and `prePullCliImages` from
+`scripts/public-ci-pgtap.mjs`; this parcel's real managed fixture imports both.
+The required root-test shards include this fixture and no longer install the
+Supabase CLI. Replacing the imports alone would therefore leave a second,
+runtime prerequisite gap in hosted tests. No new source or test repair was
+made, and no cycle-11 reviewer was launched while this mandatory gate fails.
+
+The smallest proposed recovery is a test-owned direct launch through pinned
+CLI 2.122.0, using the existing identity-conformance launch pattern, plus a
+checksum-verified CLI prerequisite for the required root-test shards. That
+workflow hook needs its owner; canonical stock-PG17 pgTAP can remain separate.
+An alternative is an owner-approved existing managed fixture only if it proves
+the same real Auth and Storage metadata interfaces. Neither option permits
+skipping the managed witness or substituting the stock compatibility adapter
+for its real source. The accepted payment-link repair remains committed and
+its open native card awaits fresh review after integration is repaired.
+Self-retro: main's removal of a shared runner helper exposed the fixture's
+cross-module setup dependency; repair its explicit prerequisite and ownership
+rather than hiding the failure with a test exclusion.
+
+CD-M14-69 resolves this diagnosis by keeping the required mapper/refusal suite
+on main's managed-compatibility helper and adding an explicit opt-in real
+managed-source witness. The same assertions must run on both sources; any
+unreproducible managed-only behavior stays in the real witness. This is adapter
+migration and parity work before cycle 11, with no workflow change.
+The prerequisite main merge joins `056b760097feb44c32aaf7cbf056835fad49b909`
+and `78f340db40ee6abcdaa97c7f01ccd2a857403b8f` without conflict or manual
+resolution. Pre-note tree: `e371546e5bf699befd05209cdedeada8a985cb0d`.
+The stable parcel patch ID excluding this record is
+`2c62af7c2a621620a7b48e78e4a7ac929b53b09c` on both bases (CD-M14-30).
+
+## CD-M14-69 adapter migration and real-source parity
+
+The required suite now starts `runManagedCompatPostgres` (stock PG17 plus the
+shared adapter); only the opt-in runner supplies a port for its owned real
+managed stack. The business fixture and all seven test bodies remain
+byte-identical from `const sourceId` onward, SHA-256
+`cda6e53fe52d20eac6ef317d257e31d04c4aa3936813ce0d46236199e2b6c39c`.
+No assertion moved or was removed. Auth's existing four captured columns already
+match the needed shapes. The shared adapter adds only Storage buckets
+`id/name/public` and objects `id/bucket_id/name/metadata/owner_id`, with the
+managed types, nullability, UUID/boolean defaults, primary keys and bucket FK
+copied from a live pinned schema observation. It adds no service behavior,
+trigger, production migration, grant or workflow change.
+
+`node tests/postgres/runM14ManagedSourceWitness.mjs` verifies and extracts the
+reviewed CLI archive, starts one owned real stack, runs these same tests once,
+and uses the existing owned-stack cleanup on completion, failure and signals.
+It refuses missing platform pins, checksum/version failures and non-passing
+tests. The supported archive pins inherited from the installer are macOS arm64
+asset `668849778`, SHA-256
+`fe87a5f9781d5423dbd5ebba2d5a6e1a541d01754d14941c574952e5695eaab0`,
+and Linux x64 asset `668850237`, SHA-256
+`59ed066847b98d7461c60e9109d40cab6b9756177ce06ebb05b51338519f5136`,
+both CLI `2.122.0`. The 2026-10-30 real run passed 7/7 with binary SHA-256
+`89838b26049c0672f9609aaf46455c89a46d351f852e313c0c5ae6b3abcbdf9d`,
+observed source image
+`sha256:c141fd17ac6a76c4323e90b3aee8ff1a23d2e89e547c2b963cfadc309c079cc2`,
+and unchanged managed baseline SHA-256
+`fb4de62d4ccf30dca83075b41ea2769ddf74165ecd47d21875790ed5f397ccbe`.
+
+Both sources' Vitest JSON reports have identical ordered names and `passed`
+statuses for typed obligations, identity/idempotency conflicts, carried payment
+links, settlement/delivery state, provider references, unsafe cancelled state,
+and unknown/Storage refusal. The earlier real run remains recorded as 7/7;
+the new real JSON report supplies the per-name comparison. Required discovery
+includes the suite and excludes the opt-in script by the existing filename
+patterns. The script documents the owned stack boundary for the later Storage
+API, GoTrue and authenticated object-read proof; it does not implement that leg.
+
+Before adding the runner, the tracked tree measured 6,705 files and 50,929,268
+bytes. One public script was registered in the existing path and command
+catalogues; no cap changed. Strict all-project typecheck, lint (zero errors),
+policy (zero unanswered), ast-grep, the adapter 7/7 and real-source 7/7 pass.
+Self-retro: retaining one assertion body avoided a second proof implementation;
+schema reconnaissance (1,803 seconds waiting for the shared slot) limited the
+adapter extension to observed columns. This root-cause migration consumes no
+review cycle. Cycle 11 follows only after its required read and DCO; under the
+owner's CD-M14-65 limit, a cycle-11 FAIL ends this Codex delivery without repair.
+
+## CD-M14-72 shared-consumer condition
+
+The CD-M14-69/72 read accepted tree
+`4c7295eae56b4c4606258d44038e64b22719edce` and independently recomputed
+SHA-256 `b3e0e71d6861090d4f2925795fd98dfb515513ba274516b528a5bc68fd06c6cc`
+for `git diff --binary 9861f894 4c7295ea`; both computed identities matched.
+Its remaining condition measured the adapter consumers and stock pgTAP on that
+unchanged tree and detached main `78f340db40ee6abcdaa97c7f01ccd2a857403b8f`.
+The baseline used its own locked install and was removed after measurement.
+
+All nine existing consumer files (including the runner's synthetic adapter
+unit tests and the indirect risk fixture consumer) have identical ordered
+test names/statuses: 217 passed, zero failed or skipped on both trees.
+Stock pgTAP is identical per file and assertion: 226 files, 5,199 assertions,
+zero failures, directives or missing plans on both trees. The sole full-set
+difference is the new `connectedManagedRetained.test.ts` consumer, absent from
+main and passing all seven tests on the candidate. Under the read's explicit
+any-difference condition, this addition is returned for read before DCO.
+No source repair or cycle-11 review was started. Self-retro: measuring the
+common consumers and reporting the added suite separately distinguishes a
+suite-set addition from a shared-adapter regression without assuming a baseline.

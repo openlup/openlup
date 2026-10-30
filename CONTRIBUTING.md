@@ -189,12 +189,20 @@ defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
 
-The [managed source projection witness](tests/postgres/connectedManagedRetained.test.ts)
-uses a pinned disposable local managed stack and a fresh qualified PG16 target.
+The required [managed source projection suite](tests/postgres/connectedManagedRetained.test.ts)
+uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified PG16 target.
 It compares typed target rows and obligations with the restore packet, checks
 that history-only source rows have no target representation, and exercises
 refusals for unknown and uncarried state. Full managed history stays in the
-operator's source archive. This witness does not qualify hosted managed data.
+operator's source archive. Run `node tests/postgres/runM14ManagedSourceWitness.mjs`
+to exercise the same assertions on an owned real managed stack. This opt-in
+runner downloads and verifies the reviewed CLI 2.122.0 archive for Linux x64 or
+macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
+names/statuses and source-image evidence under private scratch. It is outside
+the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
+are required. Neither route qualifies hosted managed data. The runner's owned
+stack boundary is the extension point for the separate Storage API, GoTrue and
+authenticated object-read witness.
 
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
@@ -672,7 +680,7 @@ for the default-off reference binding and surface;
 `npm test -- --run tests/postgres/accountSupportOperatorAuthority.test.ts tests/postgres/accountSupportUpgrade.test.ts`
 with Docker for native delegation, the eight independently executed native
 refusal rows, atomic rollback, fences, races and the upgrade replay; and
-`node scripts/public-ci-pgtap.mjs` (Supabase CLI 2.122.0) for the managed link,
+`node scripts/public-ci-pgtap.mjs` (Docker) for the managed link,
 email claim workflow and recovery fence. The native upgrade witness prints the
 real selected-catalog digest for the manifest; a stale manifest is corrected
 before the full gate. The packed cold consumer asserts the operator exports'
@@ -1202,42 +1210,19 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 ### CI image mirror
 
 The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
-`openlup/openlup` on pushes to `main` that change a derivation input, and on manual
-dispatch from `main`. The workflow lists the seven derivation input paths explicitly.
-Its read-only plan job derives only repository/tag pairs and validates the four Supabase
-bootstrap service tags with the pgTAP job's
-single pinned CLI and rendered reference Supabase config, then checks the exclusion list read directly from `scripts/public-ci-pgtap.mjs`
-for uncovered runtime images. Exclusions remove long-running services, but not
-the enabled GoTrue, Realtime and Storage API schema-init jobs. Those three images,
-the database image and `pg_prove` from that CLI binary are mirrored. Both installing CI jobs use
-[`scripts/install-supabase-cli-ci.sh`](scripts/install-supabase-cli-ci.sh) with the
-pgTAP workflow's literal 2.122.0 pin. It downloads the native release asset by
-reviewed API asset ID and verifies its committed SHA-256 before extracting or
-executing it. Unknown versions/platforms and checksum mismatches refuse. Linux
-amd64 is the CI platform; macOS arm64 is available for local proof. From the
-checkout, run `cli_bin="$(bash scripts/install-supabase-cli-ci.sh 2.122.0)"`, then
-`export PATH="$cli_bin:$PATH"`. The installer always allocates a fresh private
-0700 directory with `mktemp -d`, under `RUNNER_TEMP` when set, otherwise `TMPDIR`
-when set, otherwise the system default. It downloads, installs and verifies there,
-then prints the absolute bin directory on stdout and, when set, appends it to
-`GITHUB_PATH`. There is no explicit install-destination option.
-Derivation reads the executable found on PATH directly for registry and
-`pg_prove` strings; it requires this native installation. The installer removes
-the downloaded archive after verification and its new directory on failure.
-Successful installations remain available to callers. It sets no image registry
-override.
-Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
-derivation. The inventory also binds the exact five derived CLI repository/tag
-pairs to reviewed SHA-256 index digests. A missing, extra or changed pair refuses
-before pulling; mirror resolution verifies those same digests. The
-[image inventory](config/ci-images.json) also covers install-proof PostgreSQL,
-the test harness default and the managed-batch gate database.
+`openlup/openlup` on pushes to `main` that change one of its three input paths
+(the image inventory, the mirror script and the workflow), and on manual dispatch
+from `main`. Its single job reads only the committed
+[image inventory](config/ci-images.json): install-proof PostgreSQL, which is also
+the pgTAP server and the managed-rail test database, and the test harness default.
+Every pin is validated before the first registry request. No Supabase CLI or
+derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
 through [the shared reader and pull loop](scripts/ci-image-pull.mjs). The reader
 imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. In CI and locally they try the organization
-mirror first, then the upstream order with the same digest: managed uses GHCR,
-Docker Hub, ECR; native uses Docker Hub, ECR. Private or absent organization
+mirror first, then the upstream order with the same digest: Docker Hub, then
+ECR, for both library PostgreSQL pins. Private or absent organization
 packages do not remove these public upstream fallbacks.
 Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
 the existing 300-second cold image pull and schema installation, and
@@ -1285,39 +1270,21 @@ Retry-After seconds and Go subsecond units above the current source's equal
 share of the remaining budget immediately advance to the next source.
 Otherwise 1s/2s minimum waits are capped at five seconds and the remaining budget;
 expiry prevents another pull. Backoff adds at most 10 seconds per failed source
-(30s native or 40s managed/pgTAP per image), all inside the pull budget. There
-are at most nine native or twelve managed/pgTAP pulls per image.
+(30s per image), all inside the pull budget. There are at most nine pulls per
+image.
 The shared loop retries transport, context-deadline, killed process timeout,
 registry 5xx and 429 failures. Mirror not-found,
-denied or unauthorized errors immediately fall through without retry. CLI pins
-have upstream GHCR, ECR and Docker Hub fallback; library PostgreSQL pins retain Docker Hub/ECR
-fallback in CI and locally. An empty or private organization mirror therefore
+denied or unauthorized errors immediately fall through without retry. Library
+PostgreSQL pins retain Docker Hub/ECR fallback in CI and locally. An empty or private organization mirror therefore
 does not by itself fail these consumers.
 Local daemon/disk/malformed failures, upstream non-transient errors and pinned
 RepoDigest mismatches refuse rather than silently selecting another image.
 The gate's offline guard rejects literal digest pins or registry source lists.
 
-The pgTAP runner reuses mirror CLI derivation for Postgres, GoTrue, Realtime, Storage API and `pg_prove`, pulls
-before `supabase start`, and tries the organization mirror, upstream GHCR, ECR
-and Docker Hub in that order, using each derived tag and its reviewed inventory
-digest. Mirror planning retains its ECR then Docker Hub upstream order.
-The whole pre-pull phase, including aliases and inspections, shares a 600-second
-budget. Each image receives at most 300 seconds and never more than the phase's
-remaining time. This leaves half the hosted job's 20-minute limit for startup,
-migrations, tests and cleanup; phase exhaustion refuses before starting a stack.
-CLI pulls and local reuse require the exact pinned index digest. Verified
-digest references are aliased to the exact tags the CLI will request. The
-selected registry is passed explicitly to start/test/stop with
-`SUPABASE_INTERNAL_IMAGE_REGISTRY`, overriding any inherited registry setting. When
-images succeed at different registries, the first image's successful registry
-wins; local tag aliases make every exact CLI-requested name available without
-additional pulls. Docker Hub retains the original `supabase/<name>:<tag>`;
-other registries request `<registry>/supabase/<name>:<tag>`, matching CLI 2.122.0.
-After aliasing, the runner inspects every exact requested name from the same
-five-image derivation. Any missing names refuse before `supabase start` and are
-reported together; only `No such image` counts as absence, while other inspect
-errors refuse directly. Offline lifecycle tests cover present, missing and
-mixed-registry names, so the CLI never needs to pull. No upstream push or registry
+The pgTAP runner pulls its single image, the install-proof `postgres:17` pin,
+through the same loop and starts it with `--pull=never`. Every pull and local
+reuse requires the exact pinned index digest; the loop refuses a tag-only input.
+No upstream push or registry
 write occurs. Other launchers retain their existing acquisition behavior. The
 install-proof service retains its digest-pinned Docker Hub PostgreSQL 17 image,
 which is pulled before workflow steps run and does not require an organization
@@ -1327,16 +1294,16 @@ resolution preserves that spelling and always verifies the pinned digest.
 The script resolves upstream tags to digests, copies complete indexes to
 `ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
 target tags, refuses conflicting tags and verifies the digest after copying.
-Only the mirror job receives `packages: write`: it validates the untrusted pairs against
-a closed repository allowlist, reads owned pins from its own checkout, and runs only
-SHA-pinned first-party actions plus the dependency-free repository script. CLI
-digests come from the reviewed inventory and a moved tag is refused.
+Only the mirror job receives `packages: write`: it reads owned pins from its own
+checkout, refuses a missing digest or two pins that would write different digests
+to one target, and runs only SHA-pinned first-party actions plus the
+dependency-free repository script. A moved tag is refused.
 The token reaches login through environment and stdin after validation and resolution,
 immediately before copying; a `finally` block removes the temporary registry
 credentials.
 The mirror never re-points an existing tag, so an owned pin's digest bump must use a
 new, more specific upstream tag; the old target tag stays as it is.
-Offline derivation, skip/refuse and verification tests accompany exact workflow
+Offline planning, skip/refuse and verification tests accompany exact workflow
 trigger, permission, checkout and credential-transport assertions.
 
 One-time owner setup is required: organization **Settings → Packages → Package
@@ -1393,10 +1360,28 @@ failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
 The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
 job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
-fails the job. The native CLI installer leaves the registry override
-unset for CLI 2.122.0, whose Compose backend defaults to ECR; pgTAP explicitly
-selects the first successfully pre-pulled registry as described above.
+fails the job.
 `install-proof` retains its Docker Hub service, which is pulled before steps run.
+
+The non-required raw `pgtap` job follows the
+[managed pgTAP on plain PostgreSQL plan](docs/platform/plans/neutral-postgres-pgtap.md).
+`node scripts/public-ci-pgtap.mjs` applies the managed-compatibility adapter
+`tests/postgres/managed-compat/supabase.sql` and replays the committed managed
+chain in one transaction on the digest-pinned stock PostgreSQL 17 image, with
+pgTAP, `pg_cron` and `pg_prove` from the checksum-pinned packages in
+`config/ci-postgres-packages.json`. It then runs every shipped test with
+`pg_prove` inside that container, using the retired Supabase CLI lane's argv
+plus `--verbose`. It needs Docker, but neither the Supabase CLI nor npm
+dependencies, and writes its TAP, catalog snapshot and environment fingerprint
+to `.context/scratch/pgtap/`. The runner removes its own container on every
+exit path it controls; an interrupted run leaves a disposable-labelled container
+for the dead-owner sweep. Locally, `node scripts/pgtap-parity.mjs compare <left.log> <right.log>`
+compares two TAP logs assertion by assertion and fails on any difference,
+including a file present in one log only; `diff` compares two snapshots or
+fingerprints. The runner takes one of the five planned `--sabotage` switches,
+each of which must fail. The job is neither a required context nor a
+native-review input.
+
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
@@ -1523,7 +1508,7 @@ npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
 node scripts/public-ci-neutrality.mjs
 node --experimental-strip-types packages/ui/smoke/neutrality.ts
-# pgtap (Docker and Supabase CLI 2.122.0 required)
+# pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
 # gitleaks 8.30.1, as CI pins it, over the checkout's history
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
@@ -2146,7 +2131,7 @@ Unknown events, malformed metadata or unavailable Git history exclude nothing. S
 
 Core required coverage is V8: statements/lines 80%, branches 65%, functions 75%, plus no nonempty production file with zero covered lines. Root config has percentage thresholds when explicitly running coverage; public CI does not run root coverage or its separate no-zero helper. Outbox/Platform have no separate percentage gate. Keep installed-artifact and meaningful failure assertions; percentages do not replace them.
 
-Root tests include required disposable Docker/PostgreSQL proofs. Some older tests explicitly skip when Docker is absent; a skip does not prove that boundary. Installed Outbox/Platform consumers require their owned database and refuse missing infrastructure. For managed SQL use `node scripts/public-ci-pgtap.mjs` with Docker, locked dependencies and Supabase CLI 2.122.0. It validates committed migration bytes, replays baseline/forwards with public prerequisites, runs all supplied SQL tests and cleans only its own project. Commit migration candidates before this runner; it refuses dirty migration bytes. It never links a hosted database or installs application seed data; it copies the shipped SQL tests unchanged. Replay uses a disposable diagnostic owner with closed default grants, so this profile is not production installer authority, and the pinned image workaround hides only denial-hint formatting.
+Root tests include required disposable Docker/PostgreSQL proofs. Some older tests explicitly skip when Docker is absent; a skip does not prove that boundary. Installed Outbox/Platform consumers require their owned database and refuse missing infrastructure. For managed SQL use `node scripts/public-ci-pgtap.mjs` with Docker; it needs neither the Supabase CLI nor npm dependencies. It validates committed migration bytes, starts one disposable stock PostgreSQL 17 container with the checksum-pinned pgTAP, `pg_cron` and `pg_prove` packages and the managed-compatibility adapter, replays baseline/forwards with public prerequisites, runs all supplied SQL tests and removes only its own container. Commit migration candidates before this runner; it refuses dirty migration bytes. It never links a hosted database or installs application seed data; it copies the shipped SQL tests unchanged. Replay uses a disposable diagnostic owner with closed default grants, so this profile is not production installer authority or a managed-host certification.
 
 pgTAP remains a raw diagnostic, while root `test` and package `install-proof` are required. Triage actual exits, failed/aborted files, skipped prerequisites and new failures against the exact base; [historical diagnostic evidence](docs/platform/plans/public-ci-known-red.md) grants no waiver. Neither mocks, static SQL assertions, listing, a build nor a green aggregate proves an unexecuted DB/browser/provider obligation.
 

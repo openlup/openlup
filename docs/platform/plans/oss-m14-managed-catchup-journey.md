@@ -145,3 +145,20 @@ additive-forward excerpt (180–202 to 186–208); its text and digest are equal
 The first shared heavy-gate wait timed out after 3,006 seconds with another
 test command active. This is host waiting, not journey fixture elapsed time;
 the prescribed gate retry precedes the carried-tree focused run.
+
+The next predecessor carry has parents `fce132d2b2d3cea38d4d110e68a5eb8e8a0ec5ff`
+and `7c909b0bc453f855fb9c96175249c7da5b926686`. It merged without conflicts
+or manual resolution; the automatic tree before this note was
+`bf77d6cbdc57f4bd9db314df7a2fd36efa06b0a3`. The zero-context own patch-id
+before was `175a2f1ecb600b91c4199531e89cb0e60770ca4a`; after it was
+`4cf8b745dc34fb99c910bcabc03d8eff98fd345c`. Every owned path has equal
+per-file patch-ids except the publication catalog, where Git aligns identical
+JSON separators differently beside the predecessor's new entry. Parsing both
+catalog deltas gives the same three added public-output paths and no removed
+or changed entries. The required aggregate equality is nevertheless absent,
+so the carry remains uncommitted pending a maintainer read. The compatibility
+fixture conversion, real-source runner extension and parity proof have not
+started. The interrupted earlier focused rerun is obsolete and claims no new
+proof. Self-retro: repeated catalog separators can change a zero-context text
+patch identity despite equal entry deltas; retain both identities and seek the
+bounded carry decision before DCO rather than rewriting catalog bytes.
