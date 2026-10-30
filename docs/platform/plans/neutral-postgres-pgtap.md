@@ -460,7 +460,11 @@ Timing with warm images: the moved suites take within about 3 s of their
 old times (helper/old: 8/7, 9/6, 4/3, 3/3, 3/4 and 5/4 s). Package staging and
 `dpkg` add about 1–3 s per container. With a cold runner, the stock image is
 about 150 MB against 1.75 GB for the managed image, and the required `test` job
-now gets that saving. The about 300 KB of packages is downloaded once per cache.
+now gets that saving. The about 300 KB of packages comes from the shared
+`actions/cache` entry that every shard restores; only a cold cache downloads it,
+and concurrent test workers write separate partial files before the atomic
+rename. Required `test` therefore now depends on that cache or on
+apt-archive.postgresql.org for those files (risk R8).
 
 ## Risks
 
@@ -473,7 +477,7 @@ now gets that saving. The about 300 KB of packages is downloaded once per cache.
 | R5 | `pg_cron` needs `shared_preload_libraries` and `cron.database_name`, and its job table has row security keyed to `username`. Superuser-only behaviour could differ. | Set both on the server command line. Cron tests run as non-superuser `postgres` in both lanes, and the cron grants come from the fingerprint. |
 | R6 | Server time zone and other cluster GUCs (for example `timezone`, `DateStyle`, `statement_timeout`) differ between images. | The fingerprint records cluster settings, and the server command line pins the values the managed image uses. |
 | R7 | The lane loses managed-host fidelity: supautils guards, GoTrue-owned `auth` columns and triggers, and future managed-image changes stop being exercised in CI. | Accepted by design. Adapter fidelity belongs to the opt-in reference and an optional non-blocking lane (D7). The plan claims a PostgreSQL contract, not managed-host certification. |
-| R8 | A new external supply route (PGDG/Debian archives) replaces the registry pulls. | The route uses immutable URLs, committed checksums and the Actions cache, matching the CI external-dependency rule. The mirror registry is a fallback if D3 chooses a prebuilt image. |
+| R8 | A new external supply route (PGDG/Debian archives) replaces the registry pulls. After W3 it also feeds the required `test` shards. | The route uses immutable URLs and committed checksums, and `pgtap` and every `test-full-shard` restore the files through a SHA-pinned `actions/cache` step keyed by the pin file. Residual exposure: a cold cache (a new pin or an evicted entry) still downloads anonymously from apt-archive.postgresql.org, with two attempts per file; bytes are always SHA-256 verified. Mirroring the files into the organization registry would remove that exposure and is a possible follow-up. |
 | R9 | The CLI's `supabase test db` may add `pg_prove` flags or wrapping. | Discover the CLI's exact `pg_prove` argv from the pinned binary during W1 and reproduce it. Any difference appears in the per-assertion diff. |
 | R10 | Overlap with #443 and with concurrent edits to `public-ci-pgtap.mjs` or `ci-image-mirror.mjs`. | W1 adds files only. W2 starts from the current main after #443 and owns the removal. |
 

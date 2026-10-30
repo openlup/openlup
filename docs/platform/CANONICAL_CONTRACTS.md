@@ -773,7 +773,10 @@ infrastructure, never a runtime bootstrap or a supported-host claim.
 [The managed-compat test helper](../../tests/helpers/managedCompatPostgres.ts)
 boots the same image, packages, server settings and adapter for every
 managed-rail `tests/postgres` suite, including the reviewed-batch gate. The only addition is a login for the `supabase_admin` placeholder, the
-identity those suites use as their owner session.
+identity those suites use as their owner session. Each required `test-full-shard`
+restores the same SHA-pinned package cache before its tests; a cold cache downloads
+the pinned files from the PostgreSQL apt archive, and every file is re-verified
+before installation.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 

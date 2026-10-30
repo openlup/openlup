@@ -99,8 +99,9 @@ export async function ensurePackages(files, cache, fetcher = fetch) {
         const bytes = Buffer.from(await response.arrayBuffer());
         const actual = sha256(bytes);
         if (actual !== file.sha256) throw Object.assign(new Error(`checksum mismatch for ${file.name}: expected ${file.sha256}, got ${actual}`), { fatal: true });
-        writeFileSync(`${target}.partial`, bytes);
-        renameSync(`${target}.partial`, target);
+        // A per-process partial name keeps concurrent test workers from sharing one file.
+        writeFileSync(`${target}.${process.pid}.partial`, bytes);
+        renameSync(`${target}.${process.pid}.partial`, target);
         lastError = undefined;
         break;
       } catch (error) {
