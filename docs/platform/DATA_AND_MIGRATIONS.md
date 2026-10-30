@@ -453,8 +453,9 @@ checks that those roles do not enter the application role graph and keeps the
 application ownership, runtime/restore limits and selected catalogue checks.
 Only an explicit `target: "rds"`, `layout: "serial-cluster"` selection permits
 provider-defined authority without an elevated PostgreSQL role flag, and only
-for declared names in the fixed eight-role RDS stock inventory shared with the
-recipe freshness check. Other declared names still require an elevated flag.
+through declared `rds_superuser` membership. Every other declared name still
+requires an elevated flag, including the other seven stock RDS roles. The fixed
+eight-role stock inventory is shared with the recipe freshness check.
 In that RDS mode, memberships into fixed PostgreSQL predefined roles are outside
 the application graph and its normalized inventory only when both member and
 grantor are declared stock RDS roles. Other selections retain the elevated-role

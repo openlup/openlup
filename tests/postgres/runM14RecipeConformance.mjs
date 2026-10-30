@@ -80,9 +80,13 @@ export function loadCredentials(path, target, environment = env) {
     }
     if (!value.installations || Object.keys(value.installations).sort().join() !== [...modes].sort().join()) refuse("three_installations_required");
     if (target === "rds" && (value.layout !== "serial-cluster" || !/^[a-z]{2}(-[a-z]+)+-\d+$/u.test(value.region ?? ""))) refuse("rds_serial_declaration_required");
+    if (target === "rds" && Object.keys(value).some(key => !["schemaVersion", "target", "disposable", "region", "layout", "installations", "previousApplicationPath"].includes(key)))
+      refuse("rds_declaration_fields_refused");
     for (const mode of modes) {
       const entry = value.installations[mode];
       if (entry?.disposable !== true || (target === "rds" ? !/^[a-f0-9]{64}$/u.test(entry.incarnationSha256 ?? "") : !/^[0-9]{10,30}$/u.test(entry.systemIdentifier ?? ""))) refuse("installation_declaration_required");
+      if (target === "rds" && Object.keys(entry).some(key => !["disposable", "connectionString", "passwordEnv", "incarnationSha256", "ca"].includes(key)))
+        refuse("rds_declaration_fields_refused");
       if (target !== "rds" && !/^sha256:[a-f0-9]{64}$/u.test(entry.ociDigest ?? "")) refuse("oci_digest_required");
       const url = new URL(entry.connectionString);
       if (target === "self-host" && !["127.0.0.1", "localhost"].includes(url.hostname)) refuse("local_self_host_endpoint_required");
@@ -103,7 +107,7 @@ export function loadCredentials(path, target, environment = env) {
   } catch (error) {
     const known = ["hosted_s3_declaration_refused", "target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
       "explicit_disposable_target_required", "region_required", "public_https_issuer_required", "disposable_pinned_issuer_required", "three_installations_required", "installation_declaration_required",
-      "rds_serial_declaration_required", "rds_password_environment_required", "one_rds_cluster_required",
+      "rds_serial_declaration_required", "rds_declaration_fields_refused", "rds_password_environment_required", "one_rds_cluster_required",
       "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required", "local_node_image_required", "local_self_host_endpoint_required"];
     refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
   }

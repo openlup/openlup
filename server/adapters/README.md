@@ -63,9 +63,11 @@ normalizing declared names into either fixed mode-specific inventory. A host may
 declare a finite trusted control-plane role inventory for a non-superuser
 bootstrap login with CREATEROLE and CREATEDB and a provider-role membership.
 Only an explicit `target: "rds"`, `layout: "serial-cluster"` selection permits
-provider authority without elevated flags for declared stock RDS roles. The
-fixed eight-role inventory is shared with recipe freshness; declaring other
-names does not widen it. Only predefined-role edges whose member and grantor
+provider authority without elevated flags through declared `rds_superuser`
+membership. Every other declared name requires an elevated flag, including the
+other seven stock roles. The fixed eight-role inventory is shared with recipe
+freshness; declaring other names does not widen it. Only predefined-role edges
+whose member and grantor
 are both declared stock RDS roles are excluded from normalized inventory in
 that mode. Other selections retain their existing elevation and graph checks.
 An edge into an application principal still refuses. The actual role

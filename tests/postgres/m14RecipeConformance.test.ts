@@ -257,7 +257,8 @@ it("admits only one explicitly serial RDS target with an environment-only passwo
   const f = fixture();
   const envName = "M14_RECIPE_TEST_PASSWORD";
   const environment: Record<string, string> = {};
-  const hosted = { ...f.config, target: "rds", region: "xx-test-1", layout: "serial-cluster",
+  const hosted = { schemaVersion: 1, target: "rds", disposable: true, region: "xx-test-1", layout: "serial-cluster",
+    previousApplicationPath: f.config.previousApplicationPath,
     installations: Object.fromEntries(["installer-managed", "operator-provisioned", "schema"].map(mode => [mode, {
       disposable: true, connectionString: "postgresql://bootstrap@managed.example.invalid/postgres",
       passwordEnv: envName, incarnationSha256: "a".repeat(64), ca: f.config.installations.schema.ca,
@@ -267,6 +268,19 @@ it("admits only one explicitly serial RDS target with an environment-only passwo
     save();
     expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_password_environment_required");
     environment[envName] = f.secret;
+    expect(loadCredentials(f.path, "rds", environment)).toEqual(hosted);
+    for (const key of ["password", "adminPassword", "localNodeImage"]) {
+      writeFileSync(f.path, JSON.stringify({ ...hosted, [key]: f.secret }), { mode: 0o600 });
+      expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_declaration_fields_refused");
+    }
+    for (const mode of ["installer-managed", "operator-provisioned", "schema"]) {
+      for (const key of ["password", "adminPassword", "systemIdentifier"]) {
+        writeFileSync(f.path, JSON.stringify({ ...hosted, installations: { ...hosted.installations,
+          [mode]: { ...hosted.installations[mode], [key]: f.secret } } }), { mode: 0o600 });
+        expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_declaration_fields_refused");
+      }
+    }
+    save();
     expect(loadCredentials(f.path, "rds", environment)).toEqual(hosted);
     delete (hosted as { region?: string }).region; save();
     expect(() => loadCredentials(f.path, "rds", environment)).toThrow("region_required");

@@ -299,3 +299,28 @@ The policy gate required the merged catalogue objects in path order. Sorting
 the unchanged RDS/S3 record objects preserved the exact parsed-entry comparison;
 no object value or allowance changed. This bookkeeping correction precedes
 review and adds no source responsibility or approval obligation.
+
+Full review identified two repair boundaries: the canonical prose confused the
+eight stock roles with the singleton authority role, and RDS declarations still
+accepted unused fields that could contain a password. The repair names declared
+`rds_superuser` membership as the sole non-elevated authority path, keeping the
+eight-role set for freshness and stock-edge normalization. It also rejects
+undeclared RDS fields at both declaration and installation-entry levels; other
+targets and all existing refusal predicates stay unchanged. Focused witnesses
+exercise password-bearing and foreign fields at both levels and every phase,
+then re-admit the canonical password-free declaration. The existing hosted
+declaration generator uses exactly these fields, so the new refusal does not
+change its admitted path or require another hosted run. The field-control
+repair requires a read before sign-off and renewed full review afterwards.
+
+Self-retro: the source tightened authority correctly before review, but the
+canonical prose retained the earlier eight-role description. Checking each
+security claim against its final predicate would have caught that drift earlier.
+An exact field inventory closes the credential-bearing extras without a new
+runner, configuration seam or general validation mechanism.
+
+Repair checks: strict five-project `npm run oss:published-tree -- --typecheck`
+passed first, then `npm run lint` passed with zero errors and the existing 33
+warnings. The five focused admission, recipe, composition, schema-upgrade and
+connected-restore suites passed all 40 tests in 79.56 seconds. Shared heavy-gate
+admission preceded each stage. No hosted resource was touched by this repair.

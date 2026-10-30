@@ -190,7 +190,11 @@ variables such as `NODE_OPTIONS` refuse. The runner forwards only that variable
 from its environment, adds its own worktree-scoped temporary directory, and
 starts the isolated worker. Schema children receive their restricted connection
 through stdin and inherit no bootstrap password. No password belongs in the
-declaration. The incarnation digest binds
+declaration. Its accepted fields are `schemaVersion`, `target`, `disposable`,
+`region`, `layout`, `installations` and `previousApplicationPath`. Each
+installation accepts `disposable`, `connectionString`, `passwordEnv`,
+`incarnationSha256` and `ca`; undeclared fields refuse at either level.
+The incarnation digest binds
 the JSON array of observed server address, port, postmaster-start text and
 bootstrap database OID text. It requires no `pg_control_system` privilege, is
 weaker than a system identifier and refuses after an incarnation change.
@@ -207,9 +211,12 @@ database for each phase, removes it and its test roles, reads back absence and
 rechecks freshness before continuing; it never force-disconnects other sessions.
 
 Both installation modes carry the declared `target` and `layout` into 8C
-admission. Only the RDS serial-cluster selection admits non-elevated stock
-provider authority and predefined-role grants between declared stock roles;
-the fixed role inventory is shared with the freshness check. RDS schema proof
+admission. Only the RDS serial-cluster selection admits provider authority
+without an elevated flag through declared `rds_superuser` membership. All other
+declared names still require elevated flags, including the other seven stock
+roles. The eight-name stock inventory is shared with the freshness check and
+excludes predefined-role edges only when both member and grantor are declared
+stock RDS roles. RDS schema proof
 uses the canonical restricted-generation prefix before
 the existing invoicing backfill, its real inside/between-unit kills, resume and
 previous application read/replay. This is not a released restricted-generation
