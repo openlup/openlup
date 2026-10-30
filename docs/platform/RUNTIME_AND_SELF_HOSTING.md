@@ -144,6 +144,16 @@ and hosted receipts remain unqualified until the corresponding parcels supply
 and exercise them. This is a workspace source proof, not an installed-current
 package, PgBouncer, hosted-provider or stable-framework qualification.
 
+The separate `hosted-oidc` selection calls the same real-issuer lifecycle witness
+with a declared disposable HTTPS origin. Its declaration and teardown duties
+are in the [identity recipe](IDENTITY.md#real-issuer-oidc-recipe). Only the OIDC
+and hosted 10I sections pass after executed proof; all database, transfer,
+recovery, storage and host sections remain pending in that receipt. The local
+supporting database and browser do not establish hosted database qualification.
+TLS uses ordinary certificate-chain and hostname verification. Operator-owned
+VM containers, certificates and listeners need separately recorded teardown.
+This also removes any residual realm state after failed issuer provisioning.
+
 ## Runtime model
 
 For a managed-source acquisition cut-over, configure the reference target's

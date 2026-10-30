@@ -6,10 +6,12 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { checkServerIdentity } from "node:tls";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runLocalJourney, runLocalOidc } from "./m14RecipeJourneys.mjs";
+import { OIDC_IMAGE } from "./runOidcIdentityConformance.mjs";
+import { isIP } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const modes = ["installer-managed", "operator-provisioned", "schema"];
-const targets = ["self-host", "neon", "rds"];
+const targets = ["self-host", "neon", "rds", "hosted-oidc"];
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const refuse = code => { throw new Error(code); };
 const git = args => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -52,6 +54,15 @@ export function loadCredentials(path, target) {
     } finally { closeSync(fd); }
     if (value.schemaVersion !== 1 || value.target !== target || value.disposable !== true) refuse("explicit_disposable_target_required");
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/u.test(value.region ?? "")) refuse("region_required");
+    if (target === "hosted-oidc") {
+      const issuer = new URL(value.issuerOrigin);
+      if (issuer.protocol !== "https:" || issuer.origin !== value.issuerOrigin || issuer.username || issuer.password
+        || isIP(issuer.hostname) || !issuer.hostname.includes(".") || issuer.hostname.endsWith(".") || issuer.hostname.endsWith(".localhost")
+        || issuer.hostname.endsWith(".local") || issuer.hostname.endsWith(".internal")) refuse("public_https_issuer_required");
+      if (value.issuerImage !== OIDC_IMAGE || typeof value.adminPassword !== "string" || value.adminPassword.length < 24)
+        refuse("disposable_pinned_issuer_required");
+      return value;
+    }
     if (!value.installations || Object.keys(value.installations).sort().join() !== [...modes].sort().join()) refuse("three_installations_required");
     for (const mode of modes) {
       const entry = value.installations[mode];
@@ -69,7 +80,7 @@ export function loadCredentials(path, target) {
     return value;
   } catch (error) {
     const known = ["target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
-      "explicit_disposable_target_required", "region_required", "three_installations_required", "installation_declaration_required",
+      "explicit_disposable_target_required", "region_required", "public_https_issuer_required", "disposable_pinned_issuer_required", "three_installations_required", "installation_declaration_required",
       "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required", "local_node_image_required", "local_self_host_endpoint_required"];
     refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
   }
@@ -179,7 +190,7 @@ async function executeRecipe(config, receipt) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds --credentials /external/file.json --receipt /new/receipt.json");
+  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds|hosted-oidc --credentials /external/file.json --receipt /new/receipt.json");
   const [, target, , credentials, , destination] = args;
   if (process.versions.node !== "24.21.0" || npmVersion() !== "11.19.0") refuse("pinned_tools_required");
   const config = loadCredentials(credentials, target); // Refuse bad declarations before spawning or connecting.
@@ -187,6 +198,36 @@ export async function main(args = process.argv.slice(2)) {
   const receipt = initialReceipt(target);
   const started = performance.now();
   try {
+    if (target === "hosted-oidc") {
+      const frozenSource = sourceDigest();
+      const packages = ["core", "outbox", "platform"].map(name => {
+        const bytes = readFileSync(resolve(root, `packages/${name}/package.json`));
+        return { name: `@openlup/${name}`, version: JSON.parse(bytes).version, manifestSha256: hash(bytes),
+          compiledSha256: directoryDigest(resolve(root, `packages/${name}/dist`)), artifact: "workspace-build" };
+      });
+      receipt.identity = { status: "PASS", sourceHead: git(["rev-parse", "HEAD"]), sourceSha256: frozenSource,
+        sourceTree: git(["rev-parse", "HEAD^{tree}"]), workingDiffSha256: hash(git(["diff", "HEAD", "--binary"])), packages,
+        region: config.region, target: "hosted test issuer", node: process.versions.node, npm: npmVersion(),
+        issuerImage: config.issuerImage, imageVerification: "operator declaration; running digest readback recorded separately",
+        limits: ["single synthetic issuer on a test VM", "local supporting database and browser", "no production qualification or SLO"] };
+      receipt.activePhase = "oidc";
+      receipt.oidc = await runLocalOidc(root, config);
+      if (sourceDigest() !== frozenSource || packages.some(item => directoryDigest(resolve(root,
+        `packages/${item.name.split("/")[1]}/dist`)) !== item.compiledSha256)) refuse("source_changed_during_proof");
+      receipt.hostedRecipes["10I"] = { ...receipt.oidc, claim: "hosted OIDC recipe receipt (single synthetic issuer on a test VM)" };
+      receipt.effortCleanup = { status: "PASS", wallSeconds: (performance.now() - started) / 1000,
+        witnessLaunches: 1, automaticRetries: 0, interventions: [], cleanup: receipt.oidc.cleanup,
+        actions: ["verify public TLS chain and hostname", "launch local disposable PostgreSQL",
+          "execute existing browser/token/membership/rotation lifecycle", "delete owned realms and verify absence", "remove local fixture stack"],
+        sourceFilesChanged: git(["diff", "--name-only", git(["merge-base", "HEAD", "origin/main"])]).split("\n").filter(Boolean),
+        exclusions: ["operator VM provisioning, TLS issuance, image caching and teardown; recorded separately",
+          "supporting PostgreSQL and browser are local disposable fixtures; no hosted database qualification"],
+        claim: "declared-scope fixture measurement, not an SLO" };
+      receipt.status = "PASS_HOSTED_OIDC";
+      receipt.claim = receipt.hostedRecipes["10I"].claim;
+      delete receipt.activePhase;
+      return receipt;
+    }
     const result = await new Promise((done, reject) => {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker"], {
         cwd: root, env: {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
@@ -236,7 +277,7 @@ export async function main(args = process.argv.slice(2)) {
     receipt.finishedAt = new Date().toISOString();
     writeFileSync(fd, `${JSON.stringify(receipt, null, 2)}\n`); closeSync(fd);
   }
-  if (!["PASS_INITIAL_PHASES", "COMPLETE"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
+  if (!["PASS_INITIAL_PHASES", "COMPLETE", "PASS_HOSTED_OIDC"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
   return receipt;
 }
 
@@ -256,6 +297,7 @@ if (process.argv[2] === "--worker" && typeof process.send === "function") {
 } else if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().then(receipt => { console.log(receipt.status === "COMPLETE"
     ? "Local self-host recipe receipt: COMPLETE; managed first leg and hosted recipes remain pending"
+    : receipt.status === "PASS_HOSTED_OIDC" ? "Hosted OIDC recipe receipt: PASS; other recipe sections remain pending"
     : "Recipe conformance initial phases: passed; later sections pending"); })
     .catch(() => { console.error("Recipe conformance refused or failed; credential-bearing details suppressed. Check the redacted receipt, target declaration, private external file, fresh PG16 clusters, TLS, built dependencies and cached image/browser prerequisites."); process.exitCode = 1; });
 }

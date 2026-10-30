@@ -3,10 +3,12 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, w
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { assertFreshClusterCatalogue, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
 import { journeyReceipt } from "./m14RecipeJourneys.mjs";
+import { OIDC_IMAGE } from "./runOidcIdentityConformance.mjs";
+import { createOidcIssuerFixture } from "./oidcIssuerFixture.js";
 
 const directories: string[] = [];
 function fixture() {
@@ -25,7 +27,65 @@ function fixture() {
   const save = () => writeFileSync(path, JSON.stringify(config), { mode: 0o600 }); save();
   return { root, path, secret, config, save };
 }
-afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllGlobals(); for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+
+it.each([false, true])("removes only created hosted realms, including partial provisioning (failure=%s)", async failSecond => {
+  const realms = new Set(["unrelated"]), deleted: string[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith("/token")) return Response.json({ access_token: "synthetic-admin-token" });
+    if (path === "/admin/realms" && init?.method === "POST") {
+      const realm = JSON.parse(String(init.body)).realm;
+      if (failSecond && realm.endsWith("foreign")) return new Response(null, { status: 409 });
+      realms.add(realm); return new Response(null, { status: 201 });
+    }
+    if (init?.method === "DELETE") {
+      const realm = path.split("/").at(-1)!; deleted.push(realm); realms.delete(realm);
+      return new Response(null, { status: 204 });
+    }
+    const realm = path.split("/")[2]!;
+    return realm === "master" || realms.has(realm) ? Response.json({}) : new Response(null, { status: 404 });
+  });
+  const create = createOidcIssuerFixture("https://issuer.example.org", "synthetic-admin-password", "http://127.0.0.1:9000/callback", "m14-run-");
+  if (failSecond) await expect(create).rejects.toThrow("Owned issuer operation refused");
+  else {
+    const issuer = await create;
+    expect(issuer.issuer).toBe("https://issuer.example.org/realms/m14-run-reference");
+    expect(issuer.issuerFor("foreign")).toBe("https://issuer.example.org/realms/m14-run-foreign");
+    await issuer.close(); await issuer.close();
+  }
+  expect([...realms]).toEqual(["unrelated"]);
+  expect(deleted).toEqual(failSecond ? ["m14-run-reference"] : ["m14-run-foreign", "m14-run-reference"]);
+});
+
+it("admits only an explicit disposable pinned hosted issuer over public HTTPS before any connection", async () => {
+  const f = fixture();
+  const config = { schemaVersion: 1, target: "hosted-oidc", disposable: true, region: "test-region",
+    issuerOrigin: "https://issuer.example.org", issuerImage: OIDC_IMAGE, adminPassword: f.secret };
+  const save = () => writeFileSync(f.path, JSON.stringify(config), { mode: 0o600 }); save();
+  expect(loadCredentials(f.path, "hosted-oidc")).toEqual(config);
+  for (const issuerOrigin of ["http://issuer.example.org", "https://localhost", "https://127.0.0.1", "https://[::1]",
+    "https://issuer.local", "https://issuer.internal", "https://issuer.localhost", "https://localhost.",
+    "https://issuer.local.", "https://issuer.internal.", "https://issuer.example.org.", "https://user:secret@issuer.example.org",
+    "https://issuer.example.org/realms/shared", "https://issuer.example.org?secret=value", "https://issuer.example.org#fragment"]) {
+    config.issuerOrigin = issuerOrigin; save();
+    expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("public_https_issuer_required");
+  }
+  const receipt = join(f.root, "unsafe-hosted-receipt.json");
+  await expect(main(["--target", "hosted-oidc", "--credentials", f.path, "--receipt", receipt])).rejects.toThrow("public_https_issuer_required");
+  expect(() => readFileSync(receipt)).toThrow();
+  config.issuerOrigin = "https://issuer.example.org";
+  for (const issuerImage of ["quay.io/keycloak/keycloak:latest", `quay.io/keycloak/keycloak@sha256:${"a".repeat(64)}`]) {
+    config.issuerImage = issuerImage; save();
+    expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("disposable_pinned_issuer_required");
+  }
+  config.issuerImage = OIDC_IMAGE; config.disposable = false; save();
+  expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("explicit_disposable_target_required");
+  config.disposable = true; config.adminPassword = "short"; save();
+  expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("disposable_pinned_issuer_required");
+  config.adminPassword = f.secret; save(); chmodSync(f.path, 0o644);
+  expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("credential_file_requires_owner_mode_600");
+});
 
 it("refuses missing and undeclared selections before creating a receipt", async () => {
   const f = fixture();
