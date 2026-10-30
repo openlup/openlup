@@ -1,6 +1,9 @@
 # Managed pgTAP on plain PostgreSQL
 
-Status: plan awaiting the owner decisions listed below; nothing here changes CI.
+Status: owner go-ahead on 2026-10-30 to prepare W1, W2 and W3 as stacked draft
+pull requests; merges wait for the owner. The recommendations below are the
+provisional decisions (see [Recorded decisions](#recorded-decisions)). This
+planning change alters no CI behaviour.
 Read the [intent](neutral-postgres-pgtap-intent.md) first.
 Audience: the maintainer and the agents implementing the programme.
 
@@ -29,17 +32,20 @@ Audience: the maintainer and the agents implementing the programme.
   shadow window, then one green `pgtap` run on the switched lane with the old lane
   removed.
 
-## Current state (verified 2026-10-29 at `b5451b24`)
+## Current state (verified 2026-10-30 at `6700bcfe`, after #443)
 
 Per run, the `pgtap` job in `.github/workflows/published-tree-ci.yml` installs
-Supabase CLI 2.98.2 through `supabase/setup-cli`, logs in to GHCR and runs
+the checksum-verified native Supabase CLI 2.122.0 through
+`scripts/install-supabase-cli-ci.sh`, logs in to GHCR and runs
 `scripts/public-ci-pgtap.mjs`. The runner:
 
 1. binds the 29 committed `supabase/migrations` files to their Git blob identities;
 2. renders `config/public-reference-subscription-supabase.toml` (PostgreSQL 17,
-   Auth enabled) into a scratch project and pre-pulls five CLI-derived images
-   through mirror, GHCR, ECR and Docker Hub fallbacks (`scripts/ci-image-mirror.mjs`
-   derives the set from the CLI binary and the exclusion list);
+   Auth enabled) into a scratch project and pre-pulls the five CLI images
+   through mirror, GHCR, ECR and Docker Hub fallbacks. `scripts/ci-image-mirror.mjs`
+   derives the set from the CLI binary and the exclusion list, and
+   `config/ci-images.json` `cliImages` pins each derived pair to a reviewed digest
+   (`supabase/postgres:17.11.0.006`, GoTrue, Realtime, Storage API, `pg_prove` 3.36);
 3. starts the stack excluding every long-running service. The GoTrue, Realtime
    and Storage schema-init images still run;
 4. disables `supautils.hint_roles` and restarts PostgreSQL, because enhanced
@@ -197,7 +203,7 @@ under the same context name.
 | W0 | This intent and plan (draft PR). | Owner decisions D1–D10 recorded. |
 | W1 | Adapter, extension supply, runner, parity tooling and a non-required `pgtap-postgres` job beside the unchanged `pgtap`. No other CI change. | The parity proof passes locally and on the first hosted run. |
 | W1s | Shadow window: both lanes run on every PR, merge group and main push. | D6's window is met with zero unexplained divergence. |
-| W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the setup-cli steps in both workflows, CLI image derivation and the five CLI images from `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
+| W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and `scripts/install-supabase-cli-ci.sh` if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
 | W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. |
 
 W1 and W2 are separate PRs so that the shadow evidence comes from the merged W1
@@ -295,6 +301,16 @@ These are planning estimates to check in W1:
 | D8 | PostgreSQL version policy: reuse the install-proof `postgres:17` digest and refresh it with the managed image's major version. | Reuse the existing pin. Refresh it deliberately when the managed major changes. |
 | D9 | Required-check status of `pgtap`. | Unchanged; this programme does not make it required. |
 | D10 | Delivery authority for the W1 and W2 PRs (exact-PR merge by the owner, or a programme grant). | Exact-PR owner merge, since both waves change CI controls. |
+
+## Recorded decisions
+
+On 2026-10-30 the owner asked for W1, W2 and W3 to be prepared by Claude Opus
+agents as draft pull requests, stacked one on another, with merges deferred until
+other sessions finish. This is the go-ahead for D1 and for W3 under D2.
+Every other decision provisionally takes the recommendation in the table above.
+D6's shadow window cannot start until W1 is merged, so W2 stays a draft until
+the window passes. Local parity evidence on the W1 branch is the pre-merge proof.
+Merging any wave remains an exact-PR owner act (D10).
 
 ## Documentation impact
 

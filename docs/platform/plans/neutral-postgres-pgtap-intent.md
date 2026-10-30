@@ -1,6 +1,7 @@
 # Intent: prove the managed SQL contract on plain PostgreSQL
 
-Status: proposal awaiting owner decisions; no CI behaviour changes. The
+Status: owner go-ahead on 2026-10-30 for stacked draft implementation; merges
+wait for the owner. The
 [execution plan](neutral-postgres-pgtap.md) holds the inventory, stages, parity
 proof, risks and budget.
 Audience: the maintainer deciding the CI database lane, and agents implementing it.
