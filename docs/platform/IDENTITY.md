@@ -1209,6 +1209,38 @@ realms/users/clients and loopback-only published ports. Ownership and network
 checks bound cleanup to its resources; a failed prerequisite refuses the run.
 Do not point this command at an existing database or an external issuer.
 
+For an explicitly disposable hosted test issuer, use the same recipe runner:
+
+```sh
+node tests/postgres/runM14RecipeConformance.mjs --target hosted-oidc \
+  --credentials /external/hosted-oidc.env --receipt /new/hosted-oidc-receipt.json
+```
+
+The external owner-only mode-600 file contains JSON with `schemaVersion: 1`,
+`target: "hosted-oidc"`, `disposable: true`, a neutral `region`, `issuerOrigin`
+(a public HTTPS origin without credentials, path, query or fragment),
+`issuerImage` (the exact Keycloak image above) and a synthetic `adminPassword`
+of at least 24 characters for `conformance-admin`. The operator provisions the
+dedicated issuer and ACME TLS first and independently records its running digest.
+This declaration is destructive test authority, not discovery of a safe target.
+The runner refuses an undeclared, mutable-image or non-HTTPS target before
+connection. It verifies certificate chain and hostname with the ordinary trust
+store; it supplies no custom CA or insecure TLS option to Node or Chromium.
+The child receives private inputs through stdin and suppresses raw output.
+
+This mode reuses all lifecycle assertions below against the hosted issuer;
+PostgreSQL and the browser remain local disposable supporting fixtures. It creates
+unique synthetic realms, removes its confirmed creations and verifies their
+absence on success or lifecycle failure. A failed provisioning request can leave
+an unconfirmed realm; removing the dedicated operator-owned issuer also removes
+that residual state. The runner tears down its local database stack.
+Operator-owned issuer containers, TLS files and listeners require separate
+teardown and absence readback; the receipt records that boundary. Effort measures
+the witness separately from operator provisioning and cleanup. Only `oidc` and
+`hostedRecipes["10I"]` become PASS; unrelated sections remain pending. The claim
+is "hosted OIDC recipe receipt (single synthetic issuer on a test VM)", without
+production qualification or an SLO. This source runner adds no installed npm API.
+
 The private run directory links to the checkout's installed `node_modules`, as
 identity acceptance does, so the built server runtime can resolve external
 dependencies. Normal cleanup removes the link with the temporary directory.
