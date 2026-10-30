@@ -833,6 +833,8 @@ host using UTC-authored schedules must therefore run its scheduler in UTC.
 current registrations synchronously, then waits for callbacks already admitted,
 including pending lock acquisition and unlock. Await it before disposing their
 resources; custom scheduler implementations must return that drain promise.
+The adapter calls each supplied timer's `stop()` with its original receiver;
+receiver-dependent timer implementations such as `node-cron` retain their state.
 Later registrations remain supported. The Node host caches its `stop()` promise,
 keeps its listener and dedicated PostgreSQL lock session available until the
 drain settles, then attempts both cleanup operations even after a drain failure.

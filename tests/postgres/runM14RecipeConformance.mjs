@@ -5,6 +5,7 @@ import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, rea
 import { dirname, isAbsolute, resolve } from "node:path";
 import { checkServerIdentity } from "node:tls";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runLocalJourney, runLocalOidc } from "./m14RecipeJourneys.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const modes = ["installer-managed", "operator-provisioned", "schema"];
@@ -57,17 +58,19 @@ export function loadCredentials(path, target) {
       if (entry?.disposable !== true || !/^[0-9]{10,30}$/u.test(entry.systemIdentifier ?? "")) refuse("installation_declaration_required");
       if (!/^sha256:[a-f0-9]{64}$/u.test(entry.ociDigest ?? "")) refuse("oci_digest_required");
       const url = new URL(entry.connectionString);
+      if (target === "self-host" && !["127.0.0.1", "localhost"].includes(url.hostname)) refuse("local_self_host_endpoint_required");
       // Bootstrap/database names are explicit target data. Provider admission stays in the installer.
       if (!["postgres:", "postgresql:"].includes(url.protocol) || !/^[a-z_][a-z0-9_]*$/u.test(decodeURIComponent(url.username)) || !/^\/[a-z_][a-z0-9_]*$/u.test(decodeURIComponent(url.pathname))
         || !url.password || url.search || url.hash || !entry.ca?.includes("-----BEGIN CERTIFICATE-----")) refuse("verified_tls_bootstrap_input_required");
     }
     if (new Set(modes.map(mode => value.installations[mode].systemIdentifier)).size !== 3) refuse("separate_clusters_required");
     if (!isAbsolute(value.previousApplicationPath ?? "")) refuse("previous_application_required");
+    if (target === "self-host" && !/^sha256:[a-f0-9]{64}$/u.test(value.localNodeImage ?? "")) refuse("local_node_image_required");
     return value;
   } catch (error) {
     const known = ["target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
       "explicit_disposable_target_required", "region_required", "three_installations_required", "installation_declaration_required",
-      "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required"];
+      "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required", "local_node_image_required", "local_self_host_endpoint_required"];
     refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
   }
 }
@@ -76,7 +79,8 @@ export function initialReceipt(target) {
   return { schemaVersion: 1, target, status: "INCOMPLETE", startedAt: new Date().toISOString(),
     identity: pending("10A"), install: pending("10A"), connections: pending("10A"), schema: pending("10A"),
     transfer: pending("8D/10P"), recovery: pending("9A/10P"), oidc: pending("10I"), s3: pending("10O"),
-    nodeHosts: pending("10H"), effortCleanup: pending("10H/10S") };
+    nodeHosts: pending("10H"), effortCleanup: pending("10H/10S"),
+    hostedRecipes: Object.fromEntries(["10N", "10R", "10O", "10I", "10H", "10P"].map(owner => [owner, pending(owner)])) };
 }
 
 const poolLimits = { max: 4, connectionTimeoutMillis: 5000, statement_timeout: 15000, query_timeout: 20000, idleTimeoutMillis: 1000 };
@@ -178,9 +182,10 @@ export async function main(args = process.argv.slice(2)) {
   if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds --credentials /external/file.json --receipt /new/receipt.json");
   const [, target, , credentials, , destination] = args;
   if (process.versions.node !== "24.21.0" || npmVersion() !== "11.19.0") refuse("pinned_tools_required");
-  loadCredentials(credentials, target); // Refuse bad declarations before spawning or connecting.
+  const config = loadCredentials(credentials, target); // Refuse bad declarations before spawning or connecting.
   const fd = openSync(destination, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   const receipt = initialReceipt(target);
+  const started = performance.now();
   try {
     const result = await new Promise((done, reject) => {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker"], {
@@ -192,12 +197,46 @@ export async function main(args = process.argv.slice(2)) {
       child.stdin.end(JSON.stringify({ credentials, target }));
     });
     Object.assign(receipt, result);
+    if (target === "self-host" && receipt.status === "PASS_INITIAL_PHASES") {
+      receipt.status = "INCOMPLETE";
+      receipt.activePhase = "transfer";
+      receipt.transfer = { status: "PASS_LOCAL_PORTABLE_LEG", portableLeg: await runLocalJourney(root, config.localNodeImage),
+        managedLeg: { status: "PENDING-ON-8D-2", owner: "8D-2" },
+        additionalHostedPair: pending("10P"), claim: "local self-host recipe receipt" };
+      receipt.activePhase = "recovery";
+      receipt.recovery = await runLocalJourney(root, config.localNodeImage, true);
+      receipt.activePhase = "oidc";
+      receipt.oidc = await runLocalOidc(root);
+      receipt.activePhase = "s3";
+      const { runSelfhostStorage } = await import("./m14SelfhostStorage.mjs");
+      receipt.s3 = await runSelfhostStorage(root);
+      receipt.activePhase = "nodeHosts";
+      const { tsImport } = await import("tsx/esm/api");
+      const { runSelfhostHost } = await tsImport("./m14SelfhostHost.ts", import.meta.url);
+      receipt.nodeHosts = await runSelfhostHost({ image: config.localNodeImage, database: config.installations["installer-managed"] });
+      if (sourceDigest() !== receipt.identity.sourceSha256
+        || receipt.identity.packages.some(item => directoryDigest(resolve(root, `packages/${item.name.split("/")[1]}/dist`)) !== item.compiledSha256)
+        || directoryDigest(resolve(config.previousApplicationPath, "../..")) !== receipt.identity.previousApplication.compiledSha256)
+        refuse("source_changed_during_proof");
+      receipt.effortCleanup = { status: "PASS", wallSeconds: (performance.now() - started) / 1000,
+        witnessLaunches: 6, interventions: [], automaticRetries: 0,
+        localActions: { storage: receipt.s3.actions, node: receipt.nodeHosts.actions },
+        sourceFilesChanged: git(["diff", "--name-only", git(["merge-base", "HEAD", "origin/main"])]).split("\n").filter(Boolean),
+        fixtureCleanup: [receipt.transfer.portableLeg.cleanup, receipt.recovery.cleanup, receipt.oidc.cleanup, receipt.s3.cleanup, receipt.nodeHosts.cleanup],
+        exclusions: ["operator provisioning, dependency installation and image caching", "operator-owned declared PostgreSQL clusters and previous application artifact; operator owns teardown"],
+        claim: "declared-scope fixture measurement, not an SLO or hosted claim" };
+      if ([receipt.recovery, receipt.oidc, receipt.s3, receipt.nodeHosts, receipt.effortCleanup].some(section => section.status !== "PASS"))
+        refuse("self_host_section_incomplete");
+      receipt.status = "COMPLETE";
+      receipt.claim = "local self-host recipe receipt";
+      delete receipt.activePhase;
+    }
   } catch { receipt.status = "FAIL"; receipt.failure = "recipe_worker_failed; credential-bearing details suppressed"; }
   finally {
     receipt.finishedAt = new Date().toISOString();
     writeFileSync(fd, `${JSON.stringify(receipt, null, 2)}\n`); closeSync(fd);
   }
-  if (receipt.status !== "PASS_INITIAL_PHASES") refuse("recipe_conformance_failed; inspect redacted receipt");
+  if (!["PASS_INITIAL_PHASES", "COMPLETE"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
   return receipt;
 }
 
@@ -215,6 +254,8 @@ if (process.argv[2] === "--worker" && typeof process.send === "function") {
   }
   process.send(receipt, () => process.disconnect());
 } else if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().then(() => { console.log("Recipe conformance initial phases: passed; later sections pending"); })
-    .catch(() => { console.error("Recipe conformance refused or failed; credential-bearing details suppressed. Check target declaration, private external file, fresh PG16 clusters, TLS and built dependencies."); process.exitCode = 1; });
+  main().then(receipt => { console.log(receipt.status === "COMPLETE"
+    ? "Local self-host recipe receipt: COMPLETE; managed first leg and hosted recipes remain pending"
+    : "Recipe conformance initial phases: passed; later sections pending"); })
+    .catch(() => { console.error("Recipe conformance refused or failed; credential-bearing details suppressed. Check the redacted receipt, target declaration, private external file, fresh PG16 clusters, TLS, built dependencies and cached image/browser prerequisites."); process.exitCode = 1; });
 }

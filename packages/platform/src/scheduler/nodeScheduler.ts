@@ -121,7 +121,7 @@ export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSc
         void running.then(() => active.delete(running), () => active.delete(running));
         return running;
       }, { timezone: options.timezone });
-      registration.stop = timer.stop;
+      registration.stop = () => timer.stop();
       timers.push(registration);
     },
     verifyInvocation(req: HttpRequest) {

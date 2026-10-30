@@ -154,6 +154,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The opt-in [local self-host recipe](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+calls the existing installation, schema, catch-up and older-snapshot witnesses,
+then real issuer, local gateway and Node/OCI fixture compositions. Its plain-Node
+storage proof body is shared with the ordinary S3 conformance test; the public
+execution inventory includes that body and the bundled synthetic host actor.
+The focused recipe input/disposition tests run with
+`npm test -- tests/postgres/m14RecipeConformance.test.ts`; a COMPLETE local
+receipt additionally requires the destructive opt-in command and all its
+prerequisites. Neither focused tests nor a local receipt establish hosted
+qualification, and the three operator-declared database targets need their
+separate operator teardown.
+
 The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
 joins the existing installed platform cold-consumer selection.
 

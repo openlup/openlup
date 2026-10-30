@@ -75,6 +75,13 @@ describe("advisory guarded execution", () => {
 });
 
 describe("Node scheduler", () => {
+  it("stops a supplied timer with its original method receiver", async () => {
+    const timer = { stopped: false, stop() { this.stopped = true; } };
+    const adapter = createNodeScheduler({ cron: { schedule: () => timer }, jobs, env: {} });
+    adapter.register({ jobId: "queue-drain", schedule: "* * * * *", handler: async () => {} });
+    await adapter.stopAll();
+    expect(timer.stopped).toBe(true);
+  });
   it("exposes the supplied registry and prefers a trimmed explicit schedule", () => {
     const { cron } = timers();
     const adapter = createNodeScheduler({ cron, jobs, env: {}, timezone: "UTC" });
