@@ -159,6 +159,18 @@ instead uses its migration-owner capture session. The
 [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 owns preliminary-generation refusal and the final DB/object/access/drain/effect
 barrier; it is a finite local journey, not an adopter-host fencing service.
+The `--older-snapshot` mode retires the media application earlier, before saving
+the consistent DB/private-media backup. Its three admitted dispatches have a
+fixed 63-second release deadline to enclose the measured 60-second snapshot age;
+the default and catch-up deadlines remain 30 seconds. After induced failure,
+the same terminal retirement prevents the exact old executor from restarting
+after ownership transfer. Target effects and serving remain closed through
+restore, later privacy replay and authenticated reconciliation. Its scoped RTO
+includes actual serving and ordinary-job readback and permits one visible fenced
+uncertainty; it establishes no host SLO or hosted provider qualification.
+The 60.081-second RPO is the chosen snapshot age; the 87.345-second scoped RTO
+conservatively includes quiescence and the wait. These are declared-scope
+fixture measurements, not an SLO or hosted claim.
 This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
 adopter ACLs, provider qualification and whole-store RTO remain separate.
 

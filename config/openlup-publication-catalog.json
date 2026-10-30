@@ -1434,6 +1434,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-older-snapshot-recovery.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
@@ -26411,6 +26415,10 @@
     },
     {
       "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14OlderSnapshotRecovery.ts",
       "class": "public-output"
     },
     {
