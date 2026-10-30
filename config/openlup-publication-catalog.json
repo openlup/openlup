@@ -1542,6 +1542,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m17-r2-channel-bindings.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -26467,6 +26471,10 @@
     },
     {
       "path": "tests/platform/catalog/referenceUi.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/channels/channelCompositionBinding.test.ts",
       "class": "public-output"
     },
     {

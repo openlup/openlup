@@ -1546,6 +1546,10 @@ provider payload decoding, accepted currencies and enablement; jobs and simulato
 remain default-off. Optional connector port types describe host capabilities,
 not implemented outbound publication or synchronization.
 
+Both webhook composition and retained-purchase composition refuse missing channel
+reads before missing ingest rails, before any saga effect. Retained composition
+then requires the original retained rows before reading the saga dependencies.
+
 The managed rail can consume original retained paid obligations through the
 existing order, payment and inventory owners. Retained rows preserve the first
 approval/qualification, locked BOM, component weights, exact integer money groups

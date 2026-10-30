@@ -153,7 +153,7 @@ function orderFixture(): NormalizedChannelOrder {
     payloadDigest: "wire:χ:512",
   };
 }
-function purchaseFixture(): { capture: ChannelPurchaseCapture; context: ChannelRetainedPurchaseContext } {
+export function purchaseFixture(): { capture: ChannelPurchaseCapture; context: ChannelRetainedPurchaseContext } {
   const order = orderFixture();
   order.lines[0].sellable = { kind: "bundle", externalOfferRef: "offer:53", bundleCode: null };
   const scope = { connectionId: id(101), channelId: id(102), connectorKind: "synthetic_source", sellerRef: "seller:23",
