@@ -86,6 +86,11 @@ export function selectPackageFiles(pins, architecture) {
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
 /** Reuse verified cached packages or download each exact file once; never install unverified bytes. */
+/** The package download cache: the CI cache directory when set, else an ignored scratch directory. */
+export function packageCacheDir() {
+  return processEnvironment.OPENLUP_PGTAP_DEB_CACHE || join(root, ".context/scratch/cache/pgtap-debs");
+}
+
 export async function ensurePackages(files, cache, fetcher = fetch) {
   mkdirSync(cache, { recursive: true });
   for (const file of files) {
@@ -175,7 +180,7 @@ async function main() {
   mkdirSync(scratch, { recursive: true });
   const directory = mkdtempSync(join(scratch, "run-"));
   const files = selectPackageFiles(packagePins, dockerArchitecture());
-  const cache = processEnvironment.OPENLUP_PGTAP_DEB_CACHE || join(root, ".context/scratch/cache/pgtap-debs");
+  const cache = packageCacheDir();
   const debs = await ensurePackages(files, cache);
   const image = await pullWithRetry(readCiImage(packagePins.image));
   console.log(`Pinned image ${image}; packages ${debs.join(", ")} (${elapsed()})`);

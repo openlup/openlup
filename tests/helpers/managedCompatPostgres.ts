@@ -23,7 +23,7 @@ import { promisify } from "node:util";
 import { Client } from "pg";
 import packagePins from "../../config/ci-postgres-packages.json" with { type: "json" };
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
-import { ensurePackages, INITDB_ARGS, selectPackageFiles, SERVER_FLAGS } from "../../scripts/public-ci-pgtap.mjs";
+import { ensurePackages, INITDB_ARGS, selectPackageFiles, SERVER_FLAGS, packageCacheDir } from "../../scripts/public-ci-pgtap.mjs";
 import { runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer, type PostgresContainerSpec } from "./postgresContainer.js";
 
 const exec = promisify(execFile);
@@ -31,8 +31,8 @@ const root = resolve(import.meta.dirname, "../..");
 const adapterPath = join(root, "tests/postgres/managed-compat/supabase.sql");
 const bootstrapUser = "ci_bootstrap";
 const debsInContainer = "/work/debs";
-// OPENLUP_PGTAP_DEB_CACHE when set (shared with the pgTAP lane), else an ignored scratch directory.
-const packageCache = () => process.env.OPENLUP_PGTAP_DEB_CACHE || join(root, ".context/scratch/cache/pgtap-postgres-debs");
+// Shared with the pgTAP runner: the same cache directory and default.
+const packageCache = packageCacheDir;
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 async function dockerArchitecture(): Promise<string> {

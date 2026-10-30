@@ -402,7 +402,7 @@ install-proof `postgres:17` digest with W1's package pins, server flags, initdb
 locale and adapter. It reuses the W1 runner's exported package selection, download
 cache and settings. It verifies each package's SHA-256 again on the bytes it
 stages for one container, so the shared cache, `OPENLUP_PGTAP_DEB_CACHE` or the
-ignored `.context/scratch/cache/pgtap-postgres-debs`, is never trusted
+ignored `.context/scratch/cache/pgtap-debs` shared with the runner, is never trusted
 unverified. The suites log in as `postgres` and `supabase_admin` exactly as they
 did on the managed image. The helper gives the adapter's `supabase_admin`
 placeholder a login with the container password, the same identity the managed
