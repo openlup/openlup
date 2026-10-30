@@ -209,7 +209,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
       let result: { rows: { value: string }[] };
       try {
         result = await input.targetOwner.query<{ value: string }>(
-          `SELECT pg_catalog.to_jsonb(p)::pg_catalog.text AS value FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`,
+          `SELECT pg_catalog.set_config('TimeZone','UTC',true) AS zone,pg_catalog.to_jsonb(p)::pg_catalog.text AS value FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`,
           [JSON.stringify(value)]);
       } catch (error) {
         if (typeof (error as { code?: unknown })?.code === "string" && /^2[23]/.test((error as { code: string }).code)) fail("invalid_input");
@@ -236,10 +236,12 @@ const order = [
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
+  "catalog_products", "catalog_skus", "price_lists", "price_entries",
   "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
-  "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_order_items",
+  "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_settlement_intents", "commerce_settlement_transitions",
-  "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "outbox_dormant_event_types",
+  "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
+  "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts",
   "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions", "fulfillment_dispatch_contexts",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
@@ -352,7 +354,28 @@ export async function restoreConnectedNativeStore(input: {
           else if (table === "subscription_cycles") await client.query(`SELECT public.subscription_cycle_import_retained_row(p.id,p.subscription_id,
             p.scheduled_at,p.status,p.created_at,p.updated_at,p.renewal_operation_id,p.renewal_operation_fingerprint)
             FROM pg_catalog.jsonb_populate_record(NULL::public.subscription_cycles,$1::jsonb) p`, [row]);
+          else if (table === "catalog_products") {
+            const value = JSON.parse(row) as { primary_sku_id: string | null; current_document_revision_id: string | null };
+            if (value.current_document_revision_id !== null) fail("unsupported_table", "catalog_product_document_revisions");
+            // The product-to-primary-SKU FK and SKU-to-product FK form a cycle.
+            // Stage this one nullable reference, then install its exact captured
+            // value after all SKU parents exist in the same locked transaction.
+            const staged = value.primary_sku_id === null ? row :
+              (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}',
+                'null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
+            await insert(client, rows, staged);
+          }
           else await insert(client, rows, row);
+        }
+        if (table === "catalog_skus") for (const product of source.get("catalog_products")!.rows) {
+          const value = JSON.parse(product) as { id: string; primary_sku_id: string | null };
+          if (value.primary_sku_id === null) continue;
+          const updated = await client.query(`UPDATE public.catalog_products p SET primary_sku_id=x.primary_sku_id
+            FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,$1::jsonb) x
+            WHERE p.id=x.id AND p.primary_sku_id IS NULL AND x.primary_sku_id IS NOT NULL
+              AND (pg_catalog.to_jsonb(p)-'primary_sku_id')=(pg_catalog.to_jsonb(x)-'primary_sku_id')
+            RETURNING p.id`, [product]);
+          if (updated.rows.length !== 1) fail("target_conflict", "catalog_products");
         }
         if (table === "commerce_order_holds") neutralized = await neutralizeHistoricalHoldNotifications(client, source, facts.xid);
       }

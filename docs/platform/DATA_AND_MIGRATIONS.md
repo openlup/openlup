@@ -78,6 +78,63 @@ generation for final recapture and exact readback; no existing target rows are
 patched or deleted to simulate catch-up. The [transfer architecture](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 owns its interrupted atomic retry, source-domain access and activation evidence.
 
+The finite native profile also admits the existing canonical catalog,
+price-list and subscription-line parents of a retained subscription, and the
+recipient-consent, native send/observation and communication-sync rows needed
+for pending communication work. These names use the same qualified-target
+catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
+checks as the rest of the profile; no arbitrary source table becomes writable.
+The managed source extractor inventories one disposable managed snapshot,
+including Auth identity metadata and Storage metadata relations. The capture
+login must be exempt from row security and able to read every relation; a login
+that row security would filter refuses instead of reading an empty source. It
+projects only the finite typed obligations into a qualified canonical target. Full
+managed audit and business history is not transferred: it remains in the
+operator's source backup or snapshot, under the operator's access, retention
+and erasure controls. The existing `retained-history` disposition identifies
+source history with no remaining typed obligation; it creates no target row or
+private history object. Reconciled provider settlement batches and matched
+items stay in the operator's source archive while their settled money state is
+carried in typed target rows. Completed source idempotency receipts stay in
+that archive only after their windows expire. The operator waits until
+outstanding idempotency windows expire and quiesces in-flight checkouts, then
+captures. Provider payment identifiers of settled payments are carried with
+the typed payment; provider reference rows of settled or terminal unpaid
+payments and their raw payloads stay in the operator archive. Failed payments
+are carried as typed failed settlement state; checked cancelled or expired
+checkouts stay in the archive while their pending order is carried. Carried
+settled transitions receive `invoicing_cutover` rows, so restored history opens
+no new document duty, and carried fulfilment work can open one only when its
+shipment later hands off. Issue every owed first invoice before capture, because a
+carried paid order will not open one on the target. A terminal checkout reminder keeps only its key on the
+carried unpaid order, so the target does not send it again; this is the one source key
+that stays active. Carried subscriptions
+stay at static delivery admission `blocked`: a due renewal refuses before stock or
+payment and records that refusal for its schedule. Renewals of carried subscriptions
+stay unsupported until a later subscription lifecycle carry, so keep the renewal job
+off for them. A subscription with more than one line refuses. A number on a carried relation that a double cannot hold refuses, including
+one in a column that is not carried; a JSON number's trailing zeros are not kept, so `1.50` arrives as `1.5`.
+Free-form JSON (order metadata, event and outbox payloads) is copied as the source holds it, including source
+IDs, so complete any source erasure first. A product with allergens set refuses, because the target catalogue
+has no allergen column; a later carry adds it. Product name, description, ingredients and marketing content are
+carried. Other product and SKU content columns, and order tax and net breakdowns, stay in the operator's archive.
+A repeated provider event for a carried settled payment is refused as already settled, and one for an
+archived checkout has no target payment to match, so let provider windows close before capture. Carried pending
+work waits until the target composition has its handler. Restore refuses a packet over 10,000 rows or 64 MiB,
+counting the target's own factory rows. The capture's census counts rows per relation, not per row class, so it
+does not say how many became typed and how many stayed in the archive. The capture is qualified only for a source
+on the pinned managed baseline: a missing carried relation or a removed column refuses, but an added or retyped
+column is not detected, so requalify the transfer after any later source migration.
+Any managed invoice row refuses, including issued
+invoices, so a source with invoice rows cannot transfer yet. A starter-pack marker,
+a synthetic test subscription, a quote line that disagrees with its price agreement
+and an order item with no SKU also refuse. Nonempty unknown relations, incomplete typed obligations and
+other settlement or idempotency states refuse transfer. Managed Storage objects are not yet transferred;
+nonempty managed Storage refuses. A separate managed object projection is
+required before that source state can transfer. Source-keyed terminal effects
+do not become active target command keys. Managed capture is local evidence
+only; it does not qualify hosted managed data, object access or recovery.
+
 In `--older-snapshot` mode, recovery instead reloads a persisted pre-provider-
 acceptance DB packet and complete private media snapshot. Media writers have
 retired and admitted dispatches are paused while this consistent boundary is
@@ -87,7 +144,7 @@ replays its independently retained later erasure obligation through the existing
 restricted-runtime privacy transaction, including retained-text redaction and
 authentication refusal. The older backup itself remains private and immutable.
 The [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
-defines its measured RPO/RTO, visible uncertainty and separate managed-sidecar
+defines its measured RPO/RTO, visible uncertainty and separate managed-source
 proof boundary; this adds no schema, table admission or general backup service.
 
 Historical insertion is not generally inert. `clients` insertion invokes

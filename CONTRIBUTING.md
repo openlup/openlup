@@ -208,6 +208,21 @@ declaration, ordinary TLS verification and separate operator teardown boundary.
 The focused input tests cover its pre-connection refusals; actual hosted PASS
 also requires real browser login, expiry/rotation and owned realm absence.
 
+The required [managed source projection suite](tests/postgres/connectedManagedRetained.test.ts)
+uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified PG16 target.
+It compares typed target rows and obligations with the restore packet, checks
+that history-only source rows have no target representation, and exercises
+refusals for unknown and uncarried state. Full managed history stays in the
+operator's source archive. Run `node tests/postgres/runM14ManagedSourceWitness.mjs`
+to exercise the same assertions on an owned real managed stack. This opt-in
+runner downloads and verifies the reviewed CLI 2.122.0 archive for Linux x64 or
+macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
+names/statuses and source-image evidence under private scratch. It is outside
+the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
+are required. Neither route qualifies hosted managed data. The runner's owned
+stack boundary is the extension point for the separate Storage API, GoTrue and
+authenticated object-read witness.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected
@@ -2899,6 +2914,12 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-29, M14 connected catch-up: fixture labels for observation authority
   or media visibility → use the existing bootstrap observer and exact domain
   SQL states before composing retirement and access expectations.
+
+- 2026-10-30, M14 managed source transfer: when a full-row history archive
+  cannot support complete erasure, carry finite typed obligations and refuse
+  unrepresented state. Keep source history in the operator's own archive.
+  Reviewers each finding the next refusal with no test → measure unreached
+  refusal lines once and test them together, at the level where the guards live.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the
