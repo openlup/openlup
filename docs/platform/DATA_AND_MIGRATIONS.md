@@ -84,9 +84,14 @@ recipient-consent, native send/observation and communication-sync rows needed
 for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
-The managed source extractor retains full business-row text and complete
-Storage metadata under source/table/row identities in a private history object,
-while selecting only identity metadata from Auth users. It refuses unknown
+The managed source extractor retains business-row history and Storage metadata
+under source/table/row identities in a private history object, while selecting
+only identity metadata from Auth users. At capture, fields capable of carrying
+an unrelated person's identity, and JSON without a known own-subject or catalog
+shape, are replaced by a fixed marker with a per-field reason. Own-subject
+history, structural values and catalog rows remain verbatim. The in-process native projection
+uses the original source values, so this sidecar narrowing does not alter active
+target obligations. It refuses unknown
 nonempty relations and refuses export of an active row whose canonical mapping
 is still unresolved. A transfer manifest binds the exact canonical row packet
 to the private object's digest; managed admission reads the object back and

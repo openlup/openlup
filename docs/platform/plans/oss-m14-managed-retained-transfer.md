@@ -311,3 +311,87 @@ relations → audit all finite subject links once and use direct per-relation
 union/refusal with cross-subject readback proof. The prior settlement-only
 repair closed its row's card but left the same pattern in delivery history;
 the matrix and shared finite resolver cover the published cohort together.
+
+## Retained field representation audit (CD-M14-37a)
+
+Cycle 5's MRL-1 found B's email in an A audit row with no typed target ID.
+CD-M14-37a narrows the prior candidate's minimisation: only fields that can
+identify someone outside the row's typed subjects, personal-capable fields in
+a row without a subject, and unknown JSON are replaced by the fixed marker.
+The private fact records the field and one of these precise reasons. A zero-row
+field is a no-op. The field disposition remains reversible if a later reviewed
+typed binding proves its subject. The original source values stay transient for
+native mapping; active obligations and domain erasure paths are unchanged.
+
+The preceding subject-provenance matrix gives every typed UUID link and its
+owner and erasure path. Those IDs remain verbatim as bound-own-subject fields;
+unresolved non-null links still refuse. Numeric, boolean and temporal business
+facts remain verbatim. The table below assigns each admitted finite-profile text/JSON
+field once. B = bound-own-subject verbatim (the typed row subject removes its
+sidecar row on erasure). S = subject-free verbatim (catalog, structural/status
+code, order number or provider ID; no independent personal identity claim).
+T = third-party-capable minimised (may name someone outside the typed subject
+set). U = unbound-row minimised (personal-capable field without a typed row
+subject). J = unknown-JSON minimised (arbitrary keys may name another person).
+Known invoice, pricing/template, client and catalog JSON snapshots are B or S.
+New JSON columns default to J; nonempty unknown relations still refuse.
+No relation hashes a textual primary key in this cohort: Storage bucket IDs
+remain their exact source keys because they are structural namespace IDs;
+the present fixture shows no third-party personal content in that key.
+
+| Admitted relation | B | S | T | U | J |
+| --- | --- | --- | --- | --- | --- |
+| auth.users | email | — | — | — | — |
+| identity_privacy_erasures | contributor_versions, dispositions, retained_obligations | contract_version | — | — | — |
+| customer_subject_lifecycle_events | — | from_stage, to_stage | — | — | — |
+| admin_audit_events | entity_id | action, source, entity_type, actor_kind, request_id, idempotency_key | actor_email, target_email, old_value, new_value | — | — |
+| clients | email, first_name, last_name, phone, external_ref, metadata, preferences | country, lifecycle_stage, acquisition_source, identity_kind | — | — | — |
+| admin_users | email | role, membership_state, membership_provenance | membership_revocation_reason | — | — |
+| subscriptions | size_constraint, payment_method_ref, starter_pack | currency, region_code, status, payment_method_kind, timezone, cancellation_source, offer_policy_version, promotion_engine_version, offer_policy_assignment_state | cancellation_reason | — | — |
+| subscription_cycles | template_snapshot, pricing_snapshot, payment_method_ref | status, engine_idempotency_key, offer_policy_version, promotion_engine_version, offer_policy_assignment_state, renewal_row_error_key | failure_reason | — | — |
+| subscription_events | — | event_type, idempotency_key, actor_kind | — | — | payload |
+| subscription_lines | — | — | — | — | line_metadata |
+| subscription_price_agreements | quote_line | agreement_kind, proration_policy, cycle_effect, currency, source_action, idempotency_key | — | — | — |
+| commerce_orders | order_number, size_constraint, source_order_ref | status, currency, region_code, mode, source_kind | — | — | metadata |
+| commerce_order_items | — | product_snapshot, mode_at_line, variant_snapshot | — | — | — |
+| commerce_payments | — | provider, provider_payment_id, status, currency | — | — | metadata |
+| commerce_payment_intents | — | target_kind, status, currency, provider_payment_id | failure_reason | — | metadata |
+| commerce_payment_attempts | — | provider, provider_attempt_id, provider_session_id, idempotency_key, status, currency, next_action_kind, failure_class | failure_reason, request_payload, response_payload | — | metadata |
+| commerce_payment_state_transitions | — | transition_kind, from_status, to_status, idempotency_key | reason, payload | — | — |
+| commerce_payment_method_refs | consent_snapshot | provider_kind, method_kind, provider_customer_ref, provider_method_ref, provider_mandate_ref, status | raw_provider_payload | — | metadata |
+| commerce_idempotency_keys | — | scope, idempotency_key, request_fingerprint, status | — | — | response_payload, metadata |
+| payment_provider_settlement_batches | — | provider_kind, provider_batch_id, currency, status | — | — | evidence |
+| payment_provider_settlement_items | — | provider_kind, provider_payment_id, currency, status | — | — | evidence |
+| accounting_invoices | order_ref, invoice_ref, buyer_snapshot, order_snapshot, tax_snapshot, lines_snapshot | status, currency, provider_kind, provider_invoice_id, provider_invoice_number, ksef_number, ksef_status, correction_status, document_type, buyer_kind, ksef_requirement, policy_version, provider_pdf_ref, provider_xml_ref, document_kind, provider_payment_id, email_status, provider_upo_ref | blocked_reason | — | metadata |
+| accounting_invoice_issue_outbox | — | provider_kind, status | — | — | last_error |
+| communication_contacts | normalized_email, display_email, first_name, last_name | status | — | — | metadata |
+| communication_contact_links | — | source_system, source_table | source_key | — | metadata |
+| communication_permissions | — | channel, purpose, state, source | reason | — | source_ref, metadata |
+| communication_email_deliveries | aggregate_id | purpose, template_slug, trigger_source, trigger_event, aggregate_type, dedupe_key, status, provider_kind, provider_message_id, last_error_code | recipient_fingerprint | — | metadata |
+| outbox_events | — | aggregate_type, event_type, idempotency_key, status | payload, error, metadata | — | — |
+| catalog_products | — | slug, status, name, description, metadata, ingredients, allergens, marketing_content | — | — | — |
+| catalog_skus | — | sku, title, pet_type, status, metadata, format_code, unit_form_code, gtin, asset_ref | — | — | — |
+| price_lists | — | name, region_code, currency, status | — | — | — |
+| price_entries | — | mode, amount_kind | — | — | — |
+| storage.buckets | — | id, name, allowed_mime_types, type | — | owner, owner_id and any other nonstructural text when populated | any other JSON |
+| storage.objects | owner_id | bucket_id, version | name, path_tokens, owner | — | metadata, user_metadata and any other JSON |
+
+W5 retains the real managed→PG16 MRL-1 witness: B's actual email is planted in
+A's audit actor_email, target_email and old/new JSON with null target_admin_id.
+Capture/readback retain markers and facts only; B redaction removes B's bound
+history while A's active client, consent, settlement and duty rows remain exact.
+A missing target_email fact refuses readback even after the capture digest is
+recomputed. W6 compares the invoice buyer snapshot and the whole catalog
+product row to the real managed source and serialized private-object readback
+byte for byte. The catalog row and the invoice's own snapshot survive verbatim.
+
+The previous b88347f6 candidate over-minimised catalog content, invoice,
+pricing/template snapshots, order numbers and operational codes. This correction
+restores their exact source values in the sidecar. Self-retro: broad type-based
+minimisation made privacy coverage simple but lost legitimate retained history;
+the finite third-party-field list plus default for unknown JSON preserves both
+the privacy control and own-subject evidence without email inference.
+The corrected tree passes strict five-project typecheck, lint with zero errors
+(33 existing warnings), and the pinned local managed→qualified PG16 focused
+suite 8/8. The W6 invoice snapshot/catalog assertions and W5 privacy refusal
+ran in that suite. This remains a local finite proof, not hosted qualification.

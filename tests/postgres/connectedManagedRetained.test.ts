@@ -266,6 +266,10 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     VALUES($1,'linked-consent@example.invalid',$2,'customer')`, [linkedClientId, linkedUserId]);
   await managed.owner.query(`INSERT INTO public.communication_contact_links(contact_id,source_table,source_id)
     VALUES($1,'clients',$2)`, [contactId, linkedClientId]);
+  const unboundEmail = "linked-consent@example.invalid";
+  await managed.owner.query(`UPDATE public.admin_audit_events SET actor_email=$1,target_email=$1,
+    old_value=$2::jsonb,new_value=$2::jsonb WHERE actor_admin_id=$3`,
+  [unboundEmail, JSON.stringify({ email: unboundEmail, note: "unbound person B" }), managed.operator]);
   try {
   const source = await capture(), fresh = await freshTarget();
   for (const relation of new Set(source.rows.map(row => row.relation))) {
@@ -275,9 +279,38 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
       ? "pg_catalog.jsonb_build_object('id',t.id,'email',t.email,'created_at',t.created_at,'updated_at',t.updated_at)"
       : "pg_catalog.to_jsonb(t)";
     const actual = (await managed.owner.query<{ value: string }>(`SELECT (${expression})::pg_catalog.text AS value
-      FROM "${schema}"."${table}" t`)).rows.map(row => row.value).sort();
-    expect(actual, relation).toEqual(source.rows.filter(row => row.relation === relation).map(row => row.value).sort());
+      FROM "${schema}"."${table}" t`)).rows.map(row => JSON.parse(row.value) as Record<string, unknown>);
+    const captured = source.rows.filter(row => row.relation === relation);
+    expect(captured, relation).toHaveLength(actual.length);
+    for (const row of captured) {
+      const value = JSON.parse(row.value) as Record<string, unknown>;
+      const original = relation === "storage.buckets" && actual.length === 1
+        ? actual[0] : actual.find(candidate => candidate.id === value.id);
+      expect(original, relation).toBeDefined();
+      for (const [field, originalValue] of Object.entries(original!)) {
+        if (row.minimisations.some(fact => fact.field === field)) {
+          expect(value[field], `${relation}.${field}`).toBe("[MINIMISED:UNBOUND_PERSONAL_FIELD]");
+        } else expect(value[field], `${relation}.${field}`).toEqual(originalValue);
+      }
+    }
   }
+  const auditHistory = source.rows.find(row => row.relation === "public.admin_audit_events")!;
+  expect((JSON.parse(auditHistory.value) as { target_admin_id: string | null }).target_admin_id).toBeNull();
+  const bucketHistory = source.rows.find(row => row.relation === "storage.buckets")!;
+  expect(bucketHistory.rowIdentity).toBe((await managed.owner.query<{ source_key: string }>(
+    "SELECT pg_catalog.jsonb_build_array(id)::pg_catalog.text AS source_key FROM storage.buckets WHERE id='retained'"
+  )).rows[0]!.source_key);
+  expect(auditHistory.minimisations.map(fact => fact.field)).toEqual(expect.arrayContaining([
+    "actor_email", "target_email", "old_value", "new_value"]));
+  expect(auditHistory.minimisations.find(fact => fact.field === "target_email")?.reason).toBe("third-party-capable");
+  expect(auditHistory.value).not.toContain(unboundEmail);
+  const withoutFact = { ...source, rows: source.rows.map(row => row === auditHistory
+    ? { ...row, minimisations: row.minimisations.filter(fact => fact.field !== "target_email") } : row) };
+  const { sha256: _oldDigest, ...withoutFactBody } = withoutFact;
+  withoutFact.sha256 = createHash("sha256").update(JSON.stringify(withoutFactBody)).digest("hex");
+  const withoutFactBytes = Buffer.from(JSON.stringify(withoutFact));
+  expect(() => readManagedRetainedHistory(withoutFactBytes,
+    createHash("sha256").update(withoutFactBytes).digest("hex"))).toThrowError(/postgres_transfer_invalid_input/);
   const keyBefore = (await targetOwner!.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
   const mapped = await mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
     freshTarget: fresh, targetOwner: targetOwner! });
@@ -293,7 +326,25 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   const object = exportManagedRetainedHistory(mapped.retained);
   expect(object.object).toMatchObject({ access: "private-retained-history", key: object.key,
     sha256: object.sha256, bytes: object.bytes.byteLength });
-  expect(readManagedRetainedHistory(object.bytes, object.sha256)).toEqual(mapped.retained);
+  const objectReadback = readManagedRetainedHistory(object.bytes, object.sha256);
+  expect(objectReadback).toEqual(mapped.retained);
+  const sourceInvoice = source.rows.find(row => row.relation === "public.accounting_invoices"
+    && (JSON.parse(row.value) as { id: string }).id === invoiceId)!;
+  const originalInvoice = (await managed.owner.query<{ value: string }>(
+    "SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public.accounting_invoices t WHERE id=$1",
+    [invoiceId])).rows[0]!.value;
+  const invoiceSnapshot = (value: string) => JSON.stringify((JSON.parse(value) as { buyer_snapshot: unknown }).buyer_snapshot);
+  expect(invoiceSnapshot(sourceInvoice.value)).toBe(invoiceSnapshot(originalInvoice));
+  expect(invoiceSnapshot(objectReadback.rows.find(row => row.relation === "public.accounting_invoices")!.value))
+    .toBe(invoiceSnapshot(originalInvoice));
+  expect(objectReadback.rows.find(row => row.relation === "public.accounting_invoices")!.value).toBe(sourceInvoice.value);
+  const sourceProduct = source.rows.find(row => row.relation === "public.catalog_products"
+    && (JSON.parse(row.value) as { id: string }).id === productId)!;
+  const originalProduct = (await managed.owner.query<{ value: string }>(
+    "SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public.catalog_products t WHERE id=$1",
+    [productId])).rows[0]!.value;
+  expect(sourceProduct.value).toBe(originalProduct);
+  expect(objectReadback.rows.find(row => row.relation === "public.catalog_products")!.value).toBe(originalProduct);
   const transfer = assembleManagedRetainedTransfer(mapped);
   const objectRoot = await mkdtemp(join(process.cwd(), ".context/scratch/m14-retained-object-"));
   retainedObjectRoots.push(objectRoot);
@@ -372,9 +423,14 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   expect(Buffer.from(redactedObject.bytes).toString("utf8")).not.toContain(email);
   expect(readManagedRetainedHistory(Buffer.concat(redactedChunks), redactedObject.sha256).rows.some(row =>
     row.subjects.includes(userId) || row.subjects.includes(targetPrincipal))).toBe(false);
-  const unrelatedRedacted = redactManagedRetainedHistory(mapped.retained, linkedClientId);
+  const unrelatedRedacted = redactManagedRetainedHistory(mapped.retained, linkedUserId);
   const unrelatedObject = exportManagedRetainedHistory(unrelatedRedacted);
   const unrelatedReadback = readManagedRetainedHistory(unrelatedObject.bytes, unrelatedObject.sha256);
+  expect(unrelatedReadback.rows.find(row => row.relation === "public.admin_audit_events")?.rowIdentity)
+    .toBe(auditHistory.rowIdentity);
+  expect(unrelatedReadback.rows.find(row => row.relation === "public.admin_audit_events")?.value)
+    .not.toContain(unboundEmail);
+  expect(JSON.stringify(unrelatedReadback)).not.toContain(unboundEmail);
   expect(unrelatedReadback.rows).not.toContainEqual(expect.objectContaining({
     relation: consentHistory!.relation, rowIdentity: consentHistory!.rowIdentity }));
   expect(unrelatedReadback.rows).not.toContainEqual(expect.objectContaining({
@@ -383,7 +439,14 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     .toEqual(activeClientBefore);
   expect((await targetOwner!.query(`SELECT recipient_fingerprint,purpose,state
     FROM public.communication_recipient_consents`)).rows).toEqual(activeConsentBefore);
+  expect((await targetOwner!.query("SELECT id,status,amount_minor::text FROM public.commerce_settlement_intents ORDER BY id")).rows)
+    .toEqual([{ id: intentId, status: "failed", amount_minor: "900" },
+      { id: paidIntentId, status: "settled", amount_minor: "900" }].sort((a, b) => a.id.localeCompare(b.id)));
+  expect((await targetOwner!.query("SELECT order_id,status FROM public.invoicing_duties")).rows)
+    .toEqual([{ order_id: paidOrderId, status: "owed" }]);
   } finally {
+    await managed.owner.query(`UPDATE public.admin_audit_events SET actor_email=NULL,target_email=NULL,
+      old_value=NULL,new_value=NULL WHERE actor_admin_id=$1`, [managed.operator]);
     await managed.owner.query("DELETE FROM public.communication_contact_links WHERE contact_id=$1 AND source_id=$2",
       [contactId, linkedClientId]);
     await managed.owner.query("DELETE FROM public.clients WHERE id=$1", [linkedClientId]);

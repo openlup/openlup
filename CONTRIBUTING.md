@@ -174,6 +174,15 @@ defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
 
+The [managed retained transfer witness](tests/postgres/connectedManagedRetained.test.ts)
+uses a pinned disposable local managed stack and a fresh qualified PG16 target.
+For the private history object, compare each captured field with its source
+row, checking a fixed marker and recorded fact for every minimised field;
+then check byte-exact readback of own-subject invoice snapshots and catalog
+rows, plus subject redaction. Compare active native
+rows separately, because sidecar minimisation must not change their retained
+obligations. This witness does not qualify hosted managed data.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected

@@ -16,6 +16,7 @@ export interface ManagedRetainedRow {
   rowIdentity: string;
   subjects: string[];
   value: string;
+  minimisations: { field: string; reason: "third-party-capable" | "unbound-row" | "unknown-json" }[];
   disposition: "requires-active-mapping" | "mapped-active-and-retained" | "retained-history";
   targetTables: string[];
   reason: string;
@@ -77,6 +78,65 @@ const credentials = new Set([
 const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
 const identity = /^[a-z][a-z0-9_]{0,62}$/;
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
+const minimised = "[MINIMISED:UNBOUND_PERSONAL_FIELD]";
+// Finite fields that can carry another person's identity despite the row's
+// typed owner links. Ordinary own-subject history and catalog values stay exact.
+const thirdPartyFields: Record<string, readonly string[]> = {
+  "public.admin_audit_events": ["actor_email", "target_email", "old_value", "new_value"],
+  "public.admin_users": ["membership_revocation_reason"],
+  "public.subscriptions": ["cancellation_reason"],
+  "public.subscription_cycles": ["failure_reason"],
+  "public.commerce_payment_intents": ["failure_reason"],
+  "public.commerce_payment_attempts": ["failure_reason", "request_payload", "response_payload"],
+  "public.commerce_payment_state_transitions": ["reason", "payload"],
+  "public.commerce_payment_method_refs": ["raw_provider_payload"],
+  "public.payment_external_refs": ["raw_payload"],
+  "public.accounting_invoices": ["blocked_reason"],
+  "public.accounting_invoice_correction_outbox": ["correction_reason"],
+  "public.communication_contact_links": ["source_key"],
+  "public.communication_permissions": ["reason"],
+  "public.communication_permission_events": ["reason"],
+  "public.communication_email_deliveries": ["recipient_fingerprint"],
+  "public.outbox_events": ["payload", "error", "metadata"],
+  "storage.objects": ["name", "path_tokens", "owner"],
+};
+// These known JSON values describe the row's own bound subject or a
+// subject-free catalog item. New JSON columns default to minimisation.
+const ownOrCatalogJson: Record<string, readonly string[]> = {
+  "public.clients": ["metadata", "preferences"],
+  "public.subscriptions": ["size_constraint", "starter_pack"],
+  "public.subscription_cycles": ["template_snapshot", "pricing_snapshot"],
+  "public.subscription_price_agreements": ["quote_line"],
+  "public.commerce_orders": ["size_constraint"],
+  "public.commerce_order_items": ["product_snapshot", "variant_snapshot"],
+  "public.commerce_payment_method_refs": ["consent_snapshot"],
+  "public.accounting_invoices": ["buyer_snapshot", "order_snapshot", "tax_snapshot", "lines_snapshot"],
+  "public.identity_privacy_erasures": ["contributor_versions", "dispositions", "retained_obligations"],
+  "public.catalog_products": ["metadata", "marketing_content"],
+  "public.catalog_skus": ["metadata"],
+};
+const bucketStructuralFields = new Set(["id", "name", "allowed_mime_types", "type"]);
+const personalCapableTextType = /^(?:text(?:\[\])?|character(?: varying)?|citext)(?:\(|$)/u;
+function minimiseUnboundFields(relation: string, row: Row, sourceValue: string, columnTypes: Map<string, string>, subjects: string[]):
+  { value: string; minimisations: ManagedRetainedRow["minimisations"] } {
+  const retained = { ...row };
+  const minimisations: ManagedRetainedRow["minimisations"] = [];
+  for (const [field, value] of Object.entries(row)) {
+    const type = columnTypes.get(field);
+    if (value === null || !type) continue;
+    const reason = thirdPartyFields[relation]?.includes(field) ? "third-party-capable"
+      : /^(?:jsonb?|jsonb?\[\])$/u.test(type) && !ownOrCatalogJson[relation]?.includes(field) ? "unknown-json"
+        : !subjects.length && relation === "storage.buckets" && (["owner", "owner_id"].includes(field)
+          || personalCapableTextType.test(type) && !bucketStructuralFields.has(field)) ? "unbound-row" : null;
+    if (!reason) continue;
+    retained[field] = minimised;
+    minimisations.push({ field, reason });
+  }
+  return { value: minimisations.length ? JSON.stringify(retained) : sourceValue, minimisations };
+}
+// Raw rows are held only for the immediate native projection. They are never a
+// property of the returned capture, retained object or transfer manifest.
+const projectionRows = new WeakMap<ManagedRetainedCapture, Map<string, Row[]>>();
 function fail(code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never {
   throw new PostgresTransferError(code, relation);
 }
@@ -89,7 +149,9 @@ const quoted = (value: string): string => value.length <= 63 && !value.includes(
 
 /**
  * Extract a bounded source-only record under one actual read-only snapshot.
- * Full public business rows stay private in the sidecar. Auth credentials are
+ * Finite public business rows stay private with third-party-capable snapshots
+ * and unknown JSON minimised.
+ * Auth credentials are
  * never selected; the selected Auth/Storage metadata must be reconciled with
  * their owning APIs by the host before object publication.
  */
@@ -119,6 +181,7 @@ export async function captureManagedRetainedHistory(input: {
         ORDER BY n.nspname,c.relname`)).rows;
       const sourceRows = new Map<string, Row[]>();
       const sourceRaw = new Map<string, { value: string; rowIdentity: string }[]>();
+      const sourceColumnTypes = new Map<string, Map<string, string>>();
       const dispositions: ManagedRetainedCapture["dispositions"] = [];
       let totalRows = 0, totalBytes = 0;
       for (const relation of relations) {
@@ -148,6 +211,10 @@ export async function captureManagedRetainedHistory(input: {
           JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
           WHERE i.indrelid=$1::pg_catalog.regclass AND i.indisprimary ORDER BY k.ordinal`, [qualified])).rows;
         if (!keyColumns.length) fail("schema_conflict", name);
+        const columnTypes = (await db.query<{ name: string; type: string }>(`SELECT a.attname AS name,
+          pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
+          WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped`, [qualified])).rows;
+        sourceColumnTypes.set(name, new Map(columnTypes.map(column => [column.name, column.type])));
         const key = `pg_catalog.jsonb_build_array(${keyColumns.map(column => `t.${quoted(column.name)}`).join(",")})::pg_catalog.text`;
         const raw = (await db.query<{ value: string; row_identity: string }>(`SELECT (${expression})::pg_catalog.text AS value,
           ${key} AS row_identity FROM ${qualified} t ORDER BY (${expression})::pg_catalog.text LIMIT $1`,
@@ -158,19 +225,23 @@ export async function captureManagedRetainedHistory(input: {
         sourceRaw.set(name, raw);
         dispositions.push({ relation: name, rows: raw.length, disposition: active.has(name) || name === "auth.users"
           ? "requires-active-mapping" : "retained-history", reason: active.has(name) ? "canonical projection required before publication"
-          : name === "auth.users" ? "identity metadata only; credentials excluded" : "full private source history or object metadata" });
+          : name === "auth.users" ? "identity metadata only; credentials excluded" : "private source history or object metadata with privacy-scoped minimisation" });
       }
       const subjects = subjectOwners(sourceRows);
       const rows: ManagedRetainedRow[] = [];
       for (const [relation, values] of sourceRows) {
         for (const [index, value] of values.entries()) {
+          const columnTypes = sourceColumnTypes.get(relation)!;
           const rowIdentity = sourceRaw.get(relation)![index]!.rowIdentity;
           const anchors = subjects(relation, value);
           if (anchors === null) fail("invalid_input", relation);
           const needsMapping = active.has(relation) || relation === "auth.users";
+          const minimisedRow = minimiseUnboundFields(relation, value, sourceRaw.get(relation)![index]!.value,
+            columnTypes, anchors);
           rows.push({ source: input.sourceId, relation, rowIdentity, subjects: anchors.sort(),
-            value: sourceRaw.get(relation)![index]!.value, disposition: needsMapping ? "requires-active-mapping" : "retained-history",
-            targetTables: [], reason: needsMapping ? "canonical target row required before publication" : "private historical metadata" });
+            value: minimisedRow.value, minimisations: minimisedRow.minimisations,
+            disposition: needsMapping ? "requires-active-mapping" : "retained-history",
+            targetTables: [], reason: needsMapping ? "canonical target row required before publication" : "private historical metadata with privacy-scoped minimisation" });
         }
       }
       rows.sort((left, right) => JSON.stringify([left.relation,left.rowIdentity]).localeCompare(JSON.stringify([right.relation,right.rowIdentity])));
@@ -178,7 +249,9 @@ export async function captureManagedRetainedHistory(input: {
       const body = { format: "openlup.managed-retained-history.v1" as const, sourceId: input.sourceId,
         observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot }, dispositions, rows,
         redactions: [] as ManagedRetainedCapture["redactions"] };
-      return { ...body, sha256: digest(JSON.stringify(body)) };
+      const capture = { ...body, sha256: digest(JSON.stringify(body)) };
+      projectionRows.set(capture, sourceRows);
+      return capture;
     });
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("database_unavailable"); }
 }
@@ -360,8 +433,9 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
 /** Read #428's finite identity input from the captured managed Auth/business rows. */
 export function managedIdentityEvidence(capture: ManagedRetainedCapture, issuer: string): ManagedIdentityMappingSource {
   validate(capture);
-  const values = (relation: string): Row[] => capture.rows.filter(row => row.relation === relation)
-    .map(row => JSON.parse(row.value) as Row);
+  const raw = projectionRows.get(capture);
+  if (!raw) fail("invalid_input");
+  const values = (relation: string): Row[] => raw.get(relation) ?? [];
   const clients = values("public.clients"), adminUsers = values("public.admin_users"), authUsers = values("auth.users"),
     erasures = values("public.identity_privacy_erasures");
   const linked = new Set<string>();
@@ -392,7 +466,8 @@ export function managedIdentityEvidence(capture: ManagedRetainedCapture, issuer:
 /**
  * A deliberately narrow managed money projection. Unsafe external attempts and
  * unsupported active row classes refuse before any target restore can begin.
- * Every source row still stays in the retained-history object for readback.
+ * Every source row still stays in the retained-history object for readback,
+ * with third-party-capable fields minimised at capture.
  */
 export async function mapManagedRetainedBusiness(input: {
   capture: ManagedRetainedCapture;
@@ -401,12 +476,13 @@ export async function mapManagedRetainedBusiness(input: {
   targetOwner: Pool;
 }): Promise<{ packet: ConnectedNativeStoreCapture; retained: ManagedRetainedCapture }> {
   validate(input.capture);
+  const raw = projectionRows.get(input.capture);
+  if (!raw) fail("invalid_input");
   const identitySource = managedIdentityEvidence(input.capture, input.issuer);
   const mapped = await mapManagedIdentityForConnectedRestore({ source: identitySource,
     freshTarget: input.freshTarget, targetOwner: input.targetOwner });
   const packet = mapped.packet;
-  const values = (relation: string): Row[] => input.capture.rows.filter(row => row.relation === `public.${relation}`)
-    .map(row => JSON.parse(row.value) as Row);
+  const values = (relation: string): Row[] => raw.get(`public.${relation}`) ?? [];
   const byId = (rows: Row[]) => new Map(rows.map(row => [row.id, row]));
   const project = (table: string, row: Row, overrides: Row = {}): Row => {
     const held = packet.compatible.tables.find(value => value.table === table)
@@ -764,7 +840,7 @@ export async function mapManagedRetainedBusiness(input: {
   const dispositions = input.capture.dispositions.map(entry => {
     if (!entry.rows || !mappingRequired.has(entry.relation)) return entry;
     if (mappedToCanonical.has(entry.relation)) return { ...entry, disposition: "mapped-active-and-retained" as const,
-      reason: "canonical target state and full private source row" };
+      reason: "canonical target state and privacy-scoped private source row" };
     if (historyOnly.has(entry.relation)) return { ...entry, disposition: "retained-history" as const,
       reason: "terminal source effect; source key excluded from target active lookup" };
     fail("unsupported_table", entry.relation);
@@ -807,8 +883,8 @@ export async function mapManagedRetainedBusiness(input: {
       ...row.subjects.flatMap(subject => principalAliases.has(subject) ? [principalAliases.get(subject)!] : [])])].sort();
     return { ...row, subjects,
       disposition: targetTables.length ? "mapped-active-and-retained" as const : "retained-history" as const,
-      targetTables, reason: targetTables.length ? "canonical target projection and full private source row"
-        : "terminal source receipt or full private business history" };
+      targetTables, reason: targetTables.length ? "canonical target projection and privacy-scoped private source row"
+        : "terminal source receipt or privacy-scoped private business history" };
   });
   const { sha256: _retained, ...retainedBody } = input.capture;
   const body = { ...retainedBody, dispositions, rows };
@@ -929,6 +1005,14 @@ function validate(capture: ManagedRetainedCapture): void {
     if (capture.rows.some(row => row.source !== capture.sourceId || !row.relation || !row.rowIdentity
       || !Array.isArray(row.subjects) || !row.subjects.every(value => typeof value === "string" && value)
       || typeof row.value !== "string" || !["requires-active-mapping", "mapped-active-and-retained", "retained-history"].includes(row.disposition)
+      || !Array.isArray(row.minimisations) || row.minimisations.some(fact => !identity.test(fact.field)
+        || !["third-party-capable", "unbound-row", "unknown-json"].includes(fact.reason))
+      || new Set(row.minimisations.map(fact => fact.field)).size !== row.minimisations.length
+      || row.minimisations.some(fact => (JSON.parse(row.value) as Row)[fact.field] !== minimised)
+      || Object.entries(JSON.parse(row.value) as Row).some(([field, value]) => value === minimised
+        && (thirdPartyFields[row.relation]?.includes(field) || row.relation === "storage.buckets"
+          && !bucketStructuralFields.has(field))
+        && !row.minimisations.some(fact => fact.field === field))
       || !Array.isArray(row.targetTables) || row.targetTables.some(value => typeof value !== "string" || !identity.test(value))
       || (row.disposition === "mapped-active-and-retained") !== (row.targetTables.length > 0)
       || typeof row.reason !== "string" || !row.reason || (!row.subjects.length && ![
