@@ -859,3 +859,25 @@ schema reconnaissance (1,803 seconds waiting for the shared slot) limited the
 adapter extension to observed columns. This root-cause migration consumes no
 review cycle. Cycle 11 follows only after its required read and DCO; under the
 owner's CD-M14-65 limit, a cycle-11 FAIL ends this Codex delivery without repair.
+
+## CD-M14-72 shared-consumer condition
+
+The CD-M14-69/72 read accepted tree
+`4c7295eae56b4c4606258d44038e64b22719edce` and independently recomputed
+SHA-256 `b3e0e71d6861090d4f2925795fd98dfb515513ba274516b528a5bc68fd06c6cc`
+for `git diff --binary 9861f894 4c7295ea`; both computed identities matched.
+Its remaining condition measured the adapter consumers and stock pgTAP on that
+unchanged tree and detached main `78f340db40ee6abcdaa97c7f01ccd2a857403b8f`.
+The baseline used its own locked install and was removed after measurement.
+
+All nine existing consumer files (including the runner's synthetic adapter
+unit tests and the indirect risk fixture consumer) have identical ordered
+test names/statuses: 217 passed, zero failed or skipped on both trees.
+Stock pgTAP is identical per file and assertion: 226 files, 5,199 assertions,
+zero failures, directives or missing plans on both trees. The sole full-set
+difference is the new `connectedManagedRetained.test.ts` consumer, absent from
+main and passing all seven tests on the candidate. Under the read's explicit
+any-difference condition, this addition is returned for read before DCO.
+No source repair or cycle-11 review was started. Self-retro: measuring the
+common consumers and reporting the added suite separately distinguishes a
+suite-set addition from a shared-adapter regression without assuming a baseline.
