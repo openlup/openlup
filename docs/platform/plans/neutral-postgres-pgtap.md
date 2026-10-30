@@ -110,8 +110,8 @@ Other facts that bind the design:
   includes the scalar `sub` fallback).
 - The `managed-batch-postgres` pin (`supabase/postgres:17.11.0.004`) runs without
   the CLI in required `test` (`reviewedBatchForwards`, `riskControlFixture`,
-  several `*Managed*` suites). That image remains a CI dependency until a later
-  wave (D2).
+  several `*Managed*` suites). That image remained a CI dependency until W3
+  (D2) removed the pin.
 - `ui-11` counts only the Supabase npm scope prefix. The CLI action reference, the bare
   word `supabase` and Docker repository names do not match it. Today's lane adds
   no `ui-11` debt. The pressure in #443 came from a launcher route that the
@@ -428,7 +428,7 @@ setup changes on 2026-10-30. Neither changes an assertion or the tested SQL:
   that dump contains the adapter's `dblink` extension, and a non-superuser cannot
   create it (`permission denied to create extension "dblink"`). On the managed host,
   `supautils.privileged_extensions` allows it, and the managed image's
-  `postgres` database has no dblink. The proposed fix strips the dblink
+  `postgres` database has no dblink. The applied fix strips the dblink
   `CREATE EXTENSION` and `COMMENT` lines in the suite's setup, as it already strips
   pg_cron's. It changes no assertion or tested SQL. A local probe passes 20/20 with
   identical names.

@@ -31,7 +31,7 @@ const root = resolve(import.meta.dirname, "../..");
 const adapterPath = join(root, "tests/postgres/managed-compat/supabase.sql");
 const bootstrapUser = "ci_bootstrap";
 const debsInContainer = "/work/debs";
-// Shared with the pgTAP lane: its CI cache directory, or an ignored scratch directory.
+// OPENLUP_PGTAP_DEB_CACHE when set (shared with the pgTAP lane), else an ignored scratch directory.
 const packageCache = () => process.env.OPENLUP_PGTAP_DEB_CACHE || join(root, ".context/scratch/cache/pgtap-postgres-debs");
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
