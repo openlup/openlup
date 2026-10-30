@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { Pool } from "pg";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { expect } from "vitest";
-import { copyTransferObjects, createFilesystemTransferObjects, type CompatiblePostgresSnapshot } from "@openlup/platform/portability";
+import { copyTransferObjects, createFilesystemTransferObjects, type CompatiblePostgresSnapshot, type TransferObject } from "@openlup/platform/portability";
 import { captureManagedSourceGraph, managedIdentityEvidence, mapManagedRetainedBusiness } from "../../server/adapters/postgres/connectedManagedRetained.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -342,6 +342,33 @@ async function main() {
     expect((await objectReader(targetS3, finalBucket).read("first.txt")).object.sha256).toBe(sha(updated));
     expect(await restoreConnectedNativeStore({ owner: target, installation: selection,
       packet: final.mapped.packet, freshTarget: final.baseline })).toMatchObject({ replayed: false });
+
+    // The landed managed journey owns row transfer across three installations.
+    // This composes its existing portable object path with the managed Storage proof.
+    const firstPortable = await createFilesystemTransferObjects({ root: join(scratch, "final"),
+      maximumObjectBytes: 1024, access: "private-target" });
+    const secondPortable = await createFilesystemTransferObjects({ root: join(scratch, "second-portable"),
+      maximumObjectBytes: 1024, access: "private-target" });
+    const portableObjects: TransferObject[] = [];
+    for (const object of final.mapped.storageObjects[0]!.inventory.objects)
+      portableObjects.push((await firstPortable.read(object.key)).object);
+    const secondLeg = { inventory: { sourceId: "first-portable-storage",
+      snapshot: { kind: "quiesced" as const, id: "final-managed-storage" }, objects: portableObjects },
+      source: firstPortable, destination: secondPortable, accessMapping: { "private-target": "private-target" },
+      maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
+    await expect(copyTransferObjects({ ...secondLeg,
+      checkpoint: async () => { throw new Error("second-leg checkpoint"); } })).rejects.toThrow("second-leg checkpoint");
+    const secondReceipt = await copyTransferObjects(secondLeg);
+    expect(secondReceipt).toEqual({ copied: 0, replayed: 1, verifiedKeys: ["first.txt"] });
+    await expect(secondPortable.read("second.txt")).rejects.toMatchObject({ code: "absent" });
+    const secondRead = await secondPortable.read("first.txt");
+    expect(secondRead.object).toMatchObject({ key: "first.txt", version: portableObjects[0]!.version,
+      bytes: updated.length, sha256: sha(updated), metadata: portableObjects[0]!.metadata, access: "private-target" });
+    const secondChunks: Buffer[] = [];
+    for await (const part of secondRead.body) secondChunks.push(Buffer.from(part));
+    const secondBytes = Buffer.concat(secondChunks);
+    expect(secondBytes).toEqual(updated);
+    expect(sha(secondBytes)).toBe(sha(updated));
   } finally {
     try {
       if (erasureFixtureCreated) await managed!.query("DROP TABLE public.identity_privacy_erasures");

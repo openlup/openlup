@@ -213,19 +213,23 @@ uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified P
 It compares typed target rows and obligations with the restore packet, checks
 that history-only source rows have no target representation, and exercises
 refusals for unknown and uncarried state. Full managed history stays in the
-operator's source archive. Run `node tests/postgres/runM14ManagedSourceWitness.mjs`
-to exercise the same assertions on an owned real managed stack. This opt-in
+operator's source archive. The required `m14ManagedCatchup.test.ts` also runs
+the managed first leg, including interrupted copy and final recapture, through
+that adapter. Run `node tests/postgres/runM14ManagedSourceWitness.mjs sha256:<local-Node24.21.0-image-id>`
+to exercise both suites on fresh owned real managed stacks and then run the
+complete managed-to-portable-to-portable H1/H2 journey once. This opt-in
 runner downloads and verifies the reviewed CLI 2.122.0 archive for Linux x64 or
 macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
 names/statuses and source-image evidence under private scratch. It is outside
 the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
-are required. Neither route qualifies hosted managed data. The runner's owned
-stack enables Storage API and GoTrue for the authenticated object-read and
-source actor witness. Required managed-Storage tests use the same object
-projection/copy assertions with the stock-PG17 adapter and local Versity;
-required discovery never starts the CLI or service stack. The portable object
-destination is the existing private filesystem store, with local S3 byte/access
-corroboration only.
+and an already-local immutable Node 24.21.0 image are required. Neither route
+qualifies hosted managed data. Only the typed-source job's owned stack enables
+Storage API and GoTrue for the authenticated object-read and source actor witness;
+the first-leg and journey jobs keep those services off. Required managed-Storage
+tests use the same object projection/copy assertions with the stock-PG17 adapter
+and local Versity; required discovery never starts the CLI or service stack.
+The portable object destination is the existing private filesystem store, with
+local S3 byte/access corroboration only.
 
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
@@ -398,6 +402,15 @@ refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITEC
 owns the exact boundary; managed history, older-snapshot measurement and hosted
 provider qualification remain separate. The final target is distinct from the
 preliminary copy and remains inactive through the DB/object/access barriers.
+Add `--managed-catch-up` for a stock-PG17 managed-compatibility source first mapped
+into the qualified-admin PG16 source, then carried through the same portable
+leg to an independent PG16 target. The opt-in real-source runner above supplies
+its owned CLI 2.122.0 stack to this same journey.
+The fixture checks typed data and source-archive dispositions; history-only
+rows stay at source and managed Storage must be empty. It does not qualify a
+hosted project, restricted managed source-capture login, adopter writer
+inventory or older-snapshot recovery. Its private `journey` report records
+run-specific counts, refusal and takeover with no RPO/RTO claim.
 Use `--older-snapshot` instead for the bounded local recovery measurement. It
 persists the consistent DB/private-media backup before provider acceptance,
 waits approximately 60 real seconds, restores those saved bytes after induced

@@ -1370,6 +1370,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/independent-measurement-consent.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/native-review-simplification-proposal.md",
       "class": "platform-documentation"
     },
@@ -1455,6 +1459,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-lifecycle-task.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-managed-catchup-journey.md",
       "class": "public-output"
     },
     {
@@ -26527,6 +26535,18 @@
     },
     {
       "path": "tests/postgres/m14InstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ManagedCatchup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ManagedCatchup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ManagedSourceFixture.ts",
       "class": "public-output"
     },
     {

@@ -70,6 +70,9 @@ let targetContainer: PostgresContainer | undefined;
 let targetOwner: Pool | undefined, targetBootstrap: Pool | undefined;
 let freshBaseline: ConnectedNativeStoreCapture;
 
+const copiedJson = JSON.stringify({ empty: "", none: null, list: [], object: {}, text: 'zażółć "gęślą" \\ 🐾',
+  decimal: 0.1234567890123456, negative: -17, largest: 9007199254740991, nested: { a: [1, { b: null }] } });
+
 beforeAll(async () => {
   await managed.start();
   targetContainer = await runPostgresContainer({ name: `m14-managed-target-${process.pid}`, password: "synthetic-transfer" });
@@ -92,7 +95,8 @@ beforeAll(async () => {
   await managed.owner.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
     [clientId, email, userId]);
   await managed.owner.query(`INSERT INTO public.catalog_products(id,slug,status,name,description)
-    VALUES($1,'retained-product','active','Retained product','[MINIMISED:UNBOUND_PERSONAL_FIELD]')`, [productId]);
+    VALUES($1,'retained-product','active','Zażółć "gęślą" \\ jaźń 🐾','[MINIMISED:UNBOUND_PERSONAL_FIELD]')`, [productId]);
+  await managed.owner.query(`UPDATE public.catalog_products SET description='',ingredients=ARRAY['ryż "brązowy"','',NULL],marketing_content=$2::jsonb WHERE id=$1`, [productId, copiedJson]);
   await managed.owner.query(`INSERT INTO public.catalog_skus
     (id,product_id,sku,title,pet_type,status,net_weight_g,kcal_per_unit,sellable_in_subscription)
     VALUES($1,$2,'retained-sku','Retained SKU','other','active',100,100,true)`, [skuId, productId]);
@@ -102,7 +106,7 @@ beforeAll(async () => {
     [priceListId, skuId]);
   await managed.owner.query(`INSERT INTO public.subscriptions
     (id,client_id,cadence_days,currency,region_code,status,next_cycle_at,payment_method_ref,payment_method_kind,created_at)
-    VALUES($1,$2,28,'XXX','ZZ','active','2027-01-01','synthetic-method','card',now()-interval '30 days')`, [subscriptionId, clientId]);
+    VALUES($1,$2,28,'XXX','ZZ','active','2027-01-01 00:00:00.123456+00','synthetic-method','card',now()-interval '30 days')`, [subscriptionId, clientId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_method_refs
     (client_id,subscription_id,provider_kind,method_kind,provider_customer_ref,provider_method_ref,provider_mandate_ref,status,active,consent_snapshot)
     VALUES($1,$2,'synthetic-provider','card','synthetic-customer','synthetic-method','synthetic-mandate','active',true,$3::jsonb)`,
@@ -116,7 +120,7 @@ beforeAll(async () => {
     (subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key)
     VALUES($1,3,'2026-11-01','cancelled','source-cycle:3')`, [subscriptionId]);
   await managed.owner.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-    VALUES($1,'created','source-subscription:1','{}')`, [subscriptionId]);
+    VALUES($1,'created','source-subscription:1',$2::jsonb)`, [subscriptionId, copiedJson]);
   await managed.owner.query(`INSERT INTO public.communication_contacts(id,normalized_email,display_email)
     VALUES($1,$2,$2)`, [contactId, email]);
   await managed.owner.query(`INSERT INTO public.communication_contact_links(contact_id,source_table,source_id)
@@ -143,7 +147,7 @@ beforeAll(async () => {
     VALUES($1,'intent','created','failed','provider_refused','source-transition:1',now()-interval '95 minutes')`, [intentId]);
   await managed.owner.query(`INSERT INTO public.commerce_orders
     (id,client_id,status,currency,subtotal_cents,total_cents,tax_cents,mode,metadata)
-    VALUES($1,$2,'paid','XXX',900,900,67,'one_time','{"sourceNote":"synthetic"}')`, [paidOrderId, clientId]);
+    VALUES($1,$2,'paid','XXX',900,900,67,'one_time','{"sourceNote":"synthetic","sourceSequence":9007199254740991,"rate":1.50}')`, [paidOrderId, clientId]);
   await managed.owner.query(`UPDATE public.outbox_events SET status='discarded',error='synthetic source policy skip'
     WHERE aggregate_id=$1 AND event_type='commerce.order.paid.email'`, [paidOrderId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
@@ -288,6 +292,14 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(evidence.clients).toHaveLength(1);
   const mapped = await mapManagedRetainedBusiness({ capture: source,
     issuer: "https://issuer.example.invalid/managed", freshTarget: fresh, targetOwner: targetOwner! });
+  // Restore compares at UTC, so a target session in another zone must produce no local offset here.
+  const zonedOwner = await targetOwner!.connect();
+  try {
+    await zonedOwner.query("SET TimeZone='Asia/Kolkata'");
+    const zoned = await mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed", freshTarget: fresh, targetOwner: zonedOwner as unknown as Pool });
+    expect(JSON.stringify(zoned.packet.compatible.tables.find(value => value.table === "commerce_orders"))).toContain("+00:00");
+    expect(JSON.stringify(zoned.packet)).not.toContain("+05:30");
+  } finally { await zonedOwner.query("RESET TimeZone"); zonedOwner.release(); }
   expect(Object.keys(mapped).sort()).toEqual(["identitySubjects", "packet", "storageObjects"]);
   expect(mapped.storageObjects).toEqual([]);
   expect(mapped.packet.compatible.tables.find(value => value.table === "commerce_orders")?.rows).toHaveLength(4);
@@ -352,6 +364,27 @@ it("projects typed managed obligations and leaves source history in the operator
     await reminderProbe.query("DELETE FROM public.outbox_events WHERE idempotency_key=$1", [reminderKey]);
     expect((await reminderProbe.query(enqueueReminders)).rows).toEqual([{ result: { enqueued_1h: 1, enqueued_20h: 0 } }]);
   } finally { await reminderProbe.query("ROLLBACK"); reminderProbe.release(); }
+  // Copied columns are compared in PostgreSQL on both sides, because a JavaScript comparison would round the
+  // same way the mapper would. The reminder row's payload, error and metadata are replaced on purpose.
+  const reminderId = (await targetOwner!.query<{ id: string }>("SELECT id FROM public.outbox_events WHERE idempotency_key=$1", [reminderKey])).rows[0]!.id;
+  for (const table of ["catalog_products", "catalog_skus", "price_lists", "price_entries", "subscriptions",
+    "subscription_lines", "subscription_cycles", "subscription_events", "outbox_events"]) {
+    const columns = async (pool: Pool) => (await pool.query<{ name: string }>(
+      "SELECT attname AS name FROM pg_catalog.pg_attribute WHERE attrelid=('public.'||$1)::regclass AND attnum>0 AND NOT attisdropped", [table])).rows.map(row => row.name);
+    const sourceColumns = await columns(managed.owner);
+    const shared = (await columns(targetOwner!)).filter(name => sourceColumns.includes(name));
+    const rows = async (pool: Pool) => new Map((await pool.query<{ key: string; value: string }>(
+      `SELECT t.id::text AS key, (SELECT pg_catalog.jsonb_object_agg(e.key,e.value) FROM pg_catalog.jsonb_each(pg_catalog.to_jsonb(t)) e WHERE e.key=ANY($1))::text AS value FROM public.${table} t`,
+      [shared])).rows.map(row => [row.key, row.value]));
+    const sourceRows = await rows(managed.owner), targetRows = await rows(targetOwner!);
+    expect(targetRows.size, table).toBeGreaterThan(0);
+    // Terminal outbox rows stay in the archive by design; every other copied relation carries its whole key set.
+    if (table !== "outbox_events") expect([...targetRows.keys()].sort(), table).toEqual([...sourceRows.keys()].sort());
+    for (const [key, value] of targetRows) {
+      if (key === reminderId) continue;
+      expect((await targetOwner!.query<{ same: boolean }>("SELECT $1::jsonb=$2::jsonb AS same", [sourceRows.get(key) ?? "null", value])).rows[0]!.same, `${table} ${key}`).toBe(true);
+    }
+  }
   const sourceRow = async (table: string, id: string) => (await managed.owner.query(`SELECT * FROM public.${table} WHERE id=$1`, [id])).rows[0];
   const sourceSubscription = await sourceRow("subscriptions", subscriptionId), sourceLine = await sourceRow("subscription_lines", lineId);
   const typed = async (sql: string, ...params: unknown[]) => (await targetOwner!.query(sql, params)).rows;
@@ -371,13 +404,16 @@ it("projects typed managed obligations and leaves source history in the operator
       created_at: sourceLine.created_at, updated_at: sourceLine.updated_at }]);
   expect(await typed("SELECT id,subscription_id,variant_id,quantity,unit_price_minor,currency_code FROM public.subscription_lines"))
     .toEqual([{ id: lineId, subscription_id: subscriptionId, variant_id: skuId, quantity: 2, unit_price_minor: "100", currency_code: "XXX" }]);
+  const sourceTransition = async (intent: string) => (await managed.owner.query(
+    "SELECT id,occurred_at FROM public.commerce_payment_state_transitions WHERE payment_intent_id=$1", [intent])).rows[0];
+  const paidTransition = await sourceTransition(paidIntentId), failedTransition = await sourceTransition(intentId);
   const sourcePaidOrder = await sourceRow("commerce_orders", paidOrderId), sourceOrder = await sourceRow("commerce_orders", orderId);
   const sourcePaidIntent = await sourceRow("commerce_payment_intents", paidIntentId), sourceIntent = await sourceRow("commerce_payment_intents", intentId);
   const noOrderLinks = { subscription_cycle_id: null, cancelled_at: null, refunded_at: null, source_channel_id: null, source_order_ref: null,
     renewal_operation_id: null, renewal_operation_fingerprint: null, currency_code: "XXX", source_kind: "storefront", client_id: clientId };
   expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", paidOrderId))
     .toEqual([{ ...noOrderLinks, id: paidOrderId, status: "paid", created_at: sourcePaidOrder.created_at, updated_at: sourcePaidOrder.updated_at,
-      paid_at: sourcePaidIntent.updated_at, total_amount_minor: "900", metadata: { sourceNote: "synthetic" } }]);
+      paid_at: paidTransition.occurred_at, total_amount_minor: "900", metadata: { sourceNote: "synthetic", sourceSequence: 9007199254740991, rate: 1.5 } }]);
   expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", orderId))
     .toEqual([{ ...noOrderLinks, id: orderId, status: "pending_payment", created_at: sourceOrder.created_at, updated_at: sourceOrder.updated_at,
       paid_at: null, total_amount_minor: "900", metadata: {} }]);
@@ -390,15 +426,12 @@ it("projects typed managed obligations and leaves source history in the operator
   const noIntentLinks = { channel_key: "synthetic-provider", amount_minor: "900", currency_code: "XXX", renewal_operation_id: null, renewal_operation_fingerprint: null };
   expect(await typed("SELECT * FROM public.commerce_settlement_intents WHERE id=$1", paidIntentId))
     .toEqual([{ ...noIntentLinks, id: paidIntentId, order_id: paidOrderId, status: "settled", external_ref: "provider-paid:1",
-      open_idempotency_key: managedKey("open", paidIntentId), settled_at: sourcePaidIntent.updated_at, failure_reason: null,
+      open_idempotency_key: managedKey("open", paidIntentId), settled_at: paidTransition.occurred_at, failure_reason: null,
       created_at: sourcePaidIntent.created_at, updated_at: sourcePaidIntent.updated_at }]);
   expect(await typed("SELECT * FROM public.commerce_settlement_intents WHERE id=$1", intentId))
     .toEqual([{ ...noIntentLinks, id: intentId, order_id: orderId, status: "failed", external_ref: null,
       open_idempotency_key: managedKey("open", intentId), settled_at: null, failure_reason: "provider_refused",
       created_at: sourceIntent.created_at, updated_at: sourceIntent.updated_at }]);
-  const sourceTransition = async (intent: string) => (await managed.owner.query(
-    "SELECT id,occurred_at FROM public.commerce_payment_state_transitions WHERE payment_intent_id=$1", [intent])).rows[0];
-  const paidTransition = await sourceTransition(paidIntentId), failedTransition = await sourceTransition(intentId);
   expect(await typed("SELECT * FROM public.commerce_settlement_transitions WHERE intent_id=$1", paidIntentId))
     .toEqual([{ id: paidTransition.id, intent_id: paidIntentId, from_status: "created", to_status: "settled", outcome: "succeeded",
       idempotency_key: managedKey("transition", paidTransition.id), payload: { sourceId, sourceRowId: paidTransition.id }, occurred_at: paidTransition.occurred_at }]);
@@ -406,6 +439,25 @@ it("projects typed managed obligations and leaves source history in the operator
     .toEqual([{ id: failedTransition.id, intent_id: intentId, from_status: "created", to_status: "failed", outcome: "failed",
       idempotency_key: managedKey("transition", failedTransition.id), payload: { sourceId, sourceRowId: failedTransition.id }, occurred_at: failedTransition.occurred_at }]);
   const sourceConsent = (await managed.owner.query("SELECT captured_at,updated_at FROM public.communication_permissions WHERE contact_id=$1", [contactId])).rows[0];
+  // node-postgres Dates stop at milliseconds, so hand-built times are also compared as PostgreSQL text.
+  const exactTime = async (pool: Pool, table: string, column: string, key: string, id: string) => (await pool.query<{ value: string }>(
+    `SELECT pg_catalog.date_part('epoch',${column})::text AS seconds,${column}::text AS value FROM public.${table} WHERE ${key}=$1`, [id])).rows[0]!.value;
+  for (const [targetTable, targetColumn, targetKey, targetId, sourceTable, sourceColumn, sourceKey, sourceKeyValue] of [
+    ["subscription_renewal_terms", "created_at", "subscription_id", subscriptionId, "subscriptions", "created_at", "id", subscriptionId],
+    ["subscription_renewal_terms", "updated_at", "subscription_id", subscriptionId, "subscriptions", "updated_at", "id", subscriptionId],
+    ["subscription_renewal_term_lines", "created_at", "subscription_id", subscriptionId, "subscription_lines", "created_at", "id", lineId],
+    ["subscription_renewal_term_lines", "updated_at", "subscription_id", subscriptionId, "subscription_lines", "updated_at", "id", lineId],
+    ["commerce_orders", "paid_at", "id", paidOrderId, "commerce_payment_state_transitions", "occurred_at", "payment_intent_id", paidIntentId],
+    ["commerce_orders", "created_at", "id", paidOrderId, "commerce_orders", "created_at", "id", paidOrderId],
+    ["commerce_orders", "updated_at", "id", paidOrderId, "commerce_orders", "updated_at", "id", paidOrderId],
+    ["commerce_settlement_intents", "settled_at", "id", paidIntentId, "commerce_payment_state_transitions", "occurred_at", "payment_intent_id", paidIntentId],
+    ["commerce_settlement_intents", "created_at", "id", paidIntentId, "commerce_payment_intents", "created_at", "id", paidIntentId],
+    ["commerce_settlement_intents", "updated_at", "id", paidIntentId, "commerce_payment_intents", "updated_at", "id", paidIntentId],
+    ["commerce_settlement_transitions", "occurred_at", "intent_id", paidIntentId, "commerce_payment_state_transitions", "occurred_at", "payment_intent_id", paidIntentId],
+    ["communication_recipient_consents", "captured_at", "purpose", "marketing_newsletter", "communication_permissions", "captured_at", "contact_id", contactId],
+    ["communication_recipient_consents", "updated_at", "purpose", "marketing_newsletter", "communication_permissions", "updated_at", "contact_id", contactId],
+  ] as const) expect(await exactTime(targetOwner!, targetTable, targetColumn, targetKey, targetId), `${targetTable}.${targetColumn}`)
+    .toBe(await exactTime(managed.owner, sourceTable, sourceColumn, sourceKey, sourceKeyValue));
   expect((await targetOwner!.query("SELECT recipient_fingerprint,purpose,state,captured_at,updated_at FROM public.communication_recipient_consents")).rows)
     .toEqual([{ recipient_fingerprint: createHash("sha256").update(email).digest("hex"),
       purpose: "marketing_newsletter", state: "suppressed", captured_at: sourceConsent.captured_at, updated_at: sourceConsent.updated_at }]);
@@ -835,6 +887,25 @@ async function mapMutated(mutation: readonly string[]) {
 
 it("refuses every row class with no typed path", async () => {
   await expect(mapMutated([])).resolves.toBeDefined();
+  // Both time decisions are exact at the microsecond, so each case sits on one side of a boundary.
+  const listAt = async (switchAt: string) => {
+    const laterList = randomUUID();
+    const mapped = await mapMutated([`UPDATE public.price_lists SET valid_to='${switchAt}' WHERE id='${priceListId}'`,
+      `INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from) VALUES('${laterList}','Later list','ZZ','XXX','active','${switchAt}')`]);
+    const held = [...mapped.packet.compatible.tables, ...mapped.packet.owned].find(value => value.table === "subscriptions")!.rows;
+    const chosen = (JSON.parse(held[0]!) as { price_list_id: string }).price_list_id;
+    return chosen === priceListId ? "current" : chosen === laterList ? "later" : "neither";
+  };
+  expect(await listAt("2027-01-01 00:00:00.123457+00"), "list ending one microsecond after the due time").toBe("current");
+  expect(await listAt("2027-01-01 00:00:00.123456+00"), "list ending at the due time").toBe("later");
+  for (const [label, region, currency] of [["another region", "YY", "XXX"], ["another currency", "ZZ", "YYY"]] as const)
+    await expect(mapMutated([`INSERT INTO public.price_lists(id,name,region_code,currency,status) VALUES('${randomUUID()}','Other list','${region}','${currency}','active')`]),
+      `open list in ${label}`).resolves.toBeDefined();
+  const receipt = (expiry: string) => `INSERT INTO public.commerce_idempotency_keys(scope,idempotency_key,request_fingerprint,status,expires_at)
+    VALUES('checkout','boundary:1','boundary','completed',${expiry})`;
+  await expect(mapMutated([receipt("pg_catalog.transaction_timestamp()")]), "key expiring exactly at the snapshot").resolves.toBeDefined();
+  await expect(mapMutated([receipt("pg_catalog.transaction_timestamp()+interval '1 microsecond'")]), "key live for one microsecond more")
+    .rejects.toMatchObject({ code: "unsupported_table", table: "public.commerce_idempotency_keys" });
   await expect(mapMutated([`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitPriceGross":{"amountMinor":100},"quantity":2}}}' WHERE id='${lineId}'`]),
     "quote line that agrees with the agreement").resolves.toBeDefined();
   await expect(mapMutated([`INSERT INTO public.communication_email_deliveries
@@ -864,11 +935,23 @@ it("refuses every row class with no typed path", async () => {
     ["subscription without edit window", [`UPDATE public.subscriptions SET edit_window_hours=NULL WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
     ["unsupported payment kind", [`UPDATE public.subscriptions SET payment_method_kind='wallet' WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
     ["no price list for the next cycle", [`UPDATE public.price_lists SET status='archived' WHERE id='${priceListId}'`], "target_conflict", "public.price_lists"],
+    ["two price lists for the next cycle", [`INSERT INTO public.price_lists(id,name,region_code,currency,status) VALUES('${randomUUID()}','Second list','ZZ','XXX','active')`], "target_conflict", "public.price_lists"],
     ["no active method", [`${method} status='revoked',active=false ${methodWhere}`], "target_conflict", "public.subscriptions"],
     ["method for another reference", [`${method} provider_method_ref='method:other' ${methodWhere}`], "target_conflict", methodTable],
     ["method without recurring consent", [`${method} consent_snapshot='{}' ${methodWhere}`], "target_conflict", methodTable],
     ["method without a mandate", [`${method} provider_mandate_ref=NULL ${methodWhere}`], "target_conflict", methodTable],
-    ["consent time the target cannot hold", [`${method} consent_snapshot='{"recurringModel":"O","acceptedAt":"Feb 30 2026"}' ${methodWhere}`], "invalid_input", "subscription_renewal_terms"],
+    ["order metadata number a double cannot hold", [`UPDATE public.commerce_orders SET metadata='{"sourceSequence":9007199254740993}' WHERE id='${paidOrderId}'`], "invalid_input", orderTable],
+    ["outbox payload number a double cannot hold", [`UPDATE public.outbox_events SET payload=payload||'{"frozen":9007199254740993}' WHERE aggregate_id='${paidOrderId}'`], "invalid_input", "public.outbox_events"],
+    ["numeric column a double cannot hold", [`UPDATE public.catalog_skus SET kcal_per_unit=9007199254740993 WHERE id='${skuId}'`], "invalid_input", "public.catalog_skus"],
+    ["consent time the target cannot hold", [`${method} consent_snapshot='{"recurringModel":"O","acceptedAt":"2026-02-30T00:00:00Z"}' ${methodWhere}`], "invalid_input", "subscription_renewal_terms"],
+    ["consent time with no offset", [`${method} consent_snapshot='{"recurringModel":"O","acceptedAt":"2026-01-01T00:00:00"}' ${methodWhere}`], "target_conflict", methodTable],
+    ["consent time beyond microseconds", [`${method} consent_snapshot='{"recurringModel":"O","acceptedAt":"2026-01-01T00:00:00.1234567Z"}' ${methodWhere}`], "target_conflict", methodTable],
+    ["discarded paid fulfilment", [`UPDATE public.outbox_events SET status='discarded' WHERE aggregate_id='${paidOrderId}' AND event_type='commerce.order.paid'`], "unsupported_table", "public.outbox_events"],
+    ["discarded subscription welcome", [`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,status)
+      VALUES('subscription','${subscriptionId}','subscription.created','discarded-welcome','{}','discarded')`], "unsupported_table", "public.outbox_events"],
+    ["contact email not in normal form", [`UPDATE public.communication_contacts SET normalized_email=U&'\\00A0'||normalized_email WHERE id='${contactId}'`], "unsupported_table", "public.communication_permissions"],
+    ["product with allergens", [`UPDATE public.catalog_products SET allergens=ARRAY['fish'] WHERE id='${productId}'`], "unsupported_table", "public.catalog_products"],
+    ["carried relation that is missing", ["DELETE FROM public.price_entries", "ALTER TABLE public.price_entries RENAME TO price_entries_moved"], "schema_conflict", "public.price_entries"],
     ["method of another kind than the subscription", [`${method} method_kind='blik_payid' ${methodWhere}`], "target_conflict", methodTable],
     ["unsupported method kind with no subscription copy", [`UPDATE public.subscriptions SET payment_method_kind=NULL WHERE id='${subscriptionId}'`,
       `${method} method_kind='wallet' ${methodWhere}`], "target_conflict", methodTable],

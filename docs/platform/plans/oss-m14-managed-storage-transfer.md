@@ -1,6 +1,6 @@
 # M14 D32 — managed Storage object projection
 
-Status: focused witness repair before native review, 30 October 2026; no installation
+Status: main integration and object second leg awaiting coordinator read, 30 October 2026; no installation
 qualification. Audience: transfer implementers and reviewers. This parcel remains
 in development preview and does not establish whole-M14 completion.
 
@@ -18,8 +18,9 @@ The active supervisor is the single writer in the assigned task worktree, stacke
 on the managed typed-transfer predecessor. The accountable maintainer's bounded
 grant covers local implementation and synthetic proof, DCO, independent review
 and gated submission/merge. The accepted predecessor head is
-`04cb1137dca571fe99d685bb6c645e9441407339`. It was integrated without a
-rebase and is the current `OPENLUP_STACK_BASE`. A stabilized
+`04cb1137dca571fe99d685bb6c645e9441407339` for the initial review. That lineage
+is now on main; its integration and the focused object second leg await the
+current coordinator read. A stabilized
 transfer-contract maintainer read precedes DCO. Two new FULL native reviewers,
 including a simplicity assessment, follow. Canonical verification waits for the
 predecessor on main; applicable queue freezes still apply. No hosted account,
@@ -34,9 +35,9 @@ empty buckets, with no policies except those naming exactly `{service_role}`: on
 The pinned managed application baseline references no Storage object from a
 platform table; customer-facing media transfer is outside this parcel. General
 Storage-policy translation, version-history transfer, arbitrary bucket features,
-hosted qualification and whole-store activation are excluded. A separate
-managed-journey owner holds its fixture files; after its parcel lands, adding
-this object leg requires a main merge and another read.
+hosted qualification and whole-store activation are excluded. The landed managed journey owns its fixture files and row second leg. This
+parcel's separate focused proof reuses the 8B descriptor/reader contract with
+managed Storage; it does not edit the three-installation journey fixtures.
 
 ## Existing carriers and mapping proposal
 
@@ -111,8 +112,10 @@ does not freeze Storage.
 
 Required root discovery uses the stock PostgreSQL managed-compatibility adapter
 and local Versity S3 for row projection, refusals, target access and copy proof.
-The opt-in `runM14ManagedSourceWitness.mjs` enables GoTrue and Storage API,
-creates/deletes objects through authenticated S3 and probes real source sessions.
+The opt-in `runM14ManagedSourceWitness.mjs` enables GoTrue and Storage API only
+for its typed-source job, creates/deletes objects through authenticated S3 and
+probes real source sessions. Its managed-first-leg and managed-journey jobs use
+fresh independent sources with those services off.
 Its private source input selects the same projection/copy assertions; required
 discovery clears that input and never starts a CLI or service stack.
 CLI 2.122.0 selects Storage API v1.84.19; inspect its installed schema before
@@ -164,8 +167,8 @@ Owned paths: this record and publication-catalogue row;
 `tests/postgres/runM14ManagedSourceWitness.mjs` and its contributor invocation;
 the existing S3 source and
 adjacent test for pinned empty headers; and the existing transfer sections in
-data and adapter documentation. The managed journey object leg follows the
-separately owned fixture parcel after it lands.
+data and adapter documentation. The separate focused object second leg shares the landed journey's existing
+8B descriptor/reader contract; the journey fixtures remain unchanged.
 
 ## Risk, simplicity and handoff
 
@@ -264,8 +267,8 @@ No DCO of this pending merge or rework, native prepare/review, canonical verify
 or external delivery has run; no repair cycle has been consumed. Final read
 evidence includes an exact staged-tree redacted secret scan and WIP snapshot.
 
-The managed-journey object leg follows separately owned 8D-2 after it lands,
-with a main merge and another read. After this read's acceptance: DCO, prepare,
+The separately owned 8D-2 journey has landed. The current main merge and read
+add its promised composition as a focused filesystem object second leg. After this read's acceptance: DCO, prepare,
 two new fresh full reviewers (one simplicity assessment, both checking nonempty
 ContentRange refusal). Canonical verify waits for the predecessor on main.
 Self-retro: retire service fixtures through their API and keep the empty-bucket
@@ -337,8 +340,8 @@ secret-scanned before its WIP ref and read packet.
 
 No DCO, native prepare, reviewer, canonical verify or external delivery runs in
 this continuation. Review cycles remain unchanged. The lead runs the two fresh
-Opus 5.5 FULL reviews after the read. The managed-journey object leg remains a
-follow-up after 8D-2 lands, with a main merge and another read.
+Codex gpt-6.1-sol xhigh FULL reviews after the read. The object composition
+is now the focused second leg described below.
 Self-retro: compare the accepted snapshot before edits; an explicitly accepted
 owner-doc splice preserves both parcels' claims without widening the code carry.
 
@@ -356,8 +359,8 @@ xhigh on the standard tier; this supersedes the earlier Opus route in this recor
 Both check nonempty ContentRange refusal, and one also judges a simpler sufficient
 solution. A material finding returns to the lead before repair or narrowing.
 After recording the reports this continuation stops: no canonical verification,
-push or PR while the predecessor is off main. The journey object leg remains a
-follow-up after 8D-2 lands. Self-retro: preserve the accepted delta separately
+push or PR while the predecessor is off main. The focused object second leg below completes the promised composition after
+8D-2 landing. Self-retro: preserve the accepted delta separately
 from changing predecessor context and compare only the approved splice exceptions.
 
 The current carry passes strict typecheck first, required lint, focused mapper/Storage/
@@ -422,7 +425,7 @@ The last executed full candidate is the committed predecessor carry.
 | Capture authority | Provider postgres reads Storage rows and policy facts without a new grant. | Real runner checks both Storage relations and pg_policy under provider postgres; executed PASS. |
 | Snapshot consistency | Capture uses repeatable-read/read-only and fails on filtering; operator excludes DB/object/policy writers through final recapture and restore. | Existing capture boundary tests, reconciliation/replay and final changed/delete proof pass. Hosted writer exclusion and whole-store activation are not proved. |
 | Privacy: erased owners | Valid completed-erasure subject provenance may map for item 7, but its retained Storage owner must refuse at Storage; sole unmapped owners must also refuse there. | The old malformed-erasure case remains separate. The approved receipt fixture now proves item-7 mapping retains a valid erased subject and Storage refuses its owner; sole-unmapped-owner refusal also passes. Removing the guard makes both discriminators fail. Focused and real-source runs pass. Fresh reviewer closure remains pending. |
-| Documentation claims | Claims match pinned behavior, destination and preview scope. | Schema-drift wording is narrowed here under the prose rule; policy checks pass and fresh review is pending. No hosted qualification, customer-facing media route or journey-object proof is claimed. |
+| Documentation claims | Claims match pinned behavior, destination and preview scope. | Schema-drift wording is narrowed here under the prose rule; policy checks pass and fresh review is pending. No hosted qualification or customer-facing media route is claimed. The separate object second leg composes with, rather than modifying, the landed journey. |
 | Schema drift | Every pinned column has a stated disposition; new nonempty relations refuse. Upgrade-added columns are not detected. | Measured table above; requalification after a Storage upgrade is required. Automatic unknown-column refusal is not implemented or claimed. |
 
 ## Owner-witness fixture setup read
@@ -465,3 +468,54 @@ The current proof SHA-256 is
 `0463480406e5a00ec8c2fe77b765aa404c2618e52256e04cb8917244d8667e8f`. All four cards remain open
 until fresh native review closes them. Self-retro: distinguish valid identity provenance from
 Storage-owner eligibility, and require the same witness to reject guard removal.
+
+## Main integration and focused object second leg
+
+The managed typed-transfer and three-installation journey predecessors are now
+on main. This continuation merges main without rebasing and uses its three-job
+real-source runner structure. Only typed-source enables Storage API/GoTrue and
+runs the existing sixteen mandatory assertions followed by the Storage service
+leg on that same stack. Managed-first-leg and managed-journey keep services off
+and retain independent fresh source jobs and per-job reports. No fourth source.
+
+After final managed recapture and first target restore, the focused Storage proof
+reopens its first private filesystem store through the existing reader interface
+and copies its exact final inventory to an independent second filesystem store
+with copyTransferObjects and private-target access mapping. One checkpoint
+interruption resumes against verified destination state. Independent readback
+checks updated bytes, descriptor SHA-256/size/version/metadata/access, and the
+continued absence of the source-deleted key. The existing copy API and receipt
+semantics need no production changes.
+
+No row second leg is added. The landed journey proves portable rows and native
+private-media staging through its TransferObjectReader adapter. This focused
+Storage proof independently uses copyTransferObjects for both filesystem copies;
+the composition shares the existing 8B descriptor/reader contract. It does not
+claim that the journey directly calls that helper. The three-installation
+journey itself does not carry managed Storage objects. Its source, first-leg and portable
+fixture files are unchanged. Hosted qualification, a restricted source-capture
+login, release behavior and customer-facing media remain outside this proof.
+
+Strict working-tree typecheck, lint and the focused mapper/Storage/S3 suites pass
+on this combined integration and composition. Removing the second-leg operations
+or corrupting its readback facts fails the corresponding copy/replay, absence,
+updated-byte or descriptor assertion, and the passing proof is restored exactly.
+The real runner completes all three fresh-source jobs, including the typed-source
+Storage proof and unchanged managed first-leg and three-installation journey.
+Local S3 remains byte/access corroboration; both onward stores are private
+filesystem stores. The coordinator read precedes DCO and two fresh Codex
+gpt-6.1-sol xhigh full reviews. Earlier cycle-1 PASS
+reports remain in native history and are not reused for the changed tree.
+Self-retro: compose the delivered reader/copy interface and preserve existing
+job boundaries instead of introducing a second transport or duplicating the
+journey's row proof.
+
+The first two integrated service-hook attempts stopped before the Storage proof
+because its accepted helper imports were omitted while retaining main's runner
+body. Regroup: compare the full accepted import set once, rather than repairing
+only the first missing name. The union is now checked as a set. A diagnostic using the standard Node language
+environment finds no undefined names and detects both omissions in its control;
+repository lint configuration stays unchanged. The subsequent real run completes
+the typed-source Storage hook and both unchanged journey jobs.
+Lesson: preserve the helper's complete module boundary when composing a new
+job structure. No new transport or helper abstraction is needed.

@@ -587,9 +587,10 @@ transaction's capture time. The operator waits until outstanding idempotency
 windows expire, then captures. Other statuses and unexpired windows refuse.
 No sidecar or new disposition value is introduced.
 
-Nonempty managed Storage remains a current refusal pending the separate 8E
-typed managed-object projection through the existing object path. It is not a
-final disposition for the connected managed journey. `payment_external_refs`
+At this amendment, nonempty managed Storage refused pending the separate 8E
+typed managed-object projection. The [managed Storage record](oss-m14-managed-storage-transfer.md)
+now owns the finite operator-only cohort through the existing object path;
+this historical refusal is not its current capability boundary. `payment_external_refs`
 is named in the active profile and is absent from `uncarried`, but the current
 business mapper has no corresponding target-row projection and omits it from
 `mappedRelations`. A populated row therefore reaches `unsupported_table` for
@@ -601,7 +602,7 @@ CLI 2.122.0 source. Reconciled/matched settlement rows and an expired completed
 idempotency receipt are declared `retained-history` and absent from the typed
 packet; settled intent rows remain exact in the target. Unexpired completed
 and expired but unfinished idempotency keys refuse; a non-reconciled batch
-refuses; nonempty managed Storage still refuses. A populated
+refuses; the then-current nonempty managed Storage case also refused. A populated
 `payment_external_refs` fixture reaches the existing active-profile admission
 check and refuses `unsupported_table`, precisely because the mapper has neither
 a projected target row nor this relation in `mappedRelations`. That requested
@@ -927,7 +928,7 @@ row, a missed column or a mechanism outside the matrix.
 | `commerce_payment_intents.amount_cents`, `currency` | C, E | Target amount and currency; equal to the order and payment. |
 | `commerce_payment_intents.provider_payment_id` | C | Target `external_ref`; required on a settled intent. |
 | `commerce_payment_intents.active_attempt_id` | E (new) | Empty, or the intent's own attempt. An intent without attempts must leave it empty. |
-| `commerce_payment_intents.failure_reason`, `created_at`, `updated_at` | C | Carried. |
+| `commerce_payment_intents.failure_reason`, `created_at`, `updated_at` | C | Carried. `updated_at` is when the row was processed, so it does not set the settled time. |
 | `commerce_payment_intents.metadata` | A | Free-form; no target money state reads it. |
 | `commerce_payment_attempts.id`, `payment_intent_id`, `payment_id` | E | The attempt must belong to this intent and payment. |
 | `commerce_payment_attempts.provider`, `amount_cents`, `currency`, `status` | E | Equal to the payment or intent, or to the terminal state. |
@@ -938,7 +939,7 @@ row, a missed column or a mechanism outside the matrix.
 | `commerce_payment_attempts.created_at`, `updated_at` | A | Bookkeeping of a finished attempt. |
 | `commerce_payment_state_transitions.id`, `payment_intent_id`, `payment_attempt_id` | C, E | Identity and links. |
 | `commerce_payment_state_transitions.to_status` | C, E | Must match the terminal intent state. |
-| `commerce_payment_state_transitions.occurred_at` | C | Carried. |
+| `commerce_payment_state_transitions.occurred_at` | C | Carried, and sets the target's `settled_at` and `paid_at`. |
 | `commerce_payment_state_transitions.from_status` | A | The target rail is created-to-terminal; the source path does not change the terminal money state. |
 | `commerce_payment_state_transitions.transition_kind`, `reason` | A | Descriptive path detail; the terminal state is compared and carried. |
 | `commerce_payment_state_transitions.provider_event_id` | A | Provider event history; the settled identity is carried through the intent. |
@@ -952,7 +953,7 @@ table, migration, dependency or public claim changes. A read-only source census
 showed unpaid intents with an empty provider identity whose payment has one, so the
 check compares populated copies only; those shapes must stay admissible. Attempt and
 transition cardinality on real sources is outside this repair and belongs to the
-real-store admission parcel.
+real-store transfer item (8H).
 
 Evidence on this repair: the required suite on the managed-compatibility source and
 the opt-in real pinned CLI 2.122.0 source (binary SHA-256
@@ -1074,15 +1075,17 @@ Refusal lines still unreached, each with its reason:
 
 | Refusal | Why no test reaches it |
 | --- | --- |
-| Capture time or relation count not an integer | The SQL returns an integer |
+| Relation count not an integer | The SQL returns an integer |
 | Relation with no primary key; projected row missing a target column | Needs source schema drift; the baseline hash is pinned |
 | Two completed erasures for one client | `identity_privacy_erasures` is absent from the pinned baseline; the identity mapping suite owns those cases |
 | Capture with no held rows (`managedIdentityEvidence`, `mapManagedRetainedBusiness`) | The capture validation before it already proves this |
 | Cycle number not a nonnegative integer | The source `NOT NULL` and `CHECK` forbid it |
+| Product `allergens` not an array | The source column is `text[] NOT NULL` |
 | Two consents for one recipient and purpose | The source unique constraints on email and on contact, channel and purpose forbid it |
 | Target table missing or already populated | The identity mapping refuses a non-fresh target first; the target inventory is pinned |
 | Projected keys differ from target columns; record cast returns no row | Needs target schema drift |
 | A cast failure outside SQLSTATE classes 22 and 23 rethrows | Needs the database to fail during the cast; the run still stops |
+| A JSON number with no source text | Node 24, the only supported engine, always supplies it |
 | `quoted` on a name over 63 bytes or holding NUL | PostgreSQL names cannot be that long or hold NUL |
 | Settlement item owner lookup (`byOrder(...) ?? fail`) | Orders and items sort before settlement, so their owner check refuses first with `invalid_input` |
 | Final `return false` of `archiveState` | Its callers pass only relations with an earlier branch |
@@ -1120,7 +1123,66 @@ Source-only columns of the carried relations, measured against the target:
 | | `discount_allocated_cents`, `effective_total_cents` | Compared; refuses otherwise |
 | | `product_snapshot`, `variant_snapshot`, `mode_at_line`, `size_constraint_contribution`, `vat_rate_bps`, `effective_net_cents` | Source history; `sku_id` carries the goods and a null refuses |
 | `subscription_events` | `cycle_id`, `updated_at`, `actor_kind` | Source history; the event's subscription and key carry |
-| `catalog_products` | `metadata`, `allergens` | Product content, not carried; the documented rule restores it from the operator's archive before the target serves that catalogue |
-| `catalog_skus` | `pet_type`, `metadata`, `format_code`, `unit_form_code`, `gtin`, `kcal_per_unit`, `feeding_grams_per_unit`, `requires_pet_profile` | Product content, same rule. A later parcel maps these and `allergens` |
+| `catalog_products` | `allergens` | Refuses when set: the target catalogue has no allergen column, so carrying the product would serve an empty safety list. A later parcel carries it |
+| | `metadata` | Source history; it stays in the operator's archive |
+| `catalog_skus` | `pet_type`, `metadata`, `format_code`, `unit_form_code`, `gtin`, `kcal_per_unit`, `feeding_grams_per_unit`, `requires_pet_profile` | Product content; it stays in the operator's archive, and a later parcel maps it |
 | `price_lists`, `price_entries`, `outbox_events` | None | Measured: every source column has a target column |
 | `clients`, `admin_users` | Measured source-only columns | Owned by the item 7 identity mapping and its suite |
+
+## CD-M14-92 acceptance checklist
+
+Native cycle 16 closed the renewal-value card and raised one new card: numbers a double
+cannot hold were rounded silently. The owner's regroup found the cause in the process.
+Nothing listed what must be true before the first review, and advice was not triaged
+against acceptance. The transfer acceptance names "exact numeric/time/ID values" and an
+active subscription among its fixture, so both are required here. This list is that
+statement. Each row names its proof, and a row with no proof says so.
+
+The bundle after triage also changes these: `settled_at` and `paid_at` come from the
+transition; discarded paid-fulfilment or welcome work refuses; a consent time needs an
+explicit offset and at most six fractional digits; a contact email not in native normal
+form refuses; a missing carried relation refuses; a product with allergens refuses; target
+normalisation runs at UTC.
+
+| Dimension | What must be true | Proof | State |
+| --- | --- | --- | --- |
+| Relations | Every relation in the capture's finite lists has one disposition; a nonempty unknown relation refuses | Obligation table in the CD-M14-78 section; `refuses unknown nonempty relations and Storage without a selected object source` | Proved |
+| Row classes | Every row class of a carried relation is typed, archive-only or refused | `refuses every row class with no typed path`; the unreached table in the CD-M14-83 section, measured by coverage. This reaches each refusal; it does not enumerate every admitted combination of status, links and counts | Proved for each refusal branch |
+| Hand-built fields | Each target field built by hand holds the right source value | Exact expected rows in `projects typed managed obligations`; one mutation run over 58 fields, reported in the CD-M14-83 section | Proved |
+| Copied fields: types | A same-name column has the same type on both sides | Measured over the nine copied relations: none differs | Measured once; no standing test |
+| Copied fields: required columns | A column required only on the target refuses when the source holds null | Measured three: `edit_window_hours`, `scheduled_at`, `idempotency_key`, each with a refusal row | Proved |
+| Copied fields: numeric | A carried value keeps its exact number, or the row refuses | Measured: no carried column is `numeric` or `bigint`; the two `numeric` columns on carried relations are source-only. A number whose exact decimal differs from the parsed double refuses on every carried relation. Three refusal rows; a largest-safe integer and a 16-digit decimal survive | Proved |
+| Copied fields: JSON | Nested values, empty containers and JSON null inside a value survive | PostgreSQL comparison of copied columns on both sides, in `projects typed managed obligations` | Proved |
+| Copied fields: JSON null as the whole value | A jsonb column holding the JSON value `null` | `to_jsonb` cannot tell it from SQL NULL, so the target holds SQL NULL, or restore refuses on a required column. No platform writer was found that produces it | Recorded limit |
+| Copied fields: JSON number scale | A JSON number's value survives; its trailing zeros do not | `1.50` arrives as `1.5`; jsonb equality holds and no carried column is `numeric` | Recorded limit |
+| Copied fields: time | Instants keep microseconds | Measured: every copied time is `timestamptz` on both sides. The capture and target normalisation set UTC, with a zoned-target assertion. The same comparison reads copied times as PostgreSQL text, and hand-built times have their own text comparison. Price-list eligibility and receipt expiry are decided by PostgreSQL inside the held snapshot, with cases on each side of a microsecond boundary. The one remaining `Date.parse` only rejects an unreadable consent time | Proved |
+| Copied fields: text | Unicode, quotes, backslashes and arrays survive | The same comparison, with a `text[]` holding an empty string and a NULL element | Proved |
+| Copied fields: bytea | None carried | Measured: no `bytea` on the carried relations | Proved |
+| Copied fields: null against empty | SQL NULL and an empty string stay distinct | The same comparison, with an empty `description` and a NULL `asset_ref` | Proved |
+| Capture authority | A login row security would filter refuses; credentials are never selected | `refuses a source login that row security would silently filter`; the real runner captures under the provider `postgres` role and records its attributes. One filtered role and one provider role, not a full grant matrix | Proved for those two |
+| Snapshot consistency | The capture reads one read-only repeatable-read snapshot and refuses a changed census | `refuses an invalid capture boundary and a changed capture`. The digest covers the census, not the held rows, and the capture is trusted in-process input: this does not defend against a caller that changes rows or recomputes the digest | Proved here for that boundary; catch-up belongs to 8D |
+| Target due readers | Restored rows open no new work beyond what the due-reader table states | Executed: `invoicing_due_sources` empty, renewal admission blocked, reminder key. The other readers in that table are a static read | Partly proved |
+| Target read paths | A restored store reads correctly through the platform's own views | Not run against a restored store: customer preference view, public catalogue, SKU envelope, OMS list. This item proves storage, not those readers | Not proved |
+| Privacy | Credentials, raw provider payloads and source-only rows stay out of the packet; erased identities do not return | Marker assertions in `projects typed managed obligations`; identity cases in `tests/postgres/connectedStoreTransfer.test.ts`. Carried order metadata and outbox and event payloads are copied as the source holds them, so source erasure must be complete first | Proved for named markers; free-form JSON is a recorded limit |
+| Docs claims | Each claim about this transfer matches the code | `oss:published-tree --policy` proves ownership only; reviewers read the meaning | Review only |
+| Source schema drift | A source that has moved past the pinned baseline does not transfer wrongly | At runtime a missing carried relation, a removed or renamed copied column and an unknown nonempty relation refuse. Nothing detects an added or retyped column, and the baseline and schema hashes are recorded only by the real runner | Documented limit |
+
+The documented limit for source schema drift: the capture is qualified only for a source on
+the pinned managed baseline. After a later source migration, requalify the transfer before
+relying on it. Hosted managed sources are not qualified by this item.
+
+Native cycle 17 closed the number cards and raised two more, both millisecond truncation in a time decision: the chosen price list and a receipt's expiry. One repair covers both (CD-M14-101): PostgreSQL makes both decisions inside the held snapshot, and the millisecond capture time is gone.
+
+Decisions after one pre-mortem and one triage (CD-M14-94). A finding needs a reachable
+precondition: a platform writer, a documented operator path, or a value class the acceptance
+text names. A row only the schema allows is advice unless it moves money. Renewal's charge
+instrument stays in the later lifecycle carry as a documented refusal, because addresses are
+not carried either. Two intents on one order and a created intent with a payment-only provider
+identity go to the later real-store transfer item (8H). The paid-order drain rule is in the docs. The census stays relation-level; per-table counts are in the
+journey report.
+
+Clauses of the same acceptance owned elsewhere: interruption, catch-up and source writes
+during transfer, the second leg and refusal before takeover belong to 8D; objects and ACLs
+belong to 8B and 8E; admission rules seen only on a real store belong to the later real-store transfer item (8H); hosted
+receipts belong to item 10. "No missing history" is met through the operator's source
+archive under CD-M14-45, not through target rows.

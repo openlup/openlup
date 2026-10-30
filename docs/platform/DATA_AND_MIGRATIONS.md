@@ -54,7 +54,7 @@ does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
-takes its final connected73-table graph and application's complete private
+takes its final finite connected-table graph and application's complete private
 `objects/tmp` capture only after its finite source writers and observed server
 backends retire. The default crash-boundary mode captures with a read-only
 migration-owner session. In catch-up mode the fixture closes its bootstrap
@@ -63,15 +63,31 @@ bootstrap-principal session configured read-only by default for the final
 capture/census and closes it afterward. This local superuser fixture step does
 not qualify a restricted source-capture login; actual source and target domain
 commands use the qualified restricted runtime. The existing
-canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
+canonical native capture sets `row_security=off` within its snapshot so a
+filtered read refuses rather than appearing empty. Capture requires a login
+with table-owner or row-security bypass rights. The capture/restore adapters
+retain raw PostgreSQL JSON text, pending
 uploads, partial bytes, cleanup obligations and leases without copying schema,
 roles, private installation-key payloads or migration history. Database and
 filesystem publication are separate; both must finish before target recovery
 or application startup. Source `submitting` rows remain unchanged through import;
 only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
-absence or complete upload is manufactured. This finite composition does not
-qualify an adopter's complete writer inventory or managed-history mapping.
+absence or complete upload is manufactured. The portable-only mode does not
+qualify managed-history mapping. The opt-in `--managed-catch-up` mode composes
+the finite managed typed capture/mapping with this same native import and checks
+source facts against both local targets before activation. History-only rows
+remain in the operator's source archive and are absent from target data.
+Managed Storage remains empty in this journey. The separate
+[managed Storage witness](../../tests/postgres/managedStorageTransfer.proof.ts)
+uses the finite operator-only projection described below and copies its final
+filesystem objects onward through the existing portable object path. It does
+not add managed objects to the three-installation journey or repeat its row
+second leg. Required managed first-leg
+tests use the stock-PG17 compatibility adapter; the opt-in real-source runner
+repeats them on the pinned managed source and executes the complete journey.
+This does not qualify an
+adopter's complete writer inventory or hosted source and object policy.
 Its optional catch-up mode also takes a preliminary copy while the source
 changes. It discards that target selection and uses a separate fresh inactive
 generation for final recapture and exact readback; no existing target rows are
@@ -104,13 +120,27 @@ payments and their raw payloads stay in the operator archive. Failed payments
 are carried as typed failed settlement state; checked cancelled or expired
 checkouts stay in the archive while their pending order is carried. Carried
 settled transitions receive `invoicing_cutover` rows, so restored history opens
-no new document duty. A terminal checkout reminder keeps only its key on the
-carried unpaid order, so the target does not send it again. Carried subscriptions
+no new document duty, and carried fulfilment work can open one only when its
+shipment later hands off. Issue every owed first invoice before capture, because a
+carried paid order will not open one on the target. A terminal checkout reminder keeps only its key on the
+carried unpaid order, so the target does not send it again; this is the one source key
+that stays active. Carried subscriptions
 stay at static delivery admission `blocked`: a due renewal refuses before stock or
 payment and records that refusal for its schedule. Renewals of carried subscriptions
 stay unsupported until a later subscription lifecycle carry, so keep the renewal job
-off for them. Product content columns, including allergens, are not carried; restore
-them from the operator's archive before the target serves that catalogue.
+off for them. A subscription with more than one line refuses. A number on a carried relation that a double cannot hold refuses, including
+one in a column that is not carried; a JSON number's trailing zeros are not kept, so `1.50` arrives as `1.5`.
+Free-form JSON (order metadata, event and outbox payloads) is copied as the source holds it, including source
+IDs, so complete any source erasure first. A product with allergens set refuses, because the target catalogue
+has no allergen column; a later carry adds it. Product name, description, ingredients and marketing content are
+carried. Other product and SKU content columns, and order tax and net breakdowns, stay in the operator's archive.
+A repeated provider event for a carried settled payment is refused as already settled, and one for an
+archived checkout has no target payment to match, so let provider windows close before capture. Carried pending
+work waits until the target composition has its handler. Restore refuses a packet over 10,000 rows or 64 MiB,
+counting the target's own factory rows. The capture's census counts rows per relation, not per row class, so it
+does not say how many became typed and how many stayed in the archive. The capture is qualified only for a source
+on the pinned managed baseline: a missing carried relation or a removed column refuses, but an added or retyped
+column is not detected, so requalify the transfer after any later source migration.
 Any managed invoice row refuses, including issued
 invoices, so a source with invoice rows cannot transfer yet. A starter-pack marker,
 a synthetic test subscription, a quote line that disagrees with its price agreement
