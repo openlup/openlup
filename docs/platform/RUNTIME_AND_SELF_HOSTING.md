@@ -154,7 +154,8 @@ noncurrent versions, plus planned checks. It is not a passing receipt. The first
 runner admission must observe all seeded noncurrent versions and the retained
 latest versions/marker. At each start the runner reads back an enabled applicable
 one-day noncurrent-expiry rule. It records PENDING-OBSERVATION until at least
-24 elapsed hours, a listing of zero noncurrent versions and explicit
+24 elapsed hours, a fresh check against surviving provider seed timestamps,
+a listing of zero noncurrent versions and explicit
 NoSuchVersion readbacks for every seeded old version, while
 retained latest objects/marker still exist. Resume the same declaration around
 T+26h and T+50h with new receipt destinations. A rule readback alone cannot PASS.

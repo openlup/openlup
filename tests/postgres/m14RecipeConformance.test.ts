@@ -186,7 +186,7 @@ try {
     { Key: objects[0].key, VersionId: "v2", IsLatest: true, LastModified: new Date(now - 1000) },
     { Key: objects[1].key, VersionId: "v3", IsLatest: false, LastModified: new Date(now - 2000) },
     { Key: objects[1].key, VersionId: "v4", IsLatest: false, LastModified: new Date(now - 1000) }],
-    DeleteMarkers: [{ Key: objects[1].key, VersionId: "v5", IsLatest: true }] };
+    DeleteMarkers: [{ Key: objects[1].key, VersionId: "v5", IsLatest: true, LastModified: new Date(now - 500) }] };
   let versionStatus = 404;
   const client = { send: async command => {
     if (command.constructor.name === "GetObjectCommand") throw Object.assign(new Error("absent"), { name: versionStatus === 404 ? "NoSuchVersion" : "AccessDenied", $metadata: { httpStatusCode: versionStatus } });
@@ -199,6 +199,9 @@ try {
   assert.equal((await lifecycle(client, config)).status, "PENDING-OBSERVATION");
   await save(); await assert.rejects(lifecycle(client, config)); // Missing original seed cannot first-admit.
   await save({ admittedAt: new Date(now - 26 * 3600000).toISOString(), clockStart: new Date(now - 26 * 3600000).toISOString() });
+  await assert.rejects(lifecycle(client, config)); // A backdated resume cannot outrun provider seed time.
+  rows.Versions = rows.Versions.map(row => ({ ...row, LastModified: new Date(now - 26 * 3600000 - 1000) }));
+  rows.DeleteMarkers = rows.DeleteMarkers.map(row => ({ ...row, LastModified: new Date(now - 26 * 3600000 - 1000) }));
   assert.equal((await lifecycle(client, config)).status, "PASS");
   versionStatus = 403; await assert.rejects(lifecycle(client, config)); versionStatus = 404;
   rows.DeleteMarkers = []; await assert.rejects(lifecycle(client, config));

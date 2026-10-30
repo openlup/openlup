@@ -85,22 +85,23 @@ export async function lifecycle(client, config) {
   assert.equal(state.schemaVersion, 1); assert.equal(state.prefix, prefix);
   assert.equal(state.objects.length, 2);
   const rows = await versions(client, bucket, prefix + "lifecycle/");
-  const expected = [];
+  const expected = [], latestSeedTimes = [];
   for (const entry of state.objects) {
     assert(entry.key.startsWith(prefix + "lifecycle/") && !expected.includes(entry.noncurrentVersionId));
     expected.push(entry.noncurrentVersionId);
     if (entry.deleteMarkerVersionId) expected.push(entry.currentVersionId);
     const surviving = rows.find(row => row.id === (entry.deleteMarkerVersionId ?? entry.currentVersionId) && row.key === entry.key);
     assert(surviving?.latest);
+    latestSeedTimes.push(new Date(surviving.modified).getTime());
   }
   assert.equal(new Set(expected).size, 3);
+  // Surviving provider timestamps bound the elapsed clock on every resume,
+  // including after the old versions have expired.
+  const latestSeed = Math.max(...latestSeedTimes);
+  assert(Number.isFinite(latestSeed) && Date.parse(state.clockStart) >= latestSeed);
   const now = new Date();
   if (!state.admittedAt) {
     for (const id of expected) assert(rows.some(row => row.id === id && !row.latest));
-    // Provider timestamps prevent a backdated continuity input from shortening
-    // the required elapsed interval. All seed versions must already exist.
-    const latestSeed = Math.max(...rows.filter(row => expected.includes(row.id)).map(row => new Date(row.modified).getTime()));
-    assert(Number.isFinite(latestSeed) && Date.parse(state.clockStart) >= latestSeed);
     state.admittedAt = now.toISOString();
   }
   assert(Date.parse(state.clockStart) <= Date.parse(state.admittedAt));

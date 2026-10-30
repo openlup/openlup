@@ -243,6 +243,15 @@ it("admits only a stable single current native version within the selected prefi
   expect(send.mock.calls.every(([command]) => command.constructor.name === "GetObjectCommand"
     ? command.input.Key === "owned/a" : command.input.Prefix === "owned/")).toBe(true);
   await expect(source.read("other/a")).rejects.toMatchObject({ code: "invalid_input" });
+  const calls = send.mock.calls.length;
+  await expect(source.captureAgainstReferences(async () => ({ ...reference,
+    objects: [{ ...descriptor, key: "other/a" }] }))).rejects.toMatchObject({ code: "invalid_input" });
+  for (const kind of ["pending-upload", "cleanup"] as const) {
+    await expect(source.captureAgainstReferences(async () => ({ ...reference,
+      obligations: [{ kind, key: "other/a", sourceRecordId: "synthetic-duty" }] })))
+      .rejects.toMatchObject({ code: "invalid_input" });
+  }
+  expect(send).toHaveBeenCalledTimes(calls);
   history.Versions[0]!.VersionId = "other-version";
   await expect(source.captureAgainstReferences(async () => reference)).rejects.toMatchObject({ code: "version_conflict" });
 });

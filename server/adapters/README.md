@@ -203,7 +203,8 @@ The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an
 explicitly selected SDK client; it constructs no client, credential chain or
 environment binding. Imports and construction make no requests. Default selected reads
 use ListObjectsV2 and GetObject. An optional `prefix` selects a finite namespace;
-read keys and returned listing keys outside it refuse. Keys retain their full
+read keys, returned listing keys, independent object records and pending/cleanup
+obligation keys outside it refuse. Keys retain their full
 S3 names. A bounded census follows continuation
 tokens to an observed terminal page, reads every listed object's bounded bytes,
 then repeats the listing. Duplicate keys, repeated/missing cursors, unexpected
@@ -216,8 +217,8 @@ selected bucket. It compares every
 listed key, logical version, byte digest and metadata field with those records,
 and preserves explicit pending-upload, partial-object and cleanup references
 with their source-record identities.
-The source-store snapshot must explicitly establish that this finite profile
-has no retained native version history, object tags or in-progress multipart
+The default source-store snapshot must explicitly establish no retained native
+version history; every selected profile must establish no object tags or in-progress multipart
 uploads; a missing feature fact refuses qualification. Pending logical uploads
 may still exist before bytes are materialized and remain retained obligations.
 Pending or cleanup work can name a not-yet-materialized key; a partial object

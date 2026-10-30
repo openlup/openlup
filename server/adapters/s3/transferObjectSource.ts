@@ -190,7 +190,7 @@ export function createS3TransferObjectSource(input: {
       const before = await referenceRead(readReferences);
       if (before.bucket !== bucket) throw new ObjectTransferError("invalid_input");
       if (before.features?.nativeVersionHistory !== (nativeVersionAdmission ?? "none")) throw new ObjectTransferError("invalid_input");
-      const expected = referenceEncoding(before, maximumFiles, maximumTotalBytes);
+      const expected = referenceEncoding(before, maximumFiles, maximumTotalBytes, prefix);
       const retained = JSON.parse(expected) as S3SourceReferenceSnapshot;
       const historyBefore = nativeVersionAdmission ? await currentVersions() : undefined;
       const observed = await source.capture();
@@ -203,7 +203,7 @@ export function createS3TransferObjectSource(input: {
         throw new ObjectTransferError("invalid_input");
       }
       const after = await referenceRead(readReferences);
-      if (after.bucket !== bucket || referenceEncoding(after, maximumFiles, maximumTotalBytes) !== expected) throw new ObjectTransferError("version_conflict");
+      if (after.bucket !== bucket || referenceEncoding(after, maximumFiles, maximumTotalBytes, prefix) !== expected) throw new ObjectTransferError("version_conflict");
       const listed = observed.objects.map(({ key, version, bytes, sha256, metadata }) => ({ key, version, bytes, sha256, metadata }));
       if (JSON.stringify(listed) !== JSON.stringify(retained.objects)) throw new ObjectTransferError("integrity_conflict");
       return { ...observed, referenceSnapshotId: retained.snapshotId, features: retained.features,
@@ -218,7 +218,7 @@ async function referenceRead(readReferences: () => Promise<S3SourceReferenceSnap
   catch (error) { throw error instanceof ObjectTransferError ? error : new ObjectTransferError("unavailable"); }
 }
 
-function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: number, maximumTotalBytes: number): string {
+function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: number, maximumTotalBytes: number, prefix?: string): string {
   if (!snapshot || !text(snapshot.bucket, 256) || !text(snapshot.snapshotId, 1024) || !["none", "single-current"].includes(snapshot.features?.nativeVersionHistory)
     || snapshot.features?.objectTags !== "none" || snapshot.features?.multipartUploads !== "none"
     || !Array.isArray(snapshot.objects)
@@ -228,7 +228,8 @@ function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: nu
   const duties = new Set<string>();
   let total = 0;
   const objects = snapshot.objects.map(object => {
-    if (!keyText(object?.key) || !/^sha256:[a-f0-9]{64}$/.test(object.version)
+    if (!keyText(object?.key) || prefix !== undefined && !object.key.startsWith(prefix)
+      || !/^sha256:[a-f0-9]{64}$/.test(object.version)
       || !Number.isSafeInteger(object.bytes) || object.bytes < 0
       || !/^[a-f0-9]{64}$/.test(object.sha256) || !object.metadata
       || typeof object.metadata !== "object" || Array.isArray(object.metadata)
@@ -243,7 +244,8 @@ function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: nu
   }).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
   const obligations = snapshot.obligations.map(value => {
     if (!value || !["pending-upload", "partial-object", "cleanup"].includes(value.kind)
-      || !keyText(value.key) || !text(value.sourceRecordId, 1024)
+      || !keyText(value.key) || prefix !== undefined && !value.key.startsWith(prefix)
+      || !text(value.sourceRecordId, 1024)
       || value.kind === "partial-object" && !keys.has(value.key)
       || duties.has(`${value.kind}\u0000${value.key}\u0000${value.sourceRecordId}`)) throw new ObjectTransferError("invalid_input");
     duties.add(`${value.kind}\u0000${value.key}\u0000${value.sourceRecordId}`);
