@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { promisify } from "node:util";
 import { Pool } from "pg";
 import type { S3Client } from "@aws-sdk/client-s3";
@@ -66,7 +67,7 @@ async function main() {
   const scratch = await mkdtemp(join(process.cwd(), ".context/scratch/m14-managed-storage-"));
   // The opt-in service runner supplies only a private, explicitly selected source.
   // Required discovery clears this input and always runs the stock-PG adapter.
-  const suppliedPath = process.env.OPENLUP_M14_STORAGE_INPUT;
+  const suppliedPath = processEnvironment.OPENLUP_M14_STORAGE_INPUT;
   const supplied = suppliedPath === undefined ? undefined : JSON.parse(readFileSync(suppliedPath, "utf8")) as {
     port: number; bucket: string; customer: string; clientId: string; customerToken: string;
     endpoint: string; region: string; accessKeyId: string; secretAccessKey: string;
