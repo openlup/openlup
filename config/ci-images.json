@@ -13,13 +13,6 @@
       "tag": "16",
       "digest": "sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97",
       "sources": ["docker.io/library/postgres", "public.ecr.aws/docker/library/postgres"]
-    },
-    {
-      "name": "managed-batch-postgres",
-      "repository": "supabase/postgres",
-      "tag": "17.11.0.004",
-      "digest": "sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706",
-      "sources": ["ghcr.io/supabase/postgres:17.11.0.004", "docker.io/supabase/postgres", "public.ecr.aws/supabase/postgres"]
     }
   ]
 }

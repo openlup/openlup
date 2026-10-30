@@ -1191,7 +1191,7 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 (the image inventory, the mirror script and the workflow), and on manual dispatch
 from `main`. Its single job reads only the committed
 [image inventory](config/ci-images.json): install-proof PostgreSQL, which is also
-the pgTAP server, the test harness default and the managed-batch gate database.
+the pgTAP server and the managed-rail test database, and the test harness default.
 Every pin is validated before the first registry request. No Supabase CLI or
 derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins

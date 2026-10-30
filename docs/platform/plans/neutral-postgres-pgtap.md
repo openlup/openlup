@@ -205,7 +205,7 @@ under the same context name.
 | W1 | Adapter, extension supply, runner, parity tooling and a non-required `pgtap-postgres` job beside the unchanged `pgtap`. No other CI change. | The parity proof passes locally and on the first hosted run. |
 | W1s | Shadow window: both lanes run on every PR, merge group and main push. | D6's window is met with zero unexplained divergence. |
 | W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and the native CLI installer script if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
-| W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. Draft: six consumers moved; two need the owner decisions W3a and W3b in [W3 evidence](#w3-evidence), and the pin stays until then. |
+| W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. Draft: all eight consumers moved after the owner approved W3a and W3b (see [W3 evidence](#w3-evidence)); the pin is removed. |
 
 W1 and W2 are separate PRs so that the shadow evidence comes from the merged W1
 lane, not from a candidate branch.
@@ -412,11 +412,12 @@ the ordered full test names and each status.
 | `starterGraduationCadence` | 14/14 | 14/14 | identical; moved |
 | `subscriptionManagedStock` | 12/12 | 12/12 | identical; moved |
 | `riskControl.conformance` (`riskControlFixture`) | 14/14 | 14/14 | identical; moved |
-| `dunningAttemptReplay` | 20/20 | 0/20 (setup refused) | blocked; stays on the pin |
-| `reviewedBatchForwards` | 107/107 | 106/107 | blocked; stays on the pin |
+| `dunningAttemptReplay` | 20/20 | 20/20 after W3a | identical; moved |
+| `reviewedBatchForwards` | 107/107 | 106/106 after W3b | moved; the dropped case is the managed pin's Docker-free pull check |
 
-Both blocked suites depend on supautils grants that stock PostgreSQL cannot
-express at the same scope. Each needs an owner decision (W3a or W3b below):
+Two suites first failed because they depend on supautils grants that stock
+PostgreSQL cannot express at the same scope. The owner approved the recommended
+setup changes on 2026-10-30. Neither changes an assertion or the tested SQL:
 
 - **W3a, `dunningAttemptReplay`.** Setup copies the image's `postgres` database
   schema with `pg_dump` into a template database as `postgres`. On the stock lane
@@ -437,20 +438,21 @@ express at the same scope. Each needs an owner decision (W3a or W3b below):
   `GRANT supabase_auth_admin TO postgres WITH INHERIT TRUE, SET FALSE` passes
   107/107, but that grant gives `postgres` full ownership rights over every
   `auth` object. That is broader than the managed host (risk R3). The
-  options are: accept that helper-only grant; edit the plant to run that one
-  statement as `supabase_admin`, which is a test edit; or keep this suite on the
-  managed pin.
+  applied fix runs only that `DROP TRIGGER` as the table owner
+  (`SET LOCAL ROLE supabase_auth_admin`), then restores the installing role and
+  recreates the trigger, so the planted catalog drift is the same. The broad
+  membership grant is not used.
 
-Until both are decided, the `managed-batch-postgres` pin remains in
-`config/ci-images.json`, so CI still pulls the managed image for these two suites.
-`scripts/ci-image-mirror.test.ts` and `scripts/ci-image-pull.test.ts` keep their
-references to it.
+The `managed-batch-postgres` pin is removed from `config/ci-images.json`, so the
+required `test` job no longer pulls the managed image. The mirror and pull tests
+cover the remaining pins. The explicit source-tag case now uses a synthetic copy
+of the install-proof pin.
 
 Timing with warm images: the moved suites take within about 3 s of their
 old times (helper/old: 8/7, 9/6, 4/3, 3/3, 3/4 and 5/4 s). Package staging and
 `dpkg` add about 1–3 s per container. With a cold runner, the stock image is
-about 150 MB against 1.75 GB for the managed image, but that pull saving needs
-W3a and W3b. The about 300 KB of packages is downloaded once per cache.
+about 150 MB against 1.75 GB for the managed image, and the required `test` job
+now gets that saving. The about 300 KB of packages is downloaded once per cache.
 
 ## Risks
 

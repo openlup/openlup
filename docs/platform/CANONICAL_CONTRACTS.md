@@ -727,8 +727,8 @@ evidence; existing admission classes keep their prior behavior.
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
 for every mirrored image. It records the install-proof database, which is also
-the raw pgTAP server, the disposable test default and the managed-batch database.
-No Supabase CLI or CLI-derived image set remains in hosted CI. The single mirror
+the raw pgTAP server and the managed-rail test database, and the disposable test
+default. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
 job reads typed owned pins from its own checkout, validates all of them before
 any exec or registry call, and builds upstream sources and mirror targets itself.
 It runs only pinned first-party actions plus the repository script, re-resolves
@@ -768,9 +768,8 @@ container. [The managed-compatibility adapter](../../tests/postgres/managed-comp
 is the only file that encodes the managed host for that lane. It is test
 infrastructure, never a runtime bootstrap or a supported-host claim.
 [The managed-compat test helper](../../tests/helpers/managedCompatPostgres.ts)
-boots the same image, packages, server settings and adapter for the
-managed-rail `tests/postgres` suites that have moved off the managed-batch
-image. The only addition is a login for the `supabase_admin` placeholder, the
+boots the same image, packages, server settings and adapter for every
+managed-rail `tests/postgres` suite, including the reviewed-batch gate. The only addition is a login for the `supabase_admin` placeholder, the
 identity those suites use as their owner session.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.

@@ -23,7 +23,6 @@ describe("CI image mirror planning and digest preservation", () => {
   it("keeps reviewed-batch pins and source lists in the JSON reader only", () => {
     assertSingleOwner(batchSource);
     expect(batchSource).toContain('readCiImage("test-postgres")');
-    expect(batchSource).toContain('readCiImage("managed-batch-postgres")');
     expect(() => assertSingleOwner(`${batchSource}\nconst digest = "${digest}";`)).toThrow();
     expect(() => assertSingleOwner(`${batchSource}\nconst sources = ["docker.io/library/postgres"];`)).toThrow();
   });
@@ -48,7 +47,7 @@ describe("CI image mirror planning and digest preservation", () => {
 
   it("validates the owned pins and refuses duplicates, mutable or unsafe refs", () => {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
-    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres", "managed-batch-postgres"]);
+    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres"]);
     for (const images of [[config.images[0], config.images[0]], [{ ...config.images[0], digest: "TODO" }],
       [{ ...config.images[0], sources: ["evil.test/library/postgres"] }], [{ ...config.images[0], tag: "16; echo unsafe" }]]) {
       expect(() => ownedImages({ images })).toThrow("invalid or duplicate");
@@ -103,8 +102,9 @@ describe("CI image mirror planning and digest preservation", () => {
     expect(() => resolveImage({ ...image, digest: undefined } as unknown as typeof image, () => digest)).toThrow("pinned digest");
   });
 
-  it("preserves the managed GHCR source tag without appending a second tag", () => {
-    const managed = ownedImages(actualConfig()).find(({ name }) => name === "managed-batch-postgres");
+  it("preserves an explicit source tag without appending a second tag", () => {
+    const [native] = ownedImages(actualConfig());
+    const managed = ownedImages({ images: [{ ...native, sources: [`ghcr.io/library/postgres:${native.tag}`, ...native.sources] }] })[0];
     const lookup = vi.fn().mockReturnValue(managed.digest);
     expect(resolveImage(managed, lookup).source).toBe(`${managed.sources[0]}@${managed.digest}`);
     expect(lookup).toHaveBeenCalledExactlyOnceWith(`${managed.sources[0]}@${managed.digest}`);
