@@ -71,6 +71,15 @@ async function sourceSchema(port) {
       ORDER BY relation,a.attnum`, [["auth.users", "storage.buckets", "storage.objects"]])).rows;
   } finally { await pool.end(); }
 }
+// The test captures with this role's rights, so it must be the provider login a hosted source offers.
+async function captureRole(port) {
+  const pool = new Pool({ connectionString: `postgresql://supabase_admin:postgres@127.0.0.1:${port}/postgres`, max: 1 });
+  try {
+    const role = (await pool.query("SELECT rolname,rolsuper,rolbypassrls FROM pg_catalog.pg_roles WHERE rolname='postgres'")).rows[0];
+    if (!role || role.rolsuper !== false) throw new Error("Real managed witness requires a non-superuser capture role");
+    return role;
+  } finally { await pool.end(); }
+}
 
 async function main() {
   if (process.argv.length !== 2) throw new Error("Usage: node tests/postgres/runM14ManagedSourceWitness.mjs");
@@ -107,6 +116,7 @@ async function main() {
     report.sourceRepoDigests = JSON.parse(await command("docker", ["image", "inspect", report.sourceImage, "--format", "{{json .RepoDigests}}"]));
     report.baselineSha256 = hash(await readFile(join(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql")));
     await writeFile(join(directory, "source-schema.json"), JSON.stringify(await sourceSchema(base + 2), null, 2), { mode: 0o600 });
+    report.captureRole = await captureRole(base + 2);
     // 8E extension point: this owned stack's config/start boundary is where its
     // GoTrue + Storage API + authenticated S3 GET proof will enable services and
     // compose its assertions. 8A exercises SQL metadata and typed transfer only.
@@ -119,8 +129,8 @@ async function main() {
     await writeFile(join(directory, "test.log"), test.stdout, { mode: 0o600 });
     const result = JSON.parse(await readFile(resultPath, "utf8"));
     report.tests = result.testResults.flatMap(file => file.assertionResults.map(test => [test.fullName, test.status]));
-    if (report.tests.length !== 13 || report.tests.some(([, status]) => status !== "passed"))
-      throw new Error("Real managed source requires all thirteen assertions to pass; no skips");
+    if (report.tests.length !== 16 || report.tests.some(([, status]) => status !== "passed"))
+      throw new Error("Real managed source requires all sixteen assertions to pass; no skips");
     report.status = "PASS";
   } catch (error) { report.error = error.message; }
   finally {

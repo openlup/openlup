@@ -2906,6 +2906,8 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-30, M14 managed source transfer: when a full-row history archive
   cannot support complete erasure, carry finite typed obligations and refuse
   unrepresented state. Keep source history in the operator's own archive.
+  Reviewers each finding the next refusal with no test → measure unreached
+  refusal lines once and test them together, at the level where the guards live.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the

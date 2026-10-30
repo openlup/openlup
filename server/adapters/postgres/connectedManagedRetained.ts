@@ -143,6 +143,8 @@ export async function captureManagedSourceGraph(input: {
       const captureTimeMs = Number(facts.capture_time_ms);
       if (!Number.isSafeInteger(captureTimeMs)) fail("invalid_input");
       await db.query("SET LOCAL TimeZone = 'UTC'");
+      // A login that row security would filter must fail here, not read an empty source.
+      await db.query("SET LOCAL row_security = off");
       const relations = (await db.query<{ schema: string; table: string }>(`SELECT n.nspname AS schema,c.relname AS table
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
         WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
@@ -478,7 +480,8 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of priceEntries) projected.price_entries!.push(project("price_entries", row));
   const skuById = byId(skus), subscriptionById = byId(subscriptions);
   for (const row of subscriptions) {
-    if (row.status !== "active" || row.pet_id !== null
+    // starter_pack is a later-delivery discount promise with no typed target yet.
+    if (row.status !== "active" || row.pet_id !== null || row.starter_pack !== null || row.is_test_fixture !== false
       || row.shipping_address_id !== null || row.billing_address_id !== null || row.edit_window_hours === null
       || row.payment_method_kind !== null && row.payment_method_kind !== "card" && row.payment_method_kind !== "blik_payid")
       fail("unsupported_table", "public.subscriptions");
@@ -519,6 +522,12 @@ export async function mapManagedRetainedBusiness(input: {
       || typeof current[0]!.unit_price_gross_minor !== "number" || current[0]!.unit_price_gross_minor < 0)
       fail("target_conflict", "public.subscription_price_agreements");
     const agreement = current[0]!;
+    // The source renews from the frozen quote line; the target renews from this agreement.
+    const quoteLine = ((row.line_metadata as Row | null)?.productSnapshot as Row | undefined)?.quoteLine as Row | undefined;
+    const quotedUnit = (quoteLine?.unitPriceGross as Row | undefined)?.amountMinor ?? quoteLine?.unitGrossMinor;
+    if (quotedUnit !== undefined && Number(quotedUnit) !== agreement.unit_price_gross_minor
+      || quoteLine?.quantity !== undefined && quoteLine.quantity !== row.qty)
+      fail("target_conflict", "public.subscription_price_agreements");
     projected.subscription_lines!.push(project("subscription_lines", row, { quantity: row.qty,
       unit_price_minor: agreement.unit_price_gross_minor, currency_code: agreement.currency }));
     projected.subscription_renewal_term_lines!.push({ subscription_id: row.subscription_id,
@@ -580,7 +589,7 @@ export async function mapManagedRetainedBusiness(input: {
       source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null });
   }
   for (const row of items) {
-    if (!orderById.has(row.order_id) || typeof row.allocation_ordinal !== "number"
+    if (!orderById.has(row.order_id) || typeof row.allocation_ordinal !== "number" || row.sku_id === null
       || typeof row.total_cents !== "number" || row.total_cents !== Number(row.unit_price_cents) * Number(row.quantity))
       fail("target_conflict", "public.commerce_order_items");
     projected.commerce_order_items!.push({ id: row.id, order_id: row.order_id, sku_id: row.sku_id,
@@ -668,25 +677,12 @@ export async function mapManagedRetainedBusiness(input: {
       fail("unsupported_table", "public.communication_email_deliveries");
   }
   for (const [table, rows] of Object.entries(projected)) await replaceTargetRows(packet, table, rows, input.targetOwner);
-  const mappedRelations = new Set(["public.clients", "public.admin_users", "auth.users", "public.admin_audit_events",
-    "public.customer_subject_lifecycle_events", "public.identity_privacy_erasures", "public.commerce_orders",
-    "public.commerce_order_items", "public.commerce_payments", "public.commerce_payment_intents",
-    "public.commerce_payment_attempts", "public.commerce_payment_state_transitions", "public.outbox_events",
-    "public.catalog_products", "public.catalog_skus", "public.price_lists", "public.price_entries",
-    "public.subscriptions", "public.subscription_lines", "public.subscription_cycles", "public.subscription_events",
-    "public.subscription_price_agreements", "public.commerce_payment_method_refs", "public.subscription_events",
-    "public.communication_permissions"]);
-  for (const entry of input.capture.dispositions) if (entry.rows && active.has(entry.relation) && !mappedRelations.has(entry.relation))
-    fail("unsupported_table", entry.relation);
   const supportedHistory = new Set(["public.admin_audit_events", "public.payment_provider_settlement_batches",
     "public.payment_provider_settlement_items", "public.commerce_idempotency_keys",
     "public.communication_contacts", "public.communication_contact_links", "public.communication_email_deliveries",
     "public.payment_external_refs"]);
   for (const entry of input.capture.dispositions) if (entry.rows && history.has(entry.relation)
     && !active.has(entry.relation) && !supportedHistory.has(entry.relation)) fail("unsupported_table", entry.relation);
-  if (values("payment_provider_settlement_batches").some(row => row.status !== "reconciled")
-    || values("payment_provider_settlement_items").some(row => row.status !== "matched"))
-    fail("unsupported_table", "public.payment_provider_settlement_batches");
   const settlementBatches = values("payment_provider_settlement_batches");
   const settlementItems = values("payment_provider_settlement_items");
   for (const batch of settlementBatches) {
@@ -709,13 +705,6 @@ export async function mapManagedRetainedBusiness(input: {
   packet.compatible.sha256 = digest(JSON.stringify(inner));
   const { sha256: _outer, ...outer } = packet;
   packet.sha256 = digest(JSON.stringify(outer));
-  // The source census retains the existing history-only disposition while
-  // canonical target rows carry the settled money state.
-  for (const entry of input.capture.dispositions) {
-    if (!entry.rows) continue;
-    if (active.has(entry.relation) && !mappedRelations.has(entry.relation))
-      fail("unsupported_table", entry.relation);
-  }
   if (values("communication_email_deliveries").some(row => row.status !== "failed"))
     fail("unsupported_table", "public.communication_email_deliveries");
   return { packet, identitySubjects: mapped.subjects };

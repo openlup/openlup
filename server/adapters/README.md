@@ -130,7 +130,8 @@ grants and migration history remain unchanged.
 
 The [managed source extractor](postgres/connectedManagedRetained.ts) inventories
 one disposable managed PostgreSQL snapshot across non-system schemas, selecting
-Auth identity metadata without credentials. Its finite typed projection maps
+Auth identity metadata without credentials. A capture login that row security
+would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
 Full managed audit and business history remains in the operator's source
 backup or snapshot, under the operator's own access, retention and erasure
@@ -146,7 +147,10 @@ transitions receive `invoicing_cutover` rows, so restored history opens no new
 document duty. A terminal checkout reminder keeps only its key on the carried
 unpaid order. Carried subscriptions stay at static delivery admission `blocked`;
 keep the renewal job off until the host binds an address.
-Any managed invoice state refuses. Other settlement or idempotency
+Any managed invoice row refuses, including issued invoices, so a source with invoice
+rows cannot transfer yet. A starter-pack marker, a synthetic test subscription, a
+quote line that disagrees with its price agreement and an order item with no SKU also
+refuse. Other settlement or idempotency
 states refuse. Managed Storage objects are not yet transferred;
 nonempty managed Storage refuses pending a typed object projection. Unknown
 nonempty relations and source state that the typed path cannot carry also

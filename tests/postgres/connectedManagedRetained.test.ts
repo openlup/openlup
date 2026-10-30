@@ -127,9 +127,9 @@ beforeAll(async () => {
     (id,client_id,status,currency,subtotal_cents,total_cents,mode,created_at)
     VALUES($1,$2,'pending_payment','XXX',900,900,'one_time',now()-interval '2 hours')`, [orderId, clientId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
-    (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+    (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
-    VALUES($1,1,900,900,0,900,833,1)`, [orderId]);
+    VALUES($1,$2,1,900,900,0,900,833,1)`, [orderId, skuId]);
   await managed.owner.query(`INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','failed',900,'XXX')`, [paymentId, orderId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_intents
@@ -147,9 +147,9 @@ beforeAll(async () => {
   await managed.owner.query(`UPDATE public.outbox_events SET status='discarded',error='synthetic source policy skip'
     WHERE aggregate_id=$1 AND event_type='commerce.order.paid.email'`, [paidOrderId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
-    (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+    (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
-    VALUES($1,1,900,900,0,900,833,1)`, [paidOrderId]);
+    VALUES($1,$2,1,900,900,0,900,833,1)`, [paidOrderId, skuId]);
   await managed.owner.query(`INSERT INTO public.commerce_payments
     (id,order_id,provider,provider_payment_id,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','provider-paid:1','succeeded',900,'XXX')`, [paidPaymentId, paidOrderId]);
@@ -174,9 +174,9 @@ beforeAll(async () => {
       (id,client_id,status,currency,subtotal_cents,total_cents,mode)
       VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [abandoned.orderId, clientId]);
     await managed.owner.query(`INSERT INTO public.commerce_order_items
-      (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+      (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
         effective_net_cents,allocation_ordinal)
-      VALUES($1,1,900,900,0,900,833,1)`, [abandoned.orderId]);
+      VALUES($1,$2,1,900,900,0,900,833,1)`, [abandoned.orderId, skuId]);
     await managed.owner.query(`INSERT INTO public.commerce_payments
       (id,order_id,provider,status,amount_cents,currency)
       VALUES($1,$2,'synthetic-provider',$3,900,'XXX')`, [abandoned.paymentId, abandoned.orderId, abandoned.status]);
@@ -231,12 +231,14 @@ afterAll(async () => {
   finally { await closePostgres(targetContainer, [targetOwner, targetBootstrap]); }
 }, postgresTeardownTimeoutMs);
 
-async function capture() {
-  return captureManagedSourceGraph({ sourceId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+// The capture holds the provider login's rights. On the real image that login is not a superuser.
+async function capture(limits: { maximumRows?: number; maximumBytes?: number } = {}, begin = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY") {
+  return captureManagedSourceGraph({ sourceId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024, ...limits,
     source: { async withSnapshot(work) {
       const client = await managed.owner.connect();
       try {
-        await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        await client.query(begin);
+        await client.query("SET LOCAL ROLE postgres");
         const result = await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
         await client.query("COMMIT");
         return result;
@@ -486,9 +488,9 @@ it("refuses a carried payment attempt or transition linked to contradictory paym
     (id,client_id,status,currency,subtotal_cents,total_cents,mode)
     VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [createdOrderId, clientId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
-    (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+    (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
-    VALUES($1,1,900,900,0,900,833,1)`, [createdOrderId]);
+    VALUES($1,$2,1,900,900,0,900,833,1)`, [createdOrderId, skuId]);
   await managed.owner.query(`INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','pending',900,'XXX')`, [createdPaymentId, createdOrderId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_intents
@@ -757,6 +759,138 @@ it("refuses a cancelled checkout whose intent contradicts its order or names a s
         [relation === "commerce_payments" ? cancelled.paymentId : cancelled.intentId]);
     }
   }
+});
+
+// A row mutates the source inside the transaction the capture then reads, and everything rolls back.
+async function mapMutated(mutation: readonly string[]) {
+  const client = await managed.owner.connect();
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await client.query("SET LOCAL session_replication_role=replica");
+    for (const sql of mutation) await client.query(sql);
+    await client.query("SET LOCAL transaction_read_only=on");
+    await client.query("SET LOCAL ROLE postgres");
+    const source = await captureManagedSourceGraph({ sourceId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+      source: { withSnapshot: work => work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) }) } });
+    return await mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
+      freshTarget: freshBaseline, targetOwner: targetOwner! });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+}
+
+it("refuses every row class with no typed path", async () => {
+  await expect(mapMutated([])).resolves.toBeDefined();
+  const cycle = `(SELECT id FROM public.subscription_cycles WHERE subscription_id='${subscriptionId}' LIMIT 1)`;
+  const method = `UPDATE public.commerce_payment_method_refs SET`, methodWhere = `WHERE subscription_id='${subscriptionId}'`;
+  const agreement = `UPDATE public.subscription_price_agreements SET`, agreementWhere = `WHERE subscription_line_id='${lineId}'`;
+  const item = `UPDATE public.payment_provider_settlement_items SET`, itemWhere = `WHERE batch_id='${settlementBatchId}'`;
+  const dropUnpaidRef = `DELETE FROM public.payment_external_refs WHERE id='${unpaidRefId}'`;
+  const outbox = (aggregate: string, event: string, status: string, attempts: number, payload: object) =>
+    `INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,attempts)
+     VALUES('commerce_order','${aggregate}','${event}','${randomUUID()}','${JSON.stringify(payload)}','${status}',${attempts})`;
+  const paidEvent = { orderUuid: paidOrderId };
+  const orderTable = "public.commerce_orders", itemTable = "public.commerce_order_items", methodTable = "public.commerce_payment_method_refs";
+  const outboxTable = "public.outbox_events", settlementItems = "public.payment_provider_settlement_items";
+  const settlementBatches = "public.payment_provider_settlement_batches";
+  const refusals: readonly (readonly [string, readonly string[], string, string])[] = [
+    ["paused subscription", [`UPDATE public.subscriptions SET status='paused' WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["starter pack promise", [`UPDATE public.subscriptions SET starter_pack='{"promise":1}' WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["synthetic test subscription", [`UPDATE public.subscriptions SET is_test_fixture=true,offer_policy_assignment_state='legacy_frozen' WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["subscription pet link", [`UPDATE public.subscriptions SET pet_id=gen_random_uuid() WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["subscription address link", [`UPDATE public.subscriptions SET shipping_address_id=gen_random_uuid() WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["subscription without edit window", [`UPDATE public.subscriptions SET edit_window_hours=NULL WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["unsupported payment kind", [`UPDATE public.subscriptions SET payment_method_kind='wallet' WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
+    ["no price list for the next cycle", [`UPDATE public.price_lists SET status='archived' WHERE id='${priceListId}'`], "target_conflict", "public.price_lists"],
+    ["no active method", [`${method} status='revoked',active=false ${methodWhere}`], "target_conflict", "public.subscriptions"],
+    ["method for another reference", [`${method} provider_method_ref='method:other' ${methodWhere}`], "target_conflict", methodTable],
+    ["method without recurring consent", [`${method} consent_snapshot='{}' ${methodWhere}`], "target_conflict", methodTable],
+    ["method without a mandate", [`${method} provider_mandate_ref=NULL ${methodWhere}`], "target_conflict", methodTable],
+    ["method of another client", [`INSERT INTO public.clients(id,email,lifecycle_stage) VALUES('${unpaidRefId}','second@example.invalid','customer')`,
+      `${method} client_id='${unpaidRefId}' ${methodWhere}`], "target_conflict", methodTable],
+    ["active method with no subscription", [`INSERT INTO public.commerce_payment_method_refs(client_id,provider_kind,method_kind,provider_method_ref,status,active)
+      VALUES('${clientId}','synthetic-provider','card','method:loose','active',true)`], "unsupported_table", "public.subscription_price_agreements"],
+    ["cycle in retry", [`UPDATE public.subscription_cycles SET retry_attempt=1 WHERE subscription_id='${subscriptionId}'`], "unsupported_table", "public.subscription_cycles"],
+    ["cycle in an uncarried status", [`UPDATE public.subscription_cycles SET status='payment_failed' WHERE subscription_id='${subscriptionId}'`], "unsupported_table", "public.subscription_cycles"],
+    ["stock key the target cannot hold", [`UPDATE public.catalog_skus SET sku='bad sku!' WHERE id='${skuId}'`], "unsupported_table", "public.subscription_lines"],
+    ["agreement in another currency", [`${agreement} currency='YYY' ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
+    ["agreement of another template version", [`${agreement} template_version=2 ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
+    ["line with no current agreement", [`${agreement} ended_at=now() ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
+    ["quote line at another price", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitPriceGross":{"amountMinor":91}}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
+    ["quote line at another legacy price", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitGrossMinor":91}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
+    ["quote line for another quantity", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"quantity":2}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
+    ["subscription event without a key", [`UPDATE public.subscription_events SET idempotency_key=NULL WHERE subscription_id='${subscriptionId}'`], "target_conflict", "public.subscription_events"],
+    ["consent in an uncarried state", [`UPDATE public.communication_permissions SET state='unknown' WHERE contact_id='${contactId}'`], "unsupported_table", "public.communication_permissions"],
+    ["contact link to another source", [`UPDATE public.communication_contact_links SET source_table='testers' WHERE contact_id='${contactId}'`], "target_conflict", "public.communication_contact_links"],
+    ["contact with no link", [`INSERT INTO public.communication_contacts(normalized_email,display_email) VALUES('loose@example.invalid','loose@example.invalid')`], "invalid_input", "public.communication_contacts"],
+    ["failed delivery with work still pending", [`INSERT INTO public.communication_email_deliveries
+      (client_id,purpose,template_slug,trigger_source,trigger_event,aggregate_type,aggregate_id,outbox_event_id,dedupe_key,status)
+      SELECT '${clientId}','transactional','t','outbox',event_type,aggregate_type,aggregate_id::text,id,'delivery:mismatch','failed'
+      FROM public.outbox_events WHERE aggregate_type='subscription' AND aggregate_id='${subscriptionId}' AND status='pending' LIMIT 1`], "unsupported_table", "public.communication_email_deliveries"],
+    ["order in an uncarried status", [`UPDATE public.commerce_orders SET status='failed' WHERE id='${paidOrderId}'`], "unsupported_table", orderTable],
+    ["order with a discount", [dropUnpaidRef, `UPDATE public.commerce_orders SET discount_cents=1,total_cents=899 WHERE id='${orderId}'`], "unsupported_table", orderTable],
+    ["order linked to a cycle", [`INSERT INTO public.commerce_orders(id,client_id,status,currency,subscription_id,subscription_cycle_id,mode)
+      VALUES(gen_random_uuid(),'${clientId}','pending_payment','XXX','${subscriptionId}',${cycle},'one_time')`], "unsupported_table", orderTable],
+    ["order with no items", [`DELETE FROM public.commerce_order_items WHERE order_id='${orderId}'`], "target_conflict", itemTable],
+    ["item that disagrees with its unit price", [`UPDATE public.commerce_order_items SET unit_price_cents=901 WHERE order_id='${orderId}'`], "target_conflict", itemTable],
+    ["item with no SKU", [`UPDATE public.commerce_order_items SET sku_id=NULL WHERE order_id='${orderId}'`], "target_conflict", itemTable],
+    ["paid order with no settled intent", [dropUnpaidRef, `UPDATE public.commerce_orders SET status='paid' WHERE id='${orderId}'`], "target_conflict", "public.commerce_payment_intents"],
+    ["unpaid order with a settled intent", [`UPDATE public.commerce_orders SET status='pending_payment' WHERE id='${paidOrderId}'`], "target_conflict", "public.commerce_payment_intents"],
+    ["payment with no intent", [`INSERT INTO public.commerce_payments(order_id,provider,status,amount_cents,currency)
+      VALUES('${orderId}','synthetic-provider','pending',900,'XXX')`], "unsupported_table", "public.commerce_payments"],
+    ["outbox work in flight", [outbox(paidOrderId, "commerce.order.paid", "processing", 0, paidEvent)], "unsupported_table", outboxTable],
+    ["outbox work that failed", [outbox(paidOrderId, "commerce.order.paid", "failed", 1, paidEvent)], "unsupported_table", outboxTable],
+    ["outbox work already attempted", [outbox(paidOrderId, "commerce.order.paid", "pending", 1, paidEvent)], "unsupported_table", outboxTable],
+    ["outbox work of an unadmitted event", [outbox(paidOrderId, "synthetic.other", "pending", 0, paidEvent)], "unsupported_table", outboxTable],
+    ["paid event on an unpaid order", [outbox(orderId, "commerce.order.paid", "pending", 0, { orderUuid: orderId })], "unsupported_table", outboxTable],
+    ["outbox work for an unknown aggregate", [outbox(randomUUID(), "commerce.order.paid", "pending", 0, paidEvent)], "target_conflict", outboxTable],
+    ["settlement on an unsettled intent", [dropUnpaidRef, `${item} payment_intent_id='${intentId}',payment_id='${paymentId}' ${itemWhere}`], "target_conflict", settlementBatches],
+    ["settlement across orders", [dropUnpaidRef, `${item} payment_id='${paymentId}' ${itemWhere}`], "target_conflict", settlementItems],
+    ["settlement link to nothing", [`${item} payment_intent_id=gen_random_uuid() ${itemWhere}`], "target_conflict", settlementItems],
+    ["settlement item with no links", [`${item} payment_intent_id=NULL,payment_id=NULL,invoice_id=NULL ${itemWhere}`], "invalid_input", settlementBatches],
+    ["settlement batch with no items", [`INSERT INTO public.payment_provider_settlement_batches(provider_kind,provider_batch_id,currency,status)
+      VALUES('synthetic-provider','synthetic-batch:empty','XXX','reconciled')`], "invalid_input", settlementBatches],
+    ["settlement item in no batch", [`INSERT INTO public.payment_provider_settlement_items
+      (batch_id,provider_kind,provider_payment_id,payment_intent_id,payment_id,gross_cents,fee_cents,net_cents,currency,status)
+      VALUES(gen_random_uuid(),'synthetic-provider','provider-paid:1','${paidIntentId}','${paidPaymentId}',900,0,900,'XXX','matched')`], "target_conflict", settlementItems],
+    ["Auth user with no business link", [`INSERT INTO auth.users(id,email) VALUES(gen_random_uuid(),'unlinked@example.invalid')`], "invalid_input", "auth.users"],
+  ];
+  for (const [label, mutation, code, table] of refusals)
+    await expect.soft(mapMutated(mutation), label).rejects.toMatchObject({ code, table });
+}, postgresSetupTimeoutMs);
+
+it("refuses an invalid capture boundary and a changed capture", async () => {
+  await expect(capture({ maximumRows: 0 })).rejects.toMatchObject({ code: "invalid_input" });
+  await expect(capture({ maximumRows: 1 })).rejects.toMatchObject({ code: "limit_exceeded" });
+  await expect(capture({ maximumBytes: 1 })).rejects.toMatchObject({ code: "limit_exceeded" });
+  await expect(capture({}, "BEGIN ISOLATION LEVEL REPEATABLE READ")).rejects.toMatchObject({ code: "invalid_input" });
+  await expect(capture({}, "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY")).rejects.toMatchObject({ code: "invalid_input" });
+  const source = await capture();
+  const mapChanged = (changed: typeof source) => mapManagedRetainedBusiness({ capture: changed,
+    issuer: "https://issuer.example.invalid/managed", freshTarget: freshBaseline, targetOwner: targetOwner! });
+  await expect(mapChanged({ ...source })).rejects.toMatchObject({ code: "invalid_input" });
+  await expect(mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
+    freshTarget: await freshTarget(), targetOwner: targetOwner! })).rejects.toMatchObject({ code: "target_conflict" });
+  source.sourceId = "changed-after-capture";
+  await expect(mapChanged(source)).rejects.toMatchObject({ code: "invalid_input" });
+});
+
+it("refuses a source login that row security would silently filter", async () => {
+  expect((await managed.owner.query("SELECT count(*)::int AS rows FROM public.clients")).rows).toEqual([{ rows: 1 }]);
+  const client = await managed.owner.connect();
+  const errors: unknown[] = [];
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    await client.query("SET LOCAL ROLE pg_read_all_data");
+    // A new login starts with row security on, and then reads no rows and raises no error, so no refusal
+    // could fire. This pooled session may still hold the baseline dump's off setting, so set the default.
+    await client.query("SET LOCAL row_security = on");
+    expect((await client.query("SELECT count(*)::int AS rows FROM public.clients")).rows).toEqual([{ rows: 0 }]);
+    await expect(captureManagedSourceGraph({ sourceId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+      source: { withSnapshot: work => work({ query: async (sql, values) => {
+        try { return await client.query(sql, values ? [...values] : undefined); }
+        catch (error) { errors.push((error as { code?: unknown }).code); throw error; }
+      } }) } })).rejects.toMatchObject({ code: "database_unavailable" });
+    expect(errors).toEqual(["42501"]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
 });
 
 it("refuses unknown nonempty relations and uncarried Storage metadata", async () => {

@@ -98,7 +98,7 @@ dispositions. Hosted managed projects may have nonempty `realtime`, `net`,
 refuses if they are outside its finite profile. The hosted leg needs explicit,
 read-approved dispositions before admission. Vault and other secret-bearing
 relations must remain disposition-only; their rows must never enter the
-business capture or retained sidecar.
+business capture.
 
 ## Historical sidecar evidence and analysis (superseded by CD-M14-45)
 
@@ -980,8 +980,8 @@ them in one bundle and extends the closed-list method from columns to obligation
 
 Decision (option R): the invoice-duty projection is removed. It was reachable only in a
 synthetic state, because real issue requests also write `accounting_invoice_operations`,
-which refuses. Any managed invoice state now refuses, and the operator drains invoice
-work before capture. Other repairs: carried settled transitions receive
+which refuses. Any managed invoice row now refuses, including issued invoices, so a
+source with invoice rows cannot transfer yet. Other repairs: carried settled transitions receive
 `invoicing_cutover` rows, so restored history opens no new document duty; a method in
 `pending_verification` refuses; a checked cancelled or expired checkout must also agree
 with its order and name no subscription; a matched settlement item must agree with the
@@ -1000,16 +1000,16 @@ later material finding must show a wrong row or a missing relation.
 | `public.identity_privacy_erasures`, `public.customer_subject_lifecycle_events` | Typed through the item 7 mapping | `tests/postgres/connectedStoreTransfer.test.ts` managed identity cases |
 | `public.admin_audit_events` | Revoke typed through item 7; other actions archive-only | projects typed managed obligations; `connectedStoreTransfer.test.ts` |
 | `public.catalog_products`, `catalog_skus`, `price_lists`, `price_entries` | Typed | projects typed managed obligations |
-| `public.subscriptions`, `subscription_lines`, `subscription_cycles`, `subscription_events` | Typed | projects typed managed obligations |
-| `public.subscription_price_agreements` | Current typed; ended archive-only | projects typed managed obligations; keeps an ended price agreement |
-| `public.commerce_payment_method_refs` | Active typed; ended archive-only; verification refuses | refuses a method in verification |
-| `public.commerce_orders`, `commerce_order_items` | Typed | projects typed managed obligations |
+| `public.subscriptions`, `subscription_lines`, `subscription_cycles`, `subscription_events` | Typed; other row classes refuse | projects typed managed obligations; refuses every row class with no typed path |
+| `public.subscription_price_agreements` | Current typed; ended archive-only; contradiction refuses | projects typed managed obligations; keeps an ended price agreement; refuses every row class with no typed path |
+| `public.commerce_payment_method_refs` | Active typed; ended archive-only; verification or contradiction refuses | refuses a method in verification; refuses every row class with no typed path |
+| `public.commerce_orders`, `commerce_order_items` | Typed; other row classes refuse | projects typed managed obligations; refuses every row class with no typed path |
 | `public.commerce_payments`, `commerce_payment_intents`, `commerce_payment_attempts`, `commerce_payment_state_transitions` | Column matrix above | projects typed managed obligations; refuses a carried payment attempt; both cancelled-checkout tests |
-| `public.outbox_events` | Pending checked typed; terminal checkout reminder key typed without payload, error or metadata; other terminal archive-only; other refuses | projects typed managed obligations; keeps a paid order's checkout reminder |
-| `public.communication_permissions`, `communication_contacts`, `communication_contact_links` | Consent typed; contact rows archive-only | projects typed managed obligations |
-| `public.communication_email_deliveries` | Terminal failed archive-only; active refuses | refuses non-reconciled settlement and active delivery |
+| `public.outbox_events` | Pending checked typed; terminal checkout reminder key typed without payload, error or metadata; other terminal archive-only; other refuses | projects typed managed obligations; keeps a paid order's checkout reminder; refuses every row class with no typed path |
+| `public.communication_permissions`, `communication_contacts`, `communication_contact_links` | Consent typed; contact rows archive-only; other refuses | projects typed managed obligations; refuses every row class with no typed path |
+| `public.communication_email_deliveries` | Terminal failed archive-only; active or mismatched refuses | refuses non-reconciled settlement and active delivery; refuses every row class with no typed path |
 | `public.commerce_idempotency_keys` | Completed and expired archive-only; other refuses | projects typed managed obligations; refuses conflicting mapped fields |
-| `public.payment_provider_settlement_batches`, `payment_provider_settlement_items` | Reconciled and matched archive-only; other or contradictory refuses | projects typed managed obligations; refuses non-reconciled settlement; refuses settlement rows that contradict |
+| `public.payment_provider_settlement_batches`, `payment_provider_settlement_items` | Reconciled and matched archive-only; other or contradictory refuses | projects typed managed obligations; refuses non-reconciled settlement; refuses settlement rows that contradict; refuses every row class with no typed path |
 | `public.payment_external_refs` | Matching settled or checked unpaid archive-only; other refuses | refuses in-flight, mismatched, extra and unmapped provider reference |
 | `public.accounting_invoices`, `accounting_invoice_issue_outbox`, `accounting_invoice_operations`, `accounting_invoice_correction_outbox`, `accounting_invoice_delivery_outbox` | Refuses | refuses every invoice state and every uncarried obligation relation |
 | `public.commerce_payment_reconciliation_runs`, `communication_delivery_events`, `communication_provider_events`, `communication_permission_events`, `subscription_dunning_cases`, `subscription_dunning_notifications` | Refuses | refuses every invoice state and every uncarried obligation relation |
@@ -1023,12 +1023,73 @@ with no run against a restored store, found two that reach carried managed rows:
 | Due reader | Carried rows | Result | Proof |
 | --- | --- | --- | --- |
 | Automatic renewal (`subscription_stock_wait_normal_due`) | Active subscription at or past `next_cycle_at` | Static admission `blocked` refuses before stock or payment, and a run records a terminal refusal for that schedule. The documented rule is to keep the renewal job off until the host binds an address | projects typed managed obligations (due row and blocked reason); `tests/postgres/subscriptionComposition.test.ts` `static` scenario (refusal, no provider call) |
-| Checkout reminder (`commerce_enqueue_checkout_recovery_reminders`) | Unpaid order with a failed intent, 1 to 24 hours old | A terminal source reminder keeps only its key, so no second reminder. An order the source never reminded gets its first one, as it would have on the source | projects typed managed obligations (with and without the key); keeps a paid order's checkout reminder |
+| Checkout reminder (`commerce_enqueue_checkout_recovery_reminders`) | Unpaid order with a failed intent, 1 to 24 hours old | A terminal source reminder keeps only its key, so no second reminder. An order the source never reminded gets its first one, as it would have on the source. Every source reminder also writes a `commerce_checkout_recovery_tokens` row, an unknown relation that refuses today, so the carried key applies once that relation is purged or admitted | projects typed managed obligations (with and without the key); keeps a paid order's checkout reminder |
+| Renewal reminder (`dunning_lifecycle_renewal_reminder_scan`, `_enqueue`) | Active subscription | Writes only `subscription_reminder_ledger`, and no TypeScript caller exists, so nothing is sent. A recorded finding | Static read |
 
 Carried pending paid-fulfilment and subscription-welcome rows continue their own work by
 design. Two read models report carried paid orders as missing their paid event
 (`order_paid_outbox_missing`); they write nothing and no native route composes them, so
-this is a recorded finding only. The other readers need relations outside
-the managed lists (shipments, pause windows, activations, retry obligations, draft
-receipts, wait cases, promotion claims), so no carried row can qualify. Native restore is
-outside this item.
+this is a recorded finding only. The remaining readers need relations outside the managed
+lists (shipments, pause windows, activations, retry obligations, draft receipts, wait
+cases, promotion claims), so no carried row can qualify. Native restore is outside this
+item.
+
+## CD-M14-83 regroup, refusal table and source-only columns
+
+Regroup after native cycles 12 and 13, which both left a material obstacle. The remaining
+gap was unexecuted refusal proof, owned by the obligation table above and the
+sufficient-evidence rule. The cause: that table closes the list per relation, but the
+guards live per row class, so each review found the next guard with no test. Adding one
+case per card would have repeated that. The next step was one coverage run over
+`connectedManagedRetained.ts`, listing every refusal line no test reaches, then one table
+of rows in `refuses every row class with no typed path`. Expected result: only the lines
+listed below stay unreached. Lesson: reviewers each finding the next refusal with no
+test → measure unreached refusal lines once and test them together.
+
+Each table row changes the source inside the transaction the capture reads, then rolls
+back. The table is criteria for this item, not a target to extend.
+
+Refusal lines still unreached, each with its reason:
+
+| Refusal | Why no test reaches it |
+| --- | --- |
+| Capture time or relation count not an integer | The SQL returns an integer |
+| Relation with no primary key; projected row missing a target column | Needs source schema drift; the baseline hash is pinned |
+| Two completed erasures for one client | `identity_privacy_erasures` is absent from the pinned baseline; the identity mapping suite owns those cases |
+| Capture with no held rows (`managedIdentityEvidence`, `mapManagedRetainedBusiness`) | The capture validation before it already proves this |
+| Fewer Auth subjects than linked IDs | The subject owner check refuses first |
+| Cycle number not a nonnegative integer | The source `NOT NULL` and `CHECK` forbid it |
+| Two consents for one recipient and purpose | The source unique constraints on email and on contact, channel and purpose forbid it |
+| Target table missing or already populated | The identity mapping refuses a non-fresh target first; the target inventory is pinned |
+| Projected keys differ from target columns; record cast returns no row or fails | Needs target schema drift; no admitted source value fails a target cast |
+
+The capture also sets `row_security = off`, so a login that row security would filter
+fails with 42501 rather than reading empty relations. `refuses a source login that row
+security would silently filter` shows the same login reading no rows with no error
+without the setting. The real-source runner captures with the provider `postgres` role's
+rights and records its `rolsuper` and `rolbypassrls`; the required adapter suite uses a
+superuser.
+
+Source-only columns of the five carried relations, measured against the target:
+
+| Relation | Column | Disposition |
+| --- | --- | --- |
+| `subscriptions` | `currency`, `region_code` | Mapped; resolved into the price list |
+| | `pet_id`, `shipping_address_id`, `billing_address_id`, `starter_pack`, `is_test_fixture` | Refuses when set |
+| | `payment_method_ref`, `payment_method_kind` | Compared with the method; refuses otherwise |
+| | `size_constraint` | Descriptor; lines carry the goods |
+| | `timezone` | No renewal reader |
+| | `cancellation_source` | Unset while active |
+| | `offer_policy_version`, `promotion_engine_version`, `offer_policy_assignment_state` | Acquisition only |
+| `subscription_lines` | `qty` | Mapped |
+| | `template_version`, `line_metadata` | Compared with the agreement; refuses otherwise |
+| `subscription_cycles` | `cycle_number` | Sets the next cycle number |
+| | `retry_attempt`, `next_retry_at`, `provider_attempt_sequence`, `renewal_row_error_count`, `renewal_quarantined_until` | Refuses when set |
+| | `paid_at`, `order_id`, `payment_id`, `payment_method_ref`, `failure_reason`, `template_version`, `template_snapshot`, `pricing_snapshot`, `engine_idempotency_key`, `renewal_row_error_key`, `offer_policy_version`, `promotion_engine_version`, `offer_policy_assignment_state` | Source history; renewal prices come from the agreement |
+| `commerce_orders` | `currency`, `total_cents` | Mapped |
+| | `subtotal_cents` | Equals the total once the others are zero |
+| | `discount_cents`, `shipping_cents`, `shipping_discount_cents`, `mode`, `subscription_id`, `shipping_address_id`, `pet_id`, `recovery_root_order_id`, `recreated_from_order_id` | Refuses when set |
+| | `tax_cents`, `region_code`, `checkout_session_id`, `order_number`, `size_constraint` | Source history; `tax_cents` is included in the total |
+| `commerce_order_items` | `unit_price_cents`, `total_cents`, `allocation_ordinal` | Mapped |
+| | `discount_allocated_cents`, `effective_total_cents` | Compared; refuses otherwise |
+| | `product_snapshot`, `variant_snapshot`, `mode_at_line`, `size_constraint_contribution`, `vat_rate_bps`, `effective_net_cents` | Source history; `sku_id` carries the goods and a null refuses |

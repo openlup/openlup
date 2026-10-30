@@ -85,8 +85,10 @@ for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
 The managed source extractor inventories one disposable managed snapshot,
-including Auth identity metadata and Storage metadata relations. It projects
-only the finite typed obligations into a qualified canonical target. Full
+including Auth identity metadata and Storage metadata relations. The capture
+login must be exempt from row security and able to read every relation; a login
+that row security would filter refuses instead of reading an empty source. It
+projects only the finite typed obligations into a qualified canonical target. Full
 managed audit and business history is not transferred: it remains in the
 operator's source backup or snapshot, under the operator's access, retention
 and erasure controls. The existing `retained-history` disposition identifies
@@ -106,8 +108,10 @@ no new document duty. A terminal checkout reminder keeps only its key on the
 carried unpaid order, so the target does not send it again. Carried subscriptions
 stay at static delivery admission `blocked`: a due renewal refuses before stock or
 payment and records that refusal for its schedule, so keep the renewal job off
-until the host binds an address. Any managed invoice state refuses, so the operator drains
-invoice work first. Nonempty unknown relations, incomplete typed obligations and
+until the host binds an address. Any managed invoice row refuses, including issued
+invoices, so a source with invoice rows cannot transfer yet. A starter-pack marker,
+a synthetic test subscription, a quote line that disagrees with its price agreement
+and an order item with no SKU also refuse. Nonempty unknown relations, incomplete typed obligations and
 other settlement or idempotency states refuse transfer. Managed Storage objects are not yet transferred;
 nonempty managed Storage refuses. A separate managed object projection is
 required before that source state can transfer. Source-keyed terminal effects
