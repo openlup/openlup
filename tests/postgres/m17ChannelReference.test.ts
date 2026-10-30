@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { PgGatewayClient } from "@openlup/platform/data";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
-import { channelBundleBindingSchema } from "@openlup/platform/channels";
+import { channelBundleBindingSchema, channelPurchaseCaptureSchema } from "@openlup/platform/channels";
 import { canonicalChannelSource, channelSourceDigest, type ChannelHistoricalBundleReadPort } from "@openlup/platform/channels/server";
 import { channelPurchaseFixture } from "../helpers/channelPurchaseFixture.js";
 import { channelManagedIngestFixture } from "../helpers/channelManagedIngestFixture.js";
@@ -92,6 +92,106 @@ describe("M17 unmounted managed reference on local compatibility PostgreSQL", ()
     if (!bound || bound.rail !== "managed") throw new Error("managed_binding_missing");
     return { f, owners, bundles, input, bound, acknowledgeOrder, normalizeWebhook };
   }
+
+  async function effectCounts() {
+    return (await db.query(`SELECT
+      (SELECT count(*)::int FROM public.channel_order_ingests) ledgers,
+      (SELECT count(*)::int FROM public.outbox_events) events,
+      (SELECT count(*)::int FROM public.commerce_orders) orders,
+      (SELECT count(*)::int FROM public.commerce_order_items) items,
+      (SELECT count(*)::int FROM public.inventory_reservations) holds,
+      (SELECT count(*)::int FROM public.commerce_payment_intents) intents,
+      (SELECT count(*)::int FROM public.commerce_payment_attempts) attempts,
+      (SELECT count(*)::int FROM public.commerce_payments) payments,
+      (SELECT count(*)::int FROM public.inbound_provider_events) paymentEvents,
+      (SELECT sum(exposure_converted_units)::text FROM public.sales_channel_listings) converted`)).rows[0];
+  }
+
+  it("refuses conflicting accepted capture identities and values before ACK or another effect", async () => {
+    const { f, owners, input, bound, acknowledgeOrder } = await fixture();
+    await owners.stock(100);
+    const first = (await bound.purchasedPage(f.page, [f.capture], new AbortController().signal)).outcomes[0];
+    expect(first.kind).toBe("settled");
+    const replay = createM17ChannelReferenceBinding(true, { ...input,
+      historicalBundles: { async read() { throw new Error("accepted_replay_must_not_read_history"); } } });
+    if (!replay || replay.rail !== "managed") throw new Error("managed_binding_missing");
+    const contexts = vi.spyOn(replay.read, "contexts"), record = vi.spyOn(replay.source, "recordCapture");
+    const original = vi.spyOn(replay.read, "original");
+    const before = await effectCounts(), ackCount = acknowledgeOrder.mock.calls.length;
+    const mutations: Record<string, (capture: typeof f.capture) => void> = {
+      capture: value => { value.captureId = randomUUID(); },
+      order: value => { value.externalOrderRef = value.normalized.externalOrderRef = "sale:conflict"; },
+      revision: value => { value.externalOrderRevision = value.normalized.externalOrderRevision = "revision:conflict"; },
+      payment: value => { value.normalized.payment.externalPaymentRef = "collection:conflict"; },
+      sourceDigest: value => { value.rawSourceDigest = value.normalized.payloadDigest = channelSourceDigest("conflict:source"); },
+      body: value => { value.normalized.buyer.firstName = "Élodie"; },
+      products: value => { value.products[0].products[0].externalProductRef = "product:conflict"; },
+      rows: value => { value.retainedRows![0].retained.firstApprovalId = randomUUID(); },
+      execution: value => { value.execution.jobRunId = randomUUID(); },
+      page: value => { value.pagePacketRef = randomUUID(); },
+      time: value => { value.capturedAt = "2026-02-12T07:21:00Z"; },
+    };
+    for (const [name, mutate] of Object.entries(mutations)) {
+      const conflict = structuredClone(f.capture);
+      mutate(conflict);
+      conflict.normalizedDigest = channelSourceDigest(canonicalChannelSource(conflict.normalized));
+      expect(channelPurchaseCaptureSchema.safeParse(conflict).success, name).toBe(true);
+      await expect(replay.consume(conflict, new AbortController().signal), name).rejects.toMatchObject({ code: "input_conflict" });
+      expect(acknowledgeOrder, name).toHaveBeenCalledTimes(ackCount);
+      expect(await effectCounts(), name).toEqual(before);
+    }
+    expect(contexts).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+    expect(original).not.toHaveBeenCalled();
+  });
+
+  it("replays exact captures and accepted aliases using original IDs/payment without current history", async () => {
+    const { f, owners, input, bound, acknowledgeOrder } = await fixture();
+    await owners.stock(100);
+    const incoming = structuredClone(f.capture); delete incoming.retainedRows;
+    const first = (await bound.purchasedPage(f.page, [incoming], new AbortController().signal)).outcomes[0];
+    if (first.kind !== "settled") throw new Error("initial_capture_not_settled");
+    const original = await bound.read.original(first.ledgerId);
+    expect(original.retainedRows).toHaveLength(3);
+    const alias = structuredClone(original);
+    alias.captureId = randomUUID(); alias.providerEventId = alias.normalized.providerEventId = "delivery:alias";
+    alias.externalOrderRef = alias.normalized.externalOrderRef = "sale:alias";
+    alias.externalOrderRevision = alias.normalized.externalOrderRevision = "revision:alias";
+    alias.rawSourceDigest = alias.normalized.payloadDigest = channelSourceDigest("alias:source");
+    alias.pagePacketRef = randomUUID();
+    alias.normalizedDigest = channelSourceDigest(canonicalChannelSource(alias.normalized));
+    const page = structuredClone(f.page);
+    page.pagePacketId = alias.pagePacketRef; page.expected = f.page.next; page.request.from = f.page.next.cursor;
+    page.events = [{ ...page.events[0], providerEventId: alias.providerEventId, externalOrderRef: alias.externalOrderRef,
+      externalOrderRevision: alias.externalOrderRevision, captureRef: alias.captureId, rawSourceDigest: alias.rawSourceDigest }];
+    page.observedHead = { ...page.observedHead!, providerEventId: alias.providerEventId };
+    page.next = { ...page.next, cursor: alias.providerEventId, generation: 2 };
+    await bound.source.recordPage(page);
+    await expect(bound.source.recordCapture(alias)).resolves.toMatchObject({ ingest: { id: first.ledgerId } });
+    expect(await bound.source.readCapture({ channelId: alias.scope.channelId, providerEventId: alias.providerEventId,
+      actorId: f.actor })).toEqual({ ledgerId: first.ledgerId, capture: alias });
+    const replay = createM17ChannelReferenceBinding(true, { ...input,
+      historicalBundles: { async read() { throw new Error("accepted_replay_must_not_read_history"); } } });
+    if (!replay || replay.rail !== "managed") throw new Error("managed_binding_missing");
+    const contexts = vi.spyOn(replay.read, "contexts"), record = vi.spyOn(replay.source, "recordCapture");
+    const before = await effectCounts();
+    const paymentBefore = (await db.query("SELECT id,payment_id,active_attempt_id,provider_payment_id,amount_cents,currency FROM public.commerce_payment_intents WHERE order_id=$1", [first.orderId])).rows;
+    expect(paymentBefore).toEqual([expect.objectContaining({ provider_payment_id: incoming.normalized.payment.externalPaymentRef,
+      amount_cents: incoming.normalized.totals.grandTotalMinor, currency: incoming.normalized.currency })]);
+    const aliasWithoutRows = structuredClone(alias); delete aliasWithoutRows.retainedRows;
+    for (const capture of [incoming, original, alias, aliasWithoutRows]) {
+      await expect(replay.consume(capture, new AbortController().signal)).resolves.toEqual({ kind: "replayed",
+        ledgerId: first.ledgerId, orderId: first.orderId });
+      expect(acknowledgeOrder).toHaveBeenLastCalledWith(expect.objectContaining({ externalOrderRef: incoming.externalOrderRef,
+        localOrderRef: first.orderId }));
+      expect(await effectCounts()).toEqual(before);
+      expect((await db.query("SELECT id,payment_id,active_attempt_id,provider_payment_id,amount_cents,currency FROM public.commerce_payment_intents WHERE order_id=$1", [first.orderId])).rows).toEqual(paymentBefore);
+    }
+    expect(await replay.read.original(first.ledgerId)).toEqual(original);
+    expect((await db.query("SELECT payment_intent_id FROM public.channel_order_ingests WHERE id=$1", [first.ledgerId])).rows[0].payment_intent_id).not.toBeNull();
+    expect(contexts).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+  });
 
   it("reads actual locked history, captures all before CAS, settles original groups and keeps false-ACK debt", async () => {
     const { f, owners, bundles, bound, acknowledgeOrder, input } = await fixture();

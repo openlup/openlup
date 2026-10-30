@@ -2117,7 +2117,7 @@
     },
     {
       "path": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
-      "sha256": "596c403db40acb5ad49c0d01f6ae5764defd617eea48766cbc4fb8baad5bc67d",
+      "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2",
       "functions": [
         {
           "signature": "public.channel_purchase_json(jsonb)",
@@ -2127,12 +2127,12 @@
         {
           "signature": "public.channel_purchase_packet(text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "1f4817e008e29e61a52385c190cdbd956d40b5440f07a3617139b1fcc90191a8"
+          "afterSha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
         },
         {
           "signature": "public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid)",
           "beforeSha256": null,
-          "afterSha256": "7fc8ca990b9ca2959ffaa10c3c533710b1f7f18edbe17cb66ccd41eeb5fa86f3"
+          "afterSha256": "05267420e880daadd3a36e8583dfbf49ceffbbf58d2a0868f24fcc9426e08ab8"
         },
         {
           "signature": "public.channel_purchase_guard()",
@@ -2142,7 +2142,7 @@
         {
           "signature": "public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text)",
           "beforeSha256": null,
-          "afterSha256": "02ecf96d20722dc14fd23a43c923956ffd2fac68876387788b2472cc27f251a4"
+          "afterSha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
         },
         {
           "signature": "public.channel_pull_page_read(uuid,uuid,uuid,text)",
@@ -2157,7 +2157,7 @@
         {
           "signature": "public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text)",
           "beforeSha256": null,
-          "afterSha256": "4468ddc674511fdebee6fd030f191a575a935098e83de970c9472a3a415a7443"
+          "afterSha256": "6f88d6f821344328e899db448a2646b9f23d38b97c968525c0d7d90dbe513e69"
         },
         {
           "signature": "public.channel_ingest_capture_read(uuid,text,uuid)",
@@ -2187,10 +2187,10 @@
           "sha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"
         },
         {
-          "sha256": "1f4817e008e29e61a52385c190cdbd956d40b5440f07a3617139b1fcc90191a8"
+          "sha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
         },
         {
-          "sha256": "7fc8ca990b9ca2959ffaa10c3c533710b1f7f18edbe17cb66ccd41eeb5fa86f3"
+          "sha256": "05267420e880daadd3a36e8583dfbf49ceffbbf58d2a0868f24fcc9426e08ab8"
         },
         {
           "sha256": "0fe093e5e3b02bc3beb69d690b7aa1c6e098cb7086cee62db3d6d9cff3f85151"
@@ -2220,7 +2220,7 @@
           "sql": "CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox_events\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
         },
         {
-          "sha256": "02ecf96d20722dc14fd23a43c923956ffd2fac68876387788b2472cc27f251a4"
+          "sha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
         },
         {
           "sha256": "6738323014e9bc1fcab5e9d16b6edc649bb875d386608bba3e6015773964d1d5"
@@ -2229,7 +2229,7 @@
           "sha256": "8ed54ae193b54f0544c418b2f95821ea59910b9aff30e9a69f997b71d132a529"
         },
         {
-          "sha256": "4468ddc674511fdebee6fd030f191a575a935098e83de970c9472a3a415a7443"
+          "sha256": "6f88d6f821344328e899db448a2646b9f23d38b97c968525c0d7d90dbe513e69"
         },
         {
           "sha256": "af69e838cc9512f8f92e2679ec71beaf9235b1af340eff98599d76bb278f302d"
@@ -2461,7 +2461,7 @@
     },
     {
       "path": "supabase/migrations/20261030122000_channel_purchased_source.sql",
-      "sha256": "eec97b5b76c9672672f0f59ef3513df855424c180d17ac461022bf32791f153a",
+      "sha256": "37a5b0860aae4404e582963d620af5632f368ce843b09ac658d6a181b7959c1a",
       "functions": [
         {
           "signature": "public.channel_purchase_json(jsonb)",
@@ -2471,12 +2471,12 @@
         {
           "signature": "public.channel_purchase_packet(text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "1f4817e008e29e61a52385c190cdbd956d40b5440f07a3617139b1fcc90191a8"
+          "afterSha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
         },
         {
           "signature": "public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid)",
           "beforeSha256": null,
-          "afterSha256": "368842bd050a0b09fe266dea49891828b49f189a6b572bf9ab86a2ca6b62aae6"
+          "afterSha256": "9e235266c1da05c32fcb8d44fb6608a2e985cc72b0c86c15667f32d580f1fb2f"
         },
         {
           "signature": "public.channel_purchase_guard()",
@@ -2486,7 +2486,7 @@
         {
           "signature": "public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text)",
           "beforeSha256": null,
-          "afterSha256": "02ecf96d20722dc14fd23a43c923956ffd2fac68876387788b2472cc27f251a4"
+          "afterSha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
         },
         {
           "signature": "public.channel_pull_page_read(uuid,uuid,uuid,text)",
@@ -2501,7 +2501,7 @@
         {
           "signature": "public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text)",
           "beforeSha256": null,
-          "afterSha256": "5ece1a9a051d658fe3d2d49f1b9e4152f191ba6f7dbaea2b1872545a45ba1220"
+          "afterSha256": "7a30da1226aa7a23eec86b68c56271eb17df36bacf64eb49381256803e2b4c38"
         },
         {
           "signature": "public.channel_ingest_capture_read(uuid,text,uuid)",
@@ -2574,10 +2574,10 @@
           "sha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"
         },
         {
-          "sha256": "1f4817e008e29e61a52385c190cdbd956d40b5440f07a3617139b1fcc90191a8"
+          "sha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
         },
         {
-          "sha256": "368842bd050a0b09fe266dea49891828b49f189a6b572bf9ab86a2ca6b62aae6"
+          "sha256": "9e235266c1da05c32fcb8d44fb6608a2e985cc72b0c86c15667f32d580f1fb2f"
         },
         {
           "sha256": "d60a69a2db846a691d38a4129ce6ba49c416b2e3f3207b8726622b333a87c59d"
@@ -2607,7 +2607,7 @@
           "sql": "CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox_events\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
         },
         {
-          "sha256": "02ecf96d20722dc14fd23a43c923956ffd2fac68876387788b2472cc27f251a4"
+          "sha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
         },
         {
           "sha256": "6738323014e9bc1fcab5e9d16b6edc649bb875d386608bba3e6015773964d1d5"
@@ -2616,7 +2616,7 @@
           "sha256": "8ed54ae193b54f0544c418b2f95821ea59910b9aff30e9a69f997b71d132a529"
         },
         {
-          "sha256": "5ece1a9a051d658fe3d2d49f1b9e4152f191ba6f7dbaea2b1872545a45ba1220"
+          "sha256": "7a30da1226aa7a23eec86b68c56271eb17df36bacf64eb49381256803e2b4c38"
         },
         {
           "sha256": "af69e838cc9512f8f92e2679ec71beaf9235b1af340eff98599d76bb278f302d"

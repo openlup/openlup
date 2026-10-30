@@ -1400,6 +1400,14 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+Fresh channel capture admission binds the normalized slug through the existing
+trusted scope read and the raw-source digest through its original page event.
+It checks normalized buyer, address and shipping scalar types and bounds before
+persistence. Page recording derives its next watermark from the expected
+watermark and event times using the public millisecond comparison, retaining
+the original timestamp string on ties. These checks add no runtime grant or
+writer policy.
+
 The [recipe runner](RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
 composes this same released-history proof against its declared separate fresh
 schema target. That route requires the actual previous 0.23.0 application

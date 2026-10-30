@@ -725,8 +725,15 @@ The host must preserve timestamp precision in its read-only historical projectio
 
 Its page callable records the page and every capture before committing progress,
 then consumes the original capture/ledger through exposure conversion and the
-existing ingest saga. Only settled/replayed outcomes reach seller ACK; false ACK
-leaves settled debt pending. Recovery selects pending captures independently of
+existing ingest saga. An accepted event must match its stored event-specific
+capture before replay; omitted retained rows use the server-pinned original,
+while supplied rows must match exactly. Accepted aliases still consume the
+original obligation without reading current historical catalog facts.
+Only settled/replayed outcomes reach seller ACK; false ACK
+leaves captured purchased settled debt pending and recoverable until ACK.
+Ordinary normalized ingest retains a donor retry gap: an interruption after its
+settled-ledger write and before done cannot currently complete automatic retry.
+Recovery selects pending captures independently of
 fresh discovery and uses the supplied current live job for any new physical effect,
 while the capture's original execution bytes remain unchanged. The host owns job
 admission and lease liveness; this factory creates no scheduler or mounted route.

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { ChannelOrderSourcePort, ChannelPullPage, ChannelPurchaseCapture } from "@openlup/platform/channels";
+import { channelPurchaseCaptureSchema, type ChannelOrderSourcePort, type ChannelPullPage, type ChannelPurchaseCapture } from "@openlup/platform/channels";
 import {
-  acknowledgeChannelPurchasedOutcome, ChannelIngestUnavailableError, consumeChannelPurchasedCapture,
+  acknowledgeChannelPurchasedOutcome, canonicalChannelSource, ChannelControlError, ChannelIngestUnavailableError, consumeChannelPurchasedCapture,
   createChannelExposureReservationRail, createChannelWebhookHandler, createChannelWebhookPort,
   createManagedChannelIngestChannelRead, createManagedChannelIngestOrderItemRead,
   createManagedChannelIngestPayments, createManagedChannelIngestReservations, createManagedChannelIngestStore,
@@ -50,8 +50,16 @@ export function createM17ChannelReferenceBinding(enabled: boolean, input: Manage
   const webhook = createChannelWebhookHandler({ ...managed.webhook, connector: managed.connector, port });
   function retain(capture: ChannelPurchaseCapture) {
     return consumeChannelPurchasedCapture({ capture,
-      accepted: async () => (await source.readCapture({ channelId: capture.scope.channelId,
-        providerEventId: capture.providerEventId, actorId: managed.actorId }))?.ledgerId ?? null,
+      accepted: async () => {
+        const accepted = await source.readCapture({ channelId: capture.scope.channelId,
+          providerEventId: capture.providerEventId, actorId: managed.actorId });
+        if (!accepted) return null;
+        const incoming = channelPurchaseCaptureSchema.parse(capture), expected = { ...accepted.capture };
+        // The server pins omitted rows on first capture; supplied rows must still match exactly.
+        if (incoming.retainedRows === undefined) delete expected.retainedRows;
+        if (canonicalChannelSource(incoming) !== canonicalChannelSource(expected)) throw new ChannelControlError("input_conflict");
+        return accepted.ledgerId;
+      },
       contexts: () => read.contexts(capture), record: async value => mapChannelIngestLedger(await source.recordCapture(value)).id,
       original: read.original,
       ingest: async (original, ledgerId) => ({ capture: original, ledgerId }),
