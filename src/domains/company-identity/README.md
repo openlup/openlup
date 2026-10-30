@@ -108,6 +108,19 @@ feature-gated by `COMMERCE_ACCOUNTING_INVOICE_DATA_LOOKUP_ENABLED` (preview
 enables it by default); checkout behavior depends on its caller and is not
 established by this lookup composition.
 
+## Opt-in reference composition
+
+The [reference rules](../../../server/adapters/market-packs/referenceCompanyIdentityRules.ts)
+expose the current identifier helpers, name heuristics and strict host schemas
+through the package's existing injected rules seam. The fuller-name comparison
+retains its country-independent reach; only continuation is country-gated.
+The [explicit provider recipe](../../../server/adapters/market-packs/referenceCompanyIdentityProviders.ts)
+accepts already constructed adapters: static, or VAT then primary-or-fallback
+registry then optional vendor. It preserves exception-to-unavailable mapping,
+source evidence and order. It reads no environment and changes no BFF caller.
+[Equivalence tests](../../../server/adapters/market-packs/referenceCompanyIdentityProviders.test.ts)
+compare its results and call transcript with the current BFF composition offline.
+
 ## Known non-neutrality (this deployment)
 
 This is the densest concentration of one country's registry integrations in the

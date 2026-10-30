@@ -112,6 +112,21 @@ export * from "./settlementProfile.js";
 export * from "./currencyExponent.js";
 export * from "./fiscalProfile.js";
 export * from "./formatMinor.js";
+export * from "./marketDescriptor.js";
+```
+## dist/market-packs/marketDescriptor.d.ts
+
+```ts
+import type { SettlementProfile } from "./settlementProfile.js";
+/** Independent display, settlement, price-list and fiscal facts supplied by a host. */
+export interface MarketDescriptor {
+    readonly language: string;
+    readonly currency: string;
+    readonly pricingRegion: string;
+    readonly fiscalJurisdiction: string;
+}
+/** Describe explicit inputs without selecting a market or changing their values. */
+export declare function describeMarket(language: string, profile: SettlementProfile): MarketDescriptor;
 ```
 ## dist/market-packs/settlementProfile.d.ts
 

@@ -6,7 +6,7 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"adopt-package","source":"README.md","heading":"Use in an application","startLine":142,"endLine":173,"sha256":"82d8e9de1e05c9df057275762e5edab37fadbfd8be4a34c2ad3266b3ca139ea8"},{"id":"extend-platform","source":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":485,"endLine":506,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"}] -->
+<!-- openlup-context-inventory [{"id":"adopt-package","source":"README.md","heading":"Use in an application","startLine":142,"endLine":173,"sha256":"82d8e9de1e05c9df057275762e5edab37fadbfd8be4a34c2ad3266b3ca139ea8"},{"id":"extend-platform","source":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":494,"endLine":515,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"}] -->
 
 ## adopt-package: Adopt or upgrade the package
 
@@ -47,7 +47,7 @@ certify a complete module absorption or deployed adoption.
 
 ## extend-platform: Choose an extension seam
 
-<!-- openlup-context {"id":"extend-platform","source":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":485,"endLine":506,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
+<!-- openlup-context {"id":"extend-platform","source":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":494,"endLine":515,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
 ## Extension seams
 
 Extensions belong at explicit seams:

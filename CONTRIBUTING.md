@@ -154,6 +154,9 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
+joins the existing installed platform cold-consumer selection.
+
 The installed `openlup-context` command uses the tracked core
 [launcher](packages/core/src/openlup-context.js) and compiled
 retrieval code. The public execution catalogue binds that exact executable

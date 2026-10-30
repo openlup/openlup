@@ -248,7 +248,7 @@ function compactSource(
   return source ? [source] : [];
 }
 
-function normalizeDirectoryText(value: string): string {
+export function normalizeDirectoryText(value: string): string {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
