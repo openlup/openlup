@@ -147,7 +147,7 @@ export async function main(args = process.argv.slice(2)) {
   if (!existsSync("server/runtime/auth/referenceIdentity.ts")) throw new Error("Identity acceptance requires the identity reference composition, route bindings and readiness admission");
   if (bundle === "node-supabase" && !existsSync("supabase/migrations/20261018160000_identity_service_role_capabilities.sql")) throw new Error("Identity acceptance requires the reviewed managed identity service-role forward; fixture-only grants cannot satisfy shipped-install acceptance");
   must("docker", ["info"]);
-  if (bundle === "node-supabase" && must("supabase", ["--version"]) !== "2.98.2") throw new Error("Identity acceptance requires installed Supabase CLI 2.98.2");
+  if (bundle === "node-supabase" && must("supabase", ["--version"]) !== "2.122.0") throw new Error("Identity acceptance requires installed Supabase CLI 2.122.0");
   const runId = randomUUID(), project = `openlup-identity-${runId.slice(0, 18)}`;
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "openlup-identity-"))); chmodSync(directory, 0o700);
   const inspect = id => JSON.parse(must("docker", ["inspect", id]))[0];

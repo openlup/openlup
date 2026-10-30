@@ -833,6 +833,8 @@ host using UTC-authored schedules must therefore run its scheduler in UTC.
 current registrations synchronously, then waits for callbacks already admitted,
 including pending lock acquisition and unlock. Await it before disposing their
 resources; custom scheduler implementations must return that drain promise.
+The adapter calls each supplied timer's `stop()` with its original receiver;
+receiver-dependent timer implementations such as `node-cron` retain their state.
 Later registrations remain supported. The Node host caches its `stop()` promise,
 keeps its listener and dedicated PostgreSQL lock session available until the
 drain settles, then attempts both cleanup operations even after a drain failure.
@@ -1493,3 +1495,35 @@ retention policy, then append the contributor to M03's existing registry with
 period is supplied, and managed identity erasure remains unavailable. Portability
 is deferred unless a host supplies its own opaque binding; the helper neither
 invokes it nor claims transfer/restore support.
+
+## Company identity
+
+Experimental `./company-identity` preserves the existing compatibility schemas
+(including optional registry fields); `./company-identity/contracts` contains only
+browser-safe types over the unchanged core contract. `./company-identity/server`
+exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
+to retain its request-reference binding. The handler shares its process cache
+across factory instances: ten-minute TTL, UTC-day/normalized-identity keys, no
+purpose/provider partition, manual-input bypass and oldest-insertion eviction.
+Lookup does not write customer data. Identifier normalization/validity and legal-name policy are optional inputs in
+`CompanyIdentityRules`. Neutral defaults keep identifiers unchanged, accept
+non-empty values and do not prefer or seek fuller names. The reference
+application retains its existing national rules and callers unchanged.
+
+## Market packs
+
+Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
+explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
+and display locale independently; formatting historical amounts uses their own
+currency. Ambient environment reading/initialization remains application-owned.
+These entries add no provider, locale resources, native directory schema or
+application caller swap. Shipping suggestions retain the existing optional lane.
+
+`./market-packs` also exports `MarketDescriptor` and `describeMarket(language, profile)`.
+They describe independent display, settlement, price-list and fiscal inputs;
+no market values, national rules or language defaults are selected. The
+[unmounted reference recipe](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.ts)
+imports application-owned compatibility facts and accepts explicit configuration.
+Its [equivalence and variation tests](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.test.ts)
+separate source composition from an installed or mounted deployment.

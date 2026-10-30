@@ -9,13 +9,13 @@ import { fileURLToPath } from "node:url";
 import { env as processEnvironment } from "node:process";
 
 import { ownedStackCleanup } from "./owned-stack-cleanup.mjs";
-import { deriveCliImages, MIRROR_REGISTRY } from "./ci-image-mirror.mjs";
+import { deriveCliImages, pinnedCliImages, MIRROR_REGISTRY } from "./ci-image-mirror.mjs";
 import { IMAGE_PULL_BUDGET_MS, imageIo, pullWithRetry } from "./ci-image-pull.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = join(root, ".context/scratch/pgtap");
 const projectId = `openlup-ci-${randomBytes(8).toString("hex")}`;
-const cliVersion = "2.98.2";
+const cliVersion = "2.122.0";
 // The hosted job has 20 minutes: reserve half for startup, replay, tests and stop.
 export const CLI_IMAGE_PULL_BUDGET_MS = 600_000;
 
@@ -72,7 +72,7 @@ async function selectPorts() {
   throw new Error("no free port block for the owned managed baseline");
 }
 
-// CLI 2.98.2 internal/utils/docker.go GetRegistryImageUrl: Docker Hub keeps
+// CLI 2.122.0 apps/cli/src/command-internal/docker-registry.ts: Docker Hub keeps
 // the original repository; every other registry uses supabase/<basename>.
 function cliImageReference(image, registry) {
   const repository = registry === "docker.io" ? image.repository : `${registry}/supabase/${image.repository.split("/").at(-1)}`;
@@ -134,7 +134,8 @@ async function main() {
   cpSync(join(root, "supabase/tests"), join(directory, "supabase/tests"), { recursive: true });
   // Exclude long-running services; their enabled schema-init jobs still need images.
   const excluded = "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor";
-  const registry = await prePullCliImages(deriveCliImages(root, directory));
+  const images = pinnedCliImages(deriveCliImages(root, directory), JSON.parse(readFileSync(join(root, "config/ci-images.json"), "utf8")));
+  const registry = await prePullCliImages(images);
   const cliOptions = { env: { ...processEnvironment, SUPABASE_INTERNAL_IMAGE_REGISTRY: registry } };
   let cleanupFailed = false;
   let testStatus = 1;

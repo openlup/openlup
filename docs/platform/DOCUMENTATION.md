@@ -157,12 +157,15 @@ Data guidance retains canonical import-trigger/identity limitations; runtime
 guidance retains effect-time fencing and host capability ownership. Navigation
 and selected-row/local-object evidence do not close the full M14 store outcome.
 
-The five local handover sources (entry, cohort helper, dispatch actor,
+The local handover sources (entry, cohort and catch-up helpers, dispatch actor,
 application actor and provider) route to that same transfer architecture owner.
 Runtime guidance explains exact process/backend retirement and the frozen
 coordinator; data guidance preserves interrupted graph/media state. Contributor
 guidance owns the opt-in command, four executable carriers and retained
-handover proof. Exact publication and generated navigation add no execution,
+handover proof. The optional catch-up mode adds the finite preliminary/final-generation
+journey and its structured local report under the same transfer owner; it does
+not extend managed-history or hosted qualification. Exact publication and
+generated navigation add no execution,
 adopter-host qualification or delivered-predecessor claim.
 
 Operations source, owner-local witnesses, the unchanged control-plane SQL
@@ -210,11 +213,17 @@ or establishing activation, package publication or managed parity.
 The CI image mirror workflow, dependency-free script and offline witnesses are
 public source outputs in the publication catalogue. Contributor checks own its
 default-branch execution and one-time package visibility/access setup; canonical
-contracts own the non-CLI pin inventory and mirror-first consumer selection.
+contracts own the CLI and non-CLI digest inventories, exact derived-set binding
+and mirror-first consumer selection with public upstream fallback.
 The shared pull module, PostgreSQL helper and pgTAP pre-pull witnesses are public
 source outputs. Contributor checks own their bounded retry/fallback and CLI
 local-name reconciliation, including exact local reuse, the gate's shared pull path and remaining-budget
-Retry-After fall-through before non-GHCR fallback; generated bindings establish no registry publication.
+Retry-After fall-through within the selected sources. CLI pgTAP retains
+organization mirror/GHCR/ECR/Docker Hub fallback with the same pinned digest;
+mirror planning retains ECR/Docker Hub order. Non-CLI consumers retain their
+upstream sources in CI and locally.
+The active CLI bump task is included as an authored catalogue output. Generated
+bindings establish no registry publication.
 
 Invoicing source, contract witnesses and both API reports route to the
 [invoicing architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).

@@ -1414,6 +1414,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-connected-catchup.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-existing-store-transfer.md",
       "class": "public-output"
     },
@@ -1431,6 +1435,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-object-access-transfer.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-older-snapshot-recovery.md",
       "class": "public-output"
     },
     {
@@ -1470,7 +1478,15 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-selfhost-receipt.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m15-generic-risk-controls.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m16-r1-market-import.md",
       "class": "public-output"
     },
     {
@@ -1486,8 +1502,16 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/reference-market-composition.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/subscription-reference-w1.md",
       "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/supabase-cli-bump-task.md",
+      "class": "public-output"
     },
     {
       "path": "eslint.config.js",
@@ -2546,6 +2570,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/company-identity-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/company-identity-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/company-identity.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/composition.api.md",
       "class": "public-output"
     },
@@ -2603,6 +2639,10 @@
     },
     {
       "path": "packages/platform/api/lifecycle.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/market-packs.api.md",
       "class": "public-output"
     },
     {
@@ -4286,6 +4326,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/company-identity/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/rules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/server/companyIdentityHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/server/companyIdentityService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/company-identity/server/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/accountSupportContribution.ts",
       "class": "public-output"
     },
@@ -5291,6 +5359,30 @@
     },
     {
       "path": "packages/platform/src/lifecycle/postgresInstallQualification.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/currencyExponent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/fiscalProfile.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/formatMinor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/marketDescriptor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/market-packs/settlementProfile.ts",
       "class": "public-output"
     },
     {
@@ -7206,6 +7298,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/company-identity/cacheFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/companyIdentityHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/companyIdentityService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/company-identity/fixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/composition/accountSupportContribution.test.ts",
       "class": "public-output"
     },
@@ -7703,6 +7815,30 @@
     },
     {
       "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/fiscalProfile.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/formatMinor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/marketDescriptor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/market-packs/settlementProfile.test.ts",
       "class": "public-output"
     },
     {
@@ -9058,6 +9194,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/install-supabase-cli-ci.sh",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/install-supabase-cli-ci.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/local-bff-soak-aggregation.ts",
       "class": "public-output"
     },
@@ -9226,6 +9370,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/market-descriptor-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/market-pack-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/outbox-consumer-proof.test.ts",
       "class": "public-output"
     },
@@ -9295,6 +9447,14 @@
     },
     {
       "path": "scripts/packages/platform-cold-consumer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/reference-delegation-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/reference-delegation-consumer.test.ts",
       "class": "public-output"
     },
     {
@@ -10338,6 +10498,46 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/market-packs/companyIdentityExamples.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/marketRecipe.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/marketRecipe.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceAddressCanon.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityProviders.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityProviders.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityRules.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceCompanyIdentityRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/market-packs/referenceMarketDescriptor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/mfVat/invoiceDataLookupClient.test.ts",
       "class": "public-output"
     },
@@ -10943,6 +11143,10 @@
     },
     {
       "path": "server/adapters/s3/objectStorageConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/objectStorageConformanceScript.mjs",
       "class": "public-output"
     },
     {
@@ -15614,6 +15818,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/quoteCurrencyReference.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/quoteFoundationPackageBinding.test.ts",
       "class": "public-output"
     },
@@ -18110,6 +18318,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/referenceCompanyDelegation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/referenceMarketBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/referenceMarketBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -18594,6 +18814,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/marketIdentityPersistence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/normalizeConfiguratorDelivery.ts",
       "class": "public-output"
     },
@@ -18607,6 +18831,10 @@
     },
     {
       "path": "src/checkout/composer/referenceBuilderModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceMarketDraftContinuity.test.ts",
       "class": "public-output"
     },
     {
@@ -24722,6 +24950,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/i18n/marketResources.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/i18n/marketResources.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/identity-main.tsx",
       "class": "public-output"
     },
@@ -24730,7 +24966,15 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/locales/en/market.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/locales/pl/account.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/locales/pl/market.ts",
       "class": "public-output"
     },
     {
@@ -26138,6 +26382,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
       "class": "public-output"
     },
@@ -26214,11 +26462,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14ConnectedCatchup.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14InstallQualification.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14OlderSnapshotRecovery.ts",
       "class": "public-output"
     },
     {
@@ -26250,6 +26506,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RecipeJourneys.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14ReleasedSchemaUpgrade.proof.ts",
       "class": "public-output"
     },
@@ -26263,6 +26523,18 @@
     },
     {
       "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14SelfhostHost.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14SelfhostStorage.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/marketDirectoryPreservation.test.ts",
       "class": "public-output"
     },
     {

@@ -18,10 +18,10 @@ const plannedRepositories = [...cliRepositories, "supabase/pg_prove"];
 export function cliPin(workflow) {
   // Accept the repository's literal step format only; refuse expressions, duplicate steps or pins.
   const steps = workflow.split(/^ {6}- /mu).slice(1);
-  const setups = steps.filter((step) => /(?:^uses: |^ {8}uses: )supabase\/setup-cli@/mu.test(step));
-  const pins = setups[0]?.match(/^ {10}version: [0-9]+\.[0-9]+\.[0-9]+$/gmu) ?? [];
-  if (setups.length !== 1 || pins.length !== 1) throw new Error("expected exactly one literal Supabase CLI pin in published-tree-ci.yml");
-  return pins[0].trim().slice("version: ".length);
+  const installs = steps.filter((step) => step.includes("scripts/install-supabase-cli-ci.sh"));
+  const pins = installs[0]?.match(/^(?:run: | {8}run: )bash scripts\/install-supabase-cli-ci\.sh ([0-9]+\.[0-9]+\.[0-9]+)$/gmu) ?? [];
+  if (installs.length !== 1 || pins.length !== 1) throw new Error("expected exactly one literal Supabase CLI pin in published-tree-ci.yml");
+  return pins[0].trim().split(" ").at(-1);
 }
 
 export function cliImages(services, binary, pgtapSource) {
@@ -31,7 +31,7 @@ export function cliImages(services, binary, pgtapSource) {
   if (exclusions.length !== 1 || (pgtapSource.match(/"--exclude", excluded/gu) ?? []).length !== 1) throw new Error("expected exactly one literal pgTAP exclusion list and use");
   const excluded = new Set(exclusions[0][1].split(","));
   if (excluded.has("postgres") || excluded.size !== exclusions[0][1].split(",").length) throw new Error("invalid pgTAP exclusion list");
-  // CLI e4a7ace: internal/start/start.go:218-246 filters running services only.
+  // CLI 5afad870: apps/cli/src/commands/start/start.gates.ts filters running services only.
   // Refuse a broader startup set: services omits kong/mailpit/imgproxy/vector.
   if ([...services.map((service) => service.name).filter((name) => !cliRepositories.includes(name)),
     "library/kong", "axllent/mailpit", "darthsim/imgproxy", "timberio/vector"]
@@ -46,7 +46,7 @@ export function cliImages(services, binary, pgtapSource) {
   const prove = [...new Set(binary.match(/supabase\/pg_prove:[0-9][0-9A-Za-z._-]+/gu))];
   if (prove.length !== 1) throw new Error("expected exactly one supabase/pg_prove tag in the CLI binary");
   images.push({ repository: "supabase/pg_prove", tag: prove[0].split(":")[1] });
-  // CLI e4a7ace: internal/db/start/start.go:268-352 initializes enabled auth,
+  // CLI 5afad870: apps/cli/src/command-internal/db-bootstrap initializes enabled auth,
   // realtime and storage with these images even when their services are excluded.
   // The rendered reference config enables all three; never subtract --exclude.
   return images;
@@ -90,6 +90,20 @@ export function ownedImages(config) {
     names.add(image.name);
   }
   return config.images;
+}
+
+// Bind the runtime-derived set to reviewed digests; never silently accept tag drift.
+export function pinnedCliImages(images, config) {
+  const pins = ownedImages({ images: config?.cliImages });
+  if (pins.length !== images.length || new Set(images.map(image => image.repository)).size !== images.length
+    || new Set(pins.map(pin => pin.repository)).size !== pins.length) {
+    throw new Error("CLI image pins must cover the exact derived set");
+  }
+  return images.map(image => {
+    const pin = pins.find(pin => pin.repository === image.repository && pin.tag === image.tag);
+    if (!pin) throw new Error(`missing CLI image digest pin: ${image.repository}:${image.tag}`);
+    return { ...image, digest: pin.digest, sources: image.sources ?? [...pin.sources] };
+  });
 }
 
 function command(file, args) {
@@ -158,7 +172,8 @@ export function deriveCliImages(root, directory) {
       writeFileSync(join(directory, "supabase/config.toml"), config);
     }
     const services = JSON.parse(command("supabase", ["services", "--workdir", directory, "-o", "json"]));
-    const binary = readFileSync(command("which", ["supabase"]).trim()).toString("latin1");
+    const executable = command("which", ["supabase"]).trim();
+    const binary = readFileSync(executable).toString("latin1");
     const pgtapSource = readFileSync(join(root, "scripts/public-ci-pgtap.mjs"), "utf8");
     return cliImages(services, binary, pgtapSource);
   } finally { if (temporary) rmSync(directory, { recursive: true, force: true }); }
@@ -166,7 +181,9 @@ export function deriveCliImages(root, directory) {
 
 // Validate both inputs completely before the first exec or registry request.
 export function resolvePlan(input, config, registryInspect = inspect) {
-  const images = [...plannedImages(input), ...ownedImages(config)];
+  const planned = plannedImages(input);
+  const owned = ownedImages(config);
+  const images = [...pinnedCliImages(planned, config), ...owned];
   const resolved = new Map();
   for (const image of images.map((image) => resolveImage(image, registryInspect))) {
     if (resolved.has(image.target) && resolved.get(image.target).digest !== image.digest) throw new Error(`conflicting derived target: ${image.target}`);

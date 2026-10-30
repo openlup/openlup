@@ -79,6 +79,7 @@ export async function main(args = process.argv.slice(2)) {
     rmSync(directory, { recursive: true });
     } finally { cleanupOptions = undefined; }
   });
+  let result;
   try {
     assert.equal(ids().length, 0, "OIDC project must be new");
     for (const kind of ["network", "volume"]) assert.equal(must("docker", [kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`]), "", "OIDC project resources already exist");
@@ -91,12 +92,16 @@ export async function main(args = process.argv.slice(2)) {
     const database = containers.find(container => container.Config.Labels["com.docker.compose.service"] === "database");
     const bindings = database.NetworkSettings.Ports["5432/tcp"];
     assert.equal(bindings.length, 1); assert.equal(bindings[0].HostIp, "127.0.0.1");
-    await runOidcIdentityConformance({ issuerOrigin: `http://127.0.0.1:${port}`, adminPassword,
+    result = await runOidcIdentityConformance({ issuerOrigin: `http://127.0.0.1:${port}`, adminPassword,
       directory, runId, database: `postgresql://postgres:${databasePassword}@127.0.0.1:${bindings[0].HostPort}/postgres`, assertOwned: owned });
     console.log("OIDC real-issuer conformance: passed");
   } finally {
     await cleanup.finish();
   }
+  assert.equal(ids().length, 0, "OIDC containers remain after teardown");
+  for (const kind of ["network", "volume"]) assert.equal(must("docker", [kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`]), "", "OIDC resources remain after teardown");
+  return { ...result, image: OIDC_IMAGE, imageId: issuerImage.Id,
+    cleanup: { status: "PASS", containersAbsent: true, networksAbsent: true, volumesAbsent: true } };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => {
   if (error instanceof Error && /^OIDC conformance failed at stage: [a-z_]+$/.test(error.message)) console.error(error.message);
