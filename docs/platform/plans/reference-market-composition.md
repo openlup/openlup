@@ -769,3 +769,26 @@ finding. Real-PG was not rerun: this predecessor has no PG-relevant delta.
 Full draft verification remains held for the lead; no ready, prepare or
 receipt was performed. Self-retro: the sole delay was regenerating the merged
 source-span index before typecheck. Its owner script made the repair mechanical.
+
+### R3 reserved direct-main delivery window
+
+R1 landed through #445 (`7e8a80f313cb58d39722227121e913754a02dfbf`);
+R2 landed through #434 (`d6e11aedc3c2373ce73a3bd860abdd2697f0d936`),
+including final R2 head `5aa566da0188301c1ee28278f282cdc1f2af8279`.
+R3 now integrates main directly, with no stack pin. The single signed catch-up
+merge uses policy/main revision `9f998026de1e889235fb45233dbfde6328647309`;
+its sole conflict preserves main's R2 record verbatim before the R3 sections.
+The coordinator opened this reserved delivery window under CD-M16-22 after
+M14 9A #451; it lasts at most 2.5 hours from the merge begun at
+2026-10-30T01:38:23Z. A later main move uses freshness/carry-over checks;
+failed carry-over stops delivery without another main merge.
+
+The current owner assignment authorizes the active Codex supervisor to finish
+R3 checks, DCO commits, ordinary pushes, two fresh full native reviews, canonical
+verification and, only with the coordinator's enqueue GO, ready/receipt/queue
+delivery of #436 under CD-M16-1 and the M16 module PROC-27 merge grant.
+No release, activation, settings or new acceptance scope is authorized.
+The supervisor context is `01a18a74-cd6b-73b0-9fc8-4f11259da60e`;
+R3 has no previous native prepare or review. Execution observations, remaining
+work, failures and the terminal self-retro stay in ignored task evidence while
+the reviewed candidate is frozen.
