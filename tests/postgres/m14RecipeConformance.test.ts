@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { Pool } from "pg";
 import { afterEach, expect, it, vi } from "vitest";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { assertFreshClusterCatalogue, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
+import { assertFreshClusterCatalogue, hostedS3WorkerEnvironment, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
 import { journeyReceipt } from "./m14RecipeJourneys.mjs";
 import { OIDC_IMAGE } from "./runOidcIdentityConformance.mjs";
 import { createOidcIssuerFixture } from "./oidcIssuerFixture.js";
@@ -199,3 +199,108 @@ it("starts every unfinished appendix section explicitly pending with its owner",
     oidc: { status: "PENDING", owner: "10I" }, s3: { status: "PENDING", owner: "10O" },
     nodeHosts: { status: "PENDING", owner: "10H" }, effortCleanup: { status: "PENDING", owner: "10H/10S" } });
 });
+
+it("admits a password-free hosted S3 declaration and refuses wider namespaces, credentials and undeclared targets", () => {
+  const f = fixture();
+  const selected = { schemaVersion: 1, target: "s3", disposable: true, region: "xx-test-1", bucket: "synthetic-test-bucket",
+    prefix: "m14-10o/synthetic-run/", lifecycleStatePath: join(f.root, "state.json"), sourceCommit: "a".repeat(40), sourceTree: "b".repeat(40) };
+  const save = (value: object) => writeFileSync(f.path, JSON.stringify(value), { mode: 0o600 });
+  save(selected); expect(loadCredentials(f.path, "s3")).toEqual(selected);
+  for (const delta of [{ region: undefined }, { region: "invalid" }, { region: "xx-test" },
+    { prefix: "" }, { prefix: "other/run/" }, { prefix: "m14-10o/../" },
+    { lifecycleStatePath: resolve("state.json") }, { accessKeyId: "synthetic" }, { endpoint: "https://example.invalid" }, { sourceTree: "invalid" }]) {
+    save({ ...selected, ...delta }); expect(() => loadCredentials(f.path, "s3")).toThrow("region" in delta ? "region_required" : "hosted_s3_declaration_refused");
+  }
+});
+
+it("refuses each hosted target's declaration fields when relabelled as the other target", () => {
+  const f = fixture();
+  const s3 = { schemaVersion: 1, target: "s3", disposable: true, region: "xx-test-1", bucket: "synthetic-test-bucket",
+    prefix: "m14-10o/synthetic-run/", lifecycleStatePath: join(f.root, "state.json"), sourceCommit: "a".repeat(40), sourceTree: "b".repeat(40) };
+  const oidc = { schemaVersion: 1, target: "hosted-oidc", disposable: true, region: "xx-test-1",
+    issuerOrigin: "https://issuer.example.org", issuerImage: OIDC_IMAGE, adminPassword: f.secret };
+  const save = (value: object) => writeFileSync(f.path, JSON.stringify(value), { mode: 0o600 });
+  save(s3); expect(loadCredentials(f.path, "s3")).toEqual(s3);
+  save(oidc); expect(loadCredentials(f.path, "hosted-oidc")).toEqual(oidc);
+  save({ ...s3, target: "hosted-oidc" });
+  expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("credential_input_refused");
+  save({ ...oidc, target: "s3" });
+  expect(() => loadCredentials(f.path, "s3")).toThrow("hosted_s3_declaration_refused");
+});
+
+it("keeps shared AWS profiles out of the hosted S3 worker credential chain", () => {
+  const f = fixture();
+  const aws = join(f.root, ".aws"); mkdirSync(aws);
+  const syntheticProfile = "[default]\naws_access_key_id = synthetic-access\naws_secret_access_key = synthetic-secret\n";
+  writeFileSync(join(aws, "config"), syntheticProfile);
+  writeFileSync(join(aws, "credentials"), syntheticProfile);
+  const script = "const { S3Client } = require('@aws-sdk/client-s3'); const client = new S3Client({ region: 'xx-test-1' }); client.config.credentials().then(() => process.stdout.write('RESOLVED'), () => process.stdout.write('REFUSED')).finally(() => client.destroy());";
+  const base = { HOME: f.root, AWS_EC2_METADATA_DISABLED: "true" };
+  const probe = (env: Record<string, string>) => spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: 10000 });
+  const exposed = probe(base);
+  expect(exposed.status).toBe(0); expect(exposed.stdout).toBe("RESOLVED");
+  const isolated = probe({ ...base, ...hostedS3WorkerEnvironment });
+  expect(isolated.status).toBe(0); expect(isolated.stdout).toBe("REFUSED");
+});
+
+it("keeps lifecycle pending before elapsed observation and requires surviving latest identities before cleanup", () => {
+  const script = String.raw`
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { lifecycle, lifecycleRule } from "./tests/postgres/m14HostedStorage.mjs";
+const root = await mkdtemp(join(tmpdir(), "lifecycle-proof-"));
+try {
+  const now = Date.now(), prefix = "m14-10o/synthetic/";
+  const config = { bucket: "synthetic-bucket", prefix, lifecycleStatePath: join(root, "state.json") };
+  const objects = [{ key: prefix + "lifecycle/overwritten", noncurrentVersionId: "v1", currentVersionId: "v2" },
+    { key: prefix + "lifecycle/deleted", noncurrentVersionId: "v3", currentVersionId: "v4", deleteMarkerVersionId: "v5" }];
+  let rows = { IsTruncated: false, Versions: [
+    { Key: objects[0].key, VersionId: "v1", IsLatest: false, LastModified: new Date(now - 2000) },
+    { Key: objects[0].key, VersionId: "v2", IsLatest: true, LastModified: new Date(now - 1000) },
+    { Key: objects[1].key, VersionId: "v3", IsLatest: false, LastModified: new Date(now - 2000) },
+    { Key: objects[1].key, VersionId: "v4", IsLatest: false, LastModified: new Date(now - 1000) }],
+    DeleteMarkers: [{ Key: objects[1].key, VersionId: "v5", IsLatest: true, LastModified: new Date(now - 500) }] };
+  let versionStatus = 404;
+  const client = { send: async command => {
+    if (command.constructor.name === "GetObjectCommand") throw Object.assign(new Error("absent"), { name: versionStatus === 404 ? "NoSuchVersion" : "AccessDenied", $metadata: { httpStatusCode: versionStatus } });
+    return rows;
+  } };
+  const save = async (delta = {}) => writeFile(config.lifecycleStatePath, JSON.stringify({ schemaVersion: 1, prefix,
+    clockStart: new Date(now).toISOString(), objects, nextChecks: [], ...delta }), { mode: 0o600 });
+  await save(); assert.equal((await lifecycle(client, config)).status, "PENDING-OBSERVATION");
+  rows.Versions = rows.Versions.filter(row => row.IsLatest);
+  assert.equal((await lifecycle(client, config)).status, "PENDING-OBSERVATION");
+  await save(); await assert.rejects(lifecycle(client, config)); // Missing original seed cannot first-admit.
+  await save({ admittedAt: new Date(now - 26 * 3600000).toISOString(), clockStart: new Date(now - 26 * 3600000).toISOString() });
+  await assert.rejects(lifecycle(client, config)); // A backdated resume cannot outrun provider seed time.
+  rows.Versions = rows.Versions.map(row => ({ ...row, LastModified: new Date(now - 26 * 3600000 - 1000) }));
+  rows.DeleteMarkers = rows.DeleteMarkers.map(row => ({ ...row, LastModified: new Date(now - 26 * 3600000 - 1000) }));
+  assert.equal((await lifecycle(client, config)).status, "PASS");
+  versionStatus = 403; await assert.rejects(lifecycle(client, config)); versionStatus = 404;
+  rows.DeleteMarkers = []; await assert.rejects(lifecycle(client, config));
+  // A fresh declaration creates the same two-key seed through the same witness.
+  const fresh = { ...config, lifecycleStatePath: join(root, "fresh.json") };
+  let serial = 0; const physical = [];
+  const seedClient = { send: async command => {
+    const { Key, VersionId } = command.input;
+    if (command.constructor.name === "ListObjectVersionsCommand") return { IsTruncated: false,
+      Versions: physical.filter(row => !row.marker), DeleteMarkers: physical.filter(row => row.marker) };
+    for (const row of physical.filter(row => row.Key === Key)) row.IsLatest = false;
+    const id = "seed-" + (++serial);
+    physical.push({ Key, VersionId: id, IsLatest: true, LastModified: new Date(Date.now() - 1000), marker: command.constructor.name === "DeleteObjectCommand" });
+    return { VersionId: id };
+  } };
+  assert.equal((await lifecycle(seedClient, fresh)).status, "PENDING-OBSERVATION");
+  assert.equal(JSON.parse(await readFile(fresh.lifecycleStatePath, "utf8")).objects.length, 2);
+  const rule = { Status: "Enabled", NoncurrentVersionExpiration: { NoncurrentDays: 1 }, Filter: { Prefix: "m14-10o/" } };
+  assert(lifecycleRule([rule], prefix));
+  for (const change of [{ Status: "Disabled" }, { Filter: { Prefix: "other/" } }, { Filter: { ObjectSizeGreaterThan: 100 } },
+    { NoncurrentVersionExpiration: { NoncurrentDays: 1, NewerNoncurrentVersions: 2 } }]) assert(!lifecycleRule([{ ...rule, ...change }], prefix));
+  process.stdout.write("PASS");
+} finally { await rm(root, { recursive: true, force: true }); }
+`;
+  const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 30000 });
+  expect(result.stderr).toBe(""); expect(result.status).toBe(0); expect(result.stdout).toBe("PASS");
+}, 35000);

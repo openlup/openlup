@@ -162,7 +162,11 @@ execution inventory includes that body and the bundled synthetic host actor.
 The focused recipe input/disposition tests run with
 `npm test -- tests/postgres/m14RecipeConformance.test.ts`; a COMPLETE local
 receipt additionally requires the destructive opt-in command and all its
-prerequisites. Neither focused tests nor a local receipt establish hosted
+prerequisites. The same runner has a separately declared
+[hosted S3 target](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+with prefix-scoped object and elapsed-lifecycle evidence. Its focused declaration
+and source-admission refusals do not require live provider access. Neither
+focused tests nor a local receipt establish hosted
 qualification, and the three operator-declared database targets need their
 separate operator teardown.
 
