@@ -1,10 +1,10 @@
-// Parity tooling for the managed pgTAP lanes: per-assertion TAP comparison,
+// Parity tooling for the managed pgTAP lane: per-assertion TAP comparison,
 // the post-replay catalog snapshot, the environment fingerprint and the local
-// sabotage switches. Nothing here changes either lane's tested SQL.
+// sabotage switches. They remain the regression witness for the adapter after
+// the Supabase CLI lane was retired. Nothing here changes the tested SQL.
 import { spawnSync } from "node:child_process";
-import { accessSync, chmodSync, constants, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { env as processEnvironment } from "node:process";
+import { accessSync, constants, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // pg_prove --verbose prints `<path> ..` before each file's TAP stream and a
@@ -243,9 +243,14 @@ export function dockerExecutable(directories = DOCKER_DIRECTORIES) {
   throw new Error(`docker not found in ${directories.join(", ")}`);
 }
 
-/** Run one (section, item) query in a container through its own psql over TCP. */
-export function captureRows(container, sql, { user = "postgres", password = "postgres" } = {}) {
-  const result = spawnSync(dockerExecutable(), ["exec", "-i", "-e", `PGPASSWORD=${password}`, container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
+/**
+ * Run one (section, item) query in a container through its own psql over TCP.
+ * A runner passes its own Docker command runner so that every container call it
+ * makes uses one resolution; standalone use resolves Docker from fixed directories.
+ */
+const fixedDocker = (args, options) => spawnSync(dockerExecutable(), args, options);
+export function captureRows(container, sql, { user = "postgres", password = "postgres", docker = fixedDocker } = {}) {
+  const result = docker(["exec", "-i", "-e", `PGPASSWORD=${password}`, container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
     "-h", "127.0.0.1", "-U", user, "-d", "postgres", "-Atq", "-F", "\t", "-R", "\u001e"], { input: sql, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`catalog capture failed in ${container}: ${result.stderr || result.error?.message}`);
   return parseRows(result.stdout);
@@ -311,76 +316,12 @@ function diffCommand([leftPath, rightPath]) {
   return differences.length === 0 ? 0 : 1;
 }
 
-// Local evidence for the existing CLI lane, without changing it: run the
-// unchanged scripts/public-ci-pgtap.mjs with a `supabase` shim first on PATH;
-// the real CLI is the explicit absolute `--supabase` path, never a PATH lookup.
-// The shim captures the snapshot and fingerprint after replay, optionally
-// applies one SQL sabotage, then calls the real CLI's `test db` with `--debug`
-// so that pg_prove adds `--verbose` and the log carries every assertion.
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-// The runner's image derivation reads the `supabase` executable on PATH for its
-// registry and pg_prove tag; the shim repeats exactly those markers from the real binary.
-const shimSource = (parity, markers) => `#!/usr/bin/env node
-// derivation markers copied from the real CLI binary: ${markers}
-import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { env as processEnvironment } from "node:process";
-import { CATALOG_SNAPSHOT_SQL, ENVIRONMENT_FINGERPRINT_SQL, captureRows, sabotageSql } from ${JSON.stringify(parity)};
-const real = processEnvironment.OPENLUP_PGTAP_REAL_SUPABASE;
-const args = process.argv.slice(2);
-if (args[0] === "test" && args[1] === "db") {
-  const workdir = args[args.indexOf("--workdir") + 1];
-  const project = /^project_id\\s*=\\s*"([^"]+)"/mu.exec(readFileSync(join(workdir, "supabase/config.toml"), "utf8"))[1];
-  const container = "supabase_db_" + project;
-  const out = processEnvironment.OPENLUP_PGTAP_PARITY_OUT;
-  writeFileSync(join(out, "snapshot.json"), JSON.stringify(captureRows(container, CATALOG_SNAPSHOT_SQL), null, 1));
-  writeFileSync(join(out, "fingerprint.json"), JSON.stringify(captureRows(container, ENVIRONMENT_FINGERPRINT_SQL), null, 1));
-  const sabotage = sabotageSql(processEnvironment.OPENLUP_PGTAP_SABOTAGE || undefined);
-  if (sabotage) captureRows(container, sabotage + " SELECT 'sabotage', 'applied';", { user: "supabase_admin" });
-  args.push("--debug");
-}
-const result = spawnSync(real, args, { stdio: "inherit" });
-process.exit(result.status ?? 1);
-`;
-
-/** Parse `cli-lane --supabase <absolute path> [--sabotage <name>]`; each flag takes the next argument. */
-export function parseCliLaneArgs(rest) {
-  const value = flag => (rest.includes(flag) ? rest[rest.indexOf(flag) + 1] : undefined);
-  const sabotage = value("--sabotage");
-  if (rest.includes("--sabotage") && !sabotageSql(sabotage)) throw new Error(`sabotage ${sabotage} has no SQL form for the CLI lane`);
-  const real = value("--supabase");
-  if (!real || !isAbsolute(real)) throw new Error("pass the verified Supabase CLI 2.122.0 as --supabase <absolute path>");
-  return { real, sabotage };
-}
-
-function cliLaneCommand(rest) {
-  const { real, sabotage } = parseCliLaneArgs(rest);
-  accessSync(real, constants.X_OK);
-  const out = join(root, ".context/scratch/pgtap-parity/cli" + (sabotage ? `-${sabotage}` : ""));
-  const shim = join(out, "shim");
-  mkdirSync(shim, { recursive: true });
-  const binary = readFileSync(real).toString("latin1");
-  const prove = [...new Set(binary.match(/supabase\/pg_prove:[0-9][0-9A-Za-z._-]+/gu))];
-  if (!binary.includes("public.ecr.aws") || prove.length !== 1) throw new Error("real CLI binary lacks the derivation markers");
-  writeFileSync(join(shim, "supabase"), shimSource(join(root, "scripts/pgtap-parity.mjs"), `public.ecr.aws ${prove[0]}`));
-  chmodSync(join(shim, "supabase"), 0o755);
-  const result = spawnSync(process.execPath, [join(root, "scripts/public-ci-pgtap.mjs")], {
-    cwd: root, stdio: "inherit",
-    env: { ...processEnvironment, PATH: `${shim}:${processEnvironment.PATH}`, OPENLUP_PGTAP_REAL_SUPABASE: real, OPENLUP_PGTAP_PARITY_OUT: out, OPENLUP_PGTAP_SABOTAGE: sabotage ?? "" },
-  });
-  writeFileSync(join(out, "tap.log"), readFileSync(join(root, ".context/scratch/pgtap/latest.log")));
-  console.log(`CLI lane exit ${result.status}; evidence in ${out}`);
-  return result.status ?? 1;
-}
-
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [command, ...rest] = process.argv.slice(2);
   try {
     if (command === "compare") process.exitCode = compareCommand(rest);
     else if (command === "diff") process.exitCode = diffCommand(rest);
-    else if (command === "cli-lane") process.exitCode = cliLaneCommand(rest);
-    else throw new Error("usage: pgtap-parity.mjs compare <left.log> <right.log> | diff <left.json> <right.json> | cli-lane --supabase <absolute path> [--sabotage <name>]");
+    else throw new Error("usage: pgtap-parity.mjs compare <left.log> <right.log> | diff <left.json> <right.json>");
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 2;

@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { compareTapLogs, dockerExecutable, parseCliLaneArgs, diffRows, parseRows, parseTapLog, sabotageSql, SABOTAGE, summariseTap } from "./pgtap-parity.mjs";
+import { compareTapLogs, dockerExecutable, diffRows, parseRows, parseTapLog, sabotageSql, SABOTAGE, summariseTap } from "./pgtap-parity.mjs";
 
 // Shape of `pg_prove --verbose` output: padded file header, plan, results, verdict.
 const log = (path: string, body: string) => `${path} ........ \n${body}`;
@@ -96,19 +95,5 @@ describe("executable resolution", () => {
     chmodSync(join(fixed, "docker"), 0o755);
     expect(dockerExecutable([empty, fixed])).toBe(join(fixed, "docker"));
     expect(() => dockerExecutable([empty])).toThrow(/docker not found/u);
-  });
-
-  it("parses the CLI lane's baseline and sabotage argv", () => {
-    expect(parseCliLaneArgs(["--supabase", "/opt/supabase"])).toEqual({ real: "/opt/supabase", sabotage: undefined });
-    expect(parseCliLaneArgs(["--sabotage", "auth-uid-null", "--supabase", "/opt/supabase"])).toEqual({ real: "/opt/supabase", sabotage: "auth-uid-null" });
-    expect(() => parseCliLaneArgs(["--supabase", "/opt/supabase", "--sabotage", "no-pg-cron"])).toThrow(/no SQL form/u);
-  });
-
-  it("refuses a CLI lane without an absolute --supabase path", () => {
-    for (const args of [["cli-lane"], ["cli-lane", "--supabase", "supabase"]]) {
-      const result = spawnSync(process.execPath, ["scripts/pgtap-parity.mjs", ...args], { encoding: "utf8" });
-      expect(result.status).toBe(2);
-      expect(result.stderr).toMatch(/--supabase <absolute path>/u);
-    }
   });
 });

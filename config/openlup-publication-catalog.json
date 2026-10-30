@@ -9206,14 +9206,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/install-supabase-cli-ci.sh",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/install-supabase-cli-ci.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/local-bff-soak-aggregation.ts",
       "class": "public-output"
     },
@@ -9570,15 +9562,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/public-ci-pgtap-postgres.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/public-ci-pgtap-postgres.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/public-ci-pgtap.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap.test.ts",
       "class": "public-output"
     },
     {

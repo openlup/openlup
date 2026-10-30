@@ -32,7 +32,7 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 - [Published CI completeness](plans/public-ci-completeness.md) — complete CI observation, preserved required coverage and separate repair work.
 - [Autonomous reviewed delivery](plans/autonomous-reviewed-delivery.md) — native review, its evidence and queue admission.
 - [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme, merge-queue review carry-over, the fork-point review base and the deferred items.
-- [Managed pgTAP on plain PostgreSQL](plans/neutral-postgres-pgtap.md) — proposed move of the raw `pgtap` lane from the Supabase CLI to stock PostgreSQL 17 with one managed-compatibility adapter; parity proof, risks and owner decisions ([intent](plans/neutral-postgres-pgtap-intent.md)).
+- [Managed pgTAP on plain PostgreSQL](plans/neutral-postgres-pgtap.md) — move of the raw `pgtap` lane from the Supabase CLI to stock PostgreSQL 17 with one managed-compatibility adapter; parity proof, risks and owner decisions ([intent](plans/neutral-postgres-pgtap-intent.md)).
 
 ## Preview boundary
 
