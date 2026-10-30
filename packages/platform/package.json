@@ -1,6 +1,6 @@
 {
   "name": "@openlup/platform",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "private": false,
   "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
   "license": "Apache-2.0",
@@ -32,7 +32,7 @@
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update"
   },
   "peerDependencies": {
-    "@openlup/core": "0.32.0",
+    "@openlup/core": "0.33.0",
     "pg": "^8.22.0",
     "@aws-sdk/client-s3": "^3.1144.0",
     "@types/pg": "^8.20.0"

@@ -6,11 +6,11 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":37,"endLine":53,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":54,"endLine":63,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":36,"endLine":52,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":53,"endLine":62,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
-<!-- openlup-context {"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":37,"endLine":53,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"} -->
+<!-- openlup-context {"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":36,"endLine":52,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"} -->
 ## Dispatch configuration and optional diagnostics
 
 `readOutboxDispatchConfig` reads prefixed settings from an environment-like
@@ -32,7 +32,7 @@ acknowledgement policy.
 
 ## install-outbox: Install SQL and enqueue transactionally
 
-<!-- openlup-context {"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":54,"endLine":63,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"} -->
+<!-- openlup-context {"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":53,"endLine":62,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"} -->
 ## PostgreSQL installation and transactions
 
 Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a fresh PostgreSQL database. [The manifest](sql/manifest.json) binds its bytes to their public migration owner. PostgreSQL 16 or later supplies the validated timestamp parser used by compaction. Importing the package never applies SQL. Existing managed schemas need their own compatibility assessment; do not apply the fresh-install baseline over them. The default does not supply provider recovery, RLS or role grants.

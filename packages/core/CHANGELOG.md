@@ -10,6 +10,14 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.33.0]
+
+- Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
+  `openlup-core-v0.33.0`.
+
+- Republish with the coherent package set. Kernel code and exports are unchanged;
+  generated guidance locations follow the current canonical source.
+
 ## [0.32.0]
 
 - Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
@@ -28,8 +36,3 @@ in the source repository.
 
 - Publishable on the npm `latest` dist-tag as `0.31.0`, from tag
   `openlup-core-v0.31.0`.
-
-## [0.30.0]
-
-- Publishable on the npm `latest` dist-tag as `0.30.0`, from tag
-  `openlup-core-v0.30.0`.
