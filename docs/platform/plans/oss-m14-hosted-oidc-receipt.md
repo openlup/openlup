@@ -1,8 +1,9 @@
 # M14 hosted OIDC recipe receipt
 
 Status: development-preview parcel 10I; working hosted receipt PASS;
-the required control read was accepted before DCO. Native review and canonical
-verification remain pending.
+the initial control read was accepted before DCO. A second control read is
+pending for a review-found admission repair; native review and canonical
+verification remain incomplete.
 Code base:
 `6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`.
 Instruction freshness was independently refreshed before handoff at
@@ -159,6 +160,30 @@ hunk was resolved or glue added. The parcel patch ID excluding this record is
 `a5aca9c5679f17574581f592cc3fbdd03495ea2f` against both bases. Full new-tree
 review and canonical verification remain required; the reviewed runner/control
 bytes and the bounded claim did not change.
+
+The new-tree review found one material admission gap at cycle 1: a hostname with
+a terminal dot could evade the local-name suffix refusal before connection.
+One reviewer passed the remaining candidate and integration checks; the other
+recorded `hosted-oidc-public-origin-trailing-dot` as open. The smallest repair
+rejects terminal-dot hostnames in the existing declaration condition and adds
+focused local, private and public-name refusal cases. This changes the runner's
+control boundary, so a new computed-identity maintainer read is required before
+DCO. The successful VM receipt belongs to the prior source snapshot; the new
+line changes admission only and does not alter the accepted hosted lifecycle
+path. The initial canonical attempt failed on another parcel's private WIP ref;
+the lead archived and removed that ref, and a subsequent redacted full-ref scan
+passed before this repair. No other parcel ref was changed by this supervisor.
+
+On the staged repair, the focused recipe suite passed 12/12 in 3.42 seconds;
+strict five-project typecheck had zero unresolved edges or consumer errors;
+lint had zero errors and 33 existing warnings. Publication policy/docs-update
+answered both obligations, neutrality and structural scans passed, and redacted
+working-tree and full-ref Gitleaks scans found no leak. The Mac slot wait for
+the typecheck/lint sequence was 2,703 seconds because other verifiers ran.
+The private load probe was corrected to count actual verifier processes rather
+than waiting shell commands; that avoided a local wait deadlock without changing
+the repository gate. No native repair commit, new-tree review, canonical PASS,
+push or PR is claimed at this read boundary.
 
 Self-retro: check vendor provenance and a single execution UID before installing
 or launching a hosted fixture. Ambiguous provisioning can leave unconfirmed

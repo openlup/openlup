@@ -57,7 +57,7 @@ export function loadCredentials(path, target) {
     if (target === "hosted-oidc") {
       const issuer = new URL(value.issuerOrigin);
       if (issuer.protocol !== "https:" || issuer.origin !== value.issuerOrigin || issuer.username || issuer.password
-        || isIP(issuer.hostname) || !issuer.hostname.includes(".") || issuer.hostname.endsWith(".localhost")
+        || isIP(issuer.hostname) || !issuer.hostname.includes(".") || issuer.hostname.endsWith(".") || issuer.hostname.endsWith(".localhost")
         || issuer.hostname.endsWith(".local") || issuer.hostname.endsWith(".internal")) refuse("public_https_issuer_required");
       if (value.issuerImage !== OIDC_IMAGE || typeof value.adminPassword !== "string" || value.adminPassword.length < 24)
         refuse("disposable_pinned_issuer_required");

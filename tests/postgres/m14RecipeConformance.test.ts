@@ -65,7 +65,8 @@ it("admits only an explicit disposable pinned hosted issuer over public HTTPS be
   const save = () => writeFileSync(f.path, JSON.stringify(config), { mode: 0o600 }); save();
   expect(loadCredentials(f.path, "hosted-oidc")).toEqual(config);
   for (const issuerOrigin of ["http://issuer.example.org", "https://localhost", "https://127.0.0.1", "https://[::1]",
-    "https://issuer.local", "https://issuer.internal", "https://issuer.localhost", "https://user:secret@issuer.example.org",
+    "https://issuer.local", "https://issuer.internal", "https://issuer.localhost", "https://localhost.",
+    "https://issuer.local.", "https://issuer.internal.", "https://issuer.example.org.", "https://user:secret@issuer.example.org",
     "https://issuer.example.org/realms/shared", "https://issuer.example.org?secret=value", "https://issuer.example.org#fragment"]) {
     config.issuerOrigin = issuerOrigin; save();
     expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("public_https_issuer_required");
