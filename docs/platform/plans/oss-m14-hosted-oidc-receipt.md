@@ -1,7 +1,8 @@
 # M14 hosted OIDC recipe receipt
 
 Status: development-preview parcel 10I; working hosted receipt PASS;
-required control read pending before DCO, native review and canonical verify.
+the required control read was accepted before DCO. Native review and canonical
+verification remain pending.
 Code base:
 `6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`.
 Instruction freshness was independently refreshed before handoff at
@@ -125,9 +126,17 @@ admission waits were 60 seconds for builds, 300 for focused tests, 841 for
 typecheck and 60 for lint. No budget was raised. All changed files are outside
 package pack inputs; package manifests, exports, lockfiles and production
 implementations are unchanged. The VM proof used a frozen source snapshot;
-only this record and cleanup-limit prose changed afterward. DCO, two NEW fresh
+only this record and cleanup-limit prose changed afterward. Two NEW fresh
 FULL reviewers, canonical verification, push and PR submission remain pending.
 S1 remains active, so ready/enqueue is prohibited after those later gates.
+
+Maintainer read CD-M14-54 (2026-10-30) accepted the exact DCO source tree
+`94ec61a35bf79bccc83d587764f9e57d6f2b173e` from HEAD `6700bcfe`, with
+computed binary-diff SHA-256
+`714162f76bcadd924aafaffb426b318b10513f23d6a912f22c52d997e1b05a05`.
+The matching tree was DCO committed as `64c331ef13f78cc697a94f453d196623d36ab8d8`.
+This record cites the accepted computed identities without changing the
+accepted runner or control bytes.
 
 Self-retro: check vendor provenance and a single execution UID before installing
 or launching a hosted fixture. Ambiguous provisioning can leave unconfirmed
