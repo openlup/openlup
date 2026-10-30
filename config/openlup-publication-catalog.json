@@ -630,6 +630,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-postgres-packages.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -9514,6 +9518,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/pgtap-parity.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/pgtap-parity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/platform-accounting-document-lifecycle-parity.test.ts",
       "class": "public-output"
     },
@@ -9559,6 +9571,14 @@
     },
     {
       "path": "scripts/public-ci-payment-allowance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap-postgres.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap-postgres.test.ts",
       "class": "public-output"
     },
     {
@@ -26543,6 +26563,10 @@
     },
     {
       "path": "tests/postgres/m14SelfhostStorage.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/managed-compat/supabase.sql",
       "class": "public-output"
     },
     {

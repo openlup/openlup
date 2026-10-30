@@ -1,8 +1,8 @@
 # M14 hosted Node/OCI recipe receipt
 
 Status: development-preview parcel 10H, hosted Node/OCI working receipt PASS;
-both initial control reads accepted and exact accepted source DCO-committed;
-cycle-zero full reviews found two admission defects; repair control read pending.
+all three control reads accepted and exact repair source DCO-committed;
+cycle-one full review and canonical verification pending.
 Code/review base and current policy pin, checked independently:
 `4fd84bfead64e11f76e0555117fe072d39807182`.
 
@@ -259,3 +259,39 @@ cases (one unchanged PG catalogue case unselected). The repair lint gate waited
 ref. Both native finding cards remain open pending the required control read,
 DCO and two new fresh FULL reviews. The existing actor/host blobs and VM cleanup
 remain unchanged; no repeat hosted run or external write occurred.
+
+
+CD-M14-61 accepted the cycle-zero repair. Computed evidence matches tree
+`8f3d997c071a618bf4f29df458d12d4cd8469429` and the binary delta from
+`e7630f91944c39f618b22b67fc1d5dbee789d370`, SHA-256
+`e0ae67feeeb2bb71198bd50e558670d439f6b5e41a7996ccdb76d831e7429d35`.
+DCO commit `fad0030be95a846c80065420f8426eeb21cdbb3d` has exactly the
+accepted repair tree. These identities are computed evidence. Both cards stay
+open until the two new full reviews close them; no continuation was requested.
+
+Cycle-one `prepare` first refused carry-over after main advanced through its
+stock-PostgreSQL shadow lane. Necessary CD-M14-30 integration has parents
+`fad0030be95a846c80065420f8426eeb21cdbb3d` and
+`78af32e40ce939ad55f6f8631217ef186795a3a4`; its automatic tree is
+`addf1ec427ed5ee84dd56d18d5f77196ff246f2d` before this task note.
+The parcel patch-id excluding this record is
+`fc483aef2e001b42b20bb0aa257e98af39d35add` against both old base
+`9ad1534a` and new main `78af32e4`. Contribution text and catalogue merged
+mechanically, with no manual/union hunks or glue. Only this record changes
+from the automatic merge. Current instruction freshness was checked at the new
+main pin; the shadow lane's contribution instructions were read, and no
+host/identity/receipt control imported from main changes this parcel's claims.
+The shared heavy gate now serializes strict typecheck, lint and canonical
+verification. Delivery still stops at a neutral draft PR for fourth landing.
+
+The attempted duplicate pre-review checks remained queued for two 3,000-second
+shared-gate windows (reported waits 3,006 and 3,005 seconds, claimed by earlier
+parcels); no heavy stage started. Only this parcel's waiting process was stopped.
+The owned repair source/tests/runtime guidance are byte-identical to accepted
+`8f3d997c`; only this task record differs from its mechanical main merge.
+Its already executed strict typecheck, lint and regression results remain the
+pre-review evidence for those bytes. This is not full verification of the
+integration: two new full reviews and the complete current canonical command
+remain mandatory. Self-retro: do not place source-unchanged review behind a
+duplicate broad check; preserve the existing proof and spend the shared slot
+on the required post-review canonical gate. No control or proof gate is waived.
