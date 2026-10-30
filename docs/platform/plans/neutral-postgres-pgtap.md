@@ -2,8 +2,9 @@
 
 Status: owner go-ahead on 2026-10-30 to prepare W1, W2 and W3 as stacked draft
 pull requests; merges wait for the owner. The recommendations below are the
-provisional decisions (see [Recorded decisions](#recorded-decisions)). This
-planning change alters no CI behaviour.
+provisional decisions (see [Recorded decisions](#recorded-decisions)). W1 adds
+the shadow lane. W2 is prepared as a draft stacked on W1 (see
+[W2 evidence](#w2-evidence)); it waits for W1's merge and D6's shadow window.
 Read the [intent](neutral-postgres-pgtap-intent.md) first.
 Audience: the maintainer and the agents implementing the programme.
 
@@ -36,7 +37,7 @@ Audience: the maintainer and the agents implementing the programme.
 
 Per run, the `pgtap` job in `.github/workflows/published-tree-ci.yml` installs
 the checksum-verified native Supabase CLI 2.122.0 through
-`scripts/install-supabase-cli-ci.sh`, logs in to GHCR and runs
+the repository's native CLI installer script (removed in W2), logs in to GHCR and runs
 `scripts/public-ci-pgtap.mjs`. The runner:
 
 1. binds the 29 committed `supabase/migrations` files to their Git blob identities;
@@ -110,7 +111,7 @@ Other facts that bind the design:
   the CLI in required `test` (`reviewedBatchForwards`, `riskControlFixture`,
   several `*Managed*` suites). That image remains a CI dependency until a later
   wave (D2).
-- `ui-11` counts only `@supabase/` text. The CLI action reference, the bare
+- `ui-11` counts only the Supabase npm scope prefix. The CLI action reference, the bare
   word `supabase` and Docker repository names do not match it. Today's lane adds
   no `ui-11` debt. The pressure in #443 came from a launcher route that the
   neutral lane makes unnecessary, not from an exception to remove here.
@@ -203,7 +204,7 @@ under the same context name.
 | W0 | This intent and plan (draft PR). | Owner decisions D1–D10 recorded. |
 | W1 | Adapter, extension supply, runner, parity tooling and a non-required `pgtap-postgres` job beside the unchanged `pgtap`. No other CI change. | The parity proof passes locally and on the first hosted run. |
 | W1s | Shadow window: both lanes run on every PR, merge group and main push. | D6's window is met with zero unexplained divergence. |
-| W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and `scripts/install-supabase-cli-ci.sh` if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
+| W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and the native CLI installer script if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
 | W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. |
 
 W1 and W2 are separate PRs so that the shadow evidence comes from the merged W1
@@ -339,6 +340,50 @@ Still open for W1: the first hosted `pgtap-postgres` run. The job is skipped on
 draft pull requests, as `pgtap` is. An Actions cache for the package downloads
 is also open: W1 adds no new action pin, the runner verifies
 `OPENLUP_PGTAP_DEB_CACHE` or its scratch cache, and the files total about 300 KB.
+
+## W2 evidence
+
+Prepared on 2026-10-30 as a draft stacked on W1 (branch `claude/neutral-pgtap-w2`).
+It merges only after W1 is merged and D6's shadow window has passed.
+
+The switch:
+
+- The `pgtap` job keeps its context name, its non-required status and its
+  merge-group reuse. It now runs the stock runner, and the separate
+  `pgtap-postgres` job is removed. The job installs neither the Supabase CLI nor
+  npm dependencies. It keeps the GHCR login, because the stock image is pulled
+  mirror-first.
+- `scripts/public-ci-pgtap.mjs` is the stock runner. It keeps
+  `readManagedMigrationChain`, which other suites import, so the replay SQL and
+  the chain reader exist once. Its scratch output moves to `.context/scratch/pgtap/`.
+- Removed: the CLI runner path with its port probe, pre-pull and aliasing,
+  the native CLI installer script and its test, the five `cliImages` pins,
+  CLI derivation (`cliPin`, `cliImages`, `deriveCliImages`, `plannedImages`,
+  `pinnedCliImages`) and the read-only plan job of the mirror workflow, and the
+  parity tool's `cli-lane` driver and shim. The mirror job now reads only the
+  owned inventory, and its path filter lists only its own three inputs.
+  The shared pull loop and mirror resolution now refuse a tag-only input,
+  because the CLI lane was the only caller that supplied one.
+- The installer had no other consumer. The opt-in identity runners and the
+  subscription reference still require a locally installed Supabase CLI
+  2.122.0, and their documentation does not name the installer.
+- A subprocess lifecycle test drives the stock runner with stand-in `git` and
+  `docker`. It covers refusal of uncommitted chain bytes before any Docker call,
+  the transactional replay order, own-container removal after replay, readiness,
+  test and cleanup failures, and the exit codes for each.
+
+Local proof on the W2 tree, Docker Desktop on arm64:
+
+- `node scripts/public-ci-pgtap.mjs` exits 0 with 226 files and 5,199
+  assertions in about 20 s, including a cold package download.
+- `pgtap-parity.mjs compare` against the W1 CLI-lane TAP log is identical,
+  assertion by assertion. The catalog snapshot equals the W1 CLI snapshot, and
+  the fingerprint shows the same 160 accepted differences.
+- The `auth-uid-null` and `drop-rls-policy` sabotages fail, with 48 and 6
+  `not ok` results as in W1. No runner container is left behind.
+
+Still open for W2: the first green hosted `pgtap` run on the switched lane,
+after the shadow window.
 
 ## Risks
 
