@@ -135,7 +135,9 @@ declared `region` matching `^[a-z]{2}(-[a-z]+)+-\d+$`, `bucket`, a unique `prefi
 `m14-10o/<runId>/`, absolute external `lifecycleStatePath`, and exact
 `sourceCommit`/`sourceTree` Git identities. Other fields, endpoints, explicit
 keys and other namespace forms refuse. Run on the authorized Linux VM using
-its instance role and the SDK default credential chain. Transfer an exact Git
+its instance role through the SDK's instance-metadata path. The worker clears
+inherited environment and points shared AWS config/credential reads to `/dev/null`,
+so a local profile or credential process cannot supply the receipt. Transfer an exact Git
 archive, reconstruct its tracked index without credentials, and verify that
 index tree against the declaration before running. Build workspace packages
 first. The archive's original commit is operator-declared; the runner checks

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { Pool } from "pg";
 import { afterEach, expect, it } from "vitest";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { assertFreshClusterCatalogue, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
+import { assertFreshClusterCatalogue, hostedS3WorkerEnvironment, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
 import { journeyReceipt } from "./m14RecipeJourneys.mjs";
 
 const directories: string[] = [];
@@ -151,6 +151,21 @@ it("admits a password-free hosted S3 declaration and refuses wider namespaces, c
     { lifecycleStatePath: resolve("state.json") }, { accessKeyId: "synthetic" }, { endpoint: "https://example.invalid" }, { sourceTree: "invalid" }]) {
     save({ ...selected, ...delta }); expect(() => loadCredentials(f.path, "s3")).toThrow("region" in delta ? "region_required" : "hosted_s3_declaration_refused");
   }
+});
+
+it("keeps shared AWS profiles out of the hosted S3 worker credential chain", () => {
+  const f = fixture();
+  const aws = join(f.root, ".aws"); mkdirSync(aws);
+  const syntheticProfile = "[default]\naws_access_key_id = synthetic-access\naws_secret_access_key = synthetic-secret\n";
+  writeFileSync(join(aws, "config"), syntheticProfile);
+  writeFileSync(join(aws, "credentials"), syntheticProfile);
+  const script = "const { S3Client } = require('@aws-sdk/client-s3'); const client = new S3Client({ region: 'xx-test-1' }); client.config.credentials().then(() => process.stdout.write('RESOLVED'), () => process.stdout.write('REFUSED')).finally(() => client.destroy());";
+  const base = { HOME: f.root, AWS_EC2_METADATA_DISABLED: "true" };
+  const probe = (env: Record<string, string>) => spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: 10000 });
+  const exposed = probe(base);
+  expect(exposed.status).toBe(0); expect(exposed.stdout).toBe("RESOLVED");
+  const isolated = probe({ ...base, ...hostedS3WorkerEnvironment });
+  expect(isolated.status).toBe(0); expect(isolated.stdout).toBe("REFUSED");
 });
 
 it("keeps lifecycle pending before elapsed observation and requires surviving latest identities before cleanup", () => {

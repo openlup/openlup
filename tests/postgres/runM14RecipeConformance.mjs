@@ -10,6 +10,8 @@ import { runLocalJourney, runLocalOidc } from "./m14RecipeJourneys.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const modes = ["installer-managed", "operator-provisioned", "schema"];
 const targets = ["self-host", "neon", "rds", "s3"];
+// With other AWS inputs absent, the SDK reaches VM instance metadata only.
+export const hostedS3WorkerEnvironment = Object.freeze({ AWS_CONFIG_FILE: "/dev/null", AWS_SHARED_CREDENTIALS_FILE: "/dev/null" });
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const refuse = code => { throw new Error(code); };
 const git = args => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -200,7 +202,8 @@ export async function main(args = process.argv.slice(2)) {
     if (target === "s3" && process.platform !== "linux") refuse("hosted_s3_vm_required");
     const result = await new Promise((done, reject) => {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker"], {
-        cwd: root, env: {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
+        cwd: root, env: target === "s3" ? hostedS3WorkerEnvironment : {},
+        stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
       let message;
       child.on("message", value => { message = value; });
       child.once("error", () => reject(new Error("recipe_worker_unavailable")));
@@ -275,7 +278,7 @@ if (process.argv[2] === "--worker" && typeof process.send === "function") {
         sourceCommit: config.sourceCommit, sourceTree: config.sourceTree, sourceSha256,
         node: process.versions.node, npm: npmVersion(),
         packages,
-        credentialSource: "VM instance role through SDK default chain; no static credentials" };
+        credentialSource: "VM instance metadata; inherited environment and shared profiles excluded" };
       receipt.status = receipt.s3.status === "PASS" ? "COMPLETE" : "PENDING-OBSERVATION";
       receipt.claim = receipt.s3.claim;
       delete receipt.activePhase;
