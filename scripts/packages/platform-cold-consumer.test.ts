@@ -132,6 +132,9 @@ function fixture() {
 it("accepts ordinary confined packages and independently verifies absent peers", () => {
   const consumer = fixture(); assertConsumerIsolation(consumer, root); assertExportInventory(consumer);
   expect(NON_ADAPTER_ENTRIES).toEqual(expect.arrayContaining([
+    "channels",
+    "channels/contracts",
+    "channels/server",
     "invoicing",
     "invoicing/contracts",
     "subscriptions",

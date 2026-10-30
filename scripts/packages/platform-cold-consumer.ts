@@ -22,6 +22,9 @@ import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts"
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
 export const NON_ADAPTER_ENTRIES = [
+  "channels",
+  "channels/contracts",
+  "channels/server",
   "company-identity",
   "company-identity/contracts",
   "company-identity/server",
