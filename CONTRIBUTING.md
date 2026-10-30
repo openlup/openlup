@@ -1394,8 +1394,10 @@ to `.context/scratch/pgtap-postgres/`. Locally,
 `node scripts/pgtap-parity.mjs compare <left.log> <right.log>` compares two lanes
 assertion by assertion and fails on any difference, including a file present in
 one lane only. `node scripts/pgtap-parity.mjs cli-lane --supabase <absolute CLI path>` records the same
-evidence from the unchanged CLI lane through a `supabase` shim. Both runners take
-one of the five planned `--sabotage` switches, each of which must fail. The job
+evidence from the unchanged CLI lane through a `supabase` shim. The stock runner
+takes one of the five planned `--sabotage` switches, each of which must fail; the
+CLI lane takes only the three SQL switches, because `no-pg-cron` and
+`wrong-dblink-password` change server setup that the CLI owns. The job
 is neither a required context nor a native-review input.
 
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,

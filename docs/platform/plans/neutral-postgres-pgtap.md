@@ -281,6 +281,9 @@ under the checksum-verified Supabase CLI 2.122.0, driven by
   aborted dblink files) and `no-pg-cron` (the replay refuses). The three SQL
   sabotages also ran on the CLI lane. Their per-assertion results are identical
   across the two lanes, so the adapter also behaves like the managed host under failure.
+  `no-pg-cron` and `wrong-dblink-password` change server setup that the CLI owns,
+  so they have no CLI-lane form; parity item 5 is met for them on the stock lane
+  only, which is an accepted deviation.
 - **Timing.** On a warm cache the stock lane takes about 18 s end to end, of
   which `pg_prove` takes 15 s. The CLI lane takes about 33 s with its images
   already local.

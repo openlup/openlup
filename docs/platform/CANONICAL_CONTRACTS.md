@@ -783,7 +783,8 @@ SHA-256 is verified before the bytes are cached or installed; an unpinned
 architecture, a path that does not match its version or a checksum mismatch
 refuses, and no apt index is read. The packages install only into the disposable
 container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
-is the only file that encodes the managed host for that lane. It is test
+is the only file that creates the managed environment for that lane; the runner
+keeps only the replay identity and grants it shares with the CLI lane. It is test
 infrastructure, never a runtime bootstrap or a supported-host claim.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
