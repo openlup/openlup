@@ -886,6 +886,25 @@ async function mapMutated(mutation: readonly string[]) {
 
 it("refuses every row class with no typed path", async () => {
   await expect(mapMutated([])).resolves.toBeDefined();
+  // Both time decisions are exact at the microsecond, so each case sits on one side of a boundary.
+  const listAt = async (switchAt: string) => {
+    const laterList = randomUUID();
+    const mapped = await mapMutated([`UPDATE public.price_lists SET valid_to='${switchAt}' WHERE id='${priceListId}'`,
+      `INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from) VALUES('${laterList}','Later list','ZZ','XXX','active','${switchAt}')`]);
+    const held = [...mapped.packet.compatible.tables, ...mapped.packet.owned].find(value => value.table === "subscriptions")!.rows;
+    const chosen = (JSON.parse(held[0]!) as { price_list_id: string }).price_list_id;
+    return chosen === priceListId ? "current" : chosen === laterList ? "later" : "neither";
+  };
+  expect(await listAt("2027-01-01 00:00:00.123457+00"), "list ending one microsecond after the due time").toBe("current");
+  expect(await listAt("2027-01-01 00:00:00.123456+00"), "list ending at the due time").toBe("later");
+  for (const [label, region, currency] of [["another region", "YY", "XXX"], ["another currency", "ZZ", "YYY"]] as const)
+    await expect(mapMutated([`INSERT INTO public.price_lists(id,name,region_code,currency,status) VALUES('${randomUUID()}','Other list','${region}','${currency}','active')`]),
+      `open list in ${label}`).resolves.toBeDefined();
+  const receipt = (expiry: string) => `INSERT INTO public.commerce_idempotency_keys(scope,idempotency_key,request_fingerprint,status,expires_at)
+    VALUES('checkout','boundary:1','boundary','completed',${expiry})`;
+  await expect(mapMutated([receipt("pg_catalog.transaction_timestamp()")]), "key expiring exactly at the snapshot").resolves.toBeDefined();
+  await expect(mapMutated([receipt("pg_catalog.transaction_timestamp()+interval '1 microsecond'")]), "key live for one microsecond more")
+    .rejects.toMatchObject({ code: "unsupported_table", table: "public.commerce_idempotency_keys" });
   await expect(mapMutated([`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitPriceGross":{"amountMinor":100},"quantity":2}}}' WHERE id='${lineId}'`]),
     "quote line that agrees with the agreement").resolves.toBeDefined();
   await expect(mapMutated([`INSERT INTO public.communication_email_deliveries
@@ -915,6 +934,7 @@ it("refuses every row class with no typed path", async () => {
     ["subscription without edit window", [`UPDATE public.subscriptions SET edit_window_hours=NULL WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
     ["unsupported payment kind", [`UPDATE public.subscriptions SET payment_method_kind='wallet' WHERE id='${subscriptionId}'`], "unsupported_table", "public.subscriptions"],
     ["no price list for the next cycle", [`UPDATE public.price_lists SET status='archived' WHERE id='${priceListId}'`], "target_conflict", "public.price_lists"],
+    ["two price lists for the next cycle", [`INSERT INTO public.price_lists(id,name,region_code,currency,status) VALUES('${randomUUID()}','Second list','ZZ','XXX','active')`], "target_conflict", "public.price_lists"],
     ["no active method", [`${method} status='revoked',active=false ${methodWhere}`], "target_conflict", "public.subscriptions"],
     ["method for another reference", [`${method} provider_method_ref='method:other' ${methodWhere}`], "target_conflict", methodTable],
     ["method without recurring consent", [`${method} consent_snapshot='{}' ${methodWhere}`], "target_conflict", methodTable],

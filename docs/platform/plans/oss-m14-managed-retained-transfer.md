@@ -1074,7 +1074,7 @@ Refusal lines still unreached, each with its reason:
 
 | Refusal | Why no test reaches it |
 | --- | --- |
-| Capture time or relation count not an integer | The SQL returns an integer |
+| Relation count not an integer | The SQL returns an integer |
 | Relation with no primary key; projected row missing a target column | Needs source schema drift; the baseline hash is pinned |
 | Two completed erasures for one client | `identity_privacy_erasures` is absent from the pinned baseline; the identity mapping suite owns those cases |
 | Capture with no held rows (`managedIdentityEvidence`, `mapManagedRetainedBusiness`) | The capture validation before it already proves this |
@@ -1154,7 +1154,7 @@ normalisation runs at UTC.
 | Copied fields: JSON | Nested values, empty containers and JSON null inside a value survive | PostgreSQL comparison of copied columns on both sides, in `projects typed managed obligations` | Proved |
 | Copied fields: JSON null as the whole value | A jsonb column holding the JSON value `null` | `to_jsonb` cannot tell it from SQL NULL, so the target holds SQL NULL, or restore refuses on a required column. No platform writer was found that produces it | Recorded limit |
 | Copied fields: JSON number scale | A JSON number's value survives; its trailing zeros do not | `1.50` arrives as `1.5`; jsonb equality holds and no carried column is `numeric` | Recorded limit |
-| Copied fields: time | Instants keep microseconds | Measured: every copied time is `timestamptz` on both sides. The capture and target normalisation set UTC, with a zoned-target assertion. The same comparison reads copied times as PostgreSQL text, and hand-built times have their own text comparison | Proved |
+| Copied fields: time | Instants keep microseconds | Measured: every copied time is `timestamptz` on both sides. The capture and target normalisation set UTC, with a zoned-target assertion. The same comparison reads copied times as PostgreSQL text, and hand-built times have their own text comparison. Price-list eligibility and receipt expiry are decided by PostgreSQL inside the held snapshot, with cases on each side of a microsecond boundary. The one remaining `Date.parse` only rejects an unreadable consent time | Proved |
 | Copied fields: text | Unicode, quotes, backslashes and arrays survive | The same comparison, with a `text[]` holding an empty string and a NULL element | Proved |
 | Copied fields: bytea | None carried | Measured: no `bytea` on the carried relations | Proved |
 | Copied fields: null against empty | SQL NULL and an empty string stay distinct | The same comparison, with an empty `description` and a NULL `asset_ref` | Proved |
@@ -1169,6 +1169,8 @@ normalisation runs at UTC.
 The documented limit for source schema drift: the capture is qualified only for a source on
 the pinned managed baseline. After a later source migration, requalify the transfer before
 relying on it. Hosted managed sources are not qualified by this item.
+
+Native cycle 17 closed the number cards and raised two more, both millisecond truncation in a time decision: the chosen price list and a receipt's expiry. One repair covers both (CD-M14-101): PostgreSQL makes both decisions inside the held snapshot, and the millisecond capture time is gone.
 
 Decisions after one pre-mortem and one triage (CD-M14-94). A finding needs a reachable
 precondition: a platform writer, a documented operator path, or a value class the acceptance

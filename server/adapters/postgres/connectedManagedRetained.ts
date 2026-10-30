@@ -77,13 +77,10 @@ const checkedTerminalUnpaid = (intent: Row | undefined, all: Map<string, Row[]>)
     && attemptLinks(intent, payment, attempts[0], transitions[0])
     && !items.some(item => item.payment_intent_id === intent.id || item.payment_id === payment.id);
 };
-const archiveState = (relation: string, row: Row, captureTimeMs: number, all: Map<string, Row[]>): boolean => {
+const archiveState = (relation: string, row: Row, expiredReceipts: ReadonlySet<unknown>, all: Map<string, Row[]>): boolean => {
   if (relation === "public.payment_provider_settlement_batches") return row.status === "reconciled";
   if (relation === "public.payment_provider_settlement_items") return row.status === "matched";
-  if (relation === "public.commerce_idempotency_keys") {
-    const expiry = typeof row.expires_at === "string" ? Date.parse(row.expires_at) : Number.NaN;
-    return row.status === "completed" && Number.isFinite(expiry) && expiry <= captureTimeMs;
-  }
+  if (relation === "public.commerce_idempotency_keys") return row.status === "completed" && expiredReceipts.has(row.id);
   if (["public.commerce_payments", "public.commerce_payment_intents", "public.commerce_payment_attempts",
     "public.commerce_payment_state_transitions"].includes(relation)) {
     const intent = relation === "public.commerce_payment_intents" ? row
@@ -113,6 +110,7 @@ const digest = (value: string | Uint8Array) => createHash("sha256").update(value
 // Source rows are used for the immediate typed projection only. Neither the
 // capture result nor the connected restore packet contains a source-row archive.
 const projectionRows = new WeakMap<ManagedSourceCapture, Map<string, Row[]>>();
+const priceListEligibility = "snapshot.price_list_eligibility";
 function fail(code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never {
   throw new PostgresTransferError(code, relation);
 }
@@ -153,11 +151,8 @@ export async function captureManagedSourceGraph(input: {
           pg_catalog.current_setting('transaction_isolation') AS isolation,
           ${connectedStoreClusterIdentitySql} AS cluster,
           pg_catalog.current_database() AS database,session_user::pg_catalog.text AS login,
-          pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot,
-          pg_catalog.floor(pg_catalog.date_part('epoch', pg_catalog.transaction_timestamp()) * 1000)::bigint::text AS capture_time_ms`)).rows[0];
+          pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") fail("invalid_input");
-      const captureTimeMs = Number(facts.capture_time_ms);
-      if (!Number.isSafeInteger(captureTimeMs)) fail("invalid_input");
       await db.query("SET LOCAL TimeZone = 'UTC'");
       // A login that row security would filter must fail here, not read an empty source.
       await db.query("SET LOCAL row_security = off");
@@ -208,9 +203,12 @@ export async function captureManagedSourceGraph(input: {
           ? "requires-active-mapping" : "retained-history", reason: required ? "typed target projection required before publication"
           : "operator source archive; no transfer row" });
       }
+      // PostgreSQL decides both time boundaries inside this snapshot, because a JavaScript date drops microseconds.
+      const expiredReceipts = new Set(sourceRows.has("public.commerce_idempotency_keys") ? (await db.query<{ id: string }>(
+        "SELECT id::pg_catalog.text AS id FROM public.commerce_idempotency_keys WHERE expires_at<=pg_catalog.transaction_timestamp()")).rows.map(row => row.id) : []);
       for (const entry of dispositions) if (stateClass.has(entry.relation)) {
         const rows = sourceRows.get(entry.relation) ?? [];
-        const required = rows.some(row => !archiveState(entry.relation, row, captureTimeMs, sourceRows));
+        const required = rows.some(row => !archiveState(entry.relation, row, expiredReceipts, sourceRows));
         entry.disposition = required ? "requires-active-mapping" : "retained-history";
         entry.reason = required ? "typed target projection required before publication" : "operator source archive; no transfer row";
       }
@@ -219,6 +217,9 @@ export async function captureManagedSourceGraph(input: {
       const owners = subjectOwners(sourceRows);
       for (const [relation, rows] of sourceRows)
         for (const row of rows) if (owners(relation, row) === null) fail("invalid_input", relation);
+      sourceRows.set(priceListEligibility, (await db.query<Row>(`SELECT s.id::pg_catalog.text AS subscription_id,l.id::pg_catalog.text AS price_list_id
+        FROM public.subscriptions s JOIN public.price_lists l ON l.status='active' AND l.region_code=s.region_code AND l.currency=s.currency
+          AND l.valid_from<=s.next_cycle_at AND (l.valid_to IS NULL OR s.next_cycle_at<l.valid_to)`)).rows);
       const body = { sourceId: input.sourceId,
         observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot },
         dispositions };
@@ -507,12 +508,9 @@ export async function mapManagedRetainedBusiness(input: {
       || row.shipping_address_id !== null || row.billing_address_id !== null || row.edit_window_hours === null
       || row.payment_method_kind !== null && row.payment_method_kind !== "card" && row.payment_method_kind !== "blik_payid")
       fail("unsupported_table", "public.subscriptions");
-    const lists = priceLists.filter(list => list.status === "active" && list.region_code === row.region_code
-      && list.currency === row.currency && typeof list.valid_from === "string"
-      && Date.parse(list.valid_from) <= Date.parse(String(row.next_cycle_at))
-      && (list.valid_to === null || Date.parse(String(row.next_cycle_at)) < Date.parse(String(list.valid_to))));
+    const lists = (raw.get(priceListEligibility) ?? []).filter(value => value.subscription_id === row.id);
     if (lists.length !== 1) fail("target_conflict", "public.price_lists");
-    projected.subscriptions!.push(project("subscriptions", row, { price_list_id: lists[0]!.id, currency_code: row.currency }));
+    projected.subscriptions!.push(project("subscriptions", row, { price_list_id: lists[0]!.price_list_id, currency_code: row.currency }));
     const currentLines = subscriptionLines.filter(line => line.subscription_id === row.id);
     const activeMethods = methods.filter(method => method.subscription_id === row.id && method.status === "active" && method.active === true);
     if (!currentLines.length || activeMethods.length !== 1) fail("target_conflict", "public.subscriptions");
