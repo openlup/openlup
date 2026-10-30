@@ -314,6 +314,35 @@ it("refuses each hosted target's declaration fields when relabelled as the other
   expect(() => loadCredentials(f.path, "s3")).toThrow("hosted_s3_declaration_refused");
 });
 
+it("refuses declarations from another target family for every selectable target", () => {
+  const f = fixture();
+  const environment = { M14_CROSS_TARGET_PASSWORD: f.secret };
+  const pg = { ...f.config, region: "xx-test-1" };
+  const declarations: Record<string, object> = {
+    "self-host": pg, neon: { ...pg, target: "neon" },
+    rds: { schemaVersion: 1, target: "rds", disposable: true, region: "xx-test-1", layout: "serial-cluster",
+      previousApplicationPath: f.config.previousApplicationPath,
+      installations: Object.fromEntries(["installer-managed", "operator-provisioned", "schema"].map(mode => [mode, {
+        disposable: true, connectionString: "postgresql://bootstrap@managed.example.invalid/postgres",
+        passwordEnv: "M14_CROSS_TARGET_PASSWORD", incarnationSha256: "a".repeat(64), ca: f.config.installations.schema.ca,
+      }])) },
+    s3: { schemaVersion: 1, target: "s3", disposable: true, region: "xx-test-1", bucket: "synthetic-test-bucket",
+      prefix: "m14-10o/cross-target/", lifecycleStatePath: join(f.root, "state.json"), sourceCommit: "a".repeat(40), sourceTree: "b".repeat(40) },
+    "hosted-oidc": { schemaVersion: 1, target: "hosted-oidc", disposable: true, region: "xx-test-1",
+      issuerOrigin: "https://issuer.example.org", issuerImage: OIDC_IMAGE, adminPassword: f.secret },
+  };
+  for (const [target, declaration] of Object.entries(declarations)) {
+    writeFileSync(f.path, JSON.stringify(declaration), { mode: 0o600 });
+    expect(loadCredentials(f.path, target, environment)).toEqual(declaration);
+    for (const [other, foreign] of Object.entries(declarations)) {
+      // Self-host and Neon deliberately share the three-cluster SQL declaration.
+      if (other === target || [target, other].every(name => ["self-host", "neon"].includes(name))) continue;
+      writeFileSync(f.path, JSON.stringify({ ...foreign, target }), { mode: 0o600 });
+      expect(() => loadCredentials(f.path, target, environment)).toThrow();
+    }
+  }
+});
+
 it("keeps shared AWS profiles out of the hosted S3 worker credential chain", () => {
   const f = fixture();
   const aws = join(f.root, ".aws"); mkdirSync(aws);
