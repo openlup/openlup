@@ -154,12 +154,21 @@ The forced conflict-free merge has parents
 `c95a8e7129b09e078851de28c3f50b37a7af4214`; Git's exact mechanical
 merge tree before this task-record note is
 `6aac4e6717c6b9d34430e50c707db65f364651c5`. There was no manual
-resolution. The parcel patch-id, excluding only this task record, is
+resolution. At the merge commit, the parcel patch-id, excluding only this task record, was
 `6e1f6d00fbce0851d01fad8fb9ede3f8b048923f` against both the old base and
-new main. This note is the only post-merge edit; full integration review follows
+new main. The task-record note was the merge commit's only extra edit; full integration review follows
 under the unchanged acceptance boundary. No managed-leg landing notification
 has arrived. The queue window closed before this merge; no PR, receipt comment
 or queue action exists yet.
+
+One integration reviewer found that the actual candidate whitespace check
+refused a blank line at the end of the shared S3 conformance fixture. The
+CD-M14-39 repair removes only that empty final line: it is a pure reformat in a
+test-only script, with every assertion, setup step, privilege and seam retained.
+It touches no production code, SQL, config, catalog or budget. The material
+finding `10S-INTEGRATION-WHITESPACE` remains open until fresh FULL reviewers
+close it on the new committed tree. This formatting-only repair changes the
+subsequent patch-id; the equal patch-ids above document the earlier clean merge.
 
 Self-retro: closure-only fake timers hid a receiver-dependent timer failure →
 preserve the supplied timer receiver and test that actual supplier contract.

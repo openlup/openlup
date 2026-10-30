@@ -178,4 +178,3 @@ if (step === "bucket") {
 }
 process.stdout.write(JSON.stringify(out));
 `;
-
