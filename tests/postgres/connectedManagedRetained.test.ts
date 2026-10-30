@@ -267,11 +267,38 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   await managed.owner.query(`INSERT INTO public.communication_contact_links(contact_id,source_table,source_id)
     VALUES($1,'clients',$2)`, [contactId, linkedClientId]);
   const unboundEmail = "linked-consent@example.invalid";
-  await managed.owner.query(`UPDATE public.admin_audit_events SET actor_email=$1,target_email=$1,
-    old_value=$2::jsonb,new_value=$2::jsonb WHERE actor_admin_id=$3`,
+  await managed.owner.query(`UPDATE public.admin_audit_events SET action='invite',entity_type='admin_user',entity_id=$1,
+    actor_email=$1,target_email=$1,old_value=$2::jsonb,new_value=$2::jsonb WHERE actor_admin_id=$3`,
   [unboundEmail, JSON.stringify({ email: unboundEmail, note: "unbound person B" }), managed.operator]);
   try {
   const source = await capture(), fresh = await freshTarget();
+  const originalBytes = Buffer.from(JSON.stringify(source));
+  expect(readManagedRetainedHistory(originalBytes,
+    createHash("sha256").update(originalBytes).digest("hex"))).toEqual(source);
+  for (const [relation, field] of [
+    ["public.admin_audit_events", "action"],
+    ["public.communication_contact_links", "source_table"],
+    ["public.communication_email_deliveries", "aggregate_type"],
+    ["public.outbox_events", "aggregate_type"],
+  ] as const) {
+    const held = source.rows.find(row => row.relation === relation)!;
+    const value = JSON.parse(held.value) as Record<string, unknown>;
+    expect(Object.hasOwn(value, field), `${relation}.${field}`).toBe(true);
+    expect(held.minimisations.some(fact => fact.field === field), `${relation}.${field}`).toBe(false);
+    expect(value[field], `${relation}.${field}`).not.toBe("[MINIMISED:UNBOUND_PERSONAL_FIELD]");
+    for (const reason of ["third-party-capable", "unbound-row", "unknown-json"] as const) {
+      const changed = { ...source, rows: source.rows.map(row => row === held ? { ...row,
+        value: JSON.stringify({ ...value, [field]: "[MINIMISED:UNBOUND_PERSONAL_FIELD]" }),
+        minimisations: [...row.minimisations, { field, reason }] } : row) };
+      const { sha256: _prior, ...body } = changed;
+      changed.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+      const bytes = Buffer.from(JSON.stringify(changed));
+      expect(() => readManagedRetainedHistory(bytes,
+        createHash("sha256").update(bytes).digest("hex")), `${relation}.${field}:${reason}`)
+        .toThrowError(/postgres_transfer_invalid_input/);
+    }
+  }
+  let checkedMinimisedFields = 0;
   for (const relation of new Set(source.rows.map(row => row.relation))) {
     const [schema, table] = relation.split(".");
     if (!schema || !table || !/^[a-z_]+$/.test(schema) || !/^[a-z_]+$/.test(table)) throw new Error("Invalid fixture relation");
@@ -292,8 +319,22 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
           expect(value[field], `${relation}.${field}`).toBe("[MINIMISED:UNBOUND_PERSONAL_FIELD]");
         } else expect(value[field], `${relation}.${field}`).toEqual(originalValue);
       }
+      for (const fact of row.minimisations) {
+        checkedMinimisedFields++;
+        const restored = { ...value, [fact.field]: original![fact.field] };
+        const tampered = { ...source, rows: source.rows.map(entry => entry === row
+          ? { ...entry, value: JSON.stringify(restored),
+            minimisations: entry.minimisations.filter(candidate => candidate.field !== fact.field) } : entry) };
+        const { sha256: _previous, ...tamperedBody } = tampered;
+        tampered.sha256 = createHash("sha256").update(JSON.stringify(tamperedBody)).digest("hex");
+        const bytes = Buffer.from(JSON.stringify(tampered));
+        expect(() => readManagedRetainedHistory(bytes,
+          createHash("sha256").update(bytes).digest("hex")), `${relation}.${fact.field}`)
+          .toThrowError(/postgres_transfer_invalid_input/);
+      }
     }
   }
+  expect(checkedMinimisedFields).toBeGreaterThan(0);
   const auditHistory = source.rows.find(row => row.relation === "public.admin_audit_events")!;
   expect((JSON.parse(auditHistory.value) as { target_admin_id: string | null }).target_admin_id).toBeNull();
   const bucketHistory = source.rows.find(row => row.relation === "storage.buckets")!;
@@ -301,7 +342,8 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     "SELECT pg_catalog.jsonb_build_array(id)::pg_catalog.text AS source_key FROM storage.buckets WHERE id='retained'"
   )).rows[0]!.source_key);
   expect(auditHistory.minimisations.map(fact => fact.field)).toEqual(expect.arrayContaining([
-    "actor_email", "target_email", "old_value", "new_value"]));
+    "actor_email", "target_email", "old_value", "new_value", "entity_id"]));
+  expect(auditHistory.minimisations.find(fact => fact.field === "entity_id")?.reason).toBe("third-party-capable");
   expect(auditHistory.minimisations.find(fact => fact.field === "target_email")?.reason).toBe("third-party-capable");
   expect(auditHistory.value).not.toContain(unboundEmail);
   const withoutFact = { ...source, rows: source.rows.map(row => row === auditHistory
@@ -445,7 +487,8 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   expect((await targetOwner!.query("SELECT order_id,status FROM public.invoicing_duties")).rows)
     .toEqual([{ order_id: paidOrderId, status: "owed" }]);
   } finally {
-    await managed.owner.query(`UPDATE public.admin_audit_events SET actor_email=NULL,target_email=NULL,
+    await managed.owner.query(`UPDATE public.admin_audit_events SET action='catalog_draft_upsert',
+      entity_type='catalog_product',entity_id='synthetic',actor_email=NULL,target_email=NULL,
       old_value=NULL,new_value=NULL WHERE actor_admin_id=$1`, [managed.operator]);
     await managed.owner.query("DELETE FROM public.communication_contact_links WHERE contact_id=$1 AND source_id=$2",
       [contactId, linkedClientId]);

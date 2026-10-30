@@ -344,7 +344,7 @@ the present fixture shows no third-party personal content in that key.
 | auth.users | email | — | — | — | — |
 | identity_privacy_erasures | contributor_versions, dispositions, retained_obligations | contract_version | — | — | — |
 | customer_subject_lifecycle_events | — | from_stage, to_stage | — | — | — |
-| admin_audit_events | entity_id | action, source, entity_type, actor_kind, request_id, idempotency_key | actor_email, target_email, old_value, new_value | — | — |
+| admin_audit_events | entity_id only for a resolved `customer_read` client | action, source, entity_type, actor_kind, request_id, idempotency_key | entity_id for every other action, actor_email, target_email, old_value, new_value | — | — |
 | clients | email, first_name, last_name, phone, external_ref, metadata, preferences | country, lifecycle_stage, acquisition_source, identity_kind | — | — | — |
 | admin_users | email | role, membership_state, membership_provenance | membership_revocation_reason | — | — |
 | subscriptions | size_constraint, payment_method_ref, starter_pack | currency, region_code, status, payment_method_kind, timezone, cancellation_source, offer_policy_version, promotion_engine_version, offer_policy_assignment_state | cancellation_reason | — | — |
@@ -367,7 +367,7 @@ the present fixture shows no third-party personal content in that key.
 | communication_contacts | normalized_email, display_email, first_name, last_name | status | — | — | metadata |
 | communication_contact_links | — | source_system, source_table | source_key | — | metadata |
 | communication_permissions | — | channel, purpose, state, source | reason | — | source_ref, metadata |
-| communication_email_deliveries | aggregate_id | purpose, template_slug, trigger_source, trigger_event, aggregate_type, dedupe_key, status, provider_kind, provider_message_id, last_error_code | recipient_fingerprint | — | metadata |
+| communication_email_deliveries | aggregate_id only for a resolved typed aggregate | purpose, template_slug, trigger_source, trigger_event, aggregate_type, dedupe_key, status, provider_kind, provider_message_id, last_error_code | aggregate_id otherwise, recipient_fingerprint | — | metadata |
 | outbox_events | — | aggregate_type, event_type, idempotency_key, status | payload, error, metadata | — | — |
 | catalog_products | — | slug, status, name, description, metadata, ingredients, allergens, marketing_content | — | — | — |
 | catalog_skus | — | sku, title, pet_type, status, metadata, format_code, unit_form_code, gtin, asset_ref | — | — | — |
@@ -384,6 +384,36 @@ A missing target_email fact refuses readback even after the capture digest is
 recomputed. W6 compares the invoice buyer snapshot and the whole catalog
 product row to the real managed source and serialized private-object readback
 byte for byte. The catalog row and the invoice's own snapshot survive verbatim.
+
+CD-M14-40 makes the field disposition a single source of truth for capture and
+readback. Readback checks every present field against that same rule: a
+populated T/U/J field requires the fixed marker and its exact reason fact;
+B/S must retain the raw value. Null carries no personal value or fact. A
+self-authored digest cannot authorize a missing marker. Audit `entity_id` is B
+only when `action=customer_read` and its UUID resolved into the row's typed
+subjects; otherwise it is T. The other conditional links are a contact link's
+`source_id` (B only for `source_table=clients` and a resolved client UUID) and
+delivery/outbox `aggregate_id` (B only for a recognized aggregate type and
+resolved UUID); populated unsupported source links refuse during capture.
+Unlisted free-form fields default to minimisation.
+The real managed `invite` witness plants B's email in A's audit `entity_id`;
+the sidecar keeps only the marker, and B redaction leaves no B email. A generic
+mutation loop restores every non-null T/U/J field in turn, drops its fact and
+recomputes the digest; readback refuses each mutation. Lesson: enforce the data
+policy symmetrically at write and read; default-deny conditional fields.
+CD-M14-40 focused proof on the pinned managed source and qualified PG16 target
+passes 8/8, including the `invite`/B email and every populated minimised-field
+mutation. Strict five-project typecheck and lint pass (zero errors, 33 existing
+warnings). Self-retro: the earlier one-field fact test did not test the inverse
+raw-value substitution; sharing one disposition function makes both directions
+of that privacy rule observable without a new format or importer.
+The accepted maintainer read added a test-only condition under CD-M14-39.
+The existing fixture now asserts that audit action, contact-link source table
+and delivery/outbox aggregate type are captured verbatim. For each, replacing
+the discriminator with the fixed marker and any of the three fact reasons,
+then recomputing the digest, must be refused by readback. This only adds
+assertions within the existing real managed witness: no prior assertion was
+removed or relaxed, and no fixture privilege, setup step or seam was added.
 
 The previous b88347f6 candidate over-minimised catalog content, invoice,
 pricing/template snapshots, order numbers and operational codes. This correction

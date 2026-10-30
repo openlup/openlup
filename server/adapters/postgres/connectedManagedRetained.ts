@@ -77,6 +77,7 @@ const credentials = new Set([
 ]);
 const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
 const identity = /^[a-z][a-z0-9_]{0,62}$/;
+const sourceUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const minimised = "[MINIMISED:UNBOUND_PERSONAL_FIELD]";
 // Finite fields that can carry another person's identity despite the row's
@@ -115,20 +116,125 @@ const ownOrCatalogJson: Record<string, readonly string[]> = {
   "public.catalog_products": ["metadata", "marketing_content"],
   "public.catalog_skus": ["metadata"],
 };
+// The finite profile's own-subject and structural strings. A new personal
+// column has no implicit admission merely because it is on a known relation.
+const verbatimTextFields: Record<string, readonly string[]> = {
+  "auth.users": ["email"],
+  "public.identity_privacy_erasures": ["contract_version"],
+  "public.customer_subject_lifecycle_events": ["from_stage", "to_stage"],
+  "public.admin_audit_events": ["action", "source", "entity_type", "actor_kind", "request_id", "idempotency_key"],
+  "public.clients": ["email", "first_name", "last_name", "phone", "external_ref", "country", "lifecycle_stage", "acquisition_source", "identity_kind"],
+  "public.admin_users": ["email", "role", "membership_state", "membership_provenance"],
+  "public.subscriptions": ["payment_method_ref", "currency", "region_code", "status", "payment_method_kind", "timezone", "cancellation_source", "offer_policy_version", "promotion_engine_version", "offer_policy_assignment_state"],
+  "public.subscription_cycles": ["payment_method_ref", "status", "engine_idempotency_key", "offer_policy_version", "promotion_engine_version", "offer_policy_assignment_state", "renewal_row_error_key"],
+  "public.subscription_events": ["event_type", "idempotency_key", "actor_kind"],
+  "public.subscription_price_agreements": ["agreement_kind", "proration_policy", "cycle_effect", "currency", "source_action", "idempotency_key"],
+  "public.commerce_orders": ["order_number", "source_order_ref", "status", "currency", "region_code", "mode", "source_kind"],
+  "public.commerce_order_items": ["mode_at_line"],
+  "public.commerce_payments": ["provider", "provider_payment_id", "status", "currency"],
+  "public.commerce_payment_intents": ["target_kind", "status", "currency", "provider_payment_id"],
+  "public.commerce_payment_attempts": ["provider", "provider_attempt_id", "provider_session_id", "idempotency_key", "status", "currency", "next_action_kind", "failure_class"],
+  "public.commerce_payment_state_transitions": ["transition_kind", "from_status", "to_status", "idempotency_key"],
+  "public.commerce_payment_method_refs": ["provider_kind", "method_kind", "provider_customer_ref", "provider_method_ref", "provider_mandate_ref", "status"],
+  "public.commerce_idempotency_keys": ["scope", "idempotency_key", "request_fingerprint", "status"],
+  "public.payment_provider_settlement_batches": ["provider_kind", "provider_batch_id", "currency", "status"],
+  "public.payment_provider_settlement_items": ["provider_kind", "provider_payment_id", "currency", "status"],
+  "public.accounting_invoices": ["order_ref", "invoice_ref", "status", "currency", "provider_kind", "provider_invoice_id", "provider_invoice_number", "ksef_number", "ksef_status", "correction_status", "document_type", "buyer_kind", "ksef_requirement", "policy_version", "provider_pdf_ref", "provider_xml_ref", "document_kind", "provider_payment_id", "email_status", "provider_upo_ref"],
+  "public.accounting_invoice_issue_outbox": ["provider_kind", "status"],
+  "public.communication_contacts": ["normalized_email", "display_email", "first_name", "last_name", "status"],
+  "public.communication_contact_links": ["source_system", "source_table"],
+  "public.communication_permissions": ["channel", "purpose", "state", "source"],
+  "public.communication_email_deliveries": ["aggregate_id", "purpose", "template_slug", "trigger_source", "trigger_event", "aggregate_type", "dedupe_key", "status", "provider_kind", "provider_message_id", "last_error_code"],
+  "public.outbox_events": ["aggregate_type", "event_type", "idempotency_key", "status"],
+  "public.catalog_products": ["slug", "status", "name", "description", "ingredients", "allergens"],
+  "public.catalog_skus": ["sku", "title", "pet_type", "status", "format_code", "unit_form_code", "gtin", "asset_ref"],
+  "public.price_lists": ["name", "region_code", "currency", "status"],
+  "public.price_entries": ["mode", "amount_kind"],
+  "storage.objects": ["owner_id", "bucket_id", "version"],
+};
 const bucketStructuralFields = new Set(["id", "name", "allowed_mime_types", "type"]);
-const personalCapableTextType = /^(?:text(?:\[\])?|character(?: varying)?|citext)(?:\(|$)/u;
-function minimiseUnboundFields(relation: string, row: Row, sourceValue: string, columnTypes: Map<string, string>, subjects: string[]):
+// Fixed typed IDs and temporal fields for admitted relations. New columns do
+// not inherit verbatim admission merely from a familiar suffix or value shape.
+const typedOrTemporalFields: Record<string, string> = {
+  "auth.users": "id created_at updated_at",
+  "public.identity_privacy_erasures": "erasure_id idempotency_key client_id principal_id actor_principal_id completed_at",
+  "public.customer_subject_lifecycle_events": "id client_id occurred_at",
+  "public.accounting_invoice_correction_outbox": "id created_at invoice_id next_attempt_at processed_at",
+  "public.accounting_invoice_delivery_outbox": "id created_at invoice_id next_attempt_at processed_at",
+  "public.accounting_invoice_issue_outbox": "id created_at invoice_id next_attempt_at processed_at",
+  "public.accounting_invoice_operations": "id created_at invoice_id",
+  "public.accounting_invoices": "id created_at updated_at order_id ksef_updated_at correction_of_invoice_id policy_approval_id ksef_registration_date payment_completed_at package_shipped_at",
+  "public.admin_audit_events": "id actor_admin_id target_admin_id occurred_at",
+  "public.admin_users": "id created_at membership_accepted_at membership_revoked_at membership_revoked_by",
+  "public.catalog_products": "id created_at updated_at primary_sku_id current_document_revision_id",
+  "public.catalog_skus": "id product_id created_at updated_at",
+  "public.clients": "id created_at updated_at auth_user_id marketing_contact_id",
+  "public.commerce_idempotency_keys": "id created_at expires_at",
+  "public.commerce_order_items": "id order_id sku_id created_at",
+  "public.commerce_orders": "id client_id checkout_session_id created_at updated_at subscription_id subscription_cycle_id shipping_address_id pet_id recovery_root_order_id recreated_from_order_id source_channel_id",
+  "public.commerce_payment_attempts": "id created_at updated_at payment_intent_id payment_id",
+  "public.commerce_payment_intents": "id created_at updated_at order_id subscription_id subscription_cycle_id payment_id active_attempt_id",
+  "public.commerce_payment_method_refs": "id created_at updated_at client_id subscription_id expires_at deactivated_at",
+  "public.commerce_payment_reconciliation_runs": "id created_at checked_at payment_intent_id payment_attempt_id",
+  "public.commerce_payment_state_transitions": "id created_at payment_intent_id payment_attempt_id provider_event_id occurred_at",
+  "public.commerce_payments": "id order_id created_at updated_at",
+  "public.communication_contact_links": "id created_at contact_id source_id",
+  "public.communication_contacts": "id created_at updated_at",
+  "public.communication_delivery_events": "operator_id occurred_at",
+  "public.communication_email_deliveries": "id created_at updated_at contact_id client_id auth_user_id triggered_at scheduled_due_at expected_send_at queued_at first_attempt_at last_attempt_at sent_at delivered_at terminal_at communication_send_decision_id outbox_event_id platform_job_run_id email_send_id",
+  "public.communication_permission_events": "id created_at contact_id captured_at",
+  "public.communication_permissions": "id created_at updated_at contact_id captured_at",
+  "public.communication_provider_events": "id created_at processed_at contact_id",
+  "public.outbox_events": "id created_at available_at processed_at aggregate_id",
+  "public.payment_external_refs": "id payment_id created_at",
+  "public.payment_provider_settlement_batches": "id created_at updated_at bank_received_at",
+  "public.payment_provider_settlement_items": "id created_at batch_id payment_intent_id payment_id invoice_id bank_received_at",
+  "public.price_entries": "id price_list_id variant_id valid_from valid_to created_at updated_at",
+  "public.price_lists": "id valid_from valid_to created_at updated_at",
+  "public.subscription_cycles": "id subscription_id scheduled_at paid_at order_id created_at updated_at payment_id next_retry_at renewal_quarantined_until",
+  "public.subscription_dunning_cases": "id subscription_id cycle_id order_id payment_intent_id client_id pet_id next_retry_at opened_at recovered_at expired_at last_event_at created_at updated_at",
+  "public.subscription_dunning_notifications": "id case_id subscription_id cycle_id order_id payment_intent_id recipient_ref scheduled_at sent_at created_at updated_at resend_idempotency_started_at",
+  "public.subscription_events": "id subscription_id cycle_id occurred_at created_at updated_at",
+  "public.subscription_lines": "id subscription_id variant_id created_at updated_at",
+  "public.subscription_price_agreements": "id subscription_id subscription_line_id variant_id event_id started_at ended_at created_at updated_at",
+  "public.subscriptions": "id client_id pet_id next_cycle_at started_at ended_at shipping_address_id billing_address_id created_at updated_at",
+  "storage.objects": "id created_at updated_at last_accessed_at",
+  "storage.buckets": "created_at updated_at",
+};
+const typedOrTemporal = new Map(Object.entries(typedOrTemporalFields)
+  .map(([relation, fields]) => [relation, new Set(fields.split(" "))]));
+type FieldDisposition = "verbatim" | ManagedRetainedRow["minimisations"][number]["reason"];
+function fieldDisposition(relation: string, field: string, row: Row, subjects: string[]): FieldDisposition {
+  if (relation === "public.admin_audit_events" && field === "entity_id")
+    return row.action === "customer_read" && typeof row.entity_id === "string"
+      && sourceUuid.test(row.entity_id) && subjects.includes(row.entity_id) ? "verbatim" : "third-party-capable";
+  if (relation === "public.communication_contact_links" && field === "source_id")
+    return row.source_table === "clients" && typeof row.source_id === "string"
+      && sourceUuid.test(row.source_id) && subjects.includes(row.source_id) ? "verbatim" : "third-party-capable";
+  if ((relation === "public.communication_email_deliveries" || relation === "public.outbox_events")
+    && field === "aggregate_id")
+    return (row.aggregate_type === "subscription" || row.aggregate_type === "commerce_order")
+      && typeof row.aggregate_id === "string" && sourceUuid.test(row.aggregate_id) && subjects.length > 0
+      ? "verbatim" : "third-party-capable";
+  if (thirdPartyFields[relation]?.includes(field)) return "third-party-capable";
+  if (relation === "storage.buckets") return bucketStructuralFields.has(field)
+    || typedOrTemporal.get(relation)?.has(field)
+    || typeof row[field] === "number" || typeof row[field] === "boolean" ? "verbatim" : "unbound-row";
+  if (ownOrCatalogJson[relation]?.includes(field) || verbatimTextFields[relation]?.includes(field)) return "verbatim";
+  // Existing typed links and scalar facts are structural; free-form new text
+  // and JSON fields default to private minimisation.
+  if (typedOrTemporal.get(relation)?.has(field)
+    || typeof row[field] === "number" || typeof row[field] === "boolean") return "verbatim";
+  return "unknown-json";
+}
+function minimiseUnboundFields(relation: string, row: Row, sourceValue: string, subjects: string[]):
   { value: string; minimisations: ManagedRetainedRow["minimisations"] } {
   const retained = { ...row };
   const minimisations: ManagedRetainedRow["minimisations"] = [];
   for (const [field, value] of Object.entries(row)) {
-    const type = columnTypes.get(field);
-    if (value === null || !type) continue;
-    const reason = thirdPartyFields[relation]?.includes(field) ? "third-party-capable"
-      : /^(?:jsonb?|jsonb?\[\])$/u.test(type) && !ownOrCatalogJson[relation]?.includes(field) ? "unknown-json"
-        : !subjects.length && relation === "storage.buckets" && (["owner", "owner_id"].includes(field)
-          || personalCapableTextType.test(type) && !bucketStructuralFields.has(field)) ? "unbound-row" : null;
-    if (!reason) continue;
+    if (value === null) continue;
+    const reason = fieldDisposition(relation, field, row, subjects);
+    if (reason === "verbatim") continue;
     retained[field] = minimised;
     minimisations.push({ field, reason });
   }
@@ -181,7 +287,6 @@ export async function captureManagedRetainedHistory(input: {
         ORDER BY n.nspname,c.relname`)).rows;
       const sourceRows = new Map<string, Row[]>();
       const sourceRaw = new Map<string, { value: string; rowIdentity: string }[]>();
-      const sourceColumnTypes = new Map<string, Map<string, string>>();
       const dispositions: ManagedRetainedCapture["dispositions"] = [];
       let totalRows = 0, totalBytes = 0;
       for (const relation of relations) {
@@ -211,10 +316,6 @@ export async function captureManagedRetainedHistory(input: {
           JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
           WHERE i.indrelid=$1::pg_catalog.regclass AND i.indisprimary ORDER BY k.ordinal`, [qualified])).rows;
         if (!keyColumns.length) fail("schema_conflict", name);
-        const columnTypes = (await db.query<{ name: string; type: string }>(`SELECT a.attname AS name,
-          pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
-          WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped`, [qualified])).rows;
-        sourceColumnTypes.set(name, new Map(columnTypes.map(column => [column.name, column.type])));
         const key = `pg_catalog.jsonb_build_array(${keyColumns.map(column => `t.${quoted(column.name)}`).join(",")})::pg_catalog.text`;
         const raw = (await db.query<{ value: string; row_identity: string }>(`SELECT (${expression})::pg_catalog.text AS value,
           ${key} AS row_identity FROM ${qualified} t ORDER BY (${expression})::pg_catalog.text LIMIT $1`,
@@ -231,13 +332,11 @@ export async function captureManagedRetainedHistory(input: {
       const rows: ManagedRetainedRow[] = [];
       for (const [relation, values] of sourceRows) {
         for (const [index, value] of values.entries()) {
-          const columnTypes = sourceColumnTypes.get(relation)!;
           const rowIdentity = sourceRaw.get(relation)![index]!.rowIdentity;
           const anchors = subjects(relation, value);
           if (anchors === null) fail("invalid_input", relation);
           const needsMapping = active.has(relation) || relation === "auth.users";
-          const minimisedRow = minimiseUnboundFields(relation, value, sourceRaw.get(relation)![index]!.value,
-            columnTypes, anchors);
+          const minimisedRow = minimiseUnboundFields(relation, value, sourceRaw.get(relation)![index]!.value, anchors);
           rows.push({ source: input.sourceId, relation, rowIdentity, subjects: anchors.sort(),
             value: minimisedRow.value, minimisations: minimisedRow.minimisations,
             disposition: needsMapping ? "requires-active-mapping" : "retained-history",
@@ -1002,17 +1101,27 @@ function validate(capture: ManagedRetainedCapture): void {
       || !Array.isArray(capture.dispositions) || !Array.isArray(capture.redactions)) fail("invalid_input");
     const { sha256, ...body } = capture;
     if (digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
+    const validFields = (held: ManagedRetainedRow): boolean => {
+      const value = JSON.parse(held.value) as Row;
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      const facts = new Map(held.minimisations.map(fact => [fact.field, fact.reason]));
+      if (facts.size !== held.minimisations.length) return false;
+      for (const [field, entry] of Object.entries(value)) {
+        const expected = fieldDisposition(held.relation, field, value, held.subjects);
+        if (entry === null) {
+          if (facts.has(field)) return false;
+        } else if (expected === "verbatim") {
+          if (entry === minimised || facts.has(field)) return false;
+        } else if (entry !== minimised || facts.get(field) !== expected) return false;
+      }
+      return [...facts.keys()].every(field => Object.hasOwn(value, field));
+    };
     if (capture.rows.some(row => row.source !== capture.sourceId || !row.relation || !row.rowIdentity
       || !Array.isArray(row.subjects) || !row.subjects.every(value => typeof value === "string" && value)
       || typeof row.value !== "string" || !["requires-active-mapping", "mapped-active-and-retained", "retained-history"].includes(row.disposition)
       || !Array.isArray(row.minimisations) || row.minimisations.some(fact => !identity.test(fact.field)
         || !["third-party-capable", "unbound-row", "unknown-json"].includes(fact.reason))
-      || new Set(row.minimisations.map(fact => fact.field)).size !== row.minimisations.length
-      || row.minimisations.some(fact => (JSON.parse(row.value) as Row)[fact.field] !== minimised)
-      || Object.entries(JSON.parse(row.value) as Row).some(([field, value]) => value === minimised
-        && (thirdPartyFields[row.relation]?.includes(field) || row.relation === "storage.buckets"
-          && !bucketStructuralFields.has(field))
-        && !row.minimisations.some(fact => fact.field === field))
+      || !validFields(row)
       || !Array.isArray(row.targetTables) || row.targetTables.some(value => typeof value !== "string" || !identity.test(value))
       || (row.disposition === "mapped-active-and-retained") !== (row.targetTables.length > 0)
       || typeof row.reason !== "string" || !row.reason || (!row.subjects.length && ![

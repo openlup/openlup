@@ -89,7 +89,10 @@ under source/table/row identities in a private history object, while selecting
 only identity metadata from Auth users. At capture, fields capable of carrying
 an unrelated person's identity, and JSON without a known own-subject or catalog
 shape, are replaced by a fixed marker with a per-field reason. Own-subject
-history, structural values and catalog rows remain verbatim. The in-process native projection
+history, structural values and catalog rows remain verbatim. Capture and private
+readback apply the same finite field rule: a populated minimised field must
+contain the marker and its reason fact, including conditional audit fields.
+The in-process native projection
 uses the original source values, so this sidecar narrowing does not alter active
 target obligations. It refuses unknown
 nonempty relations and refuses export of an active row whose canonical mapping

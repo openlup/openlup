@@ -2859,6 +2859,9 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   or media visibility → use the existing bootstrap observer and exact domain
   SQL states before composing retirement and access expectations.
 
+- 2026-10-30, M14 managed retained privacy: enforce the data policy
+  symmetrically at write and read; default-deny conditional fields.
+
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the
   neutral contracts, without introducing another registry or scanner exception.
