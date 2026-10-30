@@ -1334,6 +1334,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/agent-context-adaptive-routing.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/agent-context-mvp-task.md",
       "class": "public-output"
     },
