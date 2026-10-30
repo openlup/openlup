@@ -35,10 +35,12 @@ import { request } from "../helpers/fulfillmentComposition.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 import { assertCatchupActivation, assertFinalCatchup, catchupCounts, catchupDrain, catchupServing, interruptPool, mediaReferences, preliminaryCatchup, seedCatchup } from "./m14ConnectedCatchup.js";
+import { assertManagedArchiveAbsent, managedFirstLeg, type ManagedObligations } from "./m14ManagedCatchup.js";
 import { applyRecoveryPrivacy, assertRecoveryPrivacy, assertRecoveryReady, loadOlderSnapshot, persistOlderSnapshot, persistRecoveryJson, recoveryRows, seedRecoveryPrivacy, type RecoveryPrivacyObligation } from "./m14OlderSnapshotRecovery.js";
 
 const root = process.cwd(), image = process.argv[2], recovery = process.argv[3] === "--older-snapshot",
-  catchup = recovery || process.argv[3] === "--catch-up";
+  managedCatchup = process.argv[3] === "--managed-catch-up",
+  catchup = recovery || managedCatchup || process.argv[3] === "--catch-up";
 if (process.argv[3] && !catchup) throw new Error("Unknown handover mode");
 if (process.argv.length > (catchup ? 4 : 3)) throw new Error("Unknown handover arguments");
 const selection: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation = { generation: catchup ? "qualified-admin" : "qualified-v2", roleMode: "installer-managed",
@@ -49,7 +51,8 @@ const expectedUnits = [selected.baseline, ...selected.forward];
 const expectedTail = expectedUnits.at(-1);
 assert(expectedTail, "Selected canonical manifest must contain its baseline");
 if (!catchup) assert.equal(selected.objectInventorySha256, "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82");
-assert.equal(connectedNativeStoreTables.length, 73, "Keep the transfer predecessor's finite graph unchanged");
+const connectedTableCount = connectedNativeStoreTables.length;
+assert.equal(connectedTableCount, 82, "Keep the 8A-extended finite graph unchanged");
 if (!image || !/^sha256:[0-9a-f]{64}$/.test(image)) throw new Error("Supply one already-local immutable Node24.21.0 image ID; this witness never pulls/builds images");
 if (process.version !== "v24.21.0") throw new Error("M14 witness requires Node24.21.0");
 const modules = join(root, "node_modules");
@@ -83,6 +86,7 @@ const control = randomUUID(); // Fixture-only authentication, never copied accou
 let network: string | undefined, providerUrl = "", report: Record<string, unknown> = {}, failure: unknown;
 let targetWritesActivated = false;
 let targetRecoveryWritesStarted = false, graphPublished = false, filesystemPublished = false, sourceWritesFrozen = false;
+let nativeActivationRefusals = 0;
 let application: Awaited<ReturnType<typeof prepareM14ApplicationCohort>> | undefined;
 let targetApplication: OrderReviewRuntimeBinding | undefined;
 let olderSnapshot: Awaited<ReturnType<typeof persistOlderSnapshot>> | undefined;
@@ -132,6 +136,29 @@ async function census(db: Pool) {
   for (const table of connectedNativeStoreTables) rows[table] = (await db.query<{ value: string }>(
     `SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text`)).rows.map(row => row.value).sort();
   return rows;
+}
+async function assertManagedTypedTarget(db: Pool, obligations: ManagedObligations) {
+  await assertManagedArchiveAbsent(db);
+  assert.deepEqual((await db.query("SELECT name FROM public.catalog_products WHERE id=$1", [obligations.productId])).rows,
+    [{ name: "Retained product updated" }]);
+  assert.deepEqual((await db.query("SELECT name FROM public.catalog_products WHERE id=$1", [obligations.addedProduct])).rows,
+    [{ name: "New retained product" }]);
+  assert.deepEqual((await db.query("SELECT id FROM public.catalog_products WHERE id=$1", [obligations.deletedProductId])).rows, []);
+  assert.deepEqual((await db.query(`SELECT state FROM public.communication_recipient_consents
+    WHERE recipient_fingerprint=$1 AND purpose='marketing_newsletter'`, [obligations.consentFingerprint])).rows,
+    [{ state: "denied" }]);
+  assert.deepEqual((await db.query("SELECT status,external_ref FROM public.commerce_settlement_intents WHERE id=$1",
+    [obligations.paidIntentId])).rows, [{ status: "settled", external_ref: "provider-paid:1" }]);
+  assert.deepEqual((await db.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1",
+    [obligations.failedIntentId])).rows, [{ status: "failed" }]);
+  assert.deepEqual((await db.query("SELECT status FROM public.subscriptions WHERE id=$1", [obligations.subscriptionId])).rows,
+    [{ status: "active" }]);
+  assert.deepEqual((await db.query("SELECT delivery_admission FROM public.subscription_renewal_terms WHERE subscription_id=$1",
+    [obligations.subscriptionId])).rows, [{ delivery_admission: "blocked" }]);
+  assert.deepEqual((await db.query("SELECT status FROM public.invoicing_duties WHERE order_id=$1",
+    [obligations.paidOrderId])).rows, []);
+  assert(Number((await db.query("SELECT count(*) FROM public.outbox_events WHERE aggregate_id=$1 AND status='pending'",
+    [obligations.subscriptionId])).rows[0]?.count) > 0);
 }
 async function installation(side: string) {
   const name = `m14-effects-${side}-${owner}`, resource = await runPostgresContainer({ name, password: "synthetic-only" });
@@ -243,6 +270,11 @@ try {
   const pristineTarget = await capture(target.owner, "owned-pristine-target");
   const targetKeyBefore = await keyIdentity(target.owner);
   const targetLedger = (await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows;
+  const managedFirst = managedCatchup ? await managedFirstLeg({ final: source,
+    installation: selection as QualifiedAdminPostgresInstallation,
+    createPreliminary: () => installation("managed-preliminary"),
+    captureNative: (db, id) => capture(db, id, true) }) : undefined;
+  if (managedFirst) mark("managedFirstLegReady");
   const sourceActorUrl = new URL(source.runtimeUrl); sourceActorUrl.hostname = "source-db"; sourceActorUrl.port = "5432";
   const fixtures = await Promise.all([fixture(source.owner), fixture(source.owner), fixture(source.owner), fixture(source.owner)]);
   const duties = fixtures.map((f, index) => {
@@ -502,6 +534,10 @@ try {
   assert.deepEqual(restoredMediaCensus, mediaCensus);
   assert.deepEqual((await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows, targetLedger);
   mark("canonicalGraphAndFilesystemPublished");
+  if (managedFirst) {
+    await assertManagedTypedTarget(target.runtime, managedFirst.obligations);
+    mark("managedTypedStateReadBackAtSecondTarget");
+  }
   let recoveredRowsAfterPrivacy: Record<string, string[]> | undefined;
   if (recovery) {
     recoveryFacts.publications = true;
@@ -710,6 +746,7 @@ try {
       { drain: undefined }, { effects: { accepted: 1, uncertain: 2, pending: 1 } }]) {
       assert.throws(() => assertCatchupActivation({ ...activationFacts, ...delta }), /catchup_activation_agreement_required/);
       assert.equal(targetWritesActivated, false);
+      nativeActivationRefusals++;
     }
     assertCatchupActivation(activationFacts);
     assert.equal((await state()).requests.length, 2);
@@ -761,7 +798,8 @@ try {
     for (const table of ["subscription_renewal_terms", "subscription_renewal_term_lines", "commerce_settlement_intents", "invoicing_duties"]) {
       const values = (await target.runtime.query(`SELECT pg_catalog.to_jsonb(t)::text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::text`)).rows.map(row => row.value);
       const expected = [...finalGraph.compatible.tables, ...finalGraph.owned].find(row => row.table === table); assert(expected);
-      assert.deepEqual(values, expected.rows, "ordinary takeover preserves frozen terms, unsettled money and invoice duties");
+      assert.deepEqual(values.sort(), [...expected.rows].sort(),
+        "ordinary takeover preserves frozen terms, unsettled money and invoice duties");
     }
   }
   if (catchup) {
@@ -769,6 +807,7 @@ try {
     assert.equal(expected.length, 1);
     assert.deepEqual((await target.runtime.query("SELECT pg_catalog.to_jsonb(t)::text AS value FROM public.outbox_events t WHERE idempotency_key='catchup-effect-key'")).rows.map(row => row.value), expected);
   }
+  if (managedFirst) await assertManagedTypedTarget(target.runtime, managedFirst.obligations);
   mark("selectedTargetReady");
   const declaredReadiness = { wall: new Date().toISOString(), monotonicMs: performance.now() };
   let recoveryMeasurement: Record<string, unknown> | undefined;
@@ -810,7 +849,7 @@ try {
         excludedDiagnosticMarkerFiles: objectInventory.length },
       privacy: { existingErasurePreserved: true, laterErasureAndRetainedTextRedactionReappliedBeforeServing: true,
         staleRestoredContactObservedOnlyBehindFence: true, erasedAuthenticationRefused: true,
-        retainedHistorySidecar: "managed-sidecar recovery belongs to the separate managed-journey restore/redaction proof" },
+        managedSourceArchive: "managed history-only rows remain with the operator source; this mode selects native data" },
       safeRefusals: [{ reason: "new executor fenced before reconciliation and ownership transfer", rtoSeconds: null },
         { reason: "exact old executor restart refused after terminal host retirement and transfer", rtoSeconds: null },
         { reason: "uncertain dispatch remains visible and cannot resubmit", rtoSeconds: null }],
@@ -821,8 +860,10 @@ try {
   }
   report = { outcome: "LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION", node: process.version, image, owner,
     recovery: recoveryMeasurement,
-    journey: catchup ? { format: "openlup.local-connected-catchup.v1", leg: "portable-to-portable",
-      sourceGeneration: selection.generation, targetGeneration: selection.generation,
+    journey: catchup ? { format: "openlup.local-connected-catchup.v1",
+      leg: managedCatchup ? "managed-to-portable-to-portable" : "portable-to-portable",
+      sourceGeneration: managedFirst?.report.sourceGeneration ?? selection.generation, targetGeneration: selection.generation,
+      managedFirstLeg: managedFirst?.report,
       preliminary: preliminary!.report, final: { captureSha256: finalGraph.sha256, counts: catchupCounts(finalGraph),
         sourceInstallation: finalGraph.observation, targetInstallation: pristineTarget.observation,
         targetInstallationKeyTuplePreserved: targetKeyBefore, sourceOutsideProfile: finalGraph.outsideProfileCensus,
@@ -834,15 +875,19 @@ try {
           updated: mediaCensus.objects.filter(row => preliminary!.media.objects.some(value => value.key === row.key && value.sha256 !== row.sha256)).length,
           added: mediaCensus.objects.filter(row => !preliminary!.media.objects.some(value => value.key === row.key)).length,
           deleted: preliminary!.media.objects.filter(row => !mediaCensus.objects.some(value => value.key === row.key)).length },
-        retainedHistorySidecar: "managed predecessor not selected in this portable-only leg" },
-      refusals: [preliminary!.report.refusal, "retained uncertain dispatch remains fenced"],
+        managedHistoryOnlyRowsAbsent: managedCatchup ? true : undefined },
+      refusals: [...(managedFirst ? [managedFirst.report.preliminary.refusal,
+        `${managedFirst.report.activation.refusalCases} managed first-leg agreement cases refused`] : []),
+        preliminary!.report.refusal, "retained uncertain dispatch remains fenced"],
+      activationRefusalCases: nativeActivationRefusals
+        + (managedFirst ? managedFirst.report.activation.refusalCases + 1 : 0),
       takeover: targetWritesActivated, rollback: preliminary!.report.rollback,
       timingsMs: times, hostedQualification: false, olderSnapshotRecovery: recovery } : undefined,
     catalogue: { units: expectedUnits.length, tail: expectedTail, inventorySha256: selected.objectInventorySha256 },
     capturePoint, filesystemRestore, graphRestore, timesMs: times, recoveredAcceptedEffects: 2,
     unresolved, sourceWritesFrozen, filesystemPublished, graphPublished, targetRecoveryWritesStarted, targetWritesActivated, targetResult, repeatedTargetResult, targetPosts,
     beforeActivation, afterActivation, selectedProfileReadyRtoMs: times.selectedTargetReady - (recovery ? times.inducedUnavailability : times.interruptionStart),
-    readyScope: "Owned selected canonical 73-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R",
+    readyScope: `Owned selected canonical ${connectedTableCount}-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R`,
     wholeStoreRtoMs: null,
     acceptedRecoveryElapsedMs: times.acceptedEffectsRecovered - times.interruptionStart,
     recoveryPoint: recovery ? "Persisted pre-provider-acceptance DB/object snapshot; later privacy obligations replayed before serving and independent accepted effects reconciled. One uncertain operation remains fenced. Finite local scope, no SLO."

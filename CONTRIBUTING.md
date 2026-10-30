@@ -208,6 +208,25 @@ declaration, ordinary TLS verification and separate operator teardown boundary.
 The focused input tests cover its pre-connection refusals; actual hosted PASS
 also requires real browser login, expiry/rotation and owned realm absence.
 
+The required [managed source projection suite](tests/postgres/connectedManagedRetained.test.ts)
+uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified PG16 target.
+It compares typed target rows and obligations with the restore packet, checks
+that history-only source rows have no target representation, and exercises
+refusals for unknown and uncarried state. Full managed history stays in the
+operator's source archive. The required `m14ManagedCatchup.test.ts` also runs
+the managed first leg, including interrupted copy and final recapture, through
+that adapter. Run `node tests/postgres/runM14ManagedSourceWitness.mjs sha256:<local-Node24.21.0-image-id>`
+to exercise both suites on fresh owned real managed stacks and then run the
+complete managed-to-portable-to-portable H1/H2 journey once. This opt-in
+runner downloads and verifies the reviewed CLI 2.122.0 archive for Linux x64 or
+macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
+names/statuses and source-image evidence under private scratch. It is outside
+the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
+and an already-local immutable Node 24.21.0 image are required. Neither route
+qualifies hosted managed data. The runner's owned
+stack boundary is the extension point for the separate Storage API, GoTrue and
+authenticated object-read witness.
+
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
 module/contract section so an unrelated README edit does not settle an affected
@@ -379,6 +398,15 @@ refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITEC
 owns the exact boundary; managed history, older-snapshot measurement and hosted
 provider qualification remain separate. The final target is distinct from the
 preliminary copy and remains inactive through the DB/object/access barriers.
+Add `--managed-catch-up` for a stock-PG17 managed-compatibility source first mapped
+into the qualified-admin PG16 source, then carried through the same portable
+leg to an independent PG16 target. The opt-in real-source runner above supplies
+its owned CLI 2.122.0 stack to this same journey.
+The fixture checks typed data and source-archive dispositions; history-only
+rows stay at source and managed Storage must be empty. It does not qualify a
+hosted project, restricted managed source-capture login, adopter writer
+inventory or older-snapshot recovery. Its private `journey` report records
+run-specific counts, refusal and takeover with no RPO/RTO claim.
 Use `--older-snapshot` instead for the bounded local recovery measurement. It
 persists the consistent DB/private-media backup before provider acceptance,
 waits approximately 60 real seconds, restores those saved bytes after induced
@@ -2899,6 +2927,12 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-29, M14 connected catch-up: fixture labels for observation authority
   or media visibility → use the existing bootstrap observer and exact domain
   SQL states before composing retirement and access expectations.
+
+- 2026-10-30, M14 managed source transfer: when a full-row history archive
+  cannot support complete erasure, carry finite typed obligations and refuse
+  unrepresented state. Keep source history in the operator's own archive.
+  Reviewers each finding the next refusal with no test → measure unreached
+  refusal lines once and test them together, at the level where the guards live.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the

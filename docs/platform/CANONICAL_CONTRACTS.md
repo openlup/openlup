@@ -777,6 +777,14 @@ identity those suites use as their owner session. Each required `test-full-shard
 restores the same SHA-pinned package cache before its tests; a cold cache downloads
 the pinned files from the PostgreSQL apt archive, and every file is re-verified
 before installation.
+The adapter's selected Storage bucket/object columns support the required
+managed-source capture and refusal suite; their types, defaults and keys are
+copied from the pinned managed schema. They implement no Storage API or
+service access. The opt-in
+[`runM14ManagedSourceWitness.mjs`](../../tests/postgres/runM14ManagedSourceWitness.mjs)
+runs the same assertions and the managed catch-up first-leg suite on fresh
+owned CLI 2.122.0 stacks, then the complete local three-installation journey.
+It requires an already-local immutable Node 24.21.0 image argument for H1/H2.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 

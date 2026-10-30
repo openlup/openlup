@@ -53,6 +53,11 @@ shared by recipe freshness and RDS-scoped installation admission. It is
 installation data under the narrower installer contract below; the names alone
 grant no authority.
 
+The managed source extractor in this directory is also a
+transfer adapter: it reads a bounded source snapshot and emits a finite typed
+canonical projection, rather than serving a normal request or adding a
+provider connection.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
@@ -89,11 +94,23 @@ restore binding. The earlier finite native witness passed with two owned
 the earlier 90-unit attempt stopped during source runtime media confirmation.
 The fixed selected graph preserves PostgreSQL JSON text, including bigint and
 timestamp precision. Capture observes one actual read-only repeatable-read
-transaction and checks all non-system user schemas. Unknown nonempty business
+transaction and checks all non-system user schemas. Capture sets local
+`row_security=off` in that snapshot so a login whose reads would be filtered
+refuses rather than exporting apparently empty tables. The caller supplies a
+login exempt from row security for the selected relations. Unknown nonempty business
 tables, including acquisition-private business data, refuse rather than being
 omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
+
+The fixed profile now includes the existing native catalog, price-list and
+subscription-line rows needed by retained subscription terms, plus recipient
+consent, native send/observation and queued communication-sync rows. Restore
+checks their exact column shapes and pristine target rows under its existing
+lock, inserts catalog parents before line references, resolves a populated
+product primary-SKU reference after its SKU exists, sends before observations,
+and sync state after its outbox work, then includes them in replay and the final
+whole-table census. The profile still refuses other nonempty tables.
 
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
@@ -125,6 +142,55 @@ pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
 
+The [managed source extractor](postgres/connectedManagedRetained.ts) inventories
+one disposable managed PostgreSQL snapshot across non-system schemas, selecting
+Auth identity metadata without credentials. A capture login that row security
+would filter refuses. Its finite typed projection maps
+eligible business obligations into the existing connected restore packet.
+Full managed audit and business history remains in the operator's source
+backup or snapshot, under the operator's own access, retention and erasure
+controls. The existing `retained-history` disposition records history with no
+target obligation; no private row-history object or managed history manifest
+is produced. Reconciled provider settlement rows and completed source
+idempotency receipts after expiry remain in that archive; the operator waits
+until outstanding idempotency windows expire and quiesces in-flight checkouts,
+then captures. Provider payment identifiers of settled payments are carried
+with the typed payment; provider reference rows of settled or terminal unpaid
+payments and their raw payloads stay in the operator archive. Carried settled
+transitions receive `invoicing_cutover` rows, so restored history opens no new
+document duty, and carried fulfilment work can open one only when its shipment
+later hands off. Issue every owed first invoice before capture, because a carried
+paid order will not open one on the target. A terminal checkout reminder keeps
+only its key on the carried unpaid order; this is the one source key that stays
+active. Carried subscriptions stay at static delivery admission `blocked`.
+Renewals of carried subscriptions stay unsupported until a later subscription
+lifecycle carry, so keep the renewal job off for them. A subscription with more
+than one line refuses. A number on a carried relation that a double cannot hold
+refuses, including one in a column that is not carried; a JSON number's trailing
+zeros are not kept. Free-form JSON (order metadata, event and outbox payloads) is
+copied as the source holds it, including source IDs, so complete any source
+erasure first. A product with allergens set refuses, because the target catalogue
+has no allergen column. Product name, description, ingredients and marketing
+content are carried. Other product and SKU content columns, and order tax and net
+breakdowns, stay in the operator's archive. A repeated provider event for a carried
+settled payment is refused as already settled, and one for an archived checkout has
+no target payment to match, so let provider windows close before capture. Carried
+pending work waits until the target composition has its handler. Restore refuses a
+packet over 10,000 rows or 64 MiB, counting the target's own factory rows. The
+capture's census counts rows per relation, not per row class. The capture is
+qualified only for a source on the pinned managed baseline: a missing carried
+relation or a removed column refuses, but an added or retyped column is not
+detected, so requalify the transfer after any later source migration.
+Any managed invoice row refuses, including issued invoices, so a source with invoice
+rows cannot transfer yet. A starter-pack marker, a synthetic test subscription, a
+quote line that disagrees with its price agreement and an order item with no SKU also
+refuse. Other settlement or idempotency
+states refuse. Managed Storage objects are not yet transferred;
+nonempty managed Storage refuses pending a typed object projection. Unknown
+nonempty relations and source state that the typed path cannot carry also
+refuse before restore. This local adapter does not prove provider service access
+or complete managed activation.
+
 The [managed identity mapper](postgres/connectedStoreRestore.ts) translates an
 explicitly evidenced issuer/subject binding, customer references, human operator
 membership and the native subset of managed revoke audit, lifecycle rows and
@@ -134,10 +200,10 @@ references through the frozen OIDC derivation, and refuses conflicting audit
 fields, missing bindings, machine actors, erased rows without receipts,
 populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
-snapshot and completeness; the mapper does not collect managed auth subjects or
-certify issuer control. Full managed audit rows and source-keyed acquisition
-history remain with item 8, outside the fixed selected graph. The task decision
-and remaining proof boundary are in the
+snapshot and completeness; the mapper does not certify issuer control. Full
+managed audit rows and source-keyed acquisition history remain in the
+operator-controlled source archive, outside active target-key lookup tables.
+The task decision and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 
 The [filesystem census](filesystem/orderReviewMediaTransferInventory.ts) and
