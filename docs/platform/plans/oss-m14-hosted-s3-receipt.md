@@ -1,6 +1,6 @@
 # M14 hosted S3 recipe receipt
 
-Status: development-preview implementation and hosted functional proof complete; cycle 2 control repair awaits maintainer read, then review, canonical verification and lifecycle observation. No delivery-qualified PASS is claimed.
+Status: development-preview implementation and hosted functional proof complete; accepted cycle 2 control repair awaits final automatic review, canonical verification and lifecycle observation. No delivery-qualified PASS is claimed.
 
 ## Outcome and authority
 
@@ -61,6 +61,8 @@ Native cycle 2 on signed integrated head `5728d89c5386fd3765f048c434af28474de8c1
 
 The staged cycle 2 repair passed publication policy/documentation impact (2 obligations, 0 unanswered) and structural scan. Through the shared Mac heavy gate, strict all-five-project typecheck, lint (0 errors, 33 existing warnings), and the two focused regressions (2 passed, 46 intentionally skipped) passed. The redacted staged-tree secret scan found no leaks before its private WIP snapshot. Canonical verification has not been repeated for this repair.
 
-Remaining: maintainer read of the cycle 2 repair, DCO, two new fresh FULL reviewers, full canonical Mac verification, neutral draft PR and receipt-readiness. Cycle 1 closed the original material card; cycle 2 cards remain open. No PR or queue entry exists. The S1 freeze lifted at 2026-10-30T09:07Z; hosted landing order is 10I, then 10O. After elapsed observation, direct old-version absence and whole-prefix cleanup must pass before any lifecycle PASS claim. The parcel is idle between the stated observation times; no lifecycle daemon is running. Resource teardown remains owner-held.
+CD-M14-62 accepted the cycle 2 control repair. The coordinator recomputed equal identities: tree `1f224de4e07454785b80245645949c35fe1330db` and SHA-256 `96337de3aab86b8facaddb631da7cf128547907fe6250f3c33485a85074e3e35` for `git diff --binary cdf02c55 1f224de4`. Signed commit `319e8a89c295df85b6c9a6eac6299d78a5eeea45` has exactly that tree. This note records computed evidence and changes no control.
+
+Remaining: two new fresh FULL reviewers in the last automatic cycle, full canonical Mac verification, neutral draft PR and receipt-readiness. Cycle 1 closed the original material card; cycle 2 cards remain open. No PR or queue entry exists. The S1 freeze lifted at 2026-10-30T09:07Z; hosted landing order is 10I, then 10O. After elapsed observation, direct old-version absence and whole-prefix cleanup must pass before any lifecycle PASS claim. The parcel is idle between the stated observation times; no lifecycle daemon is running. Resource teardown remains owner-held.
 
 Self-retro: early seeding removed implementation time from the lifecycle wait. Mac load gating delayed the build about 2 minutes and lint about 3 minutes before proof moved to the permitted worker. The worker's direct test-wrapper launch initially lacked its local binary PATH and failed before tests; adding the worktree binary directory resolved it without a source repair. Existing npm test entrypoints supply that PATH. Along with the empty-body CLI correction above, these were two setup interventions; neither reset lifecycle evidence or spent a native review cycle. The refreshed shared-gate rule required repeat checks and about 8.5 minutes of admission waits; no further process change is justified by this parcel.
