@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertQualifiedPostgresSelection, qualifiedPostgresStartupOptions } from "./qualifiedInstall.js";
+import { assertQualifiedAdminPostgresSelection, assertQualifiedPostgresSelection, qualifiedPostgresStartupOptions,
+  type QualifiedAdminPostgresInstallation } from "./qualifiedInstall.js";
 
 const selection = {
   generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "migration_login",
@@ -7,6 +8,16 @@ const selection = {
 } as const;
 
 describe("qualified PostgreSQL role input transport", () => {
+  it("admits only the explicit RDS serial pair and preserves other extra-field refusals", () => {
+    const admin = { ...selection, generation: "qualified-admin" } as const;
+    expect(() => assertQualifiedAdminPostgresSelection(admin)).not.toThrow();
+    expect(() => assertQualifiedAdminPostgresSelection({ ...admin, target: "rds", layout: "serial-cluster" })).not.toThrow();
+    for (const extra of [{ target: "neon", layout: "serial-cluster" }, { target: "rds" },
+      { layout: "serial-cluster" }, { target: "rds", layout: "parallel" }, { target: undefined, layout: undefined }]) {
+      expect(() => assertQualifiedAdminPostgresSelection({ ...admin, ...extra } as QualifiedAdminPostgresInstallation))
+        .toThrow("invalid_selection_keys");
+    }
+  });
   it("transports only the fixed enum and validated identifiers without credentials or arbitrary options", () => {
     expect(qualifiedPostgresStartupOptions(selection)).toBe("-c openlup.qualified.runtime_login=runtime_login -c openlup.qualified.role_mode=installer-managed -c openlup.qualified.restore_login=restore_login");
     expect(qualifiedPostgresStartupOptions({ ...selection, roleMode: "operator-provisioned", migrationLogin: "cluster_root" })).toContain("role_mode=operator-provisioned");

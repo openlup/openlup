@@ -10,12 +10,15 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOpti
   type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { runReleasedSchemaUpgradeProof } from "./m14ReleasedSchemaUpgrade.proof.js";
 
 const lockName = "openlup:public-platform-migrations:v1";
 const hash = (s: string): string => createHash("sha256").update(s).digest("hex");
 const identifier = (name: string): string => { assert.match(name, /^[a-z_][a-z0-9_]*$/u); return `"${name}"`; };
 
-export async function runQualifiedAdminCompositionProof(input: { roleMode: "installer-managed" | "operator-provisioned"; inventory: string; database?: PoolConfig }) {
+export async function runQualifiedAdminCompositionProof(input: { roleMode: "installer-managed" | "operator-provisioned"; inventory: string; database?: PoolConfig;
+ trustedControlPlane?: { roleNames: readonly string[] }; target?: "rds"; layout?: "serial-cluster";
+ rolePrefix?: string; schemaProof?: { previousApplicationPath: string } }) {
  const pools: Pool[] = [];
  let container;
  try {
@@ -28,7 +31,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const loginUrl = (name: string): string => { const value = new URL(container!.connectionString); value.username = name;
     value.password = name === bootstrapLogin ? new URL(container!.connectionString).password : password; return value.toString(); };
   const bootstrap = pool(container.connectionString);
-  const prefix = input.roleMode === "installer-managed" ? "qb_proof_managed" : "qb_proof_operator";
+  const prefix = input.rolePrefix ?? (input.roleMode === "installer-managed" ? "qb_proof_managed" : "qb_proof_operator");
   const m = `${prefix}_m`, r = `${prefix}_r`, s = `${prefix}_s`, o = `${prefix}_o`;
   await bootstrap.query(`CREATE ROLE ${identifier(m)} LOGIN NOINHERIT ${input.roleMode === "installer-managed" ? "CREATEROLE" : "NOCREATEROLE"} NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
   await bootstrap.query(`ALTER DATABASE ${identifier(databaseName)} OWNER TO ${identifier(m)}`);
@@ -47,6 +50,8 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const selection: QualifiedAdminPostgresInstallation = input.roleMode === "installer-managed"
     ? { generation: "qualified-admin", roleMode: input.roleMode, migrationLogin: m, bootstrapLogin, runtimeLogin: r, restoreLogin: s }
     : { generation: "qualified-admin", roleMode: input.roleMode, migrationLogin: m, bootstrapLogin, runtimeLogin: r, restoreLogin: s, operatorLogin: o };
+  if (input.trustedControlPlane) selection.trustedControlPlane = input.trustedControlPlane;
+  if (input.target !== undefined) { selection.target = input.target; selection.layout = input.layout; }
   const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest,
     "qualified-admin", { roleMode: input.roleMode });
   assert.equal(manifest.objectInventorySha256, input.inventory);
@@ -59,6 +64,9 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const makeRunner = (factory: () => Pool = () => migrationPool) => createPostgresMigrationRunner({ connectionString: loginUrl(m) },
     { installation: selection, poolFactory: async () => factory() });
   const runner = makeRunner();
+  if (input.schemaProof) return await runReleasedSchemaUpgradeProof({ database: { ...input.database,
+    connectionString: loginUrl(m), options: qualifiedAdminPostgresStartupOptions(selection) }, installation: selection,
+    previousApplicationPath: input.schemaProof.previousApplicationPath, requirePreviousApplication: true, rolePrefix: prefix });
   const before = await runner.status();
   assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
   assert.deepEqual((await migrationPool.query("SELECT current_user,session_user")).rows, [{ current_user: m, session_user: m }]);
