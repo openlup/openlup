@@ -1,7 +1,7 @@
 -- Supabase managed-environment test adapter for the stock PostgreSQL pgTAP lane.
 --
 -- TEST INFRASTRUCTURE ONLY. It is never applied to a real managed project and
--- no runtime, installer or migration chain applies it. scripts/public-ci-pgtap-postgres.mjs
+-- no runtime, installer or migration chain applies it. scripts/public-ci-pgtap.mjs
 -- runs it as the neutral bootstrap superuser on a disposable stock PostgreSQL 17
 -- server, before the shared prerequisites and the managed baseline replay.
 -- tests/helpers/managedCompatPostgres.ts applies it the same way for the

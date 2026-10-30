@@ -21,42 +21,5 @@
       "digest": "sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706",
       "sources": ["ghcr.io/supabase/postgres:17.11.0.004", "docker.io/supabase/postgres", "public.ecr.aws/supabase/postgres"]
     }
-  ],
-  "cliImages": [
-    {
-      "name": "cli-postgres",
-      "repository": "supabase/postgres",
-      "tag": "17.11.0.006",
-      "digest": "sha256:c141fd17ac6a76c4323e90b3aee8ff1a23d2e89e547c2b963cfadc309c079cc2",
-      "sources": ["public.ecr.aws/supabase/postgres", "docker.io/supabase/postgres"]
-    },
-    {
-      "name": "cli-gotrue",
-      "repository": "supabase/gotrue",
-      "tag": "v2.197.0",
-      "digest": "sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b",
-      "sources": ["public.ecr.aws/supabase/gotrue", "docker.io/supabase/gotrue"]
-    },
-    {
-      "name": "cli-realtime",
-      "repository": "supabase/realtime",
-      "tag": "v2.147.1",
-      "digest": "sha256:b7b0ef84b69d80b9b9c2280c9e9ae0a901175d3035b6b0c3ae22fa6c48bfb272",
-      "sources": ["public.ecr.aws/supabase/realtime", "docker.io/supabase/realtime"]
-    },
-    {
-      "name": "cli-storage-api",
-      "repository": "supabase/storage-api",
-      "tag": "v1.84.19",
-      "digest": "sha256:a0420573837ee08c0afdc9cd01f90b4b8027579da99e0b9a159fe912ef756c99",
-      "sources": ["public.ecr.aws/supabase/storage-api", "docker.io/supabase/storage-api"]
-    },
-    {
-      "name": "cli-pg-prove",
-      "repository": "supabase/pg_prove",
-      "tag": "3.36",
-      "digest": "sha256:eda7c5e68719e9c8287e78c017118407b48df904a51c935f5ab6098b8c0bc6bc",
-      "sources": ["public.ecr.aws/supabase/pg_prove", "docker.io/supabase/pg_prove"]
-    }
   ]
 }

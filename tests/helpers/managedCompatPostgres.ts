@@ -2,7 +2,7 @@
 // for the managed-rail suites that previously booted the supabase/postgres image.
 //
 // It reuses the stock pgTAP lane's supply and server settings
-// (scripts/public-ci-pgtap-postgres.mjs): the digest-pinned install-proof
+// (scripts/public-ci-pgtap.mjs): the digest-pinned install-proof
 // `postgres:17` image, the checksum-pinned pg_cron/pgTAP/pg_prove packages from
 // config/ci-postgres-packages.json, the pg_cron preload, the managed clock and
 // float output and the ICU en-US locale. The adapter
@@ -23,7 +23,7 @@ import { promisify } from "node:util";
 import { Client } from "pg";
 import packagePins from "../../config/ci-postgres-packages.json" with { type: "json" };
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
-import { ensurePackages, INITDB_ARGS, selectPackageFiles, SERVER_FLAGS } from "../../scripts/public-ci-pgtap-postgres.mjs";
+import { ensurePackages, INITDB_ARGS, selectPackageFiles, SERVER_FLAGS } from "../../scripts/public-ci-pgtap.mjs";
 import { runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer, type PostgresContainerSpec } from "./postgresContainer.js";
 
 const exec = promisify(execFile);

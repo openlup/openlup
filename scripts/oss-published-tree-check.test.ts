@@ -88,9 +88,9 @@ describe("CI image mirror workflow controls", () => {
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, scripts/install-supabase-cli-ci.sh, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]`);
-    expect(permissionBlocks(source)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
-    expect([...(source.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z-]+):$/gmu)].map((match) => match[1])).toEqual(["plan", "mirror"]);
+    paths: [config/ci-images.json, scripts/ci-image-mirror.mjs, .github/workflows/mirror-ci-images.yml]`);
+    expect(permissionBlocks(source)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
+    expect([...(source.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z-]+):$/gmu)].map((match) => match[1])).toEqual(["mirror"]);
     // Inspect every run form, including a step beginning with `- run:` and folded blocks.
     let runIndent: number | undefined;
     for (const line of source.split("\n")) {
@@ -106,33 +106,24 @@ describe("CI image mirror workflow controls", () => {
         if (/^[|>][-+]?$/u.test(run[2])) runIndent = run[1].length;
       }
     }
-    for (const name of ["plan", "mirror"]) {
-      const job = workflowJob(name, source);
-      expect(job).toContain("    if: github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main'\n");
-      expect(job).toContain('with: {ref: "${{ github.sha }}", persist-credentials: false}');
-      expect(job).toContain("with: {node-version: 24.21.0, package-manager-cache: false}");
-      const actions = [...job.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]]);
-      expect(actions).toEqual(firstPartyActions);
-    }
-    const plan = workflowJob("plan", source), writer = workflowJob("mirror", source);
-    expect(plan).toContain('outputs: {images: "${{ steps.plan.outputs.images }}"}');
-    expect(plan).toContain('run: node scripts/ci-image-mirror.mjs pin >> "$GITHUB_OUTPUT"');
-    expect(plan).toContain('env: {SUPABASE_CLI_VERSION: "${{ steps.pin.outputs.version }}"}');
-    expect(plan).toContain('run: bash scripts/install-supabase-cli-ci.sh "$SUPABASE_CLI_VERSION"');
-    expect(plan).toContain('images=$(node scripts/ci-image-mirror.mjs plan)');
-    expect(plan).toContain(`printf 'images=%s\\n' "$images" >> "$GITHUB_OUTPUT"`);
-    expect(plan).not.toMatch(/GHCR_TOKEN|github\.token/u);
-    expect(writer).toContain("    needs: plan\n");
-    expect(writer).toContain('env: {PLAN_IMAGES: "${{ needs.plan.outputs.images }}", GHCR_TOKEN: "${{ github.token }}", GHCR_ACTOR: "${{ github.actor }}"}');
+    const writer = workflowJob("mirror", source);
+    expect(writer).toContain("    if: github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main'\n");
+    expect(writer).toContain('with: {ref: "${{ github.sha }}", persist-credentials: false}');
+    expect(writer).toContain("with: {node-version: 24.21.0, package-manager-cache: false}");
+    const actions = [...writer.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]]);
+    expect(actions).toEqual(firstPartyActions);
+    // The writer reads only the committed owned inventory; no derived plan or CLI.
+    expect(writer).not.toMatch(/^ {4}needs:/mu);
+    expect(writer).toContain('env: {GHCR_TOKEN: "${{ github.token }}", GHCR_ACTOR: "${{ github.actor }}"}');
     expect(workflowCommands(writer)).toEqual(["node scripts/ci-image-mirror.mjs mirror"]);
-    expect(writer).not.toMatch(/setup-cli|npm |supabase /u);
+    expect(writer).not.toMatch(/setup-cli|install-supabase|npm |supabase |PLAN_IMAGES/u);
     expect((source.match(/GHCR_TOKEN:/gu) ?? [])).toHaveLength(1);
     expect(source).not.toMatch(/secrets\.|upload-artifact|actions\/cache|curl|password=/u);
   };
 
-  it("isolates CLI planning from the minimal writer with exact triggers, permissions and guards", () => assertControls(mirror));
+  it("mirrors only the committed owned inventory from one minimal writer with exact triggers, permissions and guards", () => assertControls(mirror));
 
-  it("rejects extra triggers/scopes, untrusted checkout, actions and shell interpolation", () => {
+  it("rejects extra triggers/scopes, untrusted checkout, actions, derived plans and shell interpolation", () => {
     for (const [from, to] of [
       ["  workflow_dispatch:\n", '  workflow_dispatch:\n  schedule:\n    - cron: "17 4 * * 1"\n'],
       ["  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request:\n"],
@@ -140,18 +131,16 @@ describe("CI image mirror workflow controls", () => {
       ["permissions: {contents: read}", "permissions: {contents: read, packages: write}"],
       ["packages: write}", "packages: write, actions: write}"],
       ['ref: "${{ github.sha }}"', 'ref: "${{ github.event.pull_request.head.sha }}"'],
-      ["needs: plan", "needs: other"],
-      ["  mirror:\n", "      - run: echo '${{ needs.plan.outputs.images }}'\n  mirror:\n"],
-      ["  mirror:\n", "      - run: >\n          echo '${{ needs.plan.outputs.images }}'\n  mirror:\n"],
+      ["    runs-on: ubuntu-24.04\n", "    needs: plan\n    runs-on: ubuntu-24.04\n"],
+      ["jobs:\n", "jobs:\n  plan:\n    runs-on: ubuntu-24.04\n    permissions: {contents: read}\n    steps:\n      - run: bash scripts/install-supabase-cli-ci.sh 2.122.0\n"],
+      ['{GHCR_TOKEN:', '{PLAN_IMAGES: "${{ needs.plan.outputs.images }}", GHCR_TOKEN:'],
       ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo done"],
-      ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo '${{ needs.plan.outputs.images }}'"],
-      ["run: node scripts/ci-image-mirror.mjs mirror", "run: |\n          echo '${{ needs.plan.outputs.images }}'\n"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo '${{ github.event.head_commit.message }}'"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: |\n          echo '${{ github.event.head_commit.message }}'\n"],
       ["run: node scripts/ci-image-mirror.mjs mirror", "run: node scripts/ci-image-mirror.mjs mirror\n      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359"],
-    ]) expect(() => assertControls(mirror.replace(from, to))).toThrow();
-    for (const name of ["plan", "mirror"]) {
-      const job = workflowJob(name, mirror);
-      expect(() => assertControls(mirror.replace(job, job.replace("github.ref == 'refs/heads/main'", "true")))).toThrow();
-    }
+    ]) expect(() => assertControls(mirror.replace(from, to)), to).toThrow();
+    const job = workflowJob("mirror", mirror);
+    expect(() => assertControls(mirror.replace(job, job.replace("github.ref == 'refs/heads/main'", "true")))).toThrow();
   });
 
   const workflows = () => readdirSync(join(ROOT, ".github/workflows")).filter((name) => /\.ya?ml$/u.test(name))
@@ -292,17 +281,16 @@ describe("complete public CI", () => {
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
     expect(config).toContain("src/**/*.{test,spec}.ts");
   });
-  it("installs the locked workspace before invoking the pgTAP command", () => {
+  it("runs the pgTAP command on Node 24 without a workspace install or the Supabase CLI", () => {
     const job = workflowJob("pgtap");
-    expect(job).toContain("npm ci --prefer-offline --no-audit --fund=false");
-    expect(job.indexOf("npm ci ")).toBeLessThan(job.indexOf("node scripts/public-ci-pgtap.mjs"));
+    expect(job).not.toMatch(/npm ci|install-supabase|setup-cli|supabase /u);
     expect(job).toContain("node-version: 24.21.0");
   });
   it("limits registry authentication to non-reused image-pull jobs with read permissions", () => {
     expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
-    expect(workflow.match(/packages: read/gu)).toHaveLength(3);
-    expect(workflow.match(/docker login/gu)).toHaveLength(3);
-    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["pgtap-postgres", "node scripts/public-ci-pgtap-postgres.mjs"]]) {
+    expect(workflow.match(/packages: read/gu)).toHaveLength(2);
+    expect(workflow.match(/docker login/gu)).toHaveLength(2);
+    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"]]) {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
@@ -313,11 +301,8 @@ describe("complete public CI", () => {
       expect(job.indexOf("docker login")).toBeLessThan(job.indexOf(`run: ${command}`));
     }
   });
-  it("uses the pinned local CLI and checks neutrality against the event base", () => {
-    expect(workflow).not.toContain("supabase/setup-cli");
-    const installer = workflowJob("pgtap").split("      - name: Install verified native Supabase CLI\n")[1]?.split(/(?=^ {6}- )/mu)[0];
-    expect(installer).toContain("if: steps.reused.outputs.reuse != 'true'");
-    expect(installer).toContain("run: bash scripts/install-supabase-cli-ci.sh 2.122.0");
+  it("installs no Supabase CLI and checks neutrality against the event base", () => {
+    expect(workflow).not.toMatch(/supabase\/setup-cli|install-supabase-cli|supabase start|supabase test/u);
     expect(workflow).toContain("run: node scripts/public-ci-pgtap.mjs");
     expect(workflow).toContain("github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before");
     expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
@@ -368,7 +353,7 @@ describe("complete public CI", () => {
     }
   });
   it("runs package proof, root shards and database diagnostics independently", () => {
-    for (const name of ["install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const name of ["install-proof", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
     for (const name of ["install-proof", "test-full-shard"]) {
       const job = workflowJob(name);
       expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
@@ -394,9 +379,8 @@ describe("complete public CI", () => {
 `);
     expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "bash scripts/install-supabase-cli-ci.sh 2.122.0", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
-    // The non-required stock-PostgreSQL shadow needs no CLI and no npm dependencies.
-    expect(workflowCommands(workflowJob("pgtap-postgres"))).toEqual(["node scripts/public-ci-reuse.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap-postgres.mjs"]);
+    // Stock PostgreSQL with the managed-compat adapter needs no CLI and no npm dependencies.
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
@@ -509,7 +493,7 @@ describe("what the workflow may not contain", () => {
 
 describe("the workflow stays in step with what it claims to run", () => {
   it("allows only expensive main-push work to reuse exact-commit group proof", () => {
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) {
+    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
       const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
@@ -532,12 +516,12 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(selfCheck).toContain("run: npm run oss:published-tree -- --policy");
     expect(selfCheck).toContain("run: npm run oss:published-tree -- --inventory");
   });
-  it("exposes six required contexts, two raw diagnostics and optional native admission with trusted event fences", () => {
+  it("exposes six required contexts, one raw diagnostic and optional native admission with trusted event fences", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "pgtap-postgres", "native-review"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
-    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(8);
+    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(7);
     for (const job of jobs.filter((name) => !["native-review", "test", "test-full-shard"].includes(name))) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
@@ -669,7 +653,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24.21.0");
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) {
+    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');
@@ -989,330 +973,6 @@ describe("committed managed migration inventory", () => {
   it("refuses malformed committed identities", () => {
     fixture({ [baseline]: "SELECT 1;", "invalid.sql": "SELECT 2;" }, directory => {
       expect(() => readManagedMigrationChain(directory)).toThrow(/invalid committed managed migration identity/);
-    });
-  });
-});
-
-describe("owned pgTAP command lifecycle", () => {
-  type Observation = { stage: string; args: string[]; input: string; registry?: string; tests?: Record<string, string>; config?: string; waitMs?: number; local?: string[] };
-  const cliDigest = `sha256:${"a".repeat(64)}`;
-  const cliImageTags = ["postgres:1.2.3", "gotrue:1.2.3", "realtime:1.2.3", "storage-api:1.2.3", "pg_prove:3.36"];
-  // Execute the shipped runner, with every external command replaced on PATH.
-  // These subprocesses cannot find the host's Docker, Supabase or Git binaries.
-  function observe(scenario: string, check: (result: ReturnType<typeof spawnSync>, calls: Observation[], directory: string) => void) {
-    const scratch = join(ROOT, ".context/scratch");
-    mkdirSync(scratch, { recursive: true });
-    const directory = mkdtempSync(join(scratch, "pgtap-lifecycle-test-"));
-    const baseline = "00000000000000_platform_schema_baseline.sql", forward = "20260927090000_forward.sql";
-    const migrations = { [baseline]: "SELECT 'baseline replay';\n", [forward]: "SELECT 'ordered forward';\n" };
-    const inventory = Object.entries(migrations).map(([name, bytes]) => `100644 blob ${createHash("sha1").update(`blob ${Buffer.byteLength(bytes)}\0`).update(bytes).digest("hex")}\tsupabase/migrations/${name}\0`).join("");
-    try {
-      writeFileSync(join(directory, "package.json"), '{"type":"commonjs"}\n');
-      for (const folder of ["scripts/public-reference", "config", "supabase/migrations", "supabase/tests", "bin"]) mkdirSync(join(directory, folder), { recursive: true });
-      for (const file of ["public-ci-pgtap.mjs", "ci-image-mirror.mjs", "ci-image-pull.mjs", "owned-stack-cleanup.mjs"]) writeFileSync(join(directory, "scripts", file), readFileSync(join(ROOT, "scripts", file)));
-      writeFileSync(join(directory, "scripts/public-reference/subscription-prereqs.sql"), "SELECT 'prerequisites';\n");
-      writeFileSync(join(directory, "config/public-reference-subscription-supabase.toml"), readFileSync(join(ROOT, "config/public-reference-subscription-supabase.toml")));
-      const imageConfig = JSON.parse(readFileSync(join(ROOT, "config/ci-images.json"), "utf8"));
-      imageConfig.cliImages = imageConfig.cliImages.map((pin: { repository: string; tag: string; digest: string }) => ({ ...pin, tag: pin.repository.endsWith("/pg_prove") ? "3.36" : "1.2.3", digest: cliDigest }));
-      writeFileSync(join(directory, "config/ci-images.json"), JSON.stringify(imageConfig));
-      for (const [name, bytes] of Object.entries(migrations)) writeFileSync(join(directory, "supabase/migrations", name), bytes);
-      if (scenario === "inventory") writeFileSync(join(directory, "supabase/migrations", forward), "SELECT 'uncommitted';\n");
-      writeFileSync(join(directory, "supabase/tests/first_test.sql"), "BEGIN; SELECT 'first assertion'; ROLLBACK;\n");
-      writeFileSync(join(directory, "supabase/tests/second_test.sql"), "BEGIN; SELECT 'second assertion'; ROLLBACK;\n");
-      const standIn = `#!${process.execPath}
-const fs = require('node:fs');
-const path = require('node:path');
-const command = path.basename(process.argv[1]);
-const args = process.argv.slice(2);
-const environment = Reflect.get(process, 'env');
-const scenario = environment.PGTAP_STAND_IN_SCENARIO;
-const input = fs.readFileSync(0, 'utf8');
-// CLI embedded image metadata used by the shared mirror derivation:
-// public.ecr.aws supabase/pg_prove:3.36
-const stage = command === 'which' ? 'which' : command === 'git' ? 'inventory' : command === 'supabase' ? (args[0] === '--version' ? 'version' : args[0]) : args[0] === 'pull' ? 'pull' : args[0] === 'image' ? args[1] : args[0] === 'restart' ? 'restart' : args.includes('-1') ? 'replay' : args.includes('-i') ? 'formatter' : 'readback';
-const statePath = path.join(path.dirname(environment.PGTAP_STAND_IN_LOG), 'local-images.json');
-const local = new Set(fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : []);
-const row = { stage, args, input, registry: environment.SUPABASE_INTERNAL_IMAGE_REGISTRY };
-if (stage === 'start' || stage === 'test') row.local = [...local];
-if (stage === 'start' || stage === 'test') {
-  const directory = args[args.indexOf('--workdir') + 1];
-  row.config = fs.readFileSync(path.join(directory, 'supabase/config.toml'), 'utf8');
-  row.tests = Object.fromEntries(fs.readdirSync(path.join(directory, 'supabase/tests')).map(name => [name, fs.readFileSync(path.join(directory, 'supabase/tests', name), 'utf8')]));
-}
-fs.appendFileSync(environment.PGTAP_STAND_IN_LOG, JSON.stringify(row) + '\\n');
-if (stage === 'inventory') {
-  if (JSON.stringify(args.slice(0, 3)) !== JSON.stringify(['--no-replace-objects', '-C', process.cwd()]) || args[3] !== 'ls-tree') process.exit(90);
-  process.stdout.write(JSON.parse(environment.PGTAP_STAND_IN_INVENTORY));
-} else if (stage === 'which') process.stdout.write(path.join(path.dirname(process.argv[1]), 'supabase'));
-else if (stage === 'services') process.stdout.write(JSON.stringify(['postgres', 'gotrue', 'realtime', 'storage-api'].map(name => ({ name: 'supabase/' + name, local: '1.2.3' }))));
-else if (stage === 'inspect') {
-  if (args.length === 3 && scenario === 'inspect-error') { process.stderr.write('permission denied inspecting local images'); process.exit(1); }
-  if (args.length === 3 && ((scenario === 'missing-local' && args[2].includes('/realtime:')) || (scenario === 'missing-two' && ['/realtime:', '/pg_prove:'].some(name => args[2].includes(name))))) { process.stderr.write('No such image: ' + args[2]); process.exit(1); }
-  if (!local.has(args[2])) { process.stderr.write('No such image'); process.exit(1); }
-  process.stdout.write(JSON.stringify([args[2]]));
-}
-else if (stage === 'pull' && ['ghcr-outage', 'dockerhub-fallback'].includes(scenario) && args[1].startsWith('ghcr.io/')) { process.stderr.write('toomanyrequests: 429'); process.exit(1); }
-else if (stage === 'pull' && scenario === 'dockerhub-fallback' && args[1].startsWith('public.ecr.aws/')) { process.stderr.write('503 service unavailable'); process.exit(1); }
-else if (stage === 'pull' && scenario === 'missing-init' && args[1].startsWith('ghcr.io/openlup/supabase/realtime:')) { process.stderr.write('manifest unknown'); process.exit(1); }
-else if (stage === 'pull' && scenario === 'empty-mirror' && args[1].startsWith('ghcr.io/openlup/')) { process.stderr.write('unauthorized: not found'); process.exit(1); }
-else if (stage === 'version') process.stdout.write(scenario === 'version' ? '2.98.1\\n' : '2.122.0\\n');
-else if (stage === 'readback') process.stdout.write(scenario === 'readback' ? 'f\\n' : 't\\n');
-else if (stage === 'test') {
-  process.stdout.write('raw pgTAP stdout\\n');
-  process.stderr.write('raw pgTAP stderr\\n');
-  if (scenario === 'signal') process.kill(process.pid, 'SIGTERM');
-}
-if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)) || (scenario === 'cleanup' && stage === 'stop')) {
-  process.stderr.write('stand-in ' + stage + ' failure\\n');
-  process.exit(stage === 'test' ? 37 : 42);
-}
-if (stage === 'pull') local.add(args[1]);
-if (stage === 'tag') {
-  if (!local.has(args[2])) process.exit(91);
-  local.add(args[3]);
-}
-if (stage === 'pull' || stage === 'tag') fs.writeFileSync(statePath, JSON.stringify([...local]));
-if (stage === 'start' || stage === 'test') {
-  for (const image of ['postgres:1.2.3', 'gotrue:1.2.3', 'realtime:1.2.3', 'storage-api:1.2.3', 'pg_prove:3.36']) {
-    const registry = environment.SUPABASE_INTERNAL_IMAGE_REGISTRY;
-    const reference = (registry === 'docker.io' ? '' : registry + '/') + 'supabase/' + image;
-    if (!local.has(reference)) { process.stderr.write('CLI would pull missing image: ' + reference); process.exit(92); }
-  }
-}
-`;
-      for (const command of ["git", "supabase", "docker", "which"]) {
-        const path = join(directory, "bin", command);
-        writeFileSync(path, standIn);
-        chmodSync(path, 0o755);
-      }
-      const log = join(directory, "calls.jsonl");
-      const clockArgs: string[] = [];
-      if (scenario.startsWith("socket-error-")) {
-        // Inject only this fixture's socket errno; run the shipped port selector unchanged.
-        const socket = join(directory, "socket-error.mjs");
-        writeFileSync(socket, `import net from 'node:net';
-import { EventEmitter } from 'node:events';
-import { appendFileSync } from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-net.createServer = () => {
-  const server = new EventEmitter();
-  server.listen = (port, host) => {
-    appendFileSync(${JSON.stringify(log)}, JSON.stringify({ stage: 'bind', args: [host, String(port)], input: '' }) + '\\n');
-    queueMicrotask(() => server.emit('error', Object.assign(new Error('synthetic loopback bind failure'), { code: ${JSON.stringify(scenario.slice("socket-error-".length))} })));
-    return server;
-  };
-  return server;
-};
-syncBuiltinESMExports();
-`);
-        clockArgs.push("--import", socket);
-      }
-      if (["ghcr-outage", "dockerhub-fallback"].includes(scenario)) {
-        // Replace only the shared pull clock before the shipped runner loads.
-        const clock = join(directory, "retry-clock.mjs");
-        writeFileSync(clock, `import { appendFileSync } from 'node:fs';
-import { imageIo } from './scripts/ci-image-pull.mjs';
-let elapsed = 0;
-imageIo.now = () => elapsed;
-imageIo.sleep = async (ms) => {
-  elapsed += ms;
-  appendFileSync(new URL('./calls.jsonl', import.meta.url), JSON.stringify({ stage: 'sleep', args: [], input: '', waitMs: ms }) + '\\n');
-};
-`);
-        clockArgs.push("--import", clock);
-      }
-      const result = spawnSync(process.execPath, [...clockArgs, join(directory, "scripts/public-ci-pgtap.mjs")], {
-        cwd: directory, encoding: "utf8", timeout: 25_000, maxBuffer: 1024 * 1024,
-        env: { PATH: join(directory, "bin"), PGTAP_STAND_IN_SCENARIO: scenario, PGTAP_STAND_IN_LOG: log, PGTAP_STAND_IN_INVENTORY: JSON.stringify(inventory) },
-      });
-      expect(result.error).toBeUndefined();
-      expect(result.signal).toBeNull();
-      const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line) as Observation);
-      check(result, calls, directory);
-    } finally { rmSync(directory, { recursive: true, force: true }); }
-  }
-  it.each(["EPERM", "EACCES", "EADDRINUSE"])("reports owned port probe %s without starting the stack", code => {
-    observe(`socket-error-${code}`, (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(calls.some(({ stage }) => ["services", "pull", "start", "test", "stop"].includes(stage))).toBe(false);
-      const probes = calls.filter(({ stage }) => stage === "bind");
-      if (code === "EADDRINUSE") {
-        expect(probes).toHaveLength(50 * 7);
-        expect(result.stderr).toContain("no free port block for the owned managed baseline");
-      } else {
-        expect(probes).toHaveLength(7);
-        expect(result.stderr).toContain(`cannot probe owned managed baseline port 127.0.0.1:${probes[0]!.args[1]}: ${code}`);
-        expect(result.stderr).not.toContain("no free port block");
-      }
-    });
-  });
-  it("replays the ordered chain in one transaction and runs every SQL file unchanged before own cleanup", () => {
-    observe("pass", (result, calls) => {
-      expect(result.status, result.stderr).toBe(0);
-      expect(calls.map(({ stage }) => stage)).toEqual(["inventory", "version", "services", "which", ...cliImageTags.flatMap(() => ["inspect", "inspect", "inspect", "inspect", "pull", "inspect"]), ...cliImageTags.map(() => "tag"), ...cliImageTags.map(() => "inspect"), "start", "formatter", "restart", "readback", "replay", "test", "stop"]);
-      expect(calls.filter(({ stage, args }) => stage === "inspect" && args.length === 3).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `ghcr.io/openlup/supabase/${image}`]));
-      const start = calls.find(({ stage }) => stage === "start")!, replay = calls.find(({ stage }) => stage === "replay")!, tests = calls.find(({ stage }) => stage === "test")!, stop = calls.at(-1)!;
-      expect(start.registry).toBe("ghcr.io/openlup");
-      expect(tests.registry).toBe(start.registry);
-      expect(calls.filter(({ stage }) => stage === "pull").map(({ args }) => args[1])).toEqual(cliImageTags.map(image => `ghcr.io/openlup/supabase/${image}@${cliDigest}`));
-      expect(start.local).toEqual(expect.arrayContaining(cliImageTags.map(image => `ghcr.io/openlup/supabase/${image}`)));
-      expect(start.args).toContain("--exclude");
-      expect(start.config).toMatch(/project_id = "openlup-ci-[a-f0-9]{16}"/u);
-      expect(start.config).not.toContain("{{");
-      const id = /project_id = "([^"]+)"/u.exec(start.config!)![1];
-      for (const call of calls.filter(({ stage }) => ["formatter", "restart", "readback", "replay"].includes(stage))) expect(call.args).toContain(`supabase_db_${id}`);
-      expect(replay.args).toContain("-1");
-      expect(replay.args).toContain("ON_ERROR_STOP=1");
-      expect(replay.input.indexOf("SELECT 'baseline replay'")).toBeLessThan(replay.input.indexOf("SELECT 'ordered forward'"));
-      expect(replay.input).toContain("SET ROLE postgres;");
-      expect(replay.input).toContain("ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role;");
-      expect(replay.input).toContain("WHERE e.extname = 'pgtap' AND d.deptype = 'e'");
-      expect(replay.input).not.toMatch(/GRANT EXECUTE ON ALL FUNCTIONS|GRANT ALL/u);
-      expect(calls.find(({ stage }) => stage === "formatter")!.input).toBe("ALTER SYSTEM SET supautils.hint_roles = '';");
-      expect(calls.find(({ stage }) => stage === "readback")!.args).toContain("SELECT current_setting('supautils.hint_roles') = ''");
-      expect(start.tests).toEqual({
-        "first_test.sql": "BEGIN; SELECT 'first assertion'; ROLLBACK;\n",
-        "second_test.sql": "BEGIN; SELECT 'second assertion'; ROLLBACK;\n",
-      });
-      expect(tests.tests).toEqual({
-        "00000000000000_platform_schema_baseline.sql.inc": "SELECT 'baseline replay';\n",
-        "20260927090000_forward.sql.inc": "SELECT 'ordered forward';\n",
-        "first_test.sql": "BEGIN; SELECT 'first assertion'; ROLLBACK;\n",
-        "second_test.sql": "BEGIN; SELECT 'second assertion'; ROLLBACK;\n",
-      });
-      expect(tests.args).toContain("--db-url");
-      expect(tests.args.at(-1)).toMatch(/^postgresql:\/\/postgres:postgres@127\.0\.0\.1:\d+\/postgres$/u);
-      expect(stop.args).toEqual(["stop", "--workdir", start.args[start.args.indexOf("--workdir") + 1], "--no-backup"]);
-    });
-  });
-  it("pre-pulls before start and sets the successful upstream registry when the mirror is empty", () => {
-    observe("empty-mirror", (result, calls) => {
-      expect(result.status, result.stderr).toBe(0);
-      const start = calls.findIndex(({ stage }) => stage === "start");
-      const pulls = calls.filter(({ stage }) => stage === "pull");
-      expect(pulls.map(({ args }) => args[1])).toEqual(cliImageTags.flatMap(image => [`ghcr.io/openlup/supabase/${image}@${cliDigest}`, `ghcr.io/supabase/${image}@${cliDigest}`]));
-      expect(calls.slice(start).some(({ stage }) => stage === "pull")).toBe(false);
-      for (const call of calls.filter(({ stage }) => ["start", "test", "stop"].includes(stage))) expect(call.registry).toBe("ghcr.io");
-    });
-  });
-  it("falls back for a missing init image and aliases it before any CLI image request", () => {
-    observe("missing-init", (result, calls) => {
-      expect(result.status, result.stderr).toBe(0);
-      const target = "ghcr.io/openlup/supabase/realtime:1.2.3";
-      expect(calls.filter(({ stage }) => stage === "pull").map(({ args }) => args[1])).toEqual([
-        ...cliImageTags.slice(0, 3).map(image => `ghcr.io/openlup/supabase/${image}@${cliDigest}`),
-        `ghcr.io/supabase/realtime:1.2.3@${cliDigest}`,
-        ...cliImageTags.slice(3).map(image => `ghcr.io/openlup/supabase/${image}@${cliDigest}`),
-      ]);
-      const alias = calls.findIndex(({ stage, args }) => stage === "tag" && args[3] === target);
-      const start = calls.findIndex(({ stage }) => stage === "start");
-      expect(calls[alias].args).toEqual(["image", "tag", `ghcr.io/supabase/realtime:1.2.3@${cliDigest}`, target]);
-      expect(alias).toBeLessThan(start);
-      expect(calls.slice(alias + 1, start).filter(({ stage }) => stage === "inspect").map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `ghcr.io/openlup/supabase/${image}`]));
-      expect(calls.slice(start).some(({ stage }) => ["pull", "tag"].includes(stage))).toBe(false);
-      for (const call of calls.filter(({ stage }) => ["start", "test"].includes(stage))) {
-        expect(call.registry).toBe("ghcr.io/openlup");
-        expect(call.local).toEqual(expect.arrayContaining(cliImageTags.map(image => `ghcr.io/openlup/supabase/${image}`)));
-      }
-    });
-  });
-  it("sets ECR on start/test/stop after three 429s from each GHCR source per CLI image", () => {
-    observe("ghcr-outage", (result, calls) => {
-      expect(result.status, result.stderr).toBe(0);
-      expect(calls.filter(({ stage }) => stage === "sleep").map(({ waitMs }) => waitMs)).toEqual(cliImageTags.flatMap(() => [1_000, 2_000, 1_000, 2_000]));
-      expect(calls.filter(({ stage }) => stage === "pull").map(({ args }) => args[1])).toEqual(
-        cliImageTags.flatMap(image => [
-          ...Array(3).fill(`ghcr.io/openlup/supabase/${image}@${cliDigest}`),
-          ...Array(3).fill(`ghcr.io/supabase/${image}@${cliDigest}`),
-          `public.ecr.aws/supabase/${image}@${cliDigest}`,
-        ]),
-      );
-      for (const call of calls.filter(({ stage }) => ["start", "test", "stop"].includes(stage))) expect(call.registry).toBe("public.ecr.aws");
-    });
-  }, 30_000);
-  it("sets Docker Hub on start/test/stop after exhausting GHCR 429s and transient ECR failures", () => {
-    observe("dockerhub-fallback", (result, calls) => {
-      expect(result.status, result.stderr).toBe(0);
-      expect(calls.filter(({ stage }) => stage === "sleep").map(({ waitMs }) => waitMs)).toEqual(cliImageTags.flatMap(() => [1_000, 2_000, 1_000, 2_000, 1_000, 2_000]));
-      const pulls = calls.filter(({ stage }) => stage === "pull");
-      expect(pulls.map(({ args }) => args[1])).toEqual(
-        cliImageTags.flatMap(image => [
-          ...Array(3).fill(`ghcr.io/openlup/supabase/${image}@${cliDigest}`),
-          ...Array(3).fill(`ghcr.io/supabase/${image}@${cliDigest}`),
-          ...Array(3).fill(`public.ecr.aws/supabase/${image}@${cliDigest}`),
-          `docker.io/supabase/${image}@${cliDigest}`,
-        ]),
-      );
-      expect(pulls).toHaveLength(50);
-      const start = calls.findIndex(({ stage }) => stage === "start");
-      expect(calls.slice(start).some(({ stage }) => stage === "pull")).toBe(false);
-      const lifecycle = calls.filter(({ stage }) => ["start", "test", "stop"].includes(stage));
-      expect(lifecycle.map(({ stage }) => stage)).toEqual(["start", "test", "stop"]);
-      for (const call of lifecycle) expect(call.registry).toBe("docker.io");
-      expect(calls.filter(({ stage }) => stage === "tag").map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "tag", `docker.io/supabase/${image}@${cliDigest}`, `supabase/${image}`]));
-      expect(calls.slice(start - 5, start).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `supabase/${image}`]));
-    });
-  }, 30_000);
-  it.each(["missing-local", "missing-two"])("refuses absent exact CLI names before start: %s", scenario => {
-    observe(scenario, (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(calls.some(({ stage }) => ["start", "test", "stop"].includes(stage))).toBe(false);
-      expect(result.stderr).toContain("CLI must never pull; missing local images before supabase start:");
-      expect(result.stderr).toContain("ghcr.io/openlup/supabase/realtime:1.2.3");
-      if (scenario === "missing-two") expect(result.stderr).toContain("ghcr.io/openlup/supabase/pg_prove:3.36");
-      expect(calls.slice(-5).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `ghcr.io/openlup/supabase/${image}`]));
-    });
-  });
-  it("refuses other exact-name inspect errors without treating them as absence", () => {
-    observe("inspect-error", (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain("permission denied inspecting local images");
-      expect(result.stderr).not.toContain("missing local images");
-      expect(calls.some(({ stage }) => ["start", "test", "stop"].includes(stage))).toBe(false);
-    });
-  });
-  it.each(["services", "pull"])("refuses %s failure before starting a stack", scenario => {
-    observe(scenario, (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(calls.some(({ stage }) => ["start", "test", "stop"].includes(stage))).toBe(false);
-    });
-  });
-  it("preserves a raw test failure, both output streams and its log while cleaning up", () => {
-    observe("test", (result, calls, directory) => {
-      expect(result.status).toBe(37);
-      expect(result.stdout).toContain("raw pgTAP stdout");
-      expect(result.stderr).toContain("raw pgTAP stderr");
-      expect(readFileSync(join(directory, ".context/scratch/pgtap/latest.log"), "utf8")).toContain("stand-in test failure");
-      expect(calls.at(-1)!.stage).toBe("stop");
-    });
-  });
-  it.each(["start", "formatter", "restart", "readback", "replay"])("refuses a %s infrastructure failure and still cleans up only its attempted project", scenario => {
-    observe(scenario, (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(calls.some(({ stage }) => stage === "test")).toBe(false);
-      const start = calls.find(({ stage }) => stage === "start")!;
-      expect(calls.at(-1)!.args).toEqual(["stop", "--workdir", start.args[start.args.indexOf("--workdir") + 1], "--no-backup"]);
-      expect(result.stderr).toContain(scenario === "readback" ? "workaround did not take effect" : `stand-in ${scenario} failure`);
-    });
-  });
-  it("refuses cleanup failure even when all assertions passed", () => {
-    observe("cleanup", (result, calls) => {
-      expect(calls.some(({ stage }) => stage === "test")).toBe(true);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain("Owned stack cleanup failed");
-    });
-  });
-  it("treats a signalled test transport as failure and still cleans up", () => {
-    observe("signal", (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(calls.at(-1)!.stage).toBe("stop");
-    });
-  });
-  it.each(["version", "inventory"])("refuses %s before any stack lifecycle call", scenario => {
-    observe(scenario, (result, calls) => {
-      expect(result.status).toBe(1);
-      expect(calls.some(({ stage }) => ["start", "stop", "test"].includes(stage))).toBe(false);
-      expect(result.stderr).toContain(scenario === "version" ? "requires Supabase CLI 2.122.0" : "bytes differ from committed candidate");
     });
   });
 });
