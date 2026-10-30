@@ -1,7 +1,7 @@
 # M14 D32 8D-2 — managed connected catch-up journey
 
 Status: restacked local candidate on the signed managed typed-transfer predecessor
-`5289e6e482c37043dedb1432f89c4b50ca96546c`. The earlier 8D-2 head
+`5b0843e5f3e6543e16f63ce4c96da78fa9ac74fc`. The earlier 8D-2 head
 `3e9486249da98e45b99ab2304ec63d82e5835512` (tree `e879c9e6`) passed
 cycle-1 native review twice, then became inapplicable when the predecessor
 removed full-row sidecar transfer. The predecessor is not yet on main.
@@ -38,8 +38,8 @@ older-snapshot RPO/RTO is included.
 The active supervisor is the single writer in this assigned worktree. The M14
 module grant covers local work, DCO, independent native review, draft PR and
 later queue merge only after all gates and the lead's predecessor-landed notice.
-This restack is an intent change and removes earlier sidecar assertions, so a
-new exact-tree maintainer read precedes DCO. No hosted-resource, credential,
+This restack changed the intent and removed earlier sidecar assertions; the
+exact-tree maintainer acceptance and DCO are recorded below. No hosted-resource, credential,
 settings, deployment, production, release or npm authority is included. The
 sanctioned read-only staging census for all-null settlement links, dangling
 Auth IDs, unbound snapshot fields and service relations remains
@@ -59,7 +59,7 @@ whitespace checks before the new read packet. After acceptance, DCO the exact
 tree, `prepare --new`, obtain two new full reviews, and wait for predecessor
 landing before canonical verification and delivery.
 
-The pending merge has first parent `3e9486249da98e45b99ab2304ec63d82e5835512`
+The accepted option C merge has first parent `3e9486249da98e45b99ab2304ec63d82e5835512`
 (tree `e879c9e6a7cfbd15211cdcbeefd75c34e162fcec`) and second parent
 `5289e6e482c37043dedb1432f89c4b50ca96546c` (tree
 `8c5383fd4b1adaade4002163170bde0385317a51`). Four own-file conflict
@@ -67,9 +67,8 @@ sites were resolved in `CONTRIBUTING.md`, `ARCHITECTURE_AND_EXTENSIONS.md`,
 `RUNTIME_AND_SELF_HOSTING.md` and `runM14EffectHandover.ts`: keep the incoming
 older-snapshot and CLI changes, then replace the superseded managed sidecar
 claims and code with the typed local first leg. `DATA_AND_MIGRATIONS.md`
-merged without a conflict and its stale sidecar prose was corrected. The exact
-uncommitted result tree and patch hash are in the new read packet; no merge DCO
-exists before that read.
+merged without a conflict and its stale sidecar prose was corrected. Its exact
+result tree and own-delta hash were accepted before the merge DCO below.
 
 The old sidecar assertions have typed replacements: source catalog update/add/
 delete is checked in the mapped packet and both targets; changed consent is
@@ -136,3 +135,13 @@ both patch-ids were also equal: `44532ac739a44b8c312ac56b30bad2c6bb536b4f`.
 The payment-link refusal is exercised by this journey, so its focused local
 proof must run again before review; a fixture payment refusal requires a new
 maintainer read before changing the fixture.
+
+The carry is DCO commit `106cc95e2a3e6f50fb60fccc96cc6798253f6d8b`, tree
+`96643318b9dd2dae5a46030845fdfe4d74f9b074`. Current instruction freshness was
+checked against `origin/main` `8ae51d2923bcc13bb4a9a12da646bbeb8edeb684`,
+separately from the stacked review base. Regenerating the platform agent
+context changed only the two source-span references for the unchanged
+additive-forward excerpt (180–202 to 186–208); its text and digest are equal.
+The first shared heavy-gate wait timed out after 3,006 seconds with another
+test command active. This is host waiting, not journey fixture elapsed time;
+the prescribed gate retry precedes the carried-tree focused run.
