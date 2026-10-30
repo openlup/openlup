@@ -766,7 +766,7 @@ architecture, a path that does not match its version or a checksum mismatch
 refuses, and no apt index is read. The packages install only into the disposable
 container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
 is the only file that creates the managed environment for that lane; the runner
-keeps only the replay identity and grants it shares with the CLI lane. It is test
+keeps only the replay identity and grants of the retired CLI lane's replay. It is test
 infrastructure, never a runtime bootstrap or a supported-host claim.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
