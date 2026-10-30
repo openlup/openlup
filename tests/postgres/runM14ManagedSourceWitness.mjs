@@ -1,8 +1,9 @@
 // Opt-in real managed-source proof; required root shards run the adapter suite.
 import { execFile, execFileSync } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { arch, env, platform } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -77,9 +78,78 @@ async function captureRole(port) {
   try {
     const role = (await pool.query("SELECT rolname,rolsuper,rolbypassrls FROM pg_catalog.pg_roles WHERE rolname='postgres'")).rows[0];
     if (!role || role.rolsuper !== false) throw new Error("Real managed witness requires a non-superuser capture role");
+    await pool.query("SET ROLE postgres");
+    await pool.query("SELECT id FROM storage.buckets LIMIT 0");
+    await pool.query("SELECT id FROM storage.objects LIMIT 0");
+    await pool.query("SELECT polrelid,polroles FROM pg_catalog.pg_policy LIMIT 0");
     return role;
   } finally { await pool.end(); }
 }
+
+async function storageServiceLeg({ cli, cliEnv, directory, port, stack }) {
+  const status = JSON.parse(await command(cli.binary, ["status", "--workdir", directory, "-o", "json"], { env: cliEnv }));
+  for (const key of ["API_URL", "ANON_KEY", "SERVICE_ROLE_KEY", "STORAGE_S3_URL", "S3_PROTOCOL_REGION",
+    "S3_PROTOCOL_ACCESS_KEY_ID", "S3_PROTOCOL_ACCESS_KEY_SECRET"])
+    if (!status[key]) throw new Error(`Real managed Storage prerequisite missing: ${key}`);
+  const sdk = createRequire(import.meta.url)("@aws-sdk/client-s3");
+  const source = new sdk.S3Client({ region: status.S3_PROTOCOL_REGION, endpoint: status.STORAGE_S3_URL, forcePathStyle: true,
+    credentials: { accessKeyId: status.S3_PROTOCOL_ACCESS_KEY_ID, secretAccessKey: status.S3_PROTOCOL_ACCESS_KEY_SECRET } });
+  const pool = new Pool({ connectionString: `postgresql://supabase_admin:postgres@127.0.0.1:${port}/postgres`, max: 1 });
+  const inputPath = join(directory, "storage-input.json");
+  try {
+    // The SQL-only refusal fixture has no physical bytes. Its real service
+    // metadata still retires through the Storage API before this leg starts.
+    const storageHeaders = { apikey: status.SERVICE_ROLE_KEY, Authorization: `Bearer ${status.SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json" };
+    const removed = await fetch(`${status.API_URL}/storage/v1/object/retained`, { method: "DELETE", headers: storageHeaders,
+      body: JSON.stringify({ prefixes: ["unowned.txt"] }) });
+    if (!removed.ok) throw new Error(`Real managed refusal-fixture object cleanup failed (${removed.status})`);
+    await removed.arrayBuffer();
+    const bucketRemoved = await fetch(`${status.API_URL}/storage/v1/bucket/retained`, { method: "DELETE", headers: storageHeaders });
+    if (!bucketRemoved.ok) throw new Error(`Real managed refusal-fixture bucket cleanup failed (${bucketRemoved.status})`);
+    await bucketRemoved.arrayBuffer();
+    const email = `${randomUUID()}@example.invalid`, password = `Synthetic-${randomBytes(12).toString("hex")}`;
+    const created = await fetch(`${status.API_URL}/auth/v1/admin/users`, { method: "POST",
+      headers: { apikey: status.SERVICE_ROLE_KEY, Authorization: `Bearer ${status.SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, email_confirm: true }) });
+    if (!created.ok) throw new Error(`Real managed customer creation failed (${created.status})`);
+    const customer = (await created.json()).id, clientId = randomUUID();
+    await pool.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')", [clientId, email, customer]);
+    const bucket = `managed${randomBytes(4).toString("hex")}`;
+    await source.send(new sdk.CreateBucketCommand({ Bucket: bucket }));
+    for (const [key, body] of [["first.txt", "managed original bytes"], ["second.txt", "managed second bytes"]])
+      await source.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key, Body: Buffer.from(body),
+        ContentType: "application/octet-stream", CacheControl: "private, max-age=60", Metadata: { witness: "managed" } }));
+    await pool.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id=$2 AND name='first.txt'", [customer, bucket]);
+    const signedIn = await fetch(`${status.API_URL}/auth/v1/token?grant_type=password`, { method: "POST",
+      headers: { apikey: status.ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+    if (!signedIn.ok) throw new Error(`Real managed customer sign-in failed (${signedIn.status})`);
+    const token = (await signedIn.json()).access_token;
+    if (typeof token !== "string" || !token) throw new Error("Real managed customer session missing");
+    const objectUrl = `${status.API_URL}/storage/v1/object/authenticated/${bucket}/first.txt`;
+    for (const credential of [status.ANON_KEY, token]) {
+      const response = await fetch(objectUrl, { headers: { apikey: status.ANON_KEY, Authorization: `Bearer ${credential}` } });
+      if (![400, 401, 403, 404].includes(response.status)) throw new Error("Real managed source actor denial failed");
+      await response.arrayBuffer();
+    }
+    const operator = await fetch(objectUrl, { headers: { apikey: status.SERVICE_ROLE_KEY, Authorization: `Bearer ${status.SERVICE_ROLE_KEY}` } });
+    if (operator.status !== 200 || hash(new Uint8Array(await operator.arrayBuffer())) !== hash(Buffer.from("managed original bytes")))
+      throw new Error("Real managed source operator byte read failed");
+    // Private explicit source input only; credentials never enter reports or logs.
+    await writeFile(inputPath, JSON.stringify({ port, bucket, customer, clientId, customerToken: token,
+      endpoint: status.STORAGE_S3_URL, region: status.S3_PROTOCOL_REGION,
+      accessKeyId: status.S3_PROTOCOL_ACCESS_KEY_ID, secretAccessKey: status.S3_PROTOCOL_ACCESS_KEY_SECRET }), { mode: 0o600 });
+    const proof = await stack.command(process.execPath, ["--import", "tsx", "tests/postgres/managedStorageTransfer.proof.ts"],
+      { cwd: root, env: { ...env, OPENLUP_M14_STORAGE_INPUT: inputPath }, timeout: 600_000 });
+    await writeFile(join(directory, "storage-proof.log"), proof.stdout, { mode: 0o600 });
+    if (proof.error || proof.status !== 0 || !proof.stdout.includes("managed-storage-proof PASS"))
+      throw new Error("Real managed Storage projection failed; inspect private storage-proof.log");
+    return { status: "PASS", sourceActors: { anonymous: "denied", customer: "denied", operator: "allowed" },
+      projection: "private-filesystem", localS3: "access-and-bytes-only",
+      proofSha256: hash(await readFile(join(root, "tests/postgres/managedStorageTransfer.proof.ts"))) };
+  } finally { source.destroy(); await pool.end(); await rm(inputPath, { force: true }); }
+}
+
 
 async function main() {
   const journeyImage = process.argv[2];
@@ -109,7 +179,7 @@ async function main() {
         .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key) => {
           if (!Object.hasOwn(replacements, key)) throw new Error("Unknown managed witness config placeholder");
           return String(replacements[key]);
-        });
+        }) + (label === "typed-source" ? "\n[storage]\nenabled = true\n[storage.s3_protocol]\nenabled = true\n" : "");
       await mkdir(join(jobDirectory, "supabase"), { mode: 0o700 });
       await writeFile(join(jobDirectory, "supabase/config.toml"), config, { mode: 0o600 });
       const cliEnv = { ...env, SUPABASE_INTERNAL_IMAGE_REGISTRY: "ghcr.io" };
@@ -119,22 +189,28 @@ async function main() {
             { cwd: root, env: cliEnv, stdio: "ignore", ...options() });
         } catch { throw new Error("Real managed witness owned-stack cleanup failed"); }
       });
-      // 8E extension point: this owned stack's config/start boundary is where its
-      // GoTrue + Storage API + authenticated S3 GET proof will enable services and
-      // compose its assertions. 8A exercises SQL metadata and typed transfer only.
       await stack.start(cli.binary, ["start", "--workdir", jobDirectory, "--exclude",
-        "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"], { env: cliEnv });
+        label === "typed-source"
+          ? "realtime,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"
+          : "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"], { env: cliEnv });
       job.sourceImage = (await command("docker", ["inspect", `supabase_db_${project}`, "--format", "{{.Image}}"])).trim();
       job.sourceRepoDigests = JSON.parse(await command("docker", ["image", "inspect", job.sourceImage, "--format", "{{json .RepoDigests}}"]));
-      if (label === "typed-source") report.captureRole = await captureRole(base + 2);
+      if (label === "typed-source") {
+        report.captureRole = await captureRole(base + 2);
+        report.serviceImages = {};
+        for (const service of ["auth", "storage"])
+          report.serviceImages[service] = (await command("docker", ["inspect", `supabase_${service}_${project}`, "--format", "{{.Image}}"])).trim();
+      }
       const schema = JSON.stringify(await sourceSchema(base + 2), null, 2);
       await writeFile(join(jobDirectory, "source-schema.json"), schema, { mode: 0o600 });
       job.sourceSchemaSha256 = hash(schema);
       // Each job owns a fresh source: no baseline or Auth seed is reused from
-      // another suite. Storage API/object qualification remains 8E's boundary.
+      // another suite.
       const testEnv = { ...env, OPENLUP_M14_MANAGED_SOURCE_PORT: String(base + 2) };
       delete testEnv.OPENLUP_VITEST_EXCLUDE_FILE;
       await work(stack, testEnv, jobDirectory, job);
+      if (label === "typed-source")
+        report.storage = await storageServiceLeg({ cli, cliEnv, directory: jobDirectory, port: base + 2, stack });
       job.status = "PASS";
     } finally {
       if (stack) try { await stack.finish(); }
