@@ -217,8 +217,8 @@ async function main() {
     });
     must("docker", ["exec", "-i", container, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-U", "ci_bootstrap", "-d", "postgres", "-1"], { input: sql });
     console.log(`Adapter and managed baseline replayed transactionally (${elapsed()})`);
-    writeFileSync(join(scratch, "snapshot.json"), JSON.stringify(captureRows(container, CATALOG_SNAPSHOT_SQL), null, 1));
-    writeFileSync(join(scratch, "fingerprint.json"), JSON.stringify(captureRows(container, ENVIRONMENT_FINGERPRINT_SQL), null, 1));
+    writeFileSync(join(scratch, "snapshot.json"), JSON.stringify(captureRows(container, CATALOG_SNAPSHOT_SQL, { docker: (args, options) => run("docker", args, options) }), null, 1));
+    writeFileSync(join(scratch, "fingerprint.json"), JSON.stringify(captureRows(container, ENVIRONMENT_FINGERPRINT_SQL, { docker: (args, options) => run("docker", args, options) }), null, 1));
 
     let provePassword = testPassword;
     if (options.sabotage) {

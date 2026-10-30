@@ -3,8 +3,8 @@
 // sabotage switches. They remain the regression witness for the adapter after
 // the Supabase CLI lane was retired. Nothing here changes the tested SQL.
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { accessSync, constants, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // pg_prove --verbose prints `<path> ..` before each file's TAP stream and a
@@ -233,9 +233,24 @@ SELECT section, item FROM (
 ) rows ORDER BY section, item;
 `;
 
-/** Run one (section, item) query in a container through its own psql over TCP. */
-export function captureRows(container, sql, { user = "postgres", password = "postgres" } = {}) {
-  const result = spawnSync("docker", ["exec", "-i", "-e", `PGPASSWORD=${password}`, container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
+// Resolve Docker from fixed system directories instead of the caller's PATH.
+const DOCKER_DIRECTORIES = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"];
+export function dockerExecutable(directories = DOCKER_DIRECTORIES) {
+  for (const directory of directories) {
+    const candidate = join(directory, "docker");
+    try { accessSync(candidate, constants.X_OK); return candidate; } catch { /* try the next fixed directory */ }
+  }
+  throw new Error(`docker not found in ${directories.join(", ")}`);
+}
+
+/**
+ * Run one (section, item) query in a container through its own psql over TCP.
+ * A runner passes its own Docker command runner so that every container call it
+ * makes uses one resolution; standalone use resolves Docker from fixed directories.
+ */
+const fixedDocker = (args, options) => spawnSync(dockerExecutable(), args, options);
+export function captureRows(container, sql, { user = "postgres", password = "postgres", docker = fixedDocker } = {}) {
+  const result = docker(["exec", "-i", "-e", `PGPASSWORD=${password}`, container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
     "-h", "127.0.0.1", "-U", user, "-d", "postgres", "-Atq", "-F", "\t", "-R", "\u001e"], { input: sql, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`catalog capture failed in ${container}: ${result.stderr || result.error?.message}`);
   return parseRows(result.stdout);

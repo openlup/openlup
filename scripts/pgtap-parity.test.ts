@@ -1,5 +1,8 @@
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { compareTapLogs, diffRows, parseRows, parseTapLog, sabotageSql, SABOTAGE, summariseTap } from "./pgtap-parity.mjs";
+import { compareTapLogs, dockerExecutable, diffRows, parseRows, parseTapLog, sabotageSql, SABOTAGE, summariseTap } from "./pgtap-parity.mjs";
 
 // Shape of `pg_prove --verbose` output: padded file header, plan, results, verdict.
 const log = (path: string, body: string) => `${path} ........ \n${body}`;
@@ -82,5 +85,15 @@ describe("sabotage switches", () => {
     expect(sabotageSql(undefined)).toBe("");
     expect(sabotageSql("auth-uid-null")).toContain("SELECT NULL::uuid");
     expect(() => sabotageSql("drop-everything")).toThrow(/unknown sabotage/u);
+  });
+});
+
+describe("executable resolution", () => {
+  it("finds Docker only in the given fixed directories", () => {
+    const empty = mkdtempSync(join(tmpdir(), "pgtap-parity-empty-")), fixed = mkdtempSync(join(tmpdir(), "pgtap-parity-bin-"));
+    writeFileSync(join(fixed, "docker"), "#!/bin/sh\n");
+    chmodSync(join(fixed, "docker"), 0o755);
+    expect(dockerExecutable([empty, fixed])).toBe(join(fixed, "docker"));
+    expect(() => dockerExecutable([empty])).toThrow(/docker not found/u);
   });
 });
