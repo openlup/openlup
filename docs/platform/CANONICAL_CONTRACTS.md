@@ -551,7 +551,23 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
-The qualified retained-import selection requires an actual restore login and one
+The M17 channel suffix appends two native units to each existing selected plan:
+legacy now has 90 units, qualified selections 94, and restricted selections 93.
+Each installation shape retains its separately measured catalogue digest. Four
+reviewed source pins bind the two native and two managed forwards, including
+ordered companion statements; they grant no installation or provider authority.
+The RPC catalogue records the normalized ingest and existing payment owner call
+sites. Managed settlement uses the existing ATP exposure hook and allocator;
+portable source capture/read/CAS declares physical conversion unavailable. Fresh
+qualification and privacy lifecycle capabilities remain outside this import.
+
+Corrections to these unissued forwards keep their source hashes, packed SQL
+hash and measured fingerprints for all five installation shapes in agreement.
+The sparse migration descriptor and its API checksum projection identify the
+same native bytes. These corrections preserve the existing signatures and
+grants; issued migration files remain immutable.
+
+The earlier qualified retained-import selection requires an actual restore login and one
 of the two independently measured 92-unit inventories for its migration/bootstrap
 shape. The manifest preserves the entire issued 91-unit prefix and appends the
 separately approved owner-path forward after runtime completion; legacy selection

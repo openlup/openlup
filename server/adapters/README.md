@@ -58,6 +58,13 @@ transfer adapter: it reads a bounded source snapshot and emits a finite typed
 canonical projection, rather than serving a normal request or adding a
 provider connection.
 
+Its channel exception is limited to three exact dormant installation
+registrations. It checks all five row columns, including a common finite
+PostgreSQL installation timestamp, and emits only their installation-history
+census. No registration or channel business row enters the typed projection;
+empty baseline metadata keeps its original unsupported-empty disposition.
+Unknown or drifted registrations and nonempty channel relations refuse.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
@@ -102,6 +109,13 @@ tables, including acquisition-private business data, refuse rather than being
 omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
+
+Ordinary outbox rows use this pinned owner insertion path while the generic
+compatible-row importer keeps its INSERT-trigger refusal. The exact
+`channel_purchase_outbox_guard` name is admitted under the existing qualified
+catalogue pins. Protected channel source, line and page event types still refuse
+with `unsupported_table` before INSERT, independent of the active owner role.
+A refusal rolls back earlier imported rows in the same transaction.
 
 The fixed profile now includes the existing native catalog, price-list and
 subscription-line rows needed by retained subscription terms, plus recipient

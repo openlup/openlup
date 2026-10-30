@@ -1167,12 +1167,11 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
         : earlier.some(pin => pin.path === path) ? bytes(earlier.find(pin => pin.path === path)!) : readFileSync(path) }));
   });
   const f = correctionFixture();
-  // Simulate the pre-introduction tree even after the canonical support files land:
-  // the fixture copies every committed migration and the live manifest.
+  // Model the pre-introduction manifest using the same earlier prefixes copied below.
   const twinPath = `packages/platform/sql/${support[0]!.path.split("/").at(-1)}`;
   for (const path of [...support.map(pin => pin.path), twinPath]) rmSync(join(f.root, path), { force: true });
   const baseManifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
-  baseManifest.forward = baseManifest.forward.filter((row: { file: string }) => !support.some(pin => pin.path === row.file));
+  baseManifest.forward = baseManifest.forward.filter((row: { file: string }) => row.file < support[0]!.path);
   f.put("config/platform-migration-manifest.json", JSON.stringify(baseManifest));
   const without = structuredClone(registry); delete without.supportAuthorityForwards;
   const encode = (value: typeof registry) => Buffer.from(JSON.stringify(value));
@@ -1369,7 +1368,7 @@ const REVIEWED_PATH = "config/reviewed-platform-forwards.json";
 
 describe("M17 channel ingest approval", () => {
   const registryPath = "config/reviewed-platform-forwards.json";
-  const marker = readReviewedForwardRegistry(readFileSync(registryPath));
+  const marker: ReviewedForwardRegistry = { ...readReviewedForwardRegistry(readFileSync(registryPath)), channelIngestForwards: [] };
   const encode = (registry: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(registry));
   // Synthetic dollar bodies prove lexical admission only. Exact headers and
   // companion statements exercise the fixed class without installing its SQL.

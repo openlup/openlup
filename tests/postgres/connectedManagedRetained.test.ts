@@ -40,6 +40,8 @@ const managed = (() => {
         !== "fb4de62d4ccf30dca83075b41ea2769ddf74165ecd47d21875790ed5f397ccbe") throw new Error("Managed baseline pin mismatch");
       await owner.query("SET ROLE postgres; SET search_path=public,extensions");
       await owner.query(baseline.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
+      for (const file of ["20261030121000_channel_retained_basis.sql", "20261030122000_channel_purchased_source.sql"])
+        await owner.query(readFileSync(`supabase/migrations/${file}`, "utf8"));
       await owner.query("RESET ROLE");
       // CLI 2.122 seeds this service table. Keep the positive source limited to
       // the finite admitted profile; unknown nonempty service data still refuses.

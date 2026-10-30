@@ -1990,6 +1990,14 @@ package, coverage or full verification gates.
 
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
+Channel preservation tests live in `packages/platform/test/channels` and are
+discovered by the existing root Node project. The paired PostgreSQL boundary
+fixture and selected-native inventory proofs live under `tests/postgres`;
+managed pgTAP retains 48 source-boundary assertions and the existing dispatch
+owner witness. Installed artifact proof belongs in `tests/platform/channels`;
+canonical cold-runner entry registration remains a later composition step.
+These local witnesses do not establish real-provider or hosted qualification.
+
 #### Choose a location and proof
 
 Acquisition server characterization belongs under

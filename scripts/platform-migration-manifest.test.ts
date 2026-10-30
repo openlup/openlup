@@ -24,14 +24,29 @@ import {
   type PlatformMigrationPlan,
 } from "./platform-migration-manifest.js";
 
-const raw = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+const current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+// Historical generation/tail fixtures keep their issued prefixes; live suffix tests below use current.
+const raw = structuredClone(current);
+if (raw.schemaVersion === 3) for (const [plan, tail] of [
+  [raw, "db/platform/migrations/20261026120000_account_support_operator_authority.sql"],
+  [raw.qualified, QUALIFIED_OWNER_PATH_FILE], [raw.qualifiedAdmin, QUALIFIED_RUNTIME_COMPLETION_FILE],
+] as const) {
+  const end = plan.forward.findIndex(entry => entry.file === tail);
+  if (end < 0) throw new Error(`historical fixture tail missing: ${tail}`);
+  plan.forward = plan.forward.slice(0,end+1);
+}
+function historicalMigrations() {
+  const plans = raw.schemaVersion === 3 ? [raw,raw.qualified,raw.qualifiedAdmin] : raw.schemaVersion === 2 ? [raw,raw.qualified] : [raw];
+  const paths = new Set(plans.flatMap(plan => [plan.baseline.file,...plan.forward.map(entry => entry.file)]));
+  return readPlatformMigrations(process.cwd()).migrations.filter(unit => paths.has(unit.file));
+}
 const issued = (() => {
   if (raw.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
   const { qualifiedAdmin: _admin, ...prior } = raw;
   return { ...prior, schemaVersion: 2 as const };
 })();
 const legacy: PlatformMigrationPlan = { schemaVersion: 1, baseline: raw.baseline, forward: raw.forward, objectInventorySha256: raw.objectInventorySha256 };
-const legacyMigrations = readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !isQualifiedPlatformMigrationPath(file));
+const legacyMigrations = historicalMigrations().filter(({ file }) => !isQualifiedPlatformMigrationPath(file));
 const inventory = "fixed qualified inventory fixture";
 
 function fixture() {
@@ -73,12 +88,12 @@ describe("canonical qualified migration selection", () => {
       objectInventorySha256: { installerManaged: sha256("fixed managed inventory"), operatorProvisioned: sha256("fixed provisioned inventory") },
     };
     const manifest = { ...issued, schemaVersion: 3 as const, qualifiedAdmin: admin };
-    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !files.includes(file)), ...source];
+    const migrations = [...historicalMigrations().filter(({ file }) => !files.includes(file)), ...source];
     expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(issued, manifest, files)).toEqual([]);
     for (const roleMode of ["installer-managed", "operator-provisioned"] as const) {
       const selected = selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode });
-      expect([selected.baseline, ...selected.forward]).toHaveLength(91);
+      expect([selected.baseline, ...selected.forward]).toHaveLength(1 + admin.forward.length);
       expect(selected.forward.at(-1)?.file).toBe(QUALIFIED_RUNTIME_COMPLETION_FILE);
       expect(selected.objectInventorySha256).toBe(admin.objectInventorySha256[roleMode === "installer-managed" ? "installerManaged" : "operatorProvisioned"]);
     }
@@ -169,7 +184,7 @@ describe("canonical qualified migration selection", () => {
     const completion = { file: QUALIFIED_RUNTIME_COMPLETION_FILE, sha256: sha256(content) };
     const completed = structuredClone(previous);
     completed.qualified.forward.push(completion);
-    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(({ file }) =>
+    const migrations = [...historicalMigrations().filter(({ file }) =>
       !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_")
       && file !== completion.file && file !== QUALIFIED_OWNER_PATH_FILE),
       { file: completion.file, content }];
@@ -204,7 +219,7 @@ describe("canonical qualified migration selection", () => {
     const previous = structuredClone(issued);
     previous.qualified.forward.pop();
     const next = structuredClone(issued);
-    const migrations = readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
+    const migrations = historicalMigrations().filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
     expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(previous, next, [entry.file])).toEqual([]);
     expect(selectPlatformMigrationManifest(next, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }).forward.at(-1)).toEqual(entry);
@@ -254,13 +269,13 @@ describe("canonical qualified migration selection", () => {
 
 describe("shared forwards after issued generation tails", () => {
   function appendedFixture() {
-    if (raw.schemaVersion !== 3) throw new Error("shared suffix fixture requires all three issued generations");
+    if (current.schemaVersion !== 3) throw new Error("shared suffix fixture requires all three issued generations");
     const migrations = [1, 2].map(index => ({
-      file: `db/platform/migrations/2026103012000${index}_shared_suffix.sql`,
+      file: `db/platform/migrations/${BigInt(current.forward.at(-1)!.file.split("/").at(-1)!.slice(0,14)) + BigInt(index)}_shared_suffix.sql`,
       content: `-- synthetic shared forward ${index}\nSELECT ${index};\n`,
     }));
     const suffix = migrations.map(({ file, content }) => ({ file, sha256: sha256(content) }));
-    const manifest = structuredClone(raw);
+    const manifest = structuredClone(current);
     for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push(...structuredClone(suffix));
     return { manifest, migrations: [...readPlatformMigrations(process.cwd()).migrations, ...migrations], suffix };
   }
@@ -268,14 +283,14 @@ describe("shared forwards after issued generation tails", () => {
   it("selects the identical ordered suffix after every unchanged issued prefix", () => {
     const { manifest, migrations, suffix } = appendedFixture();
     expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toEqual([]);
-    expect(evaluatePlatformMigrationManifestHistory(raw, manifest, suffix.map(({ file }) => file))).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(current, manifest, suffix.map(({ file }) => file))).toEqual([]);
     const selections = [
       selectPlatformMigrationManifest(manifest, "legacy"),
       selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }),
       selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode: "installer-managed" }),
     ];
-    if (raw.schemaVersion !== 3) throw new Error("expected three issued generations");
-    for (const [index, previous] of [raw, raw.qualified, raw.qualifiedAdmin].entries()) {
+    if (current.schemaVersion !== 3) throw new Error("expected three issued generations");
+    for (const [index, previous] of [current, current.qualified, current.qualifiedAdmin].entries()) {
       expect(selections[index]!.forward.slice(0, previous.forward.length)).toEqual(previous.forward);
       expect(selections[index]!.forward.slice(previous.forward.length)).toEqual(suffix);
       const paths = new Set([selections[index]!.baseline.file, ...selections[index]!.forward.map(({ file }) => file)]);
@@ -319,7 +334,7 @@ describe("shared forwards after issued generation tails", () => {
     ]) {
       const { manifest, suffix } = appendedFixture();
       change((generation === "legacy" ? manifest : manifest[generation]).forward);
-      expect(evaluatePlatformMigrationManifestHistory(raw, manifest, suffix.map(({ file }) => file)))
+      expect(evaluatePlatformMigrationManifestHistory(current, manifest, suffix.map(({ file }) => file)))
         .toEqual(expect.arrayContaining([expect.stringContaining("preserve the previous prefix")]));
     }
   });

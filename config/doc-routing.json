@@ -1278,6 +1278,19 @@
       ],
       "doc": "packages/core/README.md",
       "anchor": "#risk-evaluation-contracts"
+    },
+    {
+      "id": "platform-channels",
+      "when": "Normalized external-channel ingest, retained purchased source and explicit owner bindings",
+      "paths": [
+        "packages/platform/src/channels/**",
+        "packages/platform/test/channels/**",
+        "packages/platform/api/channels.api.md",
+        "packages/platform/api/channels-contracts.api.md",
+        "packages/platform/api/channels-server.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#channels"
     }
   ]
 }
