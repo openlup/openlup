@@ -184,6 +184,21 @@ cleanup never authorizes removal of an unlabeled service.
 
 ## S3 object source preparation
 
+The local recipe reuses the [plain-Node S3 witness](s3/objectStorageConformanceScript.mjs)
+with the compose-pinned Versity gateway. Its two valid gateway accounts prove
+own reads and cross-account denial; anonymous and wrong-secret probes stay
+separate. Bounded reads refuse excessive bytes and conflicting content versions.
+The older-backup fixture retains an erased object's bytes independently of a
+later host erasure obligation, then supplies the allowed retained inventory to
+the existing private filesystem copier and checks absence at the destination.
+That selection is host-owned fixture data, not an automatic privacy policy in
+the adapter. Version/lifecycle responses are observed from the pinned gateway;
+unsupported native versions and unobserved expiry cannot qualify hosted S3.
+Its separate temporary versioning root permits native version/deletion probes
+in a dedicated bucket; it does not admit native version-history transfer through
+the fixed current-object source profile.
+See the [runner boundary](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner).
+
 The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an
 explicitly selected SDK client; it constructs no client, credential chain or
 environment binding. Imports and construction make no requests. Selected reads

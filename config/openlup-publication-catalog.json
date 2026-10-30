@@ -1474,6 +1474,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-selfhost-receipt.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m15-generic-risk-controls.md",
       "class": "public-output"
     },
@@ -11115,6 +11119,10 @@
     },
     {
       "path": "server/adapters/s3/objectStorageConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/objectStorageConformanceScript.mjs",
       "class": "public-output"
     },
     {
@@ -26330,6 +26338,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
       "class": "public-output"
     },
@@ -26450,6 +26462,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RecipeJourneys.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14ReleasedSchemaUpgrade.proof.ts",
       "class": "public-output"
     },
@@ -26463,6 +26479,14 @@
     },
     {
       "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14SelfhostHost.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14SelfhostStorage.mjs",
       "class": "public-output"
     },
     {

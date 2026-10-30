@@ -60,7 +60,8 @@ Node 24, npm 11.19.0 and an absolute credential-file path outside Git checkouts,
 owned by the invoking user with mode 600. It never prints credentials, that path
 or raw child output. Receipt destinations must be new files. The credential
 JSON has `schemaVersion: 1`, `target: "self-host"`, `region: "local"`,
-`disposable: true`, and `previousApplicationPath` pointing to the installed
+`disposable: true`, `localNodeImage` naming an already cached immutable image ID
+(`sha256:<64 lowercase hex>`) with Node 24.21.0, and `previousApplicationPath` pointing to the installed
 `@openlup/platform@0.23.0` `dist/payments/index.js` entry. Its `installations`
 object has exactly `installer-managed`, `operator-provisioned` and `schema`.
 Each contains `disposable: true`, the expected PostgreSQL `systemIdentifier`,
@@ -68,6 +69,16 @@ Each contains `disposable: true`, the expected PostgreSQL `systemIdentifier`,
 `sha256:<64 lowercase hex>` form. The runner records the declaration but cannot
 independently inspect an external host's image. Keep the entire file external;
 never put real values in an issue, receipt or source file.
+
+The local self-host target also needs Docker Compose, installed Playwright
+Chromium, the cached pinned Keycloak image from the [identity recipe](IDENTITY.md#real-issuer-oidc-recipe)
+and the cached Versity image pinned in `docker-compose.yml`. The witnesses do
+not pull images. The Node/OCI fixture builds two local application images from
+the declared cached Node image and removes those owned images after its run.
+It uses a temporary restricted runtime login and generated scheduler secret;
+neither enters an image or receipt. Its local PostgreSQL endpoints must be
+loopback addresses; the OCI fixture reaches that same endpoint through the
+container host bridge while retaining the declared CA and hostname verification.
 
 This command mutates all three installations. Each must be a separate fresh
 PG16 cluster with a verified TLS endpoint. The URL explicitly supplies its
@@ -95,10 +106,37 @@ application read/replay. It does not roll the database schema back. The
 previous-application proof creates a temporary login with a per-run random
 password, then attempts to remove its grants and role on normal exit or handled
 failure. A cleanup failure or abrupt process kill still requires operator
-teardown. A successful
-initial receipt remains `PASS_INITIAL_PHASES`: transfer (8D), recovery (9A),
-OIDC (10I), S3 (10O), Node/hosts (10H) and effort/cleanup (10H/10S) stay explicitly
-`PENDING` with their owners. Later factored receipts consume these sections.
+teardown. For `self-host`, the runner then calls the landed portable catch-up and
+older-snapshot journeys, real Keycloak lifecycle, local S3 and Node/OCI fixtures.
+Only their executed success and owned cleanup yield `COMPLETE`, meaning a
+**local self-host recipe receipt**. The transfer section keeps the managed first
+leg `PENDING-ON-8D-2`; the additional hosted provider pair remains pending. The
+recovery section carries actual snapshot age, effective RPO, scoped RTO, counts,
+readiness and residual uncertainty: declared-scope fixture measurements, not an
+SLO or hosted claim. The source and compiled artifacts must remain unchanged
+through every phase.
+
+The S3 section observes two real local gateway accounts, authorized readback,
+anonymous/cross-account refusal, bounded-size and content-version refusal,
+deletion and the pinned gateway's actual version/lifecycle responses. Its older
+backup keeps the erased bytes while a later host-owned erasure obligation
+excludes that key from the private filesystem restore inventory; the target
+must read the retained object and refuse the erased key. This does not add
+automatic privacy policy to the copier or equate gateway IAM with customer RLS.
+The fixture uses separate owned tmpfs IAM and versioning roots, exercises native
+version/deletion operations in a separate versioned bucket and retains the
+transfer adapter's refusal of native version-history transfer. Unobserved
+elapsed lifecycle expiry remains explicitly unproved; hosted S3 stays pending.
+
+The host section uses distinct immutable A/B application images, actual HTTP/UI
+and restricted-runtime readback, durable immediate/scheduled outbox work,
+captured delivery commands and filesystem bytes. It checks restart, an admitted
+callback held through drain and A→B→A readback without duplicate delivery.
+Effort records wall time, witness launches, interventions and owned-resource
+absence. Operator provisioning, dependency/image caching, the three declared
+database clusters and the previous application artifact remain outside owned
+fixture teardown; the operator must remove those disposable inputs separately.
+The receipt is source proof, not hosted or production qualification.
 
 The same selector accepts `neon` and `rds` as target labels; it adds no provider
 logic or admission exception. Their actual endpoints, provider-role admission
@@ -176,7 +214,8 @@ adopter ACLs, provider qualification and whole-store RTO remain separate.
 
 For a graceful Node shutdown, await the host's cached `stop()` promise before
 disposing callback dependencies. The scheduler fences its current registrations
-synchronously and drains admitted callbacks through lock release. The host keeps
+synchronously, stops each supplied timer with its original method receiver and
+drains admitted callbacks through lock release. The host keeps
 the local listener available during that drain, including while an admitted
 callback waits for lock acquisition before its HTTP compatibility request. After
 the drain settles, it attempts listener and dedicated lock-session cleanup even
