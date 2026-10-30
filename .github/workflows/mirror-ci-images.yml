@@ -3,33 +3,12 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, scripts/install-supabase-cli-ci.sh, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]
+    paths: [config/ci-images.json, scripts/ci-image-mirror.mjs, .github/workflows/mirror-ci-images.yml]
 permissions: {contents: read}
 concurrency: {group: mirror-ci-images, cancel-in-progress: false}
 jobs:
-  plan:
-    if: github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    permissions: {contents: read}
-    outputs: {images: "${{ steps.plan.outputs.images }}"}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with: {ref: "${{ github.sha }}", persist-credentials: false}
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with: {node-version: 24.21.0, package-manager-cache: false}
-      - id: pin
-        run: node scripts/ci-image-mirror.mjs pin >> "$GITHUB_OUTPUT"
-      - name: Install verified native Supabase CLI
-        env: {SUPABASE_CLI_VERSION: "${{ steps.pin.outputs.version }}"}
-        run: bash scripts/install-supabase-cli-ci.sh "$SUPABASE_CLI_VERSION"
-      - id: plan
-        run: |
-          images=$(node scripts/ci-image-mirror.mjs plan)
-          printf 'images=%s\n' "$images" >> "$GITHUB_OUTPUT"
   mirror:
     if: github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main'
-    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions: {contents: read, packages: write}
@@ -38,5 +17,5 @@ jobs:
         with: {ref: "${{ github.sha }}", persist-credentials: false}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with: {node-version: 24.21.0, package-manager-cache: false}
-      - env: {PLAN_IMAGES: "${{ needs.plan.outputs.images }}", GHCR_TOKEN: "${{ github.token }}", GHCR_ACTOR: "${{ github.actor }}"}
+      - env: {GHCR_TOKEN: "${{ github.token }}", GHCR_ACTOR: "${{ github.actor }}"}
         run: node scripts/ci-image-mirror.mjs mirror

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -16,10 +16,9 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { createS3TransferObjectSource } from "../../server/adapters/s3/transferObjectSource.js";
-import { deriveCliImages } from "../../scripts/ci-image-mirror.mjs";
 import { disposableLabelArgs } from "../../scripts/disposable-docker.mjs";
-import { prePullCliImages } from "../../scripts/public-ci-pgtap.mjs";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 
 const run = promisify(execFile);
@@ -41,18 +40,19 @@ async function block(): Promise<number> {
   }
   throw new Error("No disposable managed port block");
 }
-function snapshot(pool: Pool): CompatiblePostgresSnapshot {
+function snapshot(pool: Pool, managedSource = false): CompatiblePostgresSnapshot {
   return { async withSnapshot(work) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      if (managedSource) await client.query("SET LOCAL ROLE postgres");
       const result = await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
       await client.query("COMMIT"); return result;
     } catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
   } };
 }
-const capture = (pool: Pool) => captureManagedSourceGraph({ source: snapshot(pool), sourceId: "managed-storage-source",
+const capture = (pool: Pool) => captureManagedSourceGraph({ source: snapshot(pool, true), sourceId: "managed-storage-source",
   maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 });
 const fresh = (pool: Pool) => captureConnectedNativeStore({ source: snapshot(pool),
   sourceId: `qualified-target-${randomUUID()}`, catalogueId: selected.objectInventorySha256,
@@ -63,75 +63,62 @@ async function main() {
   const awsModule = ["@aws-sdk", "client-s3"].join("/");
   const sdk = createRequire(import.meta.url)(awsModule) as typeof import("@aws-sdk/client-s3");
   const scratch = await mkdtemp(join(process.cwd(), ".context/scratch/m14-managed-storage-"));
-  const sourceDirectory = join(scratch, "source"), projectId = `m14objects${process.pid}${randomBytes(3).toString("hex")}`;
-  const port = await block();
-  let targetPort = await block();
-  while (Math.abs(targetPort - port) < 11) targetPort = await block();
-  const bucket = `managed${randomBytes(4).toString("hex")}`;
+  // The opt-in service runner supplies only a private, explicitly selected source.
+  // Required discovery clears this input and always runs the stock-PG adapter.
+  const suppliedPath = process.env.OPENLUP_M14_STORAGE_INPUT;
+  const supplied = suppliedPath === undefined ? undefined : JSON.parse(readFileSync(suppliedPath, "utf8")) as {
+    port: number; bucket: string; customer: string; clientId: string; customerToken: string;
+    endpoint: string; region: string; accessKeyId: string; secretAccessKey: string;
+  };
+  const targetPort = await block();
+  const bucket = supplied?.bucket ?? `managed${randomBytes(4).toString("hex")}`;
   const targetBucket = `target${randomBytes(4).toString("hex")}`;
   const finalBucket = `final${randomBytes(4).toString("hex")}`;
   const container = `m14-object-target-${process.pid}-${randomBytes(3).toString("hex")}`;
   const s3Access = `m14${randomBytes(8).toString("hex")}`, s3Secret = randomBytes(24).toString("hex");
-  let registry = "", sourceStarted = false, targetStarted = false, pgContainer: Awaited<ReturnType<typeof runPostgresContainer>> | undefined;
+  let sourceContainer: Awaited<ReturnType<typeof runManagedCompatPostgres>> | undefined;
+  let targetStarted = false, pgContainer: Awaited<ReturnType<typeof runPostgresContainer>> | undefined;
   let managed: Pool | undefined, bootstrap: Pool | undefined, target: Pool | undefined;
   let sourceS3: S3Client | undefined, targetS3: S3Client | undefined;
   try {
-    if ((await run("supabase", ["--version"])).stdout.trim() !== "2.122.0") throw new Error("Pinned Supabase CLI required");
-    const replacements: Record<string, string> = { PROJECT_ID: projectId, SHADOW_PORT: String(port), API_PORT: String(port + 1),
-      DB_PORT: String(port + 2), STUDIO_PORT: String(port + 3), MAIL_PORT: String(port + 4),
-      POOLER_PORT: String(port + 9), APP_PORT: String(port + 10) };
-    const config = readFileSync("config/public-reference-subscription-supabase.toml", "utf8")
-      .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key: string) => replacements[key]!)
-      + "\n[storage]\nenabled = true\n[storage.s3_protocol]\nenabled = true\n";
-    await mkdir(join(sourceDirectory, "supabase"), { recursive: true });
-    await writeFile(join(sourceDirectory, "supabase/config.toml"), config);
-    registry = await prePullCliImages(deriveCliImages(process.cwd(), sourceDirectory));
-    await run("env", [`SUPABASE_INTERNAL_IMAGE_REGISTRY=${registry}`, "supabase", "start", "--workdir", sourceDirectory,
-      "--exclude", "realtime,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"],
-    { timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-    sourceStarted = true;
-    const status = JSON.parse((await run("supabase", ["status", "--workdir", sourceDirectory, "-o", "json"])).stdout) as Record<string, string>;
-    for (const name of ["API_URL", "STORAGE_S3_URL", "S3_PROTOCOL_ACCESS_KEY_ID", "S3_PROTOCOL_ACCESS_KEY_SECRET",
-      "S3_PROTOCOL_REGION", "ANON_KEY", "SERVICE_ROLE_KEY"])
-      if (!status[name]) throw new Error(`Pinned managed status lacks ${name}; available keys: ${Object.keys(status).sort().join(",")}`);
-    managed = new Pool({ connectionString: `postgresql://supabase_admin:postgres@127.0.0.1:${port + 2}/postgres`, max: 2 });
-    await managed.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
-    for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"])
-      for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"])
-        await managed.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${role}${scope} REVOKE ALL ON ${kind} FROM PUBLIC,anon,authenticated,service_role`);
-    const baseline = readFileSync("supabase/migrations/00000000000000_platform_schema_baseline.sql");
-    if (sha(baseline) !== "fb4de62d4ccf30dca83075b41ea2769ddf74165ecd47d21875790ed5f397ccbe")
-      throw new Error("Managed baseline pin changed");
-    await managed.query("SET ROLE postgres; SET search_path=public,extensions");
-    await managed.query(baseline.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
-    await managed.query("RESET ROLE");
-    await managed.query("DELETE FROM _realtime.feature_flags");
-    const admin = randomUUID(), clientId = randomUUID();
-    const customerEmail = `${randomUUID()}@example.invalid`, customerPassword = `Synthetic-${randomBytes(12).toString("hex")}`;
-    const authHeaders = { apikey: status.SERVICE_ROLE_KEY!, Authorization: `Bearer ${status.SERVICE_ROLE_KEY!}`,
-      "Content-Type": "application/json" };
-    const created = await fetch(`${status.API_URL}/auth/v1/admin/users`, { method: "POST", headers: authHeaders,
-      body: JSON.stringify({ email: customerEmail, password: customerPassword, email_confirm: true }) });
-    if (!created.ok) throw new Error(`Managed customer creation failed (${created.status})`);
-    const customer = (await created.json() as { id: string }).id;
-    await managed.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [admin, `${admin}@example.invalid`]);
-    await managed.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)",
-      [admin, `${admin}@example.invalid`]);
-    await managed.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
-      [clientId, customerEmail, customer]);
-    sourceS3 = new sdk.S3Client({ region: status.S3_PROTOCOL_REGION!, endpoint: status.STORAGE_S3_URL!, forcePathStyle: true,
-      credentials: { accessKeyId: status.S3_PROTOCOL_ACCESS_KEY_ID!, secretAccessKey: status.S3_PROTOCOL_ACCESS_KEY_SECRET! } });
-    await sourceS3.send(new sdk.CreateBucketCommand({ Bucket: bucket }));
-    const first = Buffer.from("managed original bytes"), second = Buffer.from("managed second bytes");
-    const put = (key: string, body: Buffer) => sourceS3!.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key,
-      Body: body, ContentType: "application/octet-stream", CacheControl: "private, max-age=60", Metadata: { witness: "managed" } }));
-    await put("first.txt", first);
-    await put("second.txt", second);
-    await managed.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id=$2 AND name='first.txt'", [customer, bucket]);
-    expect((await managed.query("SELECT name,owner_id FROM storage.objects WHERE bucket_id=$1 ORDER BY name", [bucket])).rows)
-      .toEqual([{ name: "first.txt", owner_id: customer }, { name: "second.txt", owner_id: null }]);
-    const sourceReader = objectReader(sourceS3, bucket);
-
+    const admin = randomUUID(), clientId = supplied?.clientId ?? randomUUID(), customer = supplied?.customer ?? randomUUID();
+    const customerEmail = `${customer}@example.invalid`;
+    if (supplied) {
+      if (!Number.isSafeInteger(supplied.port) || supplied.port < 1024 || supplied.port > 65535)
+        throw new Error("Selected source requires a loopback port");
+      managed = new Pool({ connectionString: `postgresql://supabase_admin:postgres@127.0.0.1:${supplied.port}/postgres`, max: 2 });
+    } else {
+      sourceContainer = await runManagedCompatPostgres({ name: `m14-storage-source-${process.pid}`, password: "synthetic-transfer" });
+      managed = new Pool({ connectionString: sourceContainer.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 2 });
+      await managed.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
+      for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"])
+        for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"])
+          await managed.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${role}${scope} REVOKE ALL ON ${kind} FROM PUBLIC,anon,authenticated,service_role`);
+      const baseline = readFileSync("supabase/migrations/00000000000000_platform_schema_baseline.sql");
+      if (sha(baseline) !== "fb4de62d4ccf30dca83075b41ea2769ddf74165ecd47d21875790ed5f397ccbe")
+        throw new Error("Managed baseline pin changed");
+      await managed.query("SET ROLE postgres; SET search_path=public,extensions");
+      await managed.query(baseline.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
+      await managed.query("RESET ROLE");
+      // Add the finite fields consumed by this projection to this disposable
+      // fixture only. The opt-in runner separately records the service schema.
+      await managed.query(`ALTER TABLE storage.buckets
+        ADD COLUMN type text DEFAULT 'STANDARD', ADD COLUMN file_size_limit bigint,
+        ADD COLUMN allowed_mime_types text[], ADD COLUMN avif_autodetection boolean DEFAULT false,
+        ADD COLUMN versioning_status text DEFAULT 'DISABLED', ADD COLUMN lifecycle_configuration jsonb,
+        ADD COLUMN lifecycle_configuration_generation bigint;
+        ALTER TABLE storage.objects ADD COLUMN owner uuid, ADD COLUMN user_metadata jsonb,
+        ADD COLUMN version text, ADD COLUMN archived_at timestamptz,
+        ADD COLUMN is_delete_marker boolean DEFAULT false, ADD COLUMN is_versioned boolean DEFAULT false,
+        ADD COLUMN path_tokens text[];
+        ALTER TABLE storage.buckets ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY`);
+      for (const id of [admin, customer]) await managed.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [id, `${id}@example.invalid`]);
+      await managed.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)",
+        [admin, `${admin}@example.invalid`]);
+      await managed.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
+        [clientId, customerEmail, customer]);
+    }
     pgContainer = await runPostgresContainer({ name: `m14-storage-pg-${process.pid}`, password: "synthetic-transfer" });
     expect(await waitForPostgresTcpReady(pgContainer.connectionString)).toBe(true);
     bootstrap = new Pool({ connectionString: pgContainer.connectionString });
@@ -163,6 +150,32 @@ async function main() {
     }
     if (!s3Ready) throw new Error("Local S3 target did not become ready");
     for (const name of [targetBucket, finalBucket]) await targetS3.send(new sdk.CreateBucketCommand({ Bucket: name }));
+    sourceS3 = supplied ? new sdk.S3Client({ region: supplied.region, endpoint: supplied.endpoint, forcePathStyle: true,
+      credentials: { accessKeyId: supplied.accessKeyId, secretAccessKey: supplied.secretAccessKey } }) : targetS3;
+    if (!supplied) {
+      await sourceS3.send(new sdk.CreateBucketCommand({ Bucket: bucket }));
+      await managed.query("INSERT INTO storage.buckets(id,name,public) VALUES($1,$1,false)", [bucket]);
+    }
+    const first = Buffer.from("managed original bytes"), second = Buffer.from("managed second bytes");
+    const put = async (key: string, body: Buffer) => {
+      await sourceS3!.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key,
+        Body: body, ContentType: "application/octet-stream", CacheControl: "private, max-age=60", Metadata: { witness: "managed" } }));
+      if (!supplied) {
+        await managed!.query("DELETE FROM storage.objects WHERE bucket_id=$1 AND name=$2", [bucket, key]);
+        await managed!.query(`INSERT INTO storage.objects(bucket_id,name,owner_id,metadata,user_metadata,path_tokens)
+          VALUES($1,$2,NULL,$3::jsonb,'{"witness":"managed"}',$4::text[])`,
+        [bucket, key, JSON.stringify({ size: body.length, mimetype: "application/octet-stream" }), key.split("/")]);
+      }
+    };
+    const remove = async (key: string) => {
+      await sourceS3!.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      if (!supplied) await managed!.query("DELETE FROM storage.objects WHERE bucket_id=$1 AND name=$2", [bucket, key]);
+    };
+    if (!supplied) { await put("first.txt", first); await put("second.txt", second); }
+    await managed.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id=$2 AND name='first.txt'", [customer, bucket]);
+    expect((await managed.query("SELECT name,owner_id FROM storage.objects WHERE bucket_id=$1 ORDER BY name", [bucket])).rows)
+      .toEqual([{ name: "first.txt", owner_id: customer }, { name: "second.txt", owner_id: null }]);
+    const sourceReader = objectReader(sourceS3, bucket);
     const project = async () => {
       const source = await capture(managed!);
       const baseline = await fresh(target!);
@@ -183,6 +196,8 @@ async function main() {
       if (interrupt) await expect(copyTransferObjects({ ...input, checkpoint: async () => { throw new Error("interrupted checkpoint"); } }))
         .rejects.toThrow("interrupted checkpoint");
       const result = await copyTransferObjects(input);
+      if (generation === "final")
+        await expect(destination.read("second.txt")).rejects.toMatchObject({ code: "absent" });
       for (const object of projected.inventory.objects) {
         const read = await destination.read(object.key);
         expect(read.object.metadata).toEqual(object.metadata);
@@ -203,25 +218,21 @@ async function main() {
       return result;
     };
     expect(await stage("preliminary", preliminary.mapped, targetBucket, true)).toMatchObject({ replayed: 1, copied: 1 });
-    const signedIn = await fetch(`${status.API_URL}/auth/v1/token?grant_type=password`, { method: "POST",
-      headers: { apikey: status.ANON_KEY!, "Content-Type": "application/json" },
-      body: JSON.stringify({ email: customerEmail, password: customerPassword }) });
-    if (!signedIn.ok) throw new Error(`Managed customer sign-in failed (${signedIn.status})`);
-    const token = (await signedIn.json() as { access_token: string }).access_token;
-    const sourceObjectUrl = `${status.API_URL}/storage/v1/object/authenticated/${bucket}/first.txt`;
+    const token = supplied?.customerToken ?? "synthetic-customer-with-no-serving-route";
     const targetObjectUrl = `${targetEndpoint}/${targetBucket}/first.txt`;
     for (const [url, headers] of [
-      [sourceObjectUrl, { apikey: status.ANON_KEY!, Authorization: `Bearer ${status.ANON_KEY!}` }],
-      [sourceObjectUrl, { apikey: status.ANON_KEY!, Authorization: `Bearer ${token}` }],
       [targetObjectUrl, {}], [targetObjectUrl, { Authorization: `Bearer ${token}` }],
     ] as const) expect([400, 401, 403, 404]).toContain((await fetch(url, { headers })).status);
     expect([400, 401, 403, 404]).toContain((await fetch(targetObjectUrl, { method: "PUT", body: "unauthorized" })).status);
-    const operatorRead = await fetch(sourceObjectUrl, { headers: {
-      apikey: status.SERVICE_ROLE_KEY!, Authorization: `Bearer ${status.SERVICE_ROLE_KEY!}` } });
-    expect(operatorRead.status).toBe(200);
-    expect(sha(new Uint8Array(await operatorRead.arrayBuffer()))).toBe(sha(first));
     expect((await sourceReader.read("first.txt")).object.sha256).toBe(sha(first));
     expect((await objectReader(targetS3, targetBucket).read("first.txt")).object.sha256).toBe(sha(first));
+
+    // Both relations must retain row security for policy-free admission.
+    for (const relation of ["storage.buckets", "storage.objects"]) {
+      await managed.query(`ALTER TABLE ${relation} DISABLE ROW LEVEL SECURITY`);
+      try { await expect(project()).rejects.toMatchObject({ code: "unsupported_table", table: "storage.objects" }); }
+      finally { await managed.query(`ALTER TABLE ${relation} ENABLE ROW LEVEL SECURITY`); }
+    }
 
     await managed.query("UPDATE storage.buckets SET file_size_limit=1 WHERE id=$1", [bucket]);
     await expect(project()).rejects.toMatchObject({ code: "unsupported_table", table: "storage.buckets" });
@@ -230,7 +241,9 @@ async function main() {
       "SELECT user_metadata FROM storage.objects WHERE bucket_id=$1 AND name='first.txt'", [bucket])).rows[0]!.user_metadata;
     await managed.query("UPDATE storage.objects SET user_metadata=$1::jsonb WHERE bucket_id=$2 AND name='first.txt'",
       [JSON.stringify({ nested: { value: "unsupported" } }), bucket]);
-    await expect(project()).rejects.toMatchObject({ code: "integrity_conflict" });
+    // The service returns this unsupported field to the S3 reader; Versity's
+    // independent bytes expose the row/response conflict at the mapper instead.
+    await expect(project()).rejects.toMatchObject({ code: supplied ? "integrity_conflict" : "target_conflict" });
     await managed.query("UPDATE storage.objects SET user_metadata=$1::jsonb WHERE bucket_id=$2 AND name='first.txt'",
       [JSON.stringify(originalUserMetadata), bucket]);
     await managed.query("UPDATE storage.objects SET owner=$1 WHERE bucket_id=$2 AND name='first.txt'",
@@ -240,9 +253,14 @@ async function main() {
     await managed.query("UPDATE storage.buckets SET public=true WHERE id=$1", [bucket]);
     await expect(project()).rejects.toMatchObject({ code: "unsupported_table", table: "storage.buckets" });
     await managed.query("UPDATE storage.buckets SET public=false WHERE id=$1", [bucket]);
-    await managed.query("CREATE POLICY m14_storage_probe ON storage.objects FOR SELECT TO authenticated USING (true)");
-    await expect(project()).rejects.toMatchObject({ code: "unsupported_table", table: "storage.objects" });
+    await managed.query("CREATE POLICY m14_storage_probe ON storage.objects FOR SELECT TO service_role USING (true)");
+    await expect(project()).resolves.toBeDefined();
     await managed.query("DROP POLICY m14_storage_probe ON storage.objects");
+    for (const roles of ["authenticated", "PUBLIC", "service_role,authenticated"]) {
+      await managed.query(`CREATE POLICY m14_storage_probe ON storage.objects FOR SELECT TO ${roles} USING (true)`);
+      await expect(project()).rejects.toMatchObject({ code: "unsupported_table", table: "storage.objects" });
+      await managed.query("DROP POLICY m14_storage_probe ON storage.objects");
+    }
     await managed.query("UPDATE public.clients SET email=$1,auth_user_id=NULL WHERE id=$2",
       [`erased+${clientId}@identity.invalid`, clientId]);
     await managed.query("DELETE FROM auth.users WHERE id=$1", [customer]);
@@ -250,10 +268,15 @@ async function main() {
     await managed.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [customer, customerEmail]);
     await managed.query("UPDATE public.clients SET email=$1,auth_user_id=$2 WHERE id=$3", [customerEmail, customer, clientId]);
 
+    await remove("first.txt");
+    await remove("second.txt");
+    const empty = await project();
+    expect(empty.mapped.storageObjects[0]!.inventory.objects).toEqual([]);
+    await put("second.txt", second);
     const updated = Buffer.from("managed updated bytes");
     await put("first.txt", updated);
     await managed.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id=$2 AND name='first.txt'", [customer, bucket]);
-    await sourceS3.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: "second.txt" }));
+    await remove("second.txt");
     const final = await project();
     expect(final.mapped.storageObjects[0]!.inventory.objects.map(object => object.key)).toEqual(["first.txt"]);
     expect(await stage("final", final.mapped, finalBucket)).toMatchObject({ copied: 1, replayed: 0 });
@@ -264,10 +287,9 @@ async function main() {
   } finally {
     sourceS3?.destroy(); targetS3?.destroy();
     await managed?.end(); await target?.end(); await bootstrap?.end();
-    if (sourceStarted) await run("env", [`SUPABASE_INTERNAL_IMAGE_REGISTRY=${registry}`, "supabase", "stop", "--workdir", sourceDirectory,
-      "--no-backup"], { timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }).catch(() => {});
     if (targetStarted) await run("docker", ["rm", "-f", container], { timeout: 30_000 }).catch(() => {});
     await pgContainer?.remove();
+    await sourceContainer?.remove();
     await rm(scratch, { recursive: true, force: true });
   }
 }

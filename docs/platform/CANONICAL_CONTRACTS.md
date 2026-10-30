@@ -726,27 +726,15 @@ evidence; existing admission classes keep their prior behavior.
 
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
-for the owned and CLI mirror inputs. It records the install-proof database,
-disposable test default, managed-batch database and five CLI digest pins. Supabase
-CLI images are independently derived as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
-reference config. Both CI installation jobs use the repository's
-[native installer](../../scripts/install-supabase-cli-ci.sh), with reviewed
-release asset IDs and SHA-256 pins. Unsupported versions/platforms and checksum
-mismatches refuse before installation; derivation scans the executable on PATH.
-Each installation uses a fresh private temporary directory; only after checksum
-and installed-version verification does the installer expose its absolute bin
-directory on stdout and, when set, through `GITHUB_PATH`.
-The pgTAP runner's exclusions constrain long-running services;
-they never remove enabled GoTrue, Realtime or Storage API schema-init images.
-The derived set contains those three images, Postgres and the binary's `pg_prove`.
-An exclusion change leaving an uncovered runtime image refuses derivation.
-The write job validates those untrusted pairs against a closed repository allowlist
-before any exec or registry call, reads typed owned pins from its own checkout,
-and builds upstream sources and mirror targets itself. It runs only pinned
-first-party actions plus the repository script, re-resolves source digests, skips
-identical targets, refuses moved tags and verifies every copy. The derived CLI
-set must match the reviewed inventory exactly before runtime pulls or mirror
-resolution; source resolution must preserve each pinned digest. The shared reader prepends the single mirror
+for every mirrored image. It records the install-proof database, which is also
+the raw pgTAP server and the managed-rail test database, and the disposable test
+default. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
+job reads typed owned pins from its own checkout, validates all of them before
+any exec or registry call, and builds upstream sources and mirror targets itself.
+It runs only pinned first-party actions plus the repository script, re-resolves
+source digests, skips identical targets, refuses moved tags and two pins that
+would write different digests to one target, and verifies every copy.
+The shared reader prepends the single mirror
 registry to inventory sources for consumers; mirror copying still uses only
 upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
 these pins, preserving the exact digest on every fallback. In CI and locally,
@@ -755,7 +743,7 @@ for native.
 The default helper uses the test pin, resolves once per exact ref per process and
 runs the successful digest-qualified source with `--pull=never`; explicit
 non-inventory overrides keep their existing behavior. Before any shared pull,
-exact local index digests (or exact CLI tags when unpinned) bypass network access;
+exact local index digests bypass network access; a tag-only input and
 inspection errors refuse. The gate, helper and pgTAP runner share one pull retry
 implementation; long Retry-After hints advance by the remaining per-source
 share, while shorter waits are capped to preserve non-GHCR fallback.
@@ -763,16 +751,38 @@ A Docker-free guard rejects literal digests or registry source lists in the gate
 An explicit source tag must match the entry's tag and is preserved during
 resolution. Mirror absence/private access immediately advances to upstream;
 these consumers do not depend on organization package access or publication.
-The pgTAP runner uses the same CLI derivation as mirror planning and pre-pulls
-all five derived tags at their reviewed index digests before start. Acquisition
-tries the organization mirror, upstream GHCR, ECR and Docker Hub in that order;
-a GHCR outage can recover from ECR or Docker Hub only at the same pinned digest.
-Local aliases reconcile mixed successful registries with the CLI's requested
-names. Mirror planning retains its ECR then Docker Hub upstream order.
 The install-proof service retains its unchanged Docker Hub PostgreSQL 17 digest
 and needs no organization package before steps run.
 Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
+
+The non-required raw `pgtap` lane runs every shipped SQL test on the
+install-proof `postgres:17` digest without the Supabase CLI or its images. Its
+[package pins](../../config/ci-postgres-packages.json) name the exact pg_cron
+1.6.4, pgTAP 1.3.3 and `pg_prove` 3.36 PGDG builds for Debian trixie, for amd64
+and arm64, at immutable PostgreSQL apt-archive paths. Each file's committed
+SHA-256 is verified before the bytes are cached or installed; an unpinned
+architecture, a path that does not match its version or a checksum mismatch
+refuses, and no apt index is read. The job restores the downloads through a
+SHA-pinned `actions/cache` step keyed by the pin file, so only a cold cache reaches
+the apt archive, and every cached file is re-verified before use. A main push
+may reuse the exact-commit merge-group proof, which includes `pgtap`. The packages install only into the disposable container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
+is the only file that creates the managed environment for that lane; the runner
+keeps only the replay identity and grants of the retired CLI lane's replay. It is test
+infrastructure, never a runtime bootstrap or a supported-host claim.
+[The managed-compat test helper](../../tests/helpers/managedCompatPostgres.ts)
+boots the same image, packages, server settings and adapter for every
+managed-rail `tests/postgres` suite, including the reviewed-batch gate. The only addition is a login for the `supabase_admin` placeholder, the
+identity those suites use as their owner session. Each required `test-full-shard`
+restores the same SHA-pinned package cache before its tests; a cold cache downloads
+the pinned files from the PostgreSQL apt archive, and every file is re-verified
+before installation.
+The adapter's selected Storage bucket/object columns support the required
+managed-source capture and refusal suite; their types, defaults and keys are
+copied from the pinned managed schema. They implement no Storage API or
+service access. The opt-in
+[`runM14ManagedSourceWitness.mjs`](../../tests/postgres/runM14ManagedSourceWitness.mjs)
+runs the same assertions on a real owned CLI 2.122.0 stack.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 

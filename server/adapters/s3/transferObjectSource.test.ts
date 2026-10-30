@@ -237,3 +237,73 @@ it("refuses a native versioned source instead of silently omitting older version
     features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" }, objects: [object], obligations: [] })))
     .rejects.toMatchObject({ code: "invalid_input" });
 });
+
+it("admits only a stable single current native version within the selected prefix and binds its GET version", async () => {
+  const sdk = { ...commands, ListObjectVersionsCommand: class ListObjectVersionsCommand { constructor(readonly input: Record<string, unknown>) {} } };
+  const history = { IsTruncated: false, Versions: [{ Key: "owned/a", VersionId: "native-1", IsLatest: true }] };
+  const send = vi.fn(async (command: Command) => command.constructor.name === "GetObjectCommand" ? output("abc", {}, { VersionId: "native-1" })
+    : command.constructor.name === "ListObjectVersionsCommand" ? history : page(["owned/a"]));
+  const source = createS3TransferObjectSource({ client: { send }, bucket: "owned-fixture", prefix: "owned/",
+    nativeVersionAdmission: "single-current", ...limits }, () => sdk as never);
+  const descriptor = (await source.read("owned/a")).object;
+  const reference: S3SourceReferenceSnapshot = { bucket: "owned-fixture", snapshotId: "independent-source-record",
+    features: { nativeVersionHistory: "single-current", objectTags: "none", multipartUploads: "none" }, objects: [descriptor], obligations: [] };
+  expect((await source.captureAgainstReferences(async () => reference)).objects).toEqual([descriptor]);
+  expect(send.mock.calls.every(([command]) => command.constructor.name === "GetObjectCommand"
+    ? command.input.Key === "owned/a" : command.input.Prefix === "owned/")).toBe(true);
+  await expect(source.read("other/a")).rejects.toMatchObject({ code: "invalid_input" });
+  const calls = send.mock.calls.length;
+  await expect(source.captureAgainstReferences(async () => ({ ...reference,
+    objects: [{ ...descriptor, key: "other/a" }] }))).rejects.toMatchObject({ code: "invalid_input" });
+  for (const kind of ["pending-upload", "cleanup"] as const) {
+    await expect(source.captureAgainstReferences(async () => ({ ...reference,
+      obligations: [{ kind, key: "other/a", sourceRecordId: "synthetic-duty" }] })))
+      .rejects.toMatchObject({ code: "invalid_input" });
+  }
+  expect(send).toHaveBeenCalledTimes(calls);
+  history.Versions[0]!.VersionId = "other-version";
+  await expect(source.captureAgainstReferences(async () => reference)).rejects.toMatchObject({ code: "version_conflict" });
+});
+
+it.each([
+  { IsTruncated: false, Versions: [{ Key: "owned/a", VersionId: "old", IsLatest: false }] },
+  { IsTruncated: false, Versions: [{ Key: "owned/a", VersionId: "null", IsLatest: true }] },
+  { IsTruncated: false, DeleteMarkers: [{ Key: "owned/a", VersionId: "marker", IsLatest: true }] },
+  { IsTruncated: false, Versions: [{ Key: "other/a", VersionId: "v", IsLatest: true }] },
+  { IsTruncated: false, Versions: [{ Key: "owned/a", VersionId: "v", IsLatest: true }, { Key: "owned/a", VersionId: "v2", IsLatest: true }] },
+  { IsTruncated: true, Versions: [], NextKeyMarker: "owned/a" },
+])("refuses unsupported or incomplete native history before reading object bodies: %j", async history => {
+  const sdk = { ...commands, ListObjectVersionsCommand: class ListObjectVersionsCommand { constructor(readonly input: Record<string, unknown>) {} } };
+  const send = vi.fn(async () => history);
+  const source = createS3TransferObjectSource({ client: { send }, bucket: "owned-fixture", prefix: "owned/",
+    nativeVersionAdmission: "single-current", ...limits }, () => sdk as never);
+  await expect(source.captureAgainstReferences(async () => ({ bucket: "owned-fixture", snapshotId: "empty",
+    features: { nativeVersionHistory: "single-current", objectTags: "none", multipartUploads: "none" }, objects: [], obligations: [] })))
+    .rejects.toHaveProperty("code");
+  expect(send.mock.calls).toHaveLength(1);
+});
+
+it("follows native history's paired cursors and refuses repeated pages, missing GET keys and changed history", async () => {
+  const sdk = { ...commands, ListObjectVersionsCommand: class ListObjectVersionsCommand { constructor(readonly input: Record<string, unknown>) {} } };
+  let mode = "valid", historyCalls = 0;
+  const send = vi.fn(async (command: Command) => {
+    if (command.constructor.name === "GetObjectCommand") return output("abc", {}, { VersionId: "v1" });
+    if (command.constructor.name === "ListObjectsV2Command") return page(["owned/a"]);
+    historyCalls++;
+    if (mode === "missing") return { IsTruncated: false, Versions: [] };
+    if (mode === "changed" && historyCalls > 2) return { IsTruncated: false, Versions: [] };
+    if (!command.input.KeyMarker || mode === "repeat") return { IsTruncated: true,
+      NextKeyMarker: "owned/a", NextVersionIdMarker: "v1", Versions: [] };
+    return { IsTruncated: false, Versions: [{ Key: "owned/a", VersionId: "v1", IsLatest: true }] };
+  });
+  const source = createS3TransferObjectSource({ client: { send }, bucket: "owned-fixture", prefix: "owned/",
+    nativeVersionAdmission: "single-current", ...limits }, () => sdk as never);
+  const descriptor = (await source.read("owned/a")).object;
+  const refs = async (): Promise<S3SourceReferenceSnapshot> => ({ bucket: "owned-fixture", snapshotId: "record",
+    features: { nativeVersionHistory: "single-current", objectTags: "none", multipartUploads: "none" }, objects: [descriptor], obligations: [] });
+  await expect(source.captureAgainstReferences(refs)).resolves.toHaveProperty("referenceSnapshotId", "record");
+  for (const next of ["repeat", "missing", "changed"]) {
+    mode = next; historyCalls = 0;
+    await expect(source.captureAgainstReferences(refs)).rejects.toHaveProperty("code");
+  }
+});

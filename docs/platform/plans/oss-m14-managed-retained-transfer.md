@@ -98,7 +98,7 @@ dispositions. Hosted managed projects may have nonempty `realtime`, `net`,
 refuses if they are outside its finite profile. The hosted leg needs explicit,
 read-approved dispositions before admission. Vault and other secret-bearing
 relations must remain disposition-only; their rows must never enter the
-business capture or retained sidecar.
+business capture.
 
 ## Historical sidecar evidence and analysis (superseded by CD-M14-45)
 
@@ -262,7 +262,7 @@ witnesses serialize the sidecar and verify readback removes a cross-linked row.
 | `communication_provider_events` | typed contact ID only; normalized email is not a link | Nonempty class R before publication. No email inference. | X | map refusal |
 | `communication_delivery_events` | operator, command/recipient key | Parent command/operator tables outside profile; nonempty rows refuse. | X | capture refusal |
 | `communication_email_deliveries` | client, contact, Auth, outbox, aggregate | U; missing populated link refuses. Other service parents require unknown nonempty tables and refuse. | H; mapped trigger stays in native `outbox_events` | W0, W1 |
-| `outbox_events` | typed aggregate order/subscription only | U; missing populated aggregate refuses. Payload is minimised as a whole, so JSON IDs neither survive nor add sidecar subject tags; pending payload is checked in native projection. | H+N(`outbox_events`; pending); H terminal | W0, W2; CD-M14-43 JSON witness |
+| `outbox_events` | typed aggregate order/subscription only | U; missing populated aggregate refuses. Payload is minimised as a whole, so JSON IDs neither survive nor add sidecar subject tags; pending payload is checked in native projection. | H+N(`outbox_events`; pending); H terminal, except the CD-M14-78 checkout reminder key, carried without payload, error or metadata | W0, W2; CD-M14-43 JSON witness |
 | `commerce_idempotency_keys` | none retained | Metadata JSON is minimised as a whole; its client ID is absent from the sidecar, so the structural receipt has no subject tag. | H (subject-free retained receipt) | W0; CD-M14-43 marker witness |
 | `payment_provider_settlement_items` / `payment_provider_settlement_batches` | intent, payment, invoice; batch's items | S: populated item links must resolve to same order; cross-order is a money-integrity anomaly. Batch unions item owners; all-null item refuses for 8D-2. | H; native settlement/intents and invoicing duties remain | W0 |
 
@@ -526,9 +526,8 @@ own ordinary restore admission.
 | `public.commerce_orders`, `public.commerce_order_items` | a | canonical order state |
 | `public.commerce_payments`, `public.commerce_payment_intents`, `public.commerce_payment_state_transitions`: carried / checked cancelled or expired | a / b | native settlement state / terminal unpaid source history |
 | `public.commerce_payment_attempts`: checked terminal / other | b / c | failed transition typed; checked cancelled/expired attempt archived; unresolved attempt refused |
-| `public.outbox_events`: pending checked / terminal / other | a / b / c | pending native duty / archive / unsupported duty |
-| `public.accounting_invoice_issue_outbox`, linked `public.accounting_invoices` | a | native invoicing duty and facts |
-| `public.accounting_invoices` without typed issue duty | c | uncarried invoice state |
+| `public.outbox_events`: pending checked / terminal / other | a / b / c | pending native duty / archive, except the CD-M14-78 checkout reminder key / unsupported duty |
+| `public.accounting_invoice_issue_outbox`, `public.accounting_invoices` | c | superseded by CD-M14-78: any invoice state refuses |
 | `public.communication_permissions` | a | native recipient consent |
 | `public.communication_contacts`, `public.communication_contact_links` | b | typed consent uses them; source rows stay archived |
 | `public.communication_email_deliveries`: terminal failed / active or other | b / c | terminal history / uncarried send state |
@@ -537,16 +536,16 @@ own ordinary restore admission.
 | `public.payment_external_refs`: settled matching / checked terminal unpaid / other | b / b / c | settled provider ID is typed on the intent; source reference and payload stay archived; unsafe state refuses |
 | `public.commerce_payment_reconciliation_runs`, `public.accounting_invoice_operations`, `public.accounting_invoice_correction_outbox`, `public.accounting_invoice_delivery_outbox` | c | nonempty rows fail existing finite check |
 | `public.communication_delivery_events`, `public.communication_provider_events`, `public.communication_permission_events`, `public.subscription_dunning_cases`, `public.subscription_dunning_notifications` | c | nonempty rows fail existing finite check |
-| `storage.buckets`, `storage.objects` | c | current limitation: nonempty managed Storage awaits the separate typed object path |
+| `storage.buckets`, `storage.objects` | c | Standard nonpublic operator-only cohort uses the existing object path; other state refuses |
 | Auth sessions/tokens and service installation records | b: excluded | target login/service owns new installation state |
 | Any other nonempty relation | c | unknown table refusal; empty unknown is `unsupported-empty` |
 
 The matrix is row-class sensitive for mixed relations: a pending outbox is
 typed while a terminal one is history only. A revoke audit is typed while
 other admin audit actions remain in the source archive. A delivery tied to
-pending send state refuses; terminal failed delivery is archive only. The
-invoice-duty projection remains in code, and reconciled/matched provider rows
-can now remain in the source archive after settled money is projected. The
+pending send state refuses; terminal failed delivery is archive only.
+Reconciled/matched provider rows can remain in the source archive after settled
+money is projected. The
 existing owner-link resolver still rejects unresolved populated links and
 cross-order settlement conflicts before publication. No credential row is
 selected. Empty unknown relations are explicitly `unsupported-empty`.
@@ -708,3 +707,420 @@ with navigation update, ast-grep and redacted tracked-tree scan pass. The
 terminal rule shares one source-graph check between census and mapping, avoiding
 an additional target representation. The final run follows the one-intent
 conflict guard added after the first 6/6 run.
+
+The coordinator's CD-M14-58 read accepted this candidate. The independently
+computed tree was `8c5383fd4b1adaade4002163170bde0385317a51`, and
+`git diff --binary 0564ae15 8c5383fd` had SHA-256
+`cc608fb2ae6d2a5dc789ce2effa37f12cb2fce19dc3c79c31b3d5d659d57d015`.
+The read accepted the deliberate distinction between typed failed intents and
+archive-only checked cancelled or expired intents, as well as the aggregate
+`requires-active-mapping` census for mixed source relations.
+
+After native prepare refused clean-merge carry-over, the parcel merged
+`origin/main` at `591a8ec46d3cd74f7047b2a44ea4a50649158690` into
+`1b774c3e9ad444139aa56ca53705162ebfd33358`. Git's automatic merge had
+no conflicts or manually resolved hunks. Its staged pre-note tree was
+`ebef0f952cc4d65304fa6d6cfd753d3055630218`; the stable parcel patch ID,
+excluding this task record, was
+`8013f30cf60b56fc2589f89335bc8832e0e10da7` against both the old base
+and the new main. This is the CD-M14-30 mechanical carry-over case; the
+integrated tree requires fresh full native review.
+Main's new generated agent-context check also required refreshing two line-span
+metadata values after this parcel's `DATA_AND_MIGRATIONS.md` paragraph moved
+the unchanged additive-migration excerpt. The excerpt bytes and SHA-256 did
+not change; this is a docs-only generated-metadata correction.
+
+## Native review cycle 10 payment-link repair
+
+The first integrated review returned one PASS and one material card,
+`MRL-CARRIED-PAYMENT-LINK`. Independent foreign keys in the managed baseline
+allow an attempt linked to one intent to name another payment. The prior
+carried failed/succeeded projection checked attempt status but could then emit
+typed settlement state while omitting the contradictory source attempt. The
+repair shares a finite attempt/transition link check across carried and checked
+terminal states: payment identity, amount, currency, provider and optional
+transition attempt ID must agree with the intent and payment. Any mismatch
+in a carried intent refuses as `target_conflict` before restore; checked
+archive-only terminal state continues through its existing refusal path. A pinned managed-source witness
+mutates each field and both carried statuses, then restores the fixture. This
+is a safety tightening within the accepted typed projection, with no new
+archive class, target representation or public support claim. The earlier
+sidecar privacy card closes because the sidecar was removed. A fresh
+maintainer read is required before this source repair is DCO-committed.
+
+The first managed PG run exposed a refusal-order difference: a source-only
+provider reference refused before the carried intent's mapped conflict check.
+The same shared link check now runs as a narrow preflight for carried intents,
+ahead of relation-disposition refusal. The final pinned CLI 2.122.0 managed
+source → qualified PG16 run passes 7/7, including mismatched payment, amount,
+currency, provider and transition-attempt links in failed and succeeded cases.
+Strict all-project typecheck, lint (zero errors), docs policy, ast-grep and
+redacted Gitleaks scans of the staged tree and all refs pass. No public
+capability wording changed. Self-retro: the first test failure showed that
+early archive-state refusal can mask a more precise typed conflict; placing
+the shared link check before that refusal preserved the existing error contract.
+
+CD-M14-64 accepted the cycle-10 repair with independently recomputed tree
+`2f0ca108a70a480b52ff7782da9eeb3870b5a4eb` and SHA-256
+`b1546944ed4132ab2e5b02e7285fbb60830e71dd5d30dce5acab9fa51e32dde7`
+for `git diff --binary 1af97f95 2f0ca108`. Both computed identities matched.
+The exact accepted tree was DCO-committed as
+`8011cd8d58e10962cdc437d317b8d036db4cb0e7`; fresh full native review follows.
+
+Cycle-11 prepare refused carry-over after main's pgTAP workflow change. The
+forced merge joins `5b0843e5f3e6543e16f63ce4c96da78fa9ac74fc` and
+`8ae51d2923bcc13bb4a9a12da646bbeb8edeb684` without conflicts or manual
+resolution. Its pre-note tree is `cd75fcd8da02d1b12a6a94d3fe83be06be1a2c3d`.
+The stable parcel patch ID excluding this record is
+`2c62af7c2a621620a7b48e78e4a7ac929b53b09c` against both old and new main.
+This meets CD-M14-30; full native review covers the integrated candidate.
+
+## Cycle-11 integration blocker
+
+The integrated strict typecheck fails with one TS2305 diagnostic. Main's
+stock-PostgreSQL pgTAP change removed `deriveCliImages` from
+`scripts/ci-image-mirror.mjs` and its declaration, and `prePullCliImages` from
+`scripts/public-ci-pgtap.mjs`; this parcel's real managed fixture imports both.
+The required root-test shards include this fixture and no longer install the
+Supabase CLI. Replacing the imports alone would therefore leave a second,
+runtime prerequisite gap in hosted tests. No new source or test repair was
+made, and no cycle-11 reviewer was launched while this mandatory gate fails.
+
+The smallest proposed recovery is a test-owned direct launch through pinned
+CLI 2.122.0, using the existing identity-conformance launch pattern, plus a
+checksum-verified CLI prerequisite for the required root-test shards. That
+workflow hook needs its owner; canonical stock-PG17 pgTAP can remain separate.
+An alternative is an owner-approved existing managed fixture only if it proves
+the same real Auth and Storage metadata interfaces. Neither option permits
+skipping the managed witness or substituting the stock compatibility adapter
+for its real source. The accepted payment-link repair remains committed and
+its open native card awaits fresh review after integration is repaired.
+Self-retro: main's removal of a shared runner helper exposed the fixture's
+cross-module setup dependency; repair its explicit prerequisite and ownership
+rather than hiding the failure with a test exclusion.
+
+CD-M14-69 resolves this diagnosis by keeping the required mapper/refusal suite
+on main's managed-compatibility helper and adding an explicit opt-in real
+managed-source witness. The same assertions must run on both sources; any
+unreproducible managed-only behavior stays in the real witness. This is adapter
+migration and parity work before cycle 11, with no workflow change.
+The prerequisite main merge joins `056b760097feb44c32aaf7cbf056835fad49b909`
+and `78f340db40ee6abcdaa97c7f01ccd2a857403b8f` without conflict or manual
+resolution. Pre-note tree: `e371546e5bf699befd05209cdedeada8a985cb0d`.
+The stable parcel patch ID excluding this record is
+`2c62af7c2a621620a7b48e78e4a7ac929b53b09c` on both bases (CD-M14-30).
+
+## CD-M14-69 adapter migration and real-source parity
+
+The required suite now starts `runManagedCompatPostgres` (stock PG17 plus the
+shared adapter); only the opt-in runner supplies a port for its owned real
+managed stack. The business fixture and all seven test bodies remain
+byte-identical from `const sourceId` onward, SHA-256
+`cda6e53fe52d20eac6ef317d257e31d04c4aa3936813ce0d46236199e2b6c39c`.
+No assertion moved or was removed. Auth's existing four captured columns already
+match the needed shapes. The shared adapter adds only Storage buckets
+`id/name/public` and objects `id/bucket_id/name/metadata/owner_id`, with the
+managed types, nullability, UUID/boolean defaults, primary keys and bucket FK
+copied from a live pinned schema observation. It adds no service behavior,
+trigger, production migration, grant or workflow change.
+
+`node tests/postgres/runM14ManagedSourceWitness.mjs` verifies and extracts the
+reviewed CLI archive, starts one owned real stack, runs these same tests once,
+and uses the existing owned-stack cleanup on completion, failure and signals.
+It refuses missing platform pins, checksum/version failures and non-passing
+tests. The supported archive pins inherited from the installer are macOS arm64
+asset `668849778`, SHA-256
+`fe87a5f9781d5423dbd5ebba2d5a6e1a541d01754d14941c574952e5695eaab0`,
+and Linux x64 asset `668850237`, SHA-256
+`59ed066847b98d7461c60e9109d40cab6b9756177ce06ebb05b51338519f5136`,
+both CLI `2.122.0`. The 2026-10-30 real run passed 7/7 with binary SHA-256
+`89838b26049c0672f9609aaf46455c89a46d351f852e313c0c5ae6b3abcbdf9d`,
+observed source image
+`sha256:c141fd17ac6a76c4323e90b3aee8ff1a23d2e89e547c2b963cfadc309c079cc2`,
+and unchanged managed baseline SHA-256
+`fb4de62d4ccf30dca83075b41ea2769ddf74165ecd47d21875790ed5f397ccbe`.
+
+Both sources' Vitest JSON reports have identical ordered names and `passed`
+statuses for typed obligations, identity/idempotency conflicts, carried payment
+links, settlement/delivery state, provider references, unsafe cancelled state,
+and unknown/Storage refusal. The earlier real run remains recorded as 7/7;
+the new real JSON report supplies the per-name comparison. Required discovery
+includes the suite and excludes the opt-in script by the existing filename
+patterns. The script documents the owned stack boundary for the later Storage
+API, GoTrue and authenticated object-read proof; it does not implement that leg.
+
+Before adding the runner, the tracked tree measured 6,705 files and 50,929,268
+bytes. One public script was registered in the existing path and command
+catalogues; no cap changed. Strict all-project typecheck, lint (zero errors),
+policy (zero unanswered), ast-grep, the adapter 7/7 and real-source 7/7 pass.
+Self-retro: retaining one assertion body avoided a second proof implementation;
+schema reconnaissance (1,803 seconds waiting for the shared slot) limited the
+adapter extension to observed columns. This root-cause migration consumes no
+review cycle. Cycle 11 follows only after its required read and DCO; under the
+owner's CD-M14-65 limit, a cycle-11 FAIL ends this Codex delivery without repair.
+
+## CD-M14-72 shared-consumer condition
+
+The CD-M14-69/72 read accepted tree
+`4c7295eae56b4c4606258d44038e64b22719edce` and independently recomputed
+SHA-256 `b3e0e71d6861090d4f2925795fd98dfb515513ba274516b528a5bc68fd06c6cc`
+for `git diff --binary 9861f894 4c7295ea`; both computed identities matched.
+Its remaining condition measured the adapter consumers and stock pgTAP on that
+unchanged tree and detached main `78f340db40ee6abcdaa97c7f01ccd2a857403b8f`.
+The baseline used its own locked install and was removed after measurement.
+
+All nine existing consumer files (including the runner's synthetic adapter
+unit tests and the indirect risk fixture consumer) have identical ordered
+test names/statuses: 217 passed, zero failed or skipped on both trees.
+Stock pgTAP is identical per file and assertion: 226 files, 5,199 assertions,
+zero failures, directives or missing plans on both trees. The sole full-set
+difference is the new `connectedManagedRetained.test.ts` consumer, absent from
+main and passing all seven tests on the candidate. Under the read's explicit
+any-difference condition, this addition is returned for read before DCO.
+No source repair or cycle-11 review was started. Self-retro: measuring the
+common consumers and reporting the added suite separately distinguishes a
+suite-set addition from a shared-adapter regression without assuming a baseline.
+
+The next native preparation required integration with main `1e8d8f3a`.
+The merge parents are `7c909b0bc453f855fb9c96175249c7da5b926686`
+and `1e8d8f3a27163c69ac14e6ff0c9744b2985fef39`; the resolved tree before
+this evidence note is `9f35ea222c6e4a2836df8f649047a1bdcb4c9e14`.
+The only conflict was the CONTRIBUTING proof-command prose: main's hosted-issuer
+paragraph and the managed-source paragraph were both retained verbatim, with
+main's paragraph remaining adjacent to its recipe antecedent. The resolved file
+removes no main line. All non-doc per-file changes remain identical; the combined
+stable patch ID excluding this record and CONTRIBUTING is
+`8cabae1ce3987b458a9dfe76f1a2086d0c92d071` against both bases.
+This is the approved prose-only verbatim union; no implementation claim changed.
+
+## CD-M14-65/75 regroup and closed money-column matrix
+
+Native cycle 11 failed with one mechanism reported independently by both fresh
+reviewers (`MRL-CARRIED-PROVIDER-ID`, `MRL-CARRIED-PROVIDER-ID-CONFLICT`); both
+closed `MRL-CARRIED-PAYMENT-LINK`. Under the owner's CD-M14-65 decision this
+parcel continues without the previous Codex author. Implementation and supervisor
+contexts in this task: the earlier Codex supervisor and, from this point, the
+Claude Opus 5.5 lead session. Later reviewers are fresh Claude Opus 5.5 subagents.
+
+Root-cause class: a redundant money fact in the four-relation source graph is
+projected onto a smaller typed target, and a contradiction between redundant copies
+can vanish because nothing compares them. Patching one field per review round does
+not converge, so CD-M14-75 replaces it with this closed matrix. Every column of the
+four relations has one disposition: **C** carried to the typed target, **E** compared
+(a mismatch refuses before restore), or **A** archive-only, with the reason its loss
+cannot change money truth in the target. A later material finding must show a wrong
+row, a missed column or a mechanism outside the matrix.
+
+| Column | Disposition | Rule or reason |
+| --- | --- | --- |
+| `commerce_payments.id`, `order_id` | E | Payment joins the intent; order must match. |
+| `commerce_payments.provider` | C, E | Target `channel_key`; equals the attempt provider. |
+| `commerce_payments.provider_payment_id` | E (new) | If both payment and intent copies are populated they must be equal. A settled intent must have its own copy, which the target carries. An empty intent copy on an unpaid intent contradicts nothing: no money moved. |
+| `commerce_payments.status` | E | Pairs with the intent status on every admitted path. |
+| `commerce_payments.amount_cents` | E | Equals the intent amount on every path, including terminal archive. |
+| `commerce_payments.currency` | E | Equals the intent currency on every path, including terminal archive. |
+| `commerce_payments.metadata` | A | Free-form provider context; target money state is derived from typed columns only. |
+| `commerce_payments.created_at`, `updated_at` | A | Bookkeeping; the target carries the intent timestamps. |
+| `commerce_payment_intents.id`, `order_id`, `payment_id` | C, E | Identity and links. |
+| `commerce_payment_intents.target_kind`, `subscription_id`, `subscription_cycle_id` | E | Only `one_time_order` with empty subscription links is admitted. |
+| `commerce_payment_intents.status` | C, E | Mapped to the target state; other states refuse. |
+| `commerce_payment_intents.amount_cents`, `currency` | C, E | Target amount and currency; equal to the order and payment. |
+| `commerce_payment_intents.provider_payment_id` | C | Target `external_ref`; required on a settled intent. |
+| `commerce_payment_intents.active_attempt_id` | E (new) | Empty, or the intent's own attempt. An intent without attempts must leave it empty. |
+| `commerce_payment_intents.failure_reason`, `created_at`, `updated_at` | C | Carried. |
+| `commerce_payment_intents.metadata` | A | Free-form; no target money state reads it. |
+| `commerce_payment_attempts.id`, `payment_intent_id`, `payment_id` | E | The attempt must belong to this intent and payment. |
+| `commerce_payment_attempts.provider`, `amount_cents`, `currency`, `status` | E | Equal to the payment or intent, or to the terminal state. |
+| `commerce_payment_attempts.provider_attempt_id`, `provider_session_id`, `next_action_kind` | A | Provider session detail of a finished attempt; the target has no attempt row and settlement identity is the intent's. |
+| `commerce_payment_attempts.idempotency_key` | A | Source retry key of a finished attempt; the target derives its own transition key. |
+| `commerce_payment_attempts.failure_reason`, `failure_class` | A | Attempt diagnostics; the carried failure state and reason are the intent's. |
+| `commerce_payment_attempts.request_payload`, `response_payload`, `metadata` | A | Free-form provider traffic; no target money state reads it. |
+| `commerce_payment_attempts.created_at`, `updated_at` | A | Bookkeeping of a finished attempt. |
+| `commerce_payment_state_transitions.id`, `payment_intent_id`, `payment_attempt_id` | C, E | Identity and links. |
+| `commerce_payment_state_transitions.to_status` | C, E | Must match the terminal intent state. |
+| `commerce_payment_state_transitions.occurred_at` | C | Carried. |
+| `commerce_payment_state_transitions.from_status` | A | The target rail is created-to-terminal; the source path does not change the terminal money state. |
+| `commerce_payment_state_transitions.transition_kind`, `reason` | A | Descriptive path detail; the terminal state is compared and carried. |
+| `commerce_payment_state_transitions.provider_event_id` | A | Provider event history; the settled identity is carried through the intent. |
+| `commerce_payment_state_transitions.idempotency_key` | A | Replaced by a target-derived key bound to the source row. |
+| `commerce_payment_state_transitions.payload`, `created_at` | A | Free-form or bookkeeping; no target money state reads them. |
+
+Repair: the existing shared `attemptLinks` rule gains payment-to-intent amount and
+currency, populated provider-identity equality and own-attempt checks. The carried
+`created` guard gains the same identity and empty-attempt checks. No value, format,
+table, migration, dependency or public claim changes. A read-only source census
+showed unpaid intents with an empty provider identity whose payment has one, so the
+check compares populated copies only; those shapes must stay admissible. Attempt and
+transition cardinality on real sources is outside this repair and belongs to the
+real-store admission parcel.
+
+Evidence on this repair: the required suite on the managed-compatibility source and
+the opt-in real pinned CLI 2.122.0 source (binary SHA-256
+`89838b26049c0672f9609aaf46455c89a46d351f852e313c0c5ae6b3abcbdf9d`) both pass the
+same seven ordered tests. Witnesses cover a contradictory provider identity with and
+without a reference row, an empty payment copy, an empty unpaid intent copy, a
+foreign active attempt on settled, failed and created intents, and contradictory
+identity, amount and currency on a cancelled checkout. Strict typecheck, lint (0
+errors, 33 existing warnings), structural checks and documentation policy pass.
+Self-retro: checking the first wording against a read-only source count exposed a
+rule that would have refused real unpaid intents; a closed matrix plus one count
+replaced another review round spent on a single field.
+
+The CD-M14-77 read covered tree `7daee22b09ff4ddc043d0d326e550e65fb5db281` and
+SHA-256 `fe19117e178136a7c1192355cc9a402e9ba0b16e5a84e4f06a43512d7522698d` for
+`git diff --binary 3f4e802e 7daee22b`; both computed identities matched. It was
+DCO-committed exactly as `7f18855f`.
+
+## CD-M14-78 obligation table and invoice narrowing
+
+Native cycle 12 closed both provider-identity cards and confirmed the column matrix,
+then raised non-privacy findings. Their common cause: the option C cut removed most of
+the earlier witnesses, and earlier cycles concentrated on privacy. CD-M14-78 resolves
+them in one bundle and extends the closed-list method from columns to obligations.
+
+Decision (option R): the invoice-duty projection is removed. It was reachable only in a
+synthetic state, because real issue requests also write `accounting_invoice_operations`,
+which refuses. Any managed invoice row now refuses, including issued invoices, so a
+source with invoice rows cannot transfer yet. Other repairs: carried settled transitions receive
+`invoicing_cutover` rows, so restored history opens no new document duty; a method in
+`pending_verification` refuses; a checked cancelled or expired checkout must also agree
+with its order and name no subscription; a matched settlement item must agree with the
+settled intent's currency and the payment's provider.
+
+Every relation in the capture's finite lists has one row below. Tests are in
+`tests/postgres/connectedManagedRetained.test.ts`, by title, unless named otherwise. A
+later material finding must show a wrong row or a missing relation.
+
+| Relation | Disposition | Proving test |
+| --- | --- | --- |
+| `auth.users` | Metadata; typed identity | projects typed managed obligations |
+| `auth.identities`, `auth.sessions`, `auth.refresh_tokens`, `auth.flow_state`, `auth.one_time_tokens`, `auth.mfa_factors`, `auth.mfa_challenges`, `auth.mfa_amr_claims`, `auth.audit_log_entries` | Credential-excluded; counted, never selected | projects typed managed obligations (`auth.identities`); the rest share the same list and branch |
+| Service migration tables and `_realtime.*` in the installation list | Service installation history; counted | Same list and branch as above; `_realtime.feature_flags` handled by the real-source runner |
+| `public.clients`, `public.admin_users` | Typed | projects typed managed obligations; refuses conflicting mapped fields |
+| `public.identity_privacy_erasures`, `public.customer_subject_lifecycle_events` | Typed through the item 7 mapping | `tests/postgres/connectedStoreTransfer.test.ts` managed identity cases |
+| `public.admin_audit_events` | Revoke typed through item 7; other actions archive-only | projects typed managed obligations; `connectedStoreTransfer.test.ts` |
+| `public.catalog_products`, `catalog_skus`, `price_lists`, `price_entries` | Typed | projects typed managed obligations |
+| `public.subscriptions`, `subscription_lines`, `subscription_cycles`, `subscription_events` | Typed; other row classes refuse | projects typed managed obligations (exact rows for subscriptions and lines, count for the others); refuses every row class with no typed path |
+| `public.subscription_price_agreements` | Current typed; ended archive-only; contradiction refuses | projects typed managed obligations; keeps an ended price agreement; refuses every row class with no typed path |
+| `public.commerce_payment_method_refs` | Active typed; ended archive-only; verification or contradiction refuses | projects typed managed obligations (exact renewal term and term line rows); refuses a method in verification; refuses every row class with no typed path |
+| `public.commerce_orders`, `commerce_order_items` | Typed; other row classes refuse | projects typed managed obligations (exact rows); refuses every row class with no typed path |
+| `public.commerce_payments`, `commerce_payment_intents`, `commerce_payment_attempts`, `commerce_payment_state_transitions` | Column matrix above | projects typed managed obligations (exact settlement intent and transition rows); refuses a carried payment attempt; both cancelled-checkout tests |
+| `public.outbox_events` | Pending checked typed; terminal checkout reminder key typed without payload, error or metadata; other terminal archive-only; other refuses | projects typed managed obligations; keeps a paid order's checkout reminder; refuses every row class with no typed path |
+| `public.communication_permissions`, `communication_contacts`, `communication_contact_links` | Consent typed; contact rows archive-only; other refuses | projects typed managed obligations (exact consent row); refuses every row class with no typed path |
+| `public.communication_email_deliveries` | Terminal failed archive-only; active or mismatched refuses | refuses non-reconciled settlement and active delivery; refuses every row class with no typed path |
+| `public.commerce_idempotency_keys` | Completed and expired archive-only; other refuses | projects typed managed obligations; refuses conflicting mapped fields |
+| `public.payment_provider_settlement_batches`, `payment_provider_settlement_items` | Reconciled and matched archive-only; other or contradictory refuses | projects typed managed obligations; refuses non-reconciled settlement; refuses settlement rows that contradict; refuses every row class with no typed path |
+| `public.payment_external_refs` | Matching settled or checked unpaid archive-only; other refuses | refuses in-flight, mismatched, extra and unmapped provider reference |
+| `public.accounting_invoices`, `accounting_invoice_issue_outbox`, `accounting_invoice_operations`, `accounting_invoice_correction_outbox`, `accounting_invoice_delivery_outbox` | Refuses | refuses every invoice state and every uncarried obligation relation |
+| `public.commerce_payment_reconciliation_runs`, `communication_delivery_events`, `communication_provider_events`, `communication_permission_events`, `subscription_dunning_cases`, `subscription_dunning_notifications` | Refuses | refuses every invoice state and every uncarried obligation relation |
+| `storage.buckets`, `storage.objects` | Standard nonpublic buckets, including empty buckets, project through the existing object path with row security enabled and no policies except exact `{service_role}`; other state refuses | `managedStorageTransfer.test.ts`; refuses unknown nonempty relations and Storage without a selected object source |
+| Any other relation | Refuses when nonempty; empty is `unsupported-empty` | refuses unknown nonempty relations and Storage without a selected object source |
+
+Carried settled history opening new work: `invoicing_due_sources` is empty after restore
+(projects typed managed obligations). A static read of the platform's other due readers,
+with no run against a restored store, found three that reach carried managed rows:
+
+| Due reader | Carried rows | Result | Proof |
+| --- | --- | --- | --- |
+| Automatic renewal (`subscription_stock_wait_normal_due`) | Active subscription at or past `next_cycle_at` | Static admission `blocked` refuses before stock or payment, and a run records a terminal refusal for that schedule. Renewals of carried subscriptions stay unsupported until a later lifecycle carry, so the documented rule is to keep the renewal job off for them | projects typed managed obligations (due row and blocked reason); `tests/postgres/subscriptionComposition.test.ts` `static` scenario (refusal, no provider call) |
+| Checkout reminder (`commerce_enqueue_checkout_recovery_reminders`) | Unpaid order with a failed intent, 1 to 24 hours old | A terminal source reminder keeps only its key, so no second reminder. An order the source never reminded gets its first one, as it would have on the source. Every source reminder also writes a `commerce_checkout_recovery_tokens` row, an unknown relation that refuses today, so the carried key applies once that relation is purged or admitted | projects typed managed obligations (with and without the key); keeps a paid order's checkout reminder |
+| Renewal reminder (`dunning_lifecycle_renewal_reminder_scan`, `_enqueue`) | Active subscription | Writes only `subscription_reminder_ledger`, and no TypeScript caller exists, so nothing is sent. A recorded finding | Static read |
+
+Carried pending paid-fulfilment and subscription-welcome rows continue their own work by
+design. Two read models report carried paid orders as missing their paid event
+(`order_paid_outbox_missing`); they write nothing and no native route composes them, so
+this is a recorded finding only. The remaining readers need relations outside the managed
+lists (shipments, pause windows, activations, retry obligations, draft receipts, wait
+cases, promotion claims), so no carried row can qualify. Native restore is outside this
+item.
+
+## CD-M14-83 regroup, refusal table and source-only columns
+
+Regroup after native cycles 12 and 13, which both left a material obstacle. The remaining
+gap was unexecuted refusal proof, owned by the obligation table above and the
+sufficient-evidence rule. The cause: that table closes the list per relation, but the
+guards live per row class, so each review found the next guard with no test. Adding one
+case per card would have repeated that. The next step was one coverage run over
+`connectedManagedRetained.ts`, listing every refusal line no test reaches, then one table
+of rows in `refuses every row class with no typed path`. Expected result: only the lines
+listed below stay unreached. Lesson: reviewers each finding the next refusal with no
+test → measure unreached refusal lines once and test them together.
+
+Native cycle 14 closed that gap's refusal classes and left a smaller one. Open material
+cards went from nine to three to two: a table row that did not isolate the settlement
+status clause, and a source-only column whose stated comparison did not exist. The method
+stays the same, because this cycle added new information rather than repeating a gap.
+Each stated disposition is now checked against the code it names.
+
+Native cycle 15 closed those and raised one new card with a new cause: the renewal term
+values had no executed proof, because the comparison after restore reads the packet the
+mapper itself produced. Relations and row classes were already measured, and field values
+were not. So the third measured dimension is exact expected rows from fixtures whose values
+differ, plus one mutation run over the mapper's hand-built fields, with each survivor given
+an assertion or a reason. The run is a measurement, not a target:
+
+it covered 58 hand-built target fields, each broken in turn against the positive test. The
+first pass detected 51. The seven survivors were equal fixture values or unread fields:
+created and updated times of renewal terms, term lines and settlement intents; the settled
+time; the transition time; the consent times; and an empty order metadata. The fixture now
+separates them and the exact rows read them, and a rerun detected all seven. It found no
+mapping bug. Columns that `project` copies by name share one code path and were not
+mutated field by field.
+
+Each table row changes the source inside the transaction the capture reads, then rolls
+back. The table is criteria for this item, not a target to extend.
+
+Refusal lines still unreached, each with its reason:
+
+| Refusal | Why no test reaches it |
+| --- | --- |
+| Capture time or relation count not an integer | The SQL returns an integer |
+| Relation with no primary key; projected row missing a target column | Needs source schema drift; the baseline hash is pinned |
+| Two completed erasures for one client | `identity_privacy_erasures` is absent from the pinned baseline; the identity mapping suite owns those cases |
+| Capture with no held rows (`managedIdentityEvidence`, `mapManagedRetainedBusiness`) | The capture validation before it already proves this |
+| Cycle number not a nonnegative integer | The source `NOT NULL` and `CHECK` forbid it |
+| Two consents for one recipient and purpose | The source unique constraints on email and on contact, channel and purpose forbid it |
+| Target table missing or already populated | The identity mapping refuses a non-fresh target first; the target inventory is pinned |
+| Projected keys differ from target columns; record cast returns no row | Needs target schema drift |
+| A cast failure outside SQLSTATE classes 22 and 23 rethrows | Needs the database to fail during the cast; the run still stops |
+| `quoted` on a name over 63 bytes or holding NUL | PostgreSQL names cannot be that long or hold NUL |
+| Settlement item owner lookup (`byOrder(...) ?? fail`) | Orders and items sort before settlement, so their owner check refuses first with `invalid_input` |
+| Final `return false` of `archiveState` | Its callers pass only relations with an earlier branch |
+| Owner lookup with a dangling auth user or contact (`byClient`, `byContact`) | Source foreign keys forbid both; the erasure arm is the row above |
+
+The capture also sets `row_security = off`, so a login that row security would filter
+fails with 42501 rather than reading empty relations. `refuses a source login that row
+security would silently filter` shows the same login reading no rows with no error
+without the setting. The real-source runner captures with the provider `postgres` role's
+rights and records its `rolsuper` and `rolbypassrls`; the required adapter suite uses a
+superuser.
+
+Source-only columns of the carried relations, measured against the target:
+
+| Relation | Column | Disposition |
+| --- | --- | --- |
+| `subscriptions` | `currency`, `region_code` | Mapped; resolved into the price list |
+| | `pet_id`, `shipping_address_id`, `billing_address_id`, `starter_pack`, `is_test_fixture` | Refuses when set |
+| | `payment_method_ref`, `payment_method_kind` | Compared with the method; refuses otherwise |
+| | `size_constraint` | Descriptor; lines carry the goods |
+| | `timezone` | No renewal reader |
+| | `cancellation_source` | Source history; only `status` decides whether a subscription carries |
+| | `offer_policy_version`, `promotion_engine_version`, `offer_policy_assignment_state` | Acquisition only |
+| `subscription_lines` | `qty` | Mapped |
+| | `template_version` | Compared with the subscription and the agreement; refuses otherwise |
+| | `line_metadata` | Quote line price and quantity compared with the agreement and line; refuses otherwise. Other metadata is source history |
+| `subscription_cycles` | `cycle_number` | Sets the next cycle number |
+| | `retry_attempt`, `next_retry_at`, `provider_attempt_sequence`, `renewal_row_error_count`, `renewal_quarantined_until` | Refuses when set |
+| | `paid_at`, `order_id`, `payment_id`, `payment_method_ref`, `failure_reason`, `template_version`, `template_snapshot`, `pricing_snapshot`, `engine_idempotency_key`, `renewal_row_error_key`, `offer_policy_version`, `promotion_engine_version`, `offer_policy_assignment_state` | Source history; renewal prices come from the agreement |
+| `commerce_orders` | `currency`, `total_cents` | Mapped |
+| | `subtotal_cents` | Equals the total once the others are zero |
+| | `discount_cents`, `shipping_cents`, `shipping_discount_cents`, `mode`, `subscription_id`, `shipping_address_id`, `pet_id`, `recovery_root_order_id`, `recreated_from_order_id` | Refuses when set |
+| | `tax_cents`, `region_code`, `checkout_session_id`, `order_number`, `size_constraint` | Source history; `tax_cents` is included in the total |
+| `commerce_order_items` | `unit_price_cents`, `total_cents`, `allocation_ordinal` | Mapped |
+| | `discount_allocated_cents`, `effective_total_cents` | Compared; refuses otherwise |
+| | `product_snapshot`, `variant_snapshot`, `mode_at_line`, `size_constraint_contribution`, `vat_rate_bps`, `effective_net_cents` | Source history; `sku_id` carries the goods and a null refuses |
+| `subscription_events` | `cycle_id`, `updated_at`, `actor_kind` | Source history; the event's subscription and key carry |
+| `catalog_products` | `metadata`, `allergens` | Product content, not carried; the documented rule restores it from the operator's archive before the target serves that catalogue |
+| `catalog_skus` | `pet_type`, `metadata`, `format_code`, `unit_form_code`, `gtin`, `kcal_per_unit`, `feeding_grams_per_unit`, `requires_pet_profile` | Product content, same rule. A later parcel maps these and `allergens` |
+| `price_lists`, `price_entries`, `outbox_events` | None | Measured: every source column has a target column |
+| `clients`, `admin_users` | Measured source-only columns | Owned by the item 7 identity mapping and its suite |

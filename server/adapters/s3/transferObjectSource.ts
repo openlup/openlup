@@ -4,7 +4,7 @@ import type { GetObjectCommandOutput, S3Client } from "@aws-sdk/client-s3";
 import { ObjectTransferError, type TransferObject, type TransferObjectReader } from "@openlup/platform/portability";
 
 const access = "authenticated-source-read";
-type Commands = Pick<typeof import("@aws-sdk/client-s3"), "GetObjectCommand" | "ListObjectsV2Command">;
+type Commands = Pick<typeof import("@aws-sdk/client-s3"), "GetObjectCommand" | "ListObjectsV2Command" | "ListObjectVersionsCommand">;
 type Listing = { key: string; bytes: number; etag?: string; modified?: string };
 export interface S3TransferObjectCensus {
   bucket: string;
@@ -17,7 +17,7 @@ export interface S3SourceReferenceSnapshot {
   bucket: string;
   snapshotId: string;
   /** Independently established source-store feature facts for this finite profile. */
-  features: { nativeVersionHistory: "none"; objectTags: "none"; multipartUploads: "none" };
+  features: { nativeVersionHistory: "none" | "single-current"; objectTags: "none"; multipartUploads: "none" };
   objects: ReadonlyArray<Pick<TransferObject, "key" | "version" | "bytes" | "sha256" | "metadata">>;
   /** Pending and cleanup work may name a key with no current physical object. */
   obligations: ReadonlyArray<{ kind: "pending-upload" | "partial-object" | "cleanup"; key: string; sourceRecordId: string }>;
@@ -45,6 +45,10 @@ export function createS3TransferObjectSource(input: {
   maximumTotalBytes: number;
   maximumFiles: number;
   maximumPages: number;
+  /** Select a finite owned namespace. Keys remain full S3 keys. */
+  prefix?: string;
+  /** Opt-in history admission; older versions and delete markers refuse. */
+  nativeVersionAdmission?: "single-current";
   signal?: AbortSignal;
 }, loadCommands: () => Commands = () => createRequire(import.meta.url)("@aws-sdk/client-s3")): TransferObjectReader & {
   capture(): Promise<S3TransferObjectCensus>;
@@ -53,15 +57,17 @@ export function createS3TransferObjectSource(input: {
     obligations: S3SourceReferenceSnapshot["obligations"];
   }>;
 } {
-  const { client, bucket, maximumObjectBytes, maximumTotalBytes, maximumFiles, maximumPages, signal } = input;
+  const { client, bucket, maximumObjectBytes, maximumTotalBytes, maximumFiles, maximumPages, signal, prefix, nativeVersionAdmission } = input;
   if (!client || typeof client.send !== "function" || !text(bucket, 256)
     || !ceiling(maximumObjectBytes, 20 * 1024 * 1024) || !ceiling(maximumTotalBytes, 64 * 1024 * 1024)
+    || prefix !== undefined && (!keyText(prefix) || !prefix.endsWith("/"))
+    || nativeVersionAdmission !== undefined && nativeVersionAdmission !== "single-current"
     || !ceiling(maximumFiles, 10000) || !ceiling(maximumPages, 100)) throw new ObjectTransferError("invalid_input");
   // Loading the optional SDK also waits for an explicitly selected operation.
   const sdk = loadCommands;
   const reader: TransferObjectReader = {
     async read(key, expectedVersion) {
-      if (!keyText(key) || expectedVersion !== undefined && !/^sha256:[a-f0-9]{64}$/.test(expectedVersion)) throw new ObjectTransferError("invalid_input");
+      if (!keyText(key) || prefix !== undefined && !key.startsWith(prefix) || expectedVersion !== undefined && !/^sha256:[a-f0-9]{64}$/.test(expectedVersion)) throw new ObjectTransferError("invalid_input");
       try {
         signal?.throwIfAborted();
         const response = await client.send(new (sdk().GetObjectCommand)({ Bucket: bucket, Key: key }), { abortSignal: signal });
@@ -107,7 +113,7 @@ export function createS3TransferObjectSource(input: {
         if (++pages > maximumPages) throw new ObjectTransferError("invalid_input");
         signal?.throwIfAborted();
         const response = await client.send(new (sdk().ListObjectsV2Command)({
-          Bucket: bucket, MaxKeys: Math.min(1000, maximumFiles), ...(cursor === undefined ? {} : { ContinuationToken: cursor }),
+          Bucket: bucket, ...(prefix === undefined ? {} : { Prefix: prefix }), MaxKeys: Math.min(1000, maximumFiles), ...(cursor === undefined ? {} : { ContinuationToken: cursor }),
         }), { abortSignal: signal });
         if (typeof response.IsTruncated !== "boolean" || response.CommonPrefixes?.length
           || response.Contents !== undefined && !Array.isArray(response.Contents)) throw new ObjectTransferError("integrity_conflict");
@@ -115,7 +121,7 @@ export function createS3TransferObjectSource(input: {
         if (contents.length > Math.min(1000, maximumFiles)
           || response.KeyCount !== undefined && response.KeyCount !== contents.length) throw new ObjectTransferError("integrity_conflict");
         for (const entry of contents) {
-          if (!keyText(entry.Key) || !Number.isSafeInteger(entry.Size) || entry.Size! < 0
+          if (!keyText(entry.Key) || prefix !== undefined && !entry.Key.startsWith(prefix) || !Number.isSafeInteger(entry.Size) || entry.Size! < 0
             || entry.Size! > maximumObjectBytes || entries.has(entry.Key)) throw new ObjectTransferError("invalid_input");
           bytes += entry.Size!;
           if (entries.size >= maximumFiles || !Number.isSafeInteger(bytes) || bytes > maximumTotalBytes) throw new ObjectTransferError("invalid_input");
@@ -135,6 +141,39 @@ export function createS3TransferObjectSource(input: {
       }
     } catch (error) { throw failure(error, "bucket"); }
   }
+  async function currentVersions(): Promise<Array<[string, string]>> {
+    const entries = new Map<string, string>(), cursors = new Set<string>();
+    let keyMarker: string | undefined, versionMarker: string | undefined;
+    try {
+      for (let pages = 0; ; pages++) {
+        if (pages >= maximumPages) throw new ObjectTransferError("invalid_input");
+        signal?.throwIfAborted();
+        const response = await client.send(new (sdk().ListObjectVersionsCommand)({
+          Bucket: bucket, ...(prefix === undefined ? {} : { Prefix: prefix }), MaxKeys: Math.min(1000, maximumFiles),
+          ...(keyMarker === undefined ? {} : { KeyMarker: keyMarker, VersionIdMarker: versionMarker }),
+        }), { abortSignal: signal });
+        if (typeof response.IsTruncated !== "boolean" || response.DeleteMarkers?.length || response.CommonPrefixes?.length
+          || response.DeleteMarkers !== undefined && !Array.isArray(response.DeleteMarkers)
+          || response.Versions !== undefined && !Array.isArray(response.Versions)
+          || (response.Versions?.length ?? 0) > Math.min(1000, maximumFiles)) throw new ObjectTransferError("invalid_input");
+        for (const entry of response.Versions ?? []) {
+          if (!keyText(entry.Key) || prefix !== undefined && !entry.Key.startsWith(prefix) || !text(entry.VersionId, 1024)
+            || entry.VersionId === "null" || entry.IsLatest !== true || entries.has(entry.Key)
+            || entries.size >= maximumFiles) throw new ObjectTransferError("invalid_input");
+          entries.set(entry.Key, entry.VersionId);
+        }
+        if (!response.IsTruncated) {
+          if (response.NextKeyMarker !== undefined || response.NextVersionIdMarker !== undefined) throw new ObjectTransferError("integrity_conflict");
+          return [...entries].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+        }
+        if (!keyText(response.NextKeyMarker) || prefix !== undefined && !response.NextKeyMarker.startsWith(prefix)
+          || !text(response.NextVersionIdMarker, 1024)) throw new ObjectTransferError("integrity_conflict");
+        const cursor = JSON.stringify([response.NextKeyMarker, response.NextVersionIdMarker]);
+        if (cursors.has(cursor)) throw new ObjectTransferError("integrity_conflict");
+        cursors.add(cursor); keyMarker = response.NextKeyMarker; versionMarker = response.NextVersionIdMarker;
+      }
+    } catch (error) { throw failure(error, "bucket"); }
+  }
   const source = { ...reader,
     async capture() {
       const before = await list(), objects: TransferObject[] = [];
@@ -151,16 +190,21 @@ export function createS3TransferObjectSource(input: {
       if (typeof readReferences !== "function") throw new ObjectTransferError("invalid_input");
       const before = await referenceRead(readReferences);
       if (before.bucket !== bucket) throw new ObjectTransferError("invalid_input");
-      const expected = referenceEncoding(before, maximumFiles, maximumTotalBytes);
+      if (before.features?.nativeVersionHistory !== (nativeVersionAdmission ?? "none")) throw new ObjectTransferError("invalid_input");
+      const expected = referenceEncoding(before, maximumFiles, maximumTotalBytes, prefix);
       const retained = JSON.parse(expected) as S3SourceReferenceSnapshot;
+      const historyBefore = nativeVersionAdmission ? await currentVersions() : undefined;
       const observed = await source.capture();
-      // ListObjectsV2 does not enumerate retained native versions. A versioned
-      // bucket needs a separate history-aware transfer profile, not this census.
-      if (observed.objects.some(object => Object.hasOwn(object.metadata, "s3.version-id"))) {
+      if (historyBefore) {
+        const historyAfter = await currentVersions();
+        const captured = observed.objects.map(object => [object.key, object.metadata["s3.version-id"]]);
+        if (JSON.stringify(historyBefore) !== JSON.stringify(historyAfter)
+          || JSON.stringify(historyBefore) !== JSON.stringify(captured)) throw new ObjectTransferError("version_conflict");
+      } else if (observed.objects.some(object => Object.hasOwn(object.metadata, "s3.version-id"))) {
         throw new ObjectTransferError("invalid_input");
       }
       const after = await referenceRead(readReferences);
-      if (after.bucket !== bucket || referenceEncoding(after, maximumFiles, maximumTotalBytes) !== expected) throw new ObjectTransferError("version_conflict");
+      if (after.bucket !== bucket || referenceEncoding(after, maximumFiles, maximumTotalBytes, prefix) !== expected) throw new ObjectTransferError("version_conflict");
       const listed = observed.objects.map(({ key, version, bytes, sha256, metadata }) => ({ key, version, bytes, sha256, metadata }));
       if (JSON.stringify(listed) !== JSON.stringify(retained.objects)) throw new ObjectTransferError("integrity_conflict");
       return { ...observed, referenceSnapshotId: retained.snapshotId, features: retained.features,
@@ -175,8 +219,8 @@ async function referenceRead(readReferences: () => Promise<S3SourceReferenceSnap
   catch (error) { throw error instanceof ObjectTransferError ? error : new ObjectTransferError("unavailable"); }
 }
 
-function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: number, maximumTotalBytes: number): string {
-  if (!snapshot || !text(snapshot.bucket, 256) || !text(snapshot.snapshotId, 1024) || snapshot.features?.nativeVersionHistory !== "none"
+function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: number, maximumTotalBytes: number, prefix?: string): string {
+  if (!snapshot || !text(snapshot.bucket, 256) || !text(snapshot.snapshotId, 1024) || !["none", "single-current"].includes(snapshot.features?.nativeVersionHistory)
     || snapshot.features?.objectTags !== "none" || snapshot.features?.multipartUploads !== "none"
     || !Array.isArray(snapshot.objects)
     || snapshot.objects.length > maximumFiles || !Array.isArray(snapshot.obligations)
@@ -185,7 +229,8 @@ function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: nu
   const duties = new Set<string>();
   let total = 0;
   const objects = snapshot.objects.map(object => {
-    if (!keyText(object?.key) || !/^sha256:[a-f0-9]{64}$/.test(object.version)
+    if (!keyText(object?.key) || prefix !== undefined && !object.key.startsWith(prefix)
+      || !/^sha256:[a-f0-9]{64}$/.test(object.version)
       || !Number.isSafeInteger(object.bytes) || object.bytes < 0
       || !/^[a-f0-9]{64}$/.test(object.sha256) || !object.metadata
       || typeof object.metadata !== "object" || Array.isArray(object.metadata)
@@ -200,7 +245,8 @@ function referenceEncoding(snapshot: S3SourceReferenceSnapshot, maximumFiles: nu
   }).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
   const obligations = snapshot.obligations.map(value => {
     if (!value || !["pending-upload", "partial-object", "cleanup"].includes(value.kind)
-      || !keyText(value.key) || !text(value.sourceRecordId, 1024)
+      || !keyText(value.key) || prefix !== undefined && !value.key.startsWith(prefix)
+      || !text(value.sourceRecordId, 1024)
       || value.kind === "partial-object" && !keys.has(value.key)
       || duties.has(`${value.kind}\u0000${value.key}\u0000${value.sourceRecordId}`)) throw new ObjectTransferError("invalid_input");
     duties.add(`${value.kind}\u0000${value.key}\u0000${value.sourceRecordId}`);

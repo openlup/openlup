@@ -630,6 +630,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-postgres-packages.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -1330,6 +1334,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/agent-context-adaptive-routing.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/agent-context-mvp-task.md",
       "class": "public-output"
     },
@@ -1363,6 +1371,14 @@
     },
     {
       "path": "docs/platform/plans/native-review-simplification-proposal.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/neutral-postgres-pgtap-intent.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/neutral-postgres-pgtap.md",
       "class": "platform-documentation"
     },
     {
@@ -1415,6 +1431,22 @@
     },
     {
       "path": "docs/platform/plans/oss-m14-existing-store-transfer.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-hosted-node-receipt.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-hosted-oidc-receipt.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-hosted-rds-receipt.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-hosted-s3-receipt.md",
       "class": "public-output"
     },
     {
@@ -9198,14 +9230,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/install-supabase-cli-ci.sh",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/install-supabase-cli-ci.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/local-bff-soak-aggregation.ts",
       "class": "public-output"
     },
@@ -9506,6 +9530,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/pgtap-parity.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/pgtap-parity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/platform-accounting-document-lifecycle-parity.test.ts",
       "class": "public-output"
     },
@@ -9555,6 +9587,10 @@
     },
     {
       "path": "scripts/public-ci-pgtap.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -11015,6 +11051,10 @@
     },
     {
       "path": "server/adapters/postgres/queryBuilder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/rdsControlRoles.ts",
       "class": "public-output"
     },
     {
@@ -26130,6 +26170,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/managedCompatPostgres.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -26478,6 +26522,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14HostedStorage.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14InstallQualification.test.ts",
       "class": "public-output"
     },
@@ -26514,6 +26562,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RdsRecipe.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14RecipeConformance.test.ts",
       "class": "public-output"
     },
@@ -26543,6 +26595,10 @@
     },
     {
       "path": "tests/postgres/m14SelfhostStorage.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/managed-compat/supabase.sql",
       "class": "public-output"
     },
     {
@@ -26655,6 +26711,10 @@
     },
     {
       "path": "tests/postgres/runM14EffectHandover.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runM14ManagedSourceWitness.mjs",
       "class": "public-output"
     },
     {

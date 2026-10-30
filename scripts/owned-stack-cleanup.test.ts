@@ -8,7 +8,7 @@ import { expect, it, vi } from "vitest";
 import { ownedStackCleanup } from "./owned-stack-cleanup.mjs";
 
 it.each([
-  "scripts/public-ci-pgtap.mjs", "tests/postgres/runIdentityEnvelopeConformance.mjs",
+  "tests/postgres/runIdentityEnvelopeConformance.mjs",
   "tests/identity/runAcceptance.mjs", "tests/postgres/runOidcIdentityConformance.mjs",
 ])("%s uses the once-only bounded SIGTERM/finally cleanup", file => {
   const source = readFileSync(file, "utf8");

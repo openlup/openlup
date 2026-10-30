@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
 import { checkServerIdentity } from "node:tls";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -10,7 +10,7 @@ if (!mode || !marker || !["inside", "between"].includes(mode)) {
 
 let payload = "";
 for await (const chunk of process.stdin) payload += String(chunk);
-const database = JSON.parse(payload);
+const { database, installation } = JSON.parse(payload);
 const { connectionString } = database;
 if (typeof connectionString !== "string") throw new Error("database input unavailable");
 // JSON transport carries CA/verification settings; reconstruct the hostname check
@@ -26,6 +26,12 @@ const observedPool = {
     const client = await pool.connect();
     return {
       async query(sql: string, values?: unknown[]) {
+        // Restricted admission inspects catalogue definitions first. Holding
+        // the source-table lock earlier can block that inspection itself.
+        if (installation && mode === "inside" && typeof sql === "string" && sql.includes("CREATE TABLE public.invoicing_cutover")) {
+          writeFileSync(marker, "admitted-before-backfill");
+          while (!existsSync(`${marker}.release`)) await new Promise(resolve => setTimeout(resolve, 25));
+        }
         if (mode === "between" && sql === "BEGIN" && ++begun === 2) {
           writeFileSync(marker, "after-first-commit");
           await new Promise<never>(() => {});
@@ -37,5 +43,5 @@ const observedPool = {
   },
 } as unknown as Pool;
 
-await createPostgresMigrationRunner({ connectionString }, { poolFactory: () => observedPool }).apply();
+await createPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => observedPool }).apply();
 throw new Error("released schema upgrade child unexpectedly completed");

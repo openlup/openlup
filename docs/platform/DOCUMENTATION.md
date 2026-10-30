@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The hosted S3 task and storage witness are public source outputs. The runner
+owner in runtime guidance defines its explicit storage-only declaration, private
+lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
+owner defines prefix selection and opt-in single-current-version admission;
+default history refusal remains unchanged. Generated navigation grants no
+hosted qualification.
+
 The small installed `AGENT_CONTEXT.md` corpora in core, outbox and platform are
 generated from selected canonical owner sections by
 [`scripts/agent-context/generate.mjs`](../../scripts/agent-context/generate.mjs).
@@ -91,6 +98,16 @@ canonical late-delivery/replacement alignment boundary as separate owner
 excerpts; retrieval must not conflate payment timing with delivery confirmation.
 The delivery excerpt stops before the native translation paragraph; its cited
 line span and hash describe only the retained verbatim guidance.
+Additional small routes cover adopter data ownership, the first ordered-forward
+rules, cross-domain idempotency, provider-adapter capabilities and subscription
+layer/delivery navigation. The idempotency owner is reachable from the platform
+and outbox corpora; retrieval returns one canonical-source result for the same
+section.
+An excerpt from an installed README or engine page is not returned alongside
+that page's matching section. The CLI separates nested headings into disjoint
+spans and offers `--package-code` only when an agent explicitly needs installed
+`src/` evidence; these are bounded source leads, not proof of application
+composition or installed database state.
 
 The exact-shipment native G17 host binding and its local unit/native witnesses
 route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
@@ -203,15 +220,14 @@ or establishing activation, package publication or managed parity.
 The CI image mirror workflow, dependency-free script and offline witnesses are
 public source outputs in the publication catalogue. Contributor checks own its
 default-branch execution and one-time package visibility/access setup; canonical
-contracts own the CLI and non-CLI digest inventories, exact derived-set binding
-and mirror-first consumer selection with public upstream fallback.
-The shared pull module, PostgreSQL helper and pgTAP pre-pull witnesses are public
-source outputs. Contributor checks own their bounded retry/fallback and CLI
-local-name reconciliation, including exact local reuse, the gate's shared pull path and remaining-budget
-Retry-After fall-through within the selected sources. CLI pgTAP retains
-organization mirror/GHCR/ECR/Docker Hub fallback with the same pinned digest;
-mirror planning retains ECR/Docker Hub order. Non-CLI consumers retain their
-upstream sources in CI and locally.
+contracts own the single owned digest inventory, the checksum-pinned PostgreSQL
+test packages and mirror-first consumer selection with public upstream fallback.
+The shared pull module, PostgreSQL helper and stock pgTAP runner are public
+source outputs. Contributor checks own their bounded, digest-only retry/fallback,
+including exact local reuse, the gate's shared pull path and remaining-budget
+Retry-After fall-through within the selected sources. The mirror reads only that
+inventory, and every consumer, including the pgTAP runner's install-proof pin,
+retains its upstream sources in CI and locally.
 The active CLI bump task is included as an authored catalogue output. Generated
 bindings establish no registry publication.
 

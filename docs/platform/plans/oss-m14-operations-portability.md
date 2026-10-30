@@ -57,7 +57,7 @@ package set is 0.30.0:
 [Core release](https://github.com/openlup/openlup/releases/tag/openlup-core-v0.30.0)
 and [Outbox release](https://github.com/openlup/openlup/releases/tag/openlup-outbox-v0.30.0).
 The supervisor verified publication separately from set preparation #407.
-That delivery is partial M14 evidence; the [Platform release notes](../../../packages/platform/CHANGELOG.md#0300)
+That delivery is partial M14 evidence; the [Platform release notes](../../../packages/platform/CHANGELOG-HISTORY.md#0300)
 retain package and installation limits. Later source follow-ups, including
 qualified runtime completion and connected-transfer repairs, are absent from
 published 0.30.0. The delivered application-upgrade proof used the same 0.30.0 package set and
@@ -421,3 +421,140 @@ Self-retro for this stopped checkpoint: one 60-second admission wait serialized
 artifact tests behind another task. Reusing the set-bump helper and previous
 preparation's file shape avoided a new release mechanism; published registry
 byte measurements remain distinct from working-tree estimates.
+
+## Package-set release preparation S1 — 30 October 2026
+
+Outcome: prepare development-preview `0.33.0` for the complete publishable
+inventory: `@openlup/core`, `@openlup/outbox` and `@openlup/platform`.
+The release comparison is `eb1a0584f035774251a8c296e82f3b9ffd68180b`
+(`0.32.0`) through the integrated `origin/main` at
+`4fd84bfead64e11f76e0555117fe072d39807182`.
+The independently fetched initial instruction revision was
+`6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`; it was not a review receipt.
+Platform adds company-identity and market-pack subpaths and fixes Node scheduler
+stop behavior, requiring a minor set under the package release policy. Core's
+installed context CLI and generated guidance change; Outbox's generated guidance
+changes. The policy still requires all three packages and exact internal pins
+to advance together.
+
+Bart Roszkowski delegates this S1 lane through the programme coordinator to the
+active supervisor as single writer: local preparation, required read packet,
+DCO commits after that read, native review, verification, push, PR, receipt,
+queue and merge after passing gates. Two fresh FULL reviewers are required,
+one also assessing the smallest adequate solution. The coordinator dispatches;
+the owner approves the protected release. Dispatch, npm publication/account
+operations, credentials, settings, deployment, adopter activation, other tasks
+and other repositories remain excluded. The S1 queue freeze exempts this lane.
+
+Scope follows preparations #440 and #424: versions/locks/pins, three package
+changelogs and source-only histories, versioned READMEs, generated package agent
+context where affected, measured previous-release baselines, consumption of
+`m14-10s`, `m16-r1` and `m16-r2`, and the source-release contract snapshot.
+S1's release preparation adds no runtime, API, SQL, dependency selection or
+release workflow change; the integrated main includes Core context CLI behavior.
+Caps remain unchanged unless an actual overflow needs a measured increase of
+`ceil(measurement * 1.02)` in the stabilized maintainer read. The complete source
+interval also includes reference-source portability/recovery/local self-host
+proof and CI CLI pinning; it does not turn those into npm installation assets.
+Hosted recipe receipts and stable-framework or production qualification are
+excluded from the release claims.
+
+Acceptance: coherent `0.33.0` manifests and locks, empty Unreleased sections,
+accurate adjacent upgrade notes, all three fragments consumed, previous sections
+preserved verbatim across history rotation, integrity-verified `0.32.0` artifact
+baselines, and a fresh source snapshot. Existing release/fragment/size/source
+checks discriminate wrong pins, lost history, stale bindings and cap overflow;
+no new test mechanism is needed for this metadata-only change.
+
+Proof plan: cheap inventory/policy/neutrality/structural and redacted secret
+checks, existing focused release tests, serial working artifact/browser checks,
+strict project typecheck and lint before the stabilized release-control read.
+Snapshot the exact tree to a private WIP ref without DCO and stop for that read.
+After resumption: DCO, two fresh committed native FULL reviews, canonical
+`node scripts/verify-local.mjs --pgtap` including cold package gates, then source
+and group checks, receipt and confirmed merge. Prepare notes from the merged
+CHANGELOG sections and stop with exact dispatch inputs; preparation publishes
+nothing. Load admission and one heavy stage per machine remain binding.
+
+Registry checkpoint: each package's highest version and `latest` are `0.32.0`.
+Downloaded tarballs pass their registry SHA-512 integrity: Core 182,424 B,
+Outbox 40,849 B, Platform 1,967,831 B. These are prior-release baselines,
+not candidate measurements. The first candidate later passed two native FULL
+reviews without a repair cycle; these figures precede main integration.
+
+Pre-read evidence: all three serial package builds pass. Working-tree previews
+fit every unchanged content/class/file/byte cap and all 19 browser-entry caps:
+Core 182,463 B / 229 files; Outbox 40,840 B / 42 files; Platform 1,984,671 B /
+2,720 files, 9,253,032 B unpacked and 1,714,668 B code gzip. No cap increase or
+release growth explanation is needed. These are uncommitted previews, not cold
+committed proof or registry publication. The `0.32.0` tags all resolve to the
+previous release commit above, and the three fetched baseline tarballs retain
+their registry integrity evidence under ignored scratch.
+
+All five TypeScript projects pass with zero unresolved edges or consumer errors.
+Lint passes with zero errors and 33 existing warnings. The four existing bump,
+fragment, artifact-size and source-preparation suites pass all 75 tests (6.32 s).
+Set/pin, empty-Unreleased, rolling history and consumed-fragment assertions pass;
+released note bodies and prior history remain unchanged apart from the packed
+EOF separator. Inventory, manifest-only, source-snapshot, structural, tree/UI
+neutrality and redacted history/patch secret checks pass. Catalogue-first
+navigation regeneration introduces no new public path or catalogue row.
+
+Policy identifies five owner obligations. Three are answered by adjacent package
+README updates; two require scoped commit trailers after the required read:
+Outbox's version/exact Core peer and the root lock's workspace versions/internal
+pins change no command, external resolution, export, runtime or SQL. The
+contribution checks remain accurate. The prepared trailer text is included in
+the private read packet; the pre-DCO policy result intentionally retains these
+two unanswered obligations. History rotation also corrected the existing link
+to archived `0.30.0` notes. No required failure is waived.
+
+The first release-control read accepted tree `a99ad962e3099da4017153eb3d8eb347f1d9e879`
+and diff SHA-256 `511d806256bdbeefcbae06ec67757f9a004ab088ad5e7211226b24da0efddadb`.
+It was DCO committed as `41bcc2a3f7a246041d16e67a51e37d88250aeca5`
+with both accepted documentation-impact trailers. Two fresh native FULL reviews
+passed with no findings and no repair cycles. No PR, receipt or queue retry exists.
+
+The first complete canonical verification passed phases 1–9, then failed a Core
+consumer test because supervisor-supplied `TMPDIR` was inside the checkout.
+The corrected full rerun used the macOS user temp directory; its preflight
+stopped at build because `origin/main` advanced to `4fd84bfe` and carry-over
+conflicted. Both reports remain in ignored S1 scratch; neither is a passing
+canonical verification.
+
+Main's #450 adds installed `openlup-context` routing, nested-section and opt-in
+package-code search behavior to Core, with tests, generated guidance and owner
+documentation. Its Core Unreleased note moves into `0.33.0`; README and generated
+contexts describe the integrated installed behavior. The in-progress `--no-commit`
+merge resolves Core CHANGELOG and Core/Outbox generated context conflicts, and
+regenerates the source-release snapshot. CD-M14-30 cannot waive a new maintainer
+read: the merge required manual resolutions in release bytes, so its
+conflict-free condition fails. Its old-base patch-id excluding this record is
+`97f76b9b6d216528ef9378c67ff2c850d183727d`; the integrated patch-id on
+`4fd84bfe` is `0ec0b62f92ca51eb3db5ba3d247ad8e044f8446f`, also unequal.
+The merge parents are `41bcc2a3f7a246041d16e67a51e37d88250aeca5` and
+`4fd84bfead64e11f76e0555117fe072d39807182`. The old native reviews cover
+the first candidate only. Stabilize the integrated tree, request another
+release-control read, then
+DCO commit the merge, obtain two fresh FULL reviews and rerun canonical proof.
+
+Integrated pre-read checks: the refreshed source snapshot, catalogue navigation,
+documentation impact policy and exact package manifests pass. Strict typecheck
+passes all five projects with zero unresolved edges or consumer errors; lint has
+zero errors and the same 33 warnings. Serial package builds pass. Working pack
+previews fit every unchanged cap: Core 183,160 B / 229 files, Outbox 41,496 B /
+42 files, Platform 1,985,197 B / 2,720 files, 9,254,969 B unpacked and
+1,714,668 B code gzip. All 19 browser entries pass. No CD-M15-6a cap increase
+is needed. These are previews before a new read and cold committed proof.
+The four release preparation suites pass all 75 tests on the integrated tree.
+The merged Core CLI and generator behavior remains for post-read canonical
+verification; no separate pre-read qualification is claimed.
+
+Self-retro: about 16 minutes of resource admission dominated preparation; the
+existing policy link check caught the archive-link correction before the read.
+Reusing this task record and existing release tools avoided new public files or
+verification machinery. Keep history rotation and link checking together.
+The failed consumer test exposed an unnecessary TMPDIR override; using the
+system user temp directory fixed that setup error. Main movement invalidated
+the first proof attempt and review candidate; merge preflight caught it before
+submission.

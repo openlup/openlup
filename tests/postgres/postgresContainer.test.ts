@@ -80,6 +80,16 @@ describe("PostgreSQL container pinned image adoption", () => {
     expect(mocks.resolve).toHaveBeenCalledTimes(2);
     expect(mocks.pull).not.toHaveBeenCalled();
   });
+  it("places run options before the image and the entrypoint command after it", async () => {
+    const { runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    await runPostgresContainer({ ...spec, runOptions: ["-v", "/staged:/work/debs:ro", "--entrypoint", "bash"], command: ["-c", "exec postgres", "label"] });
+    const args = mocks.exec.mock.calls.at(-1)![1] as string[];
+    const image = args.indexOf(imageReference(pin, pin.sources[1]));
+    expect(args.slice(image + 1)).toEqual(["-c", "exec postgres", "label"]);
+    expect(args.indexOf("--entrypoint")).toBeLessThan(image);
+    expect(args.slice(args.indexOf("-v"), args.indexOf("-v") + 2)).toEqual(["-v", "/staged:/work/debs:ro"]);
+    expect(args).toContain("--pull=never");
+  });
   it("evicts a failed pull and never creates a container on failure", async () => {
     const { runPostgresContainer } = await import("../helpers/postgresContainer.js");
     mocks.pull.mockRejectedValueOnce(new Error("pull refused"));
