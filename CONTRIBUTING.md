@@ -1195,15 +1195,15 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 (the image inventory, the mirror script and the workflow), and on manual dispatch
 from `main`. Its single job reads only the committed
 [image inventory](config/ci-images.json): install-proof PostgreSQL, which is also
-the pgTAP server, the test harness default and the managed-batch gate database.
+the pgTAP server and the managed-rail test database, and the test harness default.
 Every pin is validated before the first registry request. No Supabase CLI or
 derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
 through [the shared reader and pull loop](scripts/ci-image-pull.mjs). The reader
 imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. In CI and locally they try the organization
-mirror first, then the upstream order with the same digest: managed uses GHCR,
-Docker Hub, ECR; native uses Docker Hub, ECR. Private or absent organization
+mirror first, then the upstream order with the same digest: Docker Hub, then
+ECR, for both library PostgreSQL pins. Private or absent organization
 packages do not remove these public upstream fallbacks.
 Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
 the existing 300-second cold image pull and schema installation, and
@@ -1251,13 +1251,12 @@ Retry-After seconds and Go subsecond units above the current source's equal
 share of the remaining budget immediately advance to the next source.
 Otherwise 1s/2s minimum waits are capped at five seconds and the remaining budget;
 expiry prevents another pull. Backoff adds at most 10 seconds per failed source
-(30s native or 40s managed per image), all inside the pull budget. There
-are at most nine native or twelve managed pulls per image.
+(30s per image), all inside the pull budget. There are at most nine pulls per
+image.
 The shared loop retries transport, context-deadline, killed process timeout,
 registry 5xx and 429 failures. Mirror not-found,
-denied or unauthorized errors immediately fall through without retry. The
-managed pin has upstream GHCR, Docker Hub and ECR fallback; library PostgreSQL pins retain Docker Hub/ECR
-fallback in CI and locally. An empty or private organization mirror therefore
+denied or unauthorized errors immediately fall through without retry. Library
+PostgreSQL pins retain Docker Hub/ECR fallback in CI and locally. An empty or private organization mirror therefore
 does not by itself fail these consumers.
 Local daemon/disk/malformed failures, upstream non-transient errors and pinned
 RepoDigest mismatches refuse rather than silently selecting another image.

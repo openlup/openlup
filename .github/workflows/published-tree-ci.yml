@@ -242,11 +242,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      # Managed-rail suites install the checksum-pinned packages; every cached file is re-verified.
+      - name: Restore pinned PostgreSQL test packages
+        if: steps.reused.outputs.reuse != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .context/scratch/cache/pgtap-debs
+          key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
       # Every shard derives the same included set before native file sharding.
       - name: Complete published root test shard
         if: steps.reused.outputs.reuse != 'true'
         env:
           OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
+          OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
         run: npm test -- --shard=${{ matrix.shard }}/4
 
   test:

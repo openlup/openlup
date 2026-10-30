@@ -2,10 +2,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { sqlStatements } from "../../scripts/reviewed-platform-forward.js";
-import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 
 const replayPath = "supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql";
 const advancePath = "supabase/migrations/20261025090100_subscription_dunning_attributed_advance.sql";
@@ -21,8 +21,7 @@ const source = (path: string) => readFileSync(path, "utf8");
 const url = (database: string) => container!.connectionStringFor(database).replace("postgres://postgres:", "postgres://supabase_admin:");
 
 beforeAll(async () => {
-  const pin = readCiImage("managed-batch-postgres");
-  container = await runPostgresContainer({ name: `attempt-replay-${process.pid}`, password: "synthetic-conformance", image: imageReference(pin, pin.sources.at(-1)) });
+  container = await runManagedCompatPostgres({ name: `attempt-replay-${process.pid}`, password: "synthetic-conformance" });
   expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
   admin = new Pool({ connectionString: url("postgres") });
   template = `attempt_template_${process.pid}`;
@@ -31,10 +30,14 @@ beforeAll(async () => {
   const db = new Pool({ connectionString: url(template), max: 1 });
   try {
     // Preserve the image's auth/extension prerequisites in a quiescent template.
+    // pg_cron is database-bound and the managed-compat adapter's dblink needs the
+    // managed host's privileged-extension allowance; neither is a prerequisite here.
     const initialSchema = execFileSync("docker", ["exec", `attempt-replay-${process.pid}`, "pg_dump", "-U", "supabase_admin", "--schema-only", "--no-owner", "--no-privileges", "postgres"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 })
       .replace(/^\\(?:un)?restrict .*$/gmu, "")
       .replace(/^CREATE EXTENSION IF NOT EXISTS pg_cron[^;]*;/gmu, "")
-      .replace(/^COMMENT ON EXTENSION pg_cron[^;]*;/gmu, "");
+      .replace(/^COMMENT ON EXTENSION pg_cron[^;]*;/gmu, "")
+      .replace(/^CREATE EXTENSION IF NOT EXISTS dblink[^;]*;/gmu, "")
+      .replace(/^COMMENT ON EXTENSION dblink[^;]*;/gmu, "");
     await db.query(`SET ROLE postgres; ${initialSchema}; RESET ROLE; ALTER SCHEMA public OWNER TO postgres`);
     await db.query(source("scripts/public-reference/subscription-prereqs.sql"));
     for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"]) for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"]) {
