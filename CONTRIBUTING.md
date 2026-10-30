@@ -189,12 +189,20 @@ defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
 
-The [managed source projection witness](tests/postgres/connectedManagedRetained.test.ts)
-uses a pinned disposable local managed stack and a fresh qualified PG16 target.
+The required [managed source projection suite](tests/postgres/connectedManagedRetained.test.ts)
+uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified PG16 target.
 It compares typed target rows and obligations with the restore packet, checks
 that history-only source rows have no target representation, and exercises
 refusals for unknown and uncarried state. Full managed history stays in the
-operator's source archive. This witness does not qualify hosted managed data.
+operator's source archive. Run `node tests/postgres/runM14ManagedSourceWitness.mjs`
+to exercise the same assertions on an owned real managed stack. This opt-in
+runner downloads and verifies the reviewed CLI 2.122.0 archive for Linux x64 or
+macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
+names/statuses and source-image evidence under private scratch. It is outside
+the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
+are required. Neither route qualifies hosted managed data. The runner's owned
+stack boundary is the extension point for the separate Storage API, GoTrue and
+authenticated object-read witness.
 
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by

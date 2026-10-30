@@ -196,3 +196,25 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA cron TO postgres WITH GRANT OPTION;
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA cron GRANT ALL ON TABLES TO postgres WITH GRANT OPTION;
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA cron GRANT ALL ON SEQUENCES TO postgres WITH GRANT OPTION;
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA cron GRANT ALL ON FUNCTIONS TO postgres WITH GRANT OPTION;
+
+-- connectedManagedRetained.test.ts: only the Storage metadata column slice
+-- needed by source capture and its owner/mapping refusals. Types, nullability,
+-- defaults, primary keys and the bucket FK are copied from the CLI 2.122.0
+-- managed schema. This does not implement Storage APIs, triggers or ACL behavior;
+-- the opt-in runM14ManagedSourceWitness.mjs runs the same assertions on that source.
+CREATE SCHEMA IF NOT EXISTS storage AUTHORIZATION supabase_admin;
+SET ROLE supabase_admin;
+CREATE TABLE IF NOT EXISTS storage.buckets (
+  id text NOT NULL PRIMARY KEY,
+  name text NOT NULL,
+  public boolean DEFAULT false
+);
+CREATE TABLE IF NOT EXISTS storage.objects (
+  id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+  bucket_id text,
+  name text,
+  metadata jsonb,
+  owner_id text,
+  CONSTRAINT "objects_bucketId_fkey" FOREIGN KEY (bucket_id) REFERENCES storage.buckets(id)
+);
+RESET ROLE;

@@ -26674,6 +26674,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/runM14ManagedSourceWitness.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/runM14RecipeConformance.mjs",
       "class": "public-output"
     },

@@ -1,10 +1,6 @@
-import { execFile } from "node:child_process";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
-import { join } from "node:path";
-import { promisify } from "node:util";
+import { env as processEnvironment } from "node:process";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { captureManagedSourceGraph, managedIdentityEvidence, mapManagedRetainedBusiness }
@@ -14,52 +10,27 @@ import { captureConnectedNativeStore, type ConnectedNativeStoreCapture } from ".
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { deriveCliImages } from "../../scripts/ci-image-mirror.mjs";
-import { prePullCliImages } from "../../scripts/public-ci-pgtap.mjs";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const run = promisify(execFile);
 const managed = (() => {
   const operator = randomUUID();
-  let owner: Pool | undefined, directory: string | undefined, cliRegistry: string | undefined;
-  let started = false;
-  const free = (port: number) => new Promise<boolean>((resolve, reject) => {
-    const server = createServer();
-    server.once("error", error => error.message.includes("EADDRINUSE") ? resolve(false) : reject(error));
-    server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
-  });
+  let owner: Pool | undefined, container: PostgresContainer | undefined;
   return { operator, get owner() { if (!owner) throw new Error("Managed stack not started"); return owner; },
     async start() {
-      if ((await run("supabase", ["--version"])).stdout.trim() !== "2.122.0") throw new Error("Pinned Supabase CLI required");
-      const scratch = join(process.cwd(), ".context/scratch");
-      await mkdir(scratch, { recursive: true });
-      directory = await mkdtemp(join(scratch, "m14-managed-retained-"));
-      const project = `m14retained${process.pid}${randomBytes(3).toString("hex")}`;
-      let base = 0;
-      for (let attempt = 0; attempt < 50; attempt++) {
-        const candidate = 55000 + Number.parseInt(randomBytes(2).toString("hex"), 16) % 8000;
-        if ((await Promise.all([0, 1, 2, 3, 4, 9, 10].map(offset => free(candidate + offset)))).every(Boolean)) {
-          base = candidate; break;
-        }
+      // Only the opt-in real-source runner supplies this owned loopback port.
+      // Required root shards always start the shared stock-PG17 adapter.
+      const realPort = processEnvironment.OPENLUP_M14_MANAGED_SOURCE_PORT;
+      if (realPort !== undefined) {
+        if (!/^\d{4,5}$/u.test(realPort) || Number(realPort) > 65535 || Number(realPort) < 1024)
+          throw new Error("Real managed witness requires a valid loopback port");
+        owner = new Pool({ connectionString: `postgresql://supabase_admin:postgres@127.0.0.1:${realPort}/postgres`, max: 2 });
+      } else {
+        container = await runManagedCompatPostgres({ name: `m14-managed-source-${process.pid}`, password: "synthetic-transfer" });
+        if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Managed adapter source unavailable");
+        owner = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 2 });
       }
-      if (!base) throw new Error("No free local managed port block");
-      const replacements: Record<string, string> = { PROJECT_ID: project, SHADOW_PORT: String(base), API_PORT: String(base + 1),
-        DB_PORT: String(base + 2), STUDIO_PORT: String(base + 3), MAIL_PORT: String(base + 4),
-        POOLER_PORT: String(base + 9), APP_PORT: String(base + 10) };
-      const config = readFileSync("config/public-reference-subscription-supabase.toml", "utf8")
-        .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key: string) => {
-          if (!Object.hasOwn(replacements, key)) throw new Error("Unknown local stack port placeholder");
-          return replacements[key]!;
-        });
-      await mkdir(join(directory, "supabase"));
-      await writeFile(join(directory, "supabase/config.toml"), config);
-      cliRegistry = await prePullCliImages(deriveCliImages(process.cwd(), directory));
-      await run("env", [`SUPABASE_INTERNAL_IMAGE_REGISTRY=${cliRegistry}`, "supabase", "start", "--workdir", directory, "--exclude",
-        "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"],
-      { timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-      started = true;
-      owner = new Pool({ connectionString: `postgresql://supabase_admin:postgres@127.0.0.1:${base + 2}/postgres`, max: 2 });
       await owner.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
       for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"])
         for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"])
@@ -72,16 +43,12 @@ const managed = (() => {
       await owner.query("RESET ROLE");
       // CLI 2.122 seeds this service table. Keep the positive source limited to
       // the finite admitted profile; unknown nonempty service data still refuses.
-      await owner.query("DELETE FROM _realtime.feature_flags");
+      if (realPort !== undefined) await owner.query("DELETE FROM _realtime.feature_flags");
       await owner.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)",
         [operator, `${operator}@example.invalid`]);
     },
     async stop() {
-      await owner?.end();
-      if (directory) try {
-        if (started) await run("env", [`SUPABASE_INTERNAL_IMAGE_REGISTRY=${cliRegistry}`, "supabase", "stop", "--workdir", directory, "--no-backup"],
-          { timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
-      } finally { await rm(directory, { recursive: true, force: true }); }
+      await closePostgres(container, owner);
     } };
 })();
 const sourceId = "managed-retained-synthetic";
