@@ -20,6 +20,23 @@ and interfaces should describe the reusable capability first, then name the
 current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
+## Opt-in reference market composition
+
+[Reference company rules](market-packs/referenceCompanyIdentityRules.ts) import
+existing identifier/name policy and build the strict host schema bundle with the
+package rules seam. [Provider selection](market-packs/referenceCompanyIdentityProviders.ts)
+accepts explicit constructed ports and preserves current order and exception
+mapping; configuration/environment reading and HTTP remain with their owners.
+The [address bundle](market-packs/referenceAddressCanon.ts) reuses existing
+schemas and normalizer without changing SQL, query or mapping behavior.
+The [source recipe](market-packs/marketRecipe.ts) combines explicit language,
+settlement configuration and providers, with an optional directory. It exposes
+manual/unsupported service outcomes and [offline examples](market-packs/companyIdentityExamples.ts)
+without installing routes, translations, ambient state or new providers.
+There is one package handler cache owner; rule/provider identity does not isolate
+cache entries between compositions. This recipe claims no concurrent cache
+partitioning or live directory/registry qualification.
+
 ## PostgreSQL domain bindings
 
 Most modules under [`postgres/`](postgres/) implement domain persistence and
@@ -387,6 +404,7 @@ has only a pure presentation binding and no activated sender.
 | Fulfillment execution | `dhl/`, `omnipack/`, `noop_shipping/` | Carrier/3PL execution, simulator behavior, and fulfillment-provider evidence mapped back to fulfillment contracts. | `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`, `../../src/domains/fulfillment/README.md` |
 | Accounting document execution | `fakturownia/`, `accounting/` | Provider invoice/PDF/email/KSeF execution or preview test-provider behavior after accounting policy approval. | `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`, `../../docs/platform/DATA_AND_MIGRATIONS.md` |
 | Company identity lookup | `mfVat/`, `gusCeidg/`, `ceidg/` | Country/provider-specific lookup enrichment behind the company-identity contract. | `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md`, `../../src/domains/company-identity/README.md` |
+| Reference market composition | `market-packs/` | Explicit reference company rules/provider selection, address schema objects and independent language/settlement facts supplied by the host; no mounted routes or provider activation. | [Reference composition](#opt-in-reference-market-composition) |
 | Communications delivery and sync | `resend/`, `noop_newsletter/` | Email/newsletter provider execution, ledgers, delivery timeline, and provider-neutral sync evidence. | `../../docs/platform/CANONICAL_CONTRACTS.md`, `../../src/domains/communications/README.md` |
 | Storage/blob | `@openlup/platform/blob`, bound by `server/adapters/supabase/blobStorage.ts` and `server/adapters/vercel/blobStorage.ts` | Blob storage port implementations for hosted and self-host profiles; the reference bindings pass the environment and keep their former import paths. | `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md`, `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md` |
 | Data gateway and migrations | `@openlup/platform/data` and `/migrations`, bound by `supabase/` and `postgres/` | DataGatewayPort and migration-runner implementations for managed backend and direct-Postgres bundles. The bindings supply the Supabase client factory, the process environment, this application's migration catalogue and lock name, and the named role-free lanes. | `../../docs/platform/DATA_AND_MIGRATIONS.md`, `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md` |

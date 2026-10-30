@@ -1509,3 +1509,11 @@ and display locale independently; formatting historical amounts uses their own
 currency. Ambient environment reading/initialization remains application-owned.
 These entries add no provider, locale resources, native directory schema or
 application caller swap. Shipping suggestions retain the existing optional lane.
+
+`./market-packs` also exports `MarketDescriptor` and `describeMarket(language, profile)`.
+They describe independent display, settlement, price-list and fiscal inputs;
+no market values, national rules or language defaults are selected. The
+[unmounted reference recipe](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.ts)
+imports application-owned compatibility facts and accepts explicit configuration.
+Its [equivalence and variation tests](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.test.ts)
+separate source composition from an installed or mounted deployment.

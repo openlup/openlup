@@ -120,7 +120,7 @@ function shouldContinueForFullerLegalName(
     isLikelyPersonalOnlyLegalName(current.legalName);
 }
 
-function isFullerSoleProprietorLegalName(next: string | null, current: string | null): boolean {
+export function isFullerSoleProprietorLegalName(next: string | null, current: string | null): boolean {
   if (!next || !current || !isLikelyPersonalOnlyLegalName(current)) return false;
   const nextNormalized = normalizeLegalName(next);
   const currentNormalized = normalizeLegalName(current);
@@ -128,7 +128,7 @@ function isFullerSoleProprietorLegalName(next: string | null, current: string | 
   return currentNormalized.split(" ").every((part) => nextNormalized.includes(part));
 }
 
-function isLikelyPersonalOnlyLegalName(value: string | null): boolean {
+export function isLikelyPersonalOnlyLegalName(value: string | null): boolean {
   if (!value) return false;
   const normalized = normalizeLegalName(value);
   const parts = normalized.split(" ").filter(Boolean);

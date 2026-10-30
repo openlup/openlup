@@ -1,9 +1,9 @@
 # M14 older-snapshot recovery
 
 Status: development-preview local parcel, working proof and prior native review
-passed; main integration review and final verification pending. The predecessor
+passed; R2 main integration review and final verification pending. The predecessor
 `613091a91b0029d34846f1b922e42fed30f99d3e` landed on main. The integrated
-review base is main parent `9195f281a741ca83c7974dd956a33a41d32cf8a4`;
+review base is main parent `d6e11aedc3c2373ce73a3bd860abdd2697f0d936`;
 the stack pin is removed. Current instruction revision is that same main head.
 
 ## Outcome and authority
@@ -161,3 +161,21 @@ base and the new main parent. This task-record note is the only extra merge
 edit. Integration review and canonical verification must use the unpinned main
 fork point. The managed retained-history continuation remains absent from main;
 its own restore/redaction proof retains that boundary until it lands.
+
+The first main integration had two fresh full PASS reviews with no open material
+finding. Its canonical `verify-local --pgtap` passed 14/14 phases on head
+`7550e83dc91b35aac4a8a1fb7afef95870e6342a`, tree
+`fed2593d540a0b5e2643dd87ab622dbaa7149b93`: 2,189 root test files /
+22,653 tests and 226 pgTAP files / 5,199 assertions. Draft PR #451 received
+the exact-head native receipt and remained unready during the R2 queue window.
+
+After the R2 main move, native receipt preflight again refused source-review
+carry-over. The forced automatic merge had no conflict or manual resolution.
+Its parents are prior parcel head `7550e83dc91b35aac4a8a1fb7afef95870e6342a`
+and main `d6e11aedc3c2373ce73a3bd860abdd2697f0d936`; the pre-note automatic
+tree is `1397c119b47ce17aded60f1b35cb37e9490841f5`. The stable parcel
+patch-id excluding only this task record is
+`499a6af9ac66dd7abac566116080568b5614159a` against both the old and new
+main parents. This note is the only extra merge edit. Re-review and full local
+verification are required on the resulting unpinned tree. The managed retained-
+history continuation is still outside this parcel and has not landed on main.
