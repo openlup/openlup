@@ -1,10 +1,8 @@
 import type {
-  InvoiceDataLookupRequest,
   InvoiceDataLookupResponse,
 } from "../../../src/domains/accounting/invoiceContracts.js";
 import type { InvoiceDataLookupPort } from "../../../src/domains/accounting/ports.js";
 import type {
-  CompanyIdentityLookupRequest,
   CompanyIdentityLookupResponse,
 } from "../../../src/domains/company-identity/companyIdentityContracts.js";
 import type { CompanyIdentityLookupPort } from "../../../src/domains/company-identity/ports.js";
@@ -14,9 +12,8 @@ import { createMfVatInvoiceDataLookupPort, readMfVatLookupConfig } from "../../a
 import { createStaticInvoiceDataLookupPort } from "../../domains/accounting/staticInvoiceDataLookupPort.js";
 import {
   createCompanyIdentityLookupPort,
-  type CompanyIdentityProvider,
-  type CompanyIdentityProviderResult,
 } from "../../domains/company-identity/companyIdentityService.js";
+import { createReferenceCompanyIdentityProviders } from "../../adapters/market-packs/referenceCompanyIdentityProviders.js";
 import { createVendorCompanyIdentityProvider, readVendorCompanyIdentityConfig } from "../../domains/company-identity/vendorCompanyIdentityProvider.js";
 import { isCompleteCompanyIdentity } from "../../../src/domains/company-identity/companyIdentityContracts.js";
 
@@ -53,19 +50,14 @@ function createPolishProviders(env: Record<string, string | undefined>) {
     env.COMPANY_IDENTITY_LOOKUP_MODE?.trim() ||
     env.COMMERCE_ACCOUNTING_INVOICE_DATA_LOOKUP_MODE?.trim() ||
     (env.VERCEL_ENV === "preview" ? "mf_vat" : "static");
-  const providers: CompanyIdentityProvider[] = [];
 
   if (mode === "static") {
-    providers.push(createInvoiceLookupCompanyIdentityProvider("static", createStaticInvoiceDataLookupPort()));
-    return providers;
+    return createReferenceCompanyIdentityProviders({ mode: "static", static: {
+      providerKind: "static", port: createStaticInvoiceDataLookupPort(),
+    } });
   }
 
-  providers.push(
-    createInvoiceLookupCompanyIdentityProvider(
-      "mf_vat_whitelist",
-      createMfVatInvoiceDataLookupPort(readMfVatLookupConfig(env)),
-    ),
-  );
+  const vat = { providerKind: "mf_vat_whitelist", port: createMfVatInvoiceDataLookupPort(readMfVatLookupConfig(env)) };
 
   // Enrichment provider for the fuller sole-proprietor legal name. Prefer the
   // official CEIDG v3 API when a token is configured; otherwise fall back to the
@@ -73,47 +65,18 @@ function createPolishProviders(env: Record<string, string | undefined>) {
   // first (VAT status + address); this slot supplies `firma.nazwa`.
   const ceidgConfig = readCeidgLookupConfig(env);
   const gusConfig = readGusCeidgLookupConfig(env);
-  if (ceidgConfig) {
-    providers.push(
-      createInvoiceLookupCompanyIdentityProvider(
-        ceidgConfig.providerKind,
-        createCeidgInvoiceDataLookupPort(ceidgConfig),
-      ),
-    );
-  } else {
-    providers.push(
-      createInvoiceLookupCompanyIdentityProvider(
-        gusConfig?.providerKind ?? "gus_ceidg_http",
-        gusConfig ? createGusCeidgInvoiceDataLookupPort(gusConfig) : createUnavailableInvoiceDataLookupPort(),
-      ),
-    );
-  }
+  const registry = ceidgConfig
+    ? { providerKind: ceidgConfig.providerKind, port: createCeidgInvoiceDataLookupPort(ceidgConfig) }
+    : { providerKind: gusConfig?.providerKind ?? "gus_ceidg_http",
+      port: gusConfig ? createGusCeidgInvoiceDataLookupPort(gusConfig) : createUnavailableInvoiceDataLookupPort() };
 
   const vendorConfig = readVendorCompanyIdentityConfig(env);
-  if (vendorConfig) providers.push(createVendorCompanyIdentityProvider(vendorConfig));
-  return providers;
-}
-
-function createInvoiceLookupCompanyIdentityProvider(
-  providerKind: string,
-  port: InvoiceDataLookupPort,
-): CompanyIdentityProvider {
-  return {
-    providerKind,
-    async lookup(request) {
-      const invoiceRequest: InvoiceDataLookupRequest = {
-        taxId: request.identifierValue,
-        country: "PL",
-        providerKind,
-      };
-      try {
-        const invoice = await port.lookupInvoiceData(invoiceRequest);
-        return mapInvoiceLookupResponse(invoice, request);
-      } catch {
-        return unavailableSource(providerKind);
-      }
-    },
-  };
+  return createReferenceCompanyIdentityProviders({
+    mode: "registry", vat,
+    primaryRegistry: ceidgConfig ? registry : undefined,
+    fallbackRegistry: registry,
+    vendor: vendorConfig ? createVendorCompanyIdentityProvider(vendorConfig) : undefined,
+  });
 }
 
 function mapCompanyIdentityToInvoiceDataLookup(
@@ -135,46 +98,5 @@ function mapCompanyIdentityToInvoiceDataLookup(
       : null,
     evidenceHash: result.sources.find((source) => source.evidenceHash)?.evidenceHash ?? null,
     observedAt: result.sources[0]?.observedAt ?? new Date().toISOString(),
-  };
-}
-
-function mapInvoiceLookupResponse(
-  invoice: InvoiceDataLookupResponse,
-  request: CompanyIdentityLookupRequest,
-): CompanyIdentityProviderResult {
-  const company = invoice.legalName || invoice.address
-    ? {
-        country: request.country,
-        identifierKind: request.identifierKind,
-        identifierValue: invoice.taxId,
-        legalName: invoice.legalName,
-        registeredAddress: invoice.address,
-        registryStatus: invoice.status,
-        regon: invoice.regon,
-        vatStatus: invoice.vatStatus,
-      }
-    : null;
-  return {
-    status: invoice.status === "found" && !isCompleteCompanyIdentity(company) ? "partial" : invoice.status,
-    company,
-    source: {
-      providerKind: invoice.providerKind,
-      status: invoice.status === "found" && !isCompleteCompanyIdentity(company) ? "partial" : invoice.status,
-      observedAt: invoice.observedAt,
-      evidenceHash: invoice.evidenceHash,
-    },
-  };
-}
-
-function unavailableSource(providerKind: string): CompanyIdentityProviderResult {
-  return {
-    status: "provider_unavailable",
-    company: null,
-    source: {
-      providerKind,
-      status: "provider_unavailable",
-      observedAt: new Date().toISOString(),
-      evidenceHash: null,
-    },
   };
 }

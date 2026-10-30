@@ -504,3 +504,333 @@ the later cold committed package proof or a release claim. API, owner generation
 policy (six answered obligations), structural scan and lint pass; lint retains
 33 existing warnings and zero errors. Full proof and delivery outcomes remain
 in durable scratch evidence.
+
+## R3 reference delegation — fit and quote witness
+
+R3 is assigned to one writer on `claude/oss-m16-r3-market-delegation`, stacked
+on provisional R2 draft #434. It started at `51f01976639f775740a6e9e496debd74d7fd8a9a`
+and sign-off-merged R2's test-only `740c4e725d3443b4beece579628f60a2adf657a4`
+(tree `092dd1f002e397963dfbdc2113c3d4e5fa1316e3`), itself on R1 draft #431.
+Instruction freshness was checked at fetched `origin/main`
+`4ec36fdeb67115216dd422262660679d27ec5c18`, separately from the code base.
+CD-M16-1..13 authorize a stacked draft; native review, ready, receipt, merge,
+release and activation remain later boundaries. No new platform API/file, SQL,
+route mounting, fallback, provider, control or budget is in R3 scope.
+
+The source fit at R2 retains complete host company extensions; core strict parsing
+would reject them. Service order is validation, manual, country strategy,
+sequential providers/source accumulation and early completion. Rules import the
+existing service name helpers, so delegation must retain those function exports
+and avoid eager use before module initialization. Handler order remains method,
+request parse, shared cache/lookup, output parse, existing responder. The package
+must be the sole cache owner (normalized identifier/day key, ten-minute TTL,
+5,000 oldest-insertion cap, manual bypass, failed-flight retry); cache insertion
+precedes output validation. Company route construction is module-time, accounting
+construction request-time. Formatter retains its ambient currency import edge.
+Ambient settlement remains app-owned with same-profile repeat/conflict refusal
+before money parsing. Draft serialization keeps permitted address fields and
+identities but excludes invoice lookup and accepted identity; historical amounts
+keep their own currency. Directory order stays env, gateway, adapter, probe,
+handler, with success-only availability metadata; the managed PostgREST transport
+is unchanged and remains unproven by public CI. Existing R2 recipe and descriptor
+provide the opt-in unmounted composition. The broad call-site inventory in the
+R3 task brief was checked against these actual owners; no caller is moved to a
+new route or initialization lifetime.
+
+Simplicity pre-check: use existing package exports and reference rules/recipe,
+keep the existing constant owners, and make one explicit composition point. No
+new cache, provider factory, currency state or route selector is needed.
+
+### Quote donor-to-public mapping (CD-M16-13)
+
+The 19 donor cases map as follows. `quoteCurrencyReference.test.ts` is the new
+neutral public witness (12 cases) and passed 12/12 on the unchanged R2 tree.
+Related pricing/binding tests stay frozen; they did not exactly establish the
+reference profile and import timing cases below. The seven donor-only cases are
+a registered donor/public divergence, not new C2 behavior or a completion claim.
+
+| Donor case | Public witness | Mapping |
+| --- | --- | --- |
+| DB whole quote: current profile | `server/domains/commerce/quoteCurrencyReference.test.ts` | new |
+| DB whole quote: configured profile A | same | new |
+| DB whole quote: configured profile B | same | new |
+| Static whole quote: current profile | — | no public counterpart |
+| Static whole quote: configured profile A | — | no public counterpart |
+| Static whole quote: configured profile B | — | no public counterpart |
+| Factory-feeder default-currency scan | `server/domains/commerce/quoteCurrencyReference.test.ts` | new |
+| DB mismatched price list refusal | same | new |
+| DB agreeing price list pricing | same | new |
+| Static mismatched price book refusal | — | no public counterpart |
+| Static agreeing price book pricing | — | no public counterpart |
+| Shared floor at first module evaluation | `server/domains/commerce/quoteCurrencyReference.test.ts` | new, current preview owner |
+| No eager administrative preview | — | no public counterpart; current imports evaluate preview |
+| Malformed floor at separate floor-owner import | — | no public counterpart; separate owner absent |
+| Malformed floor at preview import | `server/domains/commerce/quoteCurrencyReference.test.ts` | new |
+| Malformed floor at automatic-promotion import | same | new |
+| Malformed floor at code-adjustment import | same | new |
+| Malformed floor at DB quote import | same | new |
+| Later settlement versus imported promotion floor | `server/domains/commerce/quoteCurrencyReference.test.ts` | new DB lane; static portion has no public counterpart |
+
+CD-M16-13 explicitly preserves the current public observation boundary: the
+floor belongs to `promotionCodePreview.ts`; quote entries evaluate it on import;
+malformed configuration refuses at each existing import; later configuration
+cannot move the imported floor. The separate donor floor owner, import isolation
+and five static-lane cases remain a registered follow-up, outside C2.
+
+### Frozen R2 witness inventory
+
+The following 44 source blobs are pinned to merged R2 head `c346f015`.
+Since the original R2 witness inventory, the predecessor supplied the test-only
+cache reset and main/R1 updated the package-boundary, cold-consumer unit and
+PostgreSQL fixture witnesses. New R3 cases remain in new files.
+
+| File | Merged R2 blob |
+| --- | --- |
+| `packages/platform/test/company-identity/cacheFit.test.ts` | `97464d29a75bdd8855a707c5fbc439543c69c8e9` |
+| `packages/platform/test/company-identity/companyIdentityHandlers.test.ts` | `8d870fd30c21b37ea388659a254fcf5c173b3f98` |
+| `packages/platform/test/company-identity/companyIdentityService.test.ts` | `b03ee633e13b052273d8a0fa908f27d163011092` |
+| `packages/platform/test/company-identity/contracts.test.ts` | `75bd06b7db599f085b1ba6c00e68221681cde550` |
+| `packages/platform/test/company-identity/fixtures.ts` | `3247f97c08c81b8c9c29372e024805759e496cb5` |
+| `packages/platform/test/market-packs/fiscalProfile.test.ts` | `a0aebb430bf047beca03ef363d7d652d2d3482d2` |
+| `packages/platform/test/market-packs/fixtures.ts` | `b3d0d4c2dd76530b4a122121580805f88b2cf8a6` |
+| `packages/platform/test/market-packs/formatMinor.test.ts` | `1690e8c26b363703daf4fd52dbd2e8b776d48227` |
+| `packages/platform/test/market-packs/marketDescriptor.test.ts` | `033084995b0dce4b3ad8dc69e4d0c4e61d587039` |
+| `packages/platform/test/market-packs/portFit.test.ts` | `c5c82da9ceb4c6c198c7048a67f4f0c3e9d69932` |
+| `packages/platform/test/market-packs/settlementProfile.test.ts` | `c8355d401ba8d356ef6f59a90370d12ab0c5596d` |
+| `packages/platform/test/packageBoundary.test.ts` | `c545dd247c8d61dba9b96a2b6c72853122f2ff64` |
+| `packages/platform/test/pricing/dbBackedCommerceQuotePort.test.ts` | `ff22493078edf0b2833fb74f8147a635527b885d` |
+| `packages/platform/test/shipping/addressConformance.test.ts` | `dd9bb27736f028a4bd97fae074b1c3dba7251191` |
+| `scripts/packages/market-pack-consumer-proof.ts` | `341ef6cecbdeddaf25e47b372a829a89c5deacf4` |
+| `scripts/packages/platform-cold-consumer.test.ts` | `f9bb24551669d29905a13d066c991ce72fe546e0` |
+| `server/_lib/coreSchemaReuse.test.ts` | `c980671a27618030ee8827e47e64d4fd1702f3e8` |
+| `server/adapters/market-packs/marketRecipe.test.ts` | `a037ba9b9eb101da41698c3226edbc067d262b91` |
+| `server/adapters/market-packs/referenceCompanyIdentityHandlers.test.ts` | `1dfa4a525583d093ae08ab7320a493894b0520af` |
+| `server/adapters/market-packs/referenceCompanyIdentityProviders.test.ts` | `6cd218c1bac43fc614f17ab37b8c5b3b26df833b` |
+| `server/adapters/market-packs/referenceCompanyIdentityRules.test.ts` | `88c3b4bf6b2f3c2b92088719950e48f4eb4a7540` |
+| `server/adapters/supabase/address-canon/addressCanonLookup.test.ts` | `f97f460cfffff92ba35c39bf0790927fca76b4c0` |
+| `server/bff/accounting/invoice-data-lookup.test.ts` | `b59947ef19ddb8757c34afac74b6b290b758c7e2` |
+| `server/bff/address-canon/shared.test.ts` | `1512ef1c111499daf43d260651a7416cda81b1f4` |
+| `server/domains/address-canon/addressCanonLookupHandler.test.ts` | `9547f0c447681809766f0a19944159aa2f3732a4` |
+| `server/domains/commerce/orderEmailLines.test.ts` | `751001b6a4368f8d23c983e2be30b65f6f6b0ce6` |
+| `server/domains/commerce/quoteFoundationPackageBinding.test.ts` | `f5a2589f5a72adf30a4f75c570e5daa7c9eb8ed2` |
+| `server/domains/company-identity/companyIdentityHandlers.test.ts` | `19111e99f1f7d4d0a8cd546b6f6d95d11dede8fc` |
+| `server/domains/company-identity/companyIdentityService.test.ts` | `0be80129b52c1e04d90953543e352464daac29c2` |
+| `server/runtime/settlementProfileBootstrap.test.ts` | `09ef0a9702e25e0596878db70982776703b52dd4` |
+| `src/checkout/composer/configuratorDraftCodec.test.ts` | `4b113f3308b2fe3b8650353f020535d10cf74b67` |
+| `src/checkout/composer/configuratorPricing.test.ts` | `d9646bbb8e674e5d99f7a6eaf59bae2b85871d4a` |
+| `src/checkout/composer/marketIdentityPersistence.test.ts` | `cfc7dba7ba703102735d5238ace44a96a335cfa0` |
+| `src/components/shipping/shippingConsumer.test.tsx` | `6cfb2ff6da2424523b551acf76439bc31231a9a9` |
+| `src/domains/address-canon/addressCanonClient.test.ts` | `5d98d8406f20f3920be14a9b91697bfc53d96c5b` |
+| `src/domains/address-canon/contracts.test.ts` | `7e410e8b917d86ab779dc042088ee29640912a22` |
+| `src/lib/currency/fiscalProfile.test.ts` | `a7d0cd8816a24f2cc45f92f9e376b0727e05c49a` |
+| `src/lib/currency/formatMinor.test.ts` | `3e2e12935ca40768943759dc94e5a074d4f198f5` |
+| `src/lib/currency/platformCurrency.test.ts` | `cbb615dd102df197dac16f12585e6b0e33b28817` |
+| `src/public-reference/i18n/marketResources.test.ts` | `83a7f4d7155c3351795be5de02aef3749fba2e6c` |
+| `src/public-reference/subscription-main.test.tsx` | `3fb8d233bf5deb0efcbc4f779337b7dcf37659dc` |
+| `src/public-reference/subscriptionMessages.test.tsx` | `9143824ada4ee2d6c3b7abd2c1a4b15033e1a8ce` |
+| `tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts` | `aae9bbc7561be3b034ab4894e0b03a1c48281eee` |
+| `tests/postgres/marketDirectoryPreservation.test.ts` | `4b2baf418e185063f8352b35c1baec1d39e53f39` |
+
+### R3 implementation and evidence
+
+Quote witness is committed as `c0a5213f`, then type-corrected in test-only
+`0a29474a` before the swap (one fixture cast, no runtime change, 12/12 PASS;
+all 44 frozen witnesses still matched R2_HEAD at the pre-swap check). Ast-grep,
+lint and neutrality passed on that first commit's candidate (lint: 0 errors,
+33 existing warnings; neutrality: zero per-path increases). The publication
+policy identified one commerce owner obligation, answered by scoped no-impact
+DCO trailers in both quote commits. The corrected quote witness is frozen for
+the delegation swap. The API typecheck has zero unresolved edges and zero
+consumer-side errors against its zero ceiling.
+
+CD-M16-13 and the lead's subsequent disposition resolved the cache witness
+conflict. The package owns the sole cache. R2 added a test-only reset between
+the two equivalence invocations; the sign-off merge was conflict-free. R3 did
+not edit that witness, and all five variants now pass.
+
+The application facades now delegate service, handler, contract and
+address-schema behavior to the R1/R2 exports. Browser currency formatting,
+settlement and fiscal helpers remain application-owned. Environment selection and invoice
+status collapse stay in the BFF; the address route preserves env, gateway, probe,
+handler order and success-only availability metadata. Domain facades could not
+import an adapter under the existing boundary. The reference rules therefore
+reside in the existing counted domain service file, with the R2 adapter
+re-exporting them. This removes the import cycle and retains zero per-path
+neutrality increases. No package production file, package API, security control,
+SQL, migration, route or flag changes.
+
+One unmounted `createReferenceMarketBinding` selects the R2 recipe. Its default
+language is the existing public-reference `en`, with the same fallback. The
+public message module now exports that existing default so the server binding
+can import it, and uses `.js` suffixes for NodeNext resolution. A new test
+observes exported values, default, fallback and instance isolation; it also
+observes that the default mounts no route and calls no provider or directory.
+The directory remains optional and manual shipping useful.
+
+New proof files cover shared-cache/reset, dispatcher initialization, an isolated
+installed-tarball invoice consumer (NodeNext and Bundler declarations, evidence,
+extensions, envelope, request ID and provider transcript), refusal/status
+outcomes, default composition/manual shipping, independent EN/EUR/region/fiscal
+selection and malformed refusal through existing readers, and draft reload/PII
+exclusion/historical currency. The existing selected-object real-PG witness
+covers the directory predicate set; no public gap justified a new PG case.
+Managed PostgREST transport remains unchanged and unproven by public CI.
+
+All 44 frozen source blobs match merged R2. Focused Vitest over their test
+files (excluding real PG) and new/adjacent suites passed 45 files and 3,030/3,030
+cases, including all 12 quote cases and the new four-file, 12-case proof set.
+The quote witness remains byte-identical to test-only `0a29474a`.
+Five-project typecheck has zero consumer-side errors; ast-grep and lint pass
+(33 pre-existing warnings). Platform `api:check` reports no
+delta. Neutrality inventories 6,566 text paths with zero count increases;
+gitleaks finds no leak. The platform pack measures 1,956,340/2,029,568 packed
+bytes, 9,093,916/9,447,424 unpacked bytes, 2,667/2,628 files, 1,689,283/
+1,743,872 code gzip bytes, 2,613/2,574 code files, 59,057/73,728 docs gzip
+bytes and 5/10 docs files. These are exactly R2's measures: the two file-count
+cap excesses predate R3, and no cap is edited. Docker was available and the
+one-minute load fell below 8; R1's unchanged selected-object real-PG proof
+passed 6/6 cases. No additional PG gap was demonstrated. The full draft verify
+and other heavy stages remain held. Owner sections for adapter, BFF, browser,
+address, company and reference runtime responsibilities are updated; the
+consumer-proof tooling follows the existing cold-consumer contract with no
+change to the documented check interface.
+
+The three R3 tooling paths have a scoped no-impact trailer in commit 2;
+documentation policy reports eight obligations answered. All four R3 commits,
+including the predecessor merge, pass DCO sign-off. Native review and full draft
+verification remain pending for the stacked draft.
+
+Self-retro: the shared-cache equivalence test needed a test-only reset once both
+reference and package factories intentionally shared one owner. Checking it
+early exposed the pre-existing independent-engine assumption. The additional
+domain import lint check exposed a simpler location for the reference rule
+object without a new module or neutrality-count increase.
+
+### R3 predecessor fix3 integration
+
+R2 advanced to `8278ab56835423efde7a0cd2b2280e477810a664` (tree
+`f763d380ba48d25b843349bccda57817cb0d1ddd`). Sign-off merge `6e650dc2`
+had one conflict in this shared record: the predecessor text is verbatim,
+followed by the intact R3 section. The other three predecessor paths merged
+without conflict; no R2 production source, package API or frozen test changed.
+All 44 R2 witness blobs match that head and the quote witness still matches
+test-only `0a29474a`. Focused Vitest passed 46 files / 3,152 cases with two
+workers. Package-size policy passed 46/47; its single real-pack failure contains
+only the existing code-file 2,613/2,574 and total-file 2,667/2,628 cap findings.
+Five-project typecheck (zero consumer-side errors), lint, ast-grep, platform API,
+publication policy (eight answered obligations), zero-increase neutrality,
+gitleaks and DCO pass. No PG-relevant path changed, so the prior real-PG 6/6
+proof was retained. Full draft verification remains held for the lead.
+
+### R3 main and allocated-budget integration
+
+R2 advanced to `5de946944f0d70b637384a9261890cb1a6c841ad` (tree
+`e364e5419d9c2030f34a4a0e81b6c24ddce25b70`), carrying landed main,
+CD-M16-16 caps and the PG fixture repair. Sign-off merge `02581c42` resolved
+three content conflicts as additive unions: the runtime guide retains M15 risk
+and R3 binding/BFF prose; this record retains the predecessor verbatim before
+R3; the cold consumer retains every predecessor risk case plus R3's invoice
+declaration/runtime proof. No semantic choice, rebase or other conflict. The
+lockfile did not move. Publication inventory, generated documentation and API
+report checks produced no output delta.
+
+All 44 R2 witness blobs match `5de94694`; the corrected quote witness remains
+byte-identical to `0a29474a`. Focused Vitest passed 46 files / 3,209 cases,
+and package-size-policy passed 48/48, each with two workers. Five-project
+typecheck has zero consumer-side errors; lint (zero errors, 33 existing
+warnings), ast-grep, platform API, publication inventory, neutrality (zero
+increases), gitleaks and DCO pass. The pack measures 2,719/2,774 total files,
+2,664/2,718 code files, 1,990,177/2,029,568 packed bytes and
+9,277,699/9,447,424 unpacked bytes; every size check passes. The repaired PG
+fixture passed 6/6 real-PostgreSQL cases after load admission at 5.58 with no
+other verify/vitest/pgTAP process. Full draft verification remains held until
+R2 lands.
+
+### R3 post-S1 predecessor integration
+
+R2 advanced to `c346f015a2e06a3c685ca838e4ba1063b6e9ca5f` (tree
+`b686cf3e11e0018a700ebd85bb7fbe7292ae8fec`), carrying M15 S1 and
+package version 0.32.0. Sign-off merge `89ec702f` resolved the sole conflict
+in this record by retaining the predecessor text verbatim and appending R3.
+The publication catalog and architecture guide merged automatically. The
+source-span generator refreshed `packages/core/AGENT_CONTEXT.md` after a line
+shift in the merged architecture guide; no excerpt text changed. No R2 source
+or witness changed, and no PG-relevant file moved.
+
+All 44 frozen R2 blobs match the new head; the quote witness remains
+byte-identical to `0a29474a`. After `npm ci`, focused Vitest passed 47 files /
+3,257 cases with two workers. Five-project typecheck has zero unresolved edges
+and zero consumer-side errors. Lint (zero errors, 33 existing warnings),
+ast-grep, platform API, publication policy (eight answered obligations),
+publication inventory, neutrality (zero increases) and gitleaks pass. The
+platform pack measures 2,720/2,774 total files, 2,664/2,718 code files,
+1,986,993/2,029,568 packed bytes and 9,259,463/9,447,424 unpacked bytes;
+code gzip is 1,714,663/1,743,872 and docs gzip is 57,123/73,728. No cap
+finding. Real-PG was not rerun: this predecessor has no PG-relevant delta.
+Full draft verification remains held for the lead; no ready, prepare or
+receipt was performed. Self-retro: the sole delay was regenerating the merged
+source-span index before typecheck. Its owner script made the repair mechanical.
+
+### R3 reserved direct-main delivery window
+
+R1 landed through #445 (`7e8a80f313cb58d39722227121e913754a02dfbf`);
+R2 landed through #434 (`d6e11aedc3c2373ce73a3bd860abdd2697f0d936`),
+including final R2 head `5aa566da0188301c1ee28278f282cdc1f2af8279`.
+R3 now integrates main directly, with no stack pin. The single signed catch-up
+merge uses policy/main revision `9f998026de1e889235fb45233dbfde6328647309`;
+its sole conflict preserves main's R2 record verbatim before the R3 sections.
+The coordinator opened this reserved delivery window under CD-M16-22 after
+M14 9A #451; it lasts at most 2.5 hours from the merge begun at
+2026-10-30T01:38:23Z. A later main move uses freshness/carry-over checks;
+failed carry-over stops delivery without another main merge.
+
+The current owner assignment authorizes the active Codex supervisor to finish
+R3 checks, DCO commits, ordinary pushes, two fresh full native reviews, canonical
+verification and, only with the coordinator's enqueue GO, ready/receipt/queue
+delivery of #436 under CD-M16-1 and the M16 module PROC-27 merge grant.
+No release, activation, settings or new acceptance scope is authorized.
+The supervisor context is `01a18a74-cd6b-73b0-9fc8-4f11259da60e`;
+R3 has no previous native prepare or review. Execution observations, remaining
+work, failures and the terminal self-retro stay in ignored task evidence while
+the reviewed candidate is frozen.
+
+### R3 closed-profile admission repair
+
+The first canonical local verification passed through the default build, then
+the subscription build refused the built `market-packs/index.js` barrel
+outside its closed browser import inventory. A pre-repair profile check found
+the same client refusal in identity; communications passed. CD-M16-24 and
+CD-M16-24a authorize exactly six pure built market-pack files in the subscription
+and identity inventories, with no wildcard or guard change. Both profile client
+builds now pass; communications remains unchanged. Their reached module is the
+existing platform barrel used by the reference currency facades.
+
+CD-M16-24b identifies the separate identity SSR refusal of
+`src/public-reference/entry-server.tsx` as a pre-existing invocation artifact.
+The exact command on detached main `9f998026de1e889235fb45233dbfde6328647309`
+reproduced that same refusal (captured at
+`.context/scratch/r3-delivery/main-identity-ssr.log`). The identity profile's
+own acceptance runner builds its client bundle; canonical local verification
+builds the subscription profile. The identity SSR invocation issue is recorded
+for later handling, outside this bounded repair; no entry or guard change is
+made for it. The two exact inventories and their owner documentation are this
+repair's complete tracked scope. Native repair accounting, subsequent checks
+and queue outcome remain in the existing ignored task evidence.
+
+### R3 regroup and narrowed browser scope (CD-M16-25)
+
+The root `adminBinding` promotion closure, subscription profile and identity
+client profile refused the same new browser-to-`market-packs` barrel edge from
+R3's four currency facades. CD-M16-24 and CD-M16-24a had admitted six built
+files to both closed inventories; CD-M16-24b identified the separate identity
+SSR `entry-server.tsx` refusal as an identical pre-existing invocation artifact
+on main `9f998026de1e889235fb45233dbfde6328647309` (captured in
+`.context/scratch/r3-delivery/main-identity-ssr.log`). CD-M16-25 supersedes
+those reads for this delivery and narrows R3 within the M16 outcome: the four
+browser currency facades and both inventories return byte-for-byte to main.
+No control widening remains. Currency formatting, settlement and fiscal helpers
+remain application-owned in R3; browser currency delegation is removed from
+R3 acceptance. A browser-safe `market-packs` entry, with export/`browserEntries`,
+API and budget decisions, is a registered later follow-up. The identity SSR
+invocation artifact remains a separate registered follow-up; this change does
+not admit `entry-server.tsx` or alter its guard.

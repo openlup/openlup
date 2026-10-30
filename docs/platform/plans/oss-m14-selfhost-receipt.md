@@ -1,7 +1,8 @@
 # M14 local self-host recipe receipt
 
 Status: development-preview parcel 10S, COMPLETE working local receipt;
-required control read, DCO, native review and canonical verification pending.
+control read and initial DCO/native review passed, integration review and
+canonical verification pending.
 Code base and current instruction revision, checked independently:
 `9f998026de1e889235fb45233dbfde6328647309`.
 
@@ -50,7 +51,9 @@ Baseline tracked inventory: 6,681 files / 50,481,656 bytes. The initial plan
 excluded package changes; the one-line scheduler recovery below became necessary.
 No export, dependency or package budget changes. Pinned Node 24.21.0 /
 npm 11.19.0 dependency installation passed in the assigned worktree.
-No DCO, native session, review cycle, PR or external delivery write has occurred.
+The initial DCO commit is `38404b01d4ee1432cf276f2d908d7847f799c944`.
+Two fresh FULL reviewers passed its tree with no material findings at native
+cycle zero; no PR or external delivery write has occurred.
 
 Simplicity pre-check: call fixed existing witness entrypoints and consume their
 observed results; avoid a second installer, transfer/recovery engine, arbitrary
@@ -142,9 +145,21 @@ its one selected case after a measured 180-second machine-slot wait; the other
 717 cases were filtered and remain part of later full verification. The required stabilized control read
 precedes DCO; two fresh FULL reviewers and canonical verification follow it.
 
-The current policy refresh remains `9f998026` with no instruction delta. No
-managed-leg landing notification has arrived. Ready/enqueue remains held while
-the queue window is recorded open; no PR, receipt comment or queue action exists.
+The required control read accepted the initial staged tree and the exact neutral
+Platform change fragment before DCO. After `origin/main` advanced to
+`c95a8e7129b09e078851de28c3f50b37a7af4214`, native preflight refused
+source-review carry-over because the base changed protected catalog paths.
+The forced conflict-free merge has parents
+`38404b01d4ee1432cf276f2d908d7847f799c944` and
+`c95a8e7129b09e078851de28c3f50b37a7af4214`; Git's exact mechanical
+merge tree before this task-record note is
+`6aac4e6717c6b9d34430e50c707db65f364651c5`. There was no manual
+resolution. The parcel patch-id, excluding only this task record, is
+`6e1f6d00fbce0851d01fad8fb9ede3f8b048923f` against both the old base and
+new main. This note is the only post-merge edit; full integration review follows
+under the unchanged acceptance boundary. No managed-leg landing notification
+has arrived. The queue window closed before this merge; no PR, receipt comment
+or queue action exists yet.
 
 Self-retro: closure-only fake timers hid a receiver-dependent timer failure →
 preserve the supplied timer receiver and test that actual supplier contract.

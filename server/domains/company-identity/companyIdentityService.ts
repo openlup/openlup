@@ -1,123 +1,31 @@
-import {
-  COMPANY_IDENTITY_CONTRACT_VERSION,
-  isCompleteCompanyIdentity,
-  isValidCompanyIdentifier,
-  type CompanyIdentityCompany,
-  type CompanyIdentityLookupRequest,
-  type CompanyIdentityLookupResponse,
-  type CompanyIdentitySource,
-  type CompanyIdentitySourceStatus,
-} from "../../../src/domains/company-identity/companyIdentityContracts.js";
-import type { CompanyIdentityLookupPort } from "../../../src/domains/company-identity/ports.js";
+import { createCompanyIdentityLookupPort as createPackageLookupPort } from "@openlup/platform/company-identity/server";
+import type { CompanyIdentityProvider } from "@openlup/platform/company-identity/server";
+import type { CompanyIdentityRules } from "@openlup/platform/company-identity/contracts";
+import { addressCanonLocalitySchema } from "../../../src/domains/address-canon/contracts.js";
+import { isValidCompanyIdentifier } from "../../../src/domains/company-identity/companyIdentityContracts.js";
+import { normalizePolishNip } from "../../../src/lib/schemas/fields/taxId.js";
 
-export interface CompanyIdentityProvider {
-  providerKind: string;
-  lookup(request: CompanyIdentityLookupRequest): Promise<CompanyIdentityProviderResult>;
-}
+export type { CompanyIdentityProvider, CompanyIdentityProviderResult } from "@openlup/platform/company-identity/server";
 
-export interface CompanyIdentityProviderResult {
-  status: CompanyIdentitySourceStatus;
-  company: CompanyIdentityCompany | null;
-  source: CompanyIdentitySource;
-}
+const referenceCompanyCountry = addressCanonLocalitySchema.shape.countryCode.value;
+const referenceIdentifierKind = "pl_nip";
 
-export function createCompanyIdentityLookupPort(
-  providersByCountry: Record<string, CompanyIdentityProvider[]>,
-): CompanyIdentityLookupPort {
-  return {
-    async lookupCompanyIdentity(request) {
-      if (!isValidCompanyIdentifier(request.country, request.identifierKind, request.identifierValue)) {
-        return response("invalid", "invalid", null, [], ["invalid_identifier"]);
-      }
-      if (request.identifierKind === "custom") {
-        return response(
-          request.manualCompany ? "partial" : "not_found",
-          "manual_unverified",
-          request.manualCompany ? manualCompany(request) : null,
-          [],
-          ["manual_unverified"],
-        );
-      }
+/** Existing reference rules remain in their domain owner and feed the package engine. */
+export const referenceCompanyIdentityRules: CompanyIdentityRules = {
+  normalizeIdentifier: (country, kind, value) =>
+    country === referenceCompanyCountry && kind === referenceIdentifierKind
+      ? normalizePolishNip(value) ?? value
+      : value,
+  isValidIdentifier: isValidCompanyIdentifier,
+  isFullerLegalName: isFullerSoleProprietorLegalName,
+  shouldSeekFullerLegalName: (request, current) =>
+    request.country === referenceCompanyCountry && request.identifierKind === referenceIdentifierKind &&
+    isLikelyPersonalOnlyLegalName(current.legalName),
+};
 
-      const providers = providersByCountry[request.country] ?? [];
-      if (!providers.length) {
-        return response("unsupported_country", "invalid", null, [], ["unsupported_country"]);
-      }
-
-      const sources: CompanyIdentitySource[] = [];
-      let best: CompanyIdentityCompany | null = null;
-      let hasUnavailable = false;
-
-      for (let index = 0; index < providers.length; index += 1) {
-        const provider = providers[index];
-        const result = await provider.lookup(request);
-        sources.push(result.source);
-        if (result.status === "provider_unavailable") hasUnavailable = true;
-        if (result.company && (!best || isMoreComplete(result.company, best))) best = result.company;
-        if (best && isCompleteCompanyIdentity(best) && !shouldContinueForFullerLegalName(request, best, providers, index)) {
-          return response("found", "registry_verified", best, sources);
-        }
-      }
-
-      if (best) return response("partial", "provider_verified", best, sources, ["partial_company_identity"]);
-      return response(
-        hasUnavailable ? "provider_unavailable" : "not_found",
-        "invalid",
-        null,
-        sources,
-        hasUnavailable ? ["provider_unavailable"] : ["not_found"],
-      );
-    },
-  };
-}
-
-function manualCompany(request: CompanyIdentityLookupRequest): CompanyIdentityCompany {
-  return {
-    country: request.country,
-    identifierKind: request.identifierKind,
-    identifierValue: request.identifierValue,
-    legalName: request.manualCompany?.legalName ?? null,
-    registeredAddress: request.manualCompany?.registeredAddress ?? null,
-    registryStatus: "manual",
-    regon: null,
-    vatStatus: null,
-  };
-}
-
-function response(
-  status: CompanyIdentityLookupResponse["status"],
-  verificationLevel: CompanyIdentityLookupResponse["verificationLevel"],
-  company: CompanyIdentityCompany | null,
-  sources: CompanyIdentitySource[],
-  warnings: string[] = [],
-): CompanyIdentityLookupResponse {
-  return {
-    contractVersion: COMPANY_IDENTITY_CONTRACT_VERSION,
-    status,
-    verificationLevel,
-    company,
-    sources,
-    warnings,
-  };
-}
-
-function isMoreComplete(next: CompanyIdentityCompany, current: CompanyIdentityCompany): boolean {
-  return Number(isCompleteCompanyIdentity(next)) > Number(isCompleteCompanyIdentity(current)) ||
-    isFullerSoleProprietorLegalName(next.legalName, current.legalName) ||
-    (!current.legalName && Boolean(next.legalName)) ||
-    (!current.registeredAddress && Boolean(next.registeredAddress));
-}
-
-function shouldContinueForFullerLegalName(
-  request: CompanyIdentityLookupRequest,
-  current: CompanyIdentityCompany,
-  providers: CompanyIdentityProvider[],
-  currentIndex: number,
-): boolean {
-  return request.country === "PL" &&
-    request.identifierKind === "pl_nip" &&
-    currentIndex < providers.length - 1 &&
-    isLikelyPersonalOnlyLegalName(current.legalName);
+/** The reference rules retain their original helper exports below. */
+export function createCompanyIdentityLookupPort(providersByCountry: Record<string, CompanyIdentityProvider[]>) {
+  return createPackageLookupPort(providersByCountry, referenceCompanyIdentityRules);
 }
 
 export function isFullerSoleProprietorLegalName(next: string | null, current: string | null): boolean {

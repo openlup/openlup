@@ -45,39 +45,38 @@ The two declared purposes — `checkout_invoice` and
 consequence is larger. Hosts still own that policy and must interpret the
 status, returned data and source evidence for their chosen composition.
 
-## Package preservation candidate
+## Package delegation
 
 The experimental `@openlup/platform/company-identity` schema entry and
 `company-identity/server` engine preserve this implementation, including registry
 extensions, provider ordering and the process-shared cache. National identifier
 and legal-name rules are explicit package inputs; this reference retains its own
-existing values and implementation. Its contracts entry
-is type-only. This reference still uses its existing bodies and ambient bindings;
-R1 changes no caller. Replaceable compatibility policy and delegation follow
-separately. See the [R1 task record](../../../docs/platform/plans/oss-m16-r1-market-import.md).
+existing values in the domain service. The reference service and handler are
+facades over the package engine and share its single process cache. The package
+does not own provider configuration, route mounting or browser locale defaults.
+See the [composition record](../../../docs/platform/plans/reference-market-composition.md).
 
 ## Ports and seams
 
-- Engine: `packages/core/src/company-identity/`, exposed as
-  `@openlup/core/company-identity` — the neutral request/response contract and
-  `CompanyIdentityLookupPort`. The core keeps `country` an open ISO-3166
+- Engine: `@openlup/platform/company-identity/{contracts,server}` — the
+  package request/response contract, lookup port and handler. The contract
+  keeps `country` an open ISO-3166
   alpha-2 code and lets the host adapter decide which identifier kinds it
   accepts. An adapter never throws for "not found" or "unsupported country";
   both are response statuses, so callers branch on data rather than exceptions.
 - `ports.ts` — a re-export shim over that port. This is the seam an adopter
   implements to plug in a national registry, a commercial provider, or a manual
   store.
-- `companyIdentityContracts.ts` — the local layer on top of the neutral base:
-  downstream registry extensions and the country-specific normalization
-  described below. It extends the imported core request input schema and uses
-  the core's public `normalizeCompanyIdentityLookupRequest`; it does not copy
-  the neutral schema or normalization. Optional registry fields survive the
-  local extension. National tax-id normalization and validation stay here.
+- `companyIdentityContracts.ts` — the local request layer supplies the existing
+  country-specific normalization and validation to the package schema factory.
+  Package response/company schemas retain the registry extensions and source
+  evidence; host data is never parsed through a narrower core-only schema.
 - `companyIdentityClient.ts` — the browser client for
   `/api/bff/company-identity/lookup`.
-- `server/domains/company-identity/companyIdentityService.ts` — composes an
-  ordered provider list per country and walks it until a record is complete,
-  recording each source's outcome as evidence.
+- `server/domains/company-identity/companyIdentityService.ts` — retains the
+  reference identifier/name rules and delegates ordered provider lookup to the
+  package. `companyIdentityHandlers.ts` supplies the current BFF responder and
+  re-exports the package cache reset.
 - `server/domains/company-identity/vendorCompanyIdentityProvider.ts` — the
   generic HTTP provider, the neutral way to attach any external lookup service.
 - `server/bff/company-identity/{lookup,shared}.ts` — the route handler and the
