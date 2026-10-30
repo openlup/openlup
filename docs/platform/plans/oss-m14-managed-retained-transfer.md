@@ -708,3 +708,62 @@ with navigation update, ast-grep and redacted tracked-tree scan pass. The
 terminal rule shares one source-graph check between census and mapping, avoiding
 an additional target representation. The final run follows the one-intent
 conflict guard added after the first 6/6 run.
+
+The coordinator's CD-M14-58 read accepted this candidate. The independently
+computed tree was `8c5383fd4b1adaade4002163170bde0385317a51`, and
+`git diff --binary 0564ae15 8c5383fd` had SHA-256
+`cc608fb2ae6d2a5dc789ce2effa37f12cb2fce19dc3c79c31b3d5d659d57d015`.
+The read accepted the deliberate distinction between typed failed intents and
+archive-only checked cancelled or expired intents, as well as the aggregate
+`requires-active-mapping` census for mixed source relations.
+
+After native prepare refused clean-merge carry-over, the parcel merged
+`origin/main` at `591a8ec46d3cd74f7047b2a44ea4a50649158690` into
+`1b774c3e9ad444139aa56ca53705162ebfd33358`. Git's automatic merge had
+no conflicts or manually resolved hunks. Its staged pre-note tree was
+`ebef0f952cc4d65304fa6d6cfd753d3055630218`; the stable parcel patch ID,
+excluding this task record, was
+`8013f30cf60b56fc2589f89335bc8832e0e10da7` against both the old base
+and the new main. This is the CD-M14-30 mechanical carry-over case; the
+integrated tree requires fresh full native review.
+Main's new generated agent-context check also required refreshing two line-span
+metadata values after this parcel's `DATA_AND_MIGRATIONS.md` paragraph moved
+the unchanged additive-migration excerpt. The excerpt bytes and SHA-256 did
+not change; this is a docs-only generated-metadata correction.
+
+## Native review cycle 10 payment-link repair
+
+The first integrated review returned one PASS and one material card,
+`MRL-CARRIED-PAYMENT-LINK`. Independent foreign keys in the managed baseline
+allow an attempt linked to one intent to name another payment. The prior
+carried failed/succeeded projection checked attempt status but could then emit
+typed settlement state while omitting the contradictory source attempt. The
+repair shares a finite attempt/transition link check across carried and checked
+terminal states: payment identity, amount, currency, provider and optional
+transition attempt ID must agree with the intent and payment. Any mismatch
+in a carried intent refuses as `target_conflict` before restore; checked
+archive-only terminal state continues through its existing refusal path. A pinned managed-source witness
+mutates each field and both carried statuses, then restores the fixture. This
+is a safety tightening within the accepted typed projection, with no new
+archive class, target representation or public support claim. The earlier
+sidecar privacy card closes because the sidecar was removed. A fresh
+maintainer read is required before this source repair is DCO-committed.
+
+The first managed PG run exposed a refusal-order difference: a source-only
+provider reference refused before the carried intent's mapped conflict check.
+The same shared link check now runs as a narrow preflight for carried intents,
+ahead of relation-disposition refusal. The final pinned CLI 2.122.0 managed
+source → qualified PG16 run passes 7/7, including mismatched payment, amount,
+currency, provider and transition-attempt links in failed and succeeded cases.
+Strict all-project typecheck, lint (zero errors), docs policy, ast-grep and
+redacted Gitleaks scans of the staged tree and all refs pass. No public
+capability wording changed. Self-retro: the first test failure showed that
+early archive-state refusal can mask a more precise typed conflict; placing
+the shared link check before that refusal preserved the existing error contract.
+
+CD-M14-64 accepted the cycle-10 repair with independently recomputed tree
+`2f0ca108a70a480b52ff7782da9eeb3870b5a4eb` and SHA-256
+`b1546944ed4132ab2e5b02e7285fbb60830e71dd5d30dce5acab9fa51e32dde7`
+for `git diff --binary 1af97f95 2f0ca108`. Both computed identities matched.
+The exact accepted tree was DCO-committed as
+`8011cd8d58e10962cdc437d317b8d036db4cb0e7`; fresh full native review follows.

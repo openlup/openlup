@@ -13,7 +13,7 @@ const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from"
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 const corpusPackages = new Set(["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
-const usage = "Usage: openlup-context search <task> [--code] [--json]\nRun from the application root after installing @openlup/core.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\nRun from the application root after installing @openlup/core.\n";
 
 function readText(path: string): string | undefined {
   try { return readFileSync(path, "utf8"); }
@@ -117,7 +117,7 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
   const content = readText(file);
   if (!content) return [];
   const lines = content.split("\n");
-  const headings: { index: number; title: string; level: number }[] = [];
+  const headings: { index: number; title: string }[] = [];
   let fence: string | undefined;
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
@@ -125,13 +125,12 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
     if (fence) { if (marker?.[0] === fence[0] && marker.length >= fence.length && /^ {0,3}(?:`+|~+)\s*$/u.test(line)) fence = undefined; continue; }
     if (marker) { fence = marker; continue; }
     const heading = line.match(/^(#{1,6}) (.+)$/u);
-    if (heading) headings.push({ index, title: heading[2], level: heading[1].length });
+    if (heading) headings.push({ index, title: heading[2] });
   }
-  if (!headings.length) headings.push({ index: 0, title: fileName, level: 1 });
+  if (!headings.length) headings.push({ index: 0, title: fileName });
   const hits: Hit[] = [];
   for (const [position, heading] of headings.entries()) {
-    const next = headings.slice(position + 1).find((candidate) => candidate.level <= heading.level);
-    const endIndex = next?.index ?? lines.length;
+    const endIndex = headings[position + 1]?.index ?? lines.length;
     const body = lines.slice(heading.index, endIndex).join("\n");
     const score = relevance(heading.title, body, query, terms);
     if (score > 0) hits.push({ title: heading.title, file, start: heading.index + 1, end: endIndex, packageName: item.name, score, reason: `installed ${fileName}` });
@@ -212,7 +211,40 @@ function applicationHits(cwd: string, query: string, terms: string[]): Hit[] {
   return hits;
 }
 
-export function searchContext(cwd: string, task: string, includeCode = false): { version: string; packages: string[]; hits: Hit[] } {
+function packageSourceHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
+  const root = join(item.root, "src");
+  if (!existsSync(root) || !lstatSync(root).isDirectory()) return [];
+  const hits: Hit[] = [];
+  const pending = [root];
+  let seen = 0;
+  while (pending.length && seen < 1200) {
+    const directory = pending.pop()!;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (seen >= 1200) break;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) { pending.push(path); continue; }
+      if (!entry.isFile() || !codeExtensions.has(entry.name.slice(entry.name.lastIndexOf(".")))) continue;
+      if (lstatSync(path).size > 200_000) continue;
+      seen++;
+      const installedPath = relative(item.root, path);
+      if (query.includes(installedPath.toLocaleLowerCase("en"))) {
+        hits.push({ title: installedPath, file: path, start: 1, end: 1, packageName: item.name, score: 30, reason: "exact installed source path" });
+        continue;
+      }
+      const lines = readFileSync(path, "utf8").split("\n");
+      let best: Hit | undefined;
+      for (let index = 0; index < lines.length; index++) {
+        if (!terms.some((term) => lines[index].toLocaleLowerCase("en").includes(term))) continue;
+        const score = relevance(installedPath, lines[index], query, terms);
+        if (score > (best?.score ?? 0)) best = { title: installedPath, file: path, start: index + 1, end: index + 1, packageName: item.name, score, reason: "installed package source" };
+      }
+      if (best) hits.push(best);
+    }
+  }
+  return hits;
+}
+
+export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[] } {
   const packages = selectedPackages(cwd);
   const query = task.toLocaleLowerCase("en").trim();
   const terms = tokens(task);
@@ -227,9 +259,23 @@ export function searchContext(cwd: string, task: string, includeCode = false): {
     ...exportHits(item, query, terms),
   ]);
   if (includeCode) hits.push(...applicationHits(cwd, query, terms));
-  hits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
+  if (includePackageCode) hits.push(...packages.flatMap((item) => packageSourceHits(item, query, terms)));
+  const installedDocs = new Set(hits.filter((hit) => hit.reason.startsWith("installed ") && hit.file.endsWith(".md"))
+    .map((hit) => hit.file));
+  const selectedHits = hits.filter((hit) => {
+    if (hit.reason !== "canonical owner excerpt" || !hit.owner) return true;
+    const item = packages.find((candidate) => candidate.name === hit.packageName)!;
+    return !installedDocs.has(join(item.root, hit.owner));
+  });
+  selectedHits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
   const unique = new Set<string>();
-  const selected = hits.filter((hit) => { const key = `${hit.file}:${hit.start}:${hit.end}`; if (unique.has(key)) return false; unique.add(key); return true; }).slice(0, 8);
+  const selected = selectedHits.filter((hit) => {
+    const key = hit.reason === "canonical owner excerpt" && hit.owner
+      ? `owner:${hit.owner}:${hit.title}` : `${hit.file}:${hit.start}:${hit.end}`;
+    if (unique.has(key)) return false;
+    unique.add(key);
+    return true;
+  }).slice(0, 8);
   return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected };
 }
 
@@ -237,10 +283,12 @@ function main(): void {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) { process.stdout.write(usage); return; }
   if (args[0] !== "search") throw new Error(usage.trim());
+  if (args.some((arg) => arg.startsWith("--") && !["--code", "--package-code", "--json"].includes(arg))) throw new Error(usage.trim());
   const json = args.includes("--json");
   const code = args.includes("--code");
+  const packageCode = args.includes("--package-code");
   const task = args.slice(1).filter((arg) => !arg.startsWith("--")).join(" ").trim();
-  const result = searchContext(process.cwd(), task, code);
+  const result = searchContext(process.cwd(), task, code, packageCode);
   if (json) { process.stdout.write(`${JSON.stringify(result)}\n`); return; }
   process.stdout.write(`OpenLup ${result.version}: ${result.packages.join(", ")}\n`);
   if (!result.hits.length) { process.stdout.write("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.\n"); return; }

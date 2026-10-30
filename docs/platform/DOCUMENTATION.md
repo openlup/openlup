@@ -91,6 +91,16 @@ canonical late-delivery/replacement alignment boundary as separate owner
 excerpts; retrieval must not conflate payment timing with delivery confirmation.
 The delivery excerpt stops before the native translation paragraph; its cited
 line span and hash describe only the retained verbatim guidance.
+Additional small routes cover adopter data ownership, the first ordered-forward
+rules, cross-domain idempotency, provider-adapter capabilities and subscription
+layer/delivery navigation. The idempotency owner is reachable from the platform
+and outbox corpora; retrieval returns one canonical-source result for the same
+section.
+An excerpt from an installed README or engine page is not returned alongside
+that page's matching section. The CLI separates nested headings into disjoint
+spans and offers `--package-code` only when an agent explicitly needs installed
+`src/` evidence; these are bounded source leads, not proof of application
+composition or installed database state.
 
 The exact-shipment native G17 host binding and its local unit/native witnesses
 route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).

@@ -8,14 +8,16 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.32.0` set includes the Node-only offline `openlup-context`
-command and a packaged `AGENT_CONTEXT.md`, alongside documentation
-clarifications and the platform risk controls. The kernel API and subscription
-runtime behavior are unchanged. Upgrade all packages together and read
-[the set notes](CHANGELOG.md#0320); core introduces no schema migration.
-Size comparison uses the published `0.31.0` tarball; older releases
-remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
-npm publication.
+The prepared `0.33.0` set includes Platform's experimental company-identity and
+market-pack entries and Node scheduler stop fix. Core's commerce kernel exports
+are unchanged. The installed `openlup-context` command now separates nested
+sections, removes duplicate copied excerpts and
+offers opt-in `--package-code` search of installed package source. Generated
+guidance adds migration, idempotency, provider-adapter and delivery routes.
+Upgrade all packages together and read [the set notes](CHANGELOG.md#0330);
+Core introduces no schema migration. Size comparison uses the published `0.32.0`
+tarball; releases before `0.31.0` remain in the source-only
+`CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
 
 The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Oversized constrained collections fail before per-element errors accumulate;
@@ -185,17 +187,20 @@ freeform Polish queries may miss relevant guidance.
 
 The command searches documentation in the installed OpenLup packages offline and
 returns file-and-line citations. Add `--code` for a bounded local application
-source scan that may be incomplete; use direct `rg` when needed. Add `--json`
-for structured results. It never downloads packages or starts a
-service. Its Node-only launcher is isolated from the I/O-free kernel exports and
-adds no runtime dependency.
+source scan, or `--package-code` to inspect the installed packages' `src/` files.
+Both scans are opt-in and may be incomplete; use direct `rg` when a path or
+symbol is known. Add `--json` for structured results. It never downloads
+packages or starts a service. Its Node-only launcher is isolated from the
+I/O-free kernel exports and adds no runtime dependency.
 
 Read a known path or symbol directly. Use the lookup to locate an unfamiliar
 package seam, then inspect the cited owner and follow its exports, callers and
 tests for cross-package work. A ranked result does not establish complete
 contract coverage.
 
-Each package's root `AGENT_CONTEXT.md` contains small excerpts of canonical
+Nested Markdown headings return separate spans; copied excerpts of an already
+indexed installed page do not take another result slot. Each package's root
+`AGENT_CONTEXT.md` contains small excerpts of canonical
 repository guidance, with source paths, line ranges and excerpt digests. Read
 the package version from its installed `package.json` and check the cited source
 before changing a contract; a result locates

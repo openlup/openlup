@@ -123,3 +123,16 @@ second parent was equal:
 Commit `5ce8fe0188ed3bde57516fffc52d5f989a67064a` DCO-signs that exact
 tree. The post-commit documentation policy check passed both obligations and
 produced no generated-navigation change.
+
+The CD-M14-64 predecessor carry merged `5b0843e5f3e6543e16f63ce4c96da78fa9ac74fc`
+into `945b4e147d91a4c2bba5e14d9924ff848108414d` without conflicts or manual
+resolution. It imports only the predecessor's reviewed lineage, including its
+main merge, payment-attempt link refusal and evidence note. The automatic
+merge tree before this evidence note was
+`9b5e8baea49851c8a93f1d4c1fec9f69d84b7ebd`. The complete own-delta stable
+patch-id versus `5289e6e4` before and `5b0843e5` after was equal on both sides:
+`0de58ea8e7720a16e35e312a2207877617aa7400`. Excluding only this task record,
+both patch-ids were also equal: `44532ac739a44b8c312ac56b30bad2c6bb536b4f`.
+The payment-link refusal is exercised by this journey, so its focused local
+proof must run again before review; a fixture payment refusal requires a new
+maintainer read before changing the fixture.

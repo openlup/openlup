@@ -17,8 +17,8 @@ start with the installed package's README, CHANGELOG and declarations, and consu
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
 
-For the prepared `0.32.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0320) before selecting optional services. Experimental
+For the prepared `0.33.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0330) before selecting optional services. Experimental
 M13 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -61,7 +61,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.31.0` tarball. Preparation and offline
+Size comparison uses the published `0.32.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -896,6 +896,11 @@ The package carries no deployment identity. The application passes it every valu
 
 `createBundleComposer` binds the blob slot by default; pass `createBundleComposer({ createSupabaseClient })` to enable its Supabase Storage binding when the data-gateway settings and bucket are present. Without that client Supabase Storage stays unbound. A custom `blob` binder still overrides the default. The HTTP, scheduler, data, migrations, analytics and transactional slots stay `null` until the application supplies their binders; `createDataBindings` builds the data binder from the application's database client factory.
 
+For payment and fulfillment provider adapters, the host supplies clients and
+policy and composes only declared port capabilities and refusals. Read the
+installed `./payments/contracts` or `./fulfillment/contracts` declarations and
+their maturity before binding; an exported adapter does not activate a provider.
+
 ## Job-run ledger SQL
 
 `JOB_RUN_LEDGER_MIGRATIONS` lists the two files a fresh installation applies, in order, through its own migration chain:
@@ -1005,6 +1010,9 @@ in both resolution modes with all three optional peers absent.
 ## Identity import candidate
 
 `./identity` provides server identity services; `./identity/contracts` supplies browser-shareable contracts.
+This is a development-preview import candidate, not an activated adopter contract.
+Installed exports alone do not mount routes or establish host readiness; the
+application must verify its selected identity composition and capabilities.
 See the [identity recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#identity-import-candidate) for composition, migrations and operator invitations.
 
 ## Personal data

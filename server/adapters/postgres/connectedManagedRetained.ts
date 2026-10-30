@@ -50,6 +50,11 @@ const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
 // Managed Storage has no typed object path in this parcel. The other finite
 // source classes below use their existing state checks and disposition values.
 const uncarried = new Set(["storage.buckets", "storage.objects"]);
+const attemptLinks = (intent: Row, payment: Row, attempt: Row | undefined, transition: Row | undefined): boolean =>
+  !!attempt && !!transition && attempt.payment_intent_id === intent.id && attempt.payment_id === payment.id
+  && attempt.amount_cents === intent.amount_cents && attempt.currency === intent.currency
+  && attempt.provider === payment.provider
+  && (transition.payment_attempt_id === null || transition.payment_attempt_id === attempt.id);
 const checkedTerminalUnpaid = (intent: Row | undefined, all: Map<string, Row[]>): boolean => {
   if (!intent || !["failed", "cancelled", "expired"].includes(String(intent.status))) return false;
   const payment = all.get("public.commerce_payments")?.find(row => row.id === intent.payment_id);
@@ -62,9 +67,9 @@ const checkedTerminalUnpaid = (intent: Row | undefined, all: Map<string, Row[]>)
   return !!payment && !!order && linkedIntents.length === 1
     && payment.order_id === intent.order_id && payment.status === intent.status
     && order.status === "pending_payment" && intent.active_attempt_id === null
-    && attempts.length === 1 && attempts[0]?.payment_id === payment.id && attempts[0]?.status === intent.status
+    && attempts.length === 1 && attempts[0]?.status === intent.status
     && transitions.length === 1 && transitions[0]?.to_status === intent.status
-    && (transitions[0]?.payment_attempt_id === null || transitions[0]?.payment_attempt_id === attempts[0]?.id)
+    && attemptLinks(intent, payment, attempts[0], transitions[0])
     && !items.some(item => item.payment_intent_id === intent.id || item.payment_id === payment.id)
     && !invoices.some(invoice => invoice.order_id === order.id);
 };
@@ -417,6 +422,18 @@ export async function mapManagedRetainedBusiness(input: {
   validateCapture(input.capture);
   const raw = projectionRows.get(input.capture);
   if (!raw) fail("invalid_input");
+  const sourcePayments = raw.get("public.commerce_payments") ?? [];
+  const sourceAttempts = raw.get("public.commerce_payment_attempts") ?? [];
+  const sourceTransitions = raw.get("public.commerce_payment_state_transitions") ?? [];
+  for (const intent of raw.get("public.commerce_payment_intents") ?? []) {
+    if (intent.status !== "failed" && intent.status !== "succeeded") continue;
+    const payment = sourcePayments.find(row => row.id === intent.payment_id);
+    const attempts = sourceAttempts.filter(row => row.payment_intent_id === intent.id);
+    const transitions = sourceTransitions.filter(row => row.payment_intent_id === intent.id);
+    if (payment && attempts.length === 1 && transitions.length === 1
+      && !attemptLinks(intent, payment, attempts[0], transitions[0]))
+      fail("target_conflict", "public.commerce_payment_intents");
+  }
   for (const entry of input.capture.dispositions)
     if (entry.rows && (uncarried.has(entry.relation)
       || stateClass.has(entry.relation) && !active.has(entry.relation)
@@ -586,11 +603,12 @@ export async function mapManagedRetainedBusiness(input: {
       || typeof payment.provider !== "string" || !payment.provider || payment.provider.length > 64
       || (row.status === "created" && (payment.status !== "pending" || ownAttempts.length || ownTransitions.length))
       || (row.status === "failed" && (payment.status !== "failed" || ownAttempts.length !== 1
-        || ownAttempts[0]?.status !== "failed" || ownTransitions.length !== 1 || ownTransitions[0]?.to_status !== "failed"))
+        || ownAttempts[0]?.status !== "failed" || ownTransitions.length !== 1 || ownTransitions[0]?.to_status !== "failed"
+        || !attemptLinks(row, payment, ownAttempts[0], ownTransitions[0])))
       || (row.status === "succeeded" && (order.status !== "paid" || payment.status !== "succeeded"
         || ownAttempts.length !== 1 || ownAttempts[0]?.status !== "succeeded" || ownTransitions.length !== 1
         || ownTransitions[0]?.to_status !== "succeeded" || typeof row.provider_payment_id !== "string"
-        || !row.provider_payment_id)))
+        || !row.provider_payment_id || !attemptLinks(row, payment, ownAttempts[0], ownTransitions[0]))))
       fail("target_conflict", "public.commerce_payment_intents");
     projected.commerce_settlement_intents!.push({ id: row.id, order_id: row.order_id,
       channel_key: payment.provider, status: row.status === "succeeded" ? "settled" : row.status, amount_minor: row.amount_cents,
