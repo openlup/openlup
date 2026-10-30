@@ -76,9 +76,9 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
     expect((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
       [selection.bootstrapLogin])).rows).toEqual([{ rolsuper: false, rolcreaterole: true, rolcreatedb: true }]);
     await expect(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
-    expect((await runner.status()).pending).toHaveLength(91);
+    expect((await runner.status()).pending).toHaveLength(1 + manifest.forward.length);
     if (apply) {
-      expect((await runner.apply()).applied).toHaveLength(91);
+      expect((await runner.apply()).applied).toHaveLength(1 + manifest.forward.length);
       expect((await runner.status()).pending).toEqual([]);
     }
     return { container, pools, owner, runner, selection, inventory: manifest.objectInventorySha256 };
@@ -140,7 +140,7 @@ for (const role of ["rds_password", "rds_iam", "rds_ad"] as const) {
       fixture.selection.trustedControlPlane = { roleNames: [...fixture.selection.trustedControlPlane!.roleNames, role] };
       await expect(fixture.runner.status()).rejects.toThrow("control_plane_membership_missing");
       await fixture.pools[0]!.query("GRANT rds_superuser TO host_bootstrap WITH ADMIN TRUE, INHERIT TRUE, SET TRUE");
-      expect((await fixture.runner.status()).pending).toHaveLength(91);
+      expect((await fixture.runner.status()).pending).toHaveLength(1 + selectPlatformMigrationManifest(JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8')), 'qualified-admin', { roleMode: fixture.selection.roleMode }).forward.length);
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
 }
@@ -153,7 +153,7 @@ for (const outside of ["grantor", "member"] as const) {
       const outsideName = outside === "grantor" ? "rds_superuser" : "declared_outsider";
       await fixture.pools[0]!.query(`CREATE ROLE ${outsideName} NOLOGIN`);
       fixture.selection.trustedControlPlane = { roleNames: [...fixture.selection.trustedControlPlane!.roleNames, outsideName] };
-      expect((await fixture.runner.status()).pending).toHaveLength(91);
+      expect((await fixture.runner.status()).pending).toHaveLength(1 + selectPlatformMigrationManifest(JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8')), 'qualified-admin', { roleMode: fixture.selection.roleMode }).forward.length);
       await fixture.pools[0]!.query(`GRANT pg_monitor TO ${outsideName} WITH ADMIN TRUE, INHERIT TRUE, SET TRUE`);
       await expect(fixture.runner.status()).rejects.toThrow("protected_membership_graph_differs");
     } finally { await closePostgres(fixture.container, fixture.pools); }
@@ -180,6 +180,8 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       source = await install(shape, mode, "source");
       target = await install(shape, mode, "target");
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
+      await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+        VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
       const packet = await capture(source, "restricted-source"), freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
@@ -197,6 +199,7 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
+      expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
       if (shape === "neon" && mode === "installer-managed") {
         // A separate administrator changes the ledger after the first exact
         // read but just before restore locks the table. Replay must recheck it.

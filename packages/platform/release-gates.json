@@ -826,21 +826,69 @@
       ],
       "entrypoint": "dist/market-packs/index.d.ts",
       "snapshot": "api/market-packs.api.md"
+    },
+    "./channels": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/channels/channelIngestCharacterization.test.ts",
+        "test/channels/channelWebhookCharacterization.test.ts",
+        "test/channels/channelPurchaseCharacterization.test.ts",
+        "test/channels/channelPullCharacterization.test.ts",
+        "test/channels/channelRailsAndOpsCharacterization.test.ts",
+        "test/channels/channelPackageBoundary.test.ts"
+      ],
+      "entrypoint": "dist/channels/index.d.ts",
+      "snapshot": "api/channels.api.md"
+    },
+    "./channels/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/channels/channelIngestCharacterization.test.ts",
+        "test/channels/channelWebhookCharacterization.test.ts",
+        "test/channels/channelPurchaseCharacterization.test.ts",
+        "test/channels/channelPullCharacterization.test.ts",
+        "test/channels/channelRailsAndOpsCharacterization.test.ts",
+        "test/channels/channelPackageBoundary.test.ts"
+      ],
+      "entrypoint": "dist/channels/contracts/index.d.ts",
+      "snapshot": "api/channels-contracts.api.md"
+    },
+    "./channels/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/channels/channelIngestCharacterization.test.ts",
+        "test/channels/channelWebhookCharacterization.test.ts",
+        "test/channels/channelPurchaseCharacterization.test.ts",
+        "test/channels/channelPullCharacterization.test.ts",
+        "test/channels/channelRailsAndOpsCharacterization.test.ts",
+        "test/channels/channelPackageBoundary.test.ts"
+      ],
+      "entrypoint": "dist/channels/server/index.d.ts",
+      "snapshot": "api/channels-server.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1743872,
-      "maxFiles": 2718
+      "maxPackedBytes": 1850000,
+      "maxFiles": 2831
     },
     "docs": {
       "maxPackedBytes": 73728,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2029568,
-    "maxUnpackedBytes": 9447424,
-    "maxFiles": 2774,
-    "capReason": "M16 company-identity + market-packs subpaths; measured full M16 stack on M15 main (integration f05668d6) at 2,719 total / 2,664 code files; ×1.02 rounded up (CD-M15-6a rule, CD-M16-16)",
+    "maxPackedBytes": 2145000,
+    "maxUnpackedBytes": 9995000,
+    "maxFiles": 2890,
+    "capReason": "CD-M17-14 approves measured M17 R1 plus bounded R2/R3 reserve; CD-M17-11 applies the established M15/M16 rule: actual plus reserve, times 1.02, bytes rounded up to 5,000 and files rounded up.",
     "baseline": {
       "version": "0.32.0",
       "packedBytes": 1967831
@@ -864,7 +912,8 @@
       "./operations": 30720,
       "./marketing/contracts": 32,
       "./risk/contracts": 32,
-      "./company-identity/contracts": 20
+      "./company-identity/contracts": 20,
+      "./channels/contracts": 20
     }
   }
 }

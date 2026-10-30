@@ -96,6 +96,18 @@ recipient-consent, native send/observation and communication-sync rows needed
 for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
+
+Channel source captures, purchased-line claims and pull pages have no transfer
+mapping in this profile. Native restore imports ordinary outbox rows through the
+locked owner path and refuses the three protected channel evidence types before
+insertion. The generic row importer retains its INSERT-trigger refusal.
+Managed capture recognizes only the complete three dormant channel registrations
+as installation metadata, without carrying them into target business rows. It
+checks all five columns: exact event type, owner and reason, and a shared finite
+PostgreSQL installation timestamp equal in both timestamp columns. Independent
+installations need not share that timestamp. An empty registration table keeps
+its original unsupported-empty disposition; unknown or drifted registrations
+and nonempty channel business relations still refuse.
 The managed source extractor inventories one disposable managed snapshot,
 including Auth identity metadata and Storage metadata relations. The capture
 login must be exempt from row security and able to read every relation; a login
@@ -1285,7 +1297,18 @@ that inventory. Complete ordered prefixes retain earlier issued same-rail pins;
 release checks bind the unique introduction and refuse later repinning or
 removal. Changing admission machinery together with SQL remains forbidden.
 This control installs no SQL and establishes no PostgreSQL semantic proof; the
-SQL introduction owns that proof. The existing
+SQL introduction owns that proof. The R1 introduction appends the two
+`20261030121000_channel_retained_basis.sql` and
+`20261030122000_channel_purchased_source.sql` units to each selected native plan
+and the managed chain. The native package assets are byte-identical projections
+of their canonical units; the managed bodies intentionally differ. Native
+functions retain the selected trusted migration owner and conditional service
+grants when that selected role exists. They do not introduce managed closed-role
+isolation into a native role graph. Managed capture uses its closed NOLOGIN
+writer. Both rails retain protected original captures outside generic source
+envelopes, immutable line claims and original page receipts. Physical native
+conversion remains explicitly unavailable; no native payment or stock grant is
+invented. Privacy lifecycle export/erasure remains unavailable. The existing
 [admission witness](../../scripts/reviewed-batch-forward.test.ts) uses synthetic
 function bodies under fixed headers and exact companions to test lexical and
 Git-history success and refusal boundaries.
@@ -1630,8 +1653,11 @@ and `20260710131002_no_cron_inventory_reservation_leases.sql:15–315` (seam/M6)
 `20261021130000_refunds_preserve_subscription_lifecycle.sql:18–758` (F17), all
 under donor `supabase/migrations/`. Five C94-bound headers remain frozen; these
 citations supply provenance without altering their bytes. Current donor
-`20261013173001_channel_exposure_inventory_admission.sql` global/channel controls
-are deferred, and the exposure hook remains zero.
+`20261013173001_channel_exposure_inventory_admission.sql` global controls remain
+deferred. The separate M17 managed forward fills the existing ATP exposure hook
+and adds channel-only stock entry without changing the M06 allocator/public
+entry. Retained own exposure is credited before clamping; uncommitted renewal
+demand is not fenced, as recorded in the channel contract.
 
 Known donor-identical limits remain: SQL NULL summary state returns empty totals
 rather than refusing (B12); additive-provider helper evidence lacks the cumulative branch's

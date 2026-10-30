@@ -1533,3 +1533,49 @@ no market values, national rules or language defaults are selected. The
 imports application-owned compatibility facts and accepts explicit configuration.
 Its [equivalence and variation tests](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.test.ts)
 separate source composition from an installed or mounted deployment.
+
+## Channels
+
+The experimental `@openlup/platform/channels` subpath provides browser-safe
+normalized order, retained purchase, page/cursor and money-allocation contracts
+and helpers. `channels/contracts` exports types only. `channels/server` exposes
+ingest admission/saga, webhook/operator/pull/recovery helpers and explicit store,
+reservation and payment-owner bindings. Importing a subpath mounts no route,
+schedule, simulator or provider. The host owns credentials, signature validation,
+provider payload decoding, accepted currencies and enablement; jobs and simulator
+remain default-off. Optional connector port types describe host capabilities,
+not implemented outbound publication or synchronization.
+
+The managed rail can consume original retained paid obligations through the
+existing order, payment and inventory owners. Retained rows preserve the first
+approval/qualification, locked BOM, component weights, exact integer money groups
+and original payment identity across retries and changed current commercial
+facts. Reservations precede money effects. The ATP exposure hook reports the
+same retained outstanding obligations as channel admission; conversion credits
+its own validated exposure before the unchanged allocator clamps stock. Channel
+admission takes no subscription locks: uncommitted renewal-demand changes remain
+subject to existing stock-wait recovery. Ordinary reservation behavior is
+unchanged.
+
+The portable rail offers immutable source capture, protected readback and scoped
+page compare-and-swap through `createPostgresChannelPurchasedSourceStore`.
+Physical conversion refuses with `channel_purchase_physical_unavailable`; full
+portable settlement is unavailable. Native functions keep the selected trusted
+migration owner. Managed capture uses a closed NOLOGIN owner; runtime, browser
+and MCP callers receive only their declared entrypoints. Generic outbox source
+evidence omits normalized buyer/address bodies; authorized capture reads recover
+the original protected data. Privacy lifecycle export/erasure is unavailable.
+
+`CHANNEL_INGEST_MIGRATIONS` projects the two canonical native units with exact
+SHA-256 identities and package SQL assets. It is a sparse projection, not an
+installation chain: install the complete selected catalogue and verify its
+ledger, object inventory and grants. The three generations append the same two
+units after their immutable issued tails. Registry/listing authoring, fresh
+qualification/approval/exposure, outbound provider operations and catalog
+publication remain outside this import. No real provider readiness, hosted
+qualification, release or publication follows from local proof.
+
+Source: [channel contracts](src/channels/index.ts),
+[server bindings](src/channels/server/index.ts) and
+[preservation witnesses](test/channels/). Repository users can also consult
+[the channel task record](../../docs/platform/plans/oss-m17-r1-channel-import.md).

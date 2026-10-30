@@ -314,7 +314,8 @@
         "server/shared/applyPaymentResultRpc.ts",
         "scripts/cleanup-stale-legacy-renewal-fixture.ts",
         "server/adapters/supabase/channelIngestRails.ts",
-        "server/adapters/supabase/subscription"
+        "server/adapters/supabase/subscription",
+        "packages/platform/src/channels/server/channelIngestRails.ts"
       ]
     },
     {

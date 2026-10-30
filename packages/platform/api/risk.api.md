@@ -181,8 +181,8 @@ export declare const riskSeveritySchema: z.ZodEnum<{
 export declare const riskCaseStatusSchema: z.ZodEnum<{
     blocked: "blocked";
     open: "open";
-    closed: "closed";
     approved: "approved";
+    closed: "closed";
     in_review: "in_review";
     escalated: "escalated";
 }>;
@@ -316,8 +316,8 @@ export declare const adminRiskCaseSummarySchema: z.ZodObject<{
     status: z.ZodEnum<{
         blocked: "blocked";
         open: "open";
-        closed: "closed";
         approved: "approved";
+        closed: "closed";
         in_review: "in_review";
         escalated: "escalated";
     }>;
@@ -369,8 +369,8 @@ export declare const adminRiskCaseDetailSchema: z.ZodObject<{
     status: z.ZodEnum<{
         blocked: "blocked";
         open: "open";
-        closed: "closed";
         approved: "approved";
+        closed: "closed";
         in_review: "in_review";
         escalated: "escalated";
     }>;
@@ -483,8 +483,8 @@ export declare const adminRiskCasesListRequestSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<{
         blocked: "blocked";
         open: "open";
-        closed: "closed";
         approved: "approved";
+        closed: "closed";
         in_review: "in_review";
         escalated: "escalated";
     }>>;
@@ -504,8 +504,8 @@ export declare const adminRiskCasesListResponseSchema: z.ZodObject<{
         status: z.ZodEnum<{
             blocked: "blocked";
             open: "open";
-            closed: "closed";
             approved: "approved";
+            closed: "closed";
             in_review: "in_review";
             escalated: "escalated";
         }>;
@@ -562,8 +562,8 @@ export declare const adminRiskCaseDetailResponseSchema: z.ZodObject<{
         status: z.ZodEnum<{
             blocked: "blocked";
             open: "open";
-            closed: "closed";
             approved: "approved";
+            closed: "closed";
             in_review: "in_review";
             escalated: "escalated";
         }>;
@@ -689,8 +689,8 @@ export declare const adminRiskCaseDecisionResponseSchema: z.ZodObject<{
         status: z.ZodEnum<{
             blocked: "blocked";
             open: "open";
-            closed: "closed";
             approved: "approved";
+            closed: "closed";
             in_review: "in_review";
             escalated: "escalated";
         }>;

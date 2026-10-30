@@ -342,7 +342,7 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of order) {
         const rows = source.get(table)!;
         const b = packet.compatible.tables.find(value => value.table === table);
-        if (b && !["clients", "subscription_cycles", "commerce_orders", "commerce_order_items"].includes(table)) {
+        if (b && !["clients", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
           await restoreCompatiblePostgresRows({ catalogueId: manifest.objectInventorySha256, packet: bounded,
@@ -365,7 +365,13 @@ export async function restoreConnectedNativeStore(input: {
                 'null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
             await insert(client, rows, staged);
           }
-          else await insert(client, rows, row);
+          else {
+            // This owner path must not depend on a trigger's actor exception.
+            // Channel evidence has no retained transfer mapping in this profile.
+            if (table === "outbox_events" && ["channel.pull-page.v1", "channel.purchase-line.v1", "channel.purchase-source.v1"]
+              .includes(String((JSON.parse(row) as Record<string, unknown>).event_type))) fail("unsupported_table", table);
+            await insert(client, rows, row);
+          }
         }
         if (table === "catalog_skus") for (const product of source.get("catalog_products")!.rows) {
           const value = JSON.parse(product) as { id: string; primary_sku_id: string | null };
@@ -521,6 +527,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
+    outbox_events: ["channel_purchase_outbox_guard"],
   };
   const actual = (await client.query<{ table: string; name: string }>(`SELECT c.relname AS table,t.tgname AS name FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

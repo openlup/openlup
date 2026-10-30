@@ -352,9 +352,17 @@
     {
       "file": "db/platform/migrations/20261026120000_account_support_operator_authority.sql",
       "sha256": "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508"
+    },
+    {
+      "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+      "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+    },
+    {
+      "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+      "sha256": "596c403db40acb5ad49c0d01f6ae5764defd617eea48766cbc4fb8baad5bc67d"
     }
   ],
-  "objectInventorySha256": "cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3",
+  "objectInventorySha256": "1649da7b635bcd032a7b8b5c3f6a27b2304ea1ad5cc58ee4ca325c01872d047c",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -724,14 +732,22 @@
       {
         "file": "db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
         "sha256": "33b0bc85b0c0fe55b2beb08fb121e4fdc891f14f9e1ab276563ffa72a88bb7d3"
+      },
+      {
+        "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+        "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+      },
+      {
+        "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+        "sha256": "596c403db40acb5ad49c0d01f6ae5764defd617eea48766cbc4fb8baad5bc67d"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b"
+        "withRestore": "c773914bc30c5dde845e3d42c9355cb054c8da49ca18f6d8d82be98d915edd38"
       },
       "separateMigrator": {
-        "withRestore": "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82"
+        "withRestore": "22e9a1cccb8d0922787cb194315edaf3d9946799a38803b04979fe67e0dd16a4"
       }
     }
   },
@@ -1100,11 +1116,19 @@
       {
         "file": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
         "sha256": "ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e"
+      },
+      {
+        "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+        "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+      },
+      {
+        "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+        "sha256": "596c403db40acb5ad49c0d01f6ae5764defd617eea48766cbc4fb8baad5bc67d"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7",
-      "operatorProvisioned": "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d"
+      "installerManaged": "7879077cda7aef04652dd50e8c2232e665b499061d80577aa327ecb79fafad2f",
+      "operatorProvisioned": "d5539f31d3ba87b8786456637feede83b96deab7a637ac3a5e3c6ae918350542"
     }
   }
 }

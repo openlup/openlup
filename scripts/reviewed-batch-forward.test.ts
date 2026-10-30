@@ -1369,7 +1369,7 @@ const REVIEWED_PATH = "config/reviewed-platform-forwards.json";
 
 describe("M17 channel ingest approval", () => {
   const registryPath = "config/reviewed-platform-forwards.json";
-  const marker = readReviewedForwardRegistry(readFileSync(registryPath));
+  const marker: ReviewedForwardRegistry = { ...readReviewedForwardRegistry(readFileSync(registryPath)), channelIngestForwards: [] };
   const encode = (registry: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(registry));
   // Synthetic dollar bodies prove lexical admission only. Exact headers and
   // companion statements exercise the fixed class without installing its SQL.

@@ -341,6 +341,21 @@
       "types": "./dist/market-packs/index.d.ts",
       "import": "./dist/market-packs/index.js",
       "default": "./dist/market-packs/index.js"
+    },
+    "./channels": {
+      "types": "./dist/channels/index.d.ts",
+      "import": "./dist/channels/index.js",
+      "default": "./dist/channels/index.js"
+    },
+    "./channels/contracts": {
+      "types": "./dist/channels/contracts/index.d.ts",
+      "import": "./dist/channels/contracts/index.js",
+      "default": "./dist/channels/contracts/index.js"
+    },
+    "./channels/server": {
+      "types": "./dist/channels/server/index.d.ts",
+      "import": "./dist/channels/server/index.js",
+      "default": "./dist/channels/server/index.js"
     }
   },
   "repository": {
