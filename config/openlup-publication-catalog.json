@@ -1438,6 +1438,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-hosted-rds-receipt.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-hosted-s3-receipt.md",
       "class": "public-output"
     },
@@ -11031,6 +11035,10 @@
     },
     {
       "path": "server/adapters/postgres/queryBuilder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/rdsControlRoles.ts",
       "class": "public-output"
     },
     {
@@ -26531,6 +26539,10 @@
     },
     {
       "path": "tests/postgres/m14QualifiedSession.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RdsRecipe.mjs",
       "class": "public-output"
     },
     {

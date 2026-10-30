@@ -186,7 +186,12 @@ passing the inventory check does not establish that read or authorize release.
 
 The opt-in [recipe conformance runner](tests/postgres/runM14RecipeConformance.mjs)
 uses the existing restricted-install and released-schema proofs with three
-explicitly disposable external PG16 targets. Its private-file/target/refusal
+explicitly disposable external PG16 targets for self-host. Its RDS branch runs
+serially from a private-network worker on one explicitly disposable cluster,
+checks the finite provider catalogue/session exceptions, and removes test-owned
+roles/databases between phases. RDS uses a restricted-generation prefix before
+the existing backfill, without claiming a released restricted predecessor.
+Its password-free declaration names a process environment variable. Its private-file/target/refusal
 regressions run with `npm test -- tests/postgres/m14RecipeConformance.test.ts`.
 The [runtime owner](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
 defines input, TLS, mutation and pending-receipt limits. Its execution entry is
@@ -2883,6 +2888,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-30, M14 hosted RDS recipe: superuser fixture assumptions in lock
+  timing and teardown → synchronize after restricted admission, then remove
+  test resources through the actual owner and role-grant dependency order.
 
 - 2026-10-29, M14 connected catch-up: fixture labels for observation authority
   or media visibility → use the existing bootstrap observer and exact domain
