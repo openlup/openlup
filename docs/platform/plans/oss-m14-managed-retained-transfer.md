@@ -476,3 +476,10 @@ warnings); the pinned disposable managed→qualified PG16 suite passes 8/8.
 Self-retro: deriving tags after minimisation removed the raw-JSON provenance
 gap; closing dependent sidecar rows during redaction kept readback independent
 of already removed parents without changing native obligations.
+
+CD-M14-44 recorded the coordinator's acceptance of the exact control tree
+`c2bd75d573ef5bb7322337e1cfdbb95a988317a1` against base
+`e13f78d432414999ca9acdbf341d556898370641`; the binary patch SHA-256
+was `bb29a66d93b533a77c7258d9f5e4b65b1f7aedae3a0a1031f887ce5dda7df5ec`.
+The accepted bytes were DCO-committed as `08d0335f10380c312e87325b2e220ea33b726f2e`.
+The owner-delegated continuation permits one final native review cycle.
