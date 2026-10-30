@@ -29,8 +29,10 @@ tree stay format validators; this is a later data-assist layer on top of them.
   supply a different directory.
 - `addressCanonClient.ts` — the browser client. No current UI imports it;
   autocomplete activation is a later checkout/account wave.
-- `server/domains/address-canon/addressCanonLookupHandler.ts` — the neutral
-  handler, with `ports.ts` there re-exporting this domain's port type.
+- `server/domains/address-canon/addressCanonLookupHandler.ts` — the existing
+  handler facade receives the reference schema bundle explicitly and delegates
+  lookup behavior to the package shipping handler; `ports.ts` there re-exports
+  this domain's port type.
 - `server/adapters/supabase/address-canon/addressCanonLookup.ts` — the managed
   implementation of that port.
 - `server/bff/address-canon/{postal-code,localities,streets}.ts` — the three

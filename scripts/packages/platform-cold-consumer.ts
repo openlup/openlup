@@ -4,6 +4,7 @@ import { disposableLabelArgs } from "../disposable-docker.mjs";
 import { buildSync } from "esbuild";
 import { MARKET_PACK_CONSUMER_PROOF } from "./market-pack-consumer-proof.ts";
 import { MARKET_DESCRIPTOR_CONSUMER_PROOF } from "./market-descriptor-consumer-proof.ts";
+import { REFERENCE_DELEGATION_CONSUMER_PROOF, REFERENCE_DELEGATION_TYPES } from "./reference-delegation-consumer-proof.ts";
 import { createRequire, stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
@@ -1060,6 +1061,20 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   }
 }
 
+function compileReferenceDelegationTypes(consumer: string, compiler: string): void {
+  const file = join(consumer, "reference-delegation-types.ts");
+  writeFileSync(file, REFERENCE_DELEGATION_TYPES);
+  const configuration = join(consumer, "reference-delegation-types.json");
+  for (const mode of ["NodeNext", "Bundler"]) {
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: {
+      target: "ES2022", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode,
+      strict: true, skipLibCheck: false, noEmit: true, types: ["node"],
+      typeRoots: [join(consumer, "node_modules/@types")],
+    }, files: [file] }));
+    command(process.execPath, [compiler, "-p", configuration], consumer);
+  }
+}
+
 // OIDC uses a host-selected implementation, separate from the historical adapter fixture inventory.
 const oidcOperations = `
 import assert from "node:assert/strict";
@@ -1994,9 +2009,11 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
 `);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
+    compileReferenceDelegationTypes(consumer, compiler);
     for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     consumerNode(consumer, MARKET_DESCRIPTOR_CONSUMER_PROOF);
+    consumerNode(consumer, REFERENCE_DELEGATION_CONSUMER_PROOF);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
