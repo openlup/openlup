@@ -483,3 +483,14 @@ CD-M14-44 recorded the coordinator's acceptance of the exact control tree
 was `bb29a66d93b533a77c7258d9f5e4b65b1f7aedae3a0a1031f887ce5dda7df5ec`.
 The accepted bytes were DCO-committed as `08d0335f10380c312e87325b2e220ea33b726f2e`.
 The owner-delegated continuation permits one final native review cycle.
+
+Before cycle 9, native prepare refused carry-over against main
+`6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`. The forced main merge has
+parents `2ab5d1236f9f875e720b6c05541556905645b4c5` and
+`6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`; it merged without manual
+resolution. Its pre-note staged tree was
+`c9b1d501d22f62f45a607edabdf9f221eab030a6`. The stable patch ID of
+this parcel excluding this task record is `8b411ea83efe90cad17abfd3c54b5c9dc1ff8be6`
+both against the former `9b54219bb7fe4262e72c7581a478c9c381ef2ae7`
+base and against new main. CD-M14-30 therefore permits DCO of the clean
+two-parent merge without a new control read.

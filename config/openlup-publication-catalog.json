@@ -1510,6 +1510,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/supabase-cli-bump-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "eslint.config.js",
       "class": "public-output"
     },
@@ -9187,6 +9191,14 @@
     },
     {
       "path": "scripts/github-api-retry-core.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/install-supabase-cli-ci.sh",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/install-supabase-cli-ci.test.ts",
       "class": "public-output"
     },
     {

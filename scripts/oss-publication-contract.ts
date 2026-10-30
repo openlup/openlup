@@ -27,7 +27,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-gate.test.ts",
   "scripts/agent-context/evaluate.mjs", "scripts/agent-context/generate.mjs",
   "scripts/ast-grep/check-filewide-ignore.mjs",
-  "scripts/ci-image-mirror.mjs",
+  "scripts/ci-image-mirror.mjs", "scripts/install-supabase-cli-ci.sh",
   "scripts/ci-test-scope.mjs", "scripts/verify-local.mjs",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
