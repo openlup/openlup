@@ -18,15 +18,16 @@ import type { AddressCanonLookupPort } from "./ports.js";
 
 export interface AddressCanonLookupDeps {
   lookupPort: AddressCanonLookupPort;
+  schemas?: AddressLookupSchemas;
 }
 const schemas: AddressLookupSchemas = { addressCanonPostalCodeLookupRequestSchema, addressCanonPostalCodeLookupResponseSchema, addressCanonLocalitiesLookupRequestSchema, addressCanonLocalitiesLookupResponseSchema, addressCanonStreetsLookupRequestSchema, addressCanonStreetsLookupResponseSchema };
 
 export function createAddressCanonPostalCodeHandler(deps: AddressCanonLookupDeps) {
-  return postal(deps, schemas, bffResponder);
+  return postal(deps, deps.schemas ?? schemas, bffResponder);
 }
 export function createAddressCanonLocalitiesHandler(deps: AddressCanonLookupDeps) {
-  return localities(deps, schemas, bffResponder);
+  return localities(deps, deps.schemas ?? schemas, bffResponder);
 }
 export function createAddressCanonStreetsHandler(deps: AddressCanonLookupDeps) {
-  return streets(deps, schemas, bffResponder);
+  return streets(deps, deps.schemas ?? schemas, bffResponder);
 }

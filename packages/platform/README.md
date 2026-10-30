@@ -833,6 +833,8 @@ host using UTC-authored schedules must therefore run its scheduler in UTC.
 current registrations synchronously, then waits for callbacks already admitted,
 including pending lock acquisition and unlock. Await it before disposing their
 resources; custom scheduler implementations must return that drain promise.
+The adapter calls each supplied timer's `stop()` with its original receiver;
+receiver-dependent timer implementations such as `node-cron` retain their state.
 Later registrations remain supported. The Node host caches its `stop()` promise,
 keeps its listener and dedicated PostgreSQL lock session available until the
 drain settles, then attempts both cleanup operations even after a drain failure.
@@ -1509,3 +1511,11 @@ and display locale independently; formatting historical amounts uses their own
 currency. Ambient environment reading/initialization remains application-owned.
 These entries add no provider, locale resources, native directory schema or
 application caller swap. Shipping suggestions retain the existing optional lane.
+
+`./market-packs` also exports `MarketDescriptor` and `describeMarket(language, profile)`.
+They describe independent display, settlement, price-list and fiscal inputs;
+no market values, national rules or language defaults are selected. The
+[unmounted reference recipe](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.ts)
+imports application-owned compatibility facts and accepts explicit configuration.
+Its [equivalence and variation tests](https://github.com/openlup/openlup/blob/main/server/adapters/market-packs/marketRecipe.test.ts)
+separate source composition from an installed or mounted deployment.

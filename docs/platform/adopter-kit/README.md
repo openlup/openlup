@@ -36,6 +36,13 @@ Your application's own instructions and accountable human retain those decisions
 
 ## Customize or contribute
 
+For explicit company rules, optional directory schemas and independently supplied
+language/money/fiscal inputs, inspect the unmounted
+[market recipe](../../../server/adapters/market-packs/marketRecipe.ts) and its
+[offline proof](../../../server/adapters/market-packs/marketRecipe.test.ts).
+The host owns its rules, provider configuration and missing-key policy; message
+tables alone mount no runtime or UI. Keep manual shipping useful without lookup.
+
 Use the installed package's public exports, ports and options. Application-owned
 handlers, policies, composition and compatible native adapters need no nomination
 or upstream release. For example, outbox's public `withPayloadSchema`,

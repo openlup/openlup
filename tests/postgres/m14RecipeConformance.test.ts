@@ -6,12 +6,14 @@ import { Pool } from "pg";
 import { afterEach, expect, it } from "vitest";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { assertFreshClusterCatalogue, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
+import { journeyReceipt } from "./m14RecipeJourneys.mjs";
 
 const directories: string[] = [];
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "recipe-input-")); directories.push(root);
   const secret = "private-credential-do-not-print";
   const config = { schemaVersion: 1, target: "self-host", region: "local", disposable: true,
+    localNodeImage: `sha256:${"b".repeat(64)}`,
     previousApplicationPath: "/external/previous/dist/payments/index.js",
     installations: Object.fromEntries(["installer-managed", "operator-provisioned", "schema"].map((mode, index) => [mode, {
       disposable: true, systemIdentifier: String(7000000000000000000n + BigInt(index)),
@@ -57,6 +59,33 @@ it("requires an exact declared image digest for each installation", () => {
   expect(() => loadCredentials(f.path, "self-host")).toThrow("oci_digest_required");
   f.config.installations.schema.ociDigest = "sha256:invalid"; f.save();
   expect(() => loadCredentials(f.path, "self-host")).toThrow("oci_digest_required");
+});
+
+it("refuses an undeclared or mutable local Node image before any recipe connection", () => {
+  const f = fixture();
+  for (const image of [undefined, "node:24", "sha256:invalid"]) {
+    f.config.localNodeImage = image as string; f.save();
+    expect(() => loadCredentials(f.path, "self-host")).toThrow("local_node_image_required");
+  }
+});
+
+it("refuses a non-local endpoint for the selected local self-host recipe before mutation", () => {
+  const f = fixture();
+  f.config.installations.schema.connectionString = "postgresql://postgres:synthetic@remote.example.invalid/postgres"; f.save();
+  expect(() => loadCredentials(f.path, "self-host")).toThrow("local_self_host_endpoint_required");
+});
+
+it("does not promote a refused or incompletely cleaned journey into a successful receipt", () => {
+  const report = { outcome: "LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION", cleanupFailures: [],
+    journey: { leg: "portable-to-portable", takeover: true }, graphPublished: true, filesystemPublished: true, sourceWritesFrozen: true,
+    recovery: { format: "openlup.local-older-snapshot-recovery.v1", snapshotAgeSeconds: 60.1,
+      effectiveRpoSeconds: 60.1, rtoSeconds: 87, postFailureDiagnosticGraphUsedForRestore: false, noSloClaim: true, hostedQualification: false } };
+  expect(journeyReceipt(report, true)).toMatchObject({ status: "PASS", hostedQualification: false,
+    measurementClaim: "declared-scope fixture measurement, not an SLO or hosted claim" });
+  for (const delta of [{ outcome: "INCOMPLETE" }, { cleanupFailures: ["container"] }, { journey: { leg: "portable-to-portable", takeover: false } },
+    { recovery: { ...report.recovery, rtoSeconds: null } }, { recovery: { ...report.recovery, postFailureDiagnosticGraphUsedForRestore: true } }]) {
+    expect(() => journeyReceipt({ ...report, ...delta }, true)).toThrow();
+  }
 });
 
 it("refuses a reused cluster catalogue before the proof can create global roles", async () => {

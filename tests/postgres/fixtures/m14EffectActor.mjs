@@ -40,7 +40,8 @@ try {
         // The real store.begin already committed submitting. This pause is after
         // local admission and cached authentication, before the actual socket.
         status({ phase: "admitted", credentialCached: true, runtimeIdentity: identity[0] });
-        const deadline = Date.now() + 30_000;
+        // Older-snapshot mode measures a real 60s age before releasing effects.
+        const deadline = Date.now() + (input.olderSnapshot === true ? 63_000 : 30_000);
         while (!existsSync("/control/release")) {
           if (Date.now() >= deadline) throw new Error("fixture_release_deadline");
           await delay(25);

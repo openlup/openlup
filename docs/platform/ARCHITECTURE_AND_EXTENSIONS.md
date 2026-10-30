@@ -30,6 +30,16 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The [unmounted market recipe](../../server/adapters/market-packs/marketRecipe.ts)
+keeps reference identifier/name rules, address schemas, provider selection and
+fallback facts in application source. The package owns the neutral rules seam,
+lookup engine/cache and pure descriptor/readers. Language, settlement currency,
+pricing region and fiscal jurisdiction are independent inputs. Recipe selection
+installs no BFF routes, environment reader or translation runtime. Existing
+reference caller paths delegate through their facades to the package engines;
+browser contracts remain separate from server composition. Manual shipping
+does not depend on a directory suggestion.
+
 The reference application's [acquisition legacy drain](../../server/runtime/marketing/acquisitionLegacyDrain.ts)
 is a finite, operator-configured gate on its existing BFF command routes. It
 checks before the selected target-key ports, returns a retry time during drain,
@@ -2403,9 +2413,39 @@ private `report.json` records per-table counts, object/partial counts, observed
 installation identities, timings, refusals, rollback and takeover. Evidence is
 kept under the invoking worktree's `.context/scratch`; cleanup still removes
 only the run's owned resources. The managed first leg and retained-history
-sidecar are separate, as are older-snapshot RPO/RTO and hosted provider receipts.
+sidecar are separate, as are hosted provider receipts.
 No CDC, generic upsert/delete engine or production activation coordinator is
 introduced; capture/restore's finite table regions are unchanged.
+
+The executable's `--older-snapshot` mode composes that same finite native graph
+with a [persisted recovery boundary](../../tests/postgres/m14OlderSnapshotRecovery.ts).
+It drains and retires the media application, pauses three dispatches after their
+real DB admission, and saves the DB packet and complete private media copy before
+provider acceptance. It waits approximately 60 real seconds, then releases
+acceptance, loses the acknowledgment and induces executor failure. For the
+conservative RTO, unavailability starts earlier at planned application
+retirement, before the snapshot.
+Restore reloads those saved bytes; a later source census is diagnostic only.
+The target remains inactive until publications, later privacy obligations,
+authorization and authenticated effect reconciliation agree. Existing identity
+erasure operations reapply a post-snapshot erasure and retained free-text
+redaction before serving; earlier erasure receipts remain present. The managed
+retained-history sidecar's own restore/redaction proof is a separate boundary.
+
+The retired old executor's exact identity cannot restart after transfer; the
+new worker refuses before its recovery barrier opens. Two accepted effects are
+recovered through the durable independent synthetic provider ledger, a late
+authenticated delivery observation extends the cycle once, and one uncertain
+dispatch remains visibly fenced while ordinary work executes and replays.
+The private report records snapshot age and effective RPO in seconds from the
+consistent pre-effect boundary to induced failure. RTO runs from the earlier
+unavailability through restore, object publication, privacy, reconciliation,
+authorization, serving and ordinary-job readback; this declared readiness allows
+the named uncertain operation's refusal. Individual refusals have null RTO.
+Counts, fixture bytes and human/access waits accompany the measured times.
+These are declared-scope fixture measurements, not an SLO or hosted claim;
+they establish no universal exactly-once guarantee. Code rollback does not
+recover data.
 
 The qualified runtime-completion witness uses the existing
 [preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
