@@ -15,6 +15,10 @@ contract constant, plus the existing pure shipping-terms owner. The latter lets
 the strict reference quote context carry optional shipping/acquisition promises;
 shipping handlers and Node HTTP declarations remain outside this closure. No
 directory wildcard or other pricing implementation is admitted.
+The identity and subscription inventories additionally list the six exact built
+`market-packs` files—pure settlement, fiscal, money-format and market-descriptor
+helpers reached through their barrel by the reference currency facades—without
+admitting a server entry, crypto, secrets, providers or I/O.
 The commerce barrel also reaches pure OMS schemas and read-model helpers, plus
 their core fulfillment, payment and subscription runtime dependencies. It also
 exports returns request/approve/reject schemas and port types, with a factory for

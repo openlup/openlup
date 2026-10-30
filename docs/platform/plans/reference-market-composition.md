@@ -792,3 +792,26 @@ The supervisor context is `01a18a74-cd6b-73b0-9fc8-4f11259da60e`;
 R3 has no previous native prepare or review. Execution observations, remaining
 work, failures and the terminal self-retro stay in ignored task evidence while
 the reviewed candidate is frozen.
+
+### R3 closed-profile admission repair
+
+The first canonical local verification passed through the default build, then
+the subscription build refused the built `market-packs/index.js` barrel
+outside its closed browser import inventory. A pre-repair profile check found
+the same client refusal in identity; communications passed. CD-M16-24 and
+CD-M16-24a authorize exactly six pure built market-pack files in the subscription
+and identity inventories, with no wildcard or guard change. Both profile client
+builds now pass; communications remains unchanged. Their reached module is the
+existing platform barrel used by the reference currency facades.
+
+CD-M16-24b identifies the separate identity SSR refusal of
+`src/public-reference/entry-server.tsx` as a pre-existing invocation artifact.
+The exact command on detached main `9f998026de1e889235fb45233dbfde6328647309`
+reproduced that same refusal (captured at
+`.context/scratch/r3-delivery/main-identity-ssr.log`). The identity profile's
+own acceptance runner builds its client bundle; canonical local verification
+builds the subscription profile. The identity SSR invocation issue is recorded
+for later handling, outside this bounded repair; no entry or guard change is
+made for it. The two exact inventories and their owner documentation are this
+repair's complete tracked scope. Native repair accounting, subsequent checks
+and queue outcome remain in the existing ignored task evidence.
