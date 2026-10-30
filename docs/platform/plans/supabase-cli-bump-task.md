@@ -1,0 +1,683 @@
+# Supabase CLI pin update
+
+Status: native CI installer directory simplification complete with local proof;
+uncommitted handoff to Claude; development preview. Earlier handoff retains its
+inherited actionlint diagnostic.
+Earlier proof below describes prior candidates.
+
+Outcome: one Supabase CLI 2.122.0 pin across active CI, disposable SQL runners,
+tests and current contributor instructions, with exact image tags and verified
+digests. The GitHub releases API reported v2.122.0 as latest stable, not a
+prerelease, on 2026-10-29. Historical run evidence keeps its original versions.
+
+Authority: Bart Roszkowski requested local edits and proof in
+`claude/supabase-cli-bump`. Code base remains
+`6e7adb51e742a132b879a94ef07e5cfed60f694c`; the separately fetched policy
+revision at fix-round start and handoff is
+`eb1a0584f035774251a8c296e82f3b9ffd68180b`. Applicable contribution/agent/AI
+instructions have no delta since the earlier pin. Codex implements
+and verifies; Claude owns any subsequent Git/PR work. No commit, push, PR,
+counted review tooling, workflow dispatch, hosted Supabase operation, staging,
+production, Homebrew change or release is authorized. No review session was
+created or consumed. The branch was not rebased or merged.
+Independent committed review remains a later delivery gate.
+
+Scope: active pins, image inventory/derivation and refusal witnesses as required
+by the CLI's actual image selection, and owning documentation. Excluded: SQL,
+application behavior, historical plans/evidence, unrelated image versions and
+shared machine resources. This compact record supplies both intent and plan
+under CONTRIBUTING.md's contribution-shape rule; no new specification is needed.
+
+Acceptance and proof plan: confirm release API asset identities and SHA-256 by
+downloading the macOS arm64 and Linux amd64 archives plus checksums; inspect the
+tagged source, rendered config and CLI services; inspect registry manifests;
+update the smallest existing pin/reader seam; run documentation policy and
+structural checks, whole affected script test files, lint/typecheck and the raw
+pgTAP runner with the temporary CLI and Node 24.21.0. Heavy commands run serially
+through ai-resource-gate with a 3600-second queue timeout. Report actual exits,
+mirror prerequisites and any unexecuted proof without claiming hosted readiness.
+
+Risk and simplicity pre-check: the newer CLI changes service images and its
+implementation, so a version replacement alone cannot establish compatibility.
+Reuse the existing image inventory, derivation, pull and mirror helpers; preserve
+migration byte checks, exact local image checks, resource budgets and owned
+cleanup. Preserve origin/main public upstream fallbacks and the install-proof
+service reference. Mirror publication is an owner action outside this task.
+
+## Release, image and configuration evidence
+
+[Latest stable release API](https://api.github.com/repos/supabase/cli/releases/latest)
+returned release `421737738`, `prerelease=false`, tag `v2.122.0`. The annotated
+tag resolves to source commit `5afad870388552d0198087d27037da7ac745ba2b`.
+Downloaded assets were hashed locally and matched both API metadata digests
+and the downloaded checksums file:
+
+| Asset | API asset ID | SHA-256 |
+| --- | --- | --- |
+| `supabase_darwin_arm64.tar.gz` | 668849778 | fe87a5f9781d5423dbd5ebba2d5a6e1a541d01754d14941c574952e5695eaab0 |
+| `supabase_linux_amd64.tar.gz` | 668850237 | 59ed066847b98d7461c60e9109d40cab6b9756177ce06ebb05b51338519f5136 |
+| `checksums.txt` | 668849747 | 797e8703c0cd8bc7a268d21f4cd995129c2b24da5a2f59dff1e6b5b069732537 |
+
+The same versioned archive aliases have API IDs 668847168 (macOS arm64) and
+668847644 (Linux amd64) and identical digests. Existing setup-cli installation
+needs only the version pin; there is no tracked CLI checksum installer to update.
+The temporary install is `/private/tmp/openlup-supabase-2.122.0/bin`; Homebrew
+was not changed. Node 24.21.0/npm 11.19.0 come from the existing versioned Node
+installation. CLI state is isolated with `SUPABASE_HOME` and telemetry disabled.
+An initial sandboxed CLI probe failed writing default-home telemetry state;
+pointing its documented state directory at temporary storage resolved that.
+
+The downloaded tagged Dockerfile and `supabase services` on the rendered
+unchanged reference TOML select the following pgTAP/bootstrap images. GHCR and
+ECR raw manifest bytes independently hash to identical multi-platform digests;
+`config/ci-images.json` records all five exact digests.
+
+| Repository | Previous CLI tag | CLI 2.122.0 tag | Index SHA-256 |
+| --- | --- | --- | --- |
+| supabase/postgres | 17.6.1.106 | 17.11.0.006 | c141fd17ac6a76c4323e90b3aee8ff1a23d2e89e547c2b963cfadc309c079cc2 |
+| supabase/gotrue | v2.188.1 | v2.197.0 | 1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b |
+| supabase/realtime | v2.86.3 | v2.147.1 | b7b0ef84b69d80b9b9c2280c9e9ae0a901175d3035b6b0c3ae22fa6c48bfb272 |
+| supabase/storage-api | v1.54.1 | v1.84.19 | a0420573837ee08c0afdc9cd01f90b4b8027579da99e0b9a159fe912ef756c99 |
+| supabase/pg_prove | 3.36 | 3.36 | eda7c5e68719e9c8287e78c017118407b48df904a51c935f5ab6098b8c0bc6bc |
+
+Other default-stack tags change as follows; the pgTAP exclusion list excludes
+them, so they need no pgTAP mirror pins: PostgREST v14.10 → v16.5;
+postgres-meta v0.96.4 → v0.100.0; Studio 2026.04.28-sha-89d08a2 →
+2026.10.19-sha-b375769; edge-runtime v1.73.13 → v1.77.8; Logflare
+1.39.1 → 1.50.15; Supavisor 2.7.4 → 2.9.13; Mailpit v1.22.3 → v1.31.3;
+imgproxy v3.8.0 → v3.26.0; Vector 0.53.0-alpine → 0.58.0-alpine;
+Kong stays 2.8.1. The tagged CLI also has PG15/PG14 alternatives, but the supplied
+configuration selects major 17. No TOML change was required by `services`.
+
+The CLI's Compose backend defaults to ECR, then GHCR/Docker Hub without an
+explicit override. The setup action supplies GHCR; our runner explicitly passes
+its first successful registry, validates digest-qualified local images, then creates
+plain-tag local aliases so the CLI needs no pull. The CLI's newer stack/slim
+backend is not selected by this rendered TOML profile.
+
+Fix-round scope reconciliation: the coordinator requires the CLI version bump to
+preserve public/fork CI without private packages. Restored origin/main's shared
+non-CLI upstream fallbacks and Docker Hub install-proof service reference,
+including its existing digest and permissions. The platform cold consumer's
+strict comparison now matches again; its identity/container/port checks need no
+change. CLI pin binding returns upstream-only sources for mirror writers;
+pgTAP alone prepends the organization mirror for runtime acquisition. CLI
+upstream GHCR images already have the recorded digests, so no organization
+mirror publication is needed. Hosted CI and mirror visibility remain unverified.
+
+Added the authored publication-catalogue row for this active task. Policy and
+navigation will be checked with this previously untracked plan included using a
+disposable validation checkout; the task worktree's real Git index is untouched.
+A new CI=true offline witness proves cold fallback after mirror HTTP 401 for all
+three non-CLI pins, and writer tests prove no organization mirror is selected as
+a copy source. No counted native review is invoked; Claude owns subsequent
+commits and fresh review. The two supplied FAIL reports establish open findings,
+not native-session admission or repair-budget state.
+
+
+## Previous local proof and handoff (before fix round)
+
+All heavy commands ran serially under `ai-resource-gate run --wait
+--queue-timeout 3600 <resource> --`, using the temporary CLI and Node 24.21.0 /
+npm 11.19.0. Logs and command/exit details are retained in
+`/private/tmp/openlup-supabase-2.122.0/`:
+
+- `npm ci --prefer-offline --no-audit --fund=false`: exit 0.
+- `npm test -- scripts/ci-image-mirror.test.ts scripts/ci-image-pull.test.ts
+  scripts/oss-published-tree-check.test.ts`: initial exit 1 (245 passed, two
+  stale assertions concerning added package permission and measured retries);
+  corrected full-file rerun exit 0, 247 passed. Final strict-pin implementation
+  also passed all 247 with `CI=true`, exit 0 (33 seconds including tests;
+  package prebuilds are additional). CI and local source-selection cases are
+  explicit, so local fallback fixtures do not inherit hosted restrictions.
+- `npm run lint`: exit 0, 33 existing warnings; 135 seconds including broker
+  wait. No warning fixes or rule changes are included.
+- `npm run oss:published-tree -- --typecheck`: exit 0; all five configured
+  projects, zero unresolved edges and zero consumer-side errors; 22 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0; all shipped SQL tests passed with
+  CLI 2.122.0: 226 files / 5,199 assertions, baseline/forward replay and owned
+  stack cleanup; 40 seconds.
+  The existing denial-hint workaround still applied successfully.
+- `npx --no -- ast-grep scan --error=no-suppress-all
+  --error=unused-suppression`, agent-context generation/freshness,
+  `npm run oss:published-tree -- --policy --docs-update` and `git diff --check`:
+  exit 0. Policy reported five documentation obligations, zero unanswered.
+- CLI `--version`, `services`, mirror `plan`, exact inventory binding,
+  archive/API/checksum comparison and GHCR/ECR manifest hashing: exit 0.
+  Organization package checks remain the 401/403 access limitation above.
+
+No runtime incompatibility was observed in this local profile. Full identity
+acceptance/conformance commands and hosted CI were not run; changing their
+version checks is not proof of those entire flows. Historical plan/evidence
+records remain unchanged. The final requested summary is written outside the
+repository at the owner's supplied scratch path. No commit, submission,
+counted review, workflow dispatch or hosted Supabase action was performed.
+
+Self-retro: the first complete affected test run caught two stale expectations;
+checking the added permission count and observed retry behavior together would
+avoid that rerun. Explicitly testing `CI=true` caught the need to keep local
+fallback fixtures independent of hosted source selection. Reusing the existing
+inventory and pull loop kept digest binding small. The largest delay was broker
+queueing behind other sessions; leaving their resources alone preserved the
+shared-machine budget. No process optimization or successor task is introduced.
+
+## Fix-round proof
+
+All requested reruns passed on the repaired source. Logs are retained beside
+previous logs under `/private/tmp/openlup-supabase-2.122.0/`, with `fix-` prefixes.
+The source was frozen across serial heavy phases; only this execution record was
+updated afterwards. Every heavy phase used `ai-resource-gate run --wait
+--queue-timeout 3600 <resource> --`, with explicit CPU/memory reservations for
+the whole suite and final lint/typecheck/pgTAP phases.
+
+- Latest stable API still reports v2.122.0, not a prerelease. Fresh macOS arm64,
+  Linux amd64 and checksum downloads match API digests; the checksum file lists
+  versioned aliases with identical archive hashes. The temporary binary matches
+  the fresh archive byte-for-byte. Host CLI remains 2.120.0. Exit 0.
+- Affected complete Vitest files with `CI=true`: exit 0, 247 tests passed.
+- Entire `CI=true VITEST_MAX_WORKERS=4 npm test`: exit 0, 2,176 files passed,
+  one file skipped; 22,508 tests passed, four skipped; 512 seconds.
+- `npm run lint`: exit 0, zero errors and 33 warnings, 28 seconds.
+- `npm run oss:published-tree -- --typecheck`: exit 0, five projects, zero
+  unresolved edges and zero consumer-side errors, 24 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0 with temporary CLI 2.122.0;
+  226 SQL files / 5,199 assertions passed, replay and owned-stack cleanup;
+  48 seconds including 15 seconds of broker wait. Every image resolved from
+  upstream GHCR at the exact inventory digest, without organization access.
+- Policy/navigation regeneration with this plan included: exit 0, five
+  obligations and zero unanswered. Generated navigation had no byte delta.
+  The final policy and inventory check use the disposable validation checkout,
+  which includes the plan without staging anything in the actual task index.
+- Structural scan, context generation/freshness and `git diff --check`: exit 0.
+- Anonymous registry token/manifest reads and independent raw-manifest hashing
+  verified both library PostgreSQL pins from Docker Hub and all five CLI pins
+  from upstream GHCR. Empty-local-state offline tests prove mirror HTTP 401
+  falls through to upstream in CI. Copy-source tests prove upstream-only writer
+  resolution. No shared Docker image/cache was removed to manufacture a cold run.
+- The actual workflow service string equals the cold consumer's imported
+  `POSTGRES_PROOF_IMAGE`; its strict image/container/port checks stay unchanged.
+
+Failed attempts retained: initial affected tests exited 1 because sandboxed
+loopback probes returned EPERM; the permitted rerun passed. Initial policy
+exited 1 for the new row's sort position, then passed after correction. An
+initial checksum-filename assertion exited 1 because it used unversioned names;
+API hashes had matched, and the corrected versioned-alias comparison passed.
+Anonymous manifest inspection hit HTTP 429 after five successful pins; a bounded
+follow-up verified the remaining two. The first full-suite wrapper was stopped
+with exit 143 after noticing CI's unrestricted worker default; only its exact
+owned PID was signalled, and the explicit four-worker rerun passed. No unrelated
+process, lock, container or volume was killed, released or cleaned.
+
+The supplied major service-identity, publication-inventory and private-mirror
+findings are addressed; writer-source and fallback prose now match execution.
+This is implementation/proof evidence, not a fresh committed review receipt.
+Claude still owns the commit, independent review and any separately authorized
+submission. Hosted CI, full identity acceptance/conformance and fresh cold-layer
+network transfer were not executed; no hosted Supabase action or owner decision
+was needed. No release, workflow dispatch, package publication or visibility
+change was performed.
+
+Fix-round self-retro: unnecessary source restriction caused the private-package
+regression and the service identity mismatch. Restoring existing acquisition
+behavior fixes both without broadening the consumer's trust boundary. Catalogue
+checks must include new authored files; checking only the tracked inventory hid
+the missing row in the earlier run.
+
+
+## Fix round 2: preserve registry recovery
+
+The two supplied re-review FAIL reports identify one major regression: a
+GHCR-only pin guard and source override removed working ECR/Docker Hub recovery.
+The approved repair preserves origin/main acquisition semantics and adds only
+reviewed digest binding. No new authority, native session or retry budget is
+inferred from the reports. Claude retains commit and subsequent review ownership.
+The freshly fetched instruction revision remains
+`eb1a0584f035774251a8c296e82f3b9ffd68180b`, separately from the code base above.
+
+Removed the GHCR-only guard. Mirror planning still constructs ECR then Docker
+Hub sources itself; pin binding preserves that order and verifies the inventory
+digest. The pgTAP pre-pull source list is byte-identical to origin/main:
+organization mirror, upstream GHCR, ECR, Docker Hub. Each pull and local reuse
+still verifies the exact reviewed index digest. Existing aliases, inspection,
+retry budgets, aggregate deadline and owned cleanup remain unchanged.
+
+Restored both shipped-runner lifecycle tests requiring successful ECR recovery
+from GHCR 429s and Docker Hub recovery from GHCR 429s plus ECR 503s. Acquisition
+assertions now include the digest, and exact CLI aliases remain plain tags.
+Lower-level witnesses also require both successful fallbacks with supplied pins.
+Current contributor, canonical-contract and documentation owners describe these
+paths. Prior round proof above records that candidate only; it does not establish
+passing proof or review for this repair.
+
+Release API reconfirmed latest stable v2.122.0 (not prerelease/draft), release
+421737738. Fresh downloads of both archives and checksums match the API asset IDs
+and SHA-256 values in the release table above. Versioned checksum aliases also
+match, and the temporary macOS binary equals the fresh archive member. Logs and
+fresh assets use `fix2-` prefixes under `/private/tmp/openlup-supabase-2.122.0/`.
+
+Requested proof: complete affected Vitest files, whole Vitest with `CI=true
+VITEST_MAX_WORKERS=4`, lint/typecheck, policy/docs with this plan included, and
+raw pgTAP through the temporary CLI 2.122.0. Heavy commands run serially through
+the resource gate. Initial affected run exited 1: 245 passed, three stale
+assertions (writer source, removed outage refusal, and local-inspection count)
+were exposed by restoring fallback. These assertions were repaired before rerun.
+
+
+### Fix round 2 completion evidence
+
+All requested checks passed. Heavy phases ran serially under
+`ai-resource-gate run --wait --queue-timeout 3600`, with four CPU tokens / 8192 MB
+for whole Vitest and two / 4096 MB for the other phases. The temporary CLI and
+Node 24.21.0 environment is recorded in `verify-env.sh`. The frozen-input hash
+was unchanged across whole Vitest, lint, typecheck and pgTAP; only this execution
+record was updated after those phases.
+
+- Affected complete files (`CI=true VITEST_MAX_WORKERS=4 npm test --
+  scripts/ci-image-mirror.test.ts scripts/ci-image-pull.test.ts
+  scripts/oss-published-tree-check.test.ts`): exit 0, 249 tests passed;
+  `fix2-affected-vitest-final.log`, 42 seconds in Vitest.
+- Entire `CI=true VITEST_MAX_WORKERS=4 npm test`: exit 0, 2176 files passed,
+  one skipped; 22510 tests passed, four skipped; `fix2-full-vitest.log`,
+  473 seconds including prebuilds and one second of broker wait.
+- `npm run lint`: exit 0, zero errors / 33 existing warnings;
+  `fix2-lint.log`, 29 seconds.
+- `npm run oss:published-tree -- --typecheck`: exit 0, five projects,
+  zero unresolved edges and zero consumer-side errors;
+  `fix2-typecheck.log`, 25 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0 with temporary CLI 2.122.0,
+  all 226 SQL files / 5199 assertions passed, transactional replay and owned
+  cleanup successful; `fix2-pgtap.log`, 71 seconds including 41 seconds waiting
+  for the shared resource lane. The unchanged rendered TOML started successfully.
+  All five images reused verified GHCR digest references in this run; forced
+  GHCR/ECR outages and successful fallback are proved by the offline witnesses.
+- Policy/docs regeneration and subsequent check with this authored plan tracked
+  in a disposable validation index: exit 0, five documentation obligations,
+  none unanswered; `fix2-policy.log`. No generated navigation byte delta.
+  Final policy rerun includes this completion record. An extra bare
+  `npm run oss:published-tree` invocation exited 2 (required mode missing);
+  the corrected `--inventory` command exited 0 with all 6623 paths, including
+  this plan. Logs: `fix2-final-policy.log` and `fix2-inventory.log`.
+  A direct policy run against the actual unstaged index exited 1 because that
+  index intentionally omits the new plan; the final handoff check uses the
+  disposable validation index with the plan included. The task's actual index
+  remains untouched, and no commit was created. Claude must include the plan
+  with its catalogue row when preparing the commit.
+- Structural scan, agent-context generation/freshness, CLI mirror `plan`, CLI
+  version probes and `git diff --check`: exit 0. Temporary CLI is 2.122.0;
+  `/opt/homebrew/bin/supabase` remains 2.120.0.
+- Fresh anonymous raw-manifest SHA-256 independently matches every CLI pin on
+  ECR, Docker Hub and GHCR (15 successful comparisons). The initial GHCR token
+  request incorrectly included a trailing slash and returned 404; the corrected
+  endpoint completed all five GHCR comparisons. Both attempts are retained in
+  `fix2-manifests.log` and `fix2-ghcr.log`; raw manifests and results are in
+  `fix2-manifests/`. No product fallback was removed because of registry errors.
+
+The supplied finding is repaired, with fresh local proof. This is not an
+independent committed review or a native review receipt. Claude owns subsequent
+commit/re-review and any separately authorized submission. Hosted CI, the full
+identity acceptance/conformance flows and cold image-layer network transfer
+remain unverified; no hosted Supabase, staging or production operation ran.
+No owner decision, mirror publication or settings change is needed for this
+repair. Historical records and unrelated resources remain unchanged.
+
+Fix round 2 self-retro: the first affected run exposed three stale assertions;
+restoring the main lifecycle cases before broad testing caught all three at
+low cost. The earlier GHCR restriction was unnecessary: preserve acquisition
+semantics first, then add digest verification without changing recovery.
+The only shared-machine delay was the measured 41-second pgTAP lane wait.
+No process change or successor work is introduced.
+
+## Hosted pgTAP derivation repair
+
+The owner requested the bounded repair of PR #443's pgTAP failure at committed
+head `e886cfd497b5055ce26136e53048746ee528846b`, run `40949649115`, job
+`123714062198`. Scope and authority remain local edits and requested proof;
+Claude retains all commit/PR/native-review work. No external write, hosted
+Supabase operation or shared-resource cleanup is authorized. The review base
+remains `6e7adb51e742a132b879a94ef07e5cfed60f694c`. The separately fetched current
+policy revision is `c31cc19bfd1a1108bf14535337fbca167a82f835`; applicable instruction
+changes since the assigned head are the CLI-specific contributor guidance,
+which was read with the current owners. No counted review session or retry
+budget was created or reset.
+
+Root cause: `deriveCliImages` scanned setup-cli v3's symlinked npm Node launcher
+instead of the native platform executable, so `cliImages` falsely reported
+missing upstream-registry strings before any Docker pull.
+
+The pinned action source installs `supabase@2.122.0` using npm into a temporary
+prefix and exposes `node_modules/.bin`. Its launcher resolves the native binary
+from its platform-specific npm package (Linux also tries the musl package), or
+honors `SUPABASE_CLI_BINARY_OVERRIDE`. Standalone archive installs expose the
+native executable directly. The repair follows the real launcher path and the
+same resolution rules; the existing registry/tag/exclusion refusals, digest
+binding, pull order, aliases, deadlines and owned cleanup remain intact.
+This is smaller than changing workflow installation or acquiring another CLI.
+
+Contrary to the earlier setup-action assumption above, the pinned action exports
+GHCR only for versions >=1.28.0 and <2.108.0. It leaves the registry override
+unset for 2.122.0. The Compose backend defaults to ECR; pgTAP still explicitly
+passes the first successfully pre-pulled registry. Contributor guidance now
+describes the actual action behavior. No image, digest, mirror or TOML edit is
+needed for this repair.
+
+Fresh release API metadata again selects stable v2.122.0. Downloads of both
+archive aliases and checksums match the API IDs/digests in the existing table
+and the versioned names in checksums.txt. Evidence for this repair is under
+`/private/tmp/openlup-ci-fix/`.
+
+Linux reproduction uses an owned `docker run --rm --platform linux/amd64`
+container, Node 24.21.0, `CI=true`, `GITHUB_ACTIONS=true`, Linux/X64 runner values,
+the unchanged rendered reference config, the action's exact npm installation
+options, and no registry override. It mounts the source read-only and has no
+Docker socket or hosted credentials. Before repair, npm derivation exits 1 with
+the hosted error while the official Linux archive derives the expected five
+images. After repair, npm derivation exits 0 and its output equals the archive
+output byte for byte. Both Linux native executables independently hash to
+`cb6a371c6ca17c3d2e2fc382348762f570cef2cb94a6da3c69735925adb7a0d0`.
+Full Linux service output is retained in `linux-services.json`.
+
+The installation-layout regression uses real temporary symlinks and package
+resolution, covering standalone, npm, explicit override, missing platform
+package and changed native registry strings. Before repair it exits 1 with
+three failures (19 passing); npm and override cases reproduce the false refusal.
+The initial policy/docs and focused structural checks pass. Remaining proof:
+complete affected Vitest files, lint/typecheck, final policy/docs regeneration
+and local pgTAP, serially through the existing resource gate where heavy.
+
+Completion evidence for this repair (all heavy commands ran serially through
+`ai-resource-gate run --wait --queue-timeout 3600`):
+
+- Affected full Vitest files (`ci-image-mirror`, `ci-image-pull`,
+  `oss-published-tree-check`): exit 0, 254 tests / three files passed, 44.30 seconds
+  in Vitest. The earlier red regression run above is retained.
+- `npm run lint`: exit 0, zero errors / 33 existing warnings, 28.6 seconds.
+- `npm run oss:published-tree -- --typecheck`: exit 0, five projects, zero
+  unresolved edges / consumer-side errors, 24.6 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0, 226 SQL files / 5199 assertions
+  passed, transactional replay and owned cleanup completed, 32.7 seconds. All
+  five verified GHCR digest references were reused; fallback paths are exercised
+  by the affected Vitest lifecycle cases. The supplied TOML required no change.
+- `--policy --docs-update` and subsequent policy check: exit 0, five obligations,
+  none unanswered; navigation has no generated byte delta. Focused ast-grep,
+  cross-platform service/plan comparisons, exact inventory binding and
+  `git diff --check` pass. Frozen source/config hashes are unchanged throughout
+  the heavy checks. The default Homebrew CLI remains 2.120.0.
+
+Logs and exact heavy commands/exits are in `verification-results.json` and the
+phase logs under the repair evidence directory. All resource admissions reported
+zero queue wait. Hosted CI rerun, full Linux stack execution and committed native
+review remain unexecuted; Claude owns subsequent delivery. No owner decision,
+mirror publication, pin change or settings action is needed for this repair.
+
+Self-retro: standalone binary fixtures missed the npm installation layout despite
+an identical CLI version. A real symlink/package-layout witness plus the Linux
+reproduction caught the boundary without changing acquisition behavior or adding
+a new installer. No broader process change or successor work is introduced.
+
+Cold-review follow-up: bare `SUPABASE_CLI_BINARY_OVERRIDE` now uses PATH lookup
+and clearly refuses absent executables; absolute/relative paths with separators
+remain unchanged. Real conflicting cwd/PATH files, a cwd-only refusal and a
+relative override extend the existing installation regression. Local edits only;
+no commit/push or new review cycle. All 25 `ci-image-mirror.test.ts` cases,
+policy/docs regeneration and check, focused ast-grep and `git diff --check`
+pass (exit 0). Logs: `/private/tmp/openlup-ci-fix/path-override-*.log`.
+Earlier attempts: the direct runner lacked npm's binary PATH (exit 1); the first
+regression run exposed a Buffer/string mock mismatch (exit 1), corrected before
+the passing rerun. The unnecessarily selected coverage queue waited over 244
+seconds; its owned wrapper was cancelled by exact PID (exit 137), then the
+tooling-gated test ran immediately. Self-retro: reuse the existing executable
+lookup and select the tooling profile for focused tests.
+
+Minor separator follow-up (2026-10-29): the owner requested this uncommitted
+repair and regression only, with the mirror test file, policy/docs and whitespace
+checks; no commit, push or pattern kills. Freshly fetched policy remains
+`c31cc19bfd1a1108bf14535337fbca167a82f835`, with no applicable instruction delta.
+The tagged upstream `apps/cli/src/shared/cli/bin.ts` passes the override directly
+to Node's `spawn`: `/` selects a path on POSIX; Windows also recognizes `\`.
+The existing condition now follows that platform distinction. Contributor
+guidance states the same rule. The existing fixture adds a POSIX backslash name
+with conflicting cwd/PATH binaries; before repair it read cwd's `9.99` instead
+of PATH's `3.36` (exit 1, 25 other cases passed). After repair all 26 cases pass
+(exit 0, one worker, 200 ms Vitest duration). Focused structural scans and
+policy/docs regeneration pass (exit 0; five obligations, none unanswered).
+Logs: `/private/tmp/openlup-ci-fix/backslash-*.log`. The red run waited for the
+tooling lane; the green run had zero queue wait. Self-retro: extending the
+existing fixture reproduced this separator boundary without another resolver
+or test harness. No review session, delivery or shared-resource cleanup occurred.
+
+
+## Native CI installer scope amendment (2026-10-29)
+
+Approved intent: replace the npm-based CI installation with the checksum-verified
+native release archive for the same latest stable CLI, expected 2.122.0. Remove
+the launcher/package resolver and its installation-layout cases, preserving the
+reviewed image digest binding. This removes the source of the neutrality
+ratchet increase without changing rules, exceptions or string spelling.
+This existing task record remains the combined intent and plan; no separate
+specification is required by the contribution-shape owner.
+
+Assigned candidate: branch `claude/supabase-cli-bump`, clean HEAD `7fc417f7`.
+Current policy fetched from origin/main is
+`b5451b24c2dbb753f54965226d9c40972d70f356`; the applicable instruction owners
+were compared and read separately from the unchanged code review base.
+Bart authorizes local edits and proof only. Codex implements; Claude owns all
+commit, PR and native-review work. No commit, push, workflow dispatch, hosted
+Supabase, staging/production or Homebrew operation is authorized. Prior native
+review state and retry limits are not recreated or reset by this amendment.
+
+Smallest complete scope: one fresh repository installer with explicit version,
+platform, release asset ID and committed SHA-256 pins; both installing workflow
+jobs reuse it. All current CI runners are Linux amd64; include macOS arm64 only
+for the requested temporary local proof. Unsupported versions/platforms refuse.
+Download and independently hash each admitted archive, checking release API
+metadata and checksums.txt before recording its pin. Keep extraction and cleanup
+in owned temporary directories; append the chosen install directory to
+GITHUB_PATH. No npm launcher or alternative binary override is needed.
+
+Execution: first verify latest stable release and archive identities. Add the
+installer and workflow calls, reduce derivation to reading the executable on
+PATH, and adjust affected tests and current contributor/contract guidance.
+Preserve all five CLI image digests, upstream fallback order, exclusion checks
+and rendered TOML unless the actual native CLI proves a concrete incompatibility.
+No history/evidence record or unrelated active pin is changed.
+
+Acceptance: neutrality against the fork point exits 0 without PR-attributable
+increases; publication policy/docs regeneration includes this plan; affected full
+Vitest files, published-tree typecheck, lint and available actionlint pass.
+Run raw local pgTAP using this installer's temporary native CLI and reproduce
+hosted derivation in a Linux amd64 container if feasible. Heavy commands run
+serially via ai-resource-gate with a 3600-second queue timeout. Report actual
+image tags, registries, digest/config consequences and any missing proof.
+
+Risk and simplicity pre-check: changing the installation trust boundary needs
+checksum-corruption and unsupported-input refusal witnesses. A single shell
+installer and direct PATH scan remove package layout and override resolution;
+no extra dependency, abstraction, mirror publication or neutrality exception is
+needed. Finish with uncommitted changes, evidence and the requested <=30-line
+summary; independent committed review and delivery remain Claude's later gates.
+
+
+### Native installer completion and handoff
+
+The fresh release API still identifies v2.122.0 as latest stable, release
+421737738, not draft/prerelease. Fresh downloads of Linux amd64 asset 668850237,
+macOS arm64 asset 668849778 and checksums asset 668849747 match the API digests
+and the checksum file's versioned aliases in the earlier table. The new installer
+uses those archive IDs and hashes directly. Both CI install jobs now reuse it;
+the mirror workflow also watches the installer as a derivation input. The
+publication catalogue and closed execution inventory register the new script.
+The temporary host install is `/private/tmp/openlup-native-cli/bin`; Homebrew
+remains 2.120.0. The old npm-layout resolver and override cases are removed.
+The earlier task explanation now describes its retired package layout without
+repeating the obsolete package coordinate; prior commands/results are retained.
+
+The native executable's rendered services and tagged upstream Dockerfile confirm
+the previously recorded stack tags. Postgres 17.11.0.006, GoTrue v2.197.0,
+Realtime v2.147.1, Storage API v1.84.19 and pg_prove 3.36 bind to all five existing
+reviewed index digests. Other defaults remain the release/image evidence table
+above, including PostgREST v16.5, meta v0.100.0, Studio
+2026.10.19-sha-b375769, edge v1.77.8, Logflare 1.50.15, Supavisor 2.9.13,
+Mailpit v1.31.3, imgproxy v3.26.0, Vector 0.58.0-alpine and Kong 2.8.1.
+No inventory digest, mirror publication or TOML change is needed by this
+installation amendment. The tagged registry resolver defaults to ECR with
+GHCR/Docker Hub fallback. The installer sets no registry override; pgTAP keeps
+its explicit verified mirror/GHCR/ECR/Docker Hub acquisition and exact local
+aliases. The successful stack used verified upstream GHCR digest references.
+
+Evidence is under `/private/tmp/openlup-native-cli/`. All heavy phases ran
+serially through ai-resource-gate with a 3600-second queue timeout, two CPU
+tokens and 4096 MB; code/config/docs/test input hashes stayed frozen throughout.
+Only this execution record was completed afterwards.
+
+- Affected complete Vitest files: exit 0, four files / 260 tests passed, 44.37
+  seconds in Vitest; `affected-vitest-final.log`. The final request waited 128
+  seconds for the gate's aged-request reservation. Installer tests exercise real
+  archive hashing/extraction with fixture pins, corruption before execution or
+  replacement, version mismatch, unsupported inputs and GITHUB_PATH updates.
+- `npm run lint`: exit 0, zero errors / 33 existing warnings, 30.3 seconds.
+- `npm run oss:published-tree -- --typecheck`: exit 0, all five projects,
+  zero unresolved edges / consumer-side errors, 25.7 seconds.
+- `node scripts/public-ci-pgtap.mjs`: exit 0 with this installer's native CLI;
+  226 SQL files / 5199 assertions passed, baseline/forward replay and owned
+  cleanup completed, 33.8 seconds. The rendered TOML started unchanged.
+- Linux amd64 container: exit 0, 38.5 seconds, Node 24.21.0. The actual installer
+  fetched asset 668850237, verified the committed archive checksum, reported
+  CLI 2.122.0 and updated GITHUB_PATH. Derivation exactly matches macOS output;
+  all five inventory digest bindings pass. The installed ELF member hashes to
+  cb6a371c6ca17c3d2e2fc382348762f570cef2cb94a6da3c69735925adb7a0d0.
+  The disposable container installed curl/CA certificates and was removed on
+  exit; no foreign resources were removed.
+- Neutrality at fork point d1800393caad3b101173f8c100625d1c974c451f: exit 0,
+  zero increases. No scanner, baseline, exception or split-string change.
+- Policy and `--docs-update`: exit 0, five obligations / zero unanswered; no
+  navigation byte delta. These use a disposable validation checkout with the
+  new installer/test tracked; the task index remains untouched. The plan is
+  included. Structural scan, context freshness, Bash syntax and whitespace
+  checks also exit 0. Final policy/neutrality include this completion record.
+
+Known limitation: actionlint 1.7.12 exits 1 on the unchanged published-tree
+workflow line 194, `job.services.postgres.ports[5432]` (numeric property access).
+The assigned HEAD reproduces the identical diagnostic; the changed mirror
+workflow alone passes (exit 0). This pre-existing finding is reported for
+Claude/owner triage rather than expanding this installer amendment. Final
+handoff policy remains b5451b24c2dbb753f54965226d9c40972d70f356 after a fresh
+fetch, with no applicable instruction delta.
+
+Failed attempts: the initial affected run exited 1 (243 passing / 17 failing):
+one stale workflow-command assertion plus 16 sandbox-blocked loopback probes.
+The assertion was corrected and the permitted rerun passed. Initial neutrality
+caught two direct test-environment reads and one retired package coordinate in
+the active task explanation; the tests now use the existing environment-import
+convention and the explanation describes the retired layout without that name.
+The first policy attempts exited 1 because the new files were absent from the
+task's unstaged Git index; ambient alternate-index variables are intentionally
+ignored by the checker. A disposable real validation checkout supplied the
+complete inventory without changing that control or the task index. An initial
+host-version probe lacked the temporary state directory and refused a default
+home write; the isolated-state probe confirmed 2.120.0 without changing it.
+
+No hosted CI rerun, Linux full-stack run, cold image-layer transfer or counted
+committed review is claimed. No commit, push, PR comment, workflow dispatch,
+hosted Supabase, staging/production or Homebrew change occurred. Claude owns
+subsequent commit/review/PR work; inherited actionlint triage remains separate.
+
+Self-retro: the installer removes launcher-layout and override complexity while
+preserving image trust and fallback behavior. The existing workflow-command
+assertion caught its new executable step before broad checks. Policy validation
+should begin in the disposable tracked checkout for new files: the checker's
+explicit refusal of ambient Git redirects made the alternate-index attempt
+ineffective. The only material shared-machine delay was the 128-second queue
+wait; no gate or resource ownership rule was bypassed. No successor is opened.
+
+
+## Installer directory security repair
+
+The owner requested this bounded local repair with all prior uncommitted changes
+and earlier task wording preserved; commit/push and pattern-based process kills
+remain excluded. Policy was freshly fetched at
+`b5451b24c2dbb753f54965226d9c40972d70f356`, unchanged from the prior handoff.
+The default install directory now uses `mktemp -d`, like the download/extraction
+directory, under RUNNER_TEMP, TMPDIR or system temporary storage. Existing explicit
+destinations refuse foreign ownership, group/world write permissions and symbolic
+links before downloading; permissions are checked again before installation.
+New explicit directories are created with a private umask. Contributor guidance
+now explains this boundary.
+
+Repair proof: the complete installer test file passed all 15 tests (exit 0),
+including foreign ownership, group/world-writable pre-existing destinations and
+two fresh default installations for each temporary-directory selection. Both
+work-directory allocations are fresh and cleaned up, and the pre-existing writable
+legacy destination remains untouched. Bash syntax, structural suppression scan,
+neutrality against `d1800393caad3b101173f8c100625d1c974c451f`, policy/navigation
+and whitespace checks passed (exit 0 each). Policy reported five obligations and
+zero unanswered, with no generated navigation change. As before, policy uses a
+disposable validation checkout to include the untracked installer/test without
+changing the task index. Logs: `/private/tmp/openlup-cli-directory-fix/`.
+All heavy checks ran serially through ai-resource-gate with a 3600-second queue
+timeout, two CPU tokens and 4096 MB. No commit, push or counted review occurred.
+
+Self-retro: retaining the existing mktemp work-directory seam and adding direct
+ownership/mode checks fixed the reachable shared-directory failure without a new
+dependency. No failed test or repair retry was needed. The initial policy fetch
+could not write shared Git metadata in the sandbox; its authorized retry passed.
+
+## Installer directory simplification
+
+The owner now requests removal of the explicit destination option, preserving
+all other uncommitted changes. Local edits and the listed verification are
+authorized; no commit, push, counted native review, pattern kills or external
+mutation is authorized. The separately fetched policy pin remains
+`b5451b24c2dbb753f54965226d9c40972d70f356`, with no applicable instruction delta.
+The code base and Claude's later delivery responsibility remain unchanged.
+
+The installer uses one fresh `mktemp -d` directory under RUNNER_TEMP, TMPDIR or
+the system default. It checks the archive before extraction, checks the installed
+executable's version, removes the archive and only then exposes the absolute bin
+directory through stdout and optional GITHUB_PATH. Failure removes the new
+directory. Removing caller-supplied destinations also removes their validation
+and the second download directory. Contributor and canonical guidance are updated;
+workflow and pgTAP callers already use PATH and pass no destination.
+
+Acceptance: destination-validation tests are removed; unsupported-version/platform,
+checksum and binary-version refusals remain. Two runs must allocate distinct
+0700 directories under the selected root, with RUNNER_TEMP precedence, TMPDIR
+fallback and system-default coverage. Verify stdout for local callers without
+GITHUB_PATH. Run complete installer and published-tree workflow test files,
+Bash syntax, neutrality against `d1800393caad3b101173f8c100625d1c974c451f`,
+publication policy/navigation and diff whitespace checks, plus the real local
+pgTAP runner using this installer. Heavy phases run serially via ai-resource-gate.
+No SQL, image pins, registry fallback or other task changes are in this amendment.
+
+
+### Simplification completion evidence
+
+Evidence: `/private/tmp/openlup-cli-simplify/`. Complete installer and published-tree
+workflow test files passed together: exit 0, 12 installer tests and 97 workflow
+tests (109 total), 44.02 seconds in Vitest. The real installer fetched and verified
+CLI 2.122.0 into its own fresh 0700 directory; the pgTAP wrapper used exactly the
+absolute directory returned on stdout. `node scripts/public-ci-pgtap.mjs` exited 0:
+226 files / 5,199 assertions, transactional managed replay and owned-stack cleanup.
+Both heavy phases ran serially through ai-resource-gate with a 3600-second queue
+timeout, two CPU tokens and 4096 MB. No image pins, migration bytes or registry
+acquisition behavior changed.
+
+Bash syntax, the structural suppression scan, agent-context freshness, neutrality
+against `d1800393caad3b101173f8c100625d1c974c451f` and `git diff --check` exit 0.
+Policy plus navigation regeneration exits 0: five obligations, zero unanswered,
+no generated navigation delta. A disposable validation checkout includes the
+untracked installer/test in its real index; the task's index remains untouched.
+Final policy and neutrality are repeated after this execution record is updated.
+
+Failed attempts: the first policy run exited 1 because the disposable local clone
+inherited an older local main as origin/main, causing unrelated documentation
+obligations. Binding that validation-only ref to the actual freshly fetched policy
+revision restored the task's real fork-point comparison and passed. No source
+control, baseline or obligation was weakened. The sandboxed policy fetch initially
+refused shared Git metadata access; its permitted retry exited 0.
+
+Self-retro: one fresh private directory removes destination validation and a
+second allocation while preserving checksum/version refusals and failure cleanup.
+A validation clone must carry the source checkout's actual origin/main identity
+before evaluating documentation impact. No further process or successor work is
+needed. No commit, push, counted review, pattern kill or external mutation occurred;
+Claude retains later review/delivery responsibility and prior unrelated evidence.
