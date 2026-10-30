@@ -1438,11 +1438,11 @@
       "class": "public-output"
     },
     {
-      "path": "docs/platform/plans/oss-m14-hosted-s3-receipt.md",
+      "path": "docs/platform/plans/oss-m14-hosted-rds-receipt.md",
       "class": "public-output"
     },
     {
-      "path": "docs/platform/plans/oss-m14-hosted-rds-receipt.md",
+      "path": "docs/platform/plans/oss-m14-hosted-s3-receipt.md",
       "class": "public-output"
     },
     {

@@ -294,3 +294,8 @@ The shared target list/usage and one final success-status check are inherited
 from main. No declaration refusal predicate was edited or removed. The required
 cross-target declaration refusal matrix follows in a test-only commit before
 review. Exact comparisons and resolved hunks are retained in private evidence.
+
+The policy gate required the merged catalogue objects in path order. Sorting
+the unchanged RDS/S3 record objects preserved the exact parsed-entry comparison;
+no object value or allowance changed. This bookkeeping correction precedes
+review and adds no source responsibility or approval obligation.
