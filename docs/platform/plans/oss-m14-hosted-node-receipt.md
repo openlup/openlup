@@ -1,8 +1,8 @@
 # M14 hosted Node/OCI recipe receipt
 
 Status: development-preview parcel 10H, hosted Node/OCI working receipt PASS;
-initial control read accepted under a required origin repair, followed by a
-second read before DCO, native review and canonical verification.
+both control reads accepted and exact accepted source DCO-committed;
+forced main integration, native review and canonical verification in progress.
 Code/review base and current policy pin, checked independently:
 `4fd84bfead64e11f76e0555117fe072d39807182`.
 
@@ -183,3 +183,40 @@ the new predicate. The final redacted staged-tree secret scan and delta
 identities are attached to the second read packet. Native cycles remain zero.
 Self-retro for this bounded repair: typecheck and lint waited 180 and 661
 seconds for the shared Mac slot; the repair introduced no new mechanism.
+
+
+CD-M14-60 accepted the bounded origin delta. Computed evidence independently
+matches accepted tree `8b1dfb0e40db48884478bcd83e20b6bdeb942390` and
+`git diff --binary 4e73ab81 8b1dfb0e` SHA-256
+`10664c626f143a32e46e3376d4ea2ae5075cfa72ea8e9decfeaa7f44f4090503`.
+The first DCO commit, `a05de338ec1d4c555143d0ed05d6ab9ecf8bdb17`, has exactly
+that tree. These are computed identities, not a claim of personal diff reading.
+The earlier CD-M14-59 acceptance and disclosed input-path disposition remain
+recorded above. S1 freeze is lifted; delivery still holds at a draft PR because
+this parcel is fourth after 10I, 10O and 10R. The lead resumes queue delivery
+after 10R merges.
+
+The first native `prepare` refused carry-over against current main before any
+session/report was admitted. Necessary CD-M14-30 recovery is a conflict-free
+main merge with parents `a05de338ec1d4c555143d0ed05d6ab9ecf8bdb17` and
+`9ad1534aa321b5c9c493b7a710538168f8f18292`. The automatic tree before this note
+is `70b1d4e7d085faee40c60b28101e241276974673`. The parcel patch-id excluding
+this task record is `c10acc2f1bc708f8d7eaab93732ccac2c9291ed8` both against
+old base `4fd84bfe` and against new main `9ad1534a`. The catalogue merged
+mechanically; there are no manual/union hunks or glue lines. Only this task
+record is added to the automatic merge. The imported package preparation and
+pgTAP planning text create no new hosted execution claim; the working VM
+receipt remains tied to its exact earlier source and package set. Full current
+source review and canonical verification remain required. Native cycles zero.
+
+
+Current integration checks passed: npm ci, strict typecheck (zero unresolved
+edges/errors), policy/docs regeneration, inventory, neutrality, structural
+rules, whitespace, redacted secret scan and full lint (zero errors). Lint's
+66 warnings included a temporary materialized copy of the already scanned
+staged tree; that owned copy was removed, retaining its tar and scan identity.
+The source's prior 33 warnings are unchanged. The integration lint gate waited
+1,922 seconds for another canonical run. Self-retro: retain the exact staged
+scan as an archive after scanning so later source traversal sees one checkout;
+this follows the existing local-verification review lesson. No runtime,
+control or acceptance change was made during that wait.
