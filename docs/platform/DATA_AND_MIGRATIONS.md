@@ -777,7 +777,8 @@ stock-seam claims. The zero-valued exposure hooks do not establish that parity.
 
 The lexer is only a pre-filter. The mandatory
 [real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
-uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies
+uses native PostgreSQL 16 and, for the managed rail, stock PostgreSQL 17 with
+pgTAP and the managed-compatibility adapter. Per rail it applies
 all committed rail files in filename order through the last pin, including
 unpinned files interleaved between pins. Pins use landed or fixture bytes exactly
 once; landed pins must form a prefix before the absent fixture suffix. A landed

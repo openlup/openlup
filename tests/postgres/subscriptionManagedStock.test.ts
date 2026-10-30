@@ -2,9 +2,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient, type QueryResult } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readReviewedForwardRegistry, sqlSha256 } from "../../scripts/reviewed-platform-forward.js";
-import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
-import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 
 // Working-tree behavioral proof, separate from the committed-byte CLI/catalog gates.
 // Exact reviewed pins still bind every M10 unit; nothing assumes it is the last migration.
@@ -26,9 +26,7 @@ let pool: Pool;
 let db: PoolClient;
 
 beforeAll(async () => {
-  const pin = readCiImage("managed-batch-postgres");
-  container = await runPostgresContainer({ name: `m10-p5m-${process.pid}`, password: "synthetic-conformance",
-    image: imageReference(pin, pin.sources.at(-1)) });
+  container = await runManagedCompatPostgres({ name: `m10-p5m-${process.pid}`, password: "synthetic-conformance" });
   expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
   pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1 });
   db = await pool.connect();

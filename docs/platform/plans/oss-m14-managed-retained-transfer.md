@@ -799,3 +799,14 @@ its open native card awaits fresh review after integration is repaired.
 Self-retro: main's removal of a shared runner helper exposed the fixture's
 cross-module setup dependency; repair its explicit prerequisite and ownership
 rather than hiding the failure with a test exclusion.
+
+CD-M14-69 resolves this diagnosis by keeping the required mapper/refusal suite
+on main's managed-compatibility helper and adding an explicit opt-in real
+managed-source witness. The same assertions must run on both sources; any
+unreproducible managed-only behavior stays in the real witness. This is adapter
+migration and parity work before cycle 11, with no workflow change.
+The prerequisite main merge joins `056b760097feb44c32aaf7cbf056835fad49b909`
+and `78f340db40ee6abcdaa97c7f01ccd2a857403b8f` without conflict or manual
+resolution. Pre-note tree: `e371546e5bf699befd05209cdedeada8a985cb0d`.
+The stable parcel patch ID excluding this record is
+`2c62af7c2a621620a7b48e78e4a7ac929b53b09c` on both bases (CD-M14-30).
