@@ -261,7 +261,7 @@ Docker Desktop on arm64. Both lanes read the committed chain through
 `readManagedMigrationChain` and the same `supabase/tests` bytes; nothing under
 `supabase/` changed. The old lane is the unchanged `scripts/public-ci-pgtap.mjs`
 under the checksum-verified Supabase CLI 2.122.0, driven by
-`node scripts/pgtap-parity.mjs cli-lane`. That driver adds `--debug` to
+`node scripts/pgtap-parity.mjs cli-lane --supabase <absolute CLI path>`. That driver adds `--debug` to
 `supabase test db`, so `pg_prove` adds `--verbose` and logs every assertion.
 
 - **Supply.** The packages match the managed image exactly: pg_cron 1.6.4

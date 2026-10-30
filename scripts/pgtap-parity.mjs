@@ -2,8 +2,8 @@
 // the post-replay catalog snapshot, the environment fingerprint and the local
 // sabotage switches. Nothing here changes either lane's tested SQL.
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { accessSync, chmodSync, constants, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // pg_prove --verbose prints `<path> ..` before each file's TAP stream and a
@@ -232,9 +232,19 @@ SELECT section, item FROM (
 ) rows ORDER BY section, item;
 `;
 
+// Resolve Docker from fixed system directories instead of the caller's PATH.
+const DOCKER_DIRECTORIES = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"];
+export function dockerExecutable(directories = DOCKER_DIRECTORIES) {
+  for (const directory of directories) {
+    const candidate = join(directory, "docker");
+    try { accessSync(candidate, constants.X_OK); return candidate; } catch { /* try the next fixed directory */ }
+  }
+  throw new Error(`docker not found in ${directories.join(", ")}`);
+}
+
 /** Run one (section, item) query in a container through its own psql over TCP. */
 export function captureRows(container, sql, { user = "postgres", password = "postgres" } = {}) {
-  const result = spawnSync("docker", ["exec", "-i", "-e", `PGPASSWORD=${password}`, container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
+  const result = spawnSync(dockerExecutable(), ["exec", "-i", "-e", `PGPASSWORD=${password}`, container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
     "-h", "127.0.0.1", "-U", user, "-d", "postgres", "-Atq", "-F", "\t", "-R", "\u001e"], { input: sql, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`catalog capture failed in ${container}: ${result.stderr || result.error?.message}`);
   return parseRows(result.stdout);
@@ -301,7 +311,8 @@ function diffCommand([leftPath, rightPath]) {
 }
 
 // Local evidence for the existing CLI lane, without changing it: run the
-// unchanged scripts/public-ci-pgtap.mjs with a `supabase` shim first on PATH.
+// unchanged scripts/public-ci-pgtap.mjs with a `supabase` shim first on PATH;
+// the real CLI is the explicit absolute `--supabase` path, never a PATH lookup.
 // The shim captures the snapshot and fingerprint after replay, optionally
 // applies one SQL sabotage, then calls the real CLI's `test db` with `--debug`
 // so that pg_prove adds `--verbose` and the log carries every assertion.
@@ -336,8 +347,9 @@ function cliLaneCommand(rest) {
   if (rest.includes("--sabotage")) {
     if (!sabotageSql(sabotage)) throw new Error(`sabotage ${sabotage} has no SQL form for the CLI lane`);
   }
-  const real = spawnSync("sh", ["-c", "command -v supabase"], { encoding: "utf8" }).stdout.trim();
-  if (!real) throw new Error("put the verified Supabase CLI 2.122.0 first on PATH");
+  const real = rest[rest.indexOf("--supabase") + 1];
+  if (!rest.includes("--supabase") || !real || !isAbsolute(real)) throw new Error("pass the verified Supabase CLI 2.122.0 as --supabase <absolute path>");
+  accessSync(real, constants.X_OK);
   const out = join(root, ".context/scratch/pgtap-parity/cli" + (sabotage ? `-${sabotage}` : ""));
   const shim = join(out, "shim");
   mkdirSync(shim, { recursive: true });
@@ -361,7 +373,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (command === "compare") process.exitCode = compareCommand(rest);
     else if (command === "diff") process.exitCode = diffCommand(rest);
     else if (command === "cli-lane") process.exitCode = cliLaneCommand(rest);
-    else throw new Error("usage: pgtap-parity.mjs compare <left.log> <right.log> | diff <left.json> <right.json> | cli-lane [--sabotage <name>]");
+    else throw new Error("usage: pgtap-parity.mjs compare <left.log> <right.log> | diff <left.json> <right.json> | cli-lane --supabase <absolute path> [--sabotage <name>]");
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 2;
