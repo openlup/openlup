@@ -1,0 +1,32 @@
+{
+  "image": "install-proof-postgres",
+  "postgres": "17.11-1.pgdg13+2",
+  "baseUrl": "https://apt-archive.postgresql.org/pub/repos/apt/pool/main/",
+  "packages": [
+    {
+      "name": "postgresql-17-cron",
+      "version": "1.6.4-2.pgdg130+2",
+      "provides": "pg_cron 1.6.4",
+      "files": {
+        "amd64": { "path": "p/pg-cron/postgresql-17-cron_1.6.4-2.pgdg130+2_amd64.deb", "sha256": "9a878e9d8a06ecf9baed341c2a54bdb75446042c01c21b6af24bbef60b584d55" },
+        "arm64": { "path": "p/pg-cron/postgresql-17-cron_1.6.4-2.pgdg130+2_arm64.deb", "sha256": "9aa79358b25f72405d8e93d0a747bb41346f63431d9c582a525c8446be9f8e16" }
+      }
+    },
+    {
+      "name": "postgresql-17-pgtap",
+      "version": "1.3.3-3.pgdg130+1",
+      "provides": "pgtap 1.3.3",
+      "files": {
+        "all": { "path": "p/pgtap/postgresql-17-pgtap_1.3.3-3.pgdg130+1_all.deb", "sha256": "0b2725a10ba2b920a5c7f1b7e0322dbf5291acd864a59eb28313638f5736ff4f" }
+      }
+    },
+    {
+      "name": "libtap-parser-sourcehandler-pgtap-perl",
+      "version": "3.36-2.pgdg130+1",
+      "provides": "pg_prove 3.36",
+      "files": {
+        "all": { "path": "libt/libtap-parser-sourcehandler-pgtap-perl/libtap-parser-sourcehandler-pgtap-perl_3.36-2.pgdg130+1_all.deb", "sha256": "0f26105ce7f201d7b59633f038383cd8350422cdd3540fdc237d59d2f7f28733" }
+      }
+    }
+  ]
+}

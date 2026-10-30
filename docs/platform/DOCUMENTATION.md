@@ -220,15 +220,14 @@ or establishing activation, package publication or managed parity.
 The CI image mirror workflow, dependency-free script and offline witnesses are
 public source outputs in the publication catalogue. Contributor checks own its
 default-branch execution and one-time package visibility/access setup; canonical
-contracts own the CLI and non-CLI digest inventories, exact derived-set binding
-and mirror-first consumer selection with public upstream fallback.
-The shared pull module, PostgreSQL helper and pgTAP pre-pull witnesses are public
-source outputs. Contributor checks own their bounded retry/fallback and CLI
-local-name reconciliation, including exact local reuse, the gate's shared pull path and remaining-budget
-Retry-After fall-through within the selected sources. CLI pgTAP retains
-organization mirror/GHCR/ECR/Docker Hub fallback with the same pinned digest;
-mirror planning retains ECR/Docker Hub order. Non-CLI consumers retain their
-upstream sources in CI and locally.
+contracts own the single owned digest inventory, the checksum-pinned PostgreSQL
+test packages and mirror-first consumer selection with public upstream fallback.
+The shared pull module, PostgreSQL helper and stock pgTAP runner are public
+source outputs. Contributor checks own their bounded, digest-only retry/fallback,
+including exact local reuse, the gate's shared pull path and remaining-budget
+Retry-After fall-through within the selected sources. The mirror reads only that
+inventory, and every consumer, including the pgTAP runner's install-proof pin,
+retains its upstream sources in CI and locally.
 The active CLI bump task is included as an authored catalogue output. Generated
 bindings establish no registry publication.
 

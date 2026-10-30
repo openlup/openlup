@@ -1,9 +1,11 @@
 # Managed pgTAP on plain PostgreSQL
 
 Status: owner go-ahead on 2026-10-30 to prepare W1, W2 and W3 as stacked draft
-pull requests; merges wait for the owner. The recommendations below are the
-provisional decisions (see [Recorded decisions](#recorded-decisions)). This
-planning change alters no CI behaviour.
+pull requests. The recommendations below are the
+provisional decisions (see [Recorded decisions](#recorded-decisions)). W1 adds
+the shadow lane. W2 is prepared as a draft stacked on W1 (see
+[W2 evidence](#w2-evidence)). On 2026-10-30 the owner instructed merging the
+whole stack in order, which replaces D6's shadow-window wait.
 Read the [intent](neutral-postgres-pgtap-intent.md) first.
 Audience: the maintainer and the agents implementing the programme.
 
@@ -36,7 +38,7 @@ Audience: the maintainer and the agents implementing the programme.
 
 Per run, the `pgtap` job in `.github/workflows/published-tree-ci.yml` installs
 the checksum-verified native Supabase CLI 2.122.0 through
-`scripts/install-supabase-cli-ci.sh`, logs in to GHCR and runs
+the repository's native CLI installer script (removed in W2), logs in to GHCR and runs
 `scripts/public-ci-pgtap.mjs`. The runner:
 
 1. binds the 29 committed `supabase/migrations` files to their Git blob identities;
@@ -203,7 +205,7 @@ under the same context name.
 | W0 | This intent and plan (draft PR). | Owner decisions D1–D10 recorded. |
 | W1 | Adapter, extension supply, runner, parity tooling and a non-required `pgtap-postgres` job beside the unchanged `pgtap`. No other CI change. | The parity proof passes locally and on the first hosted run. |
 | W1s | Shadow window: both lanes run on every PR, merge group and main push. | D6's window is met with zero unexplained divergence. |
-| W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and `scripts/install-supabase-cli-ci.sh` if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
+| W2 | The `pgtap` job runs the neutral runner. The changes: delete `scripts/public-ci-pgtap.mjs`'s CLI path, the native CLI install steps in both workflows and the native CLI installer script if nothing else uses it, CLI image derivation in `scripts/ci-image-mirror.mjs` and `mirror-ci-images.yml`, the `cliImages` pins in `config/ci-images.json`, and the GHCR login if nothing else needs it; update their tests; update the owning docs. | One green `pgtap` on the switched lane, and the published-tree policy report settled. |
 | W3 (D2) | Move the `managed-batch-postgres` consumers in required `test` to the same image and adapter; then drop that pin. | The same parity method applied per suite. |
 
 W1 and W2 are separate PRs so that the shadow evidence comes from the merged W1
@@ -253,6 +255,143 @@ candidate tree:
 7. **Shadow window.** The window set in D6 is met with no divergence. A divergence
    is closed at its root cause in the adapter or supply route. Neither a test edit
    nor a retry closes it, and a run gets at most one blind retry.
+
+## W1 evidence
+
+Local proof on 2026-10-30 for the W1 candidate (branch `claude/neutral-pgtap-w1`),
+Docker Desktop on arm64. Both lanes read the committed chain through
+`readManagedMigrationChain` and the same `supabase/tests` bytes; nothing under
+`supabase/` changed. The old lane is the unchanged `scripts/public-ci-pgtap.mjs`
+under the checksum-verified Supabase CLI 2.122.0, driven by
+`node scripts/pgtap-parity.mjs cli-lane --supabase <absolute CLI path>`. That driver adds `--debug` to
+`supabase test db`, so `pg_prove` adds `--verbose` and logs every assertion.
+
+- **Supply.** The packages match the managed image exactly: pg_cron 1.6.4
+  (`1.6.4-2.pgdg130+2`), pgTAP 1.3.3 (`1.3.3-3.pgdg130+1`) and `pg_prove` 3.36
+  (`3.36-2.pgdg130+1`). They come from the PostgreSQL apt archive. The SHA-256 values
+  were cross-checked against the archive's `trixie-pgdg-archive` package index
+  for amd64 and arm64.
+- **Same results.** Both lanes ran 226 files and 5,199 assertions. The
+  per-assertion comparison is identical: plan, order, description, `ok`/`not ok`,
+  with no SKIP or TODO markers.
+- **Same installed contract.** The `public`/`private` catalog snapshots are equal
+  (5,356 rows, including the three foreign keys into `auth.users` and the
+  `auth.users` constraint trigger).
+- **Not vacuously green.** Every sabotage fails on the stock lane:
+  `auth-uid-null` (48 `not ok`), `drop-rls-policy` (6), `revoke-service-role-grant`
+  (3, and one file aborts), `wrong-dblink-password` (231 assertions lost to
+  aborted dblink files) and `no-pg-cron` (the replay refuses). The three SQL
+  sabotages also ran on the CLI lane. Their per-assertion results are identical
+  across the two lanes, so the adapter also behaves like the managed host under failure.
+  `no-pg-cron` and `wrong-dblink-password` change server setup that the CLI owns,
+  so they have no CLI-lane form; parity item 5 is met for them on the stock lane
+  only, which is an accepted deviation.
+- **Timing.** On a warm cache the stock lane takes about 18 s end to end, of
+  which `pg_prove` takes 15 s. The CLI lane takes about 33 s with its images
+  already local.
+
+Divergences found and closed at their cause, all in the adapter or the server
+setup:
+
+1. On the managed host, supautils lets `postgres` create dblink as a privileged
+   extension. Stock PostgreSQL refused the tests' `CREATE EXTENSION dblink` in 13
+   files. The adapter now creates dblink in `extensions` as `supabase_admin`.
+2. On the managed host, supautils lets `postgres` set `session_replication_role`
+   through its privileged-role settings. The stock lane refused this in three
+   files. The adapter now grants the native equivalent, `GRANT SET ON PARAMETER`.
+   Before these two fixes, the first comparison showed 277 assertion differences
+   in 18 files.
+3. The managed database uses ICU `en-US`, while the stock default is libc
+   `en_US.utf8`. The two order punctuation differently. No assertion depended on
+   it, but the server now initialises with ICU `en-US`. The snapshot orders ACLs
+   bytewise, so collation cannot hide a difference there.
+4. The managed `postgres` and `supabase_admin` search paths contain the literal
+   identifier `"\$user"`; the adapter copies it.
+
+Accepted fingerprint differences (160 rows, from
+`pgtap-parity.mjs diff` of the two fingerprints):
+
+- Roles of absent services and their memberships, settings, default ACLs and
+  ACL entries: `dashboard_user`, `pgbouncer`, and the `supabase_*_admin` roles
+  for etl, functions, privileged, read-only, realtime, replication and storage.
+- `supabase_admin`, `supabase_auth_admin` and `authenticator` are NOLOGIN
+  placeholders (D5). Their other attributes and settings match.
+  `authenticator` lacks the supautils/safeupdate preload.
+- The bootstrap superuser `ci_bootstrap` exists, and it owns `plpgsql`.
+- GoTrue-only `auth` tables, columns, indexes and constraints are absent.
+  `auth.users` keeps `id`, `email`, the two metadata columns, `is_sso_user` with
+  GoTrue's partial unique email index, and timestamps. `auth.identities` matches
+  GoTrue's columns.
+- The `auth` function bodies are byte-identical. Their ACLs are implicit rather
+  than explicit, and differ only by the absent `dashboard_user`.
+- Extensions: dblink is preinstalled (item 1). pg_cron reports control version
+  `1.6` for the same 1.6.4 build. `pg_stat_statements`, `pgcrypto`,
+  `uuid-ossp` and `supabase_vault` are absent, and nothing tested uses them.
+- Parameter ACLs: the `session_replication_role` grant (item 2) is present, and
+  the realtime `log_min_messages` grant is absent.
+- Preload libraries differ (`pg_cron` only, with no supautils). The CLI-only
+  `app.settings.jwt_*` database setting is absent. The ICU collation versions are
+  153.121 (managed) and 153.128 (stock).
+
+Vacuity audit: two assertions name identities that exist only through the
+adapter. `inherited_table_privilege_class_test.sql` checks the `supabase_admin`
+default ACL in `public`, and `inventory_recount_reserved_balances_test.sql`
+checks that `authenticator` cannot execute the operator recount. Both subjects
+carry the managed privileges, memberships and defaults, so each assertion still
+tests what its description says.
+
+Review repairs: the job restores the packages through a SHA-pinned
+`actions/cache` step (v6.1.0) keyed by the pin file, as D3 decided, and the runner
+re-verifies every cached file. Only a cold cache reaches the apt archive. The job
+never reuses main-push evidence, because `scripts/public-ci-reuse.mjs` does not
+cover its own merge-group result.
+
+Still open for W1: the first hosted `pgtap-postgres` run. The job is skipped on
+draft pull requests, as `pgtap` is.
+
+## W2 evidence
+
+Prepared on 2026-10-30 as a draft stacked on W1 (branch `claude/neutral-pgtap-w2`).
+It merges after W1, by the owner's 2026-10-30 instruction to merge the whole
+stack without the D6 shadow window.
+
+The switch:
+
+- The `pgtap` job keeps its context name, its non-required status and its
+  merge-group reuse. It now runs the stock runner, and the separate
+  `pgtap-postgres` job is removed. The job installs neither the Supabase CLI nor
+  npm dependencies. It keeps the GHCR login, because the stock image is pulled
+  mirror-first.
+- `scripts/public-ci-pgtap.mjs` is the stock runner. It keeps
+  `readManagedMigrationChain`, which other suites import, so the replay SQL and
+  the chain reader exist once. Its scratch output moves to `.context/scratch/pgtap/`.
+- Removed: the CLI runner path with its port probe, pre-pull and aliasing,
+  the native CLI installer script and its test, the five `cliImages` pins,
+  CLI derivation (`cliPin`, `cliImages`, `deriveCliImages`, `plannedImages`,
+  `pinnedCliImages`) and the read-only plan job of the mirror workflow, and the
+  parity tool's `cli-lane` driver and shim. The mirror job now reads only the
+  owned inventory, and its path filter lists only its own three inputs.
+  The shared pull loop and mirror resolution now refuse a tag-only input,
+  because the CLI lane was the only caller that supplied one.
+- The installer had no other consumer. The opt-in identity runners and the
+  subscription reference still require a locally installed Supabase CLI
+  2.122.0, and their documentation does not name the installer.
+- A subprocess lifecycle test drives the stock runner with stand-in `git` and
+  `docker`. It covers refusal of uncommitted chain bytes before any Docker call,
+  the transactional replay order, own-container removal after replay, readiness,
+  test and cleanup failures, and the exit codes for each.
+
+Local proof on the W2 tree, Docker Desktop on arm64:
+
+- `node scripts/public-ci-pgtap.mjs` exits 0 with 226 files and 5,199
+  assertions in about 20 s, including a cold package download.
+- `pgtap-parity.mjs compare` against the W1 CLI-lane TAP log is identical,
+  assertion by assertion. The catalog snapshot equals the W1 CLI snapshot, and
+  the fingerprint shows the same 160 accepted differences.
+- The `auth-uid-null` and `drop-rls-policy` sabotages fail, with 48 and 6
+  `not ok` results as in W1. No runner container is left behind.
+
+Still open for W2: the first green hosted `pgtap` run on the switched lane.
 
 ## Risks
 
@@ -308,9 +447,10 @@ On 2026-10-30 the owner asked for W1, W2 and W3 to be prepared by Claude Opus
 agents as draft pull requests, stacked one on another, with merges deferred until
 other sessions finish. This is the go-ahead for D1 and for W3 under D2.
 Every other decision provisionally takes the recommendation in the table above.
-D6's shadow window cannot start until W1 is merged, so W2 stays a draft until
-the window passes. Local parity evidence on the W1 branch is the pre-merge proof.
-Merging any wave remains an exact-PR owner act (D10).
+Later on 2026-10-30 the owner instructed merging the whole stack, #449 → #453 →
+#454 → #455, in order through the ordinary queue. That instruction is the
+exact-PR merge act for D10 and replaces D6's shadow-window wait. Local parity
+evidence on the W1 and W2 branches is the pre-merge proof.
 
 ## Documentation impact
 
