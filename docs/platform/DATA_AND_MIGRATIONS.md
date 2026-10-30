@@ -101,7 +101,9 @@ for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
 The managed source extractor inventories one disposable managed snapshot,
-including Auth identity metadata and Storage metadata relations. The capture
+including Auth identity metadata and Storage metadata relations.
+The managed source extractor is reference-source code and is not part of any
+published `@openlup/*` package. The capture
 login must be exempt from row security and able to read every relation; a login
 that row security would filter refuses instead of reading an empty source. It
 projects only the finite typed obligations into a qualified canonical target. Full

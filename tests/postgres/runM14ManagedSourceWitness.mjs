@@ -151,6 +151,117 @@ async function storageServiceLeg({ cli, cliEnv, directory, port, stack }) {
 }
 
 
+const managedJourneyExclusions = "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor";
+async function writeManagedConfig(directory, base, project, storage = false) {
+  const replacements = { PROJECT_ID: project, SHADOW_PORT: base, API_PORT: base + 1, DB_PORT: base + 2,
+    STUDIO_PORT: base + 3, MAIL_PORT: base + 4, POOLER_PORT: base + 9, APP_PORT: base + 10 };
+  const config = (await readFile(join(root, "config/public-reference-subscription-supabase.toml"), "utf8"))
+    .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key) => {
+      if (!Object.hasOwn(replacements, key)) throw new Error("Unknown managed witness config placeholder");
+      return String(replacements[key]);
+    }) + (storage ? "\n[storage]\nenabled = true\n[storage.s3_protocol]\nenabled = true\n" : "");
+  await mkdir(join(directory, "supabase"), { mode: 0o700 });
+  await writeFile(join(directory, "supabase/config.toml"), config, { mode: 0o600 });
+}
+
+// Keep the same finite archive cohort as m14ManagedCatchup.ts. PostgreSQL
+// serializes the full row, including timestamp/JSON values; JS never decodes it.
+const archivedRelations = ["payment_provider_settlement_batches", "payment_provider_settlement_items",
+  "commerce_idempotency_keys", "payment_external_refs", "admin_audit_events"];
+async function archiveRows(port, counts) {
+  const pool = new Pool({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`, max: 1 });
+  try {
+    await pool.query("SET TimeZone = 'UTC'; SET row_security = off; SET default_transaction_read_only = on");
+    const rows = {};
+    for (const relation of archivedRelations) {
+      rows[relation] = (await pool.query(`SELECT pg_catalog.to_jsonb(t)::text AS value
+        FROM public."${relation}" t ORDER BY pg_catalog.to_jsonb(t)::text COLLATE "C"`)).rows.map(row => row.value);
+      counts[relation] = rows[relation].length;
+      if (counts[relation] !== 1) throw new Error(`Archive row count differs: public.${relation} expected 1, got ${counts[relation]}`);
+    }
+    return rows;
+  } finally { await pool.end(); }
+}
+async function archiveWitness({ cli, cliEnv, directory, port, stack, job }) {
+  const journeyRows = Object.values(job.journey.journey.final.counts).reduce((sum, count) => sum + count, 0);
+  if (![187, 188].includes(journeyRows)) throw new Error(`Managed journey row count differs: ${journeyRows}`);
+  job.journeyRows = journeyRows;
+  const final = job.journey.journey.managedFirstLeg?.final;
+  if (final?.sourceWriterRetired !== true || archivedRelations.some(relation =>
+    !final.sourceArchive?.some(row => row.relation === `public.${relation}` && row.rows === 1 && row.disposition === "retained-history")))
+    throw new Error("Archive witness requires the journey's sealed retained-history source");
+  const archive = job.archive = { status: "FAIL", tool: `supabase ${version}`, sourceCounts: {}, restoredCounts: {},
+    dumpFiles: {}, commands: [], restoreTarget: { kind: "fresh-local-managed-stack-after-source-stop", image: job.sourceImage }, cleanup: "pending" };
+  const before = await archiveRows(port, archive.sourceCounts);
+  const url = `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`;
+  for (const [file, flags] of [["roles.sql", ["--role-only"]], ["schema.sql", []],
+    ["data.sql", ["--use-copy", "--data-only", "-x", "storage.buckets_vectors", "-x", "storage.vector_indexes"]]]) {
+    const path = join(directory, file);
+    await writeFile(path, "", { mode: 0o600 });
+    archive.commands.push(`supabase db dump --db-url <source-postgres-url> -f ${file}${flags.length ? " " + flags.join(" ") : ""}`);
+    try {
+      await execute(cli.binary, ["db", "dump", "--db-url", url, "-f", path, ...flags],
+        { cwd: root, env: cliEnv, timeout: 600_000, maxBuffer: 32 * 1024 * 1024 });
+    } catch (error) {
+      await writeFile(join(directory, "archive-dump.log"), error.stderr ?? "", { mode: 0o600 });
+      throw new Error(`Archive dump route refused: ${file}; inspect private archive-dump.log`);
+    }
+    await chmod(path, 0o600);
+    archive.dumpFiles[file] = { sha256: hash(await readFile(path)), mode: "0600" };
+  }
+  // The documented route's provider-owned grant refused on this pinned local
+  // stack (recorded finding); retain the original and remove only that line in a copy.
+  const expectedGrant = 'GRANT SET ON PARAMETER "log_min_messages" TO "supabase_realtime_admin";';
+  const roles = (await readFile(join(directory, "roles.sql"), "utf8")).split("\n");
+  const removed = roles.filter(line => line === expectedGrant);
+  if (removed.length !== 1 || removed[0] !== expectedGrant)
+    throw new Error("Archive roles copy requires exactly one expected provider grant line");
+  const rolesCopy = roles.filter(line => line !== expectedGrant).join("\n");
+  await writeFile(join(directory, "roles-restore.sql"), rolesCopy, { mode: 0o600 });
+  archive.rolesCopy = { file: "roles-restore.sql", sha256: hash(await readFile(join(directory, "roles-restore.sql"))),
+    originalSha256: archive.dumpFiles["roles.sql"].sha256, mode: "0600", removedLine: removed[0], removedLines: removed.length };
+  await stack.finish();
+  archive.sourceStopped = true;
+  const targetDirectory = join(directory, "archive-restore");
+  await mkdir(targetDirectory, { mode: 0o700 });
+  const targetProject = `m14archive${process.pid}${randomBytes(3).toString("hex")}`;
+  let targetBase;
+  do { targetBase = await portBlock(); } while (Math.abs(targetBase - (port - 2)) < 11);
+  await writeManagedConfig(targetDirectory, targetBase, targetProject);
+  Object.assign(archive.restoreTarget, { project: targetProject, workdir: targetDirectory, port: targetBase + 2 });
+  const target = `supabase_db_${targetProject}`;
+  const cleanup = ownedStackCleanup(options => {
+    try {
+      execFileSync(cli.binary, ["stop", "--workdir", targetDirectory, "--no-backup"],
+        { cwd: root, env: cliEnv, stdio: "ignore", ...options() });
+      const remaining = execFileSync("docker", ["ps", "-a", "--filter", `label=com.supabase.cli.project=${targetProject}`, "--format", "{{.ID}}"],
+        { encoding: "utf8", ...options() }).trim();
+      if (remaining) throw new Error("Archive restore stack containers remain");
+      archive.cleanup = "stopped-stack-and-confirmed-no-containers";
+    } catch { throw new Error("Archive restore owned-stack cleanup failed"); }
+  });
+  try {
+    await cleanup.start(cli.binary, ["start", "--workdir", targetDirectory, "--exclude", managedJourneyExclusions], { env: cliEnv });
+    const targetImage = (await command("docker", ["inspect", target, "--format", "{{.Image}}"])).trim();
+    if (targetImage !== job.sourceImage) throw new Error("Archive restore stack source-image pin differs");
+    archive.psqlVersion = (await command("docker", ["exec", target, "psql", "--version"])).trim();
+    for (const file of [...Object.keys(archive.dumpFiles), "roles-restore.sql"]) await command("docker", ["cp", join(directory, file), `${target}:/tmp/${file}`]);
+    const restore = ["--single-transaction", "--variable", "ON_ERROR_STOP=1", "--file", "/tmp/roles-restore.sql",
+      "--file", "/tmp/schema.sql", "--command", "SET session_replication_role = replica", "--file", "/tmp/data.sql",
+      "--dbname", "postgresql://postgres@127.0.0.1/postgres"];
+    archive.commands.push(`docker exec -e PGPASSWORD ${target} psql --single-transaction --variable ON_ERROR_STOP=1 --file /tmp/roles-restore.sql --file /tmp/schema.sql --command 'SET session_replication_role = replica' --file /tmp/data.sql --dbname <restore-postgres-url>`);
+    const restored = await cleanup.command("docker", ["exec", "-e", "PGPASSWORD", target, "psql", ...restore], { env: { ...env, PGPASSWORD: "postgres" } });
+    await writeFile(join(directory, "archive-restore.log"), restored.stdout + restored.stderr, { mode: 0o600 });
+    if (restored.error || restored.status !== 0) throw new Error("Archive restore route refused; inspect private archive-restore.log");
+    const after = await archiveRows(targetBase + 2, archive.restoredCounts);
+    for (const relation of archivedRelations)
+      if (JSON.stringify(after[relation]) !== JSON.stringify(before[relation]))
+        throw new Error(`Archive restored text differs: public.${relation}`);
+    archive.comparison = "exact PostgreSQL JSON text matches for all five relations";
+    archive.status = "PASS";
+  } finally { await cleanup.finish(); }
+}
+
 async function main() {
   const journeyImage = process.argv[2];
   if (process.argv.length !== 3 || !/^sha256:[a-f0-9]{64}$/u.test(journeyImage ?? ""))
@@ -173,15 +284,7 @@ async function main() {
     let stack;
     try {
       const base = await portBlock(), project = `m14source${process.pid}${randomBytes(3).toString("hex")}`;
-      const replacements = { PROJECT_ID: project, SHADOW_PORT: base, API_PORT: base + 1, DB_PORT: base + 2,
-        STUDIO_PORT: base + 3, MAIL_PORT: base + 4, POOLER_PORT: base + 9, APP_PORT: base + 10 };
-      const config = (await readFile(join(root, "config/public-reference-subscription-supabase.toml"), "utf8"))
-        .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key) => {
-          if (!Object.hasOwn(replacements, key)) throw new Error("Unknown managed witness config placeholder");
-          return String(replacements[key]);
-        }) + (label === "typed-source" ? "\n[storage]\nenabled = true\n[storage.s3_protocol]\nenabled = true\n" : "");
-      await mkdir(join(jobDirectory, "supabase"), { mode: 0o700 });
-      await writeFile(join(jobDirectory, "supabase/config.toml"), config, { mode: 0o600 });
+      await writeManagedConfig(jobDirectory, base, project, label === "typed-source");
       const cliEnv = { ...env, SUPABASE_INTERNAL_IMAGE_REGISTRY: "ghcr.io" };
       stack = ownedStackCleanup(options => {
         try {
@@ -192,7 +295,7 @@ async function main() {
       await stack.start(cli.binary, ["start", "--workdir", jobDirectory, "--exclude",
         label === "typed-source"
           ? "realtime,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"
-          : "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"], { env: cliEnv });
+          : managedJourneyExclusions], { env: cliEnv });
       job.sourceImage = (await command("docker", ["inspect", `supabase_db_${project}`, "--format", "{{.Image}}"])).trim();
       job.sourceRepoDigests = JSON.parse(await command("docker", ["image", "inspect", job.sourceImage, "--format", "{{json .RepoDigests}}"]));
       if (label === "typed-source") {
@@ -209,6 +312,8 @@ async function main() {
       const testEnv = { ...env, OPENLUP_M14_MANAGED_SOURCE_PORT: String(base + 2) };
       delete testEnv.OPENLUP_VITEST_EXCLUDE_FILE;
       await work(stack, testEnv, jobDirectory, job);
+      if (label === "managed-journey")
+        await archiveWitness({ cli, cliEnv, directory: jobDirectory, port: base + 2, stack, job });
       if (label === "typed-source")
         report.storage = await storageServiceLeg({ cli, cliEnv, directory: jobDirectory, port: base + 2, stack });
       job.status = "PASS";
