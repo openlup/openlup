@@ -1438,6 +1438,18 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-hosted-oidc-receipt.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-hosted-rds-receipt.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-hosted-s3-receipt.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-install-qualification.md",
       "class": "public-output"
     },
@@ -9210,14 +9222,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/install-supabase-cli-ci.sh",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/install-supabase-cli-ci.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/local-bff-soak-aggregation.ts",
       "class": "public-output"
     },
@@ -9574,15 +9578,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/public-ci-pgtap-postgres.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/public-ci-pgtap-postgres.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/public-ci-pgtap.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -11039,6 +11039,10 @@
     },
     {
       "path": "server/adapters/postgres/queryBuilder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/rdsControlRoles.ts",
       "class": "public-output"
     },
     {
@@ -26154,6 +26158,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/managedCompatPostgres.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -26498,6 +26506,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14HostedStorage.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14InstallQualification.test.ts",
       "class": "public-output"
     },
@@ -26531,6 +26543,10 @@
     },
     {
       "path": "tests/postgres/m14QualifiedSession.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RdsRecipe.mjs",
       "class": "public-output"
     },
     {

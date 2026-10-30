@@ -128,6 +128,50 @@ version/deletion operations in a separate versioned bucket and retains the
 transfer adapter's refusal of native version-history transfer. Unobserved
 elapsed lifecycle expiry remains explicitly unproved; hosted S3 stays pending.
 
+A separate `--target s3` invocation selects only hosted storage through the
+same runner; unrelated recipe sections remain pending. Its external mode-600
+JSON declares `schemaVersion: 1`, `target: "s3"`, `disposable: true`,
+declared `region` matching `^[a-z]{2}(-[a-z]+)+-\d+$`, `bucket`, a unique `prefix` of the form
+`m14-10o/<runId>/`, absolute external `lifecycleStatePath`, and exact
+`sourceCommit`/`sourceTree` Git identities. Other fields, endpoints, explicit
+keys and other namespace forms refuse. Run on the authorized Linux VM using
+its instance role through the SDK's instance-metadata path. The worker clears
+inherited environment and points shared AWS config/credential reads to `/dev/null`,
+so a local profile or credential process cannot supply the receipt. Transfer an exact Git
+archive, reconstruct its tracked index without credentials, and verify that
+index tree against the declaration before running. Build workspace packages
+first. The archive's original commit is operator-declared; the runner checks
+the actual index tree and unchanged source bytes. Exact target identities stay
+private; the receipt uses a neutral target label.
+
+If the private lifecycle continuity file is absent, the runner first requires
+an empty owned prefix, creates the two seed keys and saves their identities.
+A partial seed failure requires exact-prefix inspection and cleanup; it never
+automatically recreates a seed. Existing continuity files must be regular,
+user-owned, mode 600 and single-link; symlinks refuse. The file records the run prefix, UTC clock start,
+two dedicated keys and their exact version identities, including three
+noncurrent versions, plus planned checks. It is not a passing receipt. The first
+runner admission must observe all seeded noncurrent versions and the retained
+latest versions/marker. At each start the runner reads back an enabled applicable
+one-day noncurrent-expiry rule. It records PENDING-OBSERVATION until at least
+24 elapsed hours, a fresh check against surviving provider seed timestamps,
+a listing of zero noncurrent versions and explicit
+NoSuchVersion readbacks for every seeded old version, while
+retained latest objects/marker still exist. Resume the same declaration around
+T+26h and T+50h with new receipt destinations. A rule readback alone cannot PASS.
+After observation, every version and marker under the entire prefix is removed
+and zero of each is read back. Pending runs clean the functional subprefix and
+retain only the two lifecycle keys for the later observation. A killed process
+requires operator inspection and exact-prefix cleanup before another run.
+
+The `s3` and `hostedRecipes["10O"]` sections report the same executed storage
+result. Pending lifecycle keeps both PENDING-OBSERVATION; functional successes
+do not promote it to PASS. A final PASS includes whole-prefix cleanup and means
+**hosted S3 recipe receipt (single synthetic bucket, one region)**, never
+production qualification or an SLO. The [adapter owner](../../server/adapters/README.md#s3-object-source-preparation)
+describes the serving, host-grant, size/type and erasure proof limits. This
+source declaration does not itself record a successful hosted run.
+
 The host section uses distinct immutable A/B application images, actual HTTP/UI
 and restricted-runtime readback, durable immediate/scheduled outbox work,
 captured delivery commands and filesystem bytes. It checks restart, an admitted
@@ -172,11 +216,70 @@ removes only its own host containers, images, role, events and private state.
 The independent Netlify/PaaS candidate stays `PENDING`, owner `10H-paas`, reason
 `access not provided`. Missing access establishes no measured rejection.
 
-The same selector accepts `neon` and `rds` as target labels; it adds no provider
-logic or admission exception. Their actual endpoints, provider-role admission
-and hosted receipts remain unqualified until the corresponding parcels supply
-and exercise them. This is a workspace source proof, not an installed-current
-package, PgBouncer, hosted-provider or stable-framework qualification.
+The `rds` selector requires `layout: "serial-cluster"` and a declared AWS region. Its three
+installation entries name the same password-free URL, CA, `passwordEnv` and
+expected `incarnationSha256`. Supply that named variable only in the invoking
+process (`PGPASSWORD` or a name of the form `M14_<NAME>_PASSWORD`); runtime control
+variables such as `NODE_OPTIONS` refuse. The runner forwards only that variable
+from its environment, adds its own worktree-scoped temporary directory, and
+starts the isolated worker. Schema children receive their restricted connection
+through stdin and inherit no bootstrap password. No password belongs in the
+declaration. Its accepted fields are `schemaVersion`, `target`, `disposable`,
+`region`, `layout`, `installations` and `previousApplicationPath`. Each
+installation accepts `disposable`, `connectionString`, `passwordEnv`,
+`incarnationSha256` and `ca`; undeclared fields refuse at either level.
+The incarnation digest binds
+the JSON array of observed server address, port, postmaster-start text and
+bootstrap database OID text. It requires no `pg_control_system` privilege, is
+weaker than a system identifier and refuses after an incarnation change.
+Managed image identity has no OCI claim.
+
+The private-network worker checks both accessible baseline databases (the URL
+database and `postgres`) before each phase. Only those databases, the provider's
+`rdsadmin` database and the current test-created database may exist. Only the
+fixed stock RDS roles and the declared bootstrap may supplement PostgreSQL's
+predefined roles. Other client sessions refuse except `rdsadmin` sessions in
+the `rdsadmin` database. These are bounded provider exceptions, not arbitrary
+declaration-supplied catalogue exclusions. The worker creates a unique test
+database for each phase, removes it and its test roles, reads back absence and
+rechecks freshness before continuing; it never force-disconnects other sessions.
+
+Both installation modes carry the declared `target` and `layout` into 8C
+admission. Only the RDS serial-cluster selection admits provider authority
+without an elevated flag through declared `rds_superuser` membership. All other
+declared names still require elevated flags, including the other seven stock
+roles. The eight-name stock inventory is shared with the freshness check and
+excludes predefined-role edges only when both member and grantor are declared
+stock RDS roles. RDS schema proof
+uses the canonical restricted-generation prefix before
+the existing invoicing backfill, its real inside/between-unit kills, resume and
+previous application read/replay. This is not a released restricted-generation
+upgrade lineage; the existing released legacy path still requires SUPERUSER
+and remains the self-host proof. The restricted schema phase leaves its temporary
+application role and grants to the outer owned-database teardown; database drop
+removes the object dependencies before role removal and absence readback.
+Direct CA/hostname verification and wrong-host
+refusal are mandatory. The runtime client pool and deterministic affinity
+refusal do not qualify a hosted pooler: report "no pooler provisioned".
+
+Only executed initial phases and test-owned cleanup can produce
+`hostedRecipes["10R"].status: "PASS"`, with claim "hosted RDS PG16 recipe receipt
+(single synthetic instance)". Transfer and recovery remain PENDING, owner 10P.
+Other hosted sections and `neon` remain pending their own receipts. This is
+workspace source proof, not production qualification, an SLO, installed-current
+package support or a stable-framework qualification. The
+[RDS task record](plans/oss-m14-hosted-rds-receipt.md) records observed evidence;
+source availability alone establishes no hosted PASS.
+
+The separate `hosted-oidc` selection calls the same real-issuer lifecycle witness
+with a declared disposable HTTPS origin. Its declaration and teardown duties
+are in the [identity recipe](IDENTITY.md#real-issuer-oidc-recipe). Only the OIDC
+and hosted 10I sections pass after executed proof; all database, transfer,
+recovery, storage and host sections remain pending in that receipt. The local
+supporting database and browser do not establish hosted database qualification.
+TLS uses ordinary certificate-chain and hostname verification. Operator-owned
+VM containers, certificates and listeners need separately recorded teardown.
+This also removes any residual realm state after failed issuer provisioning.
 
 ## Runtime model
 

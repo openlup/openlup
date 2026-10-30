@@ -451,8 +451,18 @@ A host-declared trusted provider control plane may use a non-superuser bootstrap
 login with CREATEROLE and CREATEDB and named outside elevated roles. Admission
 checks that those roles do not enter the application role graph and keeps the
 application ownership, runtime/restore limits and selected catalogue checks.
-Local PG16 role emulation leaves actual hosted privilege behavior and provider
-role inventory for later hosted receipts.
+Only an explicit `target: "rds"`, `layout: "serial-cluster"` selection permits
+provider-defined authority without an elevated PostgreSQL role flag, and only
+through declared `rds_superuser` membership. Every other declared name still
+requires an elevated flag, including the other seven stock RDS roles. The fixed
+eight-role stock inventory is shared with the recipe freshness check.
+In that RDS mode, memberships into fixed PostgreSQL predefined roles are outside
+the application graph and its normalized inventory only when both member and
+grantor are declared stock RDS roles. Other selections retain the elevated-role
+requirement and exact predefined-role comparison. Edges into application roles
+remain subject to exact comparison; this exception cannot grant a migration,
+runtime or restore login provider membership. Local PG16 role emulation leaves
+actual hosted privilege behavior and provider inventory for hosted receipts.
 
 The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
 check the actual login, owner, held lock, protected role graph, default ACLs,
@@ -542,8 +552,11 @@ runs one host sweep: `OPENLUP_DISPOSABLE_REAP=remove` by default, `report` or `o
 CI disables the host sweep. Teardown and interrupted wrappers remove only their
 own fresh run ID through the same liveness rule without the age floor, including
 on CI.
-Supabase CLI and compose runners stop their own stacks once on interruption;
-after SIGKILL those stacks still need reviewed manual cleanup.
+The opt-in Supabase CLI and compose runners stop their own stacks once on
+interruption; after SIGKILL those stacks still need reviewed manual cleanup.
+The raw pgTAP runner starts one disposable-labelled stock PostgreSQL container
+and removes it on every exit path it controls. An interrupted run leaves that
+labelled container for the dead-owner sweep.
 
 A selected test may supply neutral settlement, format, provider, location and
 stock rows in its own transaction. Concurrency connections need the same declared
@@ -746,7 +759,8 @@ stock-seam claims. The zero-valued exposure hooks do not establish that parity.
 
 The lexer is only a pre-filter. The mandatory
 [real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
-uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies
+uses native PostgreSQL 16 and, for the managed rail, stock PostgreSQL 17 with
+pgTAP and the managed-compatibility adapter. Per rail it applies
 all committed rail files in filename order through the last pin, including
 unpinned files interleaved between pins. Pins use landed or fixture bytes exactly
 once; landed pins must form a prefix before the absent fixture suffix. A landed
@@ -1281,7 +1295,11 @@ binding; the ordinary offline test keeps it optional and cannot thereby claim
 compatible-code rollback. Killed child migrations receive their connection
 configuration through stdin, including verified TLS, without credential-bearing
 process arguments. The factored proof retains the same backfill, ledger,
-retained-row and subscription assertions; no new predecessor is invented.
+retained-row and subscription assertions. The RDS branch instead admits the
+restricted generation, stops its canonical runner at the prefix before the same
+backfill, then exercises those assertions and actual previous application code.
+That branch proves a restricted-prefix upgrade, not an upgrade from a released
+restricted predecessor. The released legacy history below is unchanged.
 
 The [released-history witness](../../tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
 selects the nearest published predecessor with an applicable portable data

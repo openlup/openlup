@@ -295,3 +295,41 @@ integration: two new full reviews and the complete current canonical command
 remain mandatory. Self-retro: do not place source-unchanged review behind a
 duplicate broad check; preserve the existing proof and spend the shared slot
 on the required post-review canonical gate. No control or proof gate is waived.
+
+
+The lead resumed final integration after the three hosted predecessors landed.
+The earlier unsigned proposed tree `09e43e6525ea52b55668c0415b9276b275135ffb`
+was confirmed preserved by WIP commit `1f078dad2663813c767ed169f0c87ecf580e06a9`
+before aborting that pending merge. No branch rewrite or ref deletion occurred.
+Current merge parents are `86eb361f0fc7c73479f32e3bd1220c66b1742209` and
+`18e1c9d3e1be45c6668923b71b21c7ef2317dc9a`; the resolved tree before this
+note is `ed64d92c7388c93e6a9b73e742e726d430df9c21`.
+CD-M14-74 covers the shared target list/usage, verbatim per-target early-return
+admission, refusal-label union, original execution blocks and isolated worker
+selection, single success-status check and catalogue union. The identical
+network import is retained once and main's filesystem import is retained.
+Runtime guidance inserts the owned Node paragraphs verbatim before main's RDS
+replacement of the preexisting paragraph; Node tests are appended verbatim to
+main's tests. No refusal predicate, host witness, claim or dependency changes.
+
+CD-M14-70 zero-context patch-ids against old main `78af32e4` and incoming main
+`18e1c9d3` are equal respectively for contribution guidance
+`20972cb760f175e4e13b68ba21217f9d0f1ae83e`, runtime guidance
+`f266589fee4d5cf28c7a3eb5367361a26fc766a5`, actor
+`e87726d70695e3601ecc0ba3e2b9ed5857dab7e7`, recipe tests
+`90e9eded9e8951958a29f46a642926ba86e3f985` and host witness
+`c524172faae7c2a2f1b57d3a84d56004da609acd`. Parsed catalogue net entries are
+also equal: exactly this task record added as `public-output`, none removed.
+Runner hunks and computed identities are preserved in private integration
+scratch. This evidence is recorded before the final review, as required by
+CD-M14-67; later mechanical-merge evidence belongs only in scratch and the PR.
+
+The pre-review follow-up is test-only under CD-M14-39: retain all prior
+assertions, add Node to the existing cross-target refusal matrix and add public
+and localhost trailing-dot origin refusals under CD-M14-63. No new fixture
+privilege, setup seam or production behavior. Netlify/PaaS remains PENDING by
+design, owner `10H-paas`, reason `access not provided`. The current grant now
+permits final verification, neutral PR, readiness, receipt and queue after PASS;
+the prior fourth-landing hold is satisfied. No hosted VM rerun is claimed.
+Self-retro: moving shared-runner integration → wait for predecessor landing,
+then preserve each admission branch and prove cross-target isolation once.
