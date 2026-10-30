@@ -138,6 +138,17 @@ The matching tree was DCO committed as `64c331ef13f78cc697a94f453d196623d36ab8d8
 This record cites the accepted computed identities without changing the
 accepted runner or control bytes.
 
+Native `prepare` refused carry-over after main moved. The required main merge
+is conflict-free, with parents `e733ca06040707c91d6fa33418db14543d8bc63c`
+and `4fd84bfead64e11f76e0555117fe072d39807182`. Its automatic merge tree
+before this task-record note is `04b94bdf971c7f5e751b2f9877595000390484b0`.
+No manual hunk was resolved and no separator or other glue was added. The parcel
+patch ID excluding this task record is
+`a5aca9c5679f17574581f592cc3fbdd03495ea2f` against both the old base and
+new main; main's catalogue additions were combined automatically. The merge
+preserves the accepted runner/control bytes and changes no claim. Full native
+review and full canonical verification remain required.
+
 Self-retro: check vendor provenance and a single execution UID before installing
 or launching a hosted fixture. Ambiguous provisioning can leave unconfirmed
 issuer state → require the existing dedicated-container teardown and absence

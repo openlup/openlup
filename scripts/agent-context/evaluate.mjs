@@ -1,7 +1,7 @@
 // Frozen static query smoke matrix, 2026-10-29. This is not an agent-outcome benchmark.
 // Usage: node scripts/agent-context/evaluate.mjs /absolute/cold-consumer-root
 // Reads installed artifacts only. No writes, network, package installation or dependencies.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
@@ -19,7 +19,7 @@ const tasks = Object.freeze([
   { id: 'no-match-not-absence', query: 'quantumBananaSeam', direct: 'quantumBananaSeam', absent: true },
 ]);
 
-const root = resolve(process.argv[2] ?? '.');
+const root = realpathSync(resolve(process.argv[2] ?? '.'));
 const cli = join(root, 'node_modules/@openlup/core/dist/agent-context-cli.js');
 const scope = join(root, 'node_modules/@openlup');
 for (const name of ['core', 'outbox', 'platform']) {
