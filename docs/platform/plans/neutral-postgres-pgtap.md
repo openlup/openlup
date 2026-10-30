@@ -1,7 +1,7 @@
 # Managed pgTAP on plain PostgreSQL
 
 Status: owner go-ahead on 2026-10-30 to prepare W1, W2 and W3 as stacked draft
-pull requests; merges wait for the owner. The recommendations below are the
+pull requests. The recommendations below are the
 provisional decisions (see [Recorded decisions](#recorded-decisions)). W1 adds
 the shadow lane. W2 is prepared as a draft stacked on W1 (see
 [W2 evidence](#w2-evidence)). On 2026-10-30 the owner instructed merging the
