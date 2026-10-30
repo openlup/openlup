@@ -31,7 +31,7 @@ function witness() {
   return { io, waits, pulls, local };
 }
 
-describe.each(["test-postgres", "managed-batch-postgres"])("mirror-first CI image pulls (offline): %s", name => {
+describe.each(["test-postgres", "install-proof-postgres"])("mirror-first CI image pulls (offline): %s", name => {
   const pin = readCiImage(name);
   it.each(pin.sources)("reuses the exact local index from %s before any pull", async source => {
     const { io, local, pulls, waits } = witness();

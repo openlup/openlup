@@ -4,6 +4,8 @@
 -- no runtime, installer or migration chain applies it. scripts/public-ci-pgtap.mjs
 -- runs it as the neutral bootstrap superuser on a disposable stock PostgreSQL 17
 -- server, before the shared prerequisites and the managed baseline replay.
+-- tests/helpers/managedCompatPostgres.ts applies it the same way for the
+-- managed-rail tests/postgres suites.
 --
 -- Every attribute, membership, setting, owner and grant below was recorded from
 -- the pinned managed image (supabase/postgres 17.11.0.006 under Supabase CLI
