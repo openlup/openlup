@@ -414,6 +414,20 @@ the discriminator with the fixed marker and any of the three fact reasons,
 then recomputing the digest, must be refused by readback. This only adds
 assertions within the existing real managed witness: no prior assertion was
 removed or relaxed, and no fixture privilege, setup step or seam was added.
+Native prepare refused carry-over after main moved. The forced DCO merge
+`b321cfa791441903892c9d5d6729ce0d422dd89e` has parents `58f9d1d40bdbff4cf805ac9db9f0568473e3f416`
+and `9b54219bb7fe4262e72c7581a478c9c381ef2ae7`, tree
+`7a0c2f2c411ebc3571a5593a89a22e9ccd0bc526`. Its only conflict was the
+compatible-data-transfer section: the managed paragraph and main's older-
+snapshot paragraph were kept verbatim, in that order, with a blank separator;
+stage-vs-main removed no main line. Under CD-M14-36, per-file stable patch IDs
+for every non-doc path remained equal before and after: CONTRIBUTING
+`095cdf33`, publication catalog `9426e400`, managed adapter `b647858f`,
+connected capture `eb02aabb`, connected restore `9b73c961`, managed test
+`e3ff71f7`, connected test `e4474696`. The server adapter README patch ID
+also remained `5199d62e`; the docs patch ID differs only because the two
+verbatim paragraphs share one hunk. No new claim or code/test resolution was
+made in the merge.
 
 The previous b88347f6 candidate over-minimised catalog content, invoice,
 pricing/template snapshots, order numbers and operational codes. This correction
