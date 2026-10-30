@@ -98,9 +98,17 @@ that archive only after their windows expire. The operator waits until
 outstanding idempotency windows expire and quiesces in-flight checkouts, then
 captures. Provider payment identifiers of settled payments are carried with
 the typed payment; provider reference rows of settled or terminal unpaid
-payments and their raw payloads stay in the operator archive. Nonempty unknown
-relations, incomplete typed obligations and other settlement or idempotency
-states refuse transfer. Managed Storage objects are not yet transferred;
+payments and their raw payloads stay in the operator archive. Failed payments
+are carried as typed failed settlement state; checked cancelled or expired
+checkouts stay in the archive while their pending order is carried. Carried
+settled transitions receive `invoicing_cutover` rows, so restored history opens
+no new document duty. A terminal checkout reminder keeps only its key on the
+carried unpaid order, so the target does not send it again. Carried subscriptions
+stay at static delivery admission `blocked`: a due renewal refuses before stock or
+payment and records that refusal for its schedule, so keep the renewal job off
+until the host binds an address. Any managed invoice state refuses, so the operator drains
+invoice work first. Nonempty unknown relations, incomplete typed obligations and
+other settlement or idempotency states refuse transfer. Managed Storage objects are not yet transferred;
 nonempty managed Storage refuses. A separate managed object projection is
 required before that source state can transfer. Source-keyed terminal effects
 do not become active target command keys. Managed capture is local evidence

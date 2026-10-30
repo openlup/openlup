@@ -124,8 +124,8 @@ beforeAll(async () => {
   await managed.owner.query(`INSERT INTO public.communication_permissions(contact_id,purpose,state,source)
     VALUES($1,'marketing_newsletter','suppressed','synthetic_fixture')`, [contactId]);
   await managed.owner.query(`INSERT INTO public.commerce_orders
-    (id,client_id,status,currency,subtotal_cents,total_cents,mode)
-    VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [orderId, clientId]);
+    (id,client_id,status,currency,subtotal_cents,total_cents,mode,created_at)
+    VALUES($1,$2,'pending_payment','XXX',900,900,'one_time',now()-interval '2 hours')`, [orderId, clientId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
     (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
@@ -214,6 +214,11 @@ beforeAll(async () => {
   await managed.owner.query(`INSERT INTO public.outbox_events
     (aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,processed_at)
     VALUES('commerce_order',$1,'synthetic.completed','source-outbox:1','{}','processed','2026-01-01')`, [orderId]);
+  await managed.owner.query(`INSERT INTO public.outbox_events
+    (aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,processed_at,error,metadata)
+    VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,$3::jsonb,'processed','2026-01-01','source-reminder-error',$4::jsonb)`,
+  [orderId, `checkout_recovery:1h:${orderId}`, JSON.stringify({ orderId, sourceOnly: "source-reminder-payload" }),
+    JSON.stringify({ source: "source-reminder-metadata" })]);
   await managed.owner.query("DELETE FROM public.communication_email_deliveries");
   await managed.owner.query(`INSERT INTO public.admin_audit_events
     (actor_admin_id,action,entity_type,entity_id,source,actor_kind)
@@ -263,6 +268,7 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(Object.keys(source).sort()).toEqual(["dispositions", "observation", "sha256", "sourceId"]);
   expect(source.dispositions.find(value => value.relation === "auth.users")?.rows).toBe(2);
   expect(source.dispositions.find(value => value.relation === "storage.objects")?.rows).toBe(0);
+  expect(source.dispositions.find(value => value.relation === "auth.identities")).toMatchObject({ disposition: "credential-excluded" });
   expect(source.dispositions.find(value => value.relation === "public.admin_audit_events"))
     .toMatchObject({ rows: 1, disposition: "retained-history", reason: "operator source archive; no transfer row" });
   for (const relation of ["public.payment_provider_settlement_batches", "public.payment_provider_settlement_items",
@@ -286,6 +292,13 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(mapped.packet.compatible.tables.find(value => value.table === "commerce_settlement_transitions")?.rows).toHaveLength(2);
   expect(mapped.packet.compatible.tables.find(value => value.table === "subscription_renewal_terms")?.rows).toHaveLength(1);
   expect(mapped.packet.owned.find(value => value.table === "subscription_lines")?.rows).toHaveLength(1);
+  // Each typed relation in the obligation table is populated here; the exact row comparison after restore proves it.
+  for (const table of ["clients", "subscriptions", "subscription_events", "subscription_renewal_term_lines", "subscription_cycles",
+    "commerce_order_items", "outbox_events", "catalog_products", "catalog_skus", "price_lists", "price_entries",
+    "communication_recipient_consents", "invoicing_cutover"]) {
+    const held = mapped.packet.compatible.tables.find(value => value.table === table) ?? mapped.packet.owned.find(value => value.table === table);
+    expect(held?.rows.length, table).toBeGreaterThan(0);
+  }
   const keyBefore = (await targetOwner!.query(
     "SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
   expect(await restoreConnectedNativeStore({ owner: targetOwner!, installation: selection,
@@ -298,6 +311,14 @@ it("projects typed managed obligations and leaves source history in the operator
       { id: paidIntentId, status: "settled", amount_minor: "900" }]));
   expect((await targetOwner!.query("SELECT external_ref FROM public.commerce_settlement_intents WHERE id=$1", [paidIntentId])).rows)
     .toEqual([{ external_ref: "provider-paid:1" }]);
+  // Carried settled history sits before the target's invoicing boundary: no new document duty can open.
+  const settledTransitions = (await targetOwner!.query<{ id: string }>(
+    "SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [paidIntentId])).rows;
+  expect(settledTransitions).toHaveLength(1);
+  expect((await targetOwner!.query("SELECT source_kind,source_id FROM public.invoicing_cutover")).rows)
+    .toEqual([{ source_kind: "paid", source_id: settledTransitions[0]!.id }]);
+  expect((await targetOwner!.query("SELECT source_kind FROM public.invoicing_due_sources")).rows).toEqual([]);
+  expect((await targetOwner!.query("SELECT id FROM public.invoicing_duties")).rows).toEqual([]);
   for (const abandoned of abandonedCases) {
     expect((await targetOwner!.query("SELECT id,status FROM public.commerce_orders WHERE id=$1", [abandoned.orderId])).rows)
       .toEqual([{ id: abandoned.orderId, status: "pending_payment" }]);
@@ -310,6 +331,23 @@ it("projects typed managed obligations and leaves source history in the operator
     .toEqual([{ relation: null }]);
   expect((await targetOwner!.query("SELECT subscription_id,delivery_admission FROM public.subscription_renewal_terms")).rows)
     .toEqual([{ subscription_id: subscriptionId, delivery_admission: "blocked" }]);
+  // A carried subscription can fall due; the static block reaches the runner, whose refusal subscriptionComposition proves.
+  expect((await targetOwner!.query("SELECT public.subscription_stock_wait_normal_due(50,'2100-01-01') AS due")).rows[0].due)
+    .toEqual([expect.objectContaining({ subscription_id: subscriptionId, delivery_admission: "blocked",
+      delivery_block_reason: "managed-source-address-binding-required" })]);
+  expect((await targetOwner!.query("SELECT id FROM public.subscription_renewal_operations")).rows).toEqual([]);
+  // The carried reminder key stops a second reminder; without it the same carried order qualifies.
+  const reminderKey = `checkout_recovery:1h:${orderId}`;
+  const enqueueReminders = "SELECT public.commerce_enqueue_checkout_recovery_reminders(10) AS result";
+  expect((await targetOwner!.query("SELECT status,payload,error,metadata FROM public.outbox_events WHERE idempotency_key=$1", [reminderKey])).rows)
+    .toEqual([{ status: "processed", payload: {}, error: null, metadata: {} }]);
+  expect((await targetOwner!.query(enqueueReminders)).rows).toEqual([{ result: { enqueued_1h: 0, enqueued_20h: 0 } }]);
+  const reminderProbe = await targetOwner!.connect();
+  try {
+    await reminderProbe.query("BEGIN");
+    await reminderProbe.query("DELETE FROM public.outbox_events WHERE idempotency_key=$1", [reminderKey]);
+    expect((await reminderProbe.query(enqueueReminders)).rows).toEqual([{ result: { enqueued_1h: 1, enqueued_20h: 0 } }]);
+  } finally { await reminderProbe.query("ROLLBACK"); reminderProbe.release(); }
   expect((await targetOwner!.query("SELECT recipient_fingerprint,purpose,state FROM public.communication_recipient_consents")).rows)
     .toEqual([{ recipient_fingerprint: createHash("sha256").update(email).digest("hex"),
       purpose: "marketing_newsletter", state: "suppressed" }]);
@@ -320,6 +358,7 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(JSON.stringify(mapped.packet)).not.toContain("source-expired:1");
   for (const sourceOnly of [settledRefId, unpaidRefId, "source-session:paid", "source-session:unpaid",
     "settled-raw-payload-marker", "unpaid-raw-payload-marker",
+    "source-reminder-payload", "source-reminder-error", "source-reminder-metadata",
     ...abandonedCases.flatMap(value => [value.paymentId, value.intentId, value.attemptId,
       value.transitionId, value.refId, `abandoned-raw:${value.status}`])])
     expect(JSON.stringify(mapped.packet)).not.toContain(sourceOnly);
@@ -575,6 +614,149 @@ it("refuses a cancelled checkout with captured money, an active attempt or linke
   [itemId, settlementBatchId, cancelled.intentId, cancelled.paymentId]);
   try { await refuses(); }
   finally { await managed.owner.query("DELETE FROM public.payment_provider_settlement_items WHERE id=$1", [itemId]); }
+});
+
+const mapSource = async () => mapManagedRetainedBusiness({ capture: await capture(),
+  issuer: "https://issuer.example.invalid/managed", freshTarget: freshBaseline, targetOwner: targetOwner! });
+
+// Refusal fixtures need only the row to exist, so foreign keys to unrelated rails stay out of the way.
+async function unchecked(sql: string, params: unknown[]) {
+  const client = await managed.owner.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL session_replication_role=replica");
+    await client.query(sql, params);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
+async function withRow(sql: string, params: unknown[], cleanup: string, cleanupParams: unknown[], check: () => Promise<void>) {
+  await unchecked(sql, params);
+  try { await check(); }
+  finally { await unchecked(cleanup, cleanupParams); }
+}
+
+it("refuses every invoice state and every uncarried obligation relation", async () => {
+  const cycle = (await managed.owner.query<{ id: string }>(
+    "SELECT id FROM public.subscription_cycles WHERE subscription_id=$1 LIMIT 1", [subscriptionId])).rows[0]!;
+  const invoiceId = randomUUID(), caseId = randomUUID();
+  const invoice = `INSERT INTO public.accounting_invoices
+    (id,order_id,order_ref,invoice_ref,currency,buyer_snapshot,order_snapshot,tax_snapshot,lines_snapshot,total_net_cents,total_gross_cents,status)
+    VALUES($1,$2,'order-ref','invoice-ref','XXX','{}','{}','{}','[]',833,900,$3)`;
+  for (const status of ["issue_requested", "issued"]) {
+    await withRow(invoice, [invoiceId, paidOrderId, status], "DELETE FROM public.accounting_invoices WHERE id=$1", [invoiceId],
+      () => expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table", table: "public.accounting_invoices" }));
+  }
+  await withRow(invoice, [invoiceId, paidOrderId, "issue_requested"], "DELETE FROM public.accounting_invoices WHERE id=$1", [invoiceId], async () => {
+    for (const [relation, sql, params] of [
+      ["accounting_invoice_issue_outbox", "(invoice_id,provider_kind) VALUES($1,'invoice-provider')", [invoiceId]],
+      ["accounting_invoice_correction_outbox", "(invoice_id,provider_kind,correction_reason) VALUES($1,'invoice-provider','reason')", [invoiceId]],
+      ["accounting_invoice_delivery_outbox", "(invoice_id,provider_kind) VALUES($1,'invoice-provider')", [invoiceId]],
+      ["accounting_invoice_operations", "(invoice_id,operation) VALUES($1,'issue')", [invoiceId]],
+    ] as const) {
+      await withRow(`INSERT INTO public.${relation} ${sql}`, [...params], `DELETE FROM public.${relation} WHERE invoice_id=$1`, [invoiceId],
+        () => expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table", table: `public.${relation}` }));
+    }
+  });
+  for (const [relation, sql, params] of [
+    ["commerce_payment_reconciliation_runs", "(provider,local_status,provider_status,idempotency_key,payment_intent_id) VALUES('p','a','b','run:1',$1)", [paidIntentId]],
+    ["communication_provider_events", "(provider_kind,provider_event_id,event_type) VALUES('p','event:1','subscribe')", []],
+    ["communication_permission_events", "(contact_id,purpose,state,source) VALUES($1,'marketing_newsletter','granted','synthetic_fixture')", [contactId]],
+  ] as const) {
+    await withRow(`INSERT INTO public.${relation} ${sql}`, [...params], `DELETE FROM public.${relation}`, [],
+      () => expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table", table: `public.${relation}` }));
+  }
+  // A delivery event has no owner resolver, so a populated one refuses at capture.
+  await withRow(`INSERT INTO public.communication_delivery_events(idempotency_key,transition,attempt_count,operator_id)
+    VALUES('delivery:1','attempted',1,$1)`, [randomUUID()], "DELETE FROM public.communication_delivery_events", [],
+  () => expect(mapSource()).rejects.toMatchObject({ table: "public.communication_delivery_events" }));
+  await withRow(`INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,order_id,payment_intent_id,client_id,retry_attempt)
+    VALUES($1,$2,$3,$4,$5,$6,1)`, [caseId, subscriptionId, cycle.id, paidOrderId, paidIntentId, clientId],
+  "DELETE FROM public.subscription_dunning_cases WHERE id=$1", [caseId], async () => {
+    await expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table", table: "public.subscription_dunning_cases" });
+    // A notification cannot exist without its case, and the populated pair still refuses.
+    await withRow(`INSERT INTO public.subscription_dunning_notifications
+      (case_id,subscription_id,cycle_id,order_id,payment_intent_id,recipient_kind,notification_kind,template_slug,idempotency_key)
+      VALUES($1,$2,$3,$4,$5,'customer','payment_failed','t','notification:1')`, [caseId, subscriptionId, cycle.id, paidOrderId, paidIntentId],
+    "DELETE FROM public.subscription_dunning_notifications WHERE case_id=$1", [caseId],
+    () => expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table" }));
+  });
+});
+
+it("refuses settlement rows that contradict the settled money they describe", async () => {
+  const item = "UPDATE public.payment_provider_settlement_items SET";
+  const batch = "UPDATE public.payment_provider_settlement_batches SET";
+  const itemWhere = `WHERE batch_id='${settlementBatchId}'`, batchWhere = `WHERE id='${settlementBatchId}'`;
+  for (const [apply, undo] of [
+    [[`${item} gross_cents=901,net_cents=901 ${itemWhere}`, `${batch} gross_cents=901,net_cents=901 ${batchWhere}`],
+      [`${item} gross_cents=900,net_cents=900 ${itemWhere}`, `${batch} gross_cents=900,net_cents=900 ${batchWhere}`]],
+    [[`${item} fee_cents=1,net_cents=899 ${itemWhere}`], [`${item} fee_cents=0,net_cents=900 ${itemWhere}`]],
+    [[`${batch} gross_cents=901,net_cents=901 ${batchWhere}`], [`${batch} gross_cents=900,net_cents=900 ${batchWhere}`]],
+    [[`${item} provider_payment_id='provider-paid:other' ${itemWhere}`], [`${item} provider_payment_id='provider-paid:1' ${itemWhere}`]],
+    [[`${item} currency='YYY' ${itemWhere}`, `${batch} currency='YYY' ${batchWhere}`],
+      [`${item} currency='XXX' ${itemWhere}`, `${batch} currency='XXX' ${batchWhere}`]],
+    [[`${item} provider_kind='other-provider' ${itemWhere}`, `${batch} provider_kind='other-provider' ${batchWhere}`],
+      [`${item} provider_kind='synthetic-provider' ${itemWhere}`, `${batch} provider_kind='synthetic-provider' ${batchWhere}`]],
+  ]) {
+    for (const sql of apply!) await managed.owner.query(sql);
+    try { await expect(mapSource()).rejects.toMatchObject({ code: "target_conflict" }); }
+    finally { for (const sql of undo!) await managed.owner.query(sql); }
+  }
+});
+
+it("refuses a method in verification while an ended method stays source history", async () => {
+  const methodId = randomUUID();
+  const method = `INSERT INTO public.commerce_payment_method_refs
+    (id,client_id,subscription_id,provider_kind,method_kind,provider_method_ref,status,active)
+    VALUES($1,$2,$3,'synthetic-provider','card','method:other',$4,false)`;
+  await managed.owner.query(method, [methodId, clientId, subscriptionId, "pending_verification"]);
+  try { await expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table", table: "public.commerce_payment_method_refs" }); }
+  finally { await managed.owner.query("DELETE FROM public.commerce_payment_method_refs WHERE id=$1", [methodId]); }
+  await managed.owner.query(method, [methodId, clientId, subscriptionId, "revoked"]);
+  try { await expect(mapSource()).resolves.toBeDefined(); }
+  finally { await managed.owner.query("DELETE FROM public.commerce_payment_method_refs WHERE id=$1", [methodId]); }
+});
+
+it("keeps an ended price agreement as source history", async () => {
+  const agreementId = randomUUID();
+  await managed.owner.query(`INSERT INTO public.subscription_price_agreements
+    (id,subscription_id,subscription_line_id,variant_id,currency,unit_price_gross_minor,template_version,source_action,idempotency_key,started_at,ended_at)
+    VALUES($1,$2,$3,$4,'XXX',90,1,'synthetic_setup','source-price-agreement:ended','2025-01-01','2026-01-01')`, [agreementId, subscriptionId, lineId, skuId]);
+  try {
+    const mapped = await mapSource();
+    expect(JSON.stringify(mapped.packet)).not.toContain(agreementId);
+  } finally { await managed.owner.query("DELETE FROM public.subscription_price_agreements WHERE id=$1", [agreementId]); }
+});
+
+it("keeps a paid order's checkout reminder as source history", async () => {
+  const key = `checkout_recovery:1h:${paidOrderId}`;
+  await withRow(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,processed_at)
+    VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,'{}','processed','2026-01-01')`, [paidOrderId, key],
+  "DELETE FROM public.outbox_events WHERE idempotency_key=$1", [key], async () => {
+    expect(JSON.stringify((await mapSource()).packet)).not.toContain(key);
+  });
+});
+
+it("refuses a cancelled checkout whose intent contradicts its order or names a subscription", async () => {
+  const cancelled = abandonedCases.find(value => value.status === "cancelled")!;
+  const refuses = () => expect(mapSource()).rejects.toMatchObject({ code: "unsupported_table", table: "public.payment_external_refs" });
+  const cycle = (await managed.owner.query<{ id: string }>(
+    "SELECT id FROM public.subscription_cycles WHERE subscription_id=$1 LIMIT 1", [subscriptionId])).rows[0]!;
+  await managed.owner.query(`UPDATE public.commerce_payment_intents SET target_kind='subscription_cycle',subscription_id=$2,subscription_cycle_id=$3 WHERE id=$1`,
+    [cancelled.intentId, subscriptionId, cycle.id]);
+  try { await refuses(); }
+  finally { await managed.owner.query(`UPDATE public.commerce_payment_intents SET target_kind='one_time_order',subscription_id=NULL,subscription_cycle_id=NULL WHERE id=$1`,
+    [cancelled.intentId]); }
+  for (const relation of ["commerce_payment_intents", "commerce_payments", "commerce_payment_attempts"]) {
+    await managed.owner.query(`UPDATE public.${relation} SET amount_cents=901 WHERE ${relation === "commerce_payment_intents" ? "id" : relation === "commerce_payments" ? "id" : "payment_intent_id"}=$1`,
+      [relation === "commerce_payments" ? cancelled.paymentId : cancelled.intentId]);
+  }
+  try { await refuses(); }
+  finally {
+    for (const relation of ["commerce_payment_intents", "commerce_payments", "commerce_payment_attempts"]) {
+      await managed.owner.query(`UPDATE public.${relation} SET amount_cents=900 WHERE ${relation === "commerce_payment_intents" ? "id" : relation === "commerce_payments" ? "id" : "payment_intent_id"}=$1`,
+        [relation === "commerce_payments" ? cancelled.paymentId : cancelled.intentId]);
+    }
+  }
 });
 
 it("refuses unknown nonempty relations and uncarried Storage metadata", async () => {

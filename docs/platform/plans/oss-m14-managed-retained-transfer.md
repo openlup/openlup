@@ -262,7 +262,7 @@ witnesses serialize the sidecar and verify readback removes a cross-linked row.
 | `communication_provider_events` | typed contact ID only; normalized email is not a link | Nonempty class R before publication. No email inference. | X | map refusal |
 | `communication_delivery_events` | operator, command/recipient key | Parent command/operator tables outside profile; nonempty rows refuse. | X | capture refusal |
 | `communication_email_deliveries` | client, contact, Auth, outbox, aggregate | U; missing populated link refuses. Other service parents require unknown nonempty tables and refuse. | H; mapped trigger stays in native `outbox_events` | W0, W1 |
-| `outbox_events` | typed aggregate order/subscription only | U; missing populated aggregate refuses. Payload is minimised as a whole, so JSON IDs neither survive nor add sidecar subject tags; pending payload is checked in native projection. | H+N(`outbox_events`; pending); H terminal | W0, W2; CD-M14-43 JSON witness |
+| `outbox_events` | typed aggregate order/subscription only | U; missing populated aggregate refuses. Payload is minimised as a whole, so JSON IDs neither survive nor add sidecar subject tags; pending payload is checked in native projection. | H+N(`outbox_events`; pending); H terminal, except the CD-M14-78 checkout reminder key, carried without payload, error or metadata | W0, W2; CD-M14-43 JSON witness |
 | `commerce_idempotency_keys` | none retained | Metadata JSON is minimised as a whole; its client ID is absent from the sidecar, so the structural receipt has no subject tag. | H (subject-free retained receipt) | W0; CD-M14-43 marker witness |
 | `payment_provider_settlement_items` / `payment_provider_settlement_batches` | intent, payment, invoice; batch's items | S: populated item links must resolve to same order; cross-order is a money-integrity anomaly. Batch unions item owners; all-null item refuses for 8D-2. | H; native settlement/intents and invoicing duties remain | W0 |
 
@@ -526,9 +526,8 @@ own ordinary restore admission.
 | `public.commerce_orders`, `public.commerce_order_items` | a | canonical order state |
 | `public.commerce_payments`, `public.commerce_payment_intents`, `public.commerce_payment_state_transitions`: carried / checked cancelled or expired | a / b | native settlement state / terminal unpaid source history |
 | `public.commerce_payment_attempts`: checked terminal / other | b / c | failed transition typed; checked cancelled/expired attempt archived; unresolved attempt refused |
-| `public.outbox_events`: pending checked / terminal / other | a / b / c | pending native duty / archive / unsupported duty |
-| `public.accounting_invoice_issue_outbox`, linked `public.accounting_invoices` | a | native invoicing duty and facts |
-| `public.accounting_invoices` without typed issue duty | c | uncarried invoice state |
+| `public.outbox_events`: pending checked / terminal / other | a / b / c | pending native duty / archive, except the CD-M14-78 checkout reminder key / unsupported duty |
+| `public.accounting_invoice_issue_outbox`, `public.accounting_invoices` | c | superseded by CD-M14-78: any invoice state refuses |
 | `public.communication_permissions` | a | native recipient consent |
 | `public.communication_contacts`, `public.communication_contact_links` | b | typed consent uses them; source rows stay archived |
 | `public.communication_email_deliveries`: terminal failed / active or other | b / c | terminal history / uncarried send state |
@@ -544,9 +543,9 @@ own ordinary restore admission.
 The matrix is row-class sensitive for mixed relations: a pending outbox is
 typed while a terminal one is history only. A revoke audit is typed while
 other admin audit actions remain in the source archive. A delivery tied to
-pending send state refuses; terminal failed delivery is archive only. The
-invoice-duty projection remains in code, and reconciled/matched provider rows
-can now remain in the source archive after settled money is projected. The
+pending send state refuses; terminal failed delivery is archive only.
+Reconciled/matched provider rows can remain in the source archive after settled
+money is projected. The
 existing owner-link resolver still rejects unresolved populated links and
 cross-order settlement conflicts before publication. No credential row is
 selected. Empty unknown relations are explicitly `unsupported-empty`.
@@ -971,3 +970,65 @@ The CD-M14-77 read covered tree `7daee22b09ff4ddc043d0d326e550e65fb5db281` and
 SHA-256 `fe19117e178136a7c1192355cc9a402e9ba0b16e5a84e4f06a43512d7522698d` for
 `git diff --binary 3f4e802e 7daee22b`; both computed identities matched. It was
 DCO-committed exactly as `7f18855f`.
+
+## CD-M14-78 obligation table and invoice narrowing
+
+Native cycle 12 closed both provider-identity cards and confirmed the column matrix,
+then raised non-privacy findings. Their common cause: the option C cut removed most of
+the earlier witnesses, and earlier cycles concentrated on privacy. CD-M14-78 resolves
+them in one bundle and extends the closed-list method from columns to obligations.
+
+Decision (option R): the invoice-duty projection is removed. It was reachable only in a
+synthetic state, because real issue requests also write `accounting_invoice_operations`,
+which refuses. Any managed invoice state now refuses, and the operator drains invoice
+work before capture. Other repairs: carried settled transitions receive
+`invoicing_cutover` rows, so restored history opens no new document duty; a method in
+`pending_verification` refuses; a checked cancelled or expired checkout must also agree
+with its order and name no subscription; a matched settlement item must agree with the
+settled intent's currency and the payment's provider.
+
+Every relation in the capture's finite lists has one row below. Tests are in
+`tests/postgres/connectedManagedRetained.test.ts`, by title, unless named otherwise. A
+later material finding must show a wrong row or a missing relation.
+
+| Relation | Disposition | Proving test |
+| --- | --- | --- |
+| `auth.users` | Metadata; typed identity | projects typed managed obligations |
+| `auth.identities`, `auth.sessions`, `auth.refresh_tokens`, `auth.flow_state`, `auth.one_time_tokens`, `auth.mfa_factors`, `auth.mfa_challenges`, `auth.audit_log_entries` | Credential-excluded; counted, never selected | projects typed managed obligations (`auth.identities`); the rest share the same list and branch |
+| Service migration tables and `_realtime.*` in the installation list | Service installation history; counted | Same list and branch as above; `_realtime.feature_flags` handled by the real-source runner |
+| `public.clients`, `public.admin_users` | Typed | projects typed managed obligations; refuses conflicting mapped fields |
+| `public.identity_privacy_erasures`, `public.customer_subject_lifecycle_events` | Typed through the item 7 mapping | `tests/postgres/connectedStoreTransfer.test.ts` managed identity cases |
+| `public.admin_audit_events` | Revoke typed through item 7; other actions archive-only | projects typed managed obligations; `connectedStoreTransfer.test.ts` |
+| `public.catalog_products`, `catalog_skus`, `price_lists`, `price_entries` | Typed | projects typed managed obligations |
+| `public.subscriptions`, `subscription_lines`, `subscription_cycles`, `subscription_events` | Typed | projects typed managed obligations |
+| `public.subscription_price_agreements` | Current typed; ended archive-only | projects typed managed obligations; keeps an ended price agreement |
+| `public.commerce_payment_method_refs` | Active typed; ended archive-only; verification refuses | refuses a method in verification |
+| `public.commerce_orders`, `commerce_order_items` | Typed | projects typed managed obligations |
+| `public.commerce_payments`, `commerce_payment_intents`, `commerce_payment_attempts`, `commerce_payment_state_transitions` | Column matrix above | projects typed managed obligations; refuses a carried payment attempt; both cancelled-checkout tests |
+| `public.outbox_events` | Pending checked typed; terminal checkout reminder key typed without payload, error or metadata; other terminal archive-only; other refuses | projects typed managed obligations; keeps a paid order's checkout reminder |
+| `public.communication_permissions`, `communication_contacts`, `communication_contact_links` | Consent typed; contact rows archive-only | projects typed managed obligations |
+| `public.communication_email_deliveries` | Terminal failed archive-only; active refuses | refuses non-reconciled settlement and active delivery |
+| `public.commerce_idempotency_keys` | Completed and expired archive-only; other refuses | projects typed managed obligations; refuses conflicting mapped fields |
+| `public.payment_provider_settlement_batches`, `payment_provider_settlement_items` | Reconciled and matched archive-only; other or contradictory refuses | projects typed managed obligations; refuses non-reconciled settlement; refuses settlement rows that contradict |
+| `public.payment_external_refs` | Matching settled or checked unpaid archive-only; other refuses | refuses in-flight, mismatched, extra and unmapped provider reference |
+| `public.accounting_invoices`, `accounting_invoice_issue_outbox`, `accounting_invoice_operations`, `accounting_invoice_correction_outbox`, `accounting_invoice_delivery_outbox` | Refuses | refuses every invoice state and every uncarried obligation relation |
+| `public.commerce_payment_reconciliation_runs`, `communication_delivery_events`, `communication_provider_events`, `communication_permission_events`, `subscription_dunning_cases`, `subscription_dunning_notifications` | Refuses | refuses every invoice state and every uncarried obligation relation |
+| `storage.buckets`, `storage.objects` | Refuses when nonempty; current limitation | refuses unknown nonempty relations and uncarried Storage metadata |
+| Any other relation | Refuses when nonempty; empty is `unsupported-empty` | refuses unknown nonempty relations and uncarried Storage metadata |
+
+Carried settled history opening new work: `invoicing_due_sources` is empty after restore
+(projects typed managed obligations). A static read of the platform's other due readers,
+with no run against a restored store, found two that reach carried managed rows:
+
+| Due reader | Carried rows | Result | Proof |
+| --- | --- | --- | --- |
+| Automatic renewal (`subscription_stock_wait_normal_due`) | Active subscription at or past `next_cycle_at` | Static admission `blocked` refuses before stock or payment, and a run records a terminal refusal for that schedule. The documented rule is to keep the renewal job off until the host binds an address | projects typed managed obligations (due row and blocked reason); `tests/postgres/subscriptionComposition.test.ts` `static` scenario (refusal, no provider call) |
+| Checkout reminder (`commerce_enqueue_checkout_recovery_reminders`) | Unpaid order with a failed intent, 1 to 24 hours old | A terminal source reminder keeps only its key, so no second reminder. An order the source never reminded gets its first one, as it would have on the source | projects typed managed obligations (with and without the key); keeps a paid order's checkout reminder |
+
+Carried pending paid-fulfilment and subscription-welcome rows continue their own work by
+design. Two read models report carried paid orders as missing their paid event
+(`order_paid_outbox_missing`); they write nothing and no native route composes them, so
+this is a recorded finding only. The other readers need relations outside
+the managed lists (shipments, pause windows, activations, retry obligations, draft
+receipts, wait cases, promotion claims), so no carried row can qualify. Native restore is
+outside this item.

@@ -141,8 +141,13 @@ idempotency receipts after expiry remain in that archive; the operator waits
 until outstanding idempotency windows expire and quiesces in-flight checkouts,
 then captures. Provider payment identifiers of settled payments are carried
 with the typed payment; provider reference rows of settled or terminal unpaid
-payments and their raw payloads stay in the operator archive. Other settlement
-or idempotency states refuse. Managed Storage objects are not yet transferred;
+payments and their raw payloads stay in the operator archive. Carried settled
+transitions receive `invoicing_cutover` rows, so restored history opens no new
+document duty. A terminal checkout reminder keeps only its key on the carried
+unpaid order. Carried subscriptions stay at static delivery admission `blocked`;
+keep the renewal job off until the host binds an address.
+Any managed invoice state refuses. Other settlement or idempotency
+states refuse. Managed Storage objects are not yet transferred;
 nonempty managed Storage refuses pending a typed object projection. Unknown
 nonempty relations and source state that the typed path cannot carry also
 refuse before restore. This local adapter does not prove provider service access

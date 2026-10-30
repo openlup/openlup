@@ -119,8 +119,8 @@ async function main() {
     await writeFile(join(directory, "test.log"), test.stdout, { mode: 0o600 });
     const result = JSON.parse(await readFile(resultPath, "utf8"));
     report.tests = result.testResults.flatMap(file => file.assertionResults.map(test => [test.fullName, test.status]));
-    if (report.tests.length !== 7 || report.tests.some(([, status]) => status !== "passed"))
-      throw new Error("Real managed source requires all seven assertions to pass; no skips");
+    if (report.tests.length !== 13 || report.tests.some(([, status]) => status !== "passed"))
+      throw new Error("Real managed source requires all thirteen assertions to pass; no skips");
     report.status = "PASS";
   } catch (error) { report.error = error.message; }
   finally {
