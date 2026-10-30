@@ -351,8 +351,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      # Restore the checksum-pinned packages; the runner re-verifies every cached file.
+      - name: Restore pinned PostgreSQL test packages
+        if: steps.reused.outputs.reuse != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .context/scratch/cache/pgtap-debs
+          key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
       - name: Every shipped pgTAP test on stock PostgreSQL with the managed-compat adapter
         if: steps.reused.outputs.reuse != 'true'
+        env:
+          OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
         run: node scripts/public-ci-pgtap.mjs
 
   native-review:

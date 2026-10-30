@@ -340,10 +340,14 @@ checks that `authenticator` cannot execute the operator recount. Both subjects
 carry the managed privileges, memberships and defaults, so each assertion still
 tests what its description says.
 
+Review repairs: the job restores the packages through a SHA-pinned
+`actions/cache` step (v6.1.0) keyed by the pin file, as D3 decided, and the runner
+re-verifies every cached file. Only a cold cache reaches the apt archive. The job
+never reuses main-push evidence, because `scripts/public-ci-reuse.mjs` does not
+cover its own merge-group result.
+
 Still open for W1: the first hosted `pgtap-postgres` run. The job is skipped on
-draft pull requests, as `pgtap` is. An Actions cache for the package downloads
-is also open: W1 adds no new action pin, the runner verifies
-`OPENLUP_PGTAP_DEB_CACHE` or its scratch cache, and the files total about 300 KB.
+draft pull requests, as `pgtap` is.
 
 ## W2 evidence
 
