@@ -300,9 +300,9 @@ describe("complete public CI", () => {
   });
   it("limits registry authentication to non-reused image-pull jobs with read permissions", () => {
     expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
-    expect(workflow.match(/packages: read/gu)).toHaveLength(2);
-    expect(workflow.match(/docker login/gu)).toHaveLength(2);
-    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"]]) {
+    expect(workflow.match(/packages: read/gu)).toHaveLength(3);
+    expect(workflow.match(/docker login/gu)).toHaveLength(3);
+    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["pgtap-postgres", "node scripts/public-ci-pgtap-postgres.mjs"]]) {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
@@ -368,7 +368,7 @@ describe("complete public CI", () => {
     }
   });
   it("runs package proof, root shards and database diagnostics independently", () => {
-    for (const name of ["install-proof", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const name of ["install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
     for (const name of ["install-proof", "test-full-shard"]) {
       const job = workflowJob(name);
       expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
@@ -395,6 +395,8 @@ describe("complete public CI", () => {
     expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
     expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "bash scripts/install-supabase-cli-ci.sh 2.122.0", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
+    // The non-required stock-PostgreSQL shadow needs no CLI and no npm dependencies.
+    expect(workflowCommands(workflowJob("pgtap-postgres"))).toEqual(["node scripts/public-ci-reuse.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap-postgres.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
@@ -507,7 +509,7 @@ describe("what the workflow may not contain", () => {
 
 describe("the workflow stays in step with what it claims to run", () => {
   it("allows only expensive main-push work to reuse exact-commit group proof", () => {
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
+    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) {
       const job = workflowJob(name);
       expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
       const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
@@ -530,12 +532,12 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(selfCheck).toContain("run: npm run oss:published-tree -- --policy");
     expect(selfCheck).toContain("run: npm run oss:published-tree -- --inventory");
   });
-  it("exposes six required contexts, one raw diagnostic and optional native admission with trusted event fences", () => {
+  it("exposes six required contexts, two raw diagnostics and optional native admission with trusted event fences", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "pgtap-postgres", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
-    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(7);
+    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(8);
     for (const job of jobs.filter((name) => !["native-review", "test", "test-full-shard"].includes(name))) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
@@ -667,7 +669,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24.21.0");
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
+    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap", "pgtap-postgres"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');

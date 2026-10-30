@@ -1382,6 +1382,22 @@ fails the job. The native CLI installer leaves the registry override
 unset for CLI 2.122.0, whose Compose backend defaults to ECR; pgTAP explicitly
 selects the first successfully pre-pulled registry as described above.
 `install-proof` retains its Docker Hub service, which is pulled before steps run.
+
+The non-required `pgtap-postgres` job shadows raw `pgtap` under the
+[managed pgTAP on plain PostgreSQL plan](docs/platform/plans/neutral-postgres-pgtap.md).
+`node scripts/public-ci-pgtap-postgres.mjs` applies the managed-compatibility
+adapter and replays the same committed chain on the digest-pinned stock
+PostgreSQL 17 image. It then runs `pg_prove` inside that container with the
+Supabase CLI's argv plus `--verbose`. It needs Docker, but neither the CLI nor npm
+dependencies, and writes its TAP, catalog snapshot and environment fingerprint
+to `.context/scratch/pgtap-postgres/`. Locally,
+`node scripts/pgtap-parity.mjs compare <left.log> <right.log>` compares two lanes
+assertion by assertion and fails on any difference, including a file present in
+one lane only. `node scripts/pgtap-parity.mjs cli-lane` records the same
+evidence from the unchanged CLI lane through a `supabase` shim. Both runners take
+one of the five planned `--sabotage` switches, each of which must fail. The job
+is neither a required context nor a native-review input.
+
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 

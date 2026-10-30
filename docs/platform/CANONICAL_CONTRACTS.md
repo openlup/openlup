@@ -773,6 +773,18 @@ The install-proof service retains its unchanged Docker Hub PostgreSQL 17 digest
 and needs no organization package before steps run.
 Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
+
+The non-required `pgtap-postgres` shadow lane runs the same tests on the
+install-proof `postgres:17` digest without the Supabase CLI or its images. Its
+[package pins](../../config/ci-postgres-packages.json) name the exact pg_cron
+1.6.4, pgTAP 1.3.3 and `pg_prove` 3.36 PGDG builds for Debian trixie, for amd64
+and arm64, at immutable PostgreSQL apt-archive paths. Each file's committed
+SHA-256 is verified before the bytes are cached or installed; an unpinned
+architecture, a path that does not match its version or a checksum mismatch
+refuses, and no apt index is read. The packages install only into the disposable
+container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
+is the only file that encodes the managed host for that lane. It is test
+infrastructure, never a runtime bootstrap or a supported-host claim.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
