@@ -1,6 +1,6 @@
 # M14 D32 — managed Storage object projection
 
-Status: witness relocation and policy refinement awaiting read, 30 October 2026; no installation
+Status: focused witness repair before native review, 30 October 2026; no installation
 qualification. Audience: transfer implementers and reviewers. This parcel remains
 in development preview and does not establish whole-M14 completion.
 
@@ -18,8 +18,8 @@ The active supervisor is the single writer in the assigned task worktree, stacke
 on the managed typed-transfer predecessor. The accountable maintainer's bounded
 grant covers local implementation and synthetic proof, DCO, independent review
 and gated submission/merge. The accepted predecessor head is
-`7c909b0bc453f855fb9c96175249c7da5b926686` (the accepted adapter migration and evidence note). It was integrated without a
-rebase and is the `OPENLUP_STACK_BASE`. A stabilized
+`04cb1137dca571fe99d685bb6c645e9441407339`. It was integrated without a
+rebase and is the current `OPENLUP_STACK_BASE`. A stabilized
 transfer-contract maintainer read precedes DCO. Two new FULL native reviewers,
 including a simplicity assessment, follow. Canonical verification waits for the
 predecessor on main; applicable queue freezes still apply. No hosted account,
@@ -120,7 +120,10 @@ mapping. The application baseline SQL does not own the service's Storage schema.
 The disposable installed schema uses `file_size_limit`; the archived upstream
 migration text also names the older `max_file_size_kb`. Either populated form
 refuses in this profile.
-Schema drift, new nonempty relations or unknown object semantics refuse.
+New nonempty relations refuse. Every column in the pinned Storage schema has a
+disposition below. Columns added by a later Storage version are not detected;
+this projection is qualified only for pinned Storage API v1.84.19. Requalify
+its column dispositions and witnesses after a Storage upgrade.
 The pinned upstream schema and GET implementation have been inspected. The
 disposable API witness confirms live SDK/header compatibility with the existing
 strict reader while retaining partial-response and content-integrity refusals.
@@ -364,3 +367,101 @@ object proof pass. Final exact-tree secret scanning precedes the WIP ref and DCO
 The remaining native-review results belong in private reports; no tracked edit
 follows the final PASS. The policy freshness pin for this continuation is
 `fee33275b625d207ade7a5e62167d1df239d5f9f`, separate from the stack base.
+
+## Pinned Storage column dispositions
+
+Measured from the disposable Storage API v1.84.19 schema selected by CLI 2.122.0,
+Storage image `sha256:a0420573837ee08c0afdc9cd01f90b4b8027579da99e0b9a159fe912ef756c99`.
+The recorded live schema and image fingerprint agree with the existing mapper;
+no populated pinned column is left without a disposition. A later added column
+is not detected automatically. This table describes the pinned version only.
+
+| Relation | Column | Disposition | Rule or bookkeeping reason |
+| --- | --- | --- | --- |
+| `storage.buckets` | `id` | Compared | Nonempty logical bucket identity; selects the existing S3 source and binds objects to its inventory. |
+| `storage.buckets` | `name` | Compared | Must equal id; no separate target bucket record. |
+| `storage.buckets` | `owner` | Compared | Deprecated owner provenance; if populated must agree with owner_id and resolve to an eligible item-7 subject. |
+| `storage.buckets` | `created_at` | Bookkeeping | Source bucket creation time; no target bucket row or access grant depends on it. |
+| `storage.buckets` | `updated_at` | Bookkeeping | Source bucket update time; target descriptors describe objects, not bucket history. |
+| `storage.buckets` | `public` | Compared | Must be false; public buckets refuse. |
+| `storage.buckets` | `avif_autodetection` | Compared | Must be false; enabled transformation refuses. |
+| `storage.buckets` | `file_size_limit` | Refuses when populated | No exact target admission-constraint equivalent. |
+| `storage.buckets` | `allowed_mime_types` | Refuses when populated | No exact target admission-constraint equivalent. |
+| `storage.buckets` | `owner_id` | Compared | Eligible item-7 provenance only; not target metadata or a grant. |
+| `storage.buckets` | `type` | Compared | Must be STANDARD; other bucket types refuse. |
+| `storage.buckets` | `versioning_status` | Compared | Must be DISABLED; history dependencies refuse. |
+| `storage.buckets` | `lifecycle_configuration` | Refuses when populated | No lifecycle carrier in the selected profile. |
+| `storage.buckets` | `lifecycle_configuration_generation` | Refuses when populated | No lifecycle generation carrier in the selected profile. |
+| `storage.objects` | `id` | Compared | Required independent source record identity; database primary key supplies uniqueness. |
+| `storage.objects` | `bucket_id` | Compared | Must name an admitted bucket in the independently captured rows. |
+| `storage.objects` | `name` | Mapped | Exact existing descriptor key; duplicate keys refuse. |
+| `storage.objects` | `owner` | Compared | Deprecated owner provenance; agreement and eligible item-7 resolution required if populated. |
+| `storage.objects` | `created_at` | Bookkeeping | Source creation time; the existing descriptor has no creation-time contract. |
+| `storage.objects` | `updated_at` | Bookkeeping | Source metadata update time; byte/hash/descriptor agreement supplies the carried object state. |
+| `storage.objects` | `last_accessed_at` | Bookkeeping | Source read telemetry; no portable object or effective grant depends on it. |
+| `storage.objects` | `metadata` | Compared | Size, MIME type, cache control and content encoding must agree with GET; expiry refuses. Other source observation keys do not become target metadata or grants. |
+| `storage.objects` | `path_tokens` | Compared | If present, must equal name split on slash; no alternate path is carried. |
+| `storage.objects` | `version` | Compared | Null or nonempty managed generation string; the descriptor version comes from the existing S3 reader and digest, not this opaque generation. |
+| `storage.objects` | `owner_id` | Compared | Eligible item-7 provenance only; no target metadata or grant. |
+| `storage.objects` | `user_metadata` | Mapped | Exact returned string pairs through existing s3.user.* descriptor fields; malformed or unreturned values refuse. |
+| `storage.objects` | `archived_at` | Refuses when populated | Only current ordinary objects are admitted. |
+| `storage.objects` | `is_delete_marker` | Compared | Must be false; retained delete markers refuse. |
+| `storage.objects` | `is_versioned` | Compared | Must be false; retained version state refuses. |
+
+## Storage acceptance checklist before review
+
+This list fixes the review obligations; a state marked pending is not proof.
+The last executed full candidate is the committed predecessor carry.
+
+| Dimension | What must be true | Proof and current state |
+| --- | --- | --- |
+| Relations | Storage buckets/objects project through the existing path; other nonempty unknown relations refuse. | Existing focused managed capture and Storage composition tests pass. The column table above is measured; no new relation census is claimed. |
+| Row classes | Only private Standard current objects, including empty buckets, with enabled RLS and exact service-role-only or absent policies admit. Unsupported bucket/owner/metadata/history/partial state refuses. | Focused and real proofs exercise public, constraint, policy-role, RLS, conflicting/unmapped/erased-owner and metadata cases; unchanged S3 source tests own protocol/history/partial-response refusal. Not every possible schema-permitted value is executed. |
+| Hand-built fields | Bucket/key/reference construction uses captured rows, exact GET descriptors and existing reconciliation. Source owner is not a grant or target field. | Composition verifies independently listed keys, GET bytes and final changed/deleted-key readback; no exhaustive per-field mutation measurement is claimed. |
+| Copied fields | Existing descriptor metadata/access/hash/size are preserved in the private filesystem store. | Executed readback compares descriptor metadata/access and streamed digest/size. Local S3 proves bytes/access only; exact S3 destination metadata is not proved. |
+| Capture authority | Provider postgres reads Storage rows and policy facts without a new grant. | Real runner checks both Storage relations and pg_policy under provider postgres; executed PASS. |
+| Snapshot consistency | Capture uses repeatable-read/read-only and fails on filtering; operator excludes DB/object/policy writers through final recapture and restore. | Existing capture boundary tests, reconciliation/replay and final changed/delete proof pass. Hosted writer exclusion and whole-store activation are not proved. |
+| Privacy: erased owners | Valid completed-erasure subject provenance may map for item 7, but its retained Storage owner must refuse at Storage; sole unmapped owners must also refuse there. | The old malformed-erasure case remains separate. The approved receipt fixture now proves item-7 mapping retains a valid erased subject and Storage refuses its owner; sole-unmapped-owner refusal also passes. Removing the guard makes both discriminators fail. Focused and real-source runs pass. Fresh reviewer closure remains pending. |
+| Documentation claims | Claims match pinned behavior, destination and preview scope. | Schema-drift wording is narrowed here under the prose rule; policy checks pass and fresh review is pending. No hosted qualification, customer-facing media route or journey-object proof is claimed. |
+| Schema drift | Every pinned column has a stated disposition; new nonempty relations refuse. Upgrade-added columns are not detected. | Measured table above; requalification after a Storage upgrade is required. Automatic unknown-column refusal is not implemented or claimed. |
+
+## Owner-witness fixture setup read
+
+The pinned managed baseline and compatibility setup do not define
+`public.identity_privacy_erasures`. The existing identity-mapping test stores
+representative erasure records in a temporary JSON projection and passes them
+directly to the identity mapper. The Storage boundary is reached only through
+the [managed database capture](../../../server/adapters/postgres/connectedManagedRetained.ts)
+and its privately held relation rows, so those direct
+identity inputs cannot populate its erasure set.
+
+CD-M14-97 approves a test-only receipt relation in the disposable managed source,
+using the proposed existing item-7 row shape and constraints, dropped in cleanup.
+A conditional SELECT grant to provider postgres is permitted on that fixture-owned
+relation only. Capture continues under the provider role; no production schema,
+migration, exported seam or guard changes. Both owner discriminators and their
+guard-removal check use the same shared proof. All four native cards remain open
+until fresh reviewers close them; no closure is claimed here.
+Self-retro: a malformed identity rejection is not evidence for the later Storage
+owner gate; state the missing valid receipt carrier before extending the fixture.
+
+## Approved owner-witness repair
+
+The proof creates its scratch parent before allocating a private directory. Its
+disposable receipt relation uses the approved row shape and is dropped in cleanup,
+including failed assertions. The sole-unmapped-owner case uses one populated owner
+field. The completed-erasure case retains the managed subject through its receipt
+and separately proves item-7 identity mapping succeeds before requiring a
+Storage-specific refusal. Both checks collect failures so removing the existing
+guard must expose both mistakenly admitted owners in one run. The earlier malformed
+identity rejection remains as a separate discriminator. No production guard changes.
+Strict typecheck passes first; required lint passes with no errors. The focused
+mapper/Storage/S3 suites pass without skips. With the existing owner guard removed,
+both sole-unmapped-owner and valid completed-erasure-owner assertions fail; the
+production file is restored byte-for-byte. One real pinned managed-service run
+passes the same shared proof, with unchanged Storage schema and business-assertion
+parity against the adapter. The fixture receipt relation is removed in cleanup.
+The current proof SHA-256 is
+`0463480406e5a00ec8c2fe77b765aa404c2618e52256e04cb8917244d8667e8f`. All four cards remain open
+until fresh native review closes them. Self-retro: distinguish valid identity provenance from
+Storage-owner eligibility, and require the same witness to reject guard removal.

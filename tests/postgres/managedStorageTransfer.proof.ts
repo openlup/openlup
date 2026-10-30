@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -10,9 +10,9 @@ import { Pool } from "pg";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { expect } from "vitest";
 import { copyTransferObjects, createFilesystemTransferObjects, type CompatiblePostgresSnapshot } from "@openlup/platform/portability";
-import { captureManagedSourceGraph, mapManagedRetainedBusiness } from "../../server/adapters/postgres/connectedManagedRetained.js";
+import { captureManagedSourceGraph, managedIdentityEvidence, mapManagedRetainedBusiness } from "../../server/adapters/postgres/connectedManagedRetained.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
-import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { createS3TransferObjectSource } from "../../server/adapters/s3/transferObjectSource.js";
@@ -62,6 +62,7 @@ const objectReader = (client: S3Client, bucket: string) => createS3TransferObjec
 async function main() {
   const awsModule = ["@aws-sdk", "client-s3"].join("/");
   const sdk = createRequire(import.meta.url)(awsModule) as typeof import("@aws-sdk/client-s3");
+  await mkdir(join(process.cwd(), ".context/scratch"), { recursive: true });
   const scratch = await mkdtemp(join(process.cwd(), ".context/scratch/m14-managed-storage-"));
   // The opt-in service runner supplies only a private, explicitly selected source.
   // Required discovery clears this input and always runs the stock-PG adapter.
@@ -77,6 +78,7 @@ async function main() {
   const container = `m14-object-target-${process.pid}-${randomBytes(3).toString("hex")}`;
   const s3Access = `m14${randomBytes(8).toString("hex")}`, s3Secret = randomBytes(24).toString("hex");
   let sourceContainer: Awaited<ReturnType<typeof runManagedCompatPostgres>> | undefined;
+  let erasureFixtureCreated = false;
   let targetStarted = false, pgContainer: Awaited<ReturnType<typeof runPostgresContainer>> | undefined;
   let managed: Pool | undefined, bootstrap: Pool | undefined, target: Pool | undefined;
   let sourceS3: S3Client | undefined, targetS3: S3Client | undefined;
@@ -119,6 +121,25 @@ async function main() {
       await managed.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
         [clientId, customerEmail, customer]);
     }
+    // Disposable receipt fixture: the pinned managed baseline predates this
+    // existing item-7 input. The managed actor namespace has no native FK.
+    await managed.query(`CREATE TABLE public.identity_privacy_erasures (
+  erasure_id uuid PRIMARY KEY,
+  idempotency_key uuid NOT NULL UNIQUE,
+  client_id uuid UNIQUE REFERENCES public.clients(id),
+  principal_id uuid UNIQUE,
+  actor_principal_id uuid NOT NULL,
+  contract_version text NOT NULL CHECK (contract_version = 'identity.erasure.v1'),
+  contributor_versions jsonb NOT NULL,
+  dispositions jsonb NOT NULL,
+  retained_obligations jsonb NOT NULL,
+  completed_at timestamptz NOT NULL,
+  CHECK (client_id IS NOT NULL OR principal_id IS NOT NULL)
+)`);
+    erasureFixtureCreated = true;
+    if (!(await managed.query<{ allowed: boolean }>(
+      "SELECT has_table_privilege('postgres','public.identity_privacy_erasures','SELECT') AS allowed")).rows[0]?.allowed)
+      await managed.query("GRANT SELECT ON public.identity_privacy_erasures TO postgres");
     pgContainer = await runPostgresContainer({ name: `m14-storage-pg-${process.pid}`, password: "synthetic-transfer" });
     expect(await waitForPostgresTcpReady(pgContainer.connectionString)).toBe(true);
     bootstrap = new Pool({ connectionString: pgContainer.connectionString });
@@ -268,6 +289,43 @@ async function main() {
     await managed.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [customer, customerEmail]);
     await managed.query("UPDATE public.clients SET email=$1,auth_user_id=$2 WHERE id=$3", [customerEmail, customer, clientId]);
 
+    // Collect both guard discriminators so one guard-removal run must expose
+    // both failures rather than stopping after the first unexpectedly admitted owner.
+    const ownerRefusalFailures: string[] = [];
+    const expectOwnerRefusal = async (label: string) => {
+      try { await expect(project()).rejects.toMatchObject({ code: "target_conflict", table: "storage.objects" }); }
+      catch (error) { ownerRefusalFailures.push(`${label}: ${String(error)}`); }
+    };
+    const unmappedOwner = randomUUID();
+    await managed.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id=$2 AND name='first.txt'", [unmappedOwner, bucket]);
+    await expectOwnerRefusal("sole-unmapped-owner");
+    await managed.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id=$2 AND name='first.txt'", [customer, bucket]);
+
+    const erasureId = randomUUID();
+    const operator = (await managed.query<{ id: string }>(
+      "SELECT id FROM public.admin_users WHERE is_machine_actor=false AND membership_state='active' ORDER BY id LIMIT 1")).rows[0]!;
+    await managed.query(`INSERT INTO public.identity_privacy_erasures
+      (erasure_id,idempotency_key,client_id,principal_id,actor_principal_id,contract_version,
+       contributor_versions,dispositions,retained_obligations,completed_at)
+      VALUES($1,$2,$3,$4,$5,'identity.erasure.v1','{"identity":1}',
+        '[{"resource":"contact","disposition":"erased"}]','[]','2025-02-01T00:00:00.123456Z')`,
+    [erasureId, randomUUID(), clientId, customer, operator.id]);
+    await managed.query(`UPDATE public.clients SET email=$1,auth_user_id=NULL,first_name=NULL,
+      last_name=NULL,phone=NULL,country=NULL,lifecycle_stage='inactive' WHERE id=$2`,
+    [`erased+${clientId}@identity.invalid`, clientId]);
+    await managed.query("DELETE FROM auth.users WHERE id=$1", [customer]);
+    const erasedCapture = await capture(managed);
+    const identity = await mapManagedIdentityForConnectedRestore({
+      source: managedIdentityEvidence(erasedCapture, "https://issuer.example.invalid/managed"),
+      freshTarget: await fresh(target), targetOwner: target });
+    expect(identity.subjects.some(subject => subject.managedId === customer)).toBe(true);
+    await expectOwnerRefusal("completed-erasure-owner");
+    await managed.query("DELETE FROM public.identity_privacy_erasures WHERE erasure_id=$1", [erasureId]);
+    await managed.query("INSERT INTO auth.users(id,email) VALUES($1,$2)", [customer, customerEmail]);
+    await managed.query("UPDATE public.clients SET email=$1,auth_user_id=$2,lifecycle_stage='customer' WHERE id=$3",
+      [customerEmail, customer, clientId]);
+    expect(ownerRefusalFailures).toEqual([]);
+
     await remove("first.txt");
     await remove("second.txt");
     const empty = await project();
@@ -285,12 +343,16 @@ async function main() {
     expect(await restoreConnectedNativeStore({ owner: target, installation: selection,
       packet: final.mapped.packet, freshTarget: final.baseline })).toMatchObject({ replayed: false });
   } finally {
-    sourceS3?.destroy(); targetS3?.destroy();
-    await managed?.end(); await target?.end(); await bootstrap?.end();
-    if (targetStarted) await run("docker", ["rm", "-f", container], { timeout: 30_000 }).catch(() => {});
-    await pgContainer?.remove();
-    await sourceContainer?.remove();
-    await rm(scratch, { recursive: true, force: true });
+    try {
+      if (erasureFixtureCreated) await managed!.query("DROP TABLE public.identity_privacy_erasures");
+    } finally {
+      sourceS3?.destroy(); targetS3?.destroy();
+      await managed?.end(); await target?.end(); await bootstrap?.end();
+      if (targetStarted) await run("docker", ["rm", "-f", container], { timeout: 30_000 }).catch(() => {});
+      await pgContainer?.remove();
+      await sourceContainer?.remove();
+      await rm(scratch, { recursive: true, force: true });
+    }
   }
 }
 
