@@ -138,6 +138,38 @@ database clusters and the previous application artifact remain outside owned
 fixture teardown; the operator must remove those disposable inputs separately.
 The receipt is source proof, not hosted or production qualification.
 
+The fixed `hosted-node` selection calls the same `runSelfhostHost` lifecycle
+witness against one operator-owned synthetic VM. Its external mode-600 JSON
+has `schemaVersion: 1`, `target: "hosted-node"`, `disposable: true`, a declared
+AWS-format `region`, declared public HTTPS DNS `origin`, cached immutable
+`localNodeImage`, exact archived `sourceCommit`/`sourceTree`, and `database`
+containing only loopback `connectionString` and PEM `ca`. The operator prepares
+that disposable TLS PG16 using the existing restricted-install witness; RDS is
+not used. `certificatePath` and `keyPath` name external ordinary owner-only
+mode-600 files, mounted read-only into the application containers. Extra fields,
+mutable images, non-HTTPS or IP-literal origins, reserved DNS names, remote
+databases and source drift refuse. The origin permits only the root path, no
+userinfo, query or fragment, and the default HTTPS port or explicit 443.
+The receipt records the HTTPS scheme and public-DNS class, never the hostname.
+No credential, private path or endpoint is included in the public receipt.
+
+On the VM, archive the exact source, install dependencies and build packages
+before invoking the same command with `--target hosted-node`. Install Playwright
+Chromium into `.context/scratch/hosted-node-receipt/browsers`. The fixture uses
+the deployment-owned HTTP runtime `listen` seam for native public TLS and a
+namespaced host-network container on port 443. Ordinary Node and Chromium
+certificate and hostname verification remain enabled. The image carries the
+bundled application source, while database inputs, filesystem state and TLS
+keys stay outside the image. Existing restart, drain and A→B→A assertions run
+over that public HTTPS origin. The runner returns `PASS_HOSTED_NODE` and a
+`hostedRecipes["10H"]` PASS only after those assertions and owned fixture cleanup.
+Its claim is **hosted Node/OCI recipe receipt (single synthetic VM)**, with no
+production qualification or SLO. Operator timing, database/certificate/source
+teardown and public-port absence require separate recorded readback; the runner
+removes only its own host containers, images, role, events and private state.
+The independent Netlify/PaaS candidate stays `PENDING`, owner `10H-paas`, reason
+`access not provided`. Missing access establishes no measured rejection.
+
 The same selector accepts `neon` and `rds` as target labels; it adds no provider
 logic or admission exception. Their actual endpoints, provider-role admission
 and hosted receipts remain unqualified until the corresponding parcels supply

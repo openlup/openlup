@@ -164,7 +164,10 @@ The focused recipe input/disposition tests run with
 receipt additionally requires the destructive opt-in command and all its
 prerequisites. Neither focused tests nor a local receipt establish hosted
 qualification, and the three operator-declared database targets need their
-separate operator teardown.
+separate operator teardown. The fixed `hosted-node` selector reuses the same
+Node/OCI witness over public TLS on one synthetic VM; it needs the external
+declaration, exact source archive and operator teardown described by the runtime
+owner. PaaS remains pending when access is not provided.
 
 The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
 joins the existing installed platform cold-consumer selection.

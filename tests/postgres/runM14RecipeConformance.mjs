@@ -2,6 +2,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { checkServerIdentity } from "node:tls";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -9,7 +10,7 @@ import { runLocalJourney, runLocalOidc } from "./m14RecipeJourneys.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const modes = ["installer-managed", "operator-provisioned", "schema"];
-const targets = ["self-host", "neon", "rds"];
+const targets = ["self-host", "neon", "rds", "hosted-node"];
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const refuse = code => { throw new Error(code); };
 const git = args => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -52,6 +53,31 @@ export function loadCredentials(path, target) {
     } finally { closeSync(fd); }
     if (value.schemaVersion !== 1 || value.target !== target || value.disposable !== true) refuse("explicit_disposable_target_required");
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/u.test(value.region ?? "")) refuse("region_required");
+    if (target === "hosted-node") {
+      if (Object.keys(value).sort().join() !== ["schemaVersion", "target", "disposable", "region", "origin", "localNodeImage", "database", "certificatePath", "keyPath", "sourceCommit", "sourceTree"].sort().join()) refuse("hosted_node_fields_refused");
+      if (!/^[a-z]{2}(?:-[a-z]+)+-[0-9]+$/u.test(value.region)) refuse("region_required");
+      if (typeof value.origin !== "string" || !/^https:\/\/[^/?#\\]+\/?$/iu.test(value.origin)) refuse("public_https_origin_required");
+      let origin;
+      try { origin = new URL(value.origin); } catch { refuse("public_https_origin_required"); }
+      const hostname = origin.hostname;
+      const dnsHostname = hostname.length <= 253 && hostname.split(".").length > 1
+        && hostname.split(".").every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label));
+      if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash
+        || (origin.port && origin.port !== "443") || isIP(hostname.replace(/^\[|\]$/gu, "")) || !dnsHostname
+        || /(?:^|\.)(?:invalid|test|example|localhost|local)$/u.test(hostname)) refuse("public_https_origin_required");
+      if (!/^sha256:[a-f0-9]{64}$/u.test(value.localNodeImage ?? "")) refuse("local_node_image_required");
+      if (!/^[a-f0-9]{40}$/u.test(value.sourceCommit ?? "") || !/^[a-f0-9]{40}$/u.test(value.sourceTree ?? "")) refuse("source_identity_required");
+      const database = new URL(value.database?.connectionString);
+      if (!["postgres:", "postgresql:"].includes(database.protocol) || database.hostname !== "127.0.0.1"
+        || !database.username || !database.password || !/^\/[a-z_][a-z0-9_]*$/u.test(database.pathname) || database.search || database.hash
+        || !value.database.ca?.includes("-----BEGIN CERTIFICATE-----") || Object.keys(value.database).sort().join() !== "ca,connectionString") refuse("local_tls_database_required");
+      for (const path of [value.certificatePath, value.keyPath]) {
+        if (!isAbsolute(path ?? "") || lstatSync(path).isSymbolicLink() || realpathSync(path).startsWith(`${root}/`)) refuse("external_tls_files_required");
+        const stat = lstatSync(path);
+        if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o777) !== 0o600 || stat.nlink !== 1) refuse("external_tls_files_required");
+      }
+      return value;
+    }
     if (!value.installations || Object.keys(value.installations).sort().join() !== [...modes].sort().join()) refuse("three_installations_required");
     for (const mode of modes) {
       const entry = value.installations[mode];
@@ -70,7 +96,7 @@ export function loadCredentials(path, target) {
   } catch (error) {
     const known = ["target_input_required", "credential_symlink_refused", "credential_file_must_be_external", "credential_file_requires_owner_mode_600",
       "explicit_disposable_target_required", "region_required", "three_installations_required", "installation_declaration_required",
-      "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required", "local_node_image_required", "local_self_host_endpoint_required"];
+      "oci_digest_required", "verified_tls_bootstrap_input_required", "separate_clusters_required", "previous_application_required", "local_node_image_required", "local_self_host_endpoint_required", "hosted_node_fields_refused", "public_https_origin_required", "source_identity_required", "local_tls_database_required", "external_tls_files_required"];
     refuse(known.includes(error?.message) ? error.message : "credential_input_refused");
   }
 }
@@ -80,6 +106,7 @@ export function initialReceipt(target) {
     identity: pending("10A"), install: pending("10A"), connections: pending("10A"), schema: pending("10A"),
     transfer: pending("8D/10P"), recovery: pending("9A/10P"), oidc: pending("10I"), s3: pending("10O"),
     nodeHosts: pending("10H"), effortCleanup: pending("10H/10S"),
+    paas: { ...pending("10H-paas"), reason: "access not provided" },
     hostedRecipes: Object.fromEntries(["10N", "10R", "10O", "10I", "10H", "10P"].map(owner => [owner, pending(owner)])) };
 }
 
@@ -178,8 +205,32 @@ async function executeRecipe(config, receipt) {
   delete receipt.activePhase;
 }
 
+async function executeHostedNode(config, receipt) {
+  if (git(["rev-parse", "HEAD"]) !== config.sourceCommit || git(["rev-parse", "HEAD^{tree}"]) !== config.sourceTree
+    || git(["diff", "HEAD", "--binary"]) || git(["ls-files", "--others", "--exclude-standard"])) refuse("source_identity_refused");
+  const before = sourceDigest();
+  const compiled = ["core", "outbox", "platform"].map(name => ({ name: `@openlup/${name}`,
+    version: JSON.parse(readFileSync(resolve(root, `packages/${name}/package.json`))).version,
+    compiledSha256: directoryDigest(resolve(root, `packages/${name}/dist`)) }));
+  receipt.identity = { status: "PASS", sourceCommit: config.sourceCommit, sourceTree: config.sourceTree,
+    sourceSha256: before, packages: compiled, node: process.versions.node, npm: npmVersion(),
+    target: "hosted AWS VM", region: config.region, originScheme: "https", originClass: "public-https-dns",
+    limits: ["single synthetic VM; source workspace proof", "no production qualification or SLO"] };
+  receipt.activePhase = "nodeHosts";
+  const { tsImport } = await import("tsx/esm/api");
+  const { runSelfhostHost } = await tsImport("./m14SelfhostHost.ts", import.meta.url);
+  receipt.nodeHosts = await runSelfhostHost({ image: config.localNodeImage, database: config.database,
+    hosted: { origin: config.origin, certificatePath: config.certificatePath, keyPath: config.keyPath } });
+  if (sourceDigest() !== before || compiled.some(item => directoryDigest(resolve(root, `packages/${item.name.split("/")[1]}/dist`)) !== item.compiledSha256)) refuse("source_changed_during_proof");
+  if (receipt.nodeHosts.status !== "PASS" || receipt.nodeHosts.cleanup.status !== "PASS") refuse("hosted_node_incomplete");
+  receipt.hostedRecipes["10H"] = { status: "PASS", claim: receipt.nodeHosts.claim, nodeHosts: "nodeHosts",
+    paas: receipt.paas, limits: ["operator provisioning and final external teardown recorded separately", "Netlify access not provided"] };
+  receipt.status = "PASS_HOSTED_NODE"; receipt.claim = receipt.nodeHosts.claim;
+  delete receipt.activePhase;
+}
+
 export async function main(args = process.argv.slice(2)) {
-  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds --credentials /external/file.json --receipt /new/receipt.json");
+  if (args.length !== 6 || args[0] !== "--target" || args[2] !== "--credentials" || args[4] !== "--receipt" || !targets.includes(args[1])) refuse("usage: --target self-host|neon|rds|hosted-node --credentials /external/file.json --receipt /new/receipt.json");
   const [, target, , credentials, , destination] = args;
   if (process.versions.node !== "24.21.0" || npmVersion() !== "11.19.0") refuse("pinned_tools_required");
   const config = loadCredentials(credentials, target); // Refuse bad declarations before spawning or connecting.
@@ -189,7 +240,7 @@ export async function main(args = process.argv.slice(2)) {
   try {
     const result = await new Promise((done, reject) => {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker"], {
-        cwd: root, env: {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
+        cwd: root, env: target === "hosted-node" ? { PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, PLAYWRIGHT_BROWSERS_PATH: resolve(root, ".context/scratch/hosted-node-receipt/browsers") } : {}, stdio: ["pipe", "ignore", "ignore", "ipc"], timeout: 600000, killSignal: "SIGKILL" });
       let message;
       child.on("message", value => { message = value; });
       child.once("error", () => reject(new Error("recipe_worker_unavailable")));
@@ -236,7 +287,7 @@ export async function main(args = process.argv.slice(2)) {
     receipt.finishedAt = new Date().toISOString();
     writeFileSync(fd, `${JSON.stringify(receipt, null, 2)}\n`); closeSync(fd);
   }
-  if (!["PASS_INITIAL_PHASES", "COMPLETE"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
+  if (!["PASS_INITIAL_PHASES", "COMPLETE", "PASS_HOSTED_NODE"].includes(receipt.status)) refuse("recipe_conformance_failed; inspect redacted receipt");
   return receipt;
 }
 
@@ -247,14 +298,16 @@ if (process.argv[2] === "--worker" && typeof process.send === "function") {
     for await (const chunk of process.stdin) payload += String(chunk);
     const { credentials, target } = JSON.parse(payload);
     receipt.target = target;
-    await executeRecipe(loadCredentials(credentials, target), receipt);
+    const config = loadCredentials(credentials, target);
+    if (target === "hosted-node") await executeHostedNode(config, receipt);
+    else await executeRecipe(config, receipt);
   } catch (error) {
     receipt.status = "FAIL"; receipt.failure = "recipe_phase_failed; credential-bearing details suppressed";
     receipt.diagnostic = { source: error?.stack?.match(/(?:runM14RecipeConformance\.mjs|m14QualifiedAdminComposition\.proof\.ts|m14ReleasedSchemaUpgrade\.proof\.ts):[0-9]+:[0-9]+/u)?.[0] ?? null };
   }
   process.send(receipt, () => process.disconnect());
 } else if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().then(receipt => { console.log(receipt.status === "COMPLETE"
+  main().then(receipt => { console.log(receipt.status === "PASS_HOSTED_NODE" ? "Hosted Node/OCI recipe receipt (single synthetic VM): PASS; PaaS remains PENDING" : receipt.status === "COMPLETE"
     ? "Local self-host recipe receipt: COMPLETE; managed first leg and hosted recipes remain pending"
     : "Recipe conformance initial phases: passed; later sections pending"); })
     .catch(() => { console.error("Recipe conformance refused or failed; credential-bearing details suppressed. Check the redacted receipt, target declaration, private external file, fresh PG16 clusters, TLS, built dependencies and cached image/browser prerequisites."); process.exitCode = 1; });
