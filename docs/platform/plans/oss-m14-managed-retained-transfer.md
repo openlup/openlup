@@ -893,3 +893,76 @@ removes no main line. All non-doc per-file changes remain identical; the combine
 stable patch ID excluding this record and CONTRIBUTING is
 `8cabae1ce3987b458a9dfe76f1a2086d0c92d071` against both bases.
 This is the approved prose-only verbatim union; no implementation claim changed.
+
+## CD-M14-65/75 regroup and closed money-column matrix
+
+Native cycle 11 failed with one mechanism reported independently by both fresh
+reviewers (`MRL-CARRIED-PROVIDER-ID`, `MRL-CARRIED-PROVIDER-ID-CONFLICT`); both
+closed `MRL-CARRIED-PAYMENT-LINK`. Under the owner's CD-M14-65 decision this
+parcel continues without the previous Codex author. Implementation and supervisor
+contexts in this task: the earlier Codex supervisor and, from this point, the
+Claude Opus 5.5 lead session. Later reviewers are fresh Claude Opus 5.5 subagents.
+
+Root-cause class: a redundant money fact in the four-relation source graph is
+projected onto a smaller typed target, and a contradiction between redundant copies
+can vanish because nothing compares them. Patching one field per review round does
+not converge, so CD-M14-75 replaces it with this closed matrix. Every column of the
+four relations has one disposition: **C** carried to the typed target, **E** compared
+(a mismatch refuses before restore), or **A** archive-only, with the reason its loss
+cannot change money truth in the target. A later material finding must show a wrong
+row, a missed column or a mechanism outside the matrix.
+
+| Column | Disposition | Rule or reason |
+| --- | --- | --- |
+| `commerce_payments.id`, `order_id` | E | Payment joins the intent; order must match. |
+| `commerce_payments.provider` | C, E | Target `channel_key`; equals the attempt provider. |
+| `commerce_payments.provider_payment_id` | E (new) | If both payment and intent copies are populated they must be equal. A settled intent must have its own copy, which the target carries. An empty intent copy on an unpaid intent contradicts nothing: no money moved. |
+| `commerce_payments.status` | E | Pairs with the intent status on every admitted path. |
+| `commerce_payments.amount_cents` | E | Equals the intent amount on every path, including terminal archive. |
+| `commerce_payments.currency` | E | Equals the intent currency on every path, including terminal archive. |
+| `commerce_payments.metadata` | A | Free-form provider context; target money state is derived from typed columns only. |
+| `commerce_payments.created_at`, `updated_at` | A | Bookkeeping; the target carries the intent timestamps. |
+| `commerce_payment_intents.id`, `order_id`, `payment_id` | C, E | Identity and links. |
+| `commerce_payment_intents.target_kind`, `subscription_id`, `subscription_cycle_id` | E | Only `one_time_order` with empty subscription links is admitted. |
+| `commerce_payment_intents.status` | C, E | Mapped to the target state; other states refuse. |
+| `commerce_payment_intents.amount_cents`, `currency` | C, E | Target amount and currency; equal to the order and payment. |
+| `commerce_payment_intents.provider_payment_id` | C | Target `external_ref`; required on a settled intent. |
+| `commerce_payment_intents.active_attempt_id` | E (new) | Empty, or the intent's own attempt. An intent without attempts must leave it empty. |
+| `commerce_payment_intents.failure_reason`, `created_at`, `updated_at` | C | Carried. |
+| `commerce_payment_intents.metadata` | A | Free-form; no target money state reads it. |
+| `commerce_payment_attempts.id`, `payment_intent_id`, `payment_id` | E | The attempt must belong to this intent and payment. |
+| `commerce_payment_attempts.provider`, `amount_cents`, `currency`, `status` | E | Equal to the payment or intent, or to the terminal state. |
+| `commerce_payment_attempts.provider_attempt_id`, `provider_session_id`, `next_action_kind` | A | Provider session detail of a finished attempt; the target has no attempt row and settlement identity is the intent's. |
+| `commerce_payment_attempts.idempotency_key` | A | Source retry key of a finished attempt; the target derives its own transition key. |
+| `commerce_payment_attempts.failure_reason`, `failure_class` | A | Attempt diagnostics; the carried failure state and reason are the intent's. |
+| `commerce_payment_attempts.request_payload`, `response_payload`, `metadata` | A | Free-form provider traffic; no target money state reads it. |
+| `commerce_payment_attempts.created_at`, `updated_at` | A | Bookkeeping of a finished attempt. |
+| `commerce_payment_state_transitions.id`, `payment_intent_id`, `payment_attempt_id` | C, E | Identity and links. |
+| `commerce_payment_state_transitions.to_status` | C, E | Must match the terminal intent state. |
+| `commerce_payment_state_transitions.occurred_at` | C | Carried. |
+| `commerce_payment_state_transitions.from_status` | A | The target rail is created-to-terminal; the source path does not change the terminal money state. |
+| `commerce_payment_state_transitions.transition_kind`, `reason` | A | Descriptive path detail; the terminal state is compared and carried. |
+| `commerce_payment_state_transitions.provider_event_id` | A | Provider event history; the settled identity is carried through the intent. |
+| `commerce_payment_state_transitions.idempotency_key` | A | Replaced by a target-derived key bound to the source row. |
+| `commerce_payment_state_transitions.payload`, `created_at` | A | Free-form or bookkeeping; no target money state reads them. |
+
+Repair: the existing shared `attemptLinks` rule gains payment-to-intent amount and
+currency, populated provider-identity equality and own-attempt checks. The carried
+`created` guard gains the same identity and empty-attempt checks. No value, format,
+table, migration, dependency or public claim changes. A read-only source census
+showed unpaid intents with an empty provider identity whose payment has one, so the
+check compares populated copies only; those shapes must stay admissible. Attempt and
+transition cardinality on real sources is outside this repair and belongs to the
+real-store admission parcel.
+
+Evidence on this repair: the required suite on the managed-compatibility source and
+the opt-in real pinned CLI 2.122.0 source (binary SHA-256
+`89838b26049c0672f9609aaf46455c89a46d351f852e313c0c5ae6b3abcbdf9d`) both pass the
+same seven ordered tests. Witnesses cover a contradictory provider identity with and
+without a reference row, an empty payment copy, an empty unpaid intent copy, a
+foreign active attempt on settled, failed and created intents, and contradictory
+identity, amount and currency on a cancelled checkout. Strict typecheck, lint (0
+errors, 33 existing warnings), structural checks and documentation policy pass.
+Self-retro: checking the first wording against a read-only source count exposed a
+rule that would have refused real unpaid intents; a closed matrix plus one count
+replaced another review round spent on a single field.

@@ -53,7 +53,11 @@ const uncarried = new Set(["storage.buckets", "storage.objects"]);
 const attemptLinks = (intent: Row, payment: Row, attempt: Row | undefined, transition: Row | undefined): boolean =>
   !!attempt && !!transition && attempt.payment_intent_id === intent.id && attempt.payment_id === payment.id
   && attempt.amount_cents === intent.amount_cents && attempt.currency === intent.currency
+  && payment.amount_cents === intent.amount_cents && payment.currency === intent.currency
   && attempt.provider === payment.provider
+  && (payment.provider_payment_id === null || intent.provider_payment_id === null
+    || payment.provider_payment_id === intent.provider_payment_id)
+  && (intent.active_attempt_id === null || intent.active_attempt_id === attempt.id)
   && (transition.payment_attempt_id === null || transition.payment_attempt_id === attempt.id);
 const checkedTerminalUnpaid = (intent: Row | undefined, all: Map<string, Row[]>): boolean => {
   if (!intent || !["failed", "cancelled", "expired"].includes(String(intent.status))) return false;
@@ -601,7 +605,9 @@ export async function mapManagedRetainedBusiness(input: {
       || row.amount_cents !== order.total_cents || row.amount_cents !== payment.amount_cents
       || row.currency !== order.currency || row.currency !== payment.currency
       || typeof payment.provider !== "string" || !payment.provider || payment.provider.length > 64
-      || (row.status === "created" && (payment.status !== "pending" || ownAttempts.length || ownTransitions.length))
+      || (row.status === "created" && (payment.status !== "pending" || ownAttempts.length || ownTransitions.length
+        || row.active_attempt_id !== null || payment.provider_payment_id !== null
+          && row.provider_payment_id !== null && payment.provider_payment_id !== row.provider_payment_id))
       || (row.status === "failed" && (payment.status !== "failed" || ownAttempts.length !== 1
         || ownAttempts[0]?.status !== "failed" || ownTransitions.length !== 1 || ownTransitions[0]?.to_status !== "failed"
         || !attemptLinks(row, payment, ownAttempts[0], ownTransitions[0])))

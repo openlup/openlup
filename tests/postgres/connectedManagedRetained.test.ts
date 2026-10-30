@@ -405,6 +405,75 @@ it("refuses a carried payment attempt or transition linked to contradictory paym
   try { await refuses(); }
   finally { await managed.owner.query("UPDATE public.commerce_payment_attempts SET payment_id=$1 WHERE id=$2",
     [paidPaymentId, paidAttempt.id]); }
+  // Redundant money facts: a contradiction must refuse, with or without a provider reference row.
+  const refRow = (await managed.owner.query<Record<string, unknown>>(
+    "SELECT * FROM public.payment_external_refs WHERE id=$1", [settledRefId])).rows[0]!;
+  await managed.owner.query("DELETE FROM public.payment_external_refs WHERE id=$1", [settledRefId]);
+  try {
+    await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id='provider-paid:other' WHERE id=$1", [paidPaymentId]);
+    try { await refuses(); }
+    finally { await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id='provider-paid:1' WHERE id=$1", [paidPaymentId]); }
+    // An empty payment copy contradicts nothing: the intent's identity is still carried.
+    await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id=NULL WHERE id=$1", [paidPaymentId]);
+    try {
+      const mapped = await mapManagedRetainedBusiness({ capture: await capture(), issuer: "https://issuer.example.invalid/managed",
+        freshTarget: freshBaseline, targetOwner: targetOwner! });
+      expect(JSON.stringify(mapped.packet.compatible.tables.find(value => value.table === "commerce_settlement_intents")?.rows))
+        .toContain("provider-paid:1");
+    } finally { await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id='provider-paid:1' WHERE id=$1", [paidPaymentId]); }
+  } finally {
+    await managed.owner.query(`INSERT INTO public.payment_external_refs
+      (id,payment_id,provider_kind,provider_payment_id,provider_session_id,raw_payload)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb)`, [refRow.id, refRow.payment_id, refRow.provider_kind,
+      refRow.provider_payment_id, refRow.provider_session_id, JSON.stringify(refRow.raw_payload)]);
+  }
+  // A failed intent may have no provider identity while its payment has one: no money moved and
+  // nothing is contradicted. Two populated copies that differ do contradict each other.
+  await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id='provider-failed:ref' WHERE id=$1", [paymentId]);
+  try {
+    await mapManagedRetainedBusiness({ capture: await capture(), issuer: "https://issuer.example.invalid/managed",
+      freshTarget: freshBaseline, targetOwner: targetOwner! });
+    await managed.owner.query("UPDATE public.commerce_payment_intents SET provider_payment_id='provider-failed:other' WHERE id=$1", [intentId]);
+    try { await refuses(); }
+    finally { await managed.owner.query("UPDATE public.commerce_payment_intents SET provider_payment_id=NULL WHERE id=$1", [intentId]); }
+  } finally { await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id=NULL WHERE id=$1", [paymentId]); }
+  for (const [ownerIntent, foreignAttempt] of [[intentId, paidAttempt.id], [paidIntentId, failedAttempt.id]] as const) {
+    await managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=$1 WHERE id=$2", [foreignAttempt, ownerIntent]);
+    try { await refuses(); }
+    finally { await managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=NULL WHERE id=$1", [ownerIntent]); }
+  }
+  const createdOrderId = randomUUID(), createdPaymentId = randomUUID(), createdIntentId = randomUUID();
+  await managed.owner.query(`INSERT INTO public.commerce_orders
+    (id,client_id,status,currency,subtotal_cents,total_cents,mode)
+    VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [createdOrderId, clientId]);
+  await managed.owner.query(`INSERT INTO public.commerce_order_items
+    (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+      effective_net_cents,allocation_ordinal)
+    VALUES($1,1,900,900,0,900,833,1)`, [createdOrderId]);
+  await managed.owner.query(`INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency)
+    VALUES($1,$2,'synthetic-provider','pending',900,'XXX')`, [createdPaymentId, createdOrderId]);
+  await managed.owner.query(`INSERT INTO public.commerce_payment_intents
+    (id,target_kind,order_id,payment_id,amount_cents,currency,status)
+    VALUES($1,'one_time_order',$2,$3,900,'XXX','created')`, [createdIntentId, createdOrderId, createdPaymentId]);
+  try {
+    await mapManagedRetainedBusiness({ capture: await capture(), issuer: "https://issuer.example.invalid/managed",
+      freshTarget: freshBaseline, targetOwner: targetOwner! });
+    await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id='created-charge:payment' WHERE id=$1", [createdPaymentId]);
+    await managed.owner.query("UPDATE public.commerce_payment_intents SET provider_payment_id='created-charge:intent' WHERE id=$1", [createdIntentId]);
+    try { await refuses(); }
+    finally {
+      await managed.owner.query("UPDATE public.commerce_payment_intents SET provider_payment_id=NULL WHERE id=$1", [createdIntentId]);
+      await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id=NULL WHERE id=$1", [createdPaymentId]);
+    }
+    await managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=$1 WHERE id=$2", [failedAttempt.id, createdIntentId]);
+    try { await refuses(); }
+    finally { await managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=NULL WHERE id=$1", [createdIntentId]); }
+  } finally {
+    await managed.owner.query("DELETE FROM public.commerce_payment_intents WHERE id=$1", [createdIntentId]);
+    await managed.owner.query("DELETE FROM public.commerce_payments WHERE id=$1", [createdPaymentId]);
+    await managed.owner.query("DELETE FROM public.commerce_order_items WHERE order_id=$1", [createdOrderId]);
+    await managed.owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [createdOrderId]);
+  }
 });
 
 it("refuses non-reconciled settlement and active delivery state", async () => {
@@ -486,6 +555,18 @@ it("refuses a cancelled checkout with captured money, an active attempt or linke
   try { await refuses(); }
   finally { await managed.owner.query("UPDATE public.commerce_payment_intents SET active_attempt_id=NULL WHERE id=$1",
     [cancelled.intentId]); }
+  await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id='abandoned-charge:other' WHERE id=$1", [cancelled.paymentId]);
+  await managed.owner.query("UPDATE public.commerce_payment_intents SET provider_payment_id='abandoned-provider:cancelled' WHERE id=$1", [cancelled.intentId]);
+  try { await refuses(); }
+  finally {
+    await managed.owner.query("UPDATE public.commerce_payment_intents SET provider_payment_id=NULL WHERE id=$1", [cancelled.intentId]);
+    await managed.owner.query("UPDATE public.commerce_payments SET provider_payment_id=NULL WHERE id=$1", [cancelled.paymentId]);
+  }
+  for (const [column, bad, original] of [["amount_cents", 901, 900], ["currency", "YYY", "XXX"]] as const) {
+    await managed.owner.query(`UPDATE public.commerce_payments SET ${column}=$1 WHERE id=$2`, [bad, cancelled.paymentId]);
+    try { await refuses(); }
+    finally { await managed.owner.query(`UPDATE public.commerce_payments SET ${column}=$1 WHERE id=$2`, [original, cancelled.paymentId]); }
+  }
   const itemId = randomUUID();
   await managed.owner.query(`INSERT INTO public.payment_provider_settlement_items
     (id,batch_id,provider_kind,provider_payment_id,payment_intent_id,payment_id,
