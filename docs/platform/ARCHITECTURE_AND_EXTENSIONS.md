@@ -2415,7 +2415,7 @@ kept under the invoking worktree's `.context/scratch`; cleanup still removes
 only the run's owned resources. The managed first leg is separate, as are
 hosted provider receipts.
 No CDC, generic upsert/delete engine or production activation coordinator is
-introduced; capture/restore's finite table regions are unchanged.
+introduced; this journey leaves capture/restore's finite table regions unchanged.
 
 The executable's `--older-snapshot` mode composes that same finite native graph
 with a [persisted recovery boundary](../../tests/postgres/m14OlderSnapshotRecovery.ts).
