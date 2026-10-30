@@ -162,9 +162,16 @@ execution inventory includes that body and the bundled synthetic host actor.
 The focused recipe input/disposition tests run with
 `npm test -- tests/postgres/m14RecipeConformance.test.ts`; a COMPLETE local
 receipt additionally requires the destructive opt-in command and all its
-prerequisites. Neither focused tests nor a local receipt establish hosted
+prerequisites. The same runner has a separately declared
+[hosted S3 target](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+with prefix-scoped object and elapsed-lifecycle evidence. Its focused declaration
+and source-admission refusals do not require live provider access. Neither
+focused tests nor a local receipt establish hosted
 qualification, and the three operator-declared database targets need their
-separate operator teardown.
+separate operator teardown. The fixed `hosted-node` selector reuses the same
+Node/OCI witness over public TLS on one synthetic VM; it needs the external
+declaration, exact source archive and operator teardown described by the runtime
+owner. PaaS remains pending when access is not provided.
 
 The [market descriptor proof](scripts/packages/market-descriptor-consumer-proof.ts)
 joins the existing installed platform cold-consumer selection.
@@ -182,25 +189,41 @@ passing the inventory check does not establish that read or authorize release.
 
 The opt-in [recipe conformance runner](tests/postgres/runM14RecipeConformance.mjs)
 uses the existing restricted-install and released-schema proofs with three
-explicitly disposable external PG16 targets. Its private-file/target/refusal
+explicitly disposable external PG16 targets for self-host. Its RDS branch runs
+serially from a private-network worker on one explicitly disposable cluster,
+checks the finite provider catalogue/session exceptions, and removes test-owned
+roles/databases between phases. RDS uses a restricted-generation prefix before
+the existing backfill, without claiming a released restricted predecessor.
+Its password-free declaration names a process environment variable. Its private-file/target/refusal
 regressions run with `npm test -- tests/postgres/m14RecipeConformance.test.ts`.
 The [runtime owner](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
 defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
 
+Its explicit `hosted-oidc` selection reuses the real-issuer lifecycle witness
+against an operator-declared disposable HTTPS issuer. The
+[identity recipe](docs/platform/IDENTITY.md#real-issuer-oidc-recipe) owns that
+declaration, ordinary TLS verification and separate operator teardown boundary.
+The focused input tests cover its pre-connection refusals; actual hosted PASS
+also requires real browser login, expiry/rotation and owned realm absence.
+
 The required [managed source projection suite](tests/postgres/connectedManagedRetained.test.ts)
 uses the shared stock-PG17 managed-compatibility adapter and a fresh qualified PG16 target.
 It compares typed target rows and obligations with the restore packet, checks
 that history-only source rows have no target representation, and exercises
 refusals for unknown and uncarried state. Full managed history stays in the
-operator's source archive. Run `node tests/postgres/runM14ManagedSourceWitness.mjs`
-to exercise the same assertions on an owned real managed stack. This opt-in
+operator's source archive. The required `m14ManagedCatchup.test.ts` also runs
+the managed first leg, including interrupted copy and final recapture, through
+that adapter. Run `node tests/postgres/runM14ManagedSourceWitness.mjs sha256:<local-Node24.21.0-image-id>`
+to exercise both suites on fresh owned real managed stacks and then run the
+complete managed-to-portable-to-portable H1/H2 journey once. This opt-in
 runner downloads and verifies the reviewed CLI 2.122.0 archive for Linux x64 or
 macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
 names/statuses and source-image evidence under private scratch. It is outside
 the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
-are required. Neither route qualifies hosted managed data. The runner's owned
+and an already-local immutable Node 24.21.0 image are required. Neither route
+qualifies hosted managed data. The runner's owned
 stack boundary is the extension point for the separate Storage API, GoTrue and
 authenticated object-read witness.
 
@@ -375,9 +398,10 @@ refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITEC
 owns the exact boundary; managed history, older-snapshot measurement and hosted
 provider qualification remain separate. The final target is distinct from the
 preliminary copy and remains inactive through the DB/object/access barriers.
-Add `--managed-catch-up` for a pinned disposable managed source first mapped
+Add `--managed-catch-up` for a stock-PG17 managed-compatibility source first mapped
 into the qualified-admin PG16 source, then carried through the same portable
-leg to an independent PG16 target. Use this tree's pinned Supabase CLI 2.122.0.
+leg to an independent PG16 target. The opt-in real-source runner above supplies
+its owned CLI 2.122.0 stack to this same journey.
 The fixture checks typed data and source-archive dispositions; history-only
 rows stay at source and managed Storage must be empty. It does not qualify a
 hosted project, restricted managed source-capture login, adopter writer
@@ -2896,6 +2920,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-30, M14 hosted RDS recipe: superuser fixture assumptions in lock
+  timing and teardown → synchronize after restricted admission, then remove
+  test resources through the actual owner and role-grant dependency order.
+
 - 2026-10-29, M14 connected catch-up: fixture labels for observation authority
   or media visibility → use the existing bootstrap observer and exact domain
   SQL states before composing retirement and access expectations.
@@ -2903,6 +2931,8 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-30, M14 managed source transfer: when a full-row history archive
   cannot support complete erasure, carry finite typed obligations and refuse
   unrepresented state. Keep source history in the operator's own archive.
+  Reviewers each finding the next refusal with no test → measure unreached
+  refusal lines once and test them together, at the level where the guards live.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the

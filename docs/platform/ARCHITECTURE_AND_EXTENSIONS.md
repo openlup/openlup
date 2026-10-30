@@ -2413,7 +2413,7 @@ private `report.json` records per-table counts, object/partial counts, observed
 installation identities, timings, refusals, rollback and takeover. Evidence is
 kept under the invoking worktree's `.context/scratch`; cleanup still removes
 only the run's owned resources. The opt-in `--managed-catch-up` mode prepends a
-pinned disposable managed source to this local executable. It projects typed
+stock-PG17 managed-compatibility source to this local executable. It projects typed
 obligations into a fresh qualified-admin PG16 source; the same H1/H2 portable
 leg then reaches an independent PG16 target. The managed fixture ends its sole
 writer/DDL lane before final read-only capture. Changed catalog and consent
@@ -2422,7 +2422,11 @@ both targets. Reconciled settlement details and expired completed keys remain
 at the operator source and are absent from target data. Nonempty managed
 Storage refuses here; its typed object transfer is a separate boundary.
 This fixture establishes no hosted qualification, restricted managed source
-capture login or adopter writer inventory. Hosted provider receipts are separate.
+capture login or adopter writer inventory. The required Vitest journey suite
+exercises this managed first leg. The separate real-source runner repeats its
+assertions on an owned pinned managed stack and runs the complete three-installation
+journey once; the H1/H2 portable leg needs an already-local Node 24.21.0 image.
+Hosted provider receipts are separate.
 No CDC, generic upsert/delete engine or production activation coordinator is
 introduced; capture/restore's finite table regions are unchanged.
 
@@ -2438,8 +2442,10 @@ Restore reloads those saved bytes; a later source census is diagnostic only.
 The target remains inactive until publications, later privacy obligations,
 authorization and authenticated effect reconciliation agree. Existing identity
 erasure operations reapply a post-snapshot erasure and retained free-text
-redaction before serving; earlier erasure receipts remain present. Managed
-history-only source-archive recovery is a separate operator boundary.
+redaction before serving; earlier erasure receipts remain present. Full managed
+source history is not transferred; it stays in the operator's source backup or
+snapshot. Managed history-only source-archive recovery is a separate operator
+boundary.
 
 The retired old executor's exact identity cannot restart after transfer; the
 new worker refuses before its recovery barrier opens. Two accepted effects are

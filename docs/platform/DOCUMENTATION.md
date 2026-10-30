@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The hosted S3 task and storage witness are public source outputs. The runner
+owner in runtime guidance defines its explicit storage-only declaration, private
+lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
+owner defines prefix selection and opt-in single-current-version admission;
+default history refusal remains unchanged. Generated navigation grants no
+hosted qualification.
+
 The small installed `AGENT_CONTEXT.md` corpora in core, outbox and platform are
 generated from selected canonical owner sections by
 [`scripts/agent-context/generate.mjs`](../../scripts/agent-context/generate.mjs).

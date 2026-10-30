@@ -63,7 +63,10 @@ bootstrap-principal session configured read-only by default for the final
 capture/census and closes it afterward. This local superuser fixture step does
 not qualify a restricted source-capture login; actual source and target domain
 commands use the qualified restricted runtime. The existing
-canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
+canonical native capture sets `row_security=off` within its snapshot so a
+filtered read refuses rather than appearing empty. Capture requires a login
+with table-owner or row-security bypass rights. The capture/restore adapters
+retain raw PostgreSQL JSON text, pending
 uploads, partial bytes, cleanup obligations and leases without copying schema,
 roles, private installation-key payloads or migration history. Database and
 filesystem publication are separate; both must finish before target recovery
@@ -76,7 +79,10 @@ the finite managed typed capture/mapping with this same native import and checks
 source facts against both local targets before activation. History-only rows
 remain in the operator's source archive and are absent from target data.
 Managed Storage remains empty in this journey; nonempty Storage refuses until
-its separate typed object projection is available. This does not qualify an
+its separate typed object projection is available. Required managed first-leg
+tests use the stock-PG17 compatibility adapter; the opt-in real-source runner
+repeats them on the pinned managed source and executes the complete journey.
+This does not qualify an
 adopter's complete writer inventory or hosted source and object policy.
 Its optional catch-up mode also takes a preliminary copy while the source
 changes. It discards that target selection and uses a separate fresh inactive
@@ -91,8 +97,10 @@ for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
 The managed source extractor inventories one disposable managed snapshot,
-including Auth identity metadata and Storage metadata relations. It projects
-only the finite typed obligations into a qualified canonical target. Full
+including Auth identity metadata and Storage metadata relations. The capture
+login must be exempt from row security and able to read every relation; a login
+that row security would filter refuses instead of reading an empty source. It
+projects only the finite typed obligations into a qualified canonical target. Full
 managed audit and business history is not transferred: it remains in the
 operator's source backup or snapshot, under the operator's access, retention
 and erasure controls. The existing `retained-history` disposition identifies
@@ -104,9 +112,22 @@ that archive only after their windows expire. The operator waits until
 outstanding idempotency windows expire and quiesces in-flight checkouts, then
 captures. Provider payment identifiers of settled payments are carried with
 the typed payment; provider reference rows of settled or terminal unpaid
-payments and their raw payloads stay in the operator archive. Nonempty unknown
-relations, incomplete typed obligations and other settlement or idempotency
-states refuse transfer. Managed Storage objects are not yet transferred;
+payments and their raw payloads stay in the operator archive. Failed payments
+are carried as typed failed settlement state; checked cancelled or expired
+checkouts stay in the archive while their pending order is carried. Carried
+settled transitions receive `invoicing_cutover` rows, so restored history opens
+no new document duty. A terminal checkout reminder keeps only its key on the
+carried unpaid order, so the target does not send it again. Carried subscriptions
+stay at static delivery admission `blocked`: a due renewal refuses before stock or
+payment and records that refusal for its schedule. Renewals of carried subscriptions
+stay unsupported until a later subscription lifecycle carry, so keep the renewal job
+off for them. Product content columns, including allergens, are not carried; restore
+them from the operator's archive before the target serves that catalogue.
+Any managed invoice row refuses, including issued
+invoices, so a source with invoice rows cannot transfer yet. A starter-pack marker,
+a synthetic test subscription, a quote line that disagrees with its price agreement
+and an order item with no SKU also refuse. Nonempty unknown relations, incomplete typed obligations and
+other settlement or idempotency states refuse transfer. Managed Storage objects are not yet transferred;
 nonempty managed Storage refuses. A separate managed object projection is
 required before that source state can transfer. Source-keyed terminal effects
 do not become active target command keys. Managed capture is local evidence
@@ -485,8 +506,18 @@ A host-declared trusted provider control plane may use a non-superuser bootstrap
 login with CREATEROLE and CREATEDB and named outside elevated roles. Admission
 checks that those roles do not enter the application role graph and keeps the
 application ownership, runtime/restore limits and selected catalogue checks.
-Local PG16 role emulation leaves actual hosted privilege behavior and provider
-role inventory for later hosted receipts.
+Only an explicit `target: "rds"`, `layout: "serial-cluster"` selection permits
+provider-defined authority without an elevated PostgreSQL role flag, and only
+through declared `rds_superuser` membership. Every other declared name still
+requires an elevated flag, including the other seven stock RDS roles. The fixed
+eight-role stock inventory is shared with the recipe freshness check.
+In that RDS mode, memberships into fixed PostgreSQL predefined roles are outside
+the application graph and its normalized inventory only when both member and
+grantor are declared stock RDS roles. Other selections retain the elevated-role
+requirement and exact predefined-role comparison. Edges into application roles
+remain subject to exact comparison; this exception cannot grant a migration,
+runtime or restore login provider membership. Local PG16 role emulation leaves
+actual hosted privilege behavior and provider inventory for hosted receipts.
 
 The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
 check the actual login, owner, held lock, protected role graph, default ACLs,
@@ -1319,7 +1350,11 @@ binding; the ordinary offline test keeps it optional and cannot thereby claim
 compatible-code rollback. Killed child migrations receive their connection
 configuration through stdin, including verified TLS, without credential-bearing
 process arguments. The factored proof retains the same backfill, ledger,
-retained-row and subscription assertions; no new predecessor is invented.
+retained-row and subscription assertions. The RDS branch instead admits the
+restricted generation, stops its canonical runner at the prefix before the same
+backfill, then exercises those assertions and actual previous application code.
+That branch proves a restricted-prefix upgrade, not an upgrade from a released
+restricted predecessor. The released legacy history below is unchanged.
 
 The [released-history witness](../../tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
 selects the nearest published predecessor with an applicable portable data

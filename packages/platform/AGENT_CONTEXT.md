@@ -6,7 +6,7 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":512,"endLine":541,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":21,"sha256":"378f7a9d94b35b6a66030b967c58c8496fa555177b2b4159ce82d537665b9e52"},{"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":186,"endLine":208,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":273,"endLine":285,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":512,"endLine":541,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":21,"sha256":"378f7a9d94b35b6a66030b967c58c8496fa555177b2b4159ce82d537665b9e52"},{"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":207,"endLine":229,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":273,"endLine":285,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
@@ -66,7 +66,7 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-<!-- openlup-context {"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":186,"endLine":208,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
+<!-- openlup-context {"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":207,"endLine":229,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:

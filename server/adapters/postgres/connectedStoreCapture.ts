@@ -92,6 +92,8 @@ export async function captureConnectedNativeStore(input: {
         pg_catalog.current_database() AS database, session_user::pg_catalog.text AS login,
         pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") throw new PostgresTransferError("invalid_input");
+      // A login that row security would filter must fail here, not read an empty source.
+      await db.query("SET LOCAL row_security = off");
       await db.query("SET LOCAL TimeZone = 'UTC'");
       // Existing utility validates source IDs, limits, schema and lossless rows;
       // its callback reuses this held client without another BEGIN/COMMIT.

@@ -48,7 +48,12 @@ query/building and executor surfaces do not by themselves establish an
 installation, role graph, database-wide compatibility or a connected-store
 transfer. The migration-runner and qualified-session files have the narrower
 installer owner below; connected-store capture/restore has the separate
-transfer owner. The managed source extractor in this directory is also a
+transfer owner. The fixed [RDS role inventory](postgres/rdsControlRoles.ts) is
+shared by recipe freshness and RDS-scoped installation admission. It is
+installation data under the narrower installer contract below; the names alone
+grant no authority.
+
+The managed source extractor in this directory is also a
 transfer adapter: it reads a bounded source snapshot and emits a finite typed
 canonical projection, rather than serving a normal request or adding a
 provider connection.
@@ -61,11 +66,17 @@ is not a superuser. The [session admission](postgres/qualifiedInstall.ts) checks
 the real migration session, exact ledger prefix and protected role graph before
 normalizing declared names into either fixed mode-specific inventory. A host may
 declare a finite trusted control-plane role inventory for a non-superuser
-bootstrap login with CREATEROLE and CREATEDB and an elevated provider-role
-membership. Outside provider roles may enter
-the protected graph only through that bootstrap login; an edge into an
-application principal still
-refuses. The actual role flags and graph are checked before normalization. It reuses
+bootstrap login with CREATEROLE and CREATEDB and a provider-role membership.
+Only an explicit `target: "rds"`, `layout: "serial-cluster"` selection permits
+provider authority without elevated flags through declared `rds_superuser`
+membership. Every other declared name requires an elevated flag, including the
+other seven stock roles. The fixed eight-role inventory is shared with recipe
+freshness; declaring other names does not widen it. Only predefined-role edges
+whose member and grantor
+are both declared stock RDS roles are excluded from normalized inventory in
+that mode. Other selections retain their existing elevation and graph checks.
+An edge into an application principal still refuses. The actual role
+flags and graph are checked before normalization. It reuses
 the existing package executor, advisory lock, per-unit transaction and final
 inventory comparison. Installer-managed M creates the six fixed groups;
 operator-provisioned M receives declared ADMIN edges without CREATEROLE. M is
@@ -130,7 +141,8 @@ grants and migration history remain unchanged.
 
 The [managed source extractor](postgres/connectedManagedRetained.ts) inventories
 one disposable managed PostgreSQL snapshot across non-system schemas, selecting
-Auth identity metadata without credentials. Its finite typed projection maps
+Auth identity metadata without credentials. A capture login that row security
+would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
 Full managed audit and business history remains in the operator's source
 backup or snapshot, under the operator's own access, retention and erasure
@@ -141,8 +153,19 @@ idempotency receipts after expiry remain in that archive; the operator waits
 until outstanding idempotency windows expire and quiesces in-flight checkouts,
 then captures. Provider payment identifiers of settled payments are carried
 with the typed payment; provider reference rows of settled or terminal unpaid
-payments and their raw payloads stay in the operator archive. Other settlement
-or idempotency states refuse. Managed Storage objects are not yet transferred;
+payments and their raw payloads stay in the operator archive. Carried settled
+transitions receive `invoicing_cutover` rows, so restored history opens no new
+document duty. A terminal checkout reminder keeps only its key on the carried
+unpaid order. Carried subscriptions stay at static delivery admission `blocked`.
+Renewals of carried subscriptions stay unsupported until a later subscription
+lifecycle carry, so keep the renewal job off for them. Product content columns,
+including allergens, are not carried; restore them from the operator's archive
+before the target serves that catalogue.
+Any managed invoice row refuses, including issued invoices, so a source with invoice
+rows cannot transfer yet. A starter-pack marker, a synthetic test subscription, a
+quote line that disagrees with its price agreement and an order item with no SKU also
+refuse. Other settlement or idempotency
+states refuse. Managed Storage objects are not yet transferred;
 nonempty managed Storage refuses pending a typed object projection. Unknown
 nonempty relations and source state that the typed path cannot carry also
 refuse before restore. This local adapter does not prove provider service access
@@ -233,8 +256,11 @@ See the [runner boundary](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe
 
 The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an
 explicitly selected SDK client; it constructs no client, credential chain or
-environment binding. Imports and construction make no requests. Selected reads
-use only ListObjectsV2 and GetObject. A bounded census follows continuation
+environment binding. Imports and construction make no requests. Default selected reads
+use ListObjectsV2 and GetObject. An optional `prefix` selects a finite namespace;
+read keys, returned listing keys, independent object records and pending/cleanup
+obligation keys outside it refuse. Keys retain their full
+S3 names. A bounded census follows continuation
 tokens to an observed terminal page, reads every listed object's bounded bytes,
 then repeats the listing. Duplicate keys, repeated/missing cursors, unexpected
 common prefixes, byte disagreement and changed listing facts refuse. The host
@@ -246,8 +272,8 @@ selected bucket. It compares every
 listed key, logical version, byte digest and metadata field with those records,
 and preserves explicit pending-upload, partial-object and cleanup references
 with their source-record identities.
-The source-store snapshot must explicitly establish that this finite profile
-has no retained native version history, object tags or in-progress multipart
+The default source-store snapshot must explicitly establish no retained native
+version history; every selected profile must establish no object tags or in-progress multipart
 uploads; a missing feature fact refuses qualification. Pending logical uploads
 may still exist before bytes are materialized and remain retained obligations.
 Pending or cleanup work can name a not-yet-materialized key; a partial object
@@ -264,8 +290,30 @@ the selected profile cannot qualify them by omission. The fixed
 `authenticated-source-read` classification means only that authenticated GET
 succeeded. Bucket policy, public access, RLS and domain access require their
 independent owner facts and probes before any complete-store claim.
-The qualified reference path refuses any returned native version ID, since its
-current-object listing cannot establish the retained version history.
+The default qualified reference path refuses any returned native version ID,
+since its current-object listing cannot establish retained version history.
+An explicitly selected `nativeVersionAdmission: "single-current"` requires the
+reference feature `nativeVersionHistory: "single-current"`. It enumerates
+ListObjectVersions before and after capture, follows both pagination markers,
+and requires exactly one latest non-null version per current key, no delete
+markers and exact agreement with every captured GET version. Noncurrent versions,
+changed history, missing keys and malformed or repeated cursors refuse. This
+profile exports only current objects; it does not transfer version history.
+The host still owns full namespace authority, writer exclusion and independent
+no-tags/no-multipart facts.
+
+The [hosted storage composition](../../tests/postgres/m14HostedStorage.mjs) uses
+these same blob/source/copy boundaries within one declared test prefix. Customer
+access probes call the real BFF handler with synthetic host grants; the bucket
+probe separately requires anonymous denial. It creates no IAM user and claims
+no cross-account authorization. Bounded reads refuse size and retained
+content-type conflicts; the blob upload port itself delegates type/size policy
+to its host. A later host erasure excludes the erased key before older-snapshot
+private publication. Lifecycle acknowledgement stays separate from actual
+noncurrent-version absence after elapsed time. Native delete hides current
+reads with a marker; old versions remain role-readable until expiration or
+explicit cleanup. The [runner owner](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
+defines receipt states and continuity inputs.
 
 Only a recognized NoSuchKey means absence. NoSuchBucket and ambiguous 404/NotFound
 responses remain unavailable; authentication denial, cancellation, truncated

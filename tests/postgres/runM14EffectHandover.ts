@@ -156,7 +156,7 @@ async function assertManagedTypedTarget(db: Pool, obligations: ManagedObligation
   assert.deepEqual((await db.query("SELECT delivery_admission FROM public.subscription_renewal_terms WHERE subscription_id=$1",
     [obligations.subscriptionId])).rows, [{ delivery_admission: "blocked" }]);
   assert.deepEqual((await db.query("SELECT status FROM public.invoicing_duties WHERE order_id=$1",
-    [obligations.paidOrderId])).rows, [{ status: "owed" }]);
+    [obligations.paidOrderId])).rows, []);
   assert(Number((await db.query("SELECT count(*) FROM public.outbox_events WHERE aggregate_id=$1 AND status='pending'",
     [obligations.subscriptionId])).rows[0]?.count) > 0);
 }
@@ -862,7 +862,7 @@ try {
     recovery: recoveryMeasurement,
     journey: catchup ? { format: "openlup.local-connected-catchup.v1",
       leg: managedCatchup ? "managed-to-portable-to-portable" : "portable-to-portable",
-      sourceGeneration: managedCatchup ? "pinned-local-managed" : selection.generation, targetGeneration: selection.generation,
+      sourceGeneration: managedFirst?.report.sourceGeneration ?? selection.generation, targetGeneration: selection.generation,
       managedFirstLeg: managedFirst?.report,
       preliminary: preliminary!.report, final: { captureSha256: finalGraph.sha256, counts: catchupCounts(finalGraph),
         sourceInstallation: finalGraph.observation, targetInstallation: pristineTarget.observation,

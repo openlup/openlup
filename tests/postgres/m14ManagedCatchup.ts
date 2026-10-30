@@ -167,7 +167,7 @@ export async function managedFirstLeg(input: {
     const drain = catchupDrain();
     const activation = { sourceWriterRetired: true, graphPublished: true, typedReadback: true,
       effectiveAccess: true, drainConfigured: acquisitionLegacyDrain(drain.env).state === "draining",
-      effectsReconciled: pendingOutbox >= 1 && owedDuties === 1 };
+      effectsReconciled: pendingOutbox >= 1 && owedDuties === 0 };
     const requireAgreement = (facts: typeof activation) =>
       assert(Object.values(facts).every(Boolean), "managed_first_leg_activation_agreement_required");
     for (const key of Object.keys(activation) as (keyof typeof activation)[])
@@ -177,7 +177,7 @@ export async function managedFirstLeg(input: {
       paidIntentId: managedFixtureIds.paidIntentId, paidOrderId: managedFixtureIds.paidOrderId,
       productId: managedFixtureIds.productId, addedProduct: finalChange.addedProduct,
       deletedProductId: managedFixtureIds.deletedProductId, consentFingerprint },
-      report: { source: "pinned local managed installation", sourceId: managedFixtureIds.sourceId,
+      report: { source: managed.sourceKind, sourceGeneration: managed.sourceGeneration, sourceId: managedFixtureIds.sourceId,
         preliminary: { captureSha256: early.sha256, counts: count(mappedEarly.packet), exportInterruptedAfterReads: exportReads,
           importInterruptedAfterWrites: importInterrupted, atomicRollback: true, resumedAndReplayed: true,
           unexpiredCompletedKeyRefused: true,

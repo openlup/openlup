@@ -254,6 +254,42 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   return copy;
 }
 
+it("refuses a native capture login that row security would silently filter", async () => {
+  const login = "transfer_filtered_reader";
+  await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
+    GRANT pg_read_all_data TO ${login}`);
+  const url = new URL(source.ownerUrl); url.username = login; url.search = "";
+  const reader = new Pool({ connectionString: url.toString(), max: 1 });
+  const errors: unknown[] = [];
+  try {
+    expect(Number((await source.owner.query("SELECT count(*) FROM public.clients")).rows[0].count)).toBeGreaterThan(0);
+    const client = await reader.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      // The baseline dump can leave a pooled session with this setting off.
+      await client.query("SET LOCAL row_security = on");
+      expect((await client.query("SELECT count(*)::int AS rows FROM public.clients")).rows).toEqual([{ rows: 0 }]);
+      await expect(captureConnectedNativeStore({ sourceId: "native-filtered-login", catalogueId: selected.objectInventorySha256,
+        maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+        source: { withSnapshot: work => work({ query: async (sql, values) => {
+          try { return await client.query(sql, values ? [...values] : undefined); }
+          catch (error) { errors.push((error as { code?: unknown }).code); throw error; }
+        } }) } })).rejects.toMatchObject({ code: "database_unavailable" });
+      expect(errors).toEqual(["42501"]);
+    } finally { await client.query("ROLLBACK"); client.release(); }
+  } finally {
+    await reader.end();
+    await source.owner.query(`DROP ROLE ${login}`);
+  }
+});
+
+it("preserves native JSON digits above the JavaScript exact integer range", async () => {
+  const carried = await capture(source.owner, "native-json-number-source");
+  await restore(carried);
+  expect((await target.owner.query("SELECT payload->>'frozen' AS value FROM public.outbox_events WHERE idempotency_key='original-effect-key'"))
+    .rows).toEqual([{ value: "9007199254740993" }]);
+});
+
 it("refuses a changed known trigger body and an unknown INSERT trigger before importing rows", async () => {
   const before = await census(target.owner);
   const original = (await target.owner.query<{ definition: string }>(

@@ -1,59 +1,33 @@
-// Disposable pinned managed source for the opt-in three-installation M14 journey.
+// Managed-compatibility source for the three-installation M14 journey.
+// The opt-in real-source runner supplies its own fresh managed stack.
 // Reuses the predecessor fixture shape; contains synthetic values only.
-import { execFile } from "node:child_process";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
-import { join } from "node:path";
-import { promisify } from "node:util";
+import { env as processEnvironment } from "node:process";
 import { Pool } from "pg";
 import { captureManagedSourceGraph } from "../../server/adapters/postgres/connectedManagedRetained.js";
-import { deriveCliImages } from "../../scripts/ci-image-mirror.mjs";
-import { prePullCliImages } from "../../scripts/public-ci-pgtap.mjs";
+import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
+import { closePostgres, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const run = promisify(execFile);
 export const managed = (() => {
   const operator = randomUUID();
   let owner: Pool | undefined, reader: Pool | undefined, connectionString: string | undefined;
-  let directory: string | undefined, cliRegistry: string | undefined;
-  let started = false;
-  const free = (port: number) => new Promise<boolean>((resolve, reject) => {
-    const server = createServer();
-    server.once("error", error => error.message.includes("EADDRINUSE") ? resolve(false) : reject(error));
-    server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
-  });
-  return { operator, get owner() { if (!owner) throw new Error("Managed stack not started"); return owner; },
+  let container: PostgresContainer | undefined;
+  const realPort = processEnvironment.OPENLUP_M14_MANAGED_SOURCE_PORT;
+  return { operator,
+    sourceKind: realPort === undefined ? "stock PG17 managed-compatibility fixture" : "pinned real local managed installation",
+    sourceGeneration: realPort === undefined ? "stock-pg17-managed-compatibility" : "pinned-local-managed",
+    get owner() { if (!owner) throw new Error("Managed source not started"); return owner; },
     async start() {
-      if ((await run("supabase", ["--version"])).stdout.trim() !== "2.122.0") throw new Error("Pinned Supabase CLI required");
-      const scratch = join(process.cwd(), ".context/scratch");
-      await mkdir(scratch, { recursive: true });
-      directory = await mkdtemp(join(scratch, "m14-managed-retained-"));
-      const project = `m14retained${process.pid}${randomBytes(3).toString("hex")}`;
-      let base = 0;
-      for (let attempt = 0; attempt < 50; attempt++) {
-        const candidate = 55000 + Number.parseInt(randomBytes(2).toString("hex"), 16) % 8000;
-        if ((await Promise.all([0, 1, 2, 3, 4, 9, 10].map(offset => free(candidate + offset)))).every(Boolean)) {
-          base = candidate; break;
-        }
+      if (realPort !== undefined) {
+        if (!/^\d{4,5}$/u.test(realPort) || Number(realPort) > 65535 || Number(realPort) < 1024)
+          throw new Error("Real managed witness requires a valid loopback port");
+        connectionString = `postgresql://supabase_admin:postgres@127.0.0.1:${realPort}/postgres`;
+      } else {
+        container = await runManagedCompatPostgres({ name: `m14-managed-journey-${process.pid}`, password: "synthetic-transfer" });
+        if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Managed adapter source unavailable");
+        connectionString = container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:");
       }
-      if (!base) throw new Error("No free local managed port block");
-      const replacements: Record<string, string> = { PROJECT_ID: project, SHADOW_PORT: String(base), API_PORT: String(base + 1),
-        DB_PORT: String(base + 2), STUDIO_PORT: String(base + 3), MAIL_PORT: String(base + 4),
-        POOLER_PORT: String(base + 9), APP_PORT: String(base + 10) };
-      const config = readFileSync("config/public-reference-subscription-supabase.toml", "utf8")
-        .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key: string) => {
-          if (!Object.hasOwn(replacements, key)) throw new Error("Unknown local stack port placeholder");
-          return replacements[key]!;
-        });
-      await mkdir(join(directory, "supabase"));
-      await writeFile(join(directory, "supabase/config.toml"), config);
-      cliRegistry = await prePullCliImages(deriveCliImages(process.cwd(), directory));
-      await run("env", [`SUPABASE_INTERNAL_IMAGE_REGISTRY=${cliRegistry}`, "supabase", "start", "--workdir", directory, "--exclude",
-        "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"],
-      { timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-      started = true;
-      connectionString = `postgresql://supabase_admin:postgres@127.0.0.1:${base + 2}/postgres`;
       owner = new Pool({ connectionString, max: 2 });
       await owner.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
       for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"])
@@ -67,7 +41,7 @@ export const managed = (() => {
       await owner.query("RESET ROLE");
       // CLI 2.122 seeds this service table. Unknown nonempty service state
       // still refuses the finite managed profile; this local fixture has none.
-      await owner.query("DELETE FROM _realtime.feature_flags");
+      if (realPort !== undefined) await owner.query("DELETE FROM _realtime.feature_flags");
       await owner.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)",
         [operator, `${operator}@example.invalid`]);
     },
@@ -82,12 +56,7 @@ export const managed = (() => {
       return reader;
     },
     async stop() {
-      await owner?.end();
-      await reader?.end();
-      if (directory) try {
-        if (started) await run("env", [`SUPABASE_INTERNAL_IMAGE_REGISTRY=${cliRegistry}`, "supabase", "stop", "--workdir", directory, "--no-backup"],
-          { timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
-      } finally { await rm(directory, { recursive: true, force: true }); }
+      await closePostgres(container, [owner, reader]);
     } };
 })();
 const sourceId = "managed-retained-synthetic";
@@ -95,12 +64,12 @@ const clientId = randomUUID(), userId = randomUUID(), orderId = randomUUID(), pa
 const subscriptionId = randomUUID(), productId = randomUUID(), deletedProductId = randomUUID();
 const skuId = randomUUID(), priceListId = randomUUID(), lineId = randomUUID();
 const contactId = randomUUID();
-const paidOrderId = randomUUID(), paidPaymentId = randomUUID(), paidIntentId = randomUUID(), invoiceId = randomUUID();
+const paidOrderId = randomUUID(), paidPaymentId = randomUUID(), paidIntentId = randomUUID();
 const settlementBatchId = randomUUID(), paidRefId = randomUUID();
 const email = "retained@example.invalid";
 export const managedFixtureIds = { sourceId, clientId, userId, orderId, paymentId, intentId,
   subscriptionId, productId, deletedProductId, skuId, priceListId, lineId, contactId,
-  paidOrderId, paidPaymentId, paidIntentId, invoiceId, settlementBatchId, paidRefId };
+  paidOrderId, paidPaymentId, paidIntentId, settlementBatchId, paidRefId };
 
 export async function seedManagedSource() {
   await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,$2),($3,$4)",
@@ -144,9 +113,9 @@ export async function seedManagedSource() {
     (id,client_id,status,currency,subtotal_cents,total_cents,mode)
     VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [orderId, clientId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
-    (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+    (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
-    VALUES($1,1,900,900,0,900,833,1)`, [orderId]);
+    VALUES($1,$2,1,900,900,0,900,833,1)`, [orderId, skuId]);
   await managed.owner.query(`INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','failed',900,'XXX')`, [paymentId, orderId]);
   await managed.owner.query(`INSERT INTO public.commerce_payment_intents
@@ -164,9 +133,9 @@ export async function seedManagedSource() {
   await managed.owner.query(`UPDATE public.outbox_events SET status='discarded',error='synthetic source policy skip'
     WHERE aggregate_id=$1 AND event_type='commerce.order.paid.email'`, [paidOrderId]);
   await managed.owner.query(`INSERT INTO public.commerce_order_items
-    (order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
+    (order_id,sku_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,
       effective_net_cents,allocation_ordinal)
-    VALUES($1,1,900,900,0,900,833,1)`, [paidOrderId]);
+    VALUES($1,$2,1,900,900,0,900,833,1)`, [paidOrderId, skuId]);
   await managed.owner.query(`INSERT INTO public.commerce_payments
     (id,order_id,provider,provider_payment_id,status,amount_cents,currency)
     VALUES($1,$2,'synthetic-provider','provider-paid:1','succeeded',900,'XXX')`, [paidPaymentId, paidOrderId]);
@@ -190,19 +159,6 @@ export async function seedManagedSource() {
     (batch_id,provider_kind,provider_payment_id,payment_intent_id,payment_id,gross_cents,fee_cents,net_cents,currency,status)
     VALUES($1,'synthetic-provider','provider-paid:1',$2,$3,900,0,900,'XXX','matched')`,
   [settlementBatchId, paidIntentId, paidPaymentId]);
-  const paidAt = (await managed.owner.query<{ updated_at: Date }>(
-    "SELECT updated_at FROM public.commerce_payment_intents WHERE id=$1", [paidIntentId])).rows[0]!.updated_at;
-  await managed.owner.query(`INSERT INTO public.accounting_invoices
-    (id,order_id,order_ref,invoice_ref,status,currency,buyer_snapshot,order_snapshot,tax_snapshot,
-      lines_snapshot,total_net_cents,total_gross_cents,provider_kind,policy_version,payment_completed_at,provider_payment_id)
-    VALUES($1,$2,$3,'synthetic-invoice:1','issue_requested','XXX',$4::jsonb,'{}',$5::jsonb,$6::jsonb,833,900,
-      'synthetic-provider','invoicing.seller.v1',$7,'provider-paid:1')`,
-  [invoiceId, paidOrderId, `order:${paidOrderId}`, JSON.stringify({ name: "Synthetic buyer", email }), JSON.stringify({ taxCents: 67 }),
-    JSON.stringify([{ name: "Synthetic item", quantity: 1, unitNetMinor: 833, unitGrossMinor: 900, totalGrossMinor: 900,
-      totalNetMinor: 833, vatRateBps: 800 }]), paidAt]);
-  await managed.owner.query(`INSERT INTO public.accounting_invoice_issue_outbox
-    (invoice_id,provider_kind,status,attempt_count)
-    VALUES($1,'synthetic-provider','pending',0)`, [invoiceId]);
   await managed.owner.query(`INSERT INTO public.commerce_idempotency_keys
     (scope,idempotency_key,status,expires_at,metadata)
     VALUES('checkout','source-expired:1','completed','2020-01-01T00:00:00Z',$1::jsonb)`,
