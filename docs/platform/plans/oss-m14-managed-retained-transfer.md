@@ -775,3 +775,27 @@ resolution. Its pre-note tree is `cd75fcd8da02d1b12a6a94d3fe83be06be1a2c3d`.
 The stable parcel patch ID excluding this record is
 `2c62af7c2a621620a7b48e78e4a7ac929b53b09c` against both old and new main.
 This meets CD-M14-30; full native review covers the integrated candidate.
+
+## Cycle-11 integration blocker
+
+The integrated strict typecheck fails with one TS2305 diagnostic. Main's
+stock-PostgreSQL pgTAP change removed `deriveCliImages` from
+`scripts/ci-image-mirror.mjs` and its declaration, and `prePullCliImages` from
+`scripts/public-ci-pgtap.mjs`; this parcel's real managed fixture imports both.
+The required root-test shards include this fixture and no longer install the
+Supabase CLI. Replacing the imports alone would therefore leave a second,
+runtime prerequisite gap in hosted tests. No new source or test repair was
+made, and no cycle-11 reviewer was launched while this mandatory gate fails.
+
+The smallest proposed recovery is a test-owned direct launch through pinned
+CLI 2.122.0, using the existing identity-conformance launch pattern, plus a
+checksum-verified CLI prerequisite for the required root-test shards. That
+workflow hook needs its owner; canonical stock-PG17 pgTAP can remain separate.
+An alternative is an owner-approved existing managed fixture only if it proves
+the same real Auth and Storage metadata interfaces. Neither option permits
+skipping the managed witness or substituting the stock compatibility adapter
+for its real source. The accepted payment-link repair remains committed and
+its open native card awaits fresh review after integration is repaired.
+Self-retro: main's removal of a shared runner helper exposed the fixture's
+cross-module setup dependency; repair its explicit prerequisite and ownership
+rather than hiding the failure with a test exclusion.
