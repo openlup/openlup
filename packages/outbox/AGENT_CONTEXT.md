@@ -6,7 +6,7 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":37,"endLine":53,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":54,"endLine":63,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":37,"endLine":53,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":54,"endLine":63,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
@@ -42,5 +42,33 @@ Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a 
 Claims retain six timestamp digits, per-aggregate ordering, exact dormant identities and claim-token fences. An unknown non-dormant predecessor blocks its aggregate; a known but currently unclaimed type may be bypassed. Snooze and release refund attempts. Storage errors remain exceptions; unstarted claims from an interrupted batch expire rather than being falsely settled.
 
 Prune defaults to 30 days for processed and 90 for discarded, in batches of 500. It empties terminal payload/error and stamps `retentionCompactedAt`, `retentionCompactedBy` and `retentionCompactedStatus`; rows and unique dedupe keys survive. Missing/malformed discard timestamps are ineligible. Pending, failed and processing work remains untouched. Application delivery/ledger adjunct retention remains application-owned.
+
+<!-- /openlup-context -->
+
+## outbox-retry-dispatch-handler-idempotency: Keep handler effects idempotent across retries
+
+<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
+## Idempotency
+The native bundle contention witness characterizes the existing global event
+key, without adding payload/entity binding. Two absent-key transactions on
+disjoint bundles can block at the unique key index: after the first commits,
+the second raises `23505` and its attempted composition is rolled back. If the
+first rolls back, the second can commit. A later same-key call recognizes the
+key before validating changed payload, entity or routine. This is incumbent
+recognition, not a stronger exactly-once or payload-fingerprint guarantee.
+Catalog draft receipts retain their separate canonical-command fingerprint and
+revision behavior; moving their adapter does not change either protocol.
+
+
+Every externally repeatable write has an idempotency scope, a stable operation
+identity, and a request fingerprint. Replaying the same logical request returns
+the established result without a second durable effect. Reusing a key for a
+different fingerprint is a conflict, not permission to overwrite history.
+
+Idempotency keys are opaque values with documented derivation and scope. An
+operation, a provider attempt, a customer journey, and an inbound event may
+require different keys; do not collapse them into one user-controlled value.
+Persist the ledger before reporting success, and make concurrent repeats resolve
+to one canonical effect.
 
 <!-- /openlup-context -->

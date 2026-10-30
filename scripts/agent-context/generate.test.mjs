@@ -52,13 +52,18 @@ test('freshness check refuses source drift and missing corpus without writing', 
       mkdirSync(dirname(resolve(temporary, source)), { recursive: true });
       writeFileSync(resolve(temporary, source), readFileSync(resolve(root, source)));
     }
+    for (const packageName of Object.keys(routes)) mkdirSync(resolve(temporary, 'packages', packageName), { recursive: true });
     assert.throws(() => run(temporary, true), /Stale agent context/u);
     run(temporary);
     run(temporary, true);
     const corpusPath = resolve(temporary, 'packages/core/AGENT_CONTEXT.md');
     const before = readFileSync(corpusPath, 'utf8');
-    const owner = resolve(temporary, 'packages/core/README.md');
-    writeFileSync(owner, readFileSync(owner, 'utf8').replace('## Use in an application\n', '## Use in an application\nChanged owner guidance.\n'));
+    const [, , source, heading] = routes.core[0];
+    const owner = resolve(temporary, source);
+    const original = readFileSync(owner, 'utf8');
+    const ownerHeading = original.split('\n').find((line) => /^#{1,6} /u.test(line) && line.slice(line.indexOf(' ') + 1) === heading);
+    assert.ok(ownerHeading);
+    writeFileSync(owner, original.replace(`${ownerHeading}\n`, `${ownerHeading}\nChanged owner guidance.\n`));
     assert.throws(() => run(temporary, true), /packages\/core\/AGENT_CONTEXT.md/u);
     assert.equal(readFileSync(corpusPath, 'utf8'), before);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
