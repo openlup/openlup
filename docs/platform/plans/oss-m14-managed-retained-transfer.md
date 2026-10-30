@@ -708,3 +708,11 @@ with navigation update, ast-grep and redacted tracked-tree scan pass. The
 terminal rule shares one source-graph check between census and mapping, avoiding
 an additional target representation. The final run follows the one-intent
 conflict guard added after the first 6/6 run.
+
+The coordinator's CD-M14-58 read accepted this candidate. The independently
+computed tree was `8c5383fd4b1adaade4002163170bde0385317a51`, and
+`git diff --binary 0564ae15 8c5383fd` had SHA-256
+`cc608fb2ae6d2a5dc789ce2effa37f12cb2fce19dc3c79c31b3d5d659d57d015`.
+The read accepted the deliberate distinction between typed failed intents and
+archive-only checked cancelled or expired intents, as well as the aggregate
+`requires-active-mapping` census for mixed source relations.
