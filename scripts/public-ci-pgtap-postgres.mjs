@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
 
 import packagePins from "../config/ci-postgres-packages.json" with { type: "json" };
@@ -147,7 +148,7 @@ async function main() {
   mkdirSync(scratch, { recursive: true });
   const directory = mkdtempSync(join(scratch, "run-"));
   const files = selectPackageFiles(packagePins, dockerArchitecture());
-  const cache = process.env.OPENLUP_PGTAP_DEB_CACHE || join(root, ".context/scratch/cache/pgtap-postgres-debs");
+  const cache = processEnvironment.OPENLUP_PGTAP_DEB_CACHE || join(root, ".context/scratch/cache/pgtap-postgres-debs");
   const debs = await ensurePackages(files, cache);
   const image = await pullWithRetry(readCiImage(packagePins.image));
   console.log(`Pinned image ${image}; packages ${debs.join(", ")} (${elapsed()})`);

@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, chmodSync, constants, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
 
 // pg_prove --verbose prints `<path> ..` before each file's TAP stream and a
@@ -324,17 +325,18 @@ const shimSource = (parity, markers) => `#!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { CATALOG_SNAPSHOT_SQL, ENVIRONMENT_FINGERPRINT_SQL, captureRows, sabotageSql } from ${JSON.stringify(parity)};
-const real = process.env.OPENLUP_PGTAP_REAL_SUPABASE;
+const real = processEnvironment.OPENLUP_PGTAP_REAL_SUPABASE;
 const args = process.argv.slice(2);
 if (args[0] === "test" && args[1] === "db") {
   const workdir = args[args.indexOf("--workdir") + 1];
   const project = /^project_id\\s*=\\s*"([^"]+)"/mu.exec(readFileSync(join(workdir, "supabase/config.toml"), "utf8"))[1];
   const container = "supabase_db_" + project;
-  const out = process.env.OPENLUP_PGTAP_PARITY_OUT;
+  const out = processEnvironment.OPENLUP_PGTAP_PARITY_OUT;
   writeFileSync(join(out, "snapshot.json"), JSON.stringify(captureRows(container, CATALOG_SNAPSHOT_SQL), null, 1));
   writeFileSync(join(out, "fingerprint.json"), JSON.stringify(captureRows(container, ENVIRONMENT_FINGERPRINT_SQL), null, 1));
-  const sabotage = sabotageSql(process.env.OPENLUP_PGTAP_SABOTAGE || undefined);
+  const sabotage = sabotageSql(processEnvironment.OPENLUP_PGTAP_SABOTAGE || undefined);
   if (sabotage) captureRows(container, sabotage + " SELECT 'sabotage', 'applied';", { user: "supabase_admin" });
   args.push("--debug");
 }
@@ -365,7 +367,7 @@ function cliLaneCommand(rest) {
   chmodSync(join(shim, "supabase"), 0o755);
   const result = spawnSync(process.execPath, [join(root, "scripts/public-ci-pgtap.mjs")], {
     cwd: root, stdio: "inherit",
-    env: { ...process.env, PATH: `${shim}:${process.env.PATH}`, OPENLUP_PGTAP_REAL_SUPABASE: real, OPENLUP_PGTAP_PARITY_OUT: out, OPENLUP_PGTAP_SABOTAGE: sabotage ?? "" },
+    env: { ...processEnvironment, PATH: `${shim}:${processEnvironment.PATH}`, OPENLUP_PGTAP_REAL_SUPABASE: real, OPENLUP_PGTAP_PARITY_OUT: out, OPENLUP_PGTAP_SABOTAGE: sabotage ?? "" },
   });
   writeFileSync(join(out, "tap.log"), readFileSync(join(root, ".context/scratch/pgtap/latest.log")));
   console.log(`CLI lane exit ${result.status}; evidence in ${out}`);
