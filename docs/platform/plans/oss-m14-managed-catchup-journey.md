@@ -114,3 +114,12 @@ was 110,444 ms from fixture start; this is fixture timing, not RPO/RTO evidence.
 The first attempt stopped before mapping because the paid-order fixture made
 a planned communication delivery. Matching the predecessor's fixture cleanup
 removed that generated row; no production mapper or transfer API changed.
+
+Maintainer acceptance CD-M14-64 (2026-10-30) covers option C merge tree
+`8605d10d93356298f630691873bada3c19c4e014`, with parents `3e948624`
+and `5289e6e4`. The independently recomputed own-delta SHA-256 versus the
+second parent was equal:
+`b40e9c5f96c3902e69510dbff689ad0761595952f23ec2dc2ae52597ddfad44c`.
+Commit `5ce8fe0188ed3bde57516fffc52d5f989a67064a` DCO-signs that exact
+tree. The post-commit documentation policy check passed both obligations and
+produced no generated-navigation change.
