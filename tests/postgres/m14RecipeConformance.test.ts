@@ -332,8 +332,10 @@ it("refuses declarations from another target family for every selectable target"
   const f = fixture();
   const environment = { M14_CROSS_TARGET_PASSWORD: f.secret };
   const pg = { ...f.config, region: "xx-test-1" };
+  const node = hostedFixture();
   const declarations: Record<string, object> = {
     "self-host": pg, neon: { ...pg, target: "neon" },
+    "hosted-node": node.config,
     rds: { schemaVersion: 1, target: "rds", disposable: true, region: "xx-test-1", layout: "serial-cluster",
       previousApplicationPath: f.config.previousApplicationPath,
       installations: Object.fromEntries(["installer-managed", "operator-provisioned", "schema"].map(mode => [mode, {
@@ -465,6 +467,7 @@ it("refuses insecure hosted origins, mutable images, remote DBs and public TLS k
   const f = hostedFixture();
   const withUserinfo = new URL(f.config.origin); withUserinfo.username = "user"; withUserinfo.password = f.secret;
   for (const origin of ["http://host.192-0-2-1.sslip.io", "https://192.0.2.1", "https://[::1]",
+    "https://192-0-2-1.sslip.io./", "https://localhost./",
     "https://host.example.invalid", "https://host.example.test", "https://host.example.example",
     "https://host.example.localhost", "https://host.example.local", "https://localhost",
     "https://@host.192-0-2-1.sslip.io", "https://:@host.192-0-2-1.sslip.io",
