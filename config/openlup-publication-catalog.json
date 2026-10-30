@@ -1462,6 +1462,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-managed-catchup-journey.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-managed-identity-mapping.md",
       "class": "public-output"
     },
@@ -26527,6 +26531,18 @@
     },
     {
       "path": "tests/postgres/m14InstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ManagedCatchup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ManagedCatchup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14ManagedSourceFixture.ts",
       "class": "public-output"
     },
     {

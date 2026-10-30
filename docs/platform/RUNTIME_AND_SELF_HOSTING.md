@@ -334,6 +334,17 @@ instead uses its migration-owner capture session. The
 [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 owns preliminary-generation refusal and the final DB/object/access/drain/effect
 barrier; it is a finite local journey, not an adopter-host fencing service.
+The opt-in `--managed-catch-up` mode maps the stock-PG17 managed-compatibility fixture into
+that source installation. Its declared setup writer ends before final read-only
+capture; no managed Auth or Storage HTTP service starts. Typed catalog,
+consent and settlement facts are read back at both local PG16 targets.
+History-only settlement and expired-key rows stay in the operator source archive;
+nonempty managed Storage refuses until its separate typed object path is added.
+Native H1/H2 retirement and egress exclusion then run for the portable leg.
+This does not qualify a hosted managed source or a complete adopter writer
+inventory. The opt-in real-source witness supplies a fresh pinned managed
+stack to the same assertions and complete journey; required first-leg Vitest
+tests use the compatibility fixture and require no Supabase CLI.
 The `--older-snapshot` mode retires the media application earlier, before saving
 the consistent DB/private-media backup. Its three admitted dispatches have a
 fixed 63-second release deadline to enclose the measured 60-second snapshot age;

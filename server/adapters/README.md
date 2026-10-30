@@ -94,7 +94,10 @@ restore binding. The earlier finite native witness passed with two owned
 the earlier 90-unit attempt stopped during source runtime media confirmation.
 The fixed selected graph preserves PostgreSQL JSON text, including bigint and
 timestamp precision. Capture observes one actual read-only repeatable-read
-transaction and checks all non-system user schemas. Unknown nonempty business
+transaction and checks all non-system user schemas. Capture sets local
+`row_security=off` in that snapshot so a login whose reads would be filtered
+refuses rather than exporting apparently empty tables. The caller supplies a
+login exempt from row security for the selected relations. Unknown nonempty business
 tables, including acquisition-private business data, refuse rather than being
 omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,

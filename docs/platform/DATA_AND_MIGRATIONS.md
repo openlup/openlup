@@ -54,7 +54,7 @@ does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
-takes its final connected73-table graph and application's complete private
+takes its final finite connected-table graph and application's complete private
 `objects/tmp` capture only after its finite source writers and observed server
 backends retire. The default crash-boundary mode captures with a read-only
 migration-owner session. In catch-up mode the fixture closes its bootstrap
@@ -63,15 +63,27 @@ bootstrap-principal session configured read-only by default for the final
 capture/census and closes it afterward. This local superuser fixture step does
 not qualify a restricted source-capture login; actual source and target domain
 commands use the qualified restricted runtime. The existing
-canonical capture/restore adapters retain raw PostgreSQL JSON text, pending
+canonical native capture sets `row_security=off` within its snapshot so a
+filtered read refuses rather than appearing empty. Capture requires a login
+with table-owner or row-security bypass rights. The capture/restore adapters
+retain raw PostgreSQL JSON text, pending
 uploads, partial bytes, cleanup obligations and leases without copying schema,
 roles, private installation-key payloads or migration history. Database and
 filesystem publication are separate; both must finish before target recovery
 or application startup. Source `submitting` rows remain unchanged through import;
 only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
-absence or complete upload is manufactured. This finite composition does not
-qualify an adopter's complete writer inventory or managed-history mapping.
+absence or complete upload is manufactured. The portable-only mode does not
+qualify managed-history mapping. The opt-in `--managed-catch-up` mode composes
+the finite managed typed capture/mapping with this same native import and checks
+source facts against both local targets before activation. History-only rows
+remain in the operator's source archive and are absent from target data.
+Managed Storage remains empty in this journey; nonempty Storage refuses until
+its separate typed object projection is available. Required managed first-leg
+tests use the stock-PG17 compatibility adapter; the opt-in real-source runner
+repeats them on the pinned managed source and executes the complete journey.
+This does not qualify an
+adopter's complete writer inventory or hosted source and object policy.
 Its optional catch-up mode also takes a preliminary copy while the source
 changes. It discards that target selection and uses a separate fresh inactive
 generation for final recapture and exact readback; no existing target rows are
