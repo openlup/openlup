@@ -237,6 +237,8 @@ export interface AnalyticsDataLayerOptions<StepName extends string = string> {
         analytics: string;
         advertising: readonly string[];
     };
+    /** Default analytics-only preserves legacy admission. Independent requires either stored purpose; host-authorized admits every typed event even with both denied. Nondefault modes publish independent stored signals: update(true) publishes stored flags, update(false) denies all; neither changes the admission policy. Hosts must fence routes and tag purposes; denied-state transmission is only for explicitly authorized consent-aware tags. */
+    consentPolicy?: "analytics-only" | "independent" | "host-authorized";
     eventPrefix?: string;
     readContainerId?: () => string | null;
     trackDeploymentEvent?: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]) => boolean;
