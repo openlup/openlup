@@ -1434,6 +1434,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-hosted-node-receipt.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-hosted-oidc-receipt.md",
       "class": "public-output"
     },

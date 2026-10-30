@@ -332,8 +332,10 @@ it("refuses declarations from another target family for every selectable target"
   const f = fixture();
   const environment = { M14_CROSS_TARGET_PASSWORD: f.secret };
   const pg = { ...f.config, region: "xx-test-1" };
+  const node = hostedFixture();
   const declarations: Record<string, object> = {
     "self-host": pg, neon: { ...pg, target: "neon" },
+    "hosted-node": node.config,
     rds: { schemaVersion: 1, target: "rds", disposable: true, region: "xx-test-1", layout: "serial-cluster",
       previousApplicationPath: f.config.previousApplicationPath,
       installations: Object.fromEntries(["installer-managed", "operator-provisioned", "schema"].map(mode => [mode, {
@@ -433,3 +435,67 @@ try {
   const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 30000 });
   expect(result.stderr).toBe(""); expect(result.status).toBe(0); expect(result.stdout).toBe("PASS");
 }, 35000);
+
+function hostedFixture() {
+  const f = fixture();
+  const certificatePath = join(f.root, "cert.pem"), keyPath = join(f.root, "key.pem");
+  for (const path of [certificatePath, keyPath]) writeFileSync(path, "synthetic-not-a-certificate", { mode: 0o600 });
+  const config = { schemaVersion: 1, target: "hosted-node", disposable: true, region: "us-west-2",
+    origin: "https://host-recipe.192-0-2-1.sslip.io", localNodeImage: `sha256:${"a".repeat(64)}`,
+    database: { connectionString: f.config.installations.schema.connectionString, ca: f.config.installations.schema.ca },
+    sourceCommit: "a".repeat(40), sourceTree: "b".repeat(40), certificatePath, keyPath };
+  const save = () => writeFileSync(f.path, JSON.stringify(config), { mode: 0o600 }); save();
+  return { ...f, config, save };
+}
+
+it("admits a declared hosted Node target with a neutral region and preserves PaaS pending", () => {
+  const f = hostedFixture();
+  expect(loadCredentials(f.path, "hosted-node")).toEqual(f.config);
+  const original = f.config.origin;
+  for (const origin of [`${original}:443`, `${original}/`]) {
+    f.config.origin = origin; f.save();
+    const admitted = loadCredentials(f.path, "hosted-node");
+    expect(admitted).toEqual({ ...f.config, origin: original });
+    for (const path of ["/api/state", "/api/dispatch"]) expect(new URL(`${admitted.origin}${path}`).pathname).toBe(path);
+  }
+  f.config.origin = original; f.save();
+  expect(initialReceipt("hosted-node")).toMatchObject({ nodeHosts: { status: "PENDING" },
+    hostedRecipes: { "10H": { status: "PENDING" } }, paas: { status: "PENDING", owner: "10H-paas", reason: "access not provided" } });
+});
+
+it("refuses insecure hosted origins, mutable images, remote DBs and public TLS key files before work", () => {
+  const f = hostedFixture();
+  const withUserinfo = new URL(f.config.origin); withUserinfo.username = "user"; withUserinfo.password = f.secret;
+  for (const origin of ["http://host.192-0-2-1.sslip.io", "https://192.0.2.1", "https://[::1]",
+    "https://192-0-2-1.sslip.io./", "https://localhost./",
+    "https://host.example.invalid", "https://host.example.test", "https://host.example.example",
+    "https://host.example.localhost", "https://host.example.local", "https://localhost",
+    "https://@host.192-0-2-1.sslip.io", "https://:@host.192-0-2-1.sslip.io",
+    `${f.config.origin}/path`, `${f.config.origin}/path/..`, `${f.config.origin}/?q=1`, `${f.config.origin}/#fragment`,
+    `${f.config.origin}?`, `${f.config.origin}#`,
+    withUserinfo.href.replace(/\/$/u, ""), "https://host.192-0-2-1.sslip.io:444"]) {
+    const old = f.config.origin; f.config.origin = origin; f.save();
+    expect(() => loadCredentials(f.path, "hosted-node")).toThrow("public_https_origin_required"); f.config.origin = old;
+  }
+  f.config.localNodeImage = "node:24"; f.save();
+  expect(() => loadCredentials(f.path, "hosted-node")).toThrow("local_node_image_required");
+  f.config.localNodeImage = `sha256:${"a".repeat(64)}`;
+  const database = f.config.database.connectionString;
+  f.config.database.connectionString = database.replace("127.0.0.1", "remote.example.invalid"); f.save();
+  expect(() => loadCredentials(f.path, "hosted-node")).toThrow("local_tls_database_required");
+  f.config.database.connectionString = database; f.save(); chmodSync(f.config.keyPath, 0o644);
+  expect(() => loadCredentials(f.path, "hosted-node")).toThrow("external_tls_files_required");
+  chmodSync(f.config.keyPath, 0o600);
+  const key = f.config.keyPath; f.config.keyPath = join(f.root, "key-link"); symlinkSync(key, f.config.keyPath); f.save();
+  expect(() => loadCredentials(f.path, "hosted-node")).toThrow("external_tls_files_required");
+});
+
+it("fails a mismatched hosted source without exposing endpoint, DB credential or TLS paths", () => {
+  const f = hostedFixture(), receipt = join(f.root, "hosted-failed.json");
+  const result = spawnSync(process.execPath, ["tests/postgres/runM14RecipeConformance.mjs", "--target", "hosted-node",
+    "--credentials", f.path, "--receipt", receipt], { encoding: "utf8", timeout: 30000 });
+  expect(result.status).toBe(1);
+  const bytes = readFileSync(receipt, "utf8"), output = result.stdout + result.stderr + bytes;
+  for (const privateValue of [f.secret, f.path, f.config.origin, f.config.keyPath, f.config.database.connectionString]) expect(output).not.toContain(privateValue);
+  expect(JSON.parse(bytes)).toMatchObject({ status: "FAIL", hostedRecipes: { "10H": { status: "PENDING" } } });
+});
