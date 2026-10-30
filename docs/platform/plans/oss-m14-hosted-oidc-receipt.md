@@ -149,6 +149,17 @@ new main; main's catalogue additions were combined automatically. The merge
 preserves the accepted runner/control bytes and changes no claim. Full native
 review and full canonical verification remain required.
 
+After the two full PASS reviews of `90c5a847b8da8c23736090cb0a5497aed3624d1a`,
+main moved again and native `prepare` refused carry-over because the new base
+changed package and lockfile paths. The second required main merge is automatic
+and conflict-free, with parents `90c5a847b8da8c23736090cb0a5497aed3624d1a`
+and `591a8ec46d3cd74f7047b2a44ea4a50649158690`. Its automatic merge tree
+before this note is `421c6dacb5615fc34e0ffe849e9b6f911ce95ea0`. No manual
+hunk was resolved or glue added. The parcel patch ID excluding this record is
+`a5aca9c5679f17574581f592cc3fbdd03495ea2f` against both bases. Full new-tree
+review and canonical verification remain required; the reviewed runner/control
+bytes and the bounded claim did not change.
+
 Self-retro: check vendor provenance and a single execution UID before installing
 or launching a hosted fixture. Ambiguous provisioning can leave unconfirmed
 issuer state → require the existing dedicated-container teardown and absence
