@@ -128,6 +128,50 @@ version/deletion operations in a separate versioned bucket and retains the
 transfer adapter's refusal of native version-history transfer. Unobserved
 elapsed lifecycle expiry remains explicitly unproved; hosted S3 stays pending.
 
+A separate `--target s3` invocation selects only hosted storage through the
+same runner; unrelated recipe sections remain pending. Its external mode-600
+JSON declares `schemaVersion: 1`, `target: "s3"`, `disposable: true`,
+declared `region` matching `^[a-z]{2}(-[a-z]+)+-\d+$`, `bucket`, a unique `prefix` of the form
+`m14-10o/<runId>/`, absolute external `lifecycleStatePath`, and exact
+`sourceCommit`/`sourceTree` Git identities. Other fields, endpoints, explicit
+keys and other namespace forms refuse. Run on the authorized Linux VM using
+its instance role through the SDK's instance-metadata path. The worker clears
+inherited environment and points shared AWS config/credential reads to `/dev/null`,
+so a local profile or credential process cannot supply the receipt. Transfer an exact Git
+archive, reconstruct its tracked index without credentials, and verify that
+index tree against the declaration before running. Build workspace packages
+first. The archive's original commit is operator-declared; the runner checks
+the actual index tree and unchanged source bytes. Exact target identities stay
+private; the receipt uses a neutral target label.
+
+If the private lifecycle continuity file is absent, the runner first requires
+an empty owned prefix, creates the two seed keys and saves their identities.
+A partial seed failure requires exact-prefix inspection and cleanup; it never
+automatically recreates a seed. Existing continuity files must be regular,
+user-owned, mode 600 and single-link; symlinks refuse. The file records the run prefix, UTC clock start,
+two dedicated keys and their exact version identities, including three
+noncurrent versions, plus planned checks. It is not a passing receipt. The first
+runner admission must observe all seeded noncurrent versions and the retained
+latest versions/marker. At each start the runner reads back an enabled applicable
+one-day noncurrent-expiry rule. It records PENDING-OBSERVATION until at least
+24 elapsed hours, a fresh check against surviving provider seed timestamps,
+a listing of zero noncurrent versions and explicit
+NoSuchVersion readbacks for every seeded old version, while
+retained latest objects/marker still exist. Resume the same declaration around
+T+26h and T+50h with new receipt destinations. A rule readback alone cannot PASS.
+After observation, every version and marker under the entire prefix is removed
+and zero of each is read back. Pending runs clean the functional subprefix and
+retain only the two lifecycle keys for the later observation. A killed process
+requires operator inspection and exact-prefix cleanup before another run.
+
+The `s3` and `hostedRecipes["10O"]` sections report the same executed storage
+result. Pending lifecycle keeps both PENDING-OBSERVATION; functional successes
+do not promote it to PASS. A final PASS includes whole-prefix cleanup and means
+**hosted S3 recipe receipt (single synthetic bucket, one region)**, never
+production qualification or an SLO. The [adapter owner](../../server/adapters/README.md#s3-object-source-preparation)
+describes the serving, host-grant, size/type and erasure proof limits. This
+source declaration does not itself record a successful hosted run.
+
 The host section uses distinct immutable A/B application images, actual HTTP/UI
 and restricted-runtime readback, durable immediate/scheduled outbox work,
 captured delivery commands and filesystem bytes. It checks restart, an admitted

@@ -1438,6 +1438,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-hosted-s3-receipt.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-install-qualification.md",
       "class": "public-output"
     },
@@ -26487,6 +26491,10 @@
     },
     {
       "path": "tests/postgres/m14ConnectedCatchup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14HostedStorage.mjs",
       "class": "public-output"
     },
     {
