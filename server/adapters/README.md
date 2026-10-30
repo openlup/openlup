@@ -154,7 +154,9 @@ populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
 snapshot and completeness; the mapper does not certify issuer control. Full
 managed audit rows and source-keyed acquisition history remain in the private
-retained object, outside active target-key lookup tables. The task decision
+retained object, outside active target-key lookup tables. Sidecar subject tags
+come from retained typed links; target-principal redaction resolves to source
+IDs through the explicit item-7 identity mapping. The task decision
 and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 

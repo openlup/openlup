@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
 import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferObject, type TransferObjectReader } from "@openlup/platform/portability";
 import type { InvoiceFacts } from "@openlup/platform/invoicing/contracts";
-import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
+import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingResult, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
 import { restoreConnectedNativeStore } from "./connectedStoreRestore.js";
 import { connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
@@ -77,7 +77,6 @@ const credentials = new Set([
 ]);
 const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
 const identity = /^[a-z][a-z0-9_]{0,62}$/;
-const sourceUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const minimised = "[MINIMISED:UNBOUND_PERSONAL_FIELD]";
 // Finite fields that can carry another person's identity despite the row's
@@ -203,37 +202,102 @@ const typedOrTemporalFields: Record<string, string> = {
 };
 const typedOrTemporal = new Map(Object.entries(typedOrTemporalFields)
   .map(([relation, fields]) => [relation, new Set(fields.split(" "))]));
+// Scalar admission is by column, not by inspecting a serialized value. These
+// are the finite managed profile's numeric and boolean columns.
+const scalarFields: Record<string, string> = {
+  "public.admin_users": "is_machine_actor",
+  "public.subscriptions": "cadence_days edit_window_hours template_version is_test_fixture",
+  "public.subscription_cycles": "cycle_number template_version retry_attempt provider_attempt_sequence renewal_row_error_count",
+  "public.subscription_lines": "qty sort_order is_addon template_version",
+  "public.subscription_price_agreements": "unit_price_gross_minor template_version",
+  "public.subscription_dunning_cases": "retry_attempt",
+  "public.subscription_dunning_notifications": "retry_attempt send_attempts",
+  "public.commerce_orders": "subtotal_cents discount_cents shipping_cents tax_cents total_cents shipping_discount_cents",
+  "public.commerce_order_items": "quantity unit_price_cents total_cents size_constraint_contribution vat_rate_bps discount_allocated_cents effective_total_cents effective_net_cents allocation_ordinal",
+  "public.commerce_payments": "amount_cents",
+  "public.commerce_payment_intents": "amount_cents",
+  "public.commerce_payment_attempts": "amount_cents",
+  "public.commerce_payment_method_refs": "active",
+  "public.outbox_events": "attempts",
+  "public.payment_provider_settlement_batches": "gross_cents fee_cents net_cents",
+  "public.payment_provider_settlement_items": "gross_cents fee_cents net_cents",
+  "public.accounting_invoices": "total_net_cents total_gross_cents ksef_required",
+  "public.accounting_invoice_correction_outbox": "attempt_count",
+  "public.accounting_invoice_delivery_outbox": "attempt_count",
+  "public.accounting_invoice_issue_outbox": "attempt_count",
+  "public.communication_delivery_events": "event_id attempt_count",
+  "public.communication_email_deliveries": "attempt_count",
+  "public.catalog_skus": "net_weight_g kcal_per_unit feeding_grams_per_unit is_addon sellable_standalone sellable_in_subscription requires_pet_profile min_order_qty",
+  "public.price_entries": "min_qty unit_price_minor active",
+  "storage.buckets": "public file_size_limit avif_autodetection",
+  "storage.objects": "level",
+};
+const scalar = new Map(Object.entries(scalarFields)
+  .map(([relation, fields]) => [relation, new Set(fields.split(" "))]));
+const mappedToCanonical = new Set(["auth.users", "public.clients", "public.admin_users", "public.commerce_orders",
+  "public.commerce_order_items", "public.commerce_payments", "public.commerce_payment_intents",
+  "public.commerce_payment_state_transitions", "public.identity_privacy_erasures", "public.customer_subject_lifecycle_events",
+  "public.catalog_products", "public.catalog_skus", "public.price_lists", "public.price_entries",
+  "public.subscriptions", "public.subscription_lines", "public.subscription_cycles", "public.subscription_events",
+  "public.subscription_price_agreements", "public.commerce_payment_method_refs", "public.communication_permissions",
+  "public.accounting_invoice_issue_outbox"]);
+const historyOnly = new Set(["public.commerce_payment_attempts", "public.outbox_events"]);
+const targets: Record<string, string[]> = {
+  "auth.users": ["clients", "platform_human_principals"],
+  "public.clients": ["clients"], "public.admin_users": ["platform_human_principals", "platform_human_memberships"],
+  "public.catalog_products": ["catalog_products"], "public.catalog_skus": ["catalog_skus"],
+  "public.price_lists": ["price_lists"], "public.price_entries": ["price_entries"],
+  "public.subscriptions": ["subscriptions", "subscription_renewal_terms"],
+  "public.subscription_events": ["subscription_events"],
+  "public.subscription_lines": ["subscription_lines", "subscription_renewal_term_lines"],
+  "public.subscription_cycles": ["subscription_cycles"],
+  "public.subscription_price_agreements": ["subscription_lines", "subscription_renewal_term_lines"],
+  "public.commerce_payment_method_refs": ["subscription_renewal_terms"],
+  "public.commerce_orders": ["commerce_orders"], "public.commerce_order_items": ["commerce_order_items"],
+  "public.commerce_payments": ["commerce_settlement_intents"],
+  "public.commerce_payment_intents": ["commerce_settlement_intents"],
+  "public.commerce_payment_state_transitions": ["commerce_settlement_transitions"],
+  "public.communication_permissions": ["communication_recipient_consents"],
+  "public.accounting_invoice_issue_outbox": ["invoicing_duties"],
+  "public.accounting_invoices": ["invoicing_fact_revisions"],
+  "public.customer_subject_lifecycle_events": ["customer_subject_lifecycle_events"],
+  "public.identity_privacy_erasures": ["identity_privacy_erasures"],
+};
+function targetTablesFor(relation: string, value: Row): string[] {
+  if (relation === "public.outbox_events") return value.status === "pending" ? ["outbox_events"] : [];
+  if (relation === "public.admin_audit_events") return value.action === "revoke" ? ["platform_human_membership_audit_events"] : [];
+  if (relation === "public.subscription_price_agreements" && value.ended_at !== null) return [];
+  if (relation === "public.commerce_payment_method_refs" && (value.status !== "active" || value.active !== true)) return [];
+  return targets[relation] ?? [];
+}
 type FieldDisposition = "verbatim" | ManagedRetainedRow["minimisations"][number]["reason"];
-function fieldDisposition(relation: string, field: string, row: Row, subjects: string[]): FieldDisposition {
+function fieldDisposition(relation: string, field: string, row: Row): FieldDisposition {
   if (relation === "public.admin_audit_events" && field === "entity_id")
-    return row.action === "customer_read" && typeof row.entity_id === "string"
-      && sourceUuid.test(row.entity_id) && subjects.includes(row.entity_id) ? "verbatim" : "third-party-capable";
+    return row.action === "customer_read" ? "verbatim" : "third-party-capable";
   if (relation === "public.communication_contact_links" && field === "source_id")
-    return row.source_table === "clients" && typeof row.source_id === "string"
-      && sourceUuid.test(row.source_id) && subjects.includes(row.source_id) ? "verbatim" : "third-party-capable";
+    return row.source_table === "clients" ? "verbatim" : "third-party-capable";
   if ((relation === "public.communication_email_deliveries" || relation === "public.outbox_events")
     && field === "aggregate_id")
     return (row.aggregate_type === "subscription" || row.aggregate_type === "commerce_order")
-      && typeof row.aggregate_id === "string" && sourceUuid.test(row.aggregate_id) && subjects.length > 0
       ? "verbatim" : "third-party-capable";
   if (thirdPartyFields[relation]?.includes(field)) return "third-party-capable";
   if (relation === "storage.buckets") return bucketStructuralFields.has(field)
     || typedOrTemporal.get(relation)?.has(field)
-    || typeof row[field] === "number" || typeof row[field] === "boolean" ? "verbatim" : "unbound-row";
+    || scalar.get(relation)?.has(field) ? "verbatim" : "unbound-row";
   if (ownOrCatalogJson[relation]?.includes(field) || verbatimTextFields[relation]?.includes(field)) return "verbatim";
-  // Existing typed links and scalar facts are structural; free-form new text
-  // and JSON fields default to private minimisation.
+  // Existing typed links and scalar facts are structural; new fields default
+  // to private minimisation regardless of their serialized value.
   if (typedOrTemporal.get(relation)?.has(field)
-    || typeof row[field] === "number" || typeof row[field] === "boolean") return "verbatim";
+    || scalar.get(relation)?.has(field)) return "verbatim";
   return "unknown-json";
 }
-function minimiseUnboundFields(relation: string, row: Row, sourceValue: string, subjects: string[]):
+function minimiseUnboundFields(relation: string, row: Row, sourceValue: string):
   { value: string; minimisations: ManagedRetainedRow["minimisations"] } {
   const retained = { ...row };
   const minimisations: ManagedRetainedRow["minimisations"] = [];
   for (const [field, value] of Object.entries(row)) {
     if (value === null) continue;
-    const reason = fieldDisposition(relation, field, row, subjects);
+    const reason = fieldDisposition(relation, field, row);
     if (reason === "verbatim") continue;
     retained[field] = minimised;
     minimisations.push({ field, reason });
@@ -328,15 +392,20 @@ export async function captureManagedRetainedHistory(input: {
           ? "requires-active-mapping" : "retained-history", reason: active.has(name) ? "canonical projection required before publication"
           : name === "auth.users" ? "identity metadata only; credentials excluded" : "private source history or object metadata with privacy-scoped minimisation" });
       }
-      const subjects = subjectOwners(sourceRows);
+      // Subject tags follow only typed links that survive field minimisation.
+      // The full raw graph remains transient for native projection.
+      const retainedRows = new Map([...sourceRows].map(([relation, values]) => [relation,
+        values.map((value, index) => minimiseUnboundFields(relation, value, sourceRaw.get(relation)![index]!.value))]));
+      const subjects = subjectOwners(new Map([...retainedRows].map(([relation, values]) =>
+        [relation, values.map(value => JSON.parse(value.value) as Row)])));
       const rows: ManagedRetainedRow[] = [];
       for (const [relation, values] of sourceRows) {
-        for (const [index, value] of values.entries()) {
+        for (const [index] of values.entries()) {
           const rowIdentity = sourceRaw.get(relation)![index]!.rowIdentity;
-          const anchors = subjects(relation, value);
+          const minimisedRow = retainedRows.get(relation)![index]!;
+          const anchors = subjects(relation, JSON.parse(minimisedRow.value) as Row);
           if (anchors === null) fail("invalid_input", relation);
           const needsMapping = active.has(relation) || relation === "auth.users";
-          const minimisedRow = minimiseUnboundFields(relation, value, sourceRaw.get(relation)![index]!.value, anchors);
           rows.push({ source: input.sourceId, relation, rowIdentity, subjects: anchors.sort(),
             value: minimisedRow.value, minimisations: minimisedRow.minimisations,
             disposition: needsMapping ? "requires-active-mapping" : "retained-history",
@@ -493,11 +562,7 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
       const owners = items.map(bySettlementItem);
       return owners.some(owner => owner === null) ? null : [...new Set(owners.flatMap(owner => owner!))];
     }
-    if (relation === "public.commerce_idempotency_keys") {
-      if (row.status === "in_progress" || row.metadata === null || typeof row.metadata !== "object"
-        || Array.isArray(row.metadata)) return null;
-      return byClient((row.metadata as Row).clientId);
-    }
+    if (relation === "public.commerce_idempotency_keys") return [];
     if (relation === "public.accounting_invoices") return byInvoice(row.id);
     if (relation.startsWith("public.accounting_invoice_")) return byInvoice(row.invoice_id);
     if (relation === "public.communication_contacts" || relation === "public.communication_permissions"
@@ -509,8 +574,7 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     }
     if (relation === "public.communication_provider_events") {
       if (row.contact_id !== null) return byContact(row.contact_id);
-      const matches = [...contacts.values()].filter(contact => contact.normalized_email === row.normalized_email);
-      return matches.length === 1 ? byContact(matches[0]!.id) : null;
+      return [];
     }
     if (relation === "public.communication_email_deliveries") return unionLinks(relation,
       [[row.client_id, byClient], [row.contact_id, byContact], [row.auth_user_id, byAuth],
@@ -518,10 +582,7 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     if (relation === "public.catalog_products" || relation === "public.catalog_skus"
       || relation === "public.price_lists" || relation === "public.price_entries") return [];
     if (relation === "public.outbox_events") {
-      const payload = row.payload && typeof row.payload === "object" && !Array.isArray(row.payload) ? row.payload as Row : {};
-      return unionLinks(relation, [[row.aggregate_id, id => byAggregate(row.aggregate_type, id)],
-        [payload.clientId ?? null, byClient], [payload.orderUuid ?? null, byOrder],
-        [payload.subscriptionId ?? null, bySubscription]]);
+      return unionLinks(relation, [[row.aggregate_id, id => byAggregate(row.aggregate_type, id)]]);
     }
     if (relation === "storage.buckets") return [];
     if (relation === "storage.objects") return typeof row.owner_id === "string" && row.owner_id ? [row.owner_id] : null;
@@ -573,7 +634,8 @@ export async function mapManagedRetainedBusiness(input: {
   issuer: string;
   freshTarget: ConnectedNativeStoreCapture;
   targetOwner: Pool;
-}): Promise<{ packet: ConnectedNativeStoreCapture; retained: ManagedRetainedCapture }> {
+}): Promise<{ packet: ConnectedNativeStoreCapture; retained: ManagedRetainedCapture;
+  identitySubjects: ManagedIdentityMappingResult["subjects"] }> {
   validate(input.capture);
   const raw = projectionRows.get(input.capture);
   if (!raw) fail("invalid_input");
@@ -928,14 +990,6 @@ export async function mapManagedRetainedBusiness(input: {
   const { sha256: _outer, ...outer } = packet;
   packet.sha256 = digest(JSON.stringify(outer));
   const mappingRequired = new Set(["auth.users", ...active]);
-  const mappedToCanonical = new Set(["auth.users", "public.clients", "public.admin_users", "public.commerce_orders",
-    "public.commerce_order_items", "public.commerce_payments", "public.commerce_payment_intents",
-    "public.commerce_payment_state_transitions", "public.identity_privacy_erasures", "public.customer_subject_lifecycle_events",
-    "public.catalog_products", "public.catalog_skus", "public.price_lists", "public.price_entries",
-    "public.subscriptions", "public.subscription_lines", "public.subscription_cycles", "public.subscription_events",
-    "public.subscription_price_agreements", "public.commerce_payment_method_refs", "public.communication_permissions",
-    "public.accounting_invoice_issue_outbox"]);
-  const historyOnly = new Set(["public.commerce_payment_attempts", "public.outbox_events"]);
   const dispositions = input.capture.dispositions.map(entry => {
     if (!entry.rows || !mappingRequired.has(entry.relation)) return entry;
     if (mappedToCanonical.has(entry.relation)) return { ...entry, disposition: "mapped-active-and-retained" as const,
@@ -944,50 +998,22 @@ export async function mapManagedRetainedBusiness(input: {
       reason: "terminal source effect; source key excluded from target active lookup" };
     fail("unsupported_table", entry.relation);
   });
-  const targets: Record<string, string[]> = {
-    "auth.users": ["clients", "platform_human_principals"],
-    "public.clients": ["clients"], "public.admin_users": ["platform_human_principals", "platform_human_memberships"],
-    "public.catalog_products": ["catalog_products"], "public.catalog_skus": ["catalog_skus"],
-    "public.price_lists": ["price_lists"], "public.price_entries": ["price_entries"],
-    "public.subscriptions": ["subscriptions", "subscription_renewal_terms"],
-    "public.subscription_events": ["subscription_events"],
-    "public.subscription_lines": ["subscription_lines", "subscription_renewal_term_lines"],
-    "public.subscription_cycles": ["subscription_cycles"],
-    "public.subscription_price_agreements": ["subscription_lines", "subscription_renewal_term_lines"],
-    "public.commerce_payment_method_refs": ["subscription_renewal_terms"],
-    "public.commerce_orders": ["commerce_orders"], "public.commerce_order_items": ["commerce_order_items"],
-    "public.commerce_payments": ["commerce_settlement_intents"],
-    "public.commerce_payment_intents": ["commerce_settlement_intents"],
-    "public.commerce_payment_state_transitions": ["commerce_settlement_transitions"],
-    "public.communication_permissions": ["communication_recipient_consents"],
-    "public.accounting_invoice_issue_outbox": ["invoicing_duties"],
-    "public.accounting_invoices": ["invoicing_fact_revisions"],
-    "public.customer_subject_lifecycle_events": ["customer_subject_lifecycle_events"],
-    "public.identity_privacy_erasures": ["identity_privacy_erasures"],
-  };
-  const principalAliases = new Map(mapped.subjects.map(subject => [subject.managedId, subject.principalId]));
   const rows = input.capture.rows.map(row => {
     const value = JSON.parse(row.value) as Row;
-    const targetTables = row.relation === "public.outbox_events" ? value.status === "pending" ? ["outbox_events"] : []
-      : row.relation === "public.admin_audit_events" ? value.action === "revoke" ? ["platform_human_membership_audit_events"] : []
-        : row.relation === "public.subscription_price_agreements" && value.ended_at !== null ? []
-          : row.relation === "public.commerce_payment_method_refs" && (value.status !== "active" || value.active !== true) ? []
-            : targets[row.relation] ?? [];
+    const targetTables = targetTablesFor(row.relation, value);
     const terminalSourceRow = historyOnly.has(row.relation)
       || row.relation === "public.subscription_price_agreements" && value.ended_at !== null
       || row.relation === "public.commerce_payment_method_refs" && (value.status !== "active" || value.active !== true);
     if (row.disposition === "requires-active-mapping" && !targetTables.length && !terminalSourceRow)
       fail("unsupported_table", row.relation);
-    const subjects = [...new Set([...row.subjects,
-      ...row.subjects.flatMap(subject => principalAliases.has(subject) ? [principalAliases.get(subject)!] : [])])].sort();
-    return { ...row, subjects,
+    return { ...row,
       disposition: targetTables.length ? "mapped-active-and-retained" as const : "retained-history" as const,
       targetTables, reason: targetTables.length ? "canonical target projection and privacy-scoped private source row"
         : "terminal source receipt or privacy-scoped private business history" };
   });
   const { sha256: _retained, ...retainedBody } = input.capture;
   const body = { ...retainedBody, dispositions, rows };
-  return { packet, retained: { ...body, sha256: digest(JSON.stringify(body)) } };
+  return { packet, retained: { ...body, sha256: digest(JSON.stringify(body)) }, identitySubjects: mapped.subjects };
 }
 
 async function replaceTargetRows(packet: ConnectedNativeStoreCapture, table: string, rows: Row[], owner: Pool): Promise<void> {
@@ -1085,15 +1111,97 @@ export function readManagedRetainedHistory(bytes: Uint8Array, expectedSha256: st
   validate(value);
   return value;
 }
-export function redactManagedRetainedHistory(capture: ManagedRetainedCapture, subject: string): ManagedRetainedCapture {
+export function redactManagedRetainedHistory(capture: ManagedRetainedCapture, subject: string,
+  identitySubjects?: ManagedIdentityMappingResult["subjects"]): ManagedRetainedCapture {
   validate(capture);
   if (!subject) fail("invalid_input");
+  const binding = identitySubjects?.filter(value => value.principalId === subject);
+  if (binding && binding.length !== 1) fail("invalid_input");
+  const sourceSubject = binding?.[0]?.managedId ?? subject;
   const { sha256: _old, ...body } = capture;
-  const removed = body.rows.filter(row => row.subjects.includes(subject));
-  const changed = { ...body, rows: body.rows.filter(row => !row.subjects.includes(subject)),
+  const removed = body.rows.filter(row => row.subjects.includes(sourceSubject));
+  let kept = body.rows.filter(row => !row.subjects.includes(sourceSubject));
+  // A co-owned parent can disappear while a child still holds its typed ID.
+  // Remove that dependent private history until the remaining graph resolves
+  // entirely from its own retained rows. Native target rows are untouched.
+  for (let changed = true; changed;) {
+    changed = false;
+    const all = new Map<string, Row[]>();
+    for (const row of kept) all.set(row.relation, [...all.get(row.relation) ?? [], JSON.parse(row.value) as Row]);
+    const owners = subjectOwners(all);
+    const next: ManagedRetainedRow[] = [];
+    for (const row of kept) {
+      let resolved: string[] | null = null;
+      try { resolved = owners(row.relation, JSON.parse(row.value) as Row); }
+      catch (error) { if (!(error instanceof PostgresTransferError)) throw error; }
+      if (!resolved || !isDeepStrictEqual([...resolved].sort(), row.subjects)) {
+        removed.push(row);
+        changed = true;
+      } else next.push(row);
+    }
+    kept = next;
+  }
+  const changed = { ...body, rows: kept,
     redactions: [...body.redactions, { subjectDigest: digest(subject), rows: removed.map(row => ({ relation: row.relation,
       rowDigest: digest(JSON.stringify([row.source,row.relation,row.rowIdentity])) })).sort((left,right) => left.rowDigest.localeCompare(right.rowDigest)) }] };
   return { ...changed, sha256: digest(JSON.stringify(changed)) };
+}
+function sourceDisposition(relation: string): { disposition: Disposition; reason: string } {
+  if (credentials.has(relation)) return { disposition: "credential-excluded",
+    reason: "sessions and authentication secrets require new target login" };
+  if (installation.has(relation)) return { disposition: "service-installation-history",
+    reason: "target service owns its installation history" };
+  if (active.has(relation)) return { disposition: "requires-active-mapping",
+    reason: "canonical projection required before publication" };
+  if (relation === "auth.users") return { disposition: "requires-active-mapping",
+    reason: "identity metadata only; credentials excluded" };
+  if (history.has(relation) || metadata.has(relation)) return { disposition: "retained-history",
+    reason: "private source history or object metadata with privacy-scoped minimisation" };
+  return { disposition: "unsupported-empty", reason: "no source class mapping" };
+}
+function canonicalMetadata(capture: ManagedRetainedCapture, mapped: boolean): boolean {
+  try {
+    const retained = new Map<string, Row[]>();
+    for (const held of capture.rows) {
+      const value = JSON.parse(held.value) as Row;
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      retained.set(held.relation, [...retained.get(held.relation) ?? [], value]);
+      const minimisedRow = minimiseUnboundFields(held.relation, value, held.value);
+      if (minimisedRow.value !== held.value || !isDeepStrictEqual(minimisedRow.minimisations, held.minimisations)) return false;
+    }
+    const owners = subjectOwners(retained);
+    for (const held of capture.rows) {
+      const value = JSON.parse(held.value) as Row;
+      const expectedSubjects = owners(held.relation, value);
+      if (!expectedSubjects || !isDeepStrictEqual([...expectedSubjects].sort(), held.subjects)) return false;
+      const needsMapping = active.has(held.relation) || held.relation === "auth.users";
+      const targetTables = mapped ? targetTablesFor(held.relation, value) : [];
+      const disposition = mapped ? targetTables.length ? "mapped-active-and-retained" : "retained-history"
+        : needsMapping ? "requires-active-mapping" : "retained-history";
+      const reason = mapped ? targetTables.length ? "canonical target projection and privacy-scoped private source row"
+        : "terminal source receipt or privacy-scoped private business history"
+        : needsMapping ? "canonical target row required before publication"
+          : "private historical metadata with privacy-scoped minimisation";
+      if (held.disposition !== disposition || held.reason !== reason || !isDeepStrictEqual(held.targetTables, targetTables)) return false;
+    }
+    for (const entry of capture.dispositions) {
+      const original = sourceDisposition(entry.relation);
+      if (original.disposition === "unsupported-empty" && entry.rows !== 0) return false;
+      let expected = original;
+      if (mapped && entry.rows > 0 && original.disposition === "requires-active-mapping") {
+        if (mappedToCanonical.has(entry.relation)) expected = { disposition: "mapped-active-and-retained",
+          reason: "canonical target state and privacy-scoped private source row" };
+        else if (historyOnly.has(entry.relation)) expected = { disposition: "retained-history",
+          reason: "terminal source effect; source key excluded from target active lookup" };
+        else return false;
+      }
+      if (entry.disposition !== expected.disposition || entry.reason !== expected.reason) return false;
+    }
+    return true;
+  } catch (error) {
+    if (error instanceof PostgresTransferError) return false;
+    throw error;
+  }
 }
 function validate(capture: ManagedRetainedCapture): void {
   try {
@@ -1101,32 +1209,14 @@ function validate(capture: ManagedRetainedCapture): void {
       || !Array.isArray(capture.dispositions) || !Array.isArray(capture.redactions)) fail("invalid_input");
     const { sha256, ...body } = capture;
     if (digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
-    const validFields = (held: ManagedRetainedRow): boolean => {
-      const value = JSON.parse(held.value) as Row;
-      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-      const facts = new Map(held.minimisations.map(fact => [fact.field, fact.reason]));
-      if (facts.size !== held.minimisations.length) return false;
-      for (const [field, entry] of Object.entries(value)) {
-        const expected = fieldDisposition(held.relation, field, value, held.subjects);
-        if (entry === null) {
-          if (facts.has(field)) return false;
-        } else if (expected === "verbatim") {
-          if (entry === minimised || facts.has(field)) return false;
-        } else if (entry !== minimised || facts.get(field) !== expected) return false;
-      }
-      return [...facts.keys()].every(field => Object.hasOwn(value, field));
-    };
     if (capture.rows.some(row => row.source !== capture.sourceId || !row.relation || !row.rowIdentity
       || !Array.isArray(row.subjects) || !row.subjects.every(value => typeof value === "string" && value)
       || typeof row.value !== "string" || !["requires-active-mapping", "mapped-active-and-retained", "retained-history"].includes(row.disposition)
       || !Array.isArray(row.minimisations) || row.minimisations.some(fact => !identity.test(fact.field)
         || !["third-party-capable", "unbound-row", "unknown-json"].includes(fact.reason))
-      || !validFields(row)
       || !Array.isArray(row.targetTables) || row.targetTables.some(value => typeof value !== "string" || !identity.test(value))
       || (row.disposition === "mapped-active-and-retained") !== (row.targetTables.length > 0)
-      || typeof row.reason !== "string" || !row.reason || (!row.subjects.length && ![
-        "storage.buckets", "public.catalog_products", "public.catalog_skus", "public.price_lists", "public.price_entries",
-      ].includes(row.relation)))) fail("invalid_input");
+      || typeof row.reason !== "string" || !row.reason)) fail("invalid_input");
     if (capture.redactions.some(entry => !/^[0-9a-f]{64}$/.test(entry.subjectDigest)
       || !Array.isArray(entry.rows) || entry.rows.some(value => !value.relation || !/^[0-9a-f]{64}$/.test(value.rowDigest)))) fail("invalid_input");
     const present = capture.rows.map(row => `${row.relation}\0${row.rowIdentity}`);
@@ -1146,5 +1236,6 @@ function validate(capture: ManagedRetainedCapture): void {
         if (retained || removed) fail("invalid_input");
       } else if (retained + removed !== entry.rows) fail("invalid_input");
     }
+    if (!canonicalMetadata(capture, false) && !canonicalMetadata(capture, true)) fail("invalid_input");
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
 }

@@ -117,7 +117,8 @@ beforeAll(async () => {
     [userId, email, managed.operator, `${managed.operator}@example.invalid`]);
   await managed.owner.query("INSERT INTO public.clients(id,email,auth_user_id,lifecycle_stage) VALUES($1,$2,$3,'customer')",
     [clientId, email, userId]);
-  await managed.owner.query("INSERT INTO public.catalog_products(id,slug,status,name) VALUES($1,'retained-product','active','Retained product')", [productId]);
+  await managed.owner.query(`INSERT INTO public.catalog_products(id,slug,status,name,description)
+    VALUES($1,'retained-product','active','Retained product','[MINIMISED:UNBOUND_PERSONAL_FIELD]')`, [productId]);
   await managed.owner.query(`INSERT INTO public.catalog_skus
     (id,product_id,sku,title,pet_type,status,net_weight_g,kcal_per_unit,sellable_in_subscription)
     VALUES($1,$2,'retained-sku','Retained SKU','other','active',100,100,true)`, [skuId, productId]);
@@ -275,6 +276,25 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   const originalBytes = Buffer.from(JSON.stringify(source));
   expect(readManagedRetainedHistory(originalBytes,
     createHash("sha256").update(originalBytes).digest("hex"))).toEqual(source);
+  const authHistory = source.rows.find(row => row.relation === "auth.users"
+    && (JSON.parse(row.value) as { id: string }).id === userId)!;
+  const retagged = { ...source, rows: source.rows.map(row => row === authHistory
+    ? { ...row, subjects: [managed.operator] } : row) };
+  const { sha256: _retaggedSha, ...retaggedBody } = retagged;
+  retagged.sha256 = createHash("sha256").update(JSON.stringify(retaggedBody)).digest("hex");
+  const retaggedBytes = Buffer.from(JSON.stringify(retagged));
+  expect(() => readManagedRetainedHistory(retaggedBytes,
+    createHash("sha256").update(retaggedBytes).digest("hex"))).toThrowError(/postgres_transfer_invalid_input/);
+  for (const held of source.rows) {
+    const changed = { ...source, rows: source.rows.map(row => row === held
+      ? { ...row, subjects: row.subjects.length ? row.subjects.slice(1) : [userId] } : row) };
+    const { sha256: _previous, ...body } = changed;
+    changed.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    const bytes = Buffer.from(JSON.stringify(changed));
+    expect(() => readManagedRetainedHistory(bytes,
+      createHash("sha256").update(bytes).digest("hex")), held.relation)
+      .toThrowError(/postgres_transfer_invalid_input/);
+  }
   for (const [relation, field] of [
     ["public.admin_audit_events", "action"],
     ["public.communication_contact_links", "source_table"],
@@ -295,6 +315,18 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
       const bytes = Buffer.from(JSON.stringify(changed));
       expect(() => readManagedRetainedHistory(bytes,
         createHash("sha256").update(bytes).digest("hex")), `${relation}.${field}:${reason}`)
+        .toThrowError(/postgres_transfer_invalid_input/);
+    }
+    if (relation !== "public.communication_email_deliveries") {
+      const replacement = field === "action" ? "customer_read"
+        : field === "source_table" ? "catalog_products" : "subscription";
+      const changed = { ...source, rows: source.rows.map(row => row === held
+        ? { ...row, value: JSON.stringify({ ...value, [field]: replacement }) } : row) };
+      const { sha256: _previous, ...body } = changed;
+      changed.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+      const bytes = Buffer.from(JSON.stringify(changed));
+      expect(() => readManagedRetainedHistory(bytes,
+        createHash("sha256").update(bytes).digest("hex")), `${relation}.${field}:changed`)
         .toThrowError(/postgres_transfer_invalid_input/);
     }
   }
@@ -335,6 +367,10 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     }
   }
   expect(checkedMinimisedFields).toBeGreaterThan(0);
+  const idempotencyHistory = source.rows.find(row => row.relation === "public.commerce_idempotency_keys")!;
+  expect(idempotencyHistory.subjects).toEqual([]);
+  expect(idempotencyHistory.minimisations).toContainEqual({ field: "metadata", reason: "unknown-json" });
+  expect(idempotencyHistory.value).not.toContain(clientId);
   const auditHistory = source.rows.find(row => row.relation === "public.admin_audit_events")!;
   expect((JSON.parse(auditHistory.value) as { target_admin_id: string | null }).target_admin_id).toBeNull();
   const bucketHistory = source.rows.find(row => row.relation === "storage.buckets")!;
@@ -387,6 +423,17 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
     [productId])).rows[0]!.value;
   expect(sourceProduct.value).toBe(originalProduct);
   expect(objectReadback.rows.find(row => row.relation === "public.catalog_products")!.value).toBe(originalProduct);
+  expect((JSON.parse(objectReadback.rows.find(row => row.relation === "public.catalog_products")!.value) as { description: string }).description)
+    .toBe("[MINIMISED:UNBOUND_PERSONAL_FIELD]");
+  const changedProduct = { ...source, rows: source.rows.map(row => row === sourceProduct
+    ? { ...row, value: JSON.stringify({ ...(JSON.parse(row.value) as Record<string, unknown>), description: "ordinary catalog description" }) }
+    : row) };
+  const { sha256: _productSha, ...changedProductBody } = changedProduct;
+  changedProduct.sha256 = createHash("sha256").update(JSON.stringify(changedProductBody)).digest("hex");
+  const changedProductBytes = Buffer.from(JSON.stringify(changedProduct));
+  expect(readManagedRetainedHistory(changedProductBytes,
+    createHash("sha256").update(changedProductBytes).digest("hex")).rows.find(row => row.relation === "public.catalog_products")?.value)
+    .toContain("ordinary catalog description");
   const transfer = assembleManagedRetainedTransfer(mapped);
   const objectRoot = await mkdtemp(join(process.cwd(), ".context/scratch/m14-retained-object-"));
   retainedObjectRoots.push(objectRoot);
@@ -454,8 +501,9 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   expect((await restoreManagedRetainedTransfer({ owner: targetOwner!, installation: selection, transfer, retainedObjects, freshTarget: fresh })).replayed)
     .toBe(true);
   const targetPrincipal = deriveOidcPrincipalId("https://issuer.example.invalid/managed", userId);
-  expect(mapped.retained.rows.filter(row => row.subjects.includes(targetPrincipal)).length).toBeGreaterThan(2);
-  const redacted = redactManagedRetainedHistory(mapped.retained, targetPrincipal);
+  expect(mapped.identitySubjects.find(value => value.principalId === targetPrincipal)?.managedId).toBe(userId);
+  expect(mapped.retained.rows.some(row => row.subjects.includes(targetPrincipal))).toBe(false);
+  const redacted = redactManagedRetainedHistory(mapped.retained, targetPrincipal, mapped.identitySubjects);
   const redactedTransfer = assembleManagedRetainedTransfer({ packet: mapped.packet, retained: redacted });
   const redactedObject = redactedTransfer.retainedObject;
   await retainedObjects.createIfAbsent(redactedObject.object, redactedObject.bytes);
@@ -465,7 +513,9 @@ it("maps actual managed identity and failed-but-retryable money into a fresh qua
   expect(Buffer.from(redactedObject.bytes).toString("utf8")).not.toContain(email);
   expect(readManagedRetainedHistory(Buffer.concat(redactedChunks), redactedObject.sha256).rows.some(row =>
     row.subjects.includes(userId) || row.subjects.includes(targetPrincipal))).toBe(false);
-  const unrelatedRedacted = redactManagedRetainedHistory(mapped.retained, linkedUserId);
+  const targetPrincipalB = deriveOidcPrincipalId("https://issuer.example.invalid/managed", linkedUserId);
+  expect(mapped.identitySubjects.find(value => value.principalId === targetPrincipalB)?.managedId).toBe(linkedUserId);
+  const unrelatedRedacted = redactManagedRetainedHistory(mapped.retained, targetPrincipalB, mapped.identitySubjects);
   const unrelatedObject = exportManagedRetainedHistory(unrelatedRedacted);
   const unrelatedReadback = readManagedRetainedHistory(unrelatedObject.bytes, unrelatedObject.sha256);
   expect(unrelatedReadback.rows.find(row => row.relation === "public.admin_audit_events")?.rowIdentity)
@@ -736,9 +786,23 @@ it("unions populated owner links across the finite retained business classes", a
     await witness("public.subscription_price_agreements", existing.agreement, clientId, b.client,
       () => managed.owner.query("UPDATE public.subscription_price_agreements SET event_id=$2 WHERE id=$1", [existing.agreement, b.event]),
       () => managed.owner.query("UPDATE public.subscription_price_agreements SET event_id=NULL WHERE id=$1", [existing.agreement]));
-    await witness("public.outbox_events", existing.outbox, clientId, b.client,
-      () => managed.owner.query("UPDATE public.outbox_events SET payload=$2::jsonb WHERE id=$1", [existing.outbox, JSON.stringify({ clientId: b.client })]),
-      () => managed.owner.query("UPDATE public.outbox_events SET payload='{}'::jsonb WHERE id=$1", [existing.outbox]));
+    await managed.owner.query("UPDATE public.outbox_events SET payload=$2::jsonb WHERE id=$1",
+      [existing.outbox, JSON.stringify({ clientId: b.client })]);
+    try {
+      const retained = await capture();
+      const row = retained.rows.find(value => value.relation === "public.outbox_events"
+        && (JSON.parse(value.value) as { id: string }).id === existing.outbox)!;
+      expect(row.subjects).toContain(clientId);
+      expect(row.subjects).not.toContain(b.client);
+      expect(row.value).not.toContain(b.client);
+      expect(row.minimisations).toContainEqual({ field: "payload", reason: "third-party-capable" });
+      const redacted = redactManagedRetainedHistory(retained, b.client);
+      const bytes = Buffer.from(JSON.stringify(redacted));
+      expect(readManagedRetainedHistory(bytes, createHash("sha256").update(bytes).digest("hex")).rows)
+        .toContainEqual(expect.objectContaining({ relation: row.relation, rowIdentity: row.rowIdentity }));
+    } finally {
+      await managed.owner.query("UPDATE public.outbox_events SET payload='{}'::jsonb WHERE id=$1", [existing.outbox]);
+    }
     await witness("public.admin_audit_events", existing.audit, managed.operator, b.user,
       () => managed.owner.query("UPDATE public.admin_audit_events SET target_admin_id=$2 WHERE id=$1", [existing.audit, b.user]),
       () => managed.owner.query("UPDATE public.admin_audit_events SET target_admin_id=NULL WHERE id=$1", [existing.audit]));

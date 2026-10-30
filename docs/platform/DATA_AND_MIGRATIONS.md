@@ -92,6 +92,11 @@ shape, are replaced by a fixed marker with a per-field reason. Own-subject
 history, structural values and catalog rows remain verbatim. Capture and private
 readback apply the same finite field rule: a populated minimised field must
 contain the marker and its reason fact, including conditional audit fields.
+Readback derives subject tags, field facts and row mapping from retained typed
+links; IDs found only inside minimised JSON do not tag the private row. A target
+principal resolves to its source identifier through the explicit managed
+identity mapping before sidecar redaction. Marker-equal catalog text remains
+verbatim when its field is classified verbatim.
 The in-process native projection
 uses the original source values, so this sidecar narrowing does not alter active
 target obligations. It refuses unknown

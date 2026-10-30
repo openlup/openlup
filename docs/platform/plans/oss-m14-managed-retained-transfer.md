@@ -214,7 +214,7 @@ the hosted qualification boundary.
 
 This matrix was checked against `subjectOwners`, the frozen managed baseline's
 nullable FK columns, and the finite `mapManagedRetainedBusiness` publication
-profile. `U` means the union of every populated link's resolved subjects;
+profile. `U` means the union of every populated retained typed link's resolved subjects;
 unresolved non-null links refuse `target_conflict` before publication. `R`
 means the mapping already refuses the specified nonempty class or shape, so
 no private sidecar can be published from it. `S` is the accepted settlement
@@ -252,10 +252,11 @@ witnesses serialize the sidecar and verify readback removes a cross-linked row.
 | `accounting_invoices` | order, correction parent invoice | Order owner; correction rows cannot enter supported issue-outbox cohort (R). | H+N(`invoicing_fact_revisions`; invoicing duty path) | W0; guards |
 | `communication_contacts` / `communication_contact_links` | contact→all client links and marketing leads; link's own source client | U for every resolved client link; non-client/unresolved source links refuse. | H | W0, W1, W2 |
 | `communication_permissions` / `communication_permission_events` | contact→all linked clients | U via contact links; permission maps, nonempty events R. | H+N(`communication_recipient_consents`; consent state) / X for events | W0, W3; profile refusal |
-| `communication_provider_events` | contact, normalized email | Nonempty class R before publication. | X | map refusal |
+| `communication_provider_events` | typed contact ID only; normalized email is not a link | Nonempty class R before publication. No email inference. | X | map refusal |
 | `communication_delivery_events` | operator, command/recipient key | Parent command/operator tables outside profile; nonempty rows refuse. | X | capture refusal |
 | `communication_email_deliveries` | client, contact, Auth, outbox, aggregate | U; missing populated link refuses. Other service parents require unknown nonempty tables and refuse. | H; mapped trigger stays in native `outbox_events` | W0, W1 |
-| `outbox_events` | aggregate order/subscription; typed payload client/order/subscription keys | U; missing populated known link refuses. Pending payload checked in projection. | H+N(`outbox_events`; pending); H terminal | W0, W2 |
+| `outbox_events` | typed aggregate order/subscription only | U; missing populated aggregate refuses. Payload is minimised as a whole, so JSON IDs neither survive nor add sidecar subject tags; pending payload is checked in native projection. | H+N(`outbox_events`; pending); H terminal | W0, W2; CD-M14-43 JSON witness |
+| `commerce_idempotency_keys` | none retained | Metadata JSON is minimised as a whole; its client ID is absent from the sidecar, so the structural receipt has no subject tag. | H (subject-free retained receipt) | W0; CD-M14-43 marker witness |
 | `payment_provider_settlement_items` / `payment_provider_settlement_batches` | intent, payment, invoice; batch's items | S: populated item links must resolve to same order; cross-order is a money-integrity anomaly. Batch unions item owners; all-null item refuses for 8D-2. | H; native settlement/intents and invoicing duties remain | W0 |
 
 W3 adds a second managed client B to A's contact, then maps and restores the
@@ -368,7 +369,7 @@ the present fixture shows no third-party personal content in that key.
 | communication_contact_links | — | source_system, source_table | source_key | — | metadata |
 | communication_permissions | — | channel, purpose, state, source | reason | — | source_ref, metadata |
 | communication_email_deliveries | aggregate_id only for a resolved typed aggregate | purpose, template_slug, trigger_source, trigger_event, aggregate_type, dedupe_key, status, provider_kind, provider_message_id, last_error_code | aggregate_id otherwise, recipient_fingerprint | — | metadata |
-| outbox_events | — | aggregate_type, event_type, idempotency_key, status | payload, error, metadata | — | — |
+| outbox_events | aggregate_id for a resolved typed aggregate | aggregate_type, event_type, idempotency_key, status | aggregate_id otherwise, payload, error, metadata | — | — |
 | catalog_products | — | slug, status, name, description, metadata, ingredients, allergens, marketing_content | — | — | — |
 | catalog_skus | — | sku, title, pet_type, status, metadata, format_code, unit_form_code, gtin, asset_ref | — | — | — |
 | price_lists | — | name, region_code, currency, status | — | — | — |
@@ -439,3 +440,39 @@ The corrected tree passes strict five-project typecheck, lint with zero errors
 (33 existing warnings), and the pinned local managed→qualified PG16 focused
 suite 8/8. The W6 invoice snapshot/catalog assertions and W5 privacy refusal
 ran in that suite. This remains a local finite proof, not hosted qualification.
+
+## CD-M14-42/43 canonical readback boundary
+
+Readback admits only canonical retained artifacts: each derived subject, field
+disposition, minimisation fact and row mapping must equal a recomputation from
+the artifact's retained rows and typed links. Serialized derived metadata is
+compared, not trusted. Changes to verbatim data content are an integrity
+question anchored by the private object descriptor digest bound to the restore
+manifest, rather than a privacy-policy exception. All admitted administrator
+audit actions remain in the finite sidecar.
+
+CD-M14-43 fixes the scope of sidecar provenance: subject tags derive only
+from typed identifiers that remain verbatim in retained rows. An identifier
+only inside minimised metadata or payload is absent from the sidecar, so that
+row holds none of that subject's data and receives no tag. This narrows the
+earlier CD-M14-35 JSON-derived union after CD-M14-37a. The native packet keeps
+its own domain erasure and retention path. Mapped target-principal aliases are
+not serialized in the sidecar; the item-7 identity mapping resolves a target
+principal to a source identifier before sidecar redaction. No issuer or alias
+is added to the artifact. If a co-owned parent is removed, sidecar redaction
+also removes dependent history whose typed links would otherwise lose their
+source row; native active obligations are untouched.
+
+Field disposition is a pure function of relation, field and typed
+discriminators, with a finite scalar-column list; a B/S raw value equal to the
+fixed marker remains valid. Readback recomputes field facts, subject tags,
+row target tables and relation dispositions, accepting only a consistent
+source or mapped artifact. The pinned managed→PG16 suite checks every subject
+tag mutation, populated T/U/J field, policy-changing discriminator mutation,
+marker-equal catalog readback, source-only JSON links, target-principal-to-
+source redaction and the earlier W6 exact invoice/catalog rows.
+Strict five-project typecheck and lint pass (zero errors, 33 existing
+warnings); the pinned disposable managed→qualified PG16 suite passes 8/8.
+Self-retro: deriving tags after minimisation removed the raw-JSON provenance
+gap; closing dependent sidecar rows during redaction kept readback independent
+of already removed parents without changing native obligations.
