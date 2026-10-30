@@ -767,3 +767,11 @@ CD-M14-64 accepted the cycle-10 repair with independently recomputed tree
 for `git diff --binary 1af97f95 2f0ca108`. Both computed identities matched.
 The exact accepted tree was DCO-committed as
 `8011cd8d58e10962cdc437d317b8d036db4cb0e7`; fresh full native review follows.
+
+Cycle-11 prepare refused carry-over after main's pgTAP workflow change. The
+forced merge joins `5b0843e5f3e6543e16f63ce4c96da78fa9ac74fc` and
+`8ae51d2923bcc13bb4a9a12da646bbeb8edeb684` without conflicts or manual
+resolution. Its pre-note tree is `cd75fcd8da02d1b12a6a94d3fe83be06be1a2c3d`.
+The stable parcel patch ID excluding this record is
+`2c62af7c2a621620a7b48e78e4a7ac929b53b09c` against both old and new main.
+This meets CD-M14-30; full native review covers the integrated candidate.

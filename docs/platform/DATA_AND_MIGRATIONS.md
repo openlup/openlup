@@ -570,8 +570,11 @@ runs one host sweep: `OPENLUP_DISPOSABLE_REAP=remove` by default, `report` or `o
 CI disables the host sweep. Teardown and interrupted wrappers remove only their
 own fresh run ID through the same liveness rule without the age floor, including
 on CI.
-Supabase CLI and compose runners stop their own stacks once on interruption;
-after SIGKILL those stacks still need reviewed manual cleanup.
+The opt-in Supabase CLI and compose runners stop their own stacks once on
+interruption; after SIGKILL those stacks still need reviewed manual cleanup.
+The raw pgTAP runner starts one disposable-labelled stock PostgreSQL container
+and removes it on every exit path it controls. An interrupted run leaves that
+labelled container for the dead-owner sweep.
 
 A selected test may supply neutral settlement, format, provider, location and
 stock rows in its own transaction. Concurrency connections need the same declared
