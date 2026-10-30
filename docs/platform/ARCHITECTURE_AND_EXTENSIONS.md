@@ -2402,10 +2402,20 @@ one uncertain dispatch remains fenced. The structured `journey` section of its
 private `report.json` records per-table counts, object/partial counts, observed
 installation identities, timings, refusals, rollback and takeover. Evidence is
 kept under the invoking worktree's `.context/scratch`; cleanup still removes
-only the run's owned resources. The managed first leg and retained-history
-sidecar are separate, as are older-snapshot RPO/RTO and hosted provider receipts.
-No CDC, generic upsert/delete engine or production activation coordinator is
-introduced; capture/restore's finite table regions are unchanged.
+only the run's owned resources. The opt-in `--managed-catch-up` mode prepends
+a pinned disposable managed source to this same local executable. It uses the
+finite managed capture and mapping into a fresh restricted-admin PG16 source,
+then the existing H1/H2 portable leg reaches a second independent PG16 target.
+The managed fixture ends its declared setup writer before final read-only
+capture; its preliminary target stays inactive. A private retained-history
+object and synthetic managed media object are read back at the first target,
+copied and read back at the second, and included in the fixture activation
+agreement. Missing object or privacy disposition refuses takeover. The
+managed profile and object bytes are local synthetic proof; they establish no
+hosted Storage, adopter writer inventory or provider ACL qualification.
+Older-snapshot RPO/RTO and hosted provider receipts remain separate. No CDC,
+generic upsert/delete engine or production activation coordinator is introduced;
+capture/restore's finite table regions are unchanged.
 
 The qualified runtime-completion witness uses the existing
 [preparation binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)

@@ -32,14 +32,21 @@ export const catchupCounts = (graph: Graph) => Object.fromEntries(Object.entries
 export function assertCatchupActivation(facts: {
   sourceFrozen: boolean; graphPublished: boolean; filesystemPublished: boolean;
   qualified: boolean; generation: string; finalGeneration: string;
+  requiresSidecar: boolean;
   serving?: { observed: number; allowed: number; denied: number };
   drain?: Record<string, string>; effects?: { accepted: number; uncertain: number; pending: number };
+  sidecar?: { required: boolean; physicalReadback: boolean; privacyCovered: boolean; objectsReadback: boolean;
+    sourceDigest: string; targetDigest: string };
 }) {
   assert(facts.sourceFrozen && facts.graphPublished && facts.filesystemPublished && facts.qualified
     && facts.generation === facts.finalGeneration && facts.serving && facts.serving.observed > 0
     && facts.serving.allowed > 0 && facts.serving.denied > 0
     && facts.drain && acquisitionLegacyDrain(facts.drain).state === "draining"
-    && facts.effects?.accepted === 2 && facts.effects.uncertain === 1 && facts.effects.pending === 1,
+    && facts.effects?.accepted === 2 && facts.effects.uncertain === 1 && facts.effects.pending === 1
+    && (!facts.requiresSidecar || facts.sidecar?.required === true
+      && facts.sidecar.physicalReadback && facts.sidecar.privacyCovered && facts.sidecar.objectsReadback
+      && /^[a-f0-9]{64}$/u.test(facts.sidecar.sourceDigest)
+      && facts.sidecar.sourceDigest === facts.sidecar.targetDigest),
   "catchup_activation_agreement_required");
 }
 
@@ -169,6 +176,7 @@ export async function preliminaryCatchup(input: {
   let targetStarted = false;
   const activate = () => {
     assertCatchupActivation({ sourceFrozen: false, graphPublished: true, filesystemPublished: true,
+      requiresSidecar: false,
       qualified: true, generation: "preliminary", finalGeneration: "final" }); targetStarted = true;
   };
   assert.throws(activate, /catchup_activation_agreement_required/);

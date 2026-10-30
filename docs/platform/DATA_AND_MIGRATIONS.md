@@ -54,7 +54,7 @@ does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
-takes its final connected73-table graph and application's complete private
+takes its final finite connected-table graph and application's complete private
 `objects/tmp` capture only after its finite source writers and observed server
 backends retire. The default crash-boundary mode captures with a read-only
 migration-owner session. In catch-up mode the fixture closes its bootstrap
@@ -70,8 +70,12 @@ filesystem publication are separate; both must finish before target recovery
 or application startup. Source `submitting` rows remain unchanged through import;
 only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
-absence or complete upload is manufactured. This finite composition does not
-qualify an adopter's complete writer inventory or managed-history mapping.
+absence or complete upload is manufactured. The portable-only mode does not
+qualify managed-history mapping. The opt-in `--managed-catch-up` mode composes
+the finite managed capture/mapping and object-bound private sidecar with this
+same native import; it checks exact readback at both local targets before
+activation. It does not qualify an adopter's complete writer inventory, hosted
+source or hosted object policy.
 Its optional catch-up mode also takes a preliminary copy while the source
 changes. It discards that target selection and uses a separate fresh inactive
 generation for final recapture and exact readback; no existing target rows are

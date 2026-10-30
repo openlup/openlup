@@ -35,8 +35,10 @@ import { request } from "../helpers/fulfillmentComposition.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 import { assertCatchupActivation, assertFinalCatchup, catchupCounts, catchupDrain, catchupServing, interruptPool, mediaReferences, preliminaryCatchup, seedCatchup } from "./m14ConnectedCatchup.js";
+import { carryManagedSidecar, managedFirstLeg } from "./m14ManagedCatchup.js";
 
-const root = process.cwd(), image = process.argv[2], catchup = process.argv[3] === "--catch-up";
+const root = process.cwd(), image = process.argv[2], managedCatchup = process.argv[3] === "--managed-catch-up";
+const catchup = process.argv[3] === "--catch-up" || managedCatchup;
 if (process.argv.length > (catchup ? 4 : 3)) throw new Error("Unknown handover arguments");
 const selection: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation = { generation: catchup ? "qualified-admin" : "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
@@ -46,7 +48,8 @@ const expectedUnits = [selected.baseline, ...selected.forward];
 const expectedTail = expectedUnits.at(-1);
 assert(expectedTail, "Selected canonical manifest must contain its baseline");
 if (!catchup) assert.equal(selected.objectInventorySha256, "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82");
-assert.equal(connectedNativeStoreTables.length, 73, "Keep the transfer predecessor's finite graph unchanged");
+const connectedTableCount = connectedNativeStoreTables.length;
+assert.equal(connectedTableCount, 82, "Keep the 8A-extended finite graph unchanged");
 if (!image || !/^sha256:[0-9a-f]{64}$/.test(image)) throw new Error("Supply one already-local immutable Node24.21.0 image ID; this witness never pulls/builds images");
 if (process.version !== "v24.21.0") throw new Error("M14 witness requires Node24.21.0");
 const modules = join(root, "node_modules");
@@ -80,6 +83,8 @@ const control = randomUUID(); // Fixture-only authentication, never copied accou
 let network: string | undefined, providerUrl = "", report: Record<string, unknown> = {}, failure: unknown;
 let targetWritesActivated = false;
 let targetRecoveryWritesStarted = false, graphPublished = false, filesystemPublished = false, sourceWritesFrozen = false;
+const sidecarRefusals: string[] = [];
+let nativeActivationRefusals = 0;
 let application: Awaited<ReturnType<typeof prepareM14ApplicationCohort>> | undefined;
 let targetApplication: OrderReviewRuntimeBinding | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
@@ -231,6 +236,11 @@ try {
   const pristineTarget = await capture(target.owner, "owned-pristine-target");
   const targetKeyBefore = await keyIdentity(target.owner);
   const targetLedger = (await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows;
+  const managedFirst = managedCatchup ? await managedFirstLeg({ scratch, final: source,
+    installation: selection as QualifiedAdminPostgresInstallation,
+    createPreliminary: () => installation("managed-preliminary"),
+    captureNative: (db, id) => capture(db, id, true) }) : undefined;
+  if (managedFirst) mark("managedFirstLegReady");
   const sourceActorUrl = new URL(source.runtimeUrl); sourceActorUrl.hostname = "source-db"; sourceActorUrl.port = "5432";
   const fixtures = await Promise.all([fixture(source.owner), fixture(source.owner), fixture(source.owner), fixture(source.owner)]);
   const duties = fixtures.map((f, index) => {
@@ -417,7 +427,7 @@ try {
   writeFileSync(join(scratch, "final-capture-point.json"), JSON.stringify(capturePoint, null, 2)); mark("finalCapturePoint");
 
   // Target remains inactive until BOTH existing canonical publications complete.
-  // These imports preserve all 73 tables/raw JSON rows and the whole private
+  // These imports preserve every selected table/raw JSON row and the whole private
   // objects/tmp root; no pg_dump/psql clone, schema/grant copy or lease editing.
   const targetMediaRoot = join(scratch, "target-media");
   const mediaInput = { census: mediaCensus, ...mediaLimits,
@@ -449,6 +459,8 @@ try {
   assert.deepEqual(await captureOrderReviewMediaFilesystem({ root: finalMediaRoot, ...mediaLimits }), mediaCensus);
   assert.deepEqual((await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows, targetLedger);
   mark("canonicalGraphAndFilesystemPublished");
+  const managedSidecar = managedFirst ? await carryManagedSidecar({ scratch, first: managedFirst }) : undefined;
+  if (managedSidecar) mark("managedSidecarReadBackAtSecondTarget");
   let agreement: Awaited<ReturnType<typeof catchupServing>> | undefined;
   const drain = catchup ? catchupDrain() : undefined;
   if (catchup) {
@@ -603,9 +615,15 @@ try {
     ORDER_REVIEW_MEDIA_ROOT: finalMediaRoot };
   if (catchup) {
     const activationFacts = { sourceFrozen: sourceWritesFrozen, graphPublished, filesystemPublished,
+      requiresSidecar: managedCatchup,
       qualified: (await target.runner.status()).pending.length === 0,
       generation: finalMediaRoot, finalGeneration: join(scratch, ".openlup-inactive-media-final"),
       serving: agreement?.serving, drain: targetEnvironment,
+      sidecar: managedFirst ? { required: true, physicalReadback: !!managedSidecar,
+        privacyCovered: managedSidecar?.privacyCovered === true,
+        objectsReadback: managedSidecar?.objectsReadback === true,
+        sourceDigest: managedFirst.transfer.retainedObject.sha256,
+        targetDigest: managedSidecar?.objectSha256 ?? "" } : undefined,
       effects: { accepted: acceptedBefore.rows.length, uncertain: beforeActivation.filter(row => row.status === "uncertain").length,
         pending: beforeActivation.filter(row => row.status === "draft").length } };
     for (const delta of [{ sourceFrozen: false }, { graphPublished: false }, { filesystemPublished: false },
@@ -613,6 +631,17 @@ try {
       { drain: undefined }, { effects: { accepted: 1, uncertain: 2, pending: 1 } }]) {
       assert.throws(() => assertCatchupActivation({ ...activationFacts, ...delta }), /catchup_activation_agreement_required/);
       assert.equal(targetWritesActivated, false);
+      nativeActivationRefusals++;
+    }
+    if (managedFirst) for (const { name, sidecar } of [
+      { name: "missing retained-history object", sidecar: undefined },
+      { name: "retained-history object unread", sidecar: { ...activationFacts.sidecar!, physicalReadback: false } },
+      { name: "privacy disposition unverified", sidecar: { ...activationFacts.sidecar!, privacyCovered: false } },
+      { name: "managed media unread", sidecar: { ...activationFacts.sidecar!, objectsReadback: false } },
+      { name: "retained-history digest mismatch", sidecar: { ...activationFacts.sidecar!, targetDigest: "missing" } }]) {
+      assert.throws(() => assertCatchupActivation({ ...activationFacts, sidecar }), /catchup_activation_agreement_required/);
+      assert.equal(targetWritesActivated, false);
+      sidecarRefusals.push(name);
     }
     assertCatchupActivation(activationFacts);
     assert.equal((await state()).requests.length, 2);
@@ -652,7 +681,8 @@ try {
     for (const table of ["subscription_renewal_terms", "subscription_renewal_term_lines", "commerce_settlement_intents", "invoicing_duties"]) {
       const values = (await target.runtime.query(`SELECT pg_catalog.to_jsonb(t)::text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::text`)).rows.map(row => row.value);
       const expected = [...finalGraph.compatible.tables, ...finalGraph.owned].find(row => row.table === table); assert(expected);
-      assert.deepEqual(values, expected.rows, "ordinary takeover preserves frozen terms, unsettled money and invoice duties");
+      assert.deepEqual(values.sort(), [...expected.rows].sort(),
+        "ordinary takeover preserves frozen terms, unsettled money and invoice duties");
     }
   }
   if (catchup) {
@@ -660,10 +690,27 @@ try {
     assert.equal(expected.length, 1);
     assert.deepEqual((await target.runtime.query("SELECT pg_catalog.to_jsonb(t)::text AS value FROM public.outbox_events t WHERE idempotency_key='catchup-effect-key'")).rows.map(row => row.value), expected);
   }
+  if (managedFirst) {
+    const ids = managedFirst.obligations;
+    assert.deepEqual((await target.runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [ids.subscriptionId])).rows,
+      [{ status: "active" }]);
+    assert.deepEqual((await target.runtime.query("SELECT delivery_admission FROM public.subscription_renewal_terms WHERE subscription_id=$1",
+      [ids.subscriptionId])).rows, [{ delivery_admission: "blocked" }]);
+    assert.deepEqual((await target.runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [ids.failedIntentId])).rows,
+      [{ status: "failed" }]);
+    assert.deepEqual((await target.runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [ids.paidIntentId])).rows,
+      [{ status: "settled" }]);
+    assert.deepEqual((await target.runtime.query("SELECT status FROM public.invoicing_duties WHERE order_id=$1", [ids.paidOrderId])).rows,
+      [{ status: "owed" }]);
+    assert(Number((await target.runtime.query("SELECT count(*) FROM public.outbox_events WHERE aggregate_id=$1 AND status='pending'",
+      [ids.subscriptionId])).rows[0]?.count) > 0);
+  }
   mark("selectedTargetReady");
   report = { outcome: "LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION", node: process.version, image, owner,
-    journey: catchup ? { format: "openlup.local-connected-catchup.v1", leg: "portable-to-portable",
-      sourceGeneration: selection.generation, targetGeneration: selection.generation,
+    journey: catchup ? { format: "openlup.local-connected-catchup.v1",
+      leg: managedCatchup ? "managed-to-portable-to-portable" : "portable-to-portable",
+      sourceGeneration: managedCatchup ? "pinned-local-managed" : selection.generation, targetGeneration: selection.generation,
+      managedFirstLeg: managedFirst?.report,
       preliminary: preliminary!.report, final: { captureSha256: finalGraph.sha256, counts: catchupCounts(finalGraph),
         sourceInstallation: finalGraph.observation, targetInstallation: pristineTarget.observation,
         targetInstallationKeyTuplePreserved: targetKeyBefore, sourceOutsideProfile: finalGraph.outsideProfileCensus,
@@ -675,15 +722,23 @@ try {
           updated: mediaCensus.objects.filter(row => preliminary!.media.objects.some(value => value.key === row.key && value.sha256 !== row.sha256)).length,
           added: mediaCensus.objects.filter(row => !preliminary!.media.objects.some(value => value.key === row.key)).length,
           deleted: preliminary!.media.objects.filter(row => !mediaCensus.objects.some(value => value.key === row.key)).length },
-        retainedHistorySidecar: "managed predecessor not selected in this portable-only leg" },
-      refusals: [preliminary!.report.refusal, "retained uncertain dispatch remains fenced"],
+        retainedHistorySidecar: managedSidecar ? { sourceSha256: managedFirst!.transfer.retainedObject.sha256,
+          targetSha256: managedSidecar.objectSha256, rows: managedSidecar.rows,
+          copied: managedSidecar.copied.copied, readback: true, privacyCovered: managedSidecar.privacyCovered,
+          managedMediaCopied: managedSidecar.mediaObjects, managedMediaReadback: managedSidecar.objectsReadback }
+          : "managed predecessor not selected in this portable-only leg" },
+      refusals: [...(managedFirst ? [managedFirst.report.preliminary.refusal,
+        `${managedFirst.report.activation.refusalCases} managed first-leg agreement cases refused`] : []),
+        preliminary!.report.refusal, ...sidecarRefusals, "retained uncertain dispatch remains fenced"],
+      activationRefusalCases: nativeActivationRefusals + sidecarRefusals.length
+        + (managedFirst ? managedFirst.report.activation.refusalCases + 1 : 0),
       takeover: targetWritesActivated, rollback: preliminary!.report.rollback,
       timingsMs: times, hostedQualification: false, olderSnapshotRecovery: false } : undefined,
     catalogue: { units: expectedUnits.length, tail: expectedTail, inventorySha256: selected.objectInventorySha256 },
     capturePoint, filesystemRestore, graphRestore, timesMs: times, recoveredAcceptedEffects: 2,
     unresolved, sourceWritesFrozen, filesystemPublished, graphPublished, targetRecoveryWritesStarted, targetWritesActivated, targetResult, repeatedTargetResult, targetPosts,
     beforeActivation, afterActivation, selectedProfileReadyRtoMs: times.selectedTargetReady - times.interruptionStart,
-    readyScope: "Owned selected canonical 73-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R",
+    readyScope: `Owned selected canonical ${connectedTableCount}-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R`,
     wholeStoreRtoMs: null,
     acceptedRecoveryElapsedMs: times.acceptedEffectsRecovered - times.interruptionStart,
     recoveryPoint: "Final source graph and objects/tmp captured after terminal retirement; two independent accepted effects reconciled, retained pending/cleanup and one uncertain dispatch obligation preserved. No zero-RPO or all-store readiness claim.",

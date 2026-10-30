@@ -159,6 +159,14 @@ instead uses its migration-owner capture session. The
 [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 owns preliminary-generation refusal and the final DB/object/access/drain/effect
 barrier; it is a finite local journey, not an adopter-host fencing service.
+The opt-in `--managed-catch-up` mode first maps the pinned local managed
+fixture into this source installation. Its declared setup writer is ended
+before a final read-only managed capture; no managed Auth or Storage HTTP
+service is started. The private history object and synthetic managed media
+object must read back at both local installations before the second takeover.
+The native H1/H2 retirement and egress exclusions then run unchanged for the
+portable leg. This does not qualify a hosted managed source or a complete
+adopter writer inventory.
 This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
 adopter ACLs, provider qualification and whole-store RTO remain separate.
 

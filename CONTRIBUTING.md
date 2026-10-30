@@ -351,9 +351,15 @@ Add `--catch-up` to that command for the finite local portable-to-portable
 journey on qualified-admin installations. Its private worktree-local report adds
 per-table/object counts, interruption/resume, final-generation agreement,
 refusal/rollback and takeover facts. The [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
-owns the exact boundary; managed history, older-snapshot measurement and hosted
-provider qualification remain separate. The final target is distinct from the
-preliminary copy and remains inactive through the DB/object/access barriers.
+owns the exact boundary. Add `--managed-catch-up` instead for the same H1/H2
+portable leg after a pinned disposable managed source has been mapped into its
+first qualified-admin PG16 installation. That opt-in mode requires Supabase CLI
+2.98.2 and its pinned local image set, plus exact readback of the private
+retained-history and synthetic managed media objects at both local targets.
+It does not qualify a hosted managed project, hosted Storage ACLs, an adopter's
+complete writer inventory or older-snapshot recovery. The final target is
+distinct from the preliminary copy and remains inactive through the
+DB/object/access barriers.
 The host's existing esbuild API emits one ESM for the application child; plain
 Node in Linux loads audited existing JS dependencies without a host-native tsx
 binary, Linux install or image build. Retain the real metafile, source/output
