@@ -966,3 +966,8 @@ errors, 33 existing warnings), structural checks and documentation policy pass.
 Self-retro: checking the first wording against a read-only source count exposed a
 rule that would have refused real unpaid intents; a closed matrix plus one count
 replaced another review round spent on a single field.
+
+The CD-M14-77 read covered tree `7daee22b09ff4ddc043d0d326e550e65fb5db281` and
+SHA-256 `fe19117e178136a7c1192355cc9a402e9ba0b16e5a84e4f06a43512d7522698d` for
+`git diff --binary 3f4e802e 7daee22b`; both computed identities matched. It was
+DCO-committed exactly as `7f18855f`.
