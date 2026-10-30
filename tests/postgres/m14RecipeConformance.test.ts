@@ -213,6 +213,21 @@ it("admits a password-free hosted S3 declaration and refuses wider namespaces, c
   }
 });
 
+it("refuses each hosted target's declaration fields when relabelled as the other target", () => {
+  const f = fixture();
+  const s3 = { schemaVersion: 1, target: "s3", disposable: true, region: "xx-test-1", bucket: "synthetic-test-bucket",
+    prefix: "m14-10o/synthetic-run/", lifecycleStatePath: join(f.root, "state.json"), sourceCommit: "a".repeat(40), sourceTree: "b".repeat(40) };
+  const oidc = { schemaVersion: 1, target: "hosted-oidc", disposable: true, region: "xx-test-1",
+    issuerOrigin: "https://issuer.example.org", issuerImage: OIDC_IMAGE, adminPassword: f.secret };
+  const save = (value: object) => writeFileSync(f.path, JSON.stringify(value), { mode: 0o600 });
+  save(s3); expect(loadCredentials(f.path, "s3")).toEqual(s3);
+  save(oidc); expect(loadCredentials(f.path, "hosted-oidc")).toEqual(oidc);
+  save({ ...s3, target: "hosted-oidc" });
+  expect(() => loadCredentials(f.path, "hosted-oidc")).toThrow("credential_input_refused");
+  save({ ...oidc, target: "s3" });
+  expect(() => loadCredentials(f.path, "s3")).toThrow("hosted_s3_declaration_refused");
+});
+
 it("keeps shared AWS profiles out of the hosted S3 worker credential chain", () => {
   const f = fixture();
   const aws = join(f.root, ".aws"); mkdirSync(aws);
