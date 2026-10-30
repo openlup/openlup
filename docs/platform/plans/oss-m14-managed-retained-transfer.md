@@ -716,3 +716,13 @@ computed tree was `8c5383fd4b1adaade4002163170bde0385317a51`, and
 The read accepted the deliberate distinction between typed failed intents and
 archive-only checked cancelled or expired intents, as well as the aggregate
 `requires-active-mapping` census for mixed source relations.
+
+After native prepare refused clean-merge carry-over, the parcel merged
+`origin/main` at `591a8ec46d3cd74f7047b2a44ea4a50649158690` into
+`1b774c3e9ad444139aa56ca53705162ebfd33358`. Git's automatic merge had
+no conflicts or manually resolved hunks. Its staged pre-note tree was
+`ebef0f952cc4d65304fa6d6cfd753d3055630218`; the stable parcel patch ID,
+excluding this task record, was
+`8013f30cf60b56fc2589f89335bc8832e0e10da7` against both the old base
+and the new main. This is the CD-M14-30 mechanical carry-over case; the
+integrated tree requires fresh full native review.

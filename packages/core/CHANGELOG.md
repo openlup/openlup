@@ -10,6 +10,17 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.33.0]
+
+- Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
+  `openlup-core-v0.33.0`.
+
+- Improve installed context results by separating nested Markdown sections,
+  suppressing copied excerpts when their installed owner page is also found,
+  and adding opt-in `--package-code` source search. The small generated context
+  now includes migration, idempotency, provider-adapter and
+  subscription/delivery owner routes.
+
 ## [0.32.0]
 
 - Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
@@ -28,8 +39,3 @@ in the source repository.
 
 - Publishable on the npm `latest` dist-tag as `0.31.0`, from tag
   `openlup-core-v0.31.0`.
-
-## [0.30.0]
-
-- Publishable on the npm `latest` dist-tag as `0.30.0`, from tag
-  `openlup-core-v0.30.0`.
