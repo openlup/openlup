@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { rdsAuthorityRoles, rdsControlRoles } from "./rdsControlRoles.js";
 import {
   readSelectedCatalogRowsForQualifiedInstall,
   selectedCatalogRowsPayloadForQualifiedInstall,
@@ -243,6 +244,9 @@ export type QualifiedAdminPostgresInstallation = {
   bootstrapLogin: string;
   runtimeLogin: string;
   restoreLogin: string;
+  /** Existing recipe target/layout carried into provider admission. */
+  target?: "rds";
+  layout?: "serial-cluster";
   /** Host-declared trusted provider role inventory; only this bootstrap may join it. */
   trustedControlPlane?: { roleNames: readonly string[] };
 } & ({ roleMode: "installer-managed"; operatorLogin?: never }
@@ -264,6 +268,7 @@ export function assertQualifiedAdminPostgresSelection(input: QualifiedAdminPostg
   if (!input || typeof input !== "object" || Array.isArray(input)) refuse("invalid_selection");
   if (input.generation !== "qualified-admin" || !["installer-managed", "operator-provisioned"].includes(input.roleMode)) refuse("invalid_selection");
   const keys = ["generation", "roleMode", "migrationLogin", "bootstrapLogin", "runtimeLogin", "restoreLogin",
+    ...(input.target === "rds" && input.layout === "serial-cluster" ? ["target", "layout"] : []),
     ...(input.roleMode === "operator-provisioned" ? ["operatorLogin"] : []),
     ...(input.trustedControlPlane === undefined ? [] : ["trustedControlPlane"])].sort();
   if (JSON.stringify(Object.keys(input).sort()) !== JSON.stringify(keys)) refuse("invalid_selection_keys");
@@ -281,6 +286,14 @@ export function assertQualifiedAdminPostgresSelection(input: QualifiedAdminPostg
         || name.toUpperCase() === "PUBLIC" || name.startsWith("pg_") || groups.includes(name as typeof groups[number])
         || names.includes(name)) || new Set(plane.roleNames).size !== plane.roleNames.length) refuse("invalid_control_plane_declaration");
   }
+}
+function isRdsStockControlPlaneRole(selection: QualifiedAdminPostgresInstallation, name: string): boolean {
+  return selection.target === "rds" && selection.layout === "serial-cluster"
+    && rdsControlRoles.includes(name) && selection.trustedControlPlane?.roleNames.includes(name) === true;
+}
+function isRdsAuthorityRole(selection: QualifiedAdminPostgresInstallation, name: string): boolean {
+  return selection.target === "rds" && selection.layout === "serial-cluster"
+    && rdsAuthorityRoles.includes(name) && selection.trustedControlPlane?.roleNames.includes(name) === true;
 }
 /** Identifier-only transport; the selected generation never falls back to v2. */
 export function qualifiedAdminPostgresStartupOptions(input: QualifiedAdminPostgresInstallation): string {
@@ -454,9 +467,11 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
     const a = attributes(row);
     if (controlPlaneNames.has(String(a.grantedRole)) && a.memberRole === selection.bootstrapLogin) {
       if (a.grantorRole !== selection.bootstrapLogin && !controlPlaneNames.has(String(a.grantorRole))) refuse("control_plane_grantor_undeclared");
-      if (elevatedControlPlaneNames.has(String(a.grantedRole))) trustedBootstrapMemberships++;
+      if (elevatedControlPlaneNames.has(String(a.grantedRole)) || isRdsAuthorityRole(selection,String(a.grantedRole))) trustedBootstrapMemberships++;
       continue;
     }
+    if (isRdsStockControlPlaneRole(selection,String(a.memberRole)) && isRdsStockControlPlaneRole(selection,String(a.grantorRole))
+      && PREDEFINED.includes(String(a.grantedRole))) continue;
     if (protectedNames.has(String(a.grantedRole)) || protectedNames.has(String(a.memberRole))) actual.push({
       grantedRole:String(a.grantedRole),memberRole:String(a.memberRole),grantorRole:String(a.grantorRole),
       adminOption:a.adminOption as boolean,inheritOption:a.inheritOption as boolean,setOption:a.setOption as boolean,
@@ -519,6 +534,8 @@ export async function qualifiedAdminPostgresCatalogPayload(client: PoolClient, s
     if (row.kind === "role" && !protectedNames.has(row.name)) continue;
     if (row.kind === "role-membership" && selection.trustedControlPlane?.roleNames.includes(String(a.grantedRole))
       && a.memberRole === selection.bootstrapLogin) continue;
+    if (row.kind === "role-membership" && isRdsStockControlPlaneRole(selection,String(a.memberRole))
+      && isRdsStockControlPlaneRole(selection,String(a.grantorRole)) && PREDEFINED.includes(String(a.grantedRole))) continue;
     if (row.kind === "role-membership" && !protectedNames.has(String(a.grantedRole)) && !protectedNames.has(String(a.memberRole))) continue;
     let name = row.name; const args = [...row.arguments];
     if (typeof a.owner === "string") a.owner = principal(a.owner);

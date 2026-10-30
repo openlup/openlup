@@ -7,6 +7,7 @@ import { afterEach, expect, it } from "vitest";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { assertFreshClusterCatalogue, initialReceipt, loadCredentials, main } from "./runM14RecipeConformance.mjs";
 import { journeyReceipt } from "./m14RecipeJourneys.mjs";
+import { cleanupRdsPhase, rdsControlRoles } from "./m14RdsRecipe.mjs";
 
 const directories: string[] = [];
 function fixture() {
@@ -111,6 +112,32 @@ it("refuses a reused cluster catalogue before the proof can create global roles"
     try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required"); }
     finally { held.release(); await other.end(); }
     await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).resolves.toBeUndefined();
+    for (const role of rdsControlRoles) await pool.query(`CREATE ROLE ${role} ${role === "rdsadmin" ? "LOGIN PASSWORD 'synthetic-monitor'" : "NOLOGIN"}`);
+    await pool.query("CREATE DATABASE rdsadmin OWNER rdsadmin");
+    const profile = { target: "rds", baselineDatabases: ["postgres"] };
+    const monitorUrl = new URL(container.connectionString); monitorUrl.username = "rdsadmin"; monitorUrl.password = "synthetic-monitor";
+    monitorUrl.pathname = "/rdsadmin";
+    const monitor = new Pool({ connectionString: monitorUrl.toString() });
+    const monitoring = await monitor.connect();
+    try {
+      await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres", profile)).resolves.toBeUndefined();
+      for (const [occupy, clear] of [["CREATE ROLE rds_unexpected", "DROP ROLE rds_unexpected"],
+        ["CREATE DATABASE rds_unexpected", "DROP DATABASE rds_unexpected"]]) {
+        await pool.query(occupy);
+        try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres", profile)).rejects.toThrow("fresh_cluster_required"); }
+        finally { await pool.query(clear); }
+      }
+      monitorUrl.pathname = "/postgres";
+      const wrongDatabase = new Pool({ connectionString: monitorUrl.toString() });
+      const wrongSession = await wrongDatabase.connect();
+      try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres", profile)).rejects.toThrow("fresh_cluster_required"); }
+      finally { wrongSession.release(); await wrongDatabase.end(); }
+      await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required");
+    } finally {
+      monitoring.release(); await monitor.end();
+      await pool.query("DROP DATABASE rdsadmin");
+      for (const role of rdsControlRoles) await pool.query(`DROP ROLE ${role}`);
+    }
   } finally { await closePostgres(container, pool); }
 }, postgresSetupTimeoutMs);
 
@@ -133,9 +160,68 @@ it("keeps credentials, paths and raw worker errors out of process output and fai
   expect(readFileSync(receipt, "utf8")).toBe(bytes);
 }, 35000);
 
+it("drops the owned phase database before application groups and their restricted grantors", async () => {
+  if (!await dockerAvailable()) throw new Error("Role cleanup proof requires Docker PostgreSQL 16");
+  const container = await runPostgresContainer({ name: `m14-10r-role-cleanup-${process.pid}`, password: "synthetic-conformance" });
+  const root = new Pool({ connectionString: container.connectionString });
+  let owner: Pool | undefined;
+  const prefix = `m14_10r_cleanup_${process.pid}`, database = prefix, m = `${prefix}_m`, app = `${prefix}_previous`;
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    await root.query(`CREATE ROLE ${m} LOGIN NOINHERIT CREATEROLE NOSUPERUSER PASSWORD 'synthetic-cleanup'`);
+    await root.query(`CREATE DATABASE ${database} OWNER ${m}`);
+    const url = new URL(container.connectionString); url.username = m; url.password = "synthetic-cleanup"; url.pathname = `/${database}`;
+    owner = new Pool({ connectionString: url.toString() });
+    await owner.query(`CREATE ROLE ${app} NOLOGIN; CREATE ROLE anon NOLOGIN; GRANT anon TO ${app};
+      CREATE TABLE public.cleanup_probe(id integer); GRANT SELECT ON public.cleanup_probe TO ${app}`);
+    await expect(owner.query(`DROP OWNED BY ${app}`)).rejects.toMatchObject({ code: "42501" });
+    await owner.end();
+    await expect(cleanupRdsPhase(root, { database: "postgres", rolePrefix: prefix, bootstrapLogin: "postgres" }))
+      .rejects.toThrow("test_namespace_refused");
+    expect(await cleanupRdsPhase(root, { database, rolePrefix: prefix, bootstrapLogin: "postgres" }))
+      .toEqual({ databaseAbsent: true, rolesAbsent: true, rolesDropped: 3 });
+    expect((await root.query("SELECT current_user AS login, EXISTS(SELECT 1 FROM pg_database WHERE datname='postgres') AS baseline_preserved")).rows)
+      .toEqual([{ login: "postgres", baseline_preserved: true }]);
+  } finally { await closePostgres(container, [root, owner]); }
+}, postgresSetupTimeoutMs);
+
 it("starts every unfinished appendix section explicitly pending with its owner", () => {
   expect(initialReceipt("self-host")).toMatchObject({ status: "INCOMPLETE", schema: { status: "PENDING", owner: "10A" },
     transfer: { status: "PENDING", owner: "8D/10P" }, recovery: { status: "PENDING", owner: "9A/10P" },
     oidc: { status: "PENDING", owner: "10I" }, s3: { status: "PENDING", owner: "10O" },
     nodeHosts: { status: "PENDING", owner: "10H" }, effortCleanup: { status: "PENDING", owner: "10H/10S" } });
+});
+
+it("admits only one explicitly serial RDS target with an environment-only password", () => {
+  const f = fixture();
+  const envName = "M14_RECIPE_TEST_PASSWORD";
+  const environment: Record<string, string> = {};
+  const hosted = { ...f.config, target: "rds", region: "xx-test-1", layout: "serial-cluster",
+    installations: Object.fromEntries(["installer-managed", "operator-provisioned", "schema"].map(mode => [mode, {
+      disposable: true, connectionString: "postgresql://bootstrap@managed.example.invalid/postgres",
+      passwordEnv: envName, incarnationSha256: "a".repeat(64), ca: f.config.installations.schema.ca,
+    }])) };
+  const save = () => writeFileSync(f.path, JSON.stringify(hosted), { mode: 0o600 });
+  try {
+    save();
+    expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_password_environment_required");
+    environment[envName] = f.secret;
+    expect(loadCredentials(f.path, "rds", environment)).toEqual(hosted);
+    delete (hosted as { region?: string }).region; save();
+    expect(() => loadCredentials(f.path, "rds", environment)).toThrow("region_required");
+    hosted.region = "xx-test"; save();
+    expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_serial_declaration_required");
+    hosted.region = "xx-test-1"; save();
+    expect(readFileSync(f.path, "utf8")).not.toContain(f.secret);
+    hosted.installations.schema.passwordEnv = "NODE_OPTIONS"; save();
+    expect(() => loadCredentials(f.path, "rds", { ...environment, NODE_OPTIONS: "--import ./untrusted.mjs" })).toThrow("rds_password_environment_required");
+    hosted.installations.schema.passwordEnv = envName;
+    hosted.installations.schema.connectionString = "postgresql://bootstrap:inline@managed.example.invalid/postgres"; save();
+    expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_password_environment_required");
+    hosted.installations.schema.connectionString = "postgresql://bootstrap@other.example.invalid/postgres"; save();
+    expect(() => loadCredentials(f.path, "rds", environment)).toThrow("one_rds_cluster_required");
+    hosted.installations.schema.connectionString = hosted.installations["installer-managed"].connectionString;
+    hosted.layout = "parallel"; save();
+    expect(() => loadCredentials(f.path, "rds", environment)).toThrow("rds_serial_declaration_required");
+  } finally { delete environment[envName]; }
 });
