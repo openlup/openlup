@@ -760,3 +760,10 @@ redacted Gitleaks scans of the staged tree and all refs pass. No public
 capability wording changed. Self-retro: the first test failure showed that
 early archive-state refusal can mask a more precise typed conflict; placing
 the shared link check before that refusal preserved the existing error contract.
+
+CD-M14-64 accepted the cycle-10 repair with independently recomputed tree
+`2f0ca108a70a480b52ff7782da9eeb3870b5a4eb` and SHA-256
+`b1546944ed4132ab2e5b02e7285fbb60830e71dd5d30dce5acab9fa51e32dde7`
+for `git diff --binary 1af97f95 2f0ca108`. Both computed identities matched.
+The exact accepted tree was DCO-committed as
+`8011cd8d58e10962cdc437d317b8d036db4cb0e7`; fresh full native review follows.
