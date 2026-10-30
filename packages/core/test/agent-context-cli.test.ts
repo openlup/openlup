@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -67,6 +67,31 @@ describe("installed agent context", () => {
     expect(hit).toMatchObject({ title: "The retry ladder terminates", start: 3, end: 5 });
   });
 
+  it("returns disjoint Markdown sections and one installed source instead of its copied excerpt", () => {
+    const root = fixture();
+    const directory = join(root, "node_modules/@openlup/core");
+    const excerpt = "## Parent\nGeneral guidance.\n\n### Child\nUnique checkout replay evidence.\n";
+    const metadata = { id: "checkout-replay", source: "README.md", heading: "Parent", sha256: createHash("sha256").update(excerpt).digest("hex") };
+    writeFileSync(join(directory, "README.md"), `# Guide\n\n${excerpt}\n## Other\nUnrelated.\n`);
+    writeFileSync(join(directory, "AGENT_CONTEXT.md"), `# Installed context\n<!-- openlup-context-inventory ${JSON.stringify([metadata])} -->\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}<!-- /openlup-context -->\n`);
+    const hits = searchContext(root, "checkout replay evidence").hits;
+    expect(hits.filter((hit) => hit.file === join(directory, "README.md")).map((hit) => hit.title)).toEqual(["Child"]);
+    expect(hits.some((hit) => hit.file === join(directory, "AGENT_CONTEXT.md"))).toBe(false);
+  });
+
+  it("returns a shared canonical excerpt once across installed packages", () => {
+    const root = fixture();
+    const excerpt = "## Idempotency\nRetry an outbox dispatch handler with one durable effect.\n";
+    for (const [name, id] of [["outbox", "outbox-retry-dispatch-handler"], ["platform", "checkout-payment-idempotency"]]) {
+      const directory = install(root, name);
+      const metadata = { id, source: "docs/platform/CANONICAL_CONTRACTS.md", heading: "Idempotency", sha256: createHash("sha256").update(excerpt).digest("hex") };
+      writeFileSync(join(directory, "AGENT_CONTEXT.md"), `# Installed context\n<!-- openlup-context-inventory ${JSON.stringify([metadata])} -->\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}<!-- /openlup-context -->\n`);
+    }
+    const hits = searchContext(root, "outbox retry dispatch handler idempotency").hits;
+    expect(hits.filter((hit) => hit.owner === "docs/platform/CANONICAL_CONTRACTS.md")).toHaveLength(1);
+    expect(hits.find((hit) => hit.owner)?.packageName).toBe("@openlup/outbox");
+  });
+
   it("refuses a lockfile that disagrees with installed bytes", () => {
     const root = fixture();
     writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@openlup/core": { version: "0.30.0" } } }));
@@ -120,5 +145,20 @@ describe("installed agent context", () => {
     writeFileSync(file, "export const renamedCheckoutNeedle = 1;\n");
     expect(searchContext(root, "localCheckoutNeedle", true).hits).toEqual([]);
     expect(searchContext(root, "renamedCheckoutNeedle", true).hits[0]?.file).toBe(file);
+  });
+
+  it("searches installed package source only when selected, including an exact source path", () => {
+    const root = fixture();
+    const directory = join(root, "node_modules/@openlup/core/src");
+    mkdirSync(directory);
+    const file = join(directory, "checkout.ts");
+    writeFileSync(file, "export function packageCheckoutNeedle() { return 1; }\n");
+    expect(searchContext(root, "packageCheckoutNeedle").hits).toEqual([]);
+    expect(searchContext(root, "packageCheckoutNeedle", false, true).hits[0]).toMatchObject({ file, start: 1, end: 1, reason: "installed package source" });
+    expect(searchContext(root, "src/checkout.ts", false, true).hits[0]).toMatchObject({ file, start: 1, end: 1, reason: "exact installed source path" });
+    const outside = join(root, "outside.ts");
+    writeFileSync(outside, "export const outsidePackageNeedle = 1;\n");
+    symlinkSync(outside, join(directory, "outside.ts"));
+    expect(searchContext(root, "outsidePackageNeedle", false, true).hits).toEqual([]);
   });
 });

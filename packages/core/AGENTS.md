@@ -20,7 +20,8 @@ From the application root, invoke the installed local executable:
 This MVP indexes English documentation. Translate Polish or other natural-language
 tasks into concise English domain terms, or search an exact public symbol;
 freeform Polish queries may miss relevant guidance. `--code` scans a bounded
-set of local source paths and may be incomplete; direct `rg` remains available.
+set of application source paths; `--package-code` scans installed package `src/`
+files. Both are opt-in and may be incomplete; direct `rg` remains available.
 
 Choose the next lookup from the evidence needed: read a known path or symbol
 directly; use `openlup-context` when the package owner or seam is unclear; then
