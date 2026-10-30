@@ -46,6 +46,8 @@ export interface AnalyticsDataLayerOptions<StepName extends string = string> {
   consentChangeEvent?: string;
   /** Host wire names, analytics first then advertising in supplied order. Omission disables consent commands and optional event admission. */
   consentSignalNames?: { analytics: string; advertising: readonly string[] };
+  /** Opt in to independent analytics/advertising consent. Hosts must gate each tag by its own purpose. */
+  allowMarketingWithoutAnalytics?: boolean;
   eventPrefix?: string;
   readContainerId?: () => string | null;
   trackDeploymentEvent?: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]) => boolean;

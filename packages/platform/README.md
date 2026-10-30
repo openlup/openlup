@@ -195,6 +195,9 @@ contract; they do not certify a deployed route or security policy.
 
 ## Marketing contracts
 
+The browser data-layer factory defaults to analytics-consent-only admission. Hosts may opt in with `allowMarketingWithoutAnalytics: true` to admit events with either stored analytics or marketing cookie consent. In this mode consent updates reflect each category independently; `pushAnalyticsConsentUpdate(false)` denies both. The host must gate every tag by its own purpose, including preventing cookieless analytics when analytics consent is denied. Queue admission does not prove delivery or attribution.
+
+
 `./marketing` provides acquisition address references, historical case projections,
 list/count reads, portable prelaunch list/detail schemas, idempotency keys, survey submission/evidence/list schemas and
 newsletter consent events/responses. Reference compatibility shims forward the

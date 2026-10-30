@@ -107,3 +107,25 @@ it("preserves reference-compatible stored booleans and ordered array-like consen
   f.analytics.pushAnalyticsConsentUpdate(false);
   expect((commands[4] as IArguments)[2]).toEqual({ measurement: "denied", advertising_storage: "denied", advertising_user_data: "denied", advertising_personalization: "denied" });
 });
+
+// Opt-in hosts can admit advertising without granting analytics.
+it.each([[false,false],[true,false],[false,true],[true,true]])("keeps independent consent for analytics=%s marketing=%s", (analytics, marketing) => {
+  const f=fixture();
+  f.store(JSON.stringify({necessary:true,functional:false,analytics,marketing}));
+  const layer=createAnalyticsDataLayer({...f.options,allowMarketingWithoutAnalytics:true});
+  expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(analytics || marketing);
+  if (!analytics && !marketing) { expect(f.browser.dataLayer).toBeUndefined(); return; }
+  expect((f.browser.dataLayer![1] as IArguments)[2]).toEqual({measurement:analytics?"granted":"denied",campaign:marketing?"granted":"denied",attribution:marketing?"granted":"denied",personalization:marketing?"granted":"denied"});
+  layer.pushAnalyticsConsentUpdate(false);
+  expect((f.browser.dataLayer!.at(-1) as IArguments)[2]).toEqual({measurement:"denied",campaign:"denied",attribution:"denied",personalization:"denied"});
+  f.store(JSON.stringify({necessary:true,functional:false,analytics:false,marketing:false}));
+  expect(layer.pushAnalyticsEvent("page_view",{page_path:"/later"})).toBe(false);
+});
+it("retains the analytics requirement by default and refuses malformed opt-in consent",()=>{
+  const f=fixture();f.store(JSON.stringify({necessary:true,functional:false,analytics:false,marketing:true}));
+  expect(f.analytics.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(false);
+  const layer=createAnalyticsDataLayer({...f.options,allowMarketingWithoutAnalytics:true});
+  for(const raw of ['{}','null','{"marketing":true}','{"necessary":true,"functional":false,"analytics":false,"marketing":"true"}']){
+    f.store(raw);expect(layer.pushAnalyticsEvent("page_view",{page_path:"/"})).toBe(false);
+  }
+});

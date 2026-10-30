@@ -1,0 +1,1 @@
+Add the optional `allowMarketingWithoutAnalytics` data-layer setting, disabled by default. Opted-in hosts admit optional events under either stored purpose grant and emit independent analytics and advertising consent signals. Hosts must gate every tag by its own purpose. Explicit withdrawal continues to deny all signals.

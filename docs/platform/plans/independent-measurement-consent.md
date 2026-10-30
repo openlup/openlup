@@ -1,0 +1,21 @@
+# Independent optional measurement consent
+
+Outcome: an opt-in `allowMarketingWithoutAnalytics` option on AnalyticsDataLayerOptions permits optional queue admission with either stored analytics or marketing cookie permission. With this option enabled, emitted analytics and advertising signals reflect their own stored flag. A false pushAnalyticsConsentUpdate argument still denies all signals. Default behavior is unchanged; no event replay or provider implementation is added.
+
+Placement: existing @openlup/platform/marketing subpath; no new package, dependency, copied adopter implementation or provider names. Host is responsible for refusing analytics tags under analytics denial, including cookieless analytics.
+
+Authority: on 2026-10-30 the maintainer explicitly approved the stabilized optional API and delivery through an upstream PR, complete npm set publication, and downstream adoption. The active supervisor owns implementation, human-instructed DCO/submission, review receipts, merge and release dispatch necessary for that finite delivery. Independent fresh-context reviewers provide technical review, not personal maintainer reading claims. Protected release-run approval, credentials/account changes and production remain human gates. Source implementation and ordinary release preparation use separate PRs; no combined implementation/set-bump route is inferred.
+
+Base and policy revision: fee33275b625d207ade7a5e62167d1df239d5f9f (origin/main at task bootstrap). Dedicated codex/independent-measurement-consent worktree. Scope: analytics contracts, dataLayer implementation/tests and owning README. Risk: opt-in may leak analytics through an incorrectly configured host container; independent flags, malformed-input, denial, revocation and unchanged default tests bound source behavior. No subscription or business-data writes.
+
+Evidence: pending focused tests and public API check. Local candidate is not published or qualified for adopter deployment.
+
+Local evidence: installed dependencies with npm ci; built core and platform; 13 focused data-layer tests passed; API check passed after intentionally updating the four marketing declaration snapshots for the additive optional field. Two independent source reviews found no upstream issue; consumer lifecycle findings were fixed and rechecked. This is not native committed-session admission or full release verification. Local tarball trial is explicitly unpublished; no version bump or release dispatch performed.
+
+Terminal self-retro: purpose admission must be evaluated together with signals, host loader lifecycle and remote tag gates; tests now cover both independent flags while preserving legacy defaults. No new process mechanism is warranted.
+
+The isolated consumer trial passed its full verification, including 31439 passing tests and full coverage, on the local packed candidate. Those receipts are explicitly quarantined and the consumer's authentic installation restored; they are not canonical npm adoption or this public repository's full native verification. Public API owner-read/submission and release permission requested in the chat remain pending an actual answer. No signoff, source PR, merge, release or npm publication occurred.
+
+Resume: policy freshly fetched on 2026-10-30 remains fee33275b625d207ade7a5e62167d1df239d5f9f; no changed applicable instruction paths. Maintainer approved the presented API without material implementation changes. The previous pending-authority statements above describe the earlier local trial. Native committed review and full local source verification now follow before submission.
+
+Pre-signoff checks on stabilized source: full lint passed with zero errors (33 pre-existing warnings); published-tree policy passed with two documentation obligations and none unanswered; 13 focused data-layer tests passed; core working-tree pack preview passed (183160 packed / 766447 unpacked bytes, 229 files); prior platform API check passed for the four additive declarations. Added a release fragment for the subsequent minor set. A direct runner invocation initially lacked npm's executable PATH and was corrected to npm exec; no failing assertion or skipped control. Final committed native review and full verification results will be retained in ignored evidence and the PR, avoiding source edits during the proof interval.
