@@ -140,6 +140,7 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
   for (const { file } of input.migrations) if (!union.has(file)) errors.push(`platform migration manifest: unmanifested catalog file ${file}`);
   if (errors.length) return errors;
   const current = raw as Exclude<PlatformMigrationManifest, PlatformMigrationPlan>;
+  const issuedSharedLength = current.forward.findIndex(({ file }) => file === QUALIFIED_AFTER_FILE) + 1;
   function qualifiedOrder(plan: QualifiedPlan | AdminPlan, baseline: string, actor: string, acquisition: string, runtime: string, retainedImport: string, files: Set<string>, requireImport: boolean, ownerPath: boolean) {
     const replacements = new Map([[actor, LEGACY_ACTOR_FILE], [acquisition, LEGACY_ACQUISITION_FILE]]);
     const tails = new Set([runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE, ...(ownerPath ? [QUALIFIED_OWNER_PATH_FILE] : [])]);
@@ -155,10 +156,12 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
     if (at(QUALIFIED_AFTER_FILE) < 0 || at(runtime) <= at(QUALIFIED_AFTER_FILE)) errors.push("qualified runtime capabilities must follow the complete ownership closure");
     if (at(retainedImport) >= 0 && at(retainedImport) <= at(runtime)) errors.push("qualified retained import must follow runtime role sealing");
     const ownerPosition = ownerPath ? at(QUALIFIED_OWNER_PATH_FILE) : -1;
-    if (at(QUALIFIED_RUNTIME_COMPLETION_FILE) >= 0 && (at(retainedImport) < 0 || at(QUALIFIED_RUNTIME_COMPLETION_FILE) <= at(retainedImport) || (ownerPosition < 0 && at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== plan.forward.length - 1))) errors.push("qualified runtime completion must follow retained import");
-    if (ownerPosition >= 0 && (at(QUALIFIED_RUNTIME_COMPLETION_FILE) < 0 || ownerPosition !== at(QUALIFIED_RUNTIME_COMPLETION_FILE) + 1 || ownerPosition !== plan.forward.length - 1)) errors.push("qualified owner path forward must be the final tail after runtime completion");
-    if (requireImport && (at(runtime) !== current.forward.length || at(retainedImport) !== current.forward.length + 1
-      || at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== current.forward.length + 2)) errors.push("qualified 91-unit tails must follow the complete shared order exactly");
+    if (at(QUALIFIED_RUNTIME_COMPLETION_FILE) >= 0 && (at(retainedImport) < 0 || at(QUALIFIED_RUNTIME_COMPLETION_FILE) <= at(retainedImport))) errors.push("qualified runtime completion must follow retained import");
+    if (ownerPosition >= 0 && (at(QUALIFIED_RUNTIME_COMPLETION_FILE) < 0 || ownerPosition !== at(QUALIFIED_RUNTIME_COMPLETION_FILE) + 1)) errors.push("qualified owner path forward must be the final tail after runtime completion");
+    const lastTail = ownerPosition >= 0 ? ownerPosition : Math.max(at(runtime), at(retainedImport), at(QUALIFIED_RUNTIME_COMPLETION_FILE));
+    if (JSON.stringify(plan.forward.slice(lastTail + 1)) !== JSON.stringify(current.forward.slice(issuedSharedLength))) errors.push("qualified plan must append the identical shared suffix after its issued tails");
+    if (requireImport && (at(runtime) !== issuedSharedLength || at(retainedImport) !== issuedSharedLength + 1
+      || at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== issuedSharedLength + 2)) errors.push("qualified 91-unit tails must follow the complete shared order exactly");
   }
   qualifiedOrder(current.qualified, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, qFiles, current.schemaVersion === 3, true);
   if (current.schemaVersion === 3) {

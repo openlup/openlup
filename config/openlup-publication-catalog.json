@@ -26646,6 +26646,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/platformManifestSuffix.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/portabilityRows.test.ts",
       "class": "public-output"
     },

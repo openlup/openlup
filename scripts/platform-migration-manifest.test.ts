@@ -250,3 +250,77 @@ describe("canonical qualified migration selection", () => {
     expect(evaluatePlatformMigrationManifestHistory(manifest, repinned, [])).toContain("platform migration manifest cannot change without an added migration");
   });
 });
+
+
+describe("shared forwards after issued generation tails", () => {
+  function appendedFixture() {
+    if (raw.schemaVersion !== 3) throw new Error("shared suffix fixture requires all three issued generations");
+    const migrations = [1, 2].map(index => ({
+      file: `db/platform/migrations/2026103012000${index}_shared_suffix.sql`,
+      content: `-- synthetic shared forward ${index}\nSELECT ${index};\n`,
+    }));
+    const suffix = migrations.map(({ file, content }) => ({ file, sha256: sha256(content) }));
+    const manifest = structuredClone(raw);
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push(...structuredClone(suffix));
+    return { manifest, migrations: [...readPlatformMigrations(process.cwd()).migrations, ...migrations], suffix };
+  }
+
+  it("selects the identical ordered suffix after every unchanged issued prefix", () => {
+    const { manifest, migrations, suffix } = appendedFixture();
+    expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(raw, manifest, suffix.map(({ file }) => file))).toEqual([]);
+    const selections = [
+      selectPlatformMigrationManifest(manifest, "legacy"),
+      selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }),
+      selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode: "installer-managed" }),
+    ];
+    if (raw.schemaVersion !== 3) throw new Error("expected three issued generations");
+    for (const [index, previous] of [raw, raw.qualified, raw.qualifiedAdmin].entries()) {
+      expect(selections[index]!.forward.slice(0, previous.forward.length)).toEqual(previous.forward);
+      expect(selections[index]!.forward.slice(previous.forward.length)).toEqual(suffix);
+      const paths = new Set([selections[index]!.baseline.file, ...selections[index]!.forward.map(({ file }) => file)]);
+      expect(evaluateSelectedPlatformMigrationManifest({ manifest: selections[index], migrations: migrations.filter(({ file }) => paths.has(file)) },
+        (["legacy", "qualified-v2", "qualified-admin"] as const)[index]!)).toEqual([]);
+    }
+    const { qualifiedAdmin: _admin, ...v2 } = manifest;
+    expect(evaluatePlatformMigrationManifest({ manifest: { ...v2, schemaVersion: 2 },
+      migrations: migrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_")) })).toEqual([]);
+  });
+
+  it.each(["legacy", "qualified", "qualifiedAdmin"] as const)("refuses missing, permuted or different-hash suffix rows in %s", generation => {
+    for (const change of [
+      (forward: PlatformMigrationPlan["forward"]) => { forward.pop(); },
+      (forward: PlatformMigrationPlan["forward"]) => { const last = forward.length - 1; [forward[last - 1], forward[last]] = [forward[last]!, forward[last - 1]!]; },
+      (forward: PlatformMigrationPlan["forward"]) => { forward.at(-1)!.sha256 = "a".repeat(64); },
+    ]) {
+      const { manifest, migrations } = appendedFixture();
+      change((generation === "legacy" ? manifest : manifest[generation]).forward);
+      expect(evaluatePlatformMigrationManifest({ manifest, migrations }).length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(["qualified", "qualifiedAdmin"] as const)("refuses shared insertion before issued tails in %s without relying on history", generation => {
+    for (const before of [generation === "qualified" ? QUALIFIED_RUNTIME_FILE : REVISED_ADMIN_RUNTIME_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE]) {
+      const { manifest, migrations, suffix } = appendedFixture();
+      const forward = manifest[generation].forward;
+      forward.splice(-suffix.length);
+      forward.splice(forward.findIndex(({ file }) => file === before), 0, ...suffix);
+      expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toContain("qualified plan must append the identical shared suffix after its issued tails");
+      expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toContain("qualified 91-unit tails must follow the complete shared order exactly");
+    }
+  });
+
+  it.each(["legacy", "qualified", "qualifiedAdmin"] as const)("preserves issued %s history against removal, reorder, replacement and hash drift", generation => {
+    for (const change of [
+      (forward: PlatformMigrationPlan["forward"]) => { forward.splice(1, 1); },
+      (forward: PlatformMigrationPlan["forward"]) => { [forward[0], forward[1]] = [forward[1]!, forward[0]!]; },
+      (forward: PlatformMigrationPlan["forward"]) => { forward[0]!.file = "db/platform/migrations/20261030110000_replaced.sql"; },
+      (forward: PlatformMigrationPlan["forward"]) => { forward[0]!.sha256 = "a".repeat(64); },
+    ]) {
+      const { manifest, suffix } = appendedFixture();
+      change((generation === "legacy" ? manifest : manifest[generation]).forward);
+      expect(evaluatePlatformMigrationManifestHistory(raw, manifest, suffix.map(({ file }) => file)))
+        .toEqual(expect.arrayContaining([expect.stringContaining("preserve the previous prefix")]));
+    }
+  });
+});

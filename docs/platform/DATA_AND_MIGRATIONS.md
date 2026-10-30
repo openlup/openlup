@@ -412,6 +412,8 @@ current source checkpoint carries v3: its legacy selection still has the exact
 The current source manifest uses version 3 with a separately selected
 `qualified-admin` restricted-bootstrap plan and two fixed role-mode inventories.
 Its legacy and `qualified-v2` selections retain their issued paths and hashes.
+New shared forwards append as an identical ordered path/hash suffix after each
+selection's issued tails; every issued prefix remains immutable.
 
 A qualified plan has a new actual position-zero baseline, the two fixed
 actor/acquisition bootstrap replacements and the fixed runtime tail after the
