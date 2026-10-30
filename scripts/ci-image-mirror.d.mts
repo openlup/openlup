@@ -9,6 +9,7 @@ export function cliPin(workflow: string): string;
 export function cliImages(services: unknown, binary: string, pgtapSource: string): ImageCoordinates[];
 export function plannedImages(input: string): CiImage[];
 export function ownedImages(config: unknown): OwnedCiImage[];
+export function pinnedCliImages(images: ImageCoordinates[], config: unknown): CiImage[];
 export function inspect(reference: string): string | null;
 export function resolveImage(image: CiImage, registryInspect?: RegistryInspect): ResolvedImage;
 export function mirrorImage(

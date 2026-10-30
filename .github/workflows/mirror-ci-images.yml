@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]
+    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, scripts/install-supabase-cli-ci.sh, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]
 permissions: {contents: read}
 concurrency: {group: mirror-ci-images, cancel-in-progress: false}
 jobs:
@@ -20,8 +20,9 @@ jobs:
         with: {node-version: 24.21.0, package-manager-cache: false}
       - id: pin
         run: node scripts/ci-image-mirror.mjs pin >> "$GITHUB_OUTPUT"
-      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
-        with: {version: "${{ steps.pin.outputs.version }}"}
+      - name: Install verified native Supabase CLI
+        env: {SUPABASE_CLI_VERSION: "${{ steps.pin.outputs.version }}"}
+        run: bash scripts/install-supabase-cli-ci.sh "$SUPABASE_CLI_VERSION"
       - id: plan
         run: |
           images=$(node scripts/ci-image-mirror.mjs plan)

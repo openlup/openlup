@@ -35,10 +35,13 @@ import { request } from "../helpers/fulfillmentComposition.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 import { assertCatchupActivation, assertFinalCatchup, catchupCounts, catchupDrain, catchupServing, interruptPool, mediaReferences, preliminaryCatchup, seedCatchup } from "./m14ConnectedCatchup.js";
-import { carryManagedSidecar, managedFirstLeg } from "./m14ManagedCatchup.js";
+import { assertManagedArchiveAbsent, managedFirstLeg, type ManagedObligations } from "./m14ManagedCatchup.js";
+import { applyRecoveryPrivacy, assertRecoveryPrivacy, assertRecoveryReady, loadOlderSnapshot, persistOlderSnapshot, persistRecoveryJson, recoveryRows, seedRecoveryPrivacy, type RecoveryPrivacyObligation } from "./m14OlderSnapshotRecovery.js";
 
-const root = process.cwd(), image = process.argv[2], managedCatchup = process.argv[3] === "--managed-catch-up";
-const catchup = process.argv[3] === "--catch-up" || managedCatchup;
+const root = process.cwd(), image = process.argv[2], recovery = process.argv[3] === "--older-snapshot",
+  managedCatchup = process.argv[3] === "--managed-catch-up",
+  catchup = recovery || managedCatchup || process.argv[3] === "--catch-up";
+if (process.argv[3] && !catchup) throw new Error("Unknown handover mode");
 if (process.argv.length > (catchup ? 4 : 3)) throw new Error("Unknown handover arguments");
 const selection: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation = { generation: catchup ? "qualified-admin" : "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
@@ -61,7 +64,7 @@ const owner = randomUUID(), label = "openlup.m14-effect-owner", roleLabel = "ope
 const fixtureUid = process.getuid?.(), fixtureGid = process.getgid?.();
 assert(fixtureUid !== undefined && fixtureGid !== undefined, "explicit POSIX owner profile required");
 const fixtureUser = `${fixtureUid}:${fixtureGid}`;
-const evidenceParent = join(root, ".context", "scratch", "oss-m14-connected-catchup");
+const evidenceParent = join(root, ".context", "scratch", recovery ? "oss-m14-older-snapshot-recovery" : "oss-m14-connected-catchup");
 mkdirSync(evidenceParent, { recursive: true, mode: 0o700 });
 const scratch = realpathSync(mkdtempSync(join(evidenceParent, "journey-")));
 // macOS inherits the parent directory group. Establish this owned fixture
@@ -83,10 +86,18 @@ const control = randomUUID(); // Fixture-only authentication, never copied accou
 let network: string | undefined, providerUrl = "", report: Record<string, unknown> = {}, failure: unknown;
 let targetWritesActivated = false;
 let targetRecoveryWritesStarted = false, graphPublished = false, filesystemPublished = false, sourceWritesFrozen = false;
-const sidecarRefusals: string[] = [];
 let nativeActivationRefusals = 0;
 let application: Awaited<ReturnType<typeof prepareM14ApplicationCohort>> | undefined;
 let targetApplication: OrderReviewRuntimeBinding | undefined;
+let olderSnapshot: Awaited<ReturnType<typeof persistOlderSnapshot>> | undefined;
+let privacySeed: Awaited<ReturnType<typeof seedRecoveryPrivacy>> | undefined;
+let failureBoundary: { wall: string; monotonicMs: number } | undefined;
+let unavailabilityBoundary: { wall: string; monotonicMs: number } | undefined;
+const recoveryFacts = { publications: false, privacy: false, reconciled: false, authorized: false, transferred: false };
+async function runTargetEffects<T>(work: () => Promise<T>): Promise<T> {
+  if (recovery) assertRecoveryReady(recoveryFacts);
+  return work();
+}
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
 function pool(connectionString: string) {
   const value = new Pool({ connectionString, types: createPostgresGatewayTypeOverrides(TypeOverrides) }); pools.push(value); return value;
@@ -123,8 +134,31 @@ async function keyIdentity(db: Pool) {
 async function census(db: Pool) {
   const rows: Record<string, string[]> = {};
   for (const table of connectedNativeStoreTables) rows[table] = (await db.query<{ value: string }>(
-    `SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text`)).rows.map(row => row.value);
+    `SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text`)).rows.map(row => row.value).sort();
   return rows;
+}
+async function assertManagedTypedTarget(db: Pool, obligations: ManagedObligations) {
+  await assertManagedArchiveAbsent(db);
+  assert.deepEqual((await db.query("SELECT name FROM public.catalog_products WHERE id=$1", [obligations.productId])).rows,
+    [{ name: "Retained product updated" }]);
+  assert.deepEqual((await db.query("SELECT name FROM public.catalog_products WHERE id=$1", [obligations.addedProduct])).rows,
+    [{ name: "New retained product" }]);
+  assert.deepEqual((await db.query("SELECT id FROM public.catalog_products WHERE id=$1", [obligations.deletedProductId])).rows, []);
+  assert.deepEqual((await db.query(`SELECT state FROM public.communication_recipient_consents
+    WHERE recipient_fingerprint=$1 AND purpose='marketing_newsletter'`, [obligations.consentFingerprint])).rows,
+    [{ state: "denied" }]);
+  assert.deepEqual((await db.query("SELECT status,external_ref FROM public.commerce_settlement_intents WHERE id=$1",
+    [obligations.paidIntentId])).rows, [{ status: "settled", external_ref: "provider-paid:1" }]);
+  assert.deepEqual((await db.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1",
+    [obligations.failedIntentId])).rows, [{ status: "failed" }]);
+  assert.deepEqual((await db.query("SELECT status FROM public.subscriptions WHERE id=$1", [obligations.subscriptionId])).rows,
+    [{ status: "active" }]);
+  assert.deepEqual((await db.query("SELECT delivery_admission FROM public.subscription_renewal_terms WHERE subscription_id=$1",
+    [obligations.subscriptionId])).rows, [{ delivery_admission: "blocked" }]);
+  assert.deepEqual((await db.query("SELECT status FROM public.invoicing_duties WHERE order_id=$1",
+    [obligations.paidOrderId])).rows, [{ status: "owed" }]);
+  assert(Number((await db.query("SELECT count(*) FROM public.outbox_events WHERE aggregate_id=$1 AND status='pending'",
+    [obligations.subscriptionId])).rows[0]?.count) > 0);
 }
 async function installation(side: string) {
   const name = `m14-effects-${side}-${owner}`, resource = await runPostgresContainer({ name, password: "synthetic-only" });
@@ -236,7 +270,7 @@ try {
   const pristineTarget = await capture(target.owner, "owned-pristine-target");
   const targetKeyBefore = await keyIdentity(target.owner);
   const targetLedger = (await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows;
-  const managedFirst = managedCatchup ? await managedFirstLeg({ scratch, final: source,
+  const managedFirst = managedCatchup ? await managedFirstLeg({ final: source,
     installation: selection as QualifiedAdminPostgresInstallation,
     createPreliminary: () => installation("managed-preliminary"),
     captureNative: (db, id) => capture(db, id, true) }) : undefined;
@@ -279,12 +313,23 @@ try {
     await closePostgres(provisional.resource, [provisional.owner, provisional.bootstrap, provisional.runtime, provisional.restore]);
     mark("preliminaryRefusedAndRolledBackToSource");
   }
+  // Retire/drain the real application before the backup boundary. Dispatches
+  // will pause after admission; only this coordinator may change source state.
+  if (recovery) {
+    // Conservatively include planned application quiescence in measured RTO;
+    // the separately timestamped induced failure follows provider acceptance.
+    unavailabilityBoundary = { wall: new Date().toISOString(), monotonicMs: performance.now() };
+    mark("inducedUnavailability");
+  }
+  const earlyApplicationRetirement = recovery ? await application.fenceAndRetire({ settleMediaBeforeFence: true }) : undefined;
+  if (recovery) privacySeed = await seedRecoveryPrivacy(source.owner, source.runtimeUrl);
   const actors: { id: string; directory: string; name: string; boot: string; candidate: FulfillmentDispatchRequest }[] = [];
   for (const duty of duties.slice(0, 3)) {
     const { name, candidate, command, evidence } = duty, directory = join(scratch, name);
     mkdirSync(directory, { mode: 0o700 });
     writeFileSync(join(directory, "input.json"), JSON.stringify({ name, candidate, command, evidence,
-      connectionString: sourceActorUrl.toString(), runtimeLogin: selection.runtimeLogin }), { mode: 0o600 });
+      connectionString: sourceActorUrl.toString(), runtimeLogin: selection.runtimeLogin,
+      olderSnapshot: recovery }), { mode: 0o600 });
     const mounts = ["core", "outbox", "platform"].flatMap(pkg => ["--mount", `type=bind,src=${join(root, "packages", pkg)},dst=/workspace/packages/${pkg},readonly`]);
     if (actors.length === 0) mark("interruptionStart");
     const id = launch("executor", ["--workdir", "/workspace", ...mounts,
@@ -312,11 +357,32 @@ try {
     runtimeIdentity: status(actor.directory)?.runtimeIdentity })), application: application.writer,
     coordinator: { pid: process.pid, writesUntilFreeze: ["seed/provenance and preliminary updates/deletions/new rows and objects", "source R setup and fixture HTTP", "gate releases", "installation/DDL through owned setup pools"],
       remainingAfterFreeze: "read-only canonical capture/census and serving authorization probes only" }, admittedBeforeEffects }, null, 2), { mode: 0o600 });
+  if (recovery) {
+    assert(earlyApplicationRetirement && privacySeed);
+    assert.equal((await state()).requests.length, 0, "snapshot must precede all provider acceptance");
+    olderSnapshot = await persistOlderSnapshot({ scratch, db: source.owner, mediaRoot: application.mediaRoot, capture });
+    mark("olderSnapshotPersisted");
+    // Persist the later erasure obligation independently of the older backup.
+    // In this finite fixture it is the complete external privacy journal.
+    const obligation: RecoveryPrivacyObligation = { admin: privacySeed.admin, subject: privacySeed.later, completedAt: new Date().toISOString() };
+    persistRecoveryJson(join(scratch, "later-privacy-obligation.json"), obligation);
+    await applyRecoveryPrivacy(source.runtimeUrl, obligation);
+    await assertRecoveryPrivacy(source.owner, source.runtimeUrl, privacySeed);
+    // Real elapsed time, never an altered clock or fabricated snapshot age.
+    await delay(Math.max(0, 60_000 - (performance.now() - olderSnapshot.manifest.boundary.monotonicMs)));
+  }
   writeFileSync(join(actors[0].directory, "release"), "release");
   await until(state, value => value.requests.some(row => row.key === "lost-ack" && row.state === "accepted"));
   writeFileSync(join(actors[1].directory, "release"), "release");
   await until(state, value => value.requests.some(row => row.key === "in-flight" && row.state === "pending"));
 
+  if (recovery) {
+    assert.equal(Number((await source.runtime.query("SELECT count(*) FROM public.fulfillment_dispatch_refs WHERE external_ref IS NOT NULL")).rows[0].count), 0,
+      "provider acceptance has no local acknowledgment before induced failure");
+    failureBoundary = { wall: new Date().toISOString(), monotonicMs: performance.now() };
+    mark("inducedFailureAfterAcceptance");
+    persistRecoveryJson(join(scratch, "induced-failure.json"), failureBoundary);
+  }
   for (const actor of actors) {
     isolated(actor.id, "executor"); docker(["network", "disconnect", "--force", network!, actor.id]);
     assert.deepEqual(Object.keys(isolated(actor.id, "executor").NetworkSettings.Networks), []);
@@ -352,7 +418,7 @@ try {
   }
   const retired = [...actors.map(actor => actor.id), application.id];
   for (const actor of actors) retire(actor.id);
-  const applicationRetirement = await application.fenceAndRetire({ settleMediaBeforeFence: catchup });
+  const applicationRetirement = earlyApplicationRetirement ?? await application.fenceAndRetire({ settleMediaBeforeFence: catchup });
   assert.equal(applicationRetirement.id, application.id);
   for (const role of ["executor", "application"]) assert.equal(docker(["ps", "--all", "--no-trunc",
     "--filter", `label=${label}=${owner}`, "--filter", `label=${roleLabel}=${role}`, "--format", "{{.ID}}"]), "");
@@ -392,15 +458,23 @@ try {
   const sourceReader = pool(captureUrl.toString());
   await until(async () => Number((await sourceReader.query(`SELECT count(*)::integer AS count FROM pg_catalog.pg_stat_activity
     WHERE datname=current_database() AND backend_type='client backend' AND pid<>pg_backend_pid()`)).rows[0].count), count => count === 0);
-  const finalGraph = await capture(sourceReader, "owned-retired-source", false);
-  if (preliminary) assertFinalCatchup(preliminary, finalGraph);
-  const finalReferences = catchup ? await mediaReferences(sourceReader) : [];
-  const sourceRows = await census(sourceReader);
+  const retiredGraph = await capture(sourceReader, "owned-retired-source", false);
+  if (preliminary) assertFinalCatchup(preliminary, retiredGraph);
+  const restoredSnapshot = olderSnapshot ? loadOlderSnapshot(olderSnapshot) : undefined;
+  const finalGraph = restoredSnapshot?.graph ?? retiredGraph;
+  const finalReferences = restoredSnapshot?.references ?? (catchup ? await mediaReferences(sourceReader) : []);
+  const sourceRows = restoredSnapshot ? recoveryRows(finalGraph) : await census(sourceReader);
   const finalMediaStates = (await sourceReader.query("SELECT media_reference,state FROM public.commerce_order_review_media WHERE media_reference=ANY($1::text[]) ORDER BY media_reference",
     [[application.retained.pendingRef, application.retained.incompleteRef, application.retained.cleanupRef]])).rows;
   assert.equal(finalMediaStates.length, 3);
   await sourceReader.end();
-  const mediaCensus = await captureOrderReviewMediaFilesystem({ root: application.mediaRoot, ...mediaLimits });
+  const mediaCensus = restoredSnapshot?.media ?? await captureOrderReviewMediaFilesystem({ root: application.mediaRoot, ...mediaLimits });
+  const restoreMediaSource = restoredSnapshot?.mediaRoot ?? application.mediaRoot;
+  if (recovery) {
+    assert.notEqual(finalGraph.sha256, retiredGraph.sha256, "later erasure makes the post-failure census different from the restored older backup");
+    // Retain diagnostics, not another recoverable post-failure backup packet.
+    persistRecoveryJson(join(scratch, "diagnostic-retired-counts.json"), { sha256: retiredGraph.sha256, counts: catchupCounts(retiredGraph) });
+  }
   writeFileSync(join(scratch, "final-source-graph.json"), JSON.stringify(finalGraph), { mode: 0o600 });
   writeFileSync(join(scratch, "final-source-media.json"), JSON.stringify(mediaCensus), { mode: 0o600 });
   const rootStat = lstatSync(objects);
@@ -427,12 +501,12 @@ try {
   writeFileSync(join(scratch, "final-capture-point.json"), JSON.stringify(capturePoint, null, 2)); mark("finalCapturePoint");
 
   // Target remains inactive until BOTH existing canonical publications complete.
-  // These imports preserve every selected table/raw JSON row and the whole private
+  // These imports preserve all 73 tables/raw JSON rows and the whole private
   // objects/tmp root; no pg_dump/psql clone, schema/grant copy or lease editing.
   const targetMediaRoot = join(scratch, "target-media");
   const mediaInput = { census: mediaCensus, ...mediaLimits,
-    objects: createOrderReviewMediaTransferReader({ root: application.mediaRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes }),
-    temporary: createOrderReviewMediaTransferReader({ root: application.mediaRoot, maximumObjectBytes: mediaLimits.maximumObjectBytes, area: "tmp" }) };
+    objects: createOrderReviewMediaTransferReader({ root: restoreMediaSource, maximumObjectBytes: mediaLimits.maximumObjectBytes }),
+    temporary: createOrderReviewMediaTransferReader({ root: restoreMediaSource, maximumObjectBytes: mediaLimits.maximumObjectBytes, area: "tmp" }) };
   let objectInterruption = false;
   if (catchup) {
     let completedReads = 0;
@@ -456,14 +530,49 @@ try {
   assert.deepEqual(await keyIdentity(target.owner), targetKeyBefore);
   graphPublished = true;
   assert.deepEqual(await census(target.owner), sourceRows);
-  assert.deepEqual(await captureOrderReviewMediaFilesystem({ root: finalMediaRoot, ...mediaLimits }), mediaCensus);
+  const restoredMediaCensus = await captureOrderReviewMediaFilesystem({ root: finalMediaRoot, ...mediaLimits });
+  assert.deepEqual(restoredMediaCensus, mediaCensus);
   assert.deepEqual((await target.owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position")).rows, targetLedger);
   mark("canonicalGraphAndFilesystemPublished");
-  const managedSidecar = managedFirst ? await carryManagedSidecar({ scratch, first: managedFirst }) : undefined;
-  if (managedSidecar) mark("managedSidecarReadBackAtSecondTarget");
-  if (managedFirst) assert.deepEqual((await target.runtime.query(`SELECT state FROM public.communication_recipient_consents
-    WHERE recipient_fingerprint=$1 AND purpose='marketing_newsletter'`,
-  [managedFirst.obligations.consentFingerprint])).rows, [{ state: "denied" }]);
+  if (managedFirst) {
+    await assertManagedTypedTarget(target.runtime, managedFirst.obligations);
+    mark("managedTypedStateReadBackAtSecondTarget");
+  }
+  let recoveredRowsAfterPrivacy: Record<string, string[]> | undefined;
+  if (recovery) {
+    recoveryFacts.publications = true;
+    assert.throws(() => assertRecoveryReady(recoveryFacts), /older_snapshot_recovery_fenced/);
+    let workerEntered = false;
+    await assert.rejects(runTargetEffects(async () => { workerEntered = true; }), /older_snapshot_recovery_fenced/);
+    assert.equal(workerEntered, false, "same target effect entry refuses before any reconciliation");
+    assert.equal((await state()).requests.length, 2);
+    assert(privacySeed);
+    const stale = (await target.owner.query("SELECT email FROM public.clients WHERE id=$1", [privacySeed.later.contact])).rows[0];
+    assert.equal(stale.email, privacySeed.later.email, "prove actual older unredacted data was restored while serving remains closed");
+    const journal = join(scratch, "later-privacy-obligation.json");
+    const obligation: RecoveryPrivacyObligation = JSON.parse(readFileSync(journal, "utf8"));
+    assert.deepEqual(obligation.subject, privacySeed.later);
+    await applyRecoveryPrivacy(target.runtimeUrl, obligation);
+    await assertRecoveryPrivacy(target.owner, target.runtimeUrl, privacySeed);
+    recoveredRowsAfterPrivacy = await census(target.owner);
+    const retiredRows = recoveryRows(retiredGraph);
+    for (const table of connectedNativeStoreTables) {
+      assert.equal(recoveredRowsAfterPrivacy[table].length, retiredRows[table].length, `no lost retained rows: ${table}`);
+      // Source dispatch outcomes can have become uncertain after the socket
+      // failure; target reconciliation below must independently resolve them.
+      if (table === "fulfillment_dispatch_refs") continue;
+      const normalize = (rows: string[]) => rows.map(row => {
+        if (table !== "clients") return row; // Preserve lossless int8/numeric history text.
+        const value = JSON.parse(row);
+        // Erasure's actual transaction records its own local mutation time.
+        delete value.updated_at;
+        return JSON.stringify(value);
+      }).sort();
+      assert.deepEqual(normalize(recoveredRowsAfterPrivacy[table]), normalize(retiredRows[table]), `retained history and privacy exact: ${table}`);
+    }
+    recoveryFacts.privacy = true;
+    mark("laterPrivacyReappliedBeforeServing");
+  }
   let agreement: Awaited<ReturnType<typeof catchupServing>> | undefined;
   const drain = catchup ? catchupDrain() : undefined;
   if (catchup) {
@@ -474,6 +583,7 @@ try {
       agreement = await catchupServing({ source: sourceProbe, target: target.runtime, sourceRoot: application.mediaRoot,
         targetRoot: finalMediaRoot, grant: application.retained.grant, otherGrant: preliminary!.otherGrant, census: mediaCensus, references: finalReferences });
     } finally { await sourceProbe.end(); }
+    if (recovery) recoveryFacts.authorized = true;
     assert(preliminary);
     assert.notEqual(preliminary.staged.generationRoot, finalMediaRoot);
     const changed = mediaCensus.objects.find(row => row.key === preliminary.changes.updated.key);
@@ -610,6 +720,14 @@ try {
     keys: { request: candidate => candidate.requestKey, mappedAttempt: key => `mapped:${key}`,
       acceptance: ref => ({ providerAttemptKey: `accepted:${ref}`, labelKey: `receipt:${ref}` }) },
   });
+  const executeTarget = () => runTargetEffects(targetWorker);
+  if (recovery) {
+    // The real worker entry remains closed before ownership transfer, even
+    // after its stores and provider binding are prepared.
+    await assert.rejects(executeTarget(), /older_snapshot_recovery_fenced/);
+    assert.deepEqual(targetPosts, []);
+    recoveryFacts.reconciled = true;
+  }
   const targetMediaPool = pool(target.runtimeUrl);
   assert.deepEqual((await targetMediaPool.query("SELECT current_user,session_user")).rows,
     [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin }]);
@@ -618,15 +736,9 @@ try {
     ORDER_REVIEW_MEDIA_ROOT: finalMediaRoot };
   if (catchup) {
     const activationFacts = { sourceFrozen: sourceWritesFrozen, graphPublished, filesystemPublished,
-      requiresSidecar: managedCatchup,
       qualified: (await target.runner.status()).pending.length === 0,
       generation: finalMediaRoot, finalGeneration: join(scratch, ".openlup-inactive-media-final"),
       serving: agreement?.serving, drain: targetEnvironment,
-      sidecar: managedFirst ? { required: true, physicalReadback: !!managedSidecar,
-        privacyCovered: managedSidecar?.privacyCovered === true,
-        objectsReadback: managedSidecar?.objectsReadback === true,
-        sourceDigest: managedFirst.transfer.retainedObject.sha256,
-        targetDigest: managedSidecar?.objectSha256 ?? "" } : undefined,
       effects: { accepted: acceptedBefore.rows.length, uncertain: beforeActivation.filter(row => row.status === "uncertain").length,
         pending: beforeActivation.filter(row => row.status === "draft").length } };
     for (const delta of [{ sourceFrozen: false }, { graphPublished: false }, { filesystemPublished: false },
@@ -636,20 +748,22 @@ try {
       assert.equal(targetWritesActivated, false);
       nativeActivationRefusals++;
     }
-    if (managedFirst) for (const { name, sidecar } of [
-      { name: "missing retained-history object", sidecar: undefined },
-      { name: "retained-history object unread", sidecar: { ...activationFacts.sidecar!, physicalReadback: false } },
-      { name: "privacy disposition unverified", sidecar: { ...activationFacts.sidecar!, privacyCovered: false } },
-      { name: "managed media unread", sidecar: { ...activationFacts.sidecar!, objectsReadback: false } },
-      { name: "retained-history digest mismatch", sidecar: { ...activationFacts.sidecar!, targetDigest: "missing" } }]) {
-      assert.throws(() => assertCatchupActivation({ ...activationFacts, sidecar }), /catchup_activation_agreement_required/);
-      assert.equal(targetWritesActivated, false);
-      sidecarRefusals.push(name);
-    }
     assertCatchupActivation(activationFacts);
     assert.equal((await state()).requests.length, 2);
   }
   targetWritesActivated = true; // compose immediately schedules genuine reconciliation.
+  if (recovery) {
+    recoveryFacts.transferred = true;
+    assertRecoveryReady(recoveryFacts);
+    // Recreate neither a source process nor its DB sessions after transfer.
+    // The exact old executor identity has been terminally retired by the host.
+    assert.throws(() => docker(["start", actors[0].id]), (error: unknown) => error instanceof Error
+      && "status" in error && error.status === 1 && "stderr" in error
+      && typeof error.stderr === "string" && /No such container/.test(error.stderr));
+    assert.equal(docker(["ps", "--all", "--no-trunc", "--filter", `id=${actors[0].id}`, "--format", "{{.ID}}"]), "");
+    assert.equal((await state()).requests.length, 2);
+    mark("oldExecutorRestartRefusedAfterTransfer");
+  }
   targetApplication = await resolveOrderReviewRuntimeBinding(targetEnvironment, { store: targetMediaStore, resources: {
     executor: executor(targetMediaPool), close: () => targetMediaPool.end(), transaction: { async run(work) {
       const client = await targetMediaPool.connect();
@@ -659,7 +773,7 @@ try {
   assert(targetApplication);
   assert.equal((await targetApplication.customer.read(application.retained.grant)).ok, true);
   mark("targetApplicationRuntimeStarted");
-  const targetResult = await targetWorker();
+  const targetResult = await executeTarget();
   assert.deepEqual(listed[0], duties.map(duty => duty.candidate.fulfillmentRef));
   assert.deepEqual(targetPosts, [pending.candidate.fulfillmentRef]);
   assert.equal(targetResult.ok, false, "the retained uncertain operation still reports its refusal");
@@ -671,7 +785,7 @@ try {
   assert.equal(created.status, "created"); assert(created.externalRef);
   const effects = (await state()).requests;
   assert.equal(effects.length, 3); assert.equal(effects.filter(row => row.key === pending.name && row.state === "accepted").length, 1);
-  const repeatedTargetResult = await targetWorker();
+  const repeatedTargetResult = await executeTarget();
   assert.deepEqual(targetPosts, [pending.candidate.fulfillmentRef]);
   assert.equal((await state()).requests.length, 3);
   assert.deepEqual(await targetStore.read(pending.candidate.requestKey), created);
@@ -693,23 +807,59 @@ try {
     assert.equal(expected.length, 1);
     assert.deepEqual((await target.runtime.query("SELECT pg_catalog.to_jsonb(t)::text AS value FROM public.outbox_events t WHERE idempotency_key='catchup-effect-key'")).rows.map(row => row.value), expected);
   }
-  if (managedFirst) {
-    const ids = managedFirst.obligations;
-    assert.deepEqual((await target.runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [ids.subscriptionId])).rows,
-      [{ status: "active" }]);
-    assert.deepEqual((await target.runtime.query("SELECT delivery_admission FROM public.subscription_renewal_terms WHERE subscription_id=$1",
-      [ids.subscriptionId])).rows, [{ delivery_admission: "blocked" }]);
-    assert.deepEqual((await target.runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [ids.failedIntentId])).rows,
-      [{ status: "failed" }]);
-    assert.deepEqual((await target.runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [ids.paidIntentId])).rows,
-      [{ status: "settled" }]);
-    assert.deepEqual((await target.runtime.query("SELECT status FROM public.invoicing_duties WHERE order_id=$1", [ids.paidOrderId])).rows,
-      [{ status: "owed" }]);
-    assert(Number((await target.runtime.query("SELECT count(*) FROM public.outbox_events WHERE aggregate_id=$1 AND status='pending'",
-      [ids.subscriptionId])).rows[0]?.count) > 0);
-  }
+  if (managedFirst) await assertManagedTypedTarget(target.runtime, managedFirst.obligations);
   mark("selectedTargetReady");
+  const declaredReadiness = { wall: new Date().toISOString(), monotonicMs: performance.now() };
+  let recoveryMeasurement: Record<string, unknown> | undefined;
+  if (recovery) {
+    assert(restoredSnapshot && olderSnapshot && failureBoundary && unavailabilityBoundary && privacySeed && recoveredRowsAfterPrivacy);
+    const recoveredRetainedRows = recoveredRowsAfterPrivacy;
+    assertRecoveryReady(recoveryFacts);
+    await assertRecoveryPrivacy(target.owner, target.runtimeUrl, privacySeed);
+    const tableCounts = catchupCounts(finalGraph);
+    const obligations = Object.fromEntries(["fulfillment_dispatch_refs", "commerce_settlement_intents", "invoicing_duties", "outbox_events"]
+      .map(table => [table, tableCounts[table]]));
+    const pendingMediaObligations = finalGraph.owned.find(table => table.table === "commerce_order_review_media")!.rows
+      .filter(row => ["pending", "cleanup_pending"].includes(JSON.parse(row).state)).length;
+    assert.equal(obligations.fulfillment_dispatch_refs, 4);
+    recoveryMeasurement = { format: "openlup.local-older-snapshot-recovery.v1",
+      snapshotBoundary: restoredSnapshot.boundary.wall, latestRecoverableConsistentBoundary: restoredSnapshot.boundary.wall,
+      inducedUnavailability: unavailabilityBoundary.wall, inducedFailure: failureBoundary.wall, declaredReadiness: declaredReadiness.wall,
+      snapshotAgeSeconds: (failureBoundary.monotonicMs - restoredSnapshot.boundary.monotonicMs) / 1000,
+      effectiveRpoSeconds: (failureBoundary.monotonicMs - restoredSnapshot.boundary.monotonicMs) / 1000,
+      rtoSeconds: (declaredReadiness.monotonicMs - unavailabilityBoundary.monotonicMs) / 1000,
+      unavailabilityDefinition: "conservative start at planned application retirement for consistent backup; includes backup/quiescence before induced post-acceptance failure",
+      readiness: { ...recoveryFacts, permitsVisibleFencedUncertainty: true,
+        includes: ["restore", "object publication", "privacy replay", "effect reconciliation", "authorization", "serving", "ordinary-job readback and replay"],
+        scope: "finite local native connected graph and private media; one explicit uncertain dispatch refusal permitted" },
+      humanWaitSeconds: 0, accessWaitSeconds: 0,
+      counts: { recoveredSnapshotRows: Object.values(tableCounts).reduce((sum, count) => sum + count, 0),
+        recoveredSnapshotObjects: mediaCensus.objects.length, recoveredPartialFiles: mediaCensus.temporary.length,
+        lostRows: Object.entries(recoveryRows(retiredGraph)).reduce((sum, [table, rows]) => sum + Math.max(0, rows.length - recoveredRetainedRows[table].length), 0),
+        lostObjects: mediaCensus.objects.filter(object => !restoredMediaCensus.objects.some(value => value.key === object.key && value.sha256 === object.sha256)).length,
+        lostPartialFiles: mediaCensus.temporary.filter(object => !restoredMediaCensus.temporary.some(value => value.key === object.key && value.sha256 === object.sha256)).length,
+        lostObligations: Object.keys(obligations).reduce((sum, table) => sum + Math.max(0, tableCounts[table] - recoveredRetainedRows[table].length), 0),
+        recoveredObligationCount: Object.values(obligations).reduce((sum, count) => sum + count, 0) + pendingMediaObligations,
+        recoveredObligations: { ...obligations, pendingMedia: pendingMediaObligations },
+        recoveredPostSnapshotErasureReceipts: 1, recoveredAcceptedEffects: 2,
+        uncertainDispatchObligations: 1, ordinaryDutyAcceptedExactlyOnce: 1 },
+      fixture: { tables: tableCounts, graphBytes: readFileSync(join(olderSnapshot.root, "graph.json")).length,
+        objectBytes: [...mediaCensus.objects, ...mediaCensus.temporary].reduce((sum, object) => sum + object.bytes, 0),
+        maximumRows: 10000, maximumGraphBytes: 64 * 1024 * 1024, mediaLimits,
+        excludedDiagnosticMarkerFiles: objectInventory.length },
+      privacy: { existingErasurePreserved: true, laterErasureAndRetainedTextRedactionReappliedBeforeServing: true,
+        staleRestoredContactObservedOnlyBehindFence: true, erasedAuthenticationRefused: true,
+        managedSourceArchive: "managed history-only rows remain with the operator source; this mode selects native data" },
+      safeRefusals: [{ reason: "new executor fenced before reconciliation and ownership transfer", rtoSeconds: null },
+        { reason: "exact old executor restart refused after terminal host retirement and transfer", rtoSeconds: null },
+        { reason: "uncertain dispatch remains visible and cannot resubmit", rtoSeconds: null }],
+      source: "persisted pre-provider-acceptance DB packet and complete private media copy, reloaded from disk",
+      postFailureDiagnosticGraphUsedForRestore: false, noSloClaim: true, hostedQualification: false };
+    assert(Number(recoveryMeasurement.snapshotAgeSeconds) >= 60);
+    persistRecoveryJson(join(scratch, "recovery-measurement.json"), recoveryMeasurement);
+  }
   report = { outcome: "LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION", node: process.version, image, owner,
+    recovery: recoveryMeasurement,
     journey: catchup ? { format: "openlup.local-connected-catchup.v1",
       leg: managedCatchup ? "managed-to-portable-to-portable" : "portable-to-portable",
       sourceGeneration: managedCatchup ? "pinned-local-managed" : selection.generation, targetGeneration: selection.generation,
@@ -725,30 +875,29 @@ try {
           updated: mediaCensus.objects.filter(row => preliminary!.media.objects.some(value => value.key === row.key && value.sha256 !== row.sha256)).length,
           added: mediaCensus.objects.filter(row => !preliminary!.media.objects.some(value => value.key === row.key)).length,
           deleted: preliminary!.media.objects.filter(row => !mediaCensus.objects.some(value => value.key === row.key)).length },
-        retainedHistorySidecar: managedSidecar ? { sourceSha256: managedFirst!.transfer.retainedObject.sha256,
-          targetSha256: managedSidecar.objectSha256, rows: managedSidecar.rows,
-          copied: managedSidecar.copied.copied, readback: true, privacyCovered: managedSidecar.privacyCovered,
-          managedMediaCopied: managedSidecar.mediaObjects, managedMediaReadback: managedSidecar.objectsReadback }
-          : "managed predecessor not selected in this portable-only leg" },
+        managedHistoryOnlyRowsAbsent: managedCatchup ? true : undefined },
       refusals: [...(managedFirst ? [managedFirst.report.preliminary.refusal,
         `${managedFirst.report.activation.refusalCases} managed first-leg agreement cases refused`] : []),
-        preliminary!.report.refusal, ...sidecarRefusals, "retained uncertain dispatch remains fenced"],
-      activationRefusalCases: nativeActivationRefusals + sidecarRefusals.length
+        preliminary!.report.refusal, "retained uncertain dispatch remains fenced"],
+      activationRefusalCases: nativeActivationRefusals
         + (managedFirst ? managedFirst.report.activation.refusalCases + 1 : 0),
       takeover: targetWritesActivated, rollback: preliminary!.report.rollback,
-      timingsMs: times, hostedQualification: false, olderSnapshotRecovery: false } : undefined,
+      timingsMs: times, hostedQualification: false, olderSnapshotRecovery: recovery } : undefined,
     catalogue: { units: expectedUnits.length, tail: expectedTail, inventorySha256: selected.objectInventorySha256 },
     capturePoint, filesystemRestore, graphRestore, timesMs: times, recoveredAcceptedEffects: 2,
     unresolved, sourceWritesFrozen, filesystemPublished, graphPublished, targetRecoveryWritesStarted, targetWritesActivated, targetResult, repeatedTargetResult, targetPosts,
-    beforeActivation, afterActivation, selectedProfileReadyRtoMs: times.selectedTargetReady - times.interruptionStart,
+    beforeActivation, afterActivation, selectedProfileReadyRtoMs: times.selectedTargetReady - (recovery ? times.inducedUnavailability : times.interruptionStart),
     readyScope: `Owned selected canonical ${connectedTableCount}-table graph and complete private media root; four-process/coordinator retirement, two accepted effects recovered, one uncertain operation fenced and one ordinary duty dispatched/replayed through actual R`,
     wholeStoreRtoMs: null,
     acceptedRecoveryElapsedMs: times.acceptedEffectsRecovered - times.interruptionStart,
-    recoveryPoint: "Final source graph and objects/tmp captured after terminal retirement; two independent accepted effects reconciled, retained pending/cleanup and one uncertain dispatch obligation preserved. No zero-RPO or all-store readiness claim.",
+    recoveryPoint: recovery ? "Persisted pre-provider-acceptance DB/object snapshot; later privacy obligations replayed before serving and independent accepted effects reconciled. One uncertain operation remains fenced. Finite local scope, no SLO."
+      : "Final source graph and objects/tmp captured after terminal retirement; two independent accepted effects reconciled, retained pending/cleanup and one uncertain dispatch obligation preserved. No zero-RPO or all-store readiness claim.",
     actualProvider: "synthetic fixture only; no external-provider or hosted guarantee" };
 } catch (error) { failure = error; report = { outcome: "INCOMPLETE", timesMs: times, sourceWritesFrozen,
   filesystemPublished, graphPublished, targetRecoveryWritesStarted, targetWritesActivated,
-  selectedProfileReadyRtoMs: null, wholeStoreRtoMs: null }; }
+  selectedProfileReadyRtoMs: null, wholeStoreRtoMs: null,
+  recovery: recovery ? { outcome: "INCOMPLETE_OR_SAFE_REFUSAL", rtoSeconds: null, snapshotBoundary: olderSnapshot?.manifest.boundary.wall,
+    inducedUnavailability: failureBoundary?.wall, facts: recoveryFacts } : undefined }; }
 finally {
   const cleanup: string[] = [];
   try { await targetApplication?.close(); } catch { cleanup.push("target-application-binding"); }

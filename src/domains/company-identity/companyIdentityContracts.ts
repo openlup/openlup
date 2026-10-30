@@ -1,57 +1,28 @@
 import { z } from "../../lib/validation/zod.js";
 import {
+  createCompanyIdentitySchemas,
+  companyIdentityCompanySchema,
+  companyIdentityLookupResponseSchema,
   COMPANY_IDENTITY_CONTRACT_VERSION,
   companyIdentityAddressSchema,
-  companyIdentityCompanySchema as coreCompanyIdentityCompanySchema,
   companyIdentityIdentifierKindSchema,
-  companyIdentityLookupResponseSchema as coreCompanyIdentityLookupResponseSchema,
-  companyIdentityLookupRequestSchema as coreCompanyIdentityLookupRequestSchema,
-  normalizeCompanyIdentityLookupRequest,
   companyIdentityLookupStatusSchema,
   companyIdentityPurposeSchema,
   companyIdentitySourceSchema,
   companyIdentitySourceStatusSchema,
   companyIdentityVerificationLevelSchema,
   isCompleteCompanyIdentity,
-} from "@openlup/core/company-identity";
+} from "@openlup/platform/company-identity";
 import { isValidPolishNip, normalizePolishNip } from "../../lib/schemas/fields/taxId.js";
 
-export const companyIdentityCompanySchema = z
-  .object({
-    ...coreCompanyIdentityCompanySchema.shape,
-    regon: z.string().trim().min(7).max(14).nullable().optional(),
-    vatStatus: z.string().trim().min(1).max(80).nullable().optional(),
-  })
-  .strict();
-
-// Extend the core input shape only for the existing registry-specific fields.
-export const companyIdentityLookupRequestSchema = coreCompanyIdentityLookupRequestSchema.in
-  .extend({
-    manualCompany: companyIdentityCompanySchema.partial({
-      identifierKind: true,
-      identifierValue: true,
-      country: true,
-      registryStatus: true,
-    }).optional(),
-  })
-  .transform((request) => {
-    const identifierValue = request.country === "PL" && request.identifierKind === "pl_nip"
-      ? normalizePolishNip(request.identifierValue) ?? request.identifierValue
-      : request.identifierValue;
-    const normalized = normalizeCompanyIdentityLookupRequest({ ...request, identifierValue });
-    return {
-      ...normalized,
-      ...(normalized.manualCompany ? {
-        manualCompany: { ...request.manualCompany, ...normalized.manualCompany },
-      } : {}),
-    };
-  });
-
-export const companyIdentityLookupResponseSchema = coreCompanyIdentityLookupResponseSchema
-  .extend({
-    company: companyIdentityCompanySchema.nullable(),
-  })
-  .strict();
+// The host owns its identifier normalization; strict package schemas retain host extensions.
+export const { companyIdentityLookupRequestSchema } = createCompanyIdentitySchemas({
+  normalizeIdentifier: (country, kind, value) => country === "PL" && kind === "pl_nip"
+    ? normalizePolishNip(value) ?? value : value,
+  isValidIdentifier: isValidCompanyIdentifier,
+  isFullerLegalName: () => false,
+  shouldSeekFullerLegalName: () => false,
+});
 
 export type CompanyIdentityLookupRequest = z.infer<typeof companyIdentityLookupRequestSchema>;
 export type CompanyIdentityLookupResponse = z.infer<typeof companyIdentityLookupResponseSchema>;
@@ -64,6 +35,8 @@ export type CompanyIdentityVerificationLevel = z.infer<typeof companyIdentityVer
 export {
   COMPANY_IDENTITY_CONTRACT_VERSION,
   companyIdentityAddressSchema,
+  companyIdentityCompanySchema,
+  companyIdentityLookupResponseSchema,
   companyIdentityIdentifierKindSchema,
   companyIdentityLookupStatusSchema,
   companyIdentityPurposeSchema,

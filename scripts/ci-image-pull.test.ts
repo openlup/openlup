@@ -277,8 +277,42 @@ it("uses performance.now for the production monotonic clock", () => {
   try { expect(imageIo.now()).toBe(123.25); } finally { clock.mockRestore(); }
 });
 
+it("retains every upstream fallback in CI when an organization mirror is private", async () => {
+  vi.stubEnv("CI", "true");
+  try {
+    const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
+    for (const image of ownedImages(config)) {
+      const pin = readCiImage(image.name);
+      expect(pin.sources).toEqual([`${MIRROR_REGISTRY}/${image.repository}`, ...image.sources]);
+      const { io, pulls } = witness();
+      io.pull.mockImplementation(async (ref: string) => {
+        if (ref.startsWith(`${MIRROR_REGISTRY}/`)) throw new Error("unauthorized: HTTP 401");
+        return "";
+      });
+      expect(await pullWithRetry(pin, io)).toBe(imageReference(pin, image.sources[0]));
+      expect(pulls()).toEqual([imageReference(pin), imageReference(pin, image.sources[0])]);
+    }
+  } finally { vi.unstubAllEnvs(); }
+});
+
 describe("pgTAP pre-pull registry selection (offline)", () => {
   const images = ["postgres", "gotrue", "realtime", "storage-api", "pg_prove"].map(name => ({ repository: `supabase/${name}`, tag: "1.2.3" }));
+  it.each(["public.ecr.aws", "docker.io"])("keeps successful %s fallback with inventory-supplied digest pins", async registry => {
+    const { io, pulls } = witness();
+    io.pull.mockImplementation(async reference => {
+      if (reference.startsWith("ghcr.io/")) throw new Error("toomanyrequests: 429");
+      if (registry === "docker.io" && reference.startsWith("public.ecr.aws/")) throw new Error("503 service unavailable");
+      return "";
+    });
+    const pinned = images.map(image => ({ ...image, digest: pin.digest, sources: [`public.ecr.aws/${image.repository}`, `docker.io/${image.repository}`] }));
+    expect(await prePullCliImages(pinned, io)).toBe(registry);
+    expect(pulls()).toEqual(pinned.flatMap(image => [
+      ...Array(3).fill(`${MIRROR_REGISTRY}/${image.repository}:${image.tag}@${pin.digest}`),
+      ...Array(3).fill(`ghcr.io/${image.repository}:${image.tag}@${pin.digest}`),
+      ...(registry === "docker.io" ? Array(3).fill(`public.ecr.aws/${image.repository}:${image.tag}@${pin.digest}`) : []),
+      `${registry}/${image.repository}:${image.tag}@${pin.digest}`,
+    ]));
+  });
   it("bounds the whole pre-pull stage and refuses another image on expiry", async () => {
     const { io, pulls } = witness();
     // Two slow successful cold images consume 480s of the stage budget.

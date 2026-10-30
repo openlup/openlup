@@ -72,10 +72,12 @@ only afterward may the existing runtime transition retain uncertainty and G1
 accept verified external facts. No source normalization, forced expiry, proven
 absence or complete upload is manufactured. The portable-only mode does not
 qualify managed-history mapping. The opt-in `--managed-catch-up` mode composes
-the finite managed capture/mapping and object-bound private sidecar with this
-same native import; it checks exact readback at both local targets before
-activation. It does not qualify an adopter's complete writer inventory, hosted
-source or hosted object policy.
+the finite managed typed capture/mapping with this same native import and checks
+source facts against both local targets before activation. History-only rows
+remain in the operator's source archive and are absent from target data.
+Managed Storage remains empty in this journey; nonempty Storage refuses until
+its separate typed object projection is available. This does not qualify an
+adopter's complete writer inventory or hosted source and object policy.
 Its optional catch-up mode also takes a preliminary copy while the source
 changes. It discards that target selection and uses a separate fresh inactive
 generation for final recapture and exact readback; no existing target rows are
@@ -88,20 +90,39 @@ recipient-consent, native send/observation and communication-sync rows needed
 for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
-The managed source extractor retains business-row history and Storage metadata
-under source/table/row identities in a private history object, while selecting
-only identity metadata from Auth users. At capture, fields capable of carrying
-an unrelated person's identity, and JSON without a known own-subject or catalog
-shape, are replaced by a fixed marker with a per-field reason. Own-subject
-history, structural values and catalog rows remain verbatim. The in-process native projection
-uses the original source values, so this sidecar narrowing does not alter active
-target obligations. It refuses unknown
-nonempty relations and refuses export of an active row whose canonical mapping
-is still unresolved. A transfer manifest binds the exact canonical row packet
-to the private object's digest; managed admission reads the object back and
-refuses missing retention before database mutation. Source-keyed acquisition receipts remain history rather
-than target command keys. This bounded local evidence does not qualify a whole
-managed installation or its object access and recovery paths.
+The managed source extractor inventories one disposable managed snapshot,
+including Auth identity metadata and Storage metadata relations. It projects
+only the finite typed obligations into a qualified canonical target. Full
+managed audit and business history is not transferred: it remains in the
+operator's source backup or snapshot, under the operator's access, retention
+and erasure controls. The existing `retained-history` disposition identifies
+source history with no remaining typed obligation; it creates no target row or
+private history object. Reconciled provider settlement batches and matched
+items stay in the operator's source archive while their settled money state is
+carried in typed target rows. Completed source idempotency receipts stay in
+that archive only after their windows expire. The operator waits until
+outstanding idempotency windows expire and quiesces in-flight checkouts, then
+captures. Provider payment identifiers of settled payments are carried with
+the typed payment; provider reference rows of settled or terminal unpaid
+payments and their raw payloads stay in the operator archive. Nonempty unknown
+relations, incomplete typed obligations and other settlement or idempotency
+states refuse transfer. Managed Storage objects are not yet transferred;
+nonempty managed Storage refuses. A separate managed object projection is
+required before that source state can transfer. Source-keyed terminal effects
+do not become active target command keys. Managed capture is local evidence
+only; it does not qualify hosted managed data, object access or recovery.
+
+In `--older-snapshot` mode, recovery instead reloads a persisted pre-provider-
+acceptance DB packet and complete private media snapshot. Media writers have
+retired and admitted dispatches are paused while this consistent boundary is
+saved. The approximately 60-second age is real elapsed time. Later source
+captures cannot replace this restore input. Before opening serving, the fixture
+replays its independently retained later erasure obligation through the existing
+restricted-runtime privacy transaction, including retained-text redaction and
+authentication refusal. The older backup itself remains private and immutable.
+The [transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+defines its measured RPO/RTO, visible uncertainty and separate managed-source
+proof boundary; this adds no schema, table admission or general backup service.
 
 Historical insertion is not generally inert. `clients` insertion invokes
 `customer_subject_capture_lifecycle_trigger`, generating new history; cycle

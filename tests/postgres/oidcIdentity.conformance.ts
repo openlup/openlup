@@ -73,12 +73,11 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     writeFileSync(entry, `export { createOidcComposition } from ${JSON.stringify(resolve("server/runtime/auth/oidcComposition.ts"))};\nexport { withIdentityReferencePolicy } from ${JSON.stringify(resolve("server/runtime/auth/referenceIdentityPolicy.ts"))};\n`);
     await buildIdentityReferenceRuntime(entry, join(setup.directory, "runtime"));
     const loaded = await import(pathToFileURL(join(setup.directory, "runtime/runtime.mjs")).href) as { createOidcComposition: typeof createOidcComposition; withIdentityReferencePolicy: typeof withIdentityReferencePolicy };
-    let clockOffset = 0;
     const transportCounts = { keys: 0 };
     const customerGateway = createPostgresDataGateway({ connectionString: setup.database }, { poolFactory: () => pool });
     binding = loaded.createOidcComposition({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: setup.database,
       IDENTITY_OIDC_ISSUER: issuer.issuer, IDENTITY_OIDC_CUSTOMER_AUDIENCE: "customer-api", IDENTITY_OIDC_OPERATOR_AUDIENCE: "operator-api" }, {
-      allowLoopbackHttp: true, customerGateway, now: () => Date.now() + clockOffset,
+      allowLoopbackHttp: true, customerGateway,
       fetch: async (url, init) => { if (String(url).endsWith("/certs")) transportCounts.keys++; return fetch(url, init); },
     });
     const selected = binding;
@@ -110,12 +109,11 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     await untilExpired(tokens.access_token); assert.deepEqual(await selected.customerVerifier.verifyToken(tokens.access_token), { ok: false, code: "OIDC_TOKEN_EXPIRED" });
     tokens = (await rp.refresh(session.id))!; assert(tokens, "Real refresh refused");
     const refreshed = await selected.customerVerifier.verifyToken(tokens.access_token); assert(refreshed.ok && refreshed.principal.principalId === principal, "Refresh changed principal");
-    // The injected verifier clock exercises production cache deadlines without a five-minute wall wait.
-    // Token iat/exp always stay real: every verifier call below resets the clock to wall time.
     stage = "new_signing_kid_is_accepted_after_bounded_refresh";
     const oldToken = tokens.access_token;
     const oldKid = decodeProtectedHeader(oldToken).kid;
-    const removalProbe = createOidcIdentityVerifier({ issuer: issuer.issuer, audience: "customer-api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600, allowLoopbackHttp: true }, { loadJwt: () => import("jose"), now: () => Date.now() + clockOffset });
+    const removalProbe = createOidcIdentityVerifier({ issuer: issuer.issuer, audience: "customer-api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600, allowLoopbackHttp: true }, { loadJwt: () => import("jose") });
+    const removalCacheStarted = performance.now();
     assert((await removalProbe.verifyToken(oldToken)).ok);
     await issuer.rotate();
     const rotated = (await rp.refresh(session.id))!; assert(rotated);
@@ -132,11 +130,16 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     await issuer.removePreviousKeys();
     const publishedKeys = await (await fetch(`${issuer.issuer}/protocol/openid-connect/certs`)).json();
     assert(!publishedKeys.keys.some((key: { kid: string }) => key.kid === oldKid), "Issuer retained the removed signing key");
-    clockOffset = 301000;
+    // Observe the production five-minute upper cache bound with real elapsed time.
+    // The old real token will also expire; the exact refusal below distinguishes
+    // removal of its signing key from merely rejecting an expired token.
+    await sleep(Math.max(0, 301000 - (performance.now() - removalCacheStarted)));
+    assert(performance.now() - removalCacheStarted >= 300000);
     assert.equal((await removalProbe.readiness()).state, "ready");
     // This is the original real issuer token. Retaining the removed key yields EXPIRED instead.
     assert.deepEqual(await removalProbe.verifyToken(oldToken), { ok: false, code: "OIDC_JWKS_REFRESH_RATE_LIMITED" });
-    clockOffset = 0;
+    tokens = (await rp.refresh(session.id))!; assert(tokens);
+    assert((await selected.customerVerifier.verifyToken(tokens.access_token)).ok);
     const snapshots = async () => ({ contacts: (await pool.query("SELECT * FROM public.clients ORDER BY id")).rows,
       principals: (await pool.query("SELECT * FROM public.platform_human_principals ORDER BY principal_id")).rows });
     stage = "foreign_realm_wrong_audience_and_unverified_email_refuse_without_writes";
@@ -188,6 +191,11 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
     assert.deepEqual((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows, ledger);
     assert.equal(readFileSync("config/platform-migration-manifest.json", "utf8"), manifestBytes);
     assert(!poolFailed, "Database emitted an error during conformance"); setup.assertOwned();
+    return { status: "PASS", issuer: "local Keycloak", loginSessionLogout: true,
+      realRefreshAndExpiry: true, customerOperatorSeparation: true, membershipDenial: true,
+      signingKeyRotation: true, retiredKeyRefusal: "OIDC_JWKS_REFRESH_RATE_LIMITED",
+      cacheExpiryClock: "wall", cacheElapsedSeconds: (performance.now() - removalCacheStarted) / 1000,
+      hostedQualification: false };
   } catch { throw new Error(`OIDC conformance failed at stage: ${stage}`); }
   finally { await browser.close(); await closeRp?.(); await binding?.close(); await invitations.close(); await pool.end(); }
 }

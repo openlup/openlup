@@ -20,6 +20,23 @@ and interfaces should describe the reusable capability first, then name the
 current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
+## Opt-in reference market composition
+
+[Reference company rules](market-packs/referenceCompanyIdentityRules.ts) re-export
+the existing domain service's identifier/name policy and build the strict host
+schema bundle with the package rules seam. [Provider selection](market-packs/referenceCompanyIdentityProviders.ts)
+accepts explicit constructed ports and preserves current order and exception
+mapping; configuration/environment reading and HTTP remain with their owners.
+The [address bundle](market-packs/referenceAddressCanon.ts) reuses existing
+schemas and normalizer without changing SQL, query or mapping behavior.
+The [source recipe](market-packs/marketRecipe.ts) combines explicit language,
+settlement configuration and providers, with an optional directory. It exposes
+manual/unsupported service outcomes and [offline examples](market-packs/companyIdentityExamples.ts)
+without installing routes, translations, ambient state or new providers.
+There is one package handler cache owner; rule/provider identity does not isolate
+cache entries between compositions. This recipe claims no concurrent cache
+partitioning or live directory/registry qualification.
+
 ## PostgreSQL domain bindings
 
 Most modules under [`postgres/`](postgres/) implement domain persistence and
@@ -31,10 +48,10 @@ query/building and executor surfaces do not by themselves establish an
 installation, role graph, database-wide compatibility or a connected-store
 transfer. The migration-runner and qualified-session files have the narrower
 installer owner below; connected-store capture/restore has the separate
-transfer owner. The managed retained extractor in this directory is also a
-transfer adapter: it reads a bounded source snapshot and emits a private
-history object plus a finite canonical projection, rather than serving a
-normal request or adding a provider connection.
+transfer owner. The managed source extractor in this directory is also a
+transfer adapter: it reads a bounded source snapshot and emits a finite typed
+canonical projection, rather than serving a normal request or adding a
+provider connection.
 
 ## Restricted PostgreSQL installation binding
 
@@ -111,20 +128,25 @@ pre-existing target obligation is ineligible for compensation.
 Every other row delta rolls back. Restore login privileges, trigger definitions,
 grants and migration history remain unchanged.
 
-The [managed source extractor](postgres/connectedManagedRetained.ts) reads one
-disposable managed PostgreSQL snapshot across non-system schemas, selecting
-Auth user identity metadata without credentials and retaining complete Storage
-metadata and finite business rows in a private source/table/row-keyed history
-object. Its relation census refuses unknown nonempty data. Subject ownership is
-recorded for retained rows, and an erased subject's entries are removed from a
-new hashed object whose readback checks the redaction. A provisional source
-capture cannot be exported as a publishable history object until its required
-active mapping is resolved. The managed transfer manifest binds that private
-object's digest to the exact canonical row packet; managed restore admission
-reads it back before database mutation and refuses missing or altered history.
-The current money projection admits checked pending retry and paid order cohorts;
-other active managed states refuse. This local
-adapter does not prove provider service access or complete managed activation.
+The [managed source extractor](postgres/connectedManagedRetained.ts) inventories
+one disposable managed PostgreSQL snapshot across non-system schemas, selecting
+Auth identity metadata without credentials. Its finite typed projection maps
+eligible business obligations into the existing connected restore packet.
+Full managed audit and business history remains in the operator's source
+backup or snapshot, under the operator's own access, retention and erasure
+controls. The existing `retained-history` disposition records history with no
+target obligation; no private row-history object or managed history manifest
+is produced. Reconciled provider settlement rows and completed source
+idempotency receipts after expiry remain in that archive; the operator waits
+until outstanding idempotency windows expire and quiesces in-flight checkouts,
+then captures. Provider payment identifiers of settled payments are carried
+with the typed payment; provider reference rows of settled or terminal unpaid
+payments and their raw payloads stay in the operator archive. Other settlement
+or idempotency states refuse. Managed Storage objects are not yet transferred;
+nonempty managed Storage refuses pending a typed object projection. Unknown
+nonempty relations and source state that the typed path cannot carry also
+refuse before restore. This local adapter does not prove provider service access
+or complete managed activation.
 
 The [managed identity mapper](postgres/connectedStoreRestore.ts) translates an
 explicitly evidenced issuer/subject binding, customer references, human operator
@@ -136,9 +158,9 @@ fields, missing bindings, machine actors, erased rows without receipts,
 populated managed-only preferences and other unsupported shapes. Equal email
 addresses establish no identity relationship. The host must prove its source
 snapshot and completeness; the mapper does not certify issuer control. Full
-managed audit rows and source-keyed acquisition history remain in the private
-retained object, outside active target-key lookup tables. The task decision
-and remaining proof boundary are in the
+managed audit rows and source-keyed acquisition history remain in the
+operator-controlled source archive, outside active target-key lookup tables.
+The task decision and remaining proof boundary are in the
 [managed mapping record](../../docs/platform/plans/oss-m14-managed-identity-mapping.md).
 
 The [filesystem census](filesystem/orderReviewMediaTransferInventory.ts) and
@@ -193,6 +215,21 @@ Docker start and removal calls each have a 30-second hard deadline; interrupted
 cleanup never authorizes removal of an unlabeled service.
 
 ## S3 object source preparation
+
+The local recipe reuses the [plain-Node S3 witness](s3/objectStorageConformanceScript.mjs)
+with the compose-pinned Versity gateway. Its two valid gateway accounts prove
+own reads and cross-account denial; anonymous and wrong-secret probes stay
+separate. Bounded reads refuse excessive bytes and conflicting content versions.
+The older-backup fixture retains an erased object's bytes independently of a
+later host erasure obligation, then supplies the allowed retained inventory to
+the existing private filesystem copier and checks absence at the destination.
+That selection is host-owned fixture data, not an automatic privacy policy in
+the adapter. Version/lifecycle responses are observed from the pinned gateway;
+unsupported native versions and unobserved expiry cannot qualify hosted S3.
+Its separate temporary versioning root permits native version/deletion probes
+in a dedicated bucket; it does not admit native version-history transfer through
+the fixed current-object source profile.
+See the [runner boundary](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner).
 
 The server-only [S3 source adapter](s3/transferObjectSource.ts) accepts an
 explicitly selected SDK client; it constructs no client, credential chain or
@@ -414,6 +451,8 @@ has only a pure presentation binding and no activated sender.
 | Fulfillment execution | `dhl/`, `omnipack/`, `noop_shipping/` | Carrier/3PL execution, simulator behavior, and fulfillment-provider evidence mapped back to fulfillment contracts. | `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`, `../../src/domains/fulfillment/README.md` |
 | Accounting document execution | `fakturownia/`, `accounting/` | Provider invoice/PDF/email/KSeF execution or preview test-provider behavior after accounting policy approval. | `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`, `../../docs/platform/DATA_AND_MIGRATIONS.md` |
 | Company identity lookup | `mfVat/`, `gusCeidg/`, `ceidg/` | Country/provider-specific lookup enrichment behind the company-identity contract. | `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md`, `../../src/domains/company-identity/README.md` |
+| Reference market composition | `market-packs/` | Explicit reference company rules/provider selection, address schema objects and independent language/settlement facts supplied by the host; no mounted routes or provider activation. | [Reference composition](#opt-in-reference-market-composition) |
+| Reference market delegation | `market-packs/`, `../domains/company-identity/` | Existing reference rules, provider selection and schema bundle feed the package lookup and handler through the domain and BFF facades; the package owns one shared cache. | [Reference composition](#opt-in-reference-market-composition) |
 | Communications delivery and sync | `resend/`, `noop_newsletter/` | Email/newsletter provider execution, ledgers, delivery timeline, and provider-neutral sync evidence. | `../../docs/platform/CANONICAL_CONTRACTS.md`, `../../src/domains/communications/README.md` |
 | Storage/blob | `@openlup/platform/blob`, bound by `server/adapters/supabase/blobStorage.ts` and `server/adapters/vercel/blobStorage.ts` | Blob storage port implementations for hosted and self-host profiles; the reference bindings pass the environment and keep their former import paths. | `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md`, `../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md` |
 | Data gateway and migrations | `@openlup/platform/data` and `/migrations`, bound by `supabase/` and `postgres/` | DataGatewayPort and migration-runner implementations for managed backend and direct-Postgres bundles. The bindings supply the Supabase client factory, the process environment, this application's migration catalogue and lock name, and the named role-free lanes. | `../../docs/platform/DATA_AND_MIGRATIONS.md`, `../../docs/platform/RUNTIME_AND_SELF_HOSTING.md` |

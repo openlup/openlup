@@ -8,7 +8,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Pool } from "pg";
-import { captureManagedRetainedHistory } from "../../server/adapters/postgres/connectedManagedRetained.js";
+import { captureManagedSourceGraph } from "../../server/adapters/postgres/connectedManagedRetained.js";
 import { deriveCliImages } from "../../scripts/ci-image-mirror.mjs";
 import { prePullCliImages } from "../../scripts/public-ci-pgtap.mjs";
 
@@ -25,7 +25,7 @@ export const managed = (() => {
   });
   return { operator, get owner() { if (!owner) throw new Error("Managed stack not started"); return owner; },
     async start() {
-      if ((await run("supabase", ["--version"])).stdout.trim() !== "2.98.2") throw new Error("Pinned Supabase CLI required");
+      if ((await run("supabase", ["--version"])).stdout.trim() !== "2.122.0") throw new Error("Pinned Supabase CLI required");
       const scratch = join(process.cwd(), ".context/scratch");
       await mkdir(scratch, { recursive: true });
       directory = await mkdtemp(join(scratch, "m14-managed-retained-"));
@@ -65,6 +65,9 @@ export const managed = (() => {
       await owner.query("SET ROLE postgres; SET search_path=public,extensions");
       await owner.query(baseline.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
       await owner.query("RESET ROLE");
+      // CLI 2.122 seeds this service table. Unknown nonempty service state
+      // still refuses the finite managed profile; this local fixture has none.
+      await owner.query("DELETE FROM _realtime.feature_flags");
       await owner.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)",
         [operator, `${operator}@example.invalid`]);
     },
@@ -93,10 +96,11 @@ const subscriptionId = randomUUID(), productId = randomUUID(), deletedProductId 
 const skuId = randomUUID(), priceListId = randomUUID(), lineId = randomUUID();
 const contactId = randomUUID();
 const paidOrderId = randomUUID(), paidPaymentId = randomUUID(), paidIntentId = randomUUID(), invoiceId = randomUUID();
+const settlementBatchId = randomUUID(), paidRefId = randomUUID();
 const email = "retained@example.invalid";
 export const managedFixtureIds = { sourceId, clientId, userId, orderId, paymentId, intentId,
   subscriptionId, productId, deletedProductId, skuId, priceListId, lineId, contactId,
-  paidOrderId, paidPaymentId, paidIntentId, invoiceId };
+  paidOrderId, paidPaymentId, paidIntentId, invoiceId, settlementBatchId, paidRefId };
 
 export async function seedManagedSource() {
   await managed.owner.query("INSERT INTO auth.users(id,email) VALUES($1,$2),($3,$4)",
@@ -136,9 +140,6 @@ export async function seedManagedSource() {
     VALUES($1,'clients',$2)`, [contactId, clientId]);
   await managed.owner.query(`INSERT INTO public.communication_permissions(contact_id,purpose,state,source)
     VALUES($1,'marketing_newsletter','suppressed','synthetic_fixture')`, [contactId]);
-  await managed.owner.query("INSERT INTO storage.buckets(id,name,public) VALUES('retained','retained',false)");
-  await managed.owner.query("INSERT INTO storage.objects(bucket_id,name,owner_id,metadata) VALUES('retained','synthetic.txt',$1,'{}')",
-    [userId]);
   await managed.owner.query(`INSERT INTO public.commerce_orders
     (id,client_id,status,currency,subtotal_cents,total_cents,mode)
     VALUES($1,$2,'pending_payment','XXX',900,900,'one_time')`, [orderId, clientId]);
@@ -178,13 +179,17 @@ export async function seedManagedSource() {
   await managed.owner.query(`INSERT INTO public.commerce_payment_state_transitions
     (payment_intent_id,transition_kind,from_status,to_status,reason,idempotency_key)
     VALUES($1,'intent','processing','succeeded','provider_confirmed','source-transition:paid')`, [paidIntentId]);
-  const batchId = randomUUID();
+  await managed.owner.query(`INSERT INTO public.payment_external_refs
+    (id,payment_id,provider_kind,provider_payment_id,provider_session_id,raw_payload)
+    VALUES($1,$2,'synthetic-provider','provider-paid:1','source-session:paid',$3::jsonb)`,
+  [paidRefId, paidPaymentId, JSON.stringify({ sourceOnly: "settled-raw-payload-marker" })]);
   await managed.owner.query(`INSERT INTO public.payment_provider_settlement_batches
     (id,provider_kind,provider_batch_id,currency,status,gross_cents,fee_cents,net_cents)
-    VALUES($1,'synthetic-provider','synthetic-batch:1','XXX','reconciled',900,0,900)`, [batchId]);
+    VALUES($1,'synthetic-provider','synthetic-batch:1','XXX','reconciled',900,0,900)`, [settlementBatchId]);
   await managed.owner.query(`INSERT INTO public.payment_provider_settlement_items
     (batch_id,provider_kind,provider_payment_id,payment_intent_id,payment_id,gross_cents,fee_cents,net_cents,currency,status)
-    VALUES($1,'synthetic-provider','provider-paid:1',$2,$3,900,0,900,'XXX','matched')`, [batchId, paidIntentId, paidPaymentId]);
+    VALUES($1,'synthetic-provider','provider-paid:1',$2,$3,900,0,900,'XXX','matched')`,
+  [settlementBatchId, paidIntentId, paidPaymentId]);
   const paidAt = (await managed.owner.query<{ updated_at: Date }>(
     "SELECT updated_at FROM public.commerce_payment_intents WHERE id=$1", [paidIntentId])).rows[0]!.updated_at;
   await managed.owner.query(`INSERT INTO public.accounting_invoices
@@ -199,18 +204,20 @@ export async function seedManagedSource() {
     (invoice_id,provider_kind,status,attempt_count)
     VALUES($1,'synthetic-provider','pending',0)`, [invoiceId]);
   await managed.owner.query(`INSERT INTO public.commerce_idempotency_keys
-    (scope,idempotency_key,status,metadata) VALUES('checkout','source-checkout:1','completed',$1::jsonb)`,
+    (scope,idempotency_key,status,expires_at,metadata)
+    VALUES('checkout','source-expired:1','completed','2020-01-01T00:00:00Z',$1::jsonb)`,
   [JSON.stringify({ clientId })]);
   await managed.owner.query(`INSERT INTO public.outbox_events
     (aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,processed_at)
     VALUES('commerce_order',$1,'synthetic.completed','source-outbox:1','{}','processed','2026-01-01')`, [orderId]);
+  await managed.owner.query("DELETE FROM public.communication_email_deliveries");
   await managed.owner.query(`INSERT INTO public.admin_audit_events
     (actor_admin_id,action,entity_type,entity_id,source,actor_kind)
     VALUES($1,'catalog_draft_upsert','catalog_product','synthetic','admin_ui','human')`, [managed.operator]);
 }
 
 export async function captureManagedSource(reader: Pool = managed.owner) {
-  return captureManagedRetainedHistory({ sourceId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+  return captureManagedSourceGraph({ sourceId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
     source: { async withSnapshot(work) {
       const client = await reader.connect();
       try {

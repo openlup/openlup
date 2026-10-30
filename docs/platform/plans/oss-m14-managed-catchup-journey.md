@@ -1,136 +1,116 @@
 # M14 D32 8D-2 — managed connected catch-up journey
 
-Status: stacked local work in progress on 8A head
-`afdc6a60363a4a67764784900da43e1c2b425ffb`; stack base is that exact
-commit. The delivered portable-to-portable leg is PR #447 on main at
-`9195f281a741ca83c7974dd956a33a41d32cf8a4`.
+Status: restacked local candidate on the signed managed typed-transfer predecessor
+`5289e6e482c37043dedb1432f89c4b50ca96546c`. The earlier 8D-2 head
+`3e9486249da98e45b99ab2304ec63d82e5835512` (tree `e879c9e6`) passed
+cycle-1 native review twice, then became inapplicable when the predecessor
+removed full-row sidecar transfer. The predecessor is not yet on main.
 
 ## Outcome and boundary
 
-Extend the executable local catch-up witness with a real pinned managed source
-to a fresh restricted-admin self-host PG16 installation, then to an independent
-second PG16 installation. The first leg uses 8A's actual retained capture,
-identity/business mapping, private object-bound sidecar and readback. Carry that
-same finite retained history and its privacy disposition through the second
-leg. Preliminary source copy continues under changes; after the declared
-writer, DDL, ingress and recreation inventory is quiesced, a full final
-recapture enters a fresh inactive fenced generation. Reconcile changed and
-deleted rows and objects, ownership, effective access, drain and effects before
-activation. Missing sidecar or privacy coverage refuses takeover. Preserve
-active subscriptions, frozen terms, unsettled money and outstanding duties.
+Extend the delivered portable-to-portable catch-up witness with a pinned real
+local managed first leg: managed source → fresh qualified-admin self-host PG16 →
+independent PG16. Compose the predecessor's finite typed capture/mapping and
+native restore. The operator retains history-only rows in the source archive;
+they are absent from both targets. Reconciled settlement batches/matched items
+and expired completed idempotency receipts are source-archive history, while
+settled payment state and the provider payment reference are carried in typed
+native rows. Unexpired completed keys refuse. Nonempty managed Storage refuses
+in this parcel; its separate typed object projection and managed-object witness
+belong to a later parcel. The existing portable leg still carries native
+private media and partial uploads through its object path.
+The disposable fixture observes the source-only rows before teardown and
+reports their disposition; durable operation of the owner's archive is outside
+this local journey.
 
-The active supervisor is the single writer in this assigned worktree. The
-owner's M14 PROC-27 delegation covers local work, DCO, independent native
-review, PR/receipt and queue merge only after all gates and the lead's 8A-landed
-notice. Sensitive API/control changes and a changed budget need a stabilized
-maintainer read before DCO. The lead authorized this stacked start in
-CD-M14-38; if 8A's head changes, merge it without rebasing. No hosted-resource,
-credential, settings, deployment, production, release or npm authority is
-included. Older-snapshot RPO/RTO and hosted provider qualification remain
-outside this parcel.
+Preliminary source copy runs while catalog and consent rows change. Interrupted
+export/import roll back and resume. After the declared managed writer/DDL lane
+seals, final full recapture goes to a fresh inactive first PG16 target. H1/H2
+then retires the portable writer/DDL/ingress/recreation inventory and exports a
+second full final generation. Activation requires typed DB state, native
+objects, effective access, drain and effect agreement. The witness proves a
+pre-takeover refusal and successful takeover while preserving active
+subscriptions, frozen terms, unsettled money and outstanding duties. It reports
+counts, timings and refusals for later local consumers. No CDC, generic row
+upsert/delete engine, production coordinator, hosted qualification or
+older-snapshot RPO/RTO is included.
 
-The sanctioned read-only PREVIEW staging census for all-null settlement links,
-dangling Auth IDs, unbound snapshot fields and service relations is
-**BLOCKED-ON-OWNER-UNLOCK**. No staging access was attempted. Local synthetic
-proof continues; no hosted or staging qualification follows from it.
+The active supervisor is the single writer in this assigned worktree. The M14
+module grant covers local work, DCO, independent native review, draft PR and
+later queue merge only after all gates and the lead's predecessor-landed notice.
+This restack is an intent change and removes earlier sidecar assertions, so a
+new exact-tree maintainer read precedes DCO. No hosted-resource, credential,
+settings, deployment, production, release or npm authority is included. The
+sanctioned read-only staging census for all-null settlement links, dangling
+Auth IDs, unbound snapshot fields and service relations remains
+**BLOCKED-ON-OWNER-UNLOCK**; no staging access was attempted.
 
-## Acceptance and proof plan
+## Proof and merge record
 
-Compose existing 8A transfer APIs and the delivered 8D-1 catch-up fixture.
-The smallest adequate route is full recapture into a new installation and
-private-object transfer through both legs, with no CDC, generic row-delta
-engine, new coordinator or production activation API. The key risk is an
-apparently complete DB copy whose private history object or readback privacy
-disposition is missing, or a writer resumes after final capture. A local
-discriminator must refuse each incomplete condition before any target worker
-starts, while an agreeing path must complete both legs and preserve duties.
+The smallest adequate route is existing managed typed projection and native
+capture/restore with direct source-to-target assertions. Its main risk is a
+source-only obligation mistaken for a transferred row, or a changed typed fact
+lost between preliminary and final capture. The local discriminator checks
+source dispositions and exact typed target state at both PG16 installations;
+separate portable object readback and H1/H2 fencing remain the delivered route.
+Run the focused managed journey on the tree's pinned CLI, then catalogue,
+publication policy, strict typecheck, lint, structural, neutrality, secret and
+whitespace checks before the new read packet. After acceptance, DCO the exact
+tree, `prepare --new`, obtain two new full reviews, and wait for predecessor
+landing before canonical verification and delivery.
 
-First measure publication headroom, add every new tracked file to the catalogue,
-regenerate documentation navigation and run cheap policy, structural, secret,
-focused PG and strict typecheck/lint checks. Stabilize any sensitive read packet
-before DCO. Then obtain two new independent fresh full native reviews and run
-the load-gated canonical `verify-local --pgtap`. Keep the PR stacked and do not
-ready or enqueue until the lead confirms 8A on main; merge main under
-CD-M14-30/36 and re-review as required before delivery.
+The pending merge has first parent `3e9486249da98e45b99ab2304ec63d82e5835512`
+(tree `e879c9e6a7cfbd15211cdcbeefd75c34e162fcec`) and second parent
+`5289e6e482c37043dedb1432f89c4b50ca96546c` (tree
+`8c5383fd4b1adaade4002163170bde0385317a51`). Four own-file conflict
+sites were resolved in `CONTRIBUTING.md`, `ARCHITECTURE_AND_EXTENSIONS.md`,
+`RUNTIME_AND_SELF_HOSTING.md` and `runM14EffectHandover.ts`: keep the incoming
+older-snapshot and CLI changes, then replace the superseded managed sidecar
+claims and code with the typed local first leg. `DATA_AND_MIGRATIONS.md`
+merged without a conflict and its stale sidecar prose was corrected. The exact
+uncommitted result tree and patch hash are in the new read packet; no merge DCO
+exists before that read.
 
-## Execution and self-retro
+The old sidecar assertions have typed replacements: source catalog update/add/
+delete is checked in the mapped packet and both targets; changed consent is
+checked at source and both native target consents; settled payment, provider
+reference, invoice duty, active subscription and frozen term checks use native
+target rows. Source-only settlement, idempotency and payment-reference rows are
+checked through the finite `retained-history` census and absence from target
+schema/packet; no sidecar digest, bytes or privacy-disposition readback remains.
+Managed Storage object copy and ACL assertions are removed because nonempty
+managed Storage now refuses and the managed-object path is a separate parcel.
+Portable private media and partial-file checks remain in the H1/H2 leg.
 
-The pinned Node 24.21.0 / npm 11.19.0 `npm ci` passed in this worktree.
-Before adding the parcel, the tracked tree had 6,663 paths and 50,546,842
-working-tree bytes. The new executable helpers are root test carriers, with no
-package export, SQL migration, production API or gate-budget change. Their
-private source fixture repeats the predecessor's pinned synthetic seed so the
-pending 8A privacy test remains untouched; the actual capture, mapper, restore,
-object transfer and H1/H2 retirement implementations are composed rather than
-copied. This is the smallest route that keeps the two-leg witness executable
-while 8A's implementation head may still change.
+The prior accepted local proof on tree `e879c9e6` used a 44-row sidecar; those
+run-specific counts are historical and no longer describe this contract. Cycle
+0 found `D32-8D2-MEDIA-BINDING` and `8D2-CONSENT-FINAL-READBACK`; cycle 1's two
+fresh full reviews closed both for that old tree. The direct canonical verify
+was terminated at root tests (code 143) after the predecessor change; it is
+not a full PASS and cannot be reused. A preceding nested-wrapper invocation
+refused before policy. The new intent preserves this native history and uses
+`prepare --new` after the read. Self-retro: the earlier fixture compared its
+own descriptors and mapper packet; direct sealed-source facts repaired those
+gaps. The predecessor's archive-only decision simplifies transfer by removing
+the unneeded private sidecar, while explicit source-only dispositions keep its
+loss boundary visible.
 
-Publication policy with documentation regeneration passed after catalogue rows
-were added for all three new tracked paths. Rechecked with the exact 8A stack
-pin, its two documentation obligations have no unanswered owner. Focused
-structural scan and whitespace check passed.
-The first strict typecheck on a fresh `npm ci` tree found unbuilt workspace
-exports; after the three package builds, it identified two fixture-only type
-errors, which were corrected. The rerun passed all five projects with zero
-unresolved edges and zero new consumer errors. Full lint passed with zero errors
-and the existing 33 warnings. The first focused run stopped at 8D-1's stale
-73-table fixture assertion: 8A extends the finite graph to 82 tables. The
-second reached managed import interruption, then the pinned managed source
-correctly refused direct `storage.objects` deletion. The fixture now updates
-permitted Storage metadata, uses a separate disposable catalog row to prove
-deletion, and proves the old private object key absent from both final targets.
-The next run exposed a genuine activation-gate omission: an absent sidecar
-fact passed as optional. The managed mode now explicitly requires the sidecar
-and refuses missing readback, privacy coverage, media readback and digest
-agreement. That run reached complete final takeover and post-takeover checks.
-
-A later run passed the added first-leg checks and reached the final preservation
-comparison; it exposed an ordering-only assertion after managed history made a
-formerly singleton table contain two rows. The comparison now sorts exact row
-strings. The final focused run in
-`.context/scratch/oss-m14-connected-catchup/journey-cUy3Cv/report.json`
-passed on staged source tree `34f5395cd80c193bf4b49ba35888fa0127307fdb`
-before this task-record update. The managed preliminary export interrupted
-after eight table reads; the import interrupted after actual retained writes,
-rolled back atomically, then resumed and replayed. The managed source changed
-two retained rows, added one catalog row, deleted one, and changed Storage
-metadata and the private object while preliminary work ran. After the sole
-writer/DDL lane sealed, a full recapture entered a fresh qualified-admin PG16
-installation. Its sidecar had 44 rows and 78,353 bytes; one private managed
-media object was copied, the obsolete key was absent, and private reads were
-denied to public access. The first-leg gate refused all seven missing agreement
-facts. The second leg reconciled 82 native tables and 191 rows, three native
-media objects plus a pending partial file, and copied/read back the same
-retained-history digest and managed media object at its independent PG16 target.
-The complete witness recorded 21 pre-takeover refusal cases, successful
-takeover, two accepted effects recovered, one uncertain operation fenced,
-preserved subscription terms, settlement and invoice duties, and zero cleanup
-failures. The `selectedTargetReady` mark at 119,821 ms is elapsed local fixture
-time from run start; it is no older-snapshot RPO/RTO or hosted qualification.
-
-The pinned predecessor still has open privacy readback work; exact byte equality
-against this fixture's captured sidecar does not settle generic sidecar admission.
-Cycle-0 native review on accepted tree `063403a7` returned two material cards:
-`D32-8D2-MEDIA-BINDING` found that the fixture-created physical media descriptor
-was not tied to final captured Storage metadata, and
-`8D2-CONSENT-FINAL-READBACK` found that the changed permission state was not
-independently asserted in the retained sidecar and both targets. The narrow
-test-only repair checks the sealed source's Storage identity/key and consent,
-then the final retained row and first/second target consent state before
-activation. This preserves the existing transfer seam and adds no engine. The
-focused rerun in
-`.context/scratch/oss-m14-connected-catchup/journey-UT1UkJ/report.json`
-passed on repair source tree `649fc1d7aa0877068b41886069f61404d7c54eb3`:
-44 retained rows / 78,358 bytes, 82 native tables / 190 rows, the same sidecar
-digest at both targets, 21 refusal cases, takeover, two accepted effects
-recovered, one uncertain operation fenced and zero cleanup failures. The
-118,907 ms selected-target mark is local fixture elapsed time from run start.
-The changed code needs a new exact-tree maintainer read before DCO. The later
-predecessor integration and complete native review/verification remain
-mandatory before delivery. No parcel delivery retry has begun. Self-retro:
-the earlier fixture failures came from assuming the
-predecessor's table count, an unrestricted managed Storage DML path, optional
-sidecar evidence and singleton row order. Directly checking the selected
-predecessor and the fixture gate fixed each without adding a production API.
-The review then exposed two self-referential fixture comparisons; sealed-source
-facts now anchor the existing target readbacks.
+The option C focused journey passed with the tree's CLI 2.122.0 and Node
+24.21.0; log `optc-focused-final.log` and structured report
+`.context/scratch/oss-m14-connected-catchup/journey-JFjU43/report.json`.
+The managed first leg took 27,383 ms fixture elapsed time: 1 active
+subscription, 1 blocked renewal term, 2 settlement intents, 1 owed duty,
+2 pending outbox events and 1 denied consent reached the first native target.
+It proved 2 changed facts, 1 added product, 1 deleted product, an unexpired
+completed-key refusal, export interruption at read 8, import rollback/resume,
+6 activation-agreement refusals, and 5 one-row `retained-history` dispositions
+absent from the target; settled money and its provider reference are typed.
+The second leg ended with 8 subscriptions, 2 renewal terms, 3 settlement
+intents, 2 duties, 6 outbox events, 3 complete objects and 1 temporary object;
+the history-only relations remained empty/absent. Its report records 15 total
+activation refusals, rollback to the authoritative source and successful
+takeover with one uncertain dispatch fenced. Overall selected-target readiness
+was 110,444 ms from fixture start; this is fixture timing, not RPO/RTO evidence.
+The first attempt stopped before mapping because the paid-order fixture made
+a planned communication delivery. Matching the predecessor's fixture cleanup
+removed that generated row; no production mapper or transfer API changed.

@@ -1,47 +1,18 @@
 import { createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
-import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferObject, type TransferObjectReader } from "@openlup/platform/portability";
+import { PostgresTransferError, type CompatiblePostgresSnapshot } from "@openlup/platform/portability";
 import type { InvoiceFacts } from "@openlup/platform/invoicing/contracts";
-import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
-import { restoreConnectedNativeStore } from "./connectedStoreRestore.js";
+import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingResult, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
 import { connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 type Row = Record<string, unknown>;
-type Disposition = "requires-active-mapping" | "mapped-active-and-retained" | "retained-history" | "unsupported-empty" |
+type Disposition = "requires-active-mapping" | "retained-history" | "unsupported-empty" |
   "credential-excluded" | "service-installation-history";
-export interface ManagedRetainedRow {
-  source: string;
-  relation: string;
-  rowIdentity: string;
-  subjects: string[];
-  value: string;
-  minimisations: { field: string; reason: "third-party-capable" | "unbound-row" | "unknown-json" }[];
-  disposition: "requires-active-mapping" | "mapped-active-and-retained" | "retained-history";
-  targetTables: string[];
-  reason: string;
-}
-export interface ManagedRetainedCapture {
-  format: "openlup.managed-retained-history.v1";
+export interface ManagedSourceCapture {
   sourceId: string;
   observation: { cluster: string; database: string; login: string; snapshot: string };
   dispositions: { relation: string; rows: number; disposition: Disposition; reason: string }[];
-  rows: ManagedRetainedRow[];
-  redactions: { subjectDigest: string; rows: { relation: string; rowDigest: string }[] }[];
   sha256: string;
-}
-export interface ManagedRetainedTransfer {
-  packet: ConnectedNativeStoreCapture;
-  retainedObject: ReturnType<typeof exportManagedRetainedHistory>;
-  manifest: {
-    format: "openlup.managed-retained-transfer.v1";
-    sourceId: string;
-    packetSha256: string;
-    retainedKey: string;
-    retainedSha256: string;
-    retainedDescriptorSha256: string;
-    sha256: string;
-  };
 }
 
 // The positive managed profile is finite. A nonempty relation outside this
@@ -50,7 +21,7 @@ const active = new Set([
   "public.clients", "public.admin_users", "public.subscriptions", "public.subscription_cycles",
   "public.subscription_events", "public.subscription_lines", "public.commerce_orders", "public.commerce_order_items",
   "public.commerce_payments", "public.commerce_payment_intents", "public.commerce_payment_attempts",
-  "public.outbox_events", "public.commerce_payment_state_transitions", "public.payment_external_refs",
+  "public.outbox_events", "public.commerce_payment_state_transitions",
   "public.accounting_invoice_issue_outbox", "public.communication_permissions",
   "public.subscription_price_agreements", "public.commerce_payment_method_refs",
   "public.identity_privacy_erasures", "public.customer_subject_lifecycle_events",
@@ -76,103 +47,94 @@ const credentials = new Set([
   "auth.mfa_factors", "auth.mfa_challenges", "auth.audit_log_entries",
 ]);
 const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
-const identity = /^[a-z][a-z0-9_]{0,62}$/;
-const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
-const minimised = "[MINIMISED:UNBOUND_PERSONAL_FIELD]";
-// Finite fields that can carry another person's identity despite the row's
-// typed owner links. Ordinary own-subject history and catalog values stay exact.
-const thirdPartyFields: Record<string, readonly string[]> = {
-  "public.admin_audit_events": ["actor_email", "target_email", "old_value", "new_value"],
-  "public.admin_users": ["membership_revocation_reason"],
-  "public.subscriptions": ["cancellation_reason"],
-  "public.subscription_cycles": ["failure_reason"],
-  "public.commerce_payment_intents": ["failure_reason"],
-  "public.commerce_payment_attempts": ["failure_reason", "request_payload", "response_payload"],
-  "public.commerce_payment_state_transitions": ["reason", "payload"],
-  "public.commerce_payment_method_refs": ["raw_provider_payload"],
-  "public.payment_external_refs": ["raw_payload"],
-  "public.accounting_invoices": ["blocked_reason"],
-  "public.accounting_invoice_correction_outbox": ["correction_reason"],
-  "public.communication_contact_links": ["source_key"],
-  "public.communication_permissions": ["reason"],
-  "public.communication_permission_events": ["reason"],
-  "public.communication_email_deliveries": ["recipient_fingerprint"],
-  "public.outbox_events": ["payload", "error", "metadata"],
-  "storage.objects": ["name", "path_tokens", "owner"],
+// Managed Storage has no typed object path in this parcel. The other finite
+// source classes below use their existing state checks and disposition values.
+const uncarried = new Set(["storage.buckets", "storage.objects"]);
+const checkedTerminalUnpaid = (intent: Row | undefined, all: Map<string, Row[]>): boolean => {
+  if (!intent || !["failed", "cancelled", "expired"].includes(String(intent.status))) return false;
+  const payment = all.get("public.commerce_payments")?.find(row => row.id === intent.payment_id);
+  const linkedIntents = all.get("public.commerce_payment_intents")?.filter(row => row.payment_id === intent.payment_id) ?? [];
+  const order = all.get("public.commerce_orders")?.find(row => row.id === intent.order_id);
+  const attempts = all.get("public.commerce_payment_attempts")?.filter(row => row.payment_intent_id === intent.id) ?? [];
+  const transitions = all.get("public.commerce_payment_state_transitions")?.filter(row => row.payment_intent_id === intent.id) ?? [];
+  const items = all.get("public.payment_provider_settlement_items") ?? [];
+  const invoices = all.get("public.accounting_invoices") ?? [];
+  return !!payment && !!order && linkedIntents.length === 1
+    && payment.order_id === intent.order_id && payment.status === intent.status
+    && order.status === "pending_payment" && intent.active_attempt_id === null
+    && attempts.length === 1 && attempts[0]?.payment_id === payment.id && attempts[0]?.status === intent.status
+    && transitions.length === 1 && transitions[0]?.to_status === intent.status
+    && (transitions[0]?.payment_attempt_id === null || transitions[0]?.payment_attempt_id === attempts[0]?.id)
+    && !items.some(item => item.payment_intent_id === intent.id || item.payment_id === payment.id)
+    && !invoices.some(invoice => invoice.order_id === order.id);
 };
-// These known JSON values describe the row's own bound subject or a
-// subject-free catalog item. New JSON columns default to minimisation.
-const ownOrCatalogJson: Record<string, readonly string[]> = {
-  "public.clients": ["metadata", "preferences"],
-  "public.subscriptions": ["size_constraint", "starter_pack"],
-  "public.subscription_cycles": ["template_snapshot", "pricing_snapshot"],
-  "public.subscription_price_agreements": ["quote_line"],
-  "public.commerce_orders": ["size_constraint"],
-  "public.commerce_order_items": ["product_snapshot", "variant_snapshot"],
-  "public.commerce_payment_method_refs": ["consent_snapshot"],
-  "public.accounting_invoices": ["buyer_snapshot", "order_snapshot", "tax_snapshot", "lines_snapshot"],
-  "public.identity_privacy_erasures": ["contributor_versions", "dispositions", "retained_obligations"],
-  "public.catalog_products": ["metadata", "marketing_content"],
-  "public.catalog_skus": ["metadata"],
-};
-const bucketStructuralFields = new Set(["id", "name", "allowed_mime_types", "type"]);
-const personalCapableTextType = /^(?:text(?:\[\])?|character(?: varying)?|citext)(?:\(|$)/u;
-function minimiseUnboundFields(relation: string, row: Row, sourceValue: string, columnTypes: Map<string, string>, subjects: string[]):
-  { value: string; minimisations: ManagedRetainedRow["minimisations"] } {
-  const retained = { ...row };
-  const minimisations: ManagedRetainedRow["minimisations"] = [];
-  for (const [field, value] of Object.entries(row)) {
-    const type = columnTypes.get(field);
-    if (value === null || !type) continue;
-    const reason = thirdPartyFields[relation]?.includes(field) ? "third-party-capable"
-      : /^(?:jsonb?|jsonb?\[\])$/u.test(type) && !ownOrCatalogJson[relation]?.includes(field) ? "unknown-json"
-        : !subjects.length && relation === "storage.buckets" && (["owner", "owner_id"].includes(field)
-          || personalCapableTextType.test(type) && !bucketStructuralFields.has(field)) ? "unbound-row" : null;
-    if (!reason) continue;
-    retained[field] = minimised;
-    minimisations.push({ field, reason });
+const archiveState = (relation: string, row: Row, captureTimeMs: number, all: Map<string, Row[]>): boolean => {
+  if (relation === "public.payment_provider_settlement_batches") return row.status === "reconciled";
+  if (relation === "public.payment_provider_settlement_items") return row.status === "matched";
+  if (relation === "public.commerce_idempotency_keys") {
+    const expiry = typeof row.expires_at === "string" ? Date.parse(row.expires_at) : Number.NaN;
+    return row.status === "completed" && Number.isFinite(expiry) && expiry <= captureTimeMs;
   }
-  return { value: minimisations.length ? JSON.stringify(retained) : sourceValue, minimisations };
-}
-// Raw rows are held only for the immediate native projection. They are never a
-// property of the returned capture, retained object or transfer manifest.
-const projectionRows = new WeakMap<ManagedRetainedCapture, Map<string, Row[]>>();
+  if (["public.commerce_payments", "public.commerce_payment_intents", "public.commerce_payment_attempts",
+    "public.commerce_payment_state_transitions"].includes(relation)) {
+    const intent = relation === "public.commerce_payment_intents" ? row
+      : all.get("public.commerce_payment_intents")?.find(value => value.id === row.payment_intent_id
+        || relation === "public.commerce_payments" && value.payment_id === row.id);
+    return intent?.status !== "failed" && checkedTerminalUnpaid(intent, all);
+  }
+  if (relation === "public.payment_external_refs") {
+    const payment = all.get("public.commerce_payments")?.find(value => value.id === row.payment_id);
+    const intents = all.get("public.commerce_payment_intents")?.filter(value => value.payment_id === row.payment_id) ?? [];
+    const refs = all.get(relation)?.filter(value => value.payment_id === row.payment_id) ?? [];
+    if (!payment || intents.length !== 1 || refs.length !== 1 || row.provider_kind !== payment.provider
+      || payment.provider_payment_id !== null && payment.provider_payment_id !== row.provider_payment_id
+      || intents[0]!.provider_payment_id !== null && intents[0]!.provider_payment_id !== row.provider_payment_id) return false;
+    const intent = intents[0]!;
+    return intent.status === "succeeded" && payment.status === "succeeded"
+        && intent.provider_payment_id === row.provider_payment_id
+      || checkedTerminalUnpaid(intent, all);
+  }
+  return false;
+};
+const stateClass = new Set(["public.payment_provider_settlement_batches",
+  "public.payment_provider_settlement_items", "public.commerce_idempotency_keys", "public.payment_external_refs",
+  "public.commerce_payments", "public.commerce_payment_intents", "public.commerce_payment_attempts",
+  "public.commerce_payment_state_transitions"]);
+const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
+// Source rows are used for the immediate typed projection only. Neither the
+// capture result nor the connected restore packet contains a source-row archive.
+const projectionRows = new WeakMap<ManagedSourceCapture, Map<string, Row[]>>();
 function fail(code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never {
   throw new PostgresTransferError(code, relation);
 }
-const descriptorDigest = (object: TransferObject): string => {
-  try { return digest(JSON.stringify(object)); }
-  catch { fail("invalid_input"); }
-};
 const quoted = (value: string): string => value.length <= 63 && !value.includes("\0")
   ? `"${value.replaceAll('"', '""')}"` : fail("invalid_input");
 
-/**
- * Extract a bounded source-only record under one actual read-only snapshot.
- * Finite public business rows stay private with third-party-capable snapshots
- * and unknown JSON minimised.
- * Auth credentials are
- * never selected; the selected Auth/Storage metadata must be reconciled with
- * their owning APIs by the host before object publication.
+/** Inspect one managed snapshot and retain only a relation census outside the
+ * projection call. Full source history remains in the operator's source archive.
+ * Auth credentials are never selected.
  */
-export async function captureManagedRetainedHistory(input: {
+export async function captureManagedSourceGraph(input: {
   source: CompatiblePostgresSnapshot;
   sourceId: string;
   maximumRows: number;
   maximumBytes: number;
-}): Promise<ManagedRetainedCapture> {
+}): Promise<ManagedSourceCapture> {
   if (typeof input.sourceId !== "string" || !input.sourceId || input.sourceId.length > 1024
     || !Number.isSafeInteger(input.maximumRows) || input.maximumRows < 1 || input.maximumRows > 10000
     || !Number.isSafeInteger(input.maximumBytes) || input.maximumBytes < 1 || input.maximumBytes > 64 * 1024 * 1024) fail("invalid_input");
   try {
     return await input.source.withSnapshot(async db => {
-      const facts = (await db.query<{ readonly: string; isolation: string; cluster: string; database: string; login: string; snapshot: string }>(
+      const facts = (await db.query<{ readonly: string; isolation: string; cluster: string; database: string; login: string; snapshot: string; capture_time_ms: string }>(
         `SELECT pg_catalog.current_setting('transaction_read_only') AS readonly,
           pg_catalog.current_setting('transaction_isolation') AS isolation,
           ${connectedStoreClusterIdentitySql} AS cluster,
           pg_catalog.current_database() AS database,session_user::pg_catalog.text AS login,
-          pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
+          pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot,
+          pg_catalog.floor(pg_catalog.date_part('epoch', pg_catalog.transaction_timestamp()) * 1000)::bigint::text AS capture_time_ms`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") fail("invalid_input");
+      const captureTimeMs = Number(facts.capture_time_ms);
+      if (!Number.isSafeInteger(captureTimeMs)) fail("invalid_input");
       await db.query("SET LOCAL TimeZone = 'UTC'");
       const relations = (await db.query<{ schema: string; table: string }>(`SELECT n.nspname AS schema,c.relname AS table
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
@@ -180,9 +142,7 @@ export async function captureManagedRetainedHistory(input: {
           AND c.relkind IN ('r','p')
         ORDER BY n.nspname,c.relname`)).rows;
       const sourceRows = new Map<string, Row[]>();
-      const sourceRaw = new Map<string, { value: string; rowIdentity: string }[]>();
-      const sourceColumnTypes = new Map<string, Map<string, string>>();
-      const dispositions: ManagedRetainedCapture["dispositions"] = [];
+      const dispositions: ManagedSourceCapture["dispositions"] = [];
       let totalRows = 0, totalBytes = 0;
       for (const relation of relations) {
         const name = `${relation.schema}.${relation.table}`;
@@ -201,7 +161,7 @@ export async function captureManagedRetainedHistory(input: {
         }
         // Auth's metadata projection is deliberately narrower than auth.users;
         // no password, token or provider credential enters the manifest. Storage
-        // rows are complete because their metadata/ownership is transfer data.
+        // relations are inventoried, then refused if their state has no typed path.
         const expression = name === "auth.users"
           ? "pg_catalog.jsonb_build_object('id',t.id,'email',t.email,'created_at',t.created_at,'updated_at',t.updated_at)"
           : "pg_catalog.to_jsonb(t)";
@@ -211,44 +171,30 @@ export async function captureManagedRetainedHistory(input: {
           JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
           WHERE i.indrelid=$1::pg_catalog.regclass AND i.indisprimary ORDER BY k.ordinal`, [qualified])).rows;
         if (!keyColumns.length) fail("schema_conflict", name);
-        const columnTypes = (await db.query<{ name: string; type: string }>(`SELECT a.attname AS name,
-          pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
-          WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped`, [qualified])).rows;
-        sourceColumnTypes.set(name, new Map(columnTypes.map(column => [column.name, column.type])));
-        const key = `pg_catalog.jsonb_build_array(${keyColumns.map(column => `t.${quoted(column.name)}`).join(",")})::pg_catalog.text`;
-        const raw = (await db.query<{ value: string; row_identity: string }>(`SELECT (${expression})::pg_catalog.text AS value,
-          ${key} AS row_identity FROM ${qualified} t ORDER BY (${expression})::pg_catalog.text LIMIT $1`,
-        [input.maximumRows + 1])).rows.map(row => ({ value: row.value, rowIdentity: row.row_identity }));
+        const raw = (await db.query<{ value: string }>(`SELECT (${expression})::pg_catalog.text AS value
+          FROM ${qualified} t ORDER BY (${expression})::pg_catalog.text LIMIT $1`,
+        [input.maximumRows + 1])).rows;
         totalRows += raw.length; totalBytes += raw.reduce((sum, row) => sum + Buffer.byteLength(row.value), 0);
         if (totalRows > input.maximumRows || totalBytes > input.maximumBytes) fail("limit_exceeded", name);
-        sourceRows.set(name, raw.map(row => JSON.parse(row.value) as Row));
-        sourceRaw.set(name, raw);
-        dispositions.push({ relation: name, rows: raw.length, disposition: active.has(name) || name === "auth.users"
-          ? "requires-active-mapping" : "retained-history", reason: active.has(name) ? "canonical projection required before publication"
-          : name === "auth.users" ? "identity metadata only; credentials excluded" : "private source history or object metadata with privacy-scoped minimisation" });
+        const parsed = raw.map(row => JSON.parse(row.value) as Row);
+        sourceRows.set(name, parsed);
+        const required = active.has(name) || name === "auth.users" || raw.length > 0 && uncarried.has(name);
+        dispositions.push({ relation: name, rows: raw.length, disposition: required
+          ? "requires-active-mapping" : "retained-history", reason: required ? "typed target projection required before publication"
+          : "operator source archive; no transfer row" });
       }
-      const subjects = subjectOwners(sourceRows);
-      const rows: ManagedRetainedRow[] = [];
-      for (const [relation, values] of sourceRows) {
-        for (const [index, value] of values.entries()) {
-          const columnTypes = sourceColumnTypes.get(relation)!;
-          const rowIdentity = sourceRaw.get(relation)![index]!.rowIdentity;
-          const anchors = subjects(relation, value);
-          if (anchors === null) fail("invalid_input", relation);
-          const needsMapping = active.has(relation) || relation === "auth.users";
-          const minimisedRow = minimiseUnboundFields(relation, value, sourceRaw.get(relation)![index]!.value,
-            columnTypes, anchors);
-          rows.push({ source: input.sourceId, relation, rowIdentity, subjects: anchors.sort(),
-            value: minimisedRow.value, minimisations: minimisedRow.minimisations,
-            disposition: needsMapping ? "requires-active-mapping" : "retained-history",
-            targetTables: [], reason: needsMapping ? "canonical target row required before publication" : "private historical metadata with privacy-scoped minimisation" });
-        }
+      for (const entry of dispositions) if (stateClass.has(entry.relation)) {
+        const rows = sourceRows.get(entry.relation) ?? [];
+        const required = rows.some(row => !archiveState(entry.relation, row, captureTimeMs, sourceRows));
+        entry.disposition = required ? "requires-active-mapping" : "retained-history";
+        entry.reason = required ? "typed target projection required before publication" : "operator source archive; no transfer row";
       }
-      rows.sort((left, right) => JSON.stringify([left.relation,left.rowIdentity]).localeCompare(JSON.stringify([right.relation,right.rowIdentity])));
-      if (new Set(rows.map(row => JSON.stringify([row.relation,row.rowIdentity]))).size !== rows.length) fail("target_conflict");
-      const body = { format: "openlup.managed-retained-history.v1" as const, sourceId: input.sourceId,
-        observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot }, dispositions, rows,
-        redactions: [] as ManagedRetainedCapture["redactions"] };
+      const owners = subjectOwners(sourceRows);
+      for (const [relation, rows] of sourceRows)
+        for (const row of rows) if (owners(relation, row) === null) fail("invalid_input", relation);
+      const body = { sourceId: input.sourceId,
+        observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot },
+        dispositions };
       const capture = { ...body, sha256: digest(JSON.stringify(body)) };
       projectionRows.set(capture, sourceRows);
       return capture;
@@ -256,6 +202,8 @@ export async function captureManagedRetainedHistory(input: {
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("database_unavailable"); }
 }
 
+// Preserve the source graph's populated-link and cross-owner conflict checks.
+// Resolved owners are validation facts only; no subject tags are serialized.
 function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) => string[] | null {
   const clients = new Map(all.get("public.clients")?.map(row => [row.id, row]) ?? []);
   const authUsers = new Map(all.get("auth.users")?.map(row => [row.id, row]) ?? []);
@@ -394,11 +342,7 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
       const owners = items.map(bySettlementItem);
       return owners.some(owner => owner === null) ? null : [...new Set(owners.flatMap(owner => owner!))];
     }
-    if (relation === "public.commerce_idempotency_keys") {
-      if (row.status === "in_progress" || row.metadata === null || typeof row.metadata !== "object"
-        || Array.isArray(row.metadata)) return null;
-      return byClient((row.metadata as Row).clientId);
-    }
+    if (relation === "public.commerce_idempotency_keys") return [];
     if (relation === "public.accounting_invoices") return byInvoice(row.id);
     if (relation.startsWith("public.accounting_invoice_")) return byInvoice(row.invoice_id);
     if (relation === "public.communication_contacts" || relation === "public.communication_permissions"
@@ -410,8 +354,7 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     }
     if (relation === "public.communication_provider_events") {
       if (row.contact_id !== null) return byContact(row.contact_id);
-      const matches = [...contacts.values()].filter(contact => contact.normalized_email === row.normalized_email);
-      return matches.length === 1 ? byContact(matches[0]!.id) : null;
+      return [];
     }
     if (relation === "public.communication_email_deliveries") return unionLinks(relation,
       [[row.client_id, byClient], [row.contact_id, byContact], [row.auth_user_id, byAuth],
@@ -419,10 +362,7 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
     if (relation === "public.catalog_products" || relation === "public.catalog_skus"
       || relation === "public.price_lists" || relation === "public.price_entries") return [];
     if (relation === "public.outbox_events") {
-      const payload = row.payload && typeof row.payload === "object" && !Array.isArray(row.payload) ? row.payload as Row : {};
-      return unionLinks(relation, [[row.aggregate_id, id => byAggregate(row.aggregate_type, id)],
-        [payload.clientId ?? null, byClient], [payload.orderUuid ?? null, byOrder],
-        [payload.subscriptionId ?? null, bySubscription]]);
+      return unionLinks(relation, [[row.aggregate_id, id => byAggregate(row.aggregate_type, id)]]);
     }
     if (relation === "storage.buckets") return [];
     if (relation === "storage.objects") return typeof row.owner_id === "string" && row.owner_id ? [row.owner_id] : null;
@@ -431,8 +371,8 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
 }
 
 /** Read #428's finite identity input from the captured managed Auth/business rows. */
-export function managedIdentityEvidence(capture: ManagedRetainedCapture, issuer: string): ManagedIdentityMappingSource {
-  validate(capture);
+export function managedIdentityEvidence(capture: ManagedSourceCapture, issuer: string): ManagedIdentityMappingSource {
+  validateCapture(capture);
   const raw = projectionRows.get(capture);
   if (!raw) fail("invalid_input");
   const values = (relation: string): Row[] => raw.get(relation) ?? [];
@@ -466,18 +406,22 @@ export function managedIdentityEvidence(capture: ManagedRetainedCapture, issuer:
 /**
  * A deliberately narrow managed money projection. Unsafe external attempts and
  * unsupported active row classes refuse before any target restore can begin.
- * Every source row still stays in the retained-history object for readback,
- * with third-party-capable fields minimised at capture.
+ * Source history remains in the operator-controlled source archive.
  */
 export async function mapManagedRetainedBusiness(input: {
-  capture: ManagedRetainedCapture;
+  capture: ManagedSourceCapture;
   issuer: string;
   freshTarget: ConnectedNativeStoreCapture;
   targetOwner: Pool;
-}): Promise<{ packet: ConnectedNativeStoreCapture; retained: ManagedRetainedCapture }> {
-  validate(input.capture);
+}): Promise<{ packet: ConnectedNativeStoreCapture; identitySubjects: ManagedIdentityMappingResult["subjects"] }> {
+  validateCapture(input.capture);
   const raw = projectionRows.get(input.capture);
   if (!raw) fail("invalid_input");
+  for (const entry of input.capture.dispositions)
+    if (entry.rows && (uncarried.has(entry.relation)
+      || stateClass.has(entry.relation) && !active.has(entry.relation)
+        && entry.disposition === "requires-active-mapping"))
+      fail("unsupported_table", entry.relation);
   const identitySource = managedIdentityEvidence(input.capture, input.issuer);
   const mapped = await mapManagedIdentityForConnectedRestore({ source: identitySource,
     freshTarget: input.freshTarget, targetOwner: input.targetOwner });
@@ -630,6 +574,7 @@ export async function mapManagedRetainedBusiness(input: {
   const targetTransitionKey = (rowId: unknown) =>
     `managed-transfer-transition:${digest(JSON.stringify([input.capture.sourceId,rowId]))}`;
   for (const row of intents) {
+    if (["cancelled", "expired"].includes(String(row.status)) && checkedTerminalUnpaid(row, raw)) continue;
     const order = orderById.get(row.order_id), payment = paymentById.get(row.payment_id);
     const ownAttempts = attempts.filter(attempt => attempt.payment_intent_id === row.id);
     const ownTransitions = transitions.filter(transition => transition.payment_intent_id === row.id);
@@ -664,7 +609,9 @@ export async function mapManagedRetainedBusiness(input: {
     }
   }
   if (payments.some(row => !intents.some(intent => intent.payment_id === row.id))
-    || attempts.some(row => !intentById.has(row.payment_intent_id) || !["failed", "succeeded"].includes(String(row.status)))
+    || attempts.some(row => !intentById.has(row.payment_intent_id)
+      || !["failed", "succeeded"].includes(String(row.status))
+        && !checkedTerminalUnpaid(intentById.get(row.payment_intent_id), raw))
     || transitions.some(row => !intentById.has(row.payment_intent_id))) fail("unsupported_table", "public.commerce_payments");
   for (const row of outbox) {
     if (["processed", "discarded"].includes(String(row.status))) continue;
@@ -800,12 +747,12 @@ export async function mapManagedRetainedBusiness(input: {
     fail("unsupported_table", entry.relation);
   const supportedHistory = new Set(["public.admin_audit_events", "public.payment_provider_settlement_batches",
     "public.payment_provider_settlement_items", "public.accounting_invoices", "public.commerce_idempotency_keys",
-    "public.communication_contacts", "public.communication_contact_links", "public.communication_email_deliveries"]);
+    "public.communication_contacts", "public.communication_contact_links", "public.communication_email_deliveries",
+    "public.payment_external_refs"]);
   for (const entry of input.capture.dispositions) if (entry.rows && history.has(entry.relation)
     && !active.has(entry.relation) && !supportedHistory.has(entry.relation)) fail("unsupported_table", entry.relation);
   if (values("payment_provider_settlement_batches").some(row => row.status !== "reconciled")
-    || values("payment_provider_settlement_items").some(row => row.status !== "matched")
-    || values("commerce_idempotency_keys").some(row => row.status !== "completed"))
+    || values("payment_provider_settlement_items").some(row => row.status !== "matched"))
     fail("unsupported_table", "public.payment_provider_settlement_batches");
   const settlementBatches = values("payment_provider_settlement_batches");
   const settlementItems = values("payment_provider_settlement_items");
@@ -828,67 +775,16 @@ export async function mapManagedRetainedBusiness(input: {
   packet.compatible.sha256 = digest(JSON.stringify(inner));
   const { sha256: _outer, ...outer } = packet;
   packet.sha256 = digest(JSON.stringify(outer));
-  const mappingRequired = new Set(["auth.users", ...active]);
-  const mappedToCanonical = new Set(["auth.users", "public.clients", "public.admin_users", "public.commerce_orders",
-    "public.commerce_order_items", "public.commerce_payments", "public.commerce_payment_intents",
-    "public.commerce_payment_state_transitions", "public.identity_privacy_erasures", "public.customer_subject_lifecycle_events",
-    "public.catalog_products", "public.catalog_skus", "public.price_lists", "public.price_entries",
-    "public.subscriptions", "public.subscription_lines", "public.subscription_cycles", "public.subscription_events",
-    "public.subscription_price_agreements", "public.commerce_payment_method_refs", "public.communication_permissions",
-    "public.accounting_invoice_issue_outbox"]);
-  const historyOnly = new Set(["public.commerce_payment_attempts", "public.outbox_events"]);
-  const dispositions = input.capture.dispositions.map(entry => {
-    if (!entry.rows || !mappingRequired.has(entry.relation)) return entry;
-    if (mappedToCanonical.has(entry.relation)) return { ...entry, disposition: "mapped-active-and-retained" as const,
-      reason: "canonical target state and privacy-scoped private source row" };
-    if (historyOnly.has(entry.relation)) return { ...entry, disposition: "retained-history" as const,
-      reason: "terminal source effect; source key excluded from target active lookup" };
-    fail("unsupported_table", entry.relation);
-  });
-  const targets: Record<string, string[]> = {
-    "auth.users": ["clients", "platform_human_principals"],
-    "public.clients": ["clients"], "public.admin_users": ["platform_human_principals", "platform_human_memberships"],
-    "public.catalog_products": ["catalog_products"], "public.catalog_skus": ["catalog_skus"],
-    "public.price_lists": ["price_lists"], "public.price_entries": ["price_entries"],
-    "public.subscriptions": ["subscriptions", "subscription_renewal_terms"],
-    "public.subscription_events": ["subscription_events"],
-    "public.subscription_lines": ["subscription_lines", "subscription_renewal_term_lines"],
-    "public.subscription_cycles": ["subscription_cycles"],
-    "public.subscription_price_agreements": ["subscription_lines", "subscription_renewal_term_lines"],
-    "public.commerce_payment_method_refs": ["subscription_renewal_terms"],
-    "public.commerce_orders": ["commerce_orders"], "public.commerce_order_items": ["commerce_order_items"],
-    "public.commerce_payments": ["commerce_settlement_intents"],
-    "public.commerce_payment_intents": ["commerce_settlement_intents"],
-    "public.commerce_payment_state_transitions": ["commerce_settlement_transitions"],
-    "public.communication_permissions": ["communication_recipient_consents"],
-    "public.accounting_invoice_issue_outbox": ["invoicing_duties"],
-    "public.accounting_invoices": ["invoicing_fact_revisions"],
-    "public.customer_subject_lifecycle_events": ["customer_subject_lifecycle_events"],
-    "public.identity_privacy_erasures": ["identity_privacy_erasures"],
-  };
-  const principalAliases = new Map(mapped.subjects.map(subject => [subject.managedId, subject.principalId]));
-  const rows = input.capture.rows.map(row => {
-    const value = JSON.parse(row.value) as Row;
-    const targetTables = row.relation === "public.outbox_events" ? value.status === "pending" ? ["outbox_events"] : []
-      : row.relation === "public.admin_audit_events" ? value.action === "revoke" ? ["platform_human_membership_audit_events"] : []
-        : row.relation === "public.subscription_price_agreements" && value.ended_at !== null ? []
-          : row.relation === "public.commerce_payment_method_refs" && (value.status !== "active" || value.active !== true) ? []
-            : targets[row.relation] ?? [];
-    const terminalSourceRow = historyOnly.has(row.relation)
-      || row.relation === "public.subscription_price_agreements" && value.ended_at !== null
-      || row.relation === "public.commerce_payment_method_refs" && (value.status !== "active" || value.active !== true);
-    if (row.disposition === "requires-active-mapping" && !targetTables.length && !terminalSourceRow)
-      fail("unsupported_table", row.relation);
-    const subjects = [...new Set([...row.subjects,
-      ...row.subjects.flatMap(subject => principalAliases.has(subject) ? [principalAliases.get(subject)!] : [])])].sort();
-    return { ...row, subjects,
-      disposition: targetTables.length ? "mapped-active-and-retained" as const : "retained-history" as const,
-      targetTables, reason: targetTables.length ? "canonical target projection and privacy-scoped private source row"
-        : "terminal source receipt or privacy-scoped private business history" };
-  });
-  const { sha256: _retained, ...retainedBody } = input.capture;
-  const body = { ...retainedBody, dispositions, rows };
-  return { packet, retained: { ...body, sha256: digest(JSON.stringify(body)) } };
+  // The source census retains the existing history-only disposition while
+  // canonical target rows carry the settled money state.
+  for (const entry of input.capture.dispositions) {
+    if (!entry.rows) continue;
+    if (active.has(entry.relation) && !mappedRelations.has(entry.relation))
+      fail("unsupported_table", entry.relation);
+  }
+  if (values("communication_email_deliveries").some(row => row.status !== "failed"))
+    fail("unsupported_table", "public.communication_email_deliveries");
+  return { packet, identitySubjects: mapped.subjects };
 }
 
 async function replaceTargetRows(packet: ConnectedNativeStoreCapture, table: string, rows: Row[], owner: Pool): Promise<void> {
@@ -912,130 +808,10 @@ async function replaceTargetRows(packet: ConnectedNativeStoreCapture, table: str
   held.rows = normalized.sort();
 }
 
-/** A private object descriptor; readback verifies the exact retained bytes. */
-export function exportManagedRetainedHistory(capture: ManagedRetainedCapture): {
-  key: string; bytes: Uint8Array; sha256: string; object: TransferObject;
-} {
-  validate(capture);
-  if (capture.rows.some(row => row.disposition === "requires-active-mapping")) fail("invalid_input");
-  const bytes = Buffer.from(JSON.stringify(capture));
-  if (bytes.byteLength > 64 * 1024 * 1024) fail("limit_exceeded");
-  const key = `retained-history/${digest(capture.sourceId)}/${capture.sha256}.json`, sha256 = digest(bytes);
-  return { key, bytes, sha256, object: { key, version: capture.sha256, bytes: bytes.byteLength, sha256,
-    metadata: { contentType: "application/json", purpose: "managed-retained-history" }, access: "private-retained-history",
-    lineage: { sourceId: capture.sourceId, snapshotId: capture.observation.snapshot, sourceVersion: capture.sha256 } } };
-}
-/** Bind the private history object to the exact canonical row packet before publication. */
-export function assembleManagedRetainedTransfer(input: {
-  packet: ConnectedNativeStoreCapture; retained: ManagedRetainedCapture;
-}): ManagedRetainedTransfer {
-  const retainedObject = exportManagedRetainedHistory(input.retained);
-  if (input.packet.compatible.sourceId !== input.retained.sourceId
-    || JSON.stringify(input.packet.observation) !== JSON.stringify(input.retained.observation)) fail("target_conflict");
-  const body = { format: "openlup.managed-retained-transfer.v1" as const,
-    sourceId: input.retained.sourceId, packetSha256: input.packet.sha256,
-    retainedKey: retainedObject.key, retainedSha256: retainedObject.sha256,
-    retainedDescriptorSha256: descriptorDigest(retainedObject.object) };
-  return { packet: input.packet, retainedObject, manifest: { ...body, sha256: digest(JSON.stringify(body)) } };
-}
-/** The managed admission route requires exact retained-object readback before DB mutation. */
-export async function restoreManagedRetainedTransfer(input: Omit<Parameters<typeof restoreConnectedNativeStore>[0], "packet"> & {
-  transfer: ManagedRetainedTransfer;
-  retainedObjects: TransferObjectReader;
-}): ReturnType<typeof restoreConnectedNativeStore> {
-  const { transfer } = input;
-  if (!transfer?.manifest || !transfer.retainedObject || !transfer.packet
-    || transfer.manifest.format !== "openlup.managed-retained-transfer.v1") fail("invalid_input");
-  const { sha256, ...body } = transfer.manifest;
-  if (digest(JSON.stringify(body)) !== sha256 || body.packetSha256 !== transfer.packet.sha256
-    || body.retainedKey !== transfer.retainedObject.key || body.retainedSha256 !== transfer.retainedObject.sha256
-    || body.retainedDescriptorSha256 !== descriptorDigest(transfer.retainedObject.object)
-    || transfer.retainedObject.object.key !== transfer.retainedObject.key
-    || transfer.retainedObject.object.sha256 !== transfer.retainedObject.sha256
-    || transfer.retainedObject.object.bytes !== transfer.retainedObject.bytes.byteLength
-    || transfer.retainedObject.object.access !== "private-retained-history")
-    fail("invalid_input");
-  if (!input.retainedObjects || typeof input.retainedObjects.read !== "function") fail("invalid_input");
-  const stored = await input.retainedObjects.read(body.retainedKey, transfer.retainedObject.object.version);
-  if (!isDeepStrictEqual(stored.object, transfer.retainedObject.object)) fail("invalid_input");
-  const chunks: Buffer[] = [];
-  let length = 0;
-  for await (const chunk of stored.body) {
-    if (!(chunk instanceof Uint8Array)) fail("invalid_input");
-    length += chunk.byteLength;
-    if (length > transfer.retainedObject.object.bytes || length > 64 * 1024 * 1024) fail("limit_exceeded");
-    chunks.push(Buffer.from(chunk));
-  }
-  if (length !== transfer.retainedObject.object.bytes) fail("invalid_input");
-  const retained = readManagedRetainedHistory(Buffer.concat(chunks, length), transfer.retainedObject.sha256);
-  if (retained.sourceId !== body.sourceId || retained.sourceId !== transfer.packet.compatible.sourceId
-    || body.retainedKey !== `retained-history/${digest(retained.sourceId)}/${retained.sha256}.json`
-    || transfer.retainedObject.object.version !== retained.sha256
-    || transfer.retainedObject.object.lineage?.sourceId !== retained.sourceId
-    || transfer.retainedObject.object.lineage.snapshotId !== retained.observation.snapshot
-    || JSON.stringify(retained.observation) !== JSON.stringify(transfer.packet.observation)
-    || retained.rows.some(row => row.disposition === "requires-active-mapping")) fail("invalid_input");
-  return restoreConnectedNativeStore({ owner: input.owner, installation: input.installation,
-    packet: transfer.packet, freshTarget: input.freshTarget });
-}
-export function readManagedRetainedHistory(bytes: Uint8Array, expectedSha256: string): ManagedRetainedCapture {
-  if (digest(bytes) !== expectedSha256) fail("invalid_input");
-  let value: ManagedRetainedCapture;
-  try { value = JSON.parse(Buffer.from(bytes).toString("utf8")) as ManagedRetainedCapture; }
-  catch { fail("invalid_input"); }
-  validate(value);
-  return value;
-}
-export function redactManagedRetainedHistory(capture: ManagedRetainedCapture, subject: string): ManagedRetainedCapture {
-  validate(capture);
-  if (!subject) fail("invalid_input");
-  const { sha256: _old, ...body } = capture;
-  const removed = body.rows.filter(row => row.subjects.includes(subject));
-  const changed = { ...body, rows: body.rows.filter(row => !row.subjects.includes(subject)),
-    redactions: [...body.redactions, { subjectDigest: digest(subject), rows: removed.map(row => ({ relation: row.relation,
-      rowDigest: digest(JSON.stringify([row.source,row.relation,row.rowIdentity])) })).sort((left,right) => left.rowDigest.localeCompare(right.rowDigest)) }] };
-  return { ...changed, sha256: digest(JSON.stringify(changed)) };
-}
-function validate(capture: ManagedRetainedCapture): void {
-  try {
-    if (capture?.format !== "openlup.managed-retained-history.v1" || !Array.isArray(capture.rows)
-      || !Array.isArray(capture.dispositions) || !Array.isArray(capture.redactions)) fail("invalid_input");
-    const { sha256, ...body } = capture;
-    if (digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
-    if (capture.rows.some(row => row.source !== capture.sourceId || !row.relation || !row.rowIdentity
-      || !Array.isArray(row.subjects) || !row.subjects.every(value => typeof value === "string" && value)
-      || typeof row.value !== "string" || !["requires-active-mapping", "mapped-active-and-retained", "retained-history"].includes(row.disposition)
-      || !Array.isArray(row.minimisations) || row.minimisations.some(fact => !identity.test(fact.field)
-        || !["third-party-capable", "unbound-row", "unknown-json"].includes(fact.reason))
-      || new Set(row.minimisations.map(fact => fact.field)).size !== row.minimisations.length
-      || row.minimisations.some(fact => (JSON.parse(row.value) as Row)[fact.field] !== minimised)
-      || Object.entries(JSON.parse(row.value) as Row).some(([field, value]) => value === minimised
-        && (thirdPartyFields[row.relation]?.includes(field) || row.relation === "storage.buckets"
-          && !bucketStructuralFields.has(field))
-        && !row.minimisations.some(fact => fact.field === field))
-      || !Array.isArray(row.targetTables) || row.targetTables.some(value => typeof value !== "string" || !identity.test(value))
-      || (row.disposition === "mapped-active-and-retained") !== (row.targetTables.length > 0)
-      || typeof row.reason !== "string" || !row.reason || (!row.subjects.length && ![
-        "storage.buckets", "public.catalog_products", "public.catalog_skus", "public.price_lists", "public.price_entries",
-      ].includes(row.relation)))) fail("invalid_input");
-    if (capture.redactions.some(entry => !/^[0-9a-f]{64}$/.test(entry.subjectDigest)
-      || !Array.isArray(entry.rows) || entry.rows.some(value => !value.relation || !/^[0-9a-f]{64}$/.test(value.rowDigest)))) fail("invalid_input");
-    const present = capture.rows.map(row => `${row.relation}\0${row.rowIdentity}`);
-    if (new Set(present).size !== present.length) fail("target_conflict");
-    const disposition = new Map(capture.dispositions.map(entry => [entry.relation, entry]));
-    if (disposition.size !== capture.dispositions.length || capture.rows.some(row => !disposition.has(row.relation))) fail("invalid_input");
-    if (capture.dispositions.some(entry => !Number.isSafeInteger(entry.rows) || entry.rows < 0 || ![
-      "requires-active-mapping", "mapped-active-and-retained", "retained-history", "unsupported-empty",
-      "credential-excluded", "service-installation-history",
-    ].includes(entry.disposition))) fail("invalid_input");
-    const redacted = capture.redactions.flatMap(entry => entry.rows);
-    if (new Set(redacted.map(row => row.rowDigest)).size !== redacted.length) fail("target_conflict");
-    for (const entry of capture.dispositions) {
-      const retained = capture.rows.filter(row => row.relation === entry.relation).length;
-      const removed = redacted.filter(row => row.relation === entry.relation).length;
-      if (entry.disposition === "credential-excluded" || entry.disposition === "service-installation-history") {
-        if (retained || removed) fail("invalid_input");
-      } else if (retained + removed !== entry.rows) fail("invalid_input");
-    }
-  } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+function validateCapture(capture: ManagedSourceCapture): void {
+  if (!capture || !projectionRows.has(capture) || !Array.isArray(capture.dispositions)
+    || typeof capture.sourceId !== "string" || !capture.sourceId
+    || !capture.observation || typeof capture.observation.snapshot !== "string") fail("invalid_input");
+  const { sha256, ...body } = capture;
+  if (digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
 }

@@ -38,7 +38,7 @@ async function main() {
     throw new Error("Usage: node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust|joint");
   }
   if (process.versions.node.split(".")[0] !== "24" || must("npm", ["--version"]).trim() !== "11.19.0"
-    || must("supabase", ["--version"]).trim() !== "2.98.2") throw new Error("Identity conformance requires Node 24, npm 11.19.0 and Supabase CLI 2.98.2");
+    || must("supabase", ["--version"]).trim() !== "2.122.0") throw new Error("Identity conformance requires Node 24, npm 11.19.0 and Supabase CLI 2.122.0");
   must("docker", ["info"]);
   const migrations = readManagedMigrationChain(root);
   // Existing installed TS loader resolves the reference bindings' .js-to-.ts edges.
