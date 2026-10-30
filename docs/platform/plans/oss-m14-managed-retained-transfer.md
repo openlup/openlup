@@ -1046,6 +1046,12 @@ of rows in `refuses every row class with no typed path`. Expected result: only t
 listed below stay unreached. Lesson: reviewers each finding the next refusal with no
 test → measure unreached refusal lines once and test them together.
 
+Native cycle 14 closed that gap's refusal classes and left a smaller one. Open material
+cards went from nine to three to two: a table row that did not isolate the settlement
+status clause, and a source-only column whose stated comparison did not exist. The method
+stays the same, because this cycle added new information rather than repeating a gap.
+Each stated disposition is now checked against the code it names.
+
 Each table row changes the source inside the transaction the capture reads, then rolls
 back. The table is criteria for this item, not a target to extend.
 
@@ -1057,7 +1063,6 @@ Refusal lines still unreached, each with its reason:
 | Relation with no primary key; projected row missing a target column | Needs source schema drift; the baseline hash is pinned |
 | Two completed erasures for one client | `identity_privacy_erasures` is absent from the pinned baseline; the identity mapping suite owns those cases |
 | Capture with no held rows (`managedIdentityEvidence`, `mapManagedRetainedBusiness`) | The capture validation before it already proves this |
-| Fewer Auth subjects than linked IDs | The subject owner check refuses first |
 | Cycle number not a nonnegative integer | The source `NOT NULL` and `CHECK` forbid it |
 | Two consents for one recipient and purpose | The source unique constraints on email and on contact, channel and purpose forbid it |
 | Target table missing or already populated | The identity mapping refuses a non-fresh target first; the target inventory is pinned |
@@ -1079,10 +1084,11 @@ Source-only columns of the five carried relations, measured against the target:
 | | `payment_method_ref`, `payment_method_kind` | Compared with the method; refuses otherwise |
 | | `size_constraint` | Descriptor; lines carry the goods |
 | | `timezone` | No renewal reader |
-| | `cancellation_source` | Unset while active |
+| | `cancellation_source` | Source history; only `status` decides whether a subscription carries |
 | | `offer_policy_version`, `promotion_engine_version`, `offer_policy_assignment_state` | Acquisition only |
 | `subscription_lines` | `qty` | Mapped |
-| | `template_version`, `line_metadata` | Compared with the agreement; refuses otherwise |
+| | `template_version` | Compared with the subscription and the agreement; refuses otherwise |
+| | `line_metadata` | Quote line price and quantity compared with the agreement and line; refuses otherwise. Other metadata is source history |
 | `subscription_cycles` | `cycle_number` | Sets the next cycle number |
 | | `retry_attempt`, `next_retry_at`, `provider_attempt_sequence`, `renewal_row_error_count`, `renewal_quarantined_until` | Refuses when set |
 | | `paid_at`, `order_id`, `payment_id`, `payment_method_ref`, `failure_reason`, `template_version`, `template_snapshot`, `pricing_snapshot`, `engine_idempotency_key`, `renewal_row_error_key`, `offer_policy_version`, `promotion_engine_version`, `offer_policy_assignment_state` | Source history; renewal prices come from the agreement |

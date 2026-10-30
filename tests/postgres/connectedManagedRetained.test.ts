@@ -779,7 +779,8 @@ async function mapMutated(mutation: readonly string[]) {
 
 it("refuses every row class with no typed path", async () => {
   await expect(mapMutated([])).resolves.toBeDefined();
-  const cycle = `(SELECT id FROM public.subscription_cycles WHERE subscription_id='${subscriptionId}' LIMIT 1)`;
+  const secondSubscriptionId = randomUUID(), secondLineId = randomUUID();
+  const cycle =`(SELECT id FROM public.subscription_cycles WHERE subscription_id='${subscriptionId}' LIMIT 1)`;
   const method = `UPDATE public.commerce_payment_method_refs SET`, methodWhere = `WHERE subscription_id='${subscriptionId}'`;
   const agreement = `UPDATE public.subscription_price_agreements SET`, agreementWhere = `WHERE subscription_line_id='${lineId}'`;
   const item = `UPDATE public.payment_provider_settlement_items SET`, itemWhere = `WHERE batch_id='${settlementBatchId}'`;
@@ -804,6 +805,9 @@ it("refuses every row class with no typed path", async () => {
     ["method for another reference", [`${method} provider_method_ref='method:other' ${methodWhere}`], "target_conflict", methodTable],
     ["method without recurring consent", [`${method} consent_snapshot='{}' ${methodWhere}`], "target_conflict", methodTable],
     ["method without a mandate", [`${method} provider_mandate_ref=NULL ${methodWhere}`], "target_conflict", methodTable],
+    ["method of another kind than the subscription", [`${method} method_kind='blik_payid' ${methodWhere}`], "target_conflict", methodTable],
+    ["unsupported method kind with no subscription copy", [`UPDATE public.subscriptions SET payment_method_kind=NULL WHERE id='${subscriptionId}'`,
+      `${method} method_kind='wallet' ${methodWhere}`], "target_conflict", methodTable],
     ["method of another client", [`INSERT INTO public.clients(id,email,lifecycle_stage) VALUES('${unpaidRefId}','second@example.invalid','customer')`,
       `${method} client_id='${unpaidRefId}' ${methodWhere}`], "target_conflict", methodTable],
     ["active method with no subscription", [`INSERT INTO public.commerce_payment_method_refs(client_id,provider_kind,method_kind,provider_method_ref,status,active)
@@ -814,6 +818,21 @@ it("refuses every row class with no typed path", async () => {
     ["agreement in another currency", [`${agreement} currency='YYY' ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
     ["agreement of another template version", [`${agreement} template_version=2 ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
     ["line with no current agreement", [`${agreement} ended_at=now() ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
+    ["agreement for another variant", [`${agreement} variant_id=gen_random_uuid() ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
+    // The second subscription is valid and has the same client, so only the agreement's own link can refuse.
+    ["agreement of another subscription", [`INSERT INTO public.subscriptions
+      (id,client_id,cadence_days,currency,region_code,status,next_cycle_at,payment_method_ref,payment_method_kind)
+      VALUES('${secondSubscriptionId}','${clientId}',28,'XXX','ZZ','active','2027-01-01','method:second','card')`,
+    `INSERT INTO public.commerce_payment_method_refs
+      (client_id,subscription_id,provider_kind,method_kind,provider_method_ref,provider_mandate_ref,status,active,consent_snapshot)
+      VALUES('${clientId}','${secondSubscriptionId}','synthetic-provider','card','method:second','synthetic-mandate','active',true,
+        '{"recurringModel":"O","acceptedAt":"2026-01-01T00:00:00Z"}')`,
+    `INSERT INTO public.subscription_lines(id,subscription_id,variant_id,qty,sort_order)
+      VALUES('${secondLineId}','${secondSubscriptionId}','${skuId}',1,0)`,
+    `INSERT INTO public.subscription_price_agreements
+      (subscription_id,subscription_line_id,variant_id,currency,unit_price_gross_minor,template_version,source_action,idempotency_key)
+      VALUES('${secondSubscriptionId}','${secondLineId}','${skuId}','XXX',100,1,'synthetic_setup','source-price-agreement:second')`,
+    `${agreement} subscription_id='${secondSubscriptionId}' ${agreementWhere}`], "target_conflict", "public.subscription_price_agreements"],
     ["quote line at another price", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitPriceGross":{"amountMinor":91}}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
     ["quote line at another legacy price", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"unitGrossMinor":91}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
     ["quote line for another quantity", [`UPDATE public.subscription_lines SET line_metadata='{"productSnapshot":{"quoteLine":{"quantity":2}}}' WHERE id='${lineId}'`], "target_conflict", "public.subscription_price_agreements"],
@@ -842,7 +861,9 @@ it("refuses every row class with no typed path", async () => {
     ["outbox work of an unadmitted event", [outbox(paidOrderId, "synthetic.other", "pending", 0, paidEvent)], "unsupported_table", outboxTable],
     ["paid event on an unpaid order", [outbox(orderId, "commerce.order.paid", "pending", 0, { orderUuid: orderId })], "unsupported_table", outboxTable],
     ["outbox work for an unknown aggregate", [outbox(randomUUID(), "commerce.order.paid", "pending", 0, paidEvent)], "target_conflict", outboxTable],
-    ["settlement on an unsettled intent", [dropUnpaidRef, `${item} payment_intent_id='${intentId}',payment_id='${paymentId}' ${itemWhere}`], "target_conflict", settlementBatches],
+    // The failed intent names the item's provider ID, so only its status can refuse.
+    ["settlement on an unsettled intent", [dropUnpaidRef, `UPDATE public.commerce_payment_intents SET provider_payment_id='provider-paid:1' WHERE id='${intentId}'`,
+      `${item} payment_intent_id='${intentId}',payment_id='${paymentId}' ${itemWhere}`], "target_conflict", settlementBatches],
     ["settlement across orders", [dropUnpaidRef, `${item} payment_id='${paymentId}' ${itemWhere}`], "target_conflict", settlementItems],
     ["settlement link to nothing", [`${item} payment_intent_id=gen_random_uuid() ${itemWhere}`], "target_conflict", settlementItems],
     ["settlement item with no links", [`${item} payment_intent_id=NULL,payment_id=NULL,invoice_id=NULL ${itemWhere}`], "invalid_input", settlementBatches],
@@ -852,6 +873,7 @@ it("refuses every row class with no typed path", async () => {
       (batch_id,provider_kind,provider_payment_id,payment_intent_id,payment_id,gross_cents,fee_cents,net_cents,currency,status)
       VALUES(gen_random_uuid(),'synthetic-provider','provider-paid:1','${paidIntentId}','${paidPaymentId}',900,0,900,'XXX','matched')`], "target_conflict", settlementItems],
     ["Auth user with no business link", [`INSERT INTO auth.users(id,email) VALUES(gen_random_uuid(),'unlinked@example.invalid')`], "invalid_input", "auth.users"],
+    ["operator with no Auth user", [`INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES(gen_random_uuid(),'no-auth@example.invalid','admin',false)`], "invalid_input", "auth.users"],
   ];
   for (const [label, mutation, code, table] of refusals)
     await expect.soft(mapMutated(mutation), label).rejects.toMatchObject({ code, table });

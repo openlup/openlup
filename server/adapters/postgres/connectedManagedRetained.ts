@@ -499,7 +499,9 @@ export async function mapManagedRetainedBusiness(input: {
       || typeof consent.acceptedAt !== "string" || !Number.isFinite(Date.parse(consent.acceptedAt))
       || typeof method.provider_mandate_ref !== "string" || !method.provider_mandate_ref
       || typeof method.provider_kind !== "string" || method.provider_kind.length > 64
-      || method.client_id !== row.client_id || method.provider_method_ref !== row.payment_method_ref)
+      || method.client_id !== row.client_id || method.provider_method_ref !== row.payment_method_ref
+      || method.method_kind !== "card" && method.method_kind !== "blik_payid"
+      || row.payment_method_kind !== null && row.payment_method_kind !== method.method_kind)
       fail("target_conflict", "public.commerce_payment_method_refs");
     const currentCycles = cycles.filter(cycle => cycle.subscription_id === row.id);
     if (currentCycles.some(cycle => typeof cycle.cycle_number !== "number" || cycle.cycle_number < 0))
@@ -519,6 +521,7 @@ export async function mapManagedRetainedBusiness(input: {
     const current = agreements.filter(agreement => agreement.subscription_line_id === row.id && agreement.ended_at === null);
     if (!subscription || !sku || current.length !== 1 || row.template_version !== subscription.template_version
       || current[0]!.template_version !== row.template_version || current[0]!.currency !== subscription.currency
+      || current[0]!.variant_id !== row.variant_id || current[0]!.subscription_id !== row.subscription_id
       || typeof current[0]!.unit_price_gross_minor !== "number" || current[0]!.unit_price_gross_minor < 0)
       fail("target_conflict", "public.subscription_price_agreements");
     const agreement = current[0]!;
