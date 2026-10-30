@@ -7,12 +7,12 @@ type ConsentState = "granted" | "denied";
 
 /**
  * Each instance owns loader state; the host supplies browser, deployment policy
- * and consent decisions. Consent updates emit the caller's decision; the host
- * authorizes it.
+ * and consent policy. Nondefault policies publish stored purpose flags; the
+ * default preserves caller-authorized analytics updates. No policy validates tags.
  */
 export function createAnalyticsDataLayer<StepName extends string = string>(options: AnalyticsDataLayerOptions<StepName> = {}) {
   const { consentStorageKey = "", consentChangeEvent = "", consentSignalNames, eventPrefix = "",
-    readContainerId = () => null, getWindow = () => undefined } = options;
+    consentPolicy = "analytics-only", readContainerId = () => null, getWindow = () => undefined } = options;
   const deploymentSink = options.trackDeploymentEvent ?? trackDeploymentEvent;
   let analyticsLoaderReady = false;
   const readinessListeners = new Set<() => void>();
@@ -57,14 +57,16 @@ export function createAnalyticsDataLayer<StepName extends string = string>(optio
     pushConsentCommand("default", "denied", "denied");
   }
   function pushAnalyticsConsentUpdate(granted: boolean): void {
-    const analyticsState: ConsentState = granted ? "granted" : "denied";
+    const consent = readCookieConsent();
+    const analyticsState: ConsentState = granted && (consentPolicy === "analytics-only" || consent?.analytics === true) ? "granted" : "denied";
     // Read the separate advertising grant at push time; revocation denies all signals.
-    const adState: ConsentState = granted && readCookieConsent()?.marketing === true ? "granted" : "denied";
+    const adState: ConsentState = granted && consent?.marketing === true ? "granted" : "denied";
     pushConsentCommand("update", analyticsState, adState);
   }
   function pushAnalyticsEvent<K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]): boolean {
     const browser = getWindow();
-    if (!consentSignalNames || !browser || !configuredContainerId() || !hasAnalyticsConsent()) return false;
+    const consent = readCookieConsent();
+    if (!consentSignalNames || !browser || !configuredContainerId() || !(consent?.analytics === true || (consentPolicy === "independent" && consent?.marketing === true) || consentPolicy === "host-authorized")) return false;
     if (!browser.dataLayer) {
       browser.dataLayer = [];
       pushAnalyticsConsentDefault();

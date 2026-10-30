@@ -158,12 +158,29 @@ then captures. Provider payment identifiers of settled payments are carried
 with the typed payment; provider reference rows of settled or terminal unpaid
 payments and their raw payloads stay in the operator archive. Carried settled
 transitions receive `invoicing_cutover` rows, so restored history opens no new
-document duty. A terminal checkout reminder keeps only its key on the carried
-unpaid order. Carried subscriptions stay at static delivery admission `blocked`.
+document duty, and carried fulfilment work can open one only when its shipment
+later hands off. Issue every owed first invoice before capture, because a carried
+paid order will not open one on the target. A terminal checkout reminder keeps
+only its key on the carried unpaid order; this is the one source key that stays
+active. Carried subscriptions stay at static delivery admission `blocked`.
 Renewals of carried subscriptions stay unsupported until a later subscription
-lifecycle carry, so keep the renewal job off for them. Product content columns,
-including allergens, are not carried; restore them from the operator's archive
-before the target serves that catalogue.
+lifecycle carry, so keep the renewal job off for them. A subscription with more
+than one line refuses. A number on a carried relation that a double cannot hold
+refuses, including one in a column that is not carried; a JSON number's trailing
+zeros are not kept. Free-form JSON (order metadata, event and outbox payloads) is
+copied as the source holds it, including source IDs, so complete any source
+erasure first. A product with allergens set refuses, because the target catalogue
+has no allergen column. Product name, description, ingredients and marketing
+content are carried. Other product and SKU content columns, and order tax and net
+breakdowns, stay in the operator's archive. A repeated provider event for a carried
+settled payment is refused as already settled, and one for an archived checkout has
+no target payment to match, so let provider windows close before capture. Carried
+pending work waits until the target composition has its handler. Restore refuses a
+packet over 10,000 rows or 64 MiB, counting the target's own factory rows. The
+capture's census counts rows per relation, not per row class. The capture is
+qualified only for a source on the pinned managed baseline: a missing carried
+relation or a removed column refuses, but an added or retyped column is not
+detected, so requalify the transfer after any later source migration.
 Any managed invoice row refuses, including issued invoices, so a source with invoice
 rows cannot transfer yet. A starter-pack marker, a synthetic test subscription, a
 quote line that disagrees with its price agreement and an order item with no SKU also

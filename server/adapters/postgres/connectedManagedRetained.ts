@@ -37,6 +37,8 @@ const history = new Set([
   "public.accounting_invoices", "public.commerce_idempotency_keys",
   "public.communication_contacts", "public.communication_contact_links", "public.communication_permission_events",
 ]);
+// The pinned baseline does not hold these two; the identity mapping reads them when a source does.
+const absentFromBaseline = new Set(["public.identity_privacy_erasures", "public.customer_subject_lifecycle_events"]);
 const installation = new Set(["auth.schema_migrations", "storage.migrations", "public.schema_migrations",
   "_realtime.extensions", "_realtime.schema_migrations", "_realtime.tenants", "realtime.schema_migrations",
   "supabase_functions.migrations", "supabase_migrations.schema_migrations"]);
@@ -75,13 +77,10 @@ const checkedTerminalUnpaid = (intent: Row | undefined, all: Map<string, Row[]>)
     && attemptLinks(intent, payment, attempts[0], transitions[0])
     && !items.some(item => item.payment_intent_id === intent.id || item.payment_id === payment.id);
 };
-const archiveState = (relation: string, row: Row, captureTimeMs: number, all: Map<string, Row[]>): boolean => {
+const archiveState = (relation: string, row: Row, expiredReceipts: ReadonlySet<unknown>, all: Map<string, Row[]>): boolean => {
   if (relation === "public.payment_provider_settlement_batches") return row.status === "reconciled";
   if (relation === "public.payment_provider_settlement_items") return row.status === "matched";
-  if (relation === "public.commerce_idempotency_keys") {
-    const expiry = typeof row.expires_at === "string" ? Date.parse(row.expires_at) : Number.NaN;
-    return row.status === "completed" && Number.isFinite(expiry) && expiry <= captureTimeMs;
-  }
+  if (relation === "public.commerce_idempotency_keys") return row.status === "completed" && expiredReceipts.has(row.id);
   if (["public.commerce_payments", "public.commerce_payment_intents", "public.commerce_payment_attempts",
     "public.commerce_payment_state_transitions"].includes(relation)) {
     const intent = relation === "public.commerce_payment_intents" ? row
@@ -111,11 +110,26 @@ const digest = (value: string | Uint8Array) => createHash("sha256").update(value
 // Source rows are used for the immediate typed projection only. Neither the
 // capture result nor the connected restore packet contains a source-row archive.
 const projectionRows = new WeakMap<ManagedSourceCapture, Map<string, Row[]>>();
+const priceListEligibility = "snapshot.price_list_eligibility";
 function fail(code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never {
   throw new PostgresTransferError(code, relation);
 }
 const quoted = (value: string): string => value.length <= 63 && !value.includes("\0")
   ? `"${value.replaceAll('"', '""')}"` : fail("invalid_input");
+// The exact decimal a JSON number's text denotes, so a rounded number cannot compare equal.
+const decimal = (text: string): string => {
+  const [mantissa = "", exponent = "0"] = text.toLowerCase().split("e");
+  const [whole = "", fraction = ""] = mantissa.replace("-", "").split(".");
+  const digits = (whole + fraction).replace(/^0+/, ""), kept = digits.replace(/0+$/, "");
+  if (!kept) return "0";
+  return `${text.startsWith("-") ? "-" : ""}${kept}e${Number(exponent) - fraction.length + digits.length - kept.length}`;
+};
+// A number a double cannot hold would reach the target rounded, and restore's census sees only the rounded value.
+const exactNumbers = (relation: string) => (_key: string, value: unknown, context?: { source?: string }): unknown => {
+  if (typeof value === "number" && (!context?.source || decimal(context.source) !== decimal(String(value))))
+    fail("invalid_input", relation);
+  return value;
+};
 
 /** Inspect one managed snapshot and retain only a relation census outside the
  * projection call. Full source history remains in the operator's source archive.
@@ -137,11 +151,8 @@ export async function captureManagedSourceGraph(input: {
           pg_catalog.current_setting('transaction_isolation') AS isolation,
           ${connectedStoreClusterIdentitySql} AS cluster,
           pg_catalog.current_database() AS database,session_user::pg_catalog.text AS login,
-          pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot,
-          pg_catalog.floor(pg_catalog.date_part('epoch', pg_catalog.transaction_timestamp()) * 1000)::bigint::text AS capture_time_ms`)).rows[0];
+          pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") fail("invalid_input");
-      const captureTimeMs = Number(facts.capture_time_ms);
-      if (!Number.isSafeInteger(captureTimeMs)) fail("invalid_input");
       await db.query("SET LOCAL TimeZone = 'UTC'");
       // A login that row security would filter must fail here, not read an empty source.
       await db.query("SET LOCAL row_security = off");
@@ -185,22 +196,30 @@ export async function captureManagedSourceGraph(input: {
         [input.maximumRows + 1])).rows;
         totalRows += raw.length; totalBytes += raw.reduce((sum, row) => sum + Buffer.byteLength(row.value), 0);
         if (totalRows > input.maximumRows || totalBytes > input.maximumBytes) fail("limit_exceeded", name);
-        const parsed = raw.map(row => JSON.parse(row.value) as Row);
+        const parsed = raw.map(row => (active.has(name) ? JSON.parse(row.value, exactNumbers(name)) : JSON.parse(row.value)) as Row);
         sourceRows.set(name, parsed);
         const required = active.has(name) || name === "auth.users" || raw.length > 0 && uncarried.has(name);
         dispositions.push({ relation: name, rows: raw.length, disposition: required
           ? "requires-active-mapping" : "retained-history", reason: required ? "typed target projection required before publication"
           : "operator source archive; no transfer row" });
       }
+      // PostgreSQL decides both time boundaries inside this snapshot, because a JavaScript date drops microseconds.
+      const expiredReceipts = new Set(sourceRows.has("public.commerce_idempotency_keys") ? (await db.query<{ id: string }>(
+        "SELECT id::pg_catalog.text AS id FROM public.commerce_idempotency_keys WHERE expires_at<=pg_catalog.transaction_timestamp()")).rows.map(row => row.id) : []);
       for (const entry of dispositions) if (stateClass.has(entry.relation)) {
         const rows = sourceRows.get(entry.relation) ?? [];
-        const required = rows.some(row => !archiveState(entry.relation, row, captureTimeMs, sourceRows));
+        const required = rows.some(row => !archiveState(entry.relation, row, expiredReceipts, sourceRows));
         entry.disposition = required ? "requires-active-mapping" : "retained-history";
         entry.reason = required ? "typed target projection required before publication" : "operator source archive; no transfer row";
       }
+      // A missing carried relation would read as empty, and its obligations would vanish with no refusal.
+      for (const name of active) if (!sourceRows.has(name) && !absentFromBaseline.has(name)) fail("schema_conflict", name);
       const owners = subjectOwners(sourceRows);
       for (const [relation, rows] of sourceRows)
         for (const row of rows) if (owners(relation, row) === null) fail("invalid_input", relation);
+      sourceRows.set(priceListEligibility, (await db.query<Row>(`SELECT s.id::pg_catalog.text AS subscription_id,l.id::pg_catalog.text AS price_list_id
+        FROM public.subscriptions s JOIN public.price_lists l ON l.status='active' AND l.region_code=s.region_code AND l.currency=s.currency
+          AND l.valid_from<=s.next_cycle_at AND (l.valid_to IS NULL OR s.next_cycle_at<l.valid_to)`)).rows);
       const body = { sourceId: input.sourceId,
         observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot },
         dispositions };
@@ -474,7 +493,11 @@ export async function mapManagedRetainedBusiness(input: {
     subscription_renewal_term_lines: [], commerce_orders: [], commerce_order_items: [],
     commerce_settlement_intents: [], commerce_settlement_transitions: [], outbox_events: [],
     invoicing_cutover: [], communication_recipient_consents: [] };
-  for (const row of products) projected.catalog_products!.push(project("catalog_products", row));
+  for (const row of products) {
+    // The target catalogue has no allergen column, so carrying this product would serve an empty safety list.
+    if (!Array.isArray(row.allergens) || row.allergens.length) fail("unsupported_table", "public.catalog_products");
+    projected.catalog_products!.push(project("catalog_products", row));
+  }
   for (const row of skus) projected.catalog_skus!.push(project("catalog_skus", row));
   for (const row of priceLists) projected.price_lists!.push(project("price_lists", row));
   for (const row of priceEntries) projected.price_entries!.push(project("price_entries", row));
@@ -485,18 +508,17 @@ export async function mapManagedRetainedBusiness(input: {
       || row.shipping_address_id !== null || row.billing_address_id !== null || row.edit_window_hours === null
       || row.payment_method_kind !== null && row.payment_method_kind !== "card" && row.payment_method_kind !== "blik_payid")
       fail("unsupported_table", "public.subscriptions");
-    const lists = priceLists.filter(list => list.status === "active" && list.region_code === row.region_code
-      && list.currency === row.currency && typeof list.valid_from === "string"
-      && Date.parse(list.valid_from) <= Date.parse(String(row.next_cycle_at))
-      && (list.valid_to === null || Date.parse(String(row.next_cycle_at)) < Date.parse(String(list.valid_to))));
+    const lists = (raw.get(priceListEligibility) ?? []).filter(value => value.subscription_id === row.id);
     if (lists.length !== 1) fail("target_conflict", "public.price_lists");
-    projected.subscriptions!.push(project("subscriptions", row, { price_list_id: lists[0]!.id, currency_code: row.currency }));
+    projected.subscriptions!.push(project("subscriptions", row, { price_list_id: lists[0]!.price_list_id, currency_code: row.currency }));
     const currentLines = subscriptionLines.filter(line => line.subscription_id === row.id);
     const activeMethods = methods.filter(method => method.subscription_id === row.id && method.status === "active" && method.active === true);
     if (!currentLines.length || activeMethods.length !== 1) fail("target_conflict", "public.subscriptions");
     const method = activeMethods[0]!, consent = method.consent_snapshot as Row;
     if (!consent || typeof consent !== "object" || Array.isArray(consent) || consent.recurringModel !== "O"
-      || typeof consent.acceptedAt !== "string" || !Number.isFinite(Date.parse(consent.acceptedAt))
+      // With no offset the instant depends on a session's zone; beyond microseconds the target would round it.
+      || typeof consent.acceptedAt !== "string" || !/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}(:?\d{2})?)$/.test(consent.acceptedAt)
+      || !Number.isFinite(Date.parse(consent.acceptedAt))
       || typeof method.provider_mandate_ref !== "string" || !method.provider_mandate_ref
       || typeof method.provider_kind !== "string" || method.provider_kind.length > 64
       || method.client_id !== row.client_id || method.provider_method_ref !== row.payment_method_ref
@@ -560,7 +582,8 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of permissions) {
     const contact = contactById.get(row.contact_id);
     const links = contactLinks.filter(link => link.contact_id === row.contact_id);
-    if (!contact || typeof contact.normalized_email !== "string" || !links.length
+    // The target's evaluator hashes the trimmed lowercase address, so any other form would never match this consent.
+    if (!contact || typeof contact.normalized_email !== "string" || contact.normalized_email !== contact.normalized_email.trim().toLowerCase() || !links.length
       || links.some(link => link.source_table !== "clients" || !identitySource.clients.some(client => client.id === link.source_id))
       || !["granted", "denied", "suppressed"].includes(String(row.state)) || row.channel !== "email")
       fail("unsupported_table", "public.communication_permissions");
@@ -586,7 +609,8 @@ export async function mapManagedRetainedBusiness(input: {
       fail("target_conflict", "public.commerce_payment_intents");
     projected.commerce_orders!.push({ id: row.id, subscription_cycle_id: null, status: row.status,
       created_at: row.created_at, updated_at: row.updated_at, client_id: row.client_id,
-      paid_at: row.status === "paid" ? paidIntents[0]!.updated_at : null,
+      // The transition holds the payment's own time; the intent's updated_at is when it was processed.
+      paid_at: row.status === "paid" ? transitions.find(transition => transition.payment_intent_id === paidIntents[0]!.id)?.occurred_at : null,
       cancelled_at: null, refunded_at: null, metadata: row.metadata,
       currency_code: row.currency, total_amount_minor: row.total_cents, source_kind: row.source_kind,
       source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null });
@@ -630,7 +654,7 @@ export async function mapManagedRetainedBusiness(input: {
       channel_key: payment.provider, status: row.status === "succeeded" ? "settled" : row.status, amount_minor: row.amount_cents,
       currency_code: row.currency, external_ref: row.provider_payment_id,
       open_idempotency_key: `managed-transfer-open:${digest(JSON.stringify([input.capture.sourceId,row.id]))}`,
-      settled_at: row.status === "succeeded" ? row.updated_at : null,
+      settled_at: row.status === "succeeded" ? ownTransitions[0]!.occurred_at : null,
       failure_reason: row.failure_reason, created_at: row.created_at, updated_at: row.updated_at,
       renewal_operation_id: null, renewal_operation_fingerprint: null });
     if (row.status === "failed" || row.status === "succeeded") {
@@ -653,6 +677,9 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of outbox) {
     const order = orderById.get(row.aggregate_id), subscription = subscriptionById.get(row.aggregate_id);
     if (["processed", "discarded"].includes(String(row.status))) {
+      // Discarded work the target would otherwise carry was never done, and the archive gives it no requeue path.
+      if (row.status === "discarded" && (row.event_type === "commerce.order.paid" || row.event_type === "subscription.created"))
+        fail("unsupported_table", "public.outbox_events");
       // The key alone stops the target's reminder scan sending a carried unpaid order a second reminder.
       if (row.event_type === "commerce.checkout_recovery" && row.aggregate_type === "commerce_order"
         && order?.status === "pending_payment" && row.idempotency_key === `checkout_recovery:1h:${row.aggregate_id}`)
@@ -722,7 +749,8 @@ async function replaceTargetRows(packet: ConnectedNativeStoreCapture, table: str
   for (const row of rows) {
     if (Object.keys(row).sort().join("\0") !== [...columns].sort().join("\0")) fail("schema_conflict", table);
     try {
-      const result = await owner.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(p)::pg_catalog.text AS value
+      // Restore compares this text at UTC, so a target session in another zone must not format it.
+      const result = await owner.query<{ value: string }>(`SELECT pg_catalog.set_config('TimeZone','UTC',true) AS zone,pg_catalog.to_jsonb(p)::pg_catalog.text AS value
         FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`, [JSON.stringify(row)]);
       if (result.rows.length !== 1) fail("invalid_input", table);
       normalized.push(result.rows[0]!.value);

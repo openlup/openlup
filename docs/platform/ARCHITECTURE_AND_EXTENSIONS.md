@@ -2428,7 +2428,7 @@ assertions on an owned pinned managed stack and runs the complete three-installa
 journey once; the H1/H2 portable leg needs an already-local Node 24.21.0 image.
 Hosted provider receipts are separate.
 No CDC, generic upsert/delete engine or production activation coordinator is
-introduced; capture/restore's finite table regions are unchanged.
+introduced; this journey leaves capture/restore's finite table regions unchanged.
 
 The executable's `--older-snapshot` mode composes that same finite native graph
 with a [persisted recovery boundary](../../tests/postgres/m14OlderSnapshotRecovery.ts).

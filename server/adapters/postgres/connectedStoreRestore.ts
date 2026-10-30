@@ -209,7 +209,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
       let result: { rows: { value: string }[] };
       try {
         result = await input.targetOwner.query<{ value: string }>(
-          `SELECT pg_catalog.to_jsonb(p)::pg_catalog.text AS value FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`,
+          `SELECT pg_catalog.set_config('TimeZone','UTC',true) AS zone,pg_catalog.to_jsonb(p)::pg_catalog.text AS value FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`,
           [JSON.stringify(value)]);
       } catch (error) {
         if (typeof (error as { code?: unknown })?.code === "string" && /^2[23]/.test((error as { code: string }).code)) fail("invalid_input");
