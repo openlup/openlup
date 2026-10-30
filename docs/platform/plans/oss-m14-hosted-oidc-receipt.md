@@ -1,9 +1,8 @@
 # M14 hosted OIDC recipe receipt
 
 Status: development-preview parcel 10I; working hosted receipt PASS;
-the initial control read was accepted before DCO. A second control read is
-pending for a review-found admission repair; native review and canonical
-verification remain incomplete.
+both control reads were accepted before their DCO commits. Fresh repair-tree
+review and canonical verification remain required. The queue freeze is lifted.
 Code base:
 `6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`.
 Instruction freshness was independently refreshed before handoff at
@@ -27,7 +26,8 @@ after all gates and the current queue freeze are satisfied. Account, IAM,
 network settings, resource deletion, production, release dispatch and publishing
 remain outside authority. No S3 or RDS use is required. Private VM coordination,
 exact endpoints and credentials stay outside public text. A stabilized runner
-declaration/control read is required before DCO. S1 currently blocks ready/enqueue.
+declaration/control read is required before DCO. Delivery follows the current
+programme landing order.
 
 ## Acceptance and sufficient proof
 
@@ -184,6 +184,22 @@ The private load probe was corrected to count actual verifier processes rather
 than waiting shell commands; that avoided a local wait deadlock without changing
 the repository gate. No native repair commit, new-tree review, canonical PASS,
 push or PR is claimed at this read boundary.
+
+Maintainer read CD-M14-63 (2026-10-30) accepted repair tree
+`de00072fe1340fd914888c86a80e5f5987dabdbc` from HEAD `cf912f3d`, with computed
+binary-diff SHA-256
+`d68ddfec46d7a94ce7b02bbc26936080da90248b4b15f11a94e9e58704936f46`.
+The exact matching tree was DCO committed as
+`a6848f29a950735179860887bbb89c8061efecd9`.
+Native prepare then refused carry-over across main's CI changes. The forced
+merge parents are `a6848f29a950735179860887bbb89c8061efecd9` and
+`8ae51d2923bcc13bb4a9a12da646bbeb8edeb684`; the automatic merge tree before
+this note is `0d80f1bb6fce3cd59d6602d39a1d08e89210fcea`. No manual hunk or
+union separator was required. The parcel patch ID excluding this record is
+`70d2d82a5876a9245c0ee5d75d9c55db7e284f2a` against both bases. Thus the
+accepted control bytes are preserved. Current main uses stock PostgreSQL 17 for
+canonical pgTAP; the instruction refresh was read separately from the code base.
+The freeze is lifted and this parcel is first in the hosted landing order.
 
 Self-retro: check vendor provenance and a single execution UID before installing
 or launching a hosted fixture. Ambiguous provisioning can leave unconfirmed
