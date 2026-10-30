@@ -9,6 +9,20 @@ availability, a passing test or a hosted installation. Use the
 [subscription reference](SUBSCRIPTION_REFERENCE.md) for the bounded disposable
 profile and [canonical contracts](CANONICAL_CONTRACTS.md) for public invariants.
 
+## Installed subscription boundary
+
+For an application using a version-matched installed `@openlup/*` set,
+`@openlup/core/subscription` owns the pure cycle and payment-clock decisions.
+Read the installed `@openlup/core/docs/SUBSCRIPTION_ENGINE.md` and declarations
+before changing that behavior. The experimental
+`@openlup/platform/subscriptions` entry supplies native renewal mechanisms and
+ports; it does not mount a runner or choose a provider. The application must
+compose its own authorization, durable store, scheduler and provider bindings.
+Delivery evidence belongs at the durable admission boundary before renewal
+artifacts. An undelivered replacement remains outstanding, and confirming its
+arrival must use observed delivery rather than a payment result. Check the
+installed package version, exports and capability limits before using a seam.
+
 ## Choose the right layer
 
 | Question | Start here |

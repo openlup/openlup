@@ -427,13 +427,15 @@ byte measurements remain distinct from working-tree estimates.
 Outcome: prepare development-preview `0.33.0` for the complete publishable
 inventory: `@openlup/core`, `@openlup/outbox` and `@openlup/platform`.
 The release comparison is `eb1a0584f035774251a8c296e82f3b9ffd68180b`
-(`0.32.0`) through `6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`.
-The independently fetched instruction revision is also
-`6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`; it is not a review receipt.
+(`0.32.0`) through the integrated `origin/main` at
+`4fd84bfead64e11f76e0555117fe072d39807182`.
+The independently fetched initial instruction revision was
+`6700bcfe7cc63eca7d2bbbd466ebf1daa364ef88`; it was not a review receipt.
 Platform adds company-identity and market-pack subpaths and fixes Node scheduler
-stop behavior, requiring a minor set under the package release policy. Core has
-only generated guidance location changes; Outbox has no delta. The policy still
-requires all three packages and exact internal pins to advance together.
+stop behavior, requiring a minor set under the package release policy. Core's
+installed context CLI and generated guidance change; Outbox's generated guidance
+changes. The policy still requires all three packages and exact internal pins
+to advance together.
 
 Bart Roszkowski delegates this S1 lane through the programme coordinator to the
 active supervisor as single writer: local preparation, required read packet,
@@ -448,7 +450,8 @@ Scope follows preparations #440 and #424: versions/locks/pins, three package
 changelogs and source-only histories, versioned READMEs, generated package agent
 context where affected, measured previous-release baselines, consumption of
 `m14-10s`, `m16-r1` and `m16-r2`, and the source-release contract snapshot.
-S1 adds no runtime, API, SQL, dependency selection or release workflow change.
+S1's release preparation adds no runtime, API, SQL, dependency selection or
+release workflow change; the integrated main includes Core context CLI behavior.
 Caps remain unchanged unless an actual overflow needs a measured increase of
 `ceil(measurement * 1.02)` in the stabilized maintainer read. The complete source
 interval also includes reference-source portability/recovery/local self-host
@@ -476,7 +479,8 @@ nothing. Load admission and one heavy stage per machine remain binding.
 Registry checkpoint: each package's highest version and `latest` are `0.32.0`.
 Downloaded tarballs pass their registry SHA-512 integrity: Core 182,424 B,
 Outbox 40,849 B, Platform 1,967,831 B. These are prior-release baselines,
-not candidate measurements. No native review or repair cycle has run.
+not candidate measurements. The first candidate later passed two native FULL
+reviews without a repair cycle; these figures precede main integration.
 
 Pre-read evidence: all three serial package builds pass. Working-tree previews
 fit every unchanged content/class/file/byte cap and all 19 browser-entry caps:
@@ -505,12 +509,52 @@ the private read packet; the pre-DCO policy result intentionally retains these
 two unanswered obligations. History rotation also corrected the existing link
 to archived `0.30.0` notes. No required failure is waived.
 
-Stopped for the stabilized release-control read before DCO. Native review cycles,
-queue retries and review findings remain zero; canonical verification, PR,
-receipt and merge have not started. After the recorded read, the remaining route
-is the committed review and delivery sequence above, not publication dispatch.
+The first release-control read accepted tree `a99ad962e3099da4017153eb3d8eb347f1d9e879`
+and diff SHA-256 `511d806256bdbeefcbae06ec67757f9a004ab088ad5e7211226b24da0efddadb`.
+It was DCO committed as `41bcc2a3f7a246041d16e67a51e37d88250aeca5`
+with both accepted documentation-impact trailers. Two fresh native FULL reviews
+passed with no findings and no repair cycles. No PR, receipt or queue retry exists.
+
+The first complete canonical verification passed phases 1–9, then failed a Core
+consumer test because supervisor-supplied `TMPDIR` was inside the checkout.
+The corrected full rerun used the macOS user temp directory; its preflight
+stopped at build because `origin/main` advanced to `4fd84bfe` and carry-over
+conflicted. Both reports remain in ignored S1 scratch; neither is a passing
+canonical verification.
+
+Main's #450 adds installed `openlup-context` routing, nested-section and opt-in
+package-code search behavior to Core, with tests, generated guidance and owner
+documentation. Its Core Unreleased note moves into `0.33.0`; README and generated
+contexts describe the integrated installed behavior. The in-progress `--no-commit`
+merge resolves Core CHANGELOG and Core/Outbox generated context conflicts, and
+regenerates the source-release snapshot. CD-M14-30 cannot waive a new maintainer
+read: the merge required manual resolutions in release bytes, so its
+conflict-free condition fails. Its old-base patch-id excluding this record is
+`97f76b9b6d216528ef9378c67ff2c850d183727d`; the integrated patch-id on
+`4fd84bfe` is `0ec0b62f92ca51eb3db5ba3d247ad8e044f8446f`, also unequal.
+The merge parents are `41bcc2a3f7a246041d16e67a51e37d88250aeca5` and
+`4fd84bfead64e11f76e0555117fe072d39807182`. The old native reviews cover
+the first candidate only. Stabilize the integrated tree, request another
+release-control read, then
+DCO commit the merge, obtain two fresh FULL reviews and rerun canonical proof.
+
+Integrated pre-read checks: the refreshed source snapshot, catalogue navigation,
+documentation impact policy and exact package manifests pass. Strict typecheck
+passes all five projects with zero unresolved edges or consumer errors; lint has
+zero errors and the same 33 warnings. Serial package builds pass. Working pack
+previews fit every unchanged cap: Core 183,160 B / 229 files, Outbox 41,496 B /
+42 files, Platform 1,985,197 B / 2,720 files, 9,254,969 B unpacked and
+1,714,668 B code gzip. All 19 browser entries pass. No CD-M15-6a cap increase
+is needed. These are previews before a new read and cold committed proof.
+The four release preparation suites pass all 75 tests on the integrated tree.
+The merged Core CLI and generator behavior remains for post-read canonical
+verification; no separate pre-read qualification is claimed.
 
 Self-retro: about 16 minutes of resource admission dominated preparation; the
 existing policy link check caught the archive-link correction before the read.
 Reusing this task record and existing release tools avoided new public files or
 verification machinery. Keep history rotation and link checking together.
+The failed consumer test exposed an unnecessary TMPDIR override; using the
+system user temp directory fixed that setup error. Main movement invalidated
+the first proof attempt and review candidate; merge preflight caught it before
+submission.

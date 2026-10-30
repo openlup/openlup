@@ -6,44 +6,7 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"adopt-package","source":"README.md","heading":"Use in an application","startLine":141,"endLine":172,"sha256":"82d8e9de1e05c9df057275762e5edab37fadbfd8be4a34c2ad3266b3ca139ea8"},{"id":"extend-platform","source":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":495,"endLine":516,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"}] -->
-
-## adopt-package: Adopt or upgrade the package
-
-<!-- openlup-context {"id":"adopt-package","source":"README.md","heading":"Use in an application","startLine":141,"endLine":172,"sha256":"82d8e9de1e05c9df057275762e5edab37fadbfd8be4a34c2ad3266b3ca139ea8"} -->
-## Use in an application
-
-From your application's root, with Node 24 and npm 11.19.0:
-
-```sh
-npm install --save-exact @openlup/core@<version>
-```
-
-Replace `<version>` with the exact published version selected for your complete
-`@openlup/*` package set. This source README does not establish registry
-publication.
-
-Read the installed `AGENTS.md`, then compose the [typed wiring example](AGENTS.md#wiring-example)
-with your application's own ports and options. Inspect the shipped sources and
-declarations for the exact version you installed. A missing seam needs an
-upstream proposal under your application's submission authority; the dependency
-guide grants no permission to publish an issue or change your application.
-Keep every installed `@openlup/*` package on the same exact set version.
-
-The package owns its engine; application handlers, policies, ports, composition
-and compatible native adapters remain yours. Use declared public exports, without
-autonomous package patching, vendoring, shadowing or copied-engine replacement.
-Follow the [using rules](AGENTS.md#using-this-package-in-an-application) for a
-missing seam and compatible recovery. First adoption and upgrade compare the
-actual npm artifact with current bindings and nominated extensions, preserving
-native effects and pending work. The public
-[adopter recipe](https://github.com/openlup/openlup/blob/main/docs/platform/adopter-kit/README.md#adopt-or-upgrade-a-package)
-is optional source guidance to select at a deliberate revision and compare with
-your installed contract; later guide changes do not alter this version or install
-application controls. Existing tests and the unchanged wiring example do not
-certify a complete module absorption or deployed adoption.
-
-<!-- /openlup-context -->
+<!-- openlup-context-inventory [{"id":"extend-platform","source":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":495,"endLine":516,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"},{"id":"subscription-layer-delivery","source":"docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"}] -->
 
 ## extend-platform: Choose an extension seam
 
@@ -124,5 +87,24 @@ the two are one rule with two spellings, and they must move together.
 
 A shift that pushes the instant past the representable timestamp range answers
 `invalid_timestamp` rather than returning an invalid date.
+
+<!-- /openlup-context -->
+
+## subscription-layer-delivery: Locate pure engine and durable delivery boundaries
+
+<!-- openlup-context {"id":"subscription-layer-delivery","source":"docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"} -->
+## Installed subscription boundary
+
+For an application using a version-matched installed `@openlup/*` set,
+`@openlup/core/subscription` owns the pure cycle and payment-clock decisions.
+Read the installed `@openlup/core/docs/SUBSCRIPTION_ENGINE.md` and declarations
+before changing that behavior. The experimental
+`@openlup/platform/subscriptions` entry supplies native renewal mechanisms and
+ports; it does not mount a runner or choose a provider. The application must
+compose its own authorization, durable store, scheduler and provider bindings.
+Delivery evidence belongs at the durable admission boundary before renewal
+artifacts. An undelivered replacement remains outstanding, and confirming its
+arrival must use observed delivery rather than a payment result. Check the
+installed package version, exports and capability limits before using a seam.
 
 <!-- /openlup-context -->
