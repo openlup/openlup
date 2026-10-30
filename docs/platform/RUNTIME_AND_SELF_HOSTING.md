@@ -150,6 +150,8 @@ mode-600 files, mounted read-only into the application containers. Extra fields,
 mutable images, non-HTTPS or IP-literal origins, reserved DNS names, remote
 databases and source drift refuse. The origin permits only the root path, no
 userinfo, query or fragment, and the default HTTPS port or explicit 443.
+Admission rejects even empty userinfo syntax before URL parsing, then normalizes
+accepted inputs to the canonical origin before the witness appends route paths.
 The receipt records the HTTPS scheme and public-DNS class, never the hostname.
 No credential, private path or endpoint is included in the public receipt.
 

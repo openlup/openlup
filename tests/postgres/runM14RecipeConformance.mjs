@@ -56,7 +56,7 @@ export function loadCredentials(path, target) {
     if (target === "hosted-node") {
       if (Object.keys(value).sort().join() !== ["schemaVersion", "target", "disposable", "region", "origin", "localNodeImage", "database", "certificatePath", "keyPath", "sourceCommit", "sourceTree"].sort().join()) refuse("hosted_node_fields_refused");
       if (!/^[a-z]{2}(?:-[a-z]+)+-[0-9]+$/u.test(value.region)) refuse("region_required");
-      if (typeof value.origin !== "string" || !/^https:\/\/[^/?#\\]+\/?$/iu.test(value.origin)) refuse("public_https_origin_required");
+      if (typeof value.origin !== "string" || !/^https:\/\/[^/?#\\@]+\/?$/iu.test(value.origin)) refuse("public_https_origin_required");
       let origin;
       try { origin = new URL(value.origin); } catch { refuse("public_https_origin_required"); }
       const hostname = origin.hostname;
@@ -65,6 +65,7 @@ export function loadCredentials(path, target) {
       if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash
         || (origin.port && origin.port !== "443") || isIP(hostname.replace(/^\[|\]$/gu, "")) || !dnsHostname
         || /(?:^|\.)(?:invalid|test|example|localhost|local)$/u.test(hostname)) refuse("public_https_origin_required");
+      value.origin = origin.origin; // Keep accepted root-slash/default-port forms safe for witness path concatenation.
       if (!/^sha256:[a-f0-9]{64}$/u.test(value.localNodeImage ?? "")) refuse("local_node_image_required");
       if (!/^[a-f0-9]{40}$/u.test(value.sourceCommit ?? "") || !/^[a-f0-9]{40}$/u.test(value.sourceTree ?? "")) refuse("source_identity_required");
       const database = new URL(value.database?.connectionString);

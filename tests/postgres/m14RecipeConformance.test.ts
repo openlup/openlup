@@ -158,7 +158,9 @@ it("admits a declared hosted Node target with a neutral region and preserves Paa
   const original = f.config.origin;
   for (const origin of [`${original}:443`, `${original}/`]) {
     f.config.origin = origin; f.save();
-    expect(loadCredentials(f.path, "hosted-node")).toEqual(f.config);
+    const admitted = loadCredentials(f.path, "hosted-node");
+    expect(admitted).toEqual({ ...f.config, origin: original });
+    for (const path of ["/api/state", "/api/dispatch"]) expect(new URL(`${admitted.origin}${path}`).pathname).toBe(path);
   }
   f.config.origin = original; f.save();
   expect(initialReceipt("hosted-node")).toMatchObject({ nodeHosts: { status: "PENDING" },
@@ -171,6 +173,7 @@ it("refuses insecure hosted origins, mutable images, remote DBs and public TLS k
   for (const origin of ["http://host.192-0-2-1.sslip.io", "https://192.0.2.1", "https://[::1]",
     "https://host.example.invalid", "https://host.example.test", "https://host.example.example",
     "https://host.example.localhost", "https://host.example.local", "https://localhost",
+    "https://@host.192-0-2-1.sslip.io", "https://:@host.192-0-2-1.sslip.io",
     `${f.config.origin}/path`, `${f.config.origin}/path/..`, `${f.config.origin}/?q=1`, `${f.config.origin}/#fragment`,
     `${f.config.origin}?`, `${f.config.origin}#`,
     withUserinfo.href.replace(/\/$/u, ""), "https://host.192-0-2-1.sslip.io:444"]) {

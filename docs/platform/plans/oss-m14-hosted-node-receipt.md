@@ -1,8 +1,8 @@
 # M14 hosted Node/OCI recipe receipt
 
 Status: development-preview parcel 10H, hosted Node/OCI working receipt PASS;
-both control reads accepted and exact accepted source DCO-committed;
-forced main integration, native review and canonical verification in progress.
+both initial control reads accepted and exact accepted source DCO-committed;
+cycle-zero full reviews found two admission defects; repair control read pending.
 Code/review base and current policy pin, checked independently:
 `4fd84bfead64e11f76e0555117fe072d39807182`.
 
@@ -220,3 +220,42 @@ The source's prior 33 warnings are unchanged. The integration lint gate waited
 scan as an archive after scanning so later source traversal sees one checkout;
 this follows the existing local-verification review lesson. No runtime,
 control or acceptance change was made during that wait.
+
+
+Cycle-zero full native review bound to head
+`a2b643f89575520143f719e011a6a50902431bcb`, tree
+`e7630f91944c39f618b22b67fc1d5dbee789d370`, base `9ad1534a`.
+Two new independent fresh FULL contexts completed and both returned FAIL;
+reports and execution observations are retained in private task evidence and
+recorded through the native interface. Open material cards are `HNR-A1` and
+`M14-HOST-EMPTY-USERINFO`. Native verification refused missing PASS coverage.
+There is one completed native candidate evaluation and no repair-cycle charge
+yet. No continuation, canonical verify, push, PR or queue action occurred.
+
+`HNR-A1` demonstrates that admitted root-slash origins become double-slash
+request paths at the existing witness, and actual runtime routing returns 404.
+`M14-HOST-EMPTY-USERINFO` demonstrates that URL parsing removes empty userinfo
+syntax before username/password truthiness checks, violating the declared
+refusal. The unsigned repair rejects raw authority delimiters, then returns the
+canonical URL origin to the unchanged witness. Existing admission regressions
+now assert canonical route consumption for root/default-port forms and refuse
+both empty-userinfo forms. Runtime guidance explains both operations. The
+original hosted origin is already canonical, so its executed lifecycle path is
+unchanged; host witness and actor source are unchanged and no VM rerun is
+required for this input-only repair. PaaS stays pending by design. The control
+change needs a stabilized read before DCO, followed by two NEW FULL reviewers
+closing both cards in the same native history and canonical verification.
+
+Self-retro: URL normalization can erase forbidden syntax while leaving accepted
+root slashes unsafe for string concatenation. Check raw authority syntax first,
+then supply one canonical origin to the existing caller. This resolves both
+observed mechanisms without a new host abstraction or dependency.
+
+Unsigned repair proof passed: strict five-project typecheck (zero unresolved
+edges/errors), full lint (zero errors, 33 existing warnings), policy/docs
+regeneration, inventory/neutrality/structural/whitespace and 11 selected focused
+cases (one unchanged PG catalogue case unselected). The repair lint gate waited
+781 seconds. The exact staged tree is redacted-secret-scanned before each WIP
+ref. Both native finding cards remain open pending the required control read,
+DCO and two new fresh FULL reviews. The existing actor/host blobs and VM cleanup
+remain unchanged; no repeat hosted run or external write occurred.
