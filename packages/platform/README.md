@@ -254,10 +254,13 @@ no consent command is pushed and optional event admission returns false, even
 with browser access, a container and stored consent; deployment attempts remain
 independent. Consent commands seed default before update and
 use array-like arguments; advertising grants read marketing consent at push time.
-Update commands carry the caller-supplied consent decision; the host owns
-authorization and must not use this helper to create consent. The optional event
-path separately checks the injected stored analytics flag and configured
-container; that local flag is an admission input, not consent authority.
+By default, update commands carry the caller-supplied analytics decision and
+optional events require the stored analytics flag. With
+`allowMarketingWithoutAnalytics: true`, updates additionally require each
+purpose’s stored flag, and optional events accept either stored analytics or
+marketing consent. Both modes require a configured container. The host owns
+authorization and must not use this helper to create consent; stored flags are
+admission inputs, not consent authority.
 Revocation denies every signal. Sinks are attempted independently with failure
 isolation and no replay of observations made before consent. Admission booleans
 mean synchronous local acceptance only, never delivery or business acknowledgement.
