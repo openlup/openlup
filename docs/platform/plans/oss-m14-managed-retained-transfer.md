@@ -726,3 +726,7 @@ excluding this task record, was
 `8013f30cf60b56fc2589f89335bc8832e0e10da7` against both the old base
 and the new main. This is the CD-M14-30 mechanical carry-over case; the
 integrated tree requires fresh full native review.
+Main's new generated agent-context check also required refreshing two line-span
+metadata values after this parcel's `DATA_AND_MIGRATIONS.md` paragraph moved
+the unchanged additive-migration excerpt. The excerpt bytes and SHA-256 did
+not change; this is a docs-only generated-metadata correction.
