@@ -7,20 +7,22 @@ import { fileURLToPath } from 'node:url';
 // These canonical owner sections also appear in the public documentation routes.
 export const routes = {
   core: [
-    ['adopt-package', 'Adopt or upgrade the package', 'packages/core/README.md', 'Use in an application'],
     ['extend-platform', 'Choose an extension seam', 'docs/platform/ARCHITECTURE_AND_EXTENSIONS.md', 'Extension seams'],
     ['canonical-status', 'Map provider status safely', 'docs/platform/CANONICAL_CONTRACTS.md', 'Canonical status'],
     ['late-payment-cycle', 'Handle late payment without compressing the cycle', 'packages/core/docs/SUBSCRIPTION_ENGINE.md', 'A late payment shifts the cycle; it never compresses it'],
+    ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'docs/platform/SUBSCRIPTION_WORKFLOWS.md', 'Installed subscription boundary'],
   ],
   outbox: [
     ['configure-dispatch', 'Configure dispatch and diagnostics', 'packages/outbox/README.md', 'Dispatch configuration and optional diagnostics'],
     ['install-outbox', 'Install SQL and enqueue transactionally', 'packages/outbox/README.md', 'PostgreSQL installation and transactions'],
+    ['outbox-retry-dispatch-handler-idempotency', 'Keep handler effects idempotent across retries', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
   ],
   platform: [
-    ['compose-host', 'Supply application host bindings', 'packages/platform/README.md', 'What the application supplies'],
-    ['install-ledger', 'Install the job ledger', 'packages/platform/README.md', 'Job-run ledger SQL'],
-    ['select-peers', 'Select optional provider peers', 'packages/platform/README.md', 'Optional peers'],
     ['delivery-alignment', 'Preserve subscription cycle alignment after late delivery', 'docs/platform/CANONICAL_CONTRACTS.md', 'Subscription delivery alignment', 'The native fulfillment translation uses'],
+    ['migration-data-ownership', 'Keep adopter data in its owned schema', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Data ownership'],
+    ['migration-forward-path', 'Follow the ordered additive migration path', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Additive forward release path', 'The release producer refuses'],
+    ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
+    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'docs/platform/CANONICAL_CONTRACTS.md', 'Provider adapters', '### Adapter classes and example templates'],
   ],
 };
 
