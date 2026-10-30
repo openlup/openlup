@@ -189,14 +189,12 @@ defines input, TLS, mutation and pending-receipt limits. Its execution entry is
 part of the ordinary closed public command inventory; it adds no default hosted
 or destructive CI target.
 
-The [managed retained transfer witness](tests/postgres/connectedManagedRetained.test.ts)
+The [managed source projection witness](tests/postgres/connectedManagedRetained.test.ts)
 uses a pinned disposable local managed stack and a fresh qualified PG16 target.
-For the private history object, compare each captured field with its source
-row, checking a fixed marker and recorded fact for every minimised field;
-then check byte-exact readback of own-subject invoice snapshots and catalog
-rows, plus subject redaction. Compare active native
-rows separately, because sidecar minimisation must not change their retained
-obligations. This witness does not qualify hosted managed data.
+It compares typed target rows and obligations with the restore packet, checks
+that history-only source rows have no target representation, and exercises
+refusals for unknown and uncarried state. Full managed history stays in the
+operator's source archive. This witness does not qualify hosted managed data.
 
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by
@@ -2909,8 +2907,9 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   or media visibility → use the existing bootstrap observer and exact domain
   SQL states before composing retirement and access expectations.
 
-- 2026-10-30, M14 managed retained privacy: enforce the data policy
-  symmetrically at write and read; default-deny conditional fields.
+- 2026-10-30, M14 managed source transfer: when a full-row history archive
+  cannot support complete erasure, carry finite typed obligations and refuse
+  unrepresented state. Keep source history in the operator's own archive.
 
 - 2026-10-29, documentation routing: duplicating a capability inventory in
   ownership selectors → route to its canonical section and specialize the
