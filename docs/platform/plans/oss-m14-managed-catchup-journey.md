@@ -110,9 +110,27 @@ time from run start; it is no older-snapshot RPO/RTO or hosted qualification.
 
 The pinned predecessor still has open privacy readback work; exact byte equality
 against this fixture's captured sidecar does not settle generic sidecar admission.
-The later predecessor integration and complete native review/verification remain
-mandatory before delivery. No native review cycle or parcel delivery retry has
-begun. Self-retro: the fixture failures came from assuming the
+Cycle-0 native review on accepted tree `063403a7` returned two material cards:
+`D32-8D2-MEDIA-BINDING` found that the fixture-created physical media descriptor
+was not tied to final captured Storage metadata, and
+`8D2-CONSENT-FINAL-READBACK` found that the changed permission state was not
+independently asserted in the retained sidecar and both targets. The narrow
+test-only repair checks the sealed source's Storage identity/key and consent,
+then the final retained row and first/second target consent state before
+activation. This preserves the existing transfer seam and adds no engine. The
+focused rerun in
+`.context/scratch/oss-m14-connected-catchup/journey-UT1UkJ/report.json`
+passed on repair source tree `649fc1d7aa0877068b41886069f61404d7c54eb3`:
+44 retained rows / 78,358 bytes, 82 native tables / 190 rows, the same sidecar
+digest at both targets, 21 refusal cases, takeover, two accepted effects
+recovered, one uncertain operation fenced and zero cleanup failures. The
+118,907 ms selected-target mark is local fixture elapsed time from run start.
+The changed code needs a new exact-tree maintainer read before DCO. The later
+predecessor integration and complete native review/verification remain
+mandatory before delivery. No parcel delivery retry has begun. Self-retro:
+the earlier fixture failures came from assuming the
 predecessor's table count, an unrestricted managed Storage DML path, optional
 sidecar evidence and singleton row order. Directly checking the selected
 predecessor and the fixture gate fixed each without adding a production API.
+The review then exposed two self-referential fixture comparisons; sealed-source
+facts now anchor the existing target readbacks.

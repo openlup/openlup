@@ -163,11 +163,31 @@ export async function managedFirstLeg(input: {
     assert(productRows.some(row => row.value.includes(finalChange.addedProduct)));
     assert(!productRows.some(row => row.value.includes(managedFixtureIds.deletedProductId)));
     assert.equal(mappedFinal.retained.rows.filter(row => row.relation === "public.admin_audit_events").length, 1);
+    const sourceConsent = (await finalReader.query("SELECT state FROM public.communication_permissions WHERE contact_id=$1",
+      [managedFixtureIds.contactId])).rows;
+    assert.deepEqual(sourceConsent, [{ state: "denied" }]);
+    const retainedConsent = mappedFinal.retained.rows.filter(row => row.relation === "public.communication_permissions");
+    assert.equal(retainedConsent.length, 1);
+    assert.equal(JSON.parse(retainedConsent[0]!.value).state, "denied");
+    const contact = (await finalReader.query("SELECT normalized_email FROM public.communication_contacts WHERE id=$1",
+      [managedFixtureIds.contactId])).rows;
+    assert.equal(contact.length, 1);
+    const consentFingerprint = createHash("sha256").update(contact[0]!.normalized_email).digest("hex");
+    assert.deepEqual((await input.final.runtime.query(`SELECT state FROM public.communication_recipient_consents
+      WHERE recipient_fingerprint=$1 AND purpose='marketing_newsletter'`, [consentFingerprint])).rows,
+    [{ state: "denied" }]);
     const earlyStorage = mappedEarly.retained.rows.filter(row => row.relation === "storage.objects");
     const finalStorage = mappedFinal.retained.rows.filter(row => row.relation === "storage.objects");
     assert.equal(earlyStorage.length, 1);
     assert.equal(finalStorage.length, 1);
     assert.equal(finalStorage[0]!.rowIdentity, earlyStorage[0]!.rowIdentity);
+    const sourceStorage = (await finalReader.query("SELECT id::text,bucket_id,name,owner_id::text FROM storage.objects")).rows;
+    assert.equal(sourceStorage.length, 1);
+    assert.equal(sourceStorage[0]!.bucket_id, "retained");
+    assert.equal(sourceStorage[0]!.name, "new.txt");
+    assert.equal(sourceStorage[0]!.owner_id, managedFixtureIds.userId);
+    assert.equal(finalStorage[0]!.rowIdentity, JSON.stringify([sourceStorage[0]!.id]));
+    assert.equal(finalChange.newObject.key, `managed-storage/${sourceStorage[0]!.bucket_id}/${sourceStorage[0]!.name}`);
     const deniedHistory = await createFilesystemTransferObjects({ root: join(input.scratch, "managed-final-history"),
       maximumObjectBytes: 64 * 1024 * 1024, access: "public" });
     await assert.rejects(deniedHistory.read(finalTransfer.retainedObject.key), { code: "denied" });
@@ -192,7 +212,7 @@ export async function managedFirstLeg(input: {
     requireAgreement(activation);
     return { transfer: finalTransfer, firstStore, firstMedia, finalMediaObject: finalChange.newObject, readback,
       obligations: { subscriptionId: managedFixtureIds.subscriptionId, failedIntentId: managedFixtureIds.intentId,
-        paidIntentId: managedFixtureIds.paidIntentId, paidOrderId: managedFixtureIds.paidOrderId },
+        paidIntentId: managedFixtureIds.paidIntentId, paidOrderId: managedFixtureIds.paidOrderId, consentFingerprint },
       report: { source: "pinned local managed installation", sourceId: managedFixtureIds.sourceId,
         preliminary: { captureSha256: early.sha256, counts: count(mappedEarly.packet),
           sidecarSha256: earlyTransfer.retainedObject.sha256, sidecarRows: mappedEarly.retained.rows.length,

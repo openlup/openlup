@@ -461,6 +461,9 @@ try {
   mark("canonicalGraphAndFilesystemPublished");
   const managedSidecar = managedFirst ? await carryManagedSidecar({ scratch, first: managedFirst }) : undefined;
   if (managedSidecar) mark("managedSidecarReadBackAtSecondTarget");
+  if (managedFirst) assert.deepEqual((await target.runtime.query(`SELECT state FROM public.communication_recipient_consents
+    WHERE recipient_fingerprint=$1 AND purpose='marketing_newsletter'`,
+  [managedFirst.obligations.consentFingerprint])).rows, [{ state: "denied" }]);
   let agreement: Awaited<ReturnType<typeof catchupServing>> | undefined;
   const drain = catchup ? catchupDrain() : undefined;
   if (catchup) {
