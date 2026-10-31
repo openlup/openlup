@@ -558,3 +558,94 @@ The failed consumer test exposed an unnecessary TMPDIR override; using the
 system user temp directory fixed that setup error. Main movement invalidated
 the first proof attempt and review candidate; merge preflight caught it before
 submission.
+
+
+## Package-set release preparation s034 — 31 October 2026
+
+Outcome: prepare development-preview `0.34.0` for the complete publishable
+inventory: `@openlup/core`, `@openlup/outbox` and `@openlup/platform`.
+The comparison is the `0.33.0` release commit
+`591a8ec46d3cd74f7047b2a44ea4a50649158690` through main at
+`aa745acdb2bed92e7d2b76747f02032963e3a58e`, also the current instruction
+revision, separate from the forthcoming code-review base.
+
+Bart Roszkowski delegates this release lane through the programme coordinator
+to the active supervisor as single writer: local preparation, stabilized read,
+DCO after that read, two fresh parallel FULL reviews, canonical verification,
+push, PR, receipt, queue and merge after required gates. The coordinator owns
+release dispatch; the owner retains protected approval. Publication, npm account
+operations, credentials, settings, deployment, adopter activation and other
+worktrees or branches are excluded. Three automatic repair cycles apply; any
+further continuation requires the owner route. No release is dispatched here.
+
+Measured package scope: ten changed Platform paths, two production files, one
+marketing test, four API reports, one fragment, README and generated context.
+The optional measurement consent policy changes the public API, requiring a
+minor set. The README also documents the existing minimum peer-release age
+in the consumer proof; the context delta updates source line metadata only.
+Core and Outbox have no package changes since `0.33.0`. No migration changed.
+Reference-source transfer, recovery and storage work outside the packages is
+not a shipped package capability of this set and receives no release claim.
+
+Smallest complete scope follows #456: coherent versions, exact internal pins
+and lock carriers; consume `independent-measurement-consent`; rotate packed
+changelogs with prior sections preserved in source history; update versioned
+README/context text; refresh prior-release baselines and the source contract.
+Use the existing bump, history, context and snapshot routes, with no new
+mechanism, API, SQL, dependency selection or workflow. Raise a cap only after
+actual overflow, to `ceil(measured * 1.02)`, included in the required read.
+
+Acceptance: all three manifests and locks at `0.34.0`, exact internal pins,
+empty Unreleased sections, accurate consent-mode and host-duty notes, consumed
+fragment, byte-preserved historical note bodies, verified `0.33.0` baselines,
+and fresh source snapshot. Existing bump, fragment, artifact-size and source
+preparation witnesses distinguish wrong pins, lost history, stale snapshots
+and cap overflow; metadata preparation requires no new test mechanism.
+
+Proof plan: inventory/policy/navigation, neutrality, structural and redacted
+secret checks, focused release suites, serialized package artifact and browser
+measurements, strict typecheck and lint before the stabilized maintainer read.
+Snapshot the exact tree privately without DCO and stop for that read. After
+resumption: DCO of that tree, sensitive native prepare, two fresh full reviews,
+canonical `node scripts/verify-local.mjs --pgtap` including cold package gates
+with system TMPDIR, then required source/group checks and queue admission.
+After merge, verify the actual-main set and prepare notes and exact dispatch
+inputs, with publication still reserved. Release-control errors can misstate
+consumer upgrade actions or refuse preflight; before publication, revert this
+preparation if necessary. Mandatory failures block delivery.
+
+
+Pre-read evidence: npm reports `0.33.0` as latest and highest for each package.
+All three tags resolve to the previous release commit above. Fetched tarballs
+pass registry SHA-512 integrity: Core 183,171 B, Outbox 41,549 B and Platform
+1,986,429 B. These replace only the `0.32.0` baseline records; fixed code,
+docs, tarball, unpacked, file and browser caps remain unchanged.
+
+All three serialized builds pass. Working artifact previews pass content,
+growth and every unchanged cap: Core 183,113 B / 229 files; Outbox 41,533 B /
+42 files; Platform 1,985,626 B / 2,720 files, 9,257,083 B unpacked,
+1,715,302 B code gzip and 55,395 B docs gzip. All 19 browser entries pass.
+These are working previews, not committed cold proof or publication evidence.
+The four existing release-preparation suites pass all 75 tests (5.57 s).
+Strict typecheck passes all five projects with zero unresolved edges and
+consumer errors. Lint passes with zero errors and 33 existing warnings.
+The seven serialized pre-read stages take 84 seconds after 181 seconds of
+initial resource admission waiting. No cap raise or growth explanation is needed.
+
+Set/pin, empty-Unreleased and fragment-consumption checks pass. Prior released
+note bodies and existing history remain byte-identical, with only the packed
+EOF section separator normalized. Inventory, source snapshot, structural,
+tree/UI neutrality and staged/full-history redacted secret checks pass.
+Navigation regeneration adds no public path or catalogue row. Three of five
+documentation obligations are answered by adjacent package READMEs. The two
+remaining scoped trailers, planned for DCO after the required read, explain
+that Outbox's exact peer/version and the root lock's workspace versions/pins
+change no contributor command, dependency selection, export, runtime or SQL.
+Their owner section remains correct. The pre-DCO policy result intentionally
+retains those two unanswered obligations; no mandatory failure is waived.
+No DCO, native review, canonical verification, PR, receipt or release is claimed
+at this read checkpoint. Automatic repair cycles consumed: zero of three.
+
+Self-retro: the three-minute initial admission wait dominated the 84-second
+pre-read stages. Reusing the bump and history-preservation route, existing
+artifact discriminators and one task section avoided new release machinery.
