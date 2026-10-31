@@ -157,16 +157,11 @@ for (const name of ["@openlup/core", "@openlup/platform"]) {
 `);
 }
 
-// Temporary landing window: R3 makes this complete group mandatory.
-const CHANNEL_ENTRIES = ["channels", "channels/contracts", "channels/server"] as const;
-
 export function assertExportInventory(consumer: string): readonly string[] {
   const metadata = JSON.parse(readFileSync(join(consumer, "node_modules/@openlup/platform/package.json"), "utf8"));
-  const entries = CHANNEL_ENTRIES.some(name => Object.hasOwn(metadata.exports, `./${name}`))
-    ? [...NON_ADAPTER_ENTRIES, ...CHANNEL_ENTRIES] : NON_ADAPTER_ENTRIES;
-  const expected = [...entries, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
+  const expected = [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
-  return entries;
+  return NON_ADAPTER_ENTRIES;
 }
 
 
