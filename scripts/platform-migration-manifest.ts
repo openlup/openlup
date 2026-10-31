@@ -54,6 +54,10 @@ export type PlatformMigrationCatalog = { migrations: AddedMigration[]; errors: s
 
 export function isPlatformMigrationPath(file: string): boolean { return PLATFORM_FILE_RE.test(file); }
 export function isQualifiedPlatformMigrationPath(file: string): boolean { return QUALIFIED_FILES.has(file); }
+export function isChannelIngestMigrationPath(file: string): boolean {
+  return ["db/platform/migrations/", "supabase/migrations/"].some(rail =>
+    ["20261030121000_channel_retained_basis.sql", "20261030122000_channel_purchased_source.sql"].some(name => file === rail + name));
+}
 export function sha256(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
