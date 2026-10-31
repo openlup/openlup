@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
@@ -806,9 +806,12 @@ export function changedForwardApprovals(before: Buffer, after: Buffer): string[]
 export function assertForwardApproval(root: string, base: string, head: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
-  if (before.equals(after) && !channelIngestShapes.some(shape => !blob(root, base, shape.path) && blob(root, head, shape.path))) return;
+  const introducedChannel = channelIngestShapes.filter(shape => !blob(root, base, shape.path) && blob(root, head, shape.path));
+  if (before.equals(after) && introducedChannel.length === 0) return;
   const previous = readReviewedForwardRegistry(before);
-  if (previous.channelIngestForwards === undefined && channelIngestShapes.some(shape => !blob(root, base, shape.path) && blob(root, head, shape.path))) throw new Error("reviewed M17 channel class must be approved separately before its SQL");
+  if (previous.channelIngestForwards === undefined && introducedChannel.length > 0) throw new Error("reviewed M17 channel class must be approved separately before its SQL");
+  const current = readReviewedForwardRegistry(after);
+  for (const { path } of introducedChannel) if (!current.channelIngestForwards?.some(pin => pin.path === path)) throw new Error(`reviewed M17 channel requires a binding: ${path}`);
   if (before.equals(after)) return;
   for (const path of changedForwardApprovals(before, after)) {
     if (previous.channelIngestForwards === undefined && channelIngestShapes.some(shape => shape.path === path)) throw new Error("reviewed M17 channel class must be approved separately before its SQL");
@@ -854,7 +857,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
     }
   }
   const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
-  if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || channelIngestShapes.some(shape => shape.path === path))) return;
+  if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path))) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
   const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "package.json", "package-lock.json"];

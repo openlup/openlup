@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { assertChannelIngestForward, assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding, type ManagedCommerceForwardBinding, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
+import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
@@ -1653,7 +1654,43 @@ describe("M17 channel ingest approval", () => {
     });
   });
 
-  it("binds class approval, SQL introduction and immutable pins through actual Git history", () => {
+  async function nativeAdmission(root: string, base: string, head: string, eventName: string) {
+    const candidate = await captureCommittedReviewCandidate(root, base, head);
+    let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "Fixed M17 channel admission" }, authorSessionId: "m17-fixture-author" }, 1000);
+    for (const reviewer of ["m17-fixture-a", "m17-fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [], documentation: "Fixture assessment: exact channel class and its documented admission boundary." }, 1000);
+    const receipt = receiptSummary(session, 12, 1000);
+    const merged = execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit-tree", candidate.tree, "-p", base, "-p", head, "-m", "M17 event merge"], { encoding: "utf8" }).trim();
+    const ref = `refs/heads/gh-readonly-queue/main/pr-12-${base}`;
+    const event = { number: 12, repository: { private: false }, action: "checks_requested", pull_request: { head: { sha: head } }, merge_group: { base_ref: "refs/heads/main", head_ref: ref, base_sha: base, head_sha: merged } };
+    const env = { GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_SHA: merged, GITHUB_REF: ref };
+    const api = { get: async (path: string) => path.includes("/pulls/") ? { number: 12, state: "open", draft: false, base: { ref: "main" }, head: { sha: head } } : path.includes("/issues/") ? [{ id: 1, user: { login: "fixture-owner", type: "User" }, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes("/collaborators/") ? { permission: "write" } : { object: { sha: base } } };
+    const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
+    return waitNativeAdmission({ cwd: root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 });
+  }
+
+  describe.each(["PR", "release", "approval", "co-location", "pull_request", "merge_group"])("fixed M17 missing binding at %s caller", caller => {
+    it.each(sources)("refuses expand-only SQL at reserved path $path with an unchanged empty marker", async source => {
+      const root = mkdtempSync(join(tmpdir(), "openlup-m17-unbound-"));
+      const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+      const put = (path: string, bytes: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), bytes); };
+      const commit = () => { git("add", "."); git("commit", "-qm", "Unbound reserved path fixture"); return git("rev-parse", "HEAD"); };
+      try {
+        git("init", "-q", "-b", "main"); put(registryPath, encode(marker)); const base = commit();
+        git("update-ref", "refs/remotes/origin/main", base);
+        const sql = Buffer.from("CREATE TABLE public.m17_unbound(id uuid);");
+        put(source.path, sql); const head = commit();
+        expect(git("diff", "--name-only", base, head)).toBe(source.path);
+        if (caller === "PR" || caller === "release") {
+          expect(() => assertAdmittedPlatformForward(root, base, head, source.path, sql, caller === "release")).toThrow(/reviewed.*path or bytes|binding/u);
+          expect(() => assertAdmittedPlatformForward(root, base, head, "supabase/migrations/20261030123000_ordinary.sql", sql, caller === "release")).not.toThrow();
+        } else if (caller === "approval") expect(() => assertForwardApproval(root, base, head)).toThrow(/binding/u);
+        else if (caller === "co-location") expect(() => assertCoLocatedForwardApproval(root, base, head)).toThrow(/binding/u);
+        else await expect(nativeAdmission(root, base, head, caller)).rejects.toThrow(/binding/u);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+  });
+
+  it("binds class approval, SQL introduction and immutable pins through actual Git history", async () => {
     const root = mkdtempSync(join(tmpdir(), "openlup-m17-approval-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
     const put = (path: string, bytes: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), bytes); };
@@ -1680,7 +1717,10 @@ describe("M17 channel ingest approval", () => {
       for (const source of sources) {
         expect(() => assertReviewedPlatformForward(root, control, introduced, source.path, source.bytes)).not.toThrow();
         expect(() => assertReviewedPlatformForward(root, old, introduced, source.path, source.bytes, true)).not.toThrow();
+        for (const release of [false, true]) expect(() => assertAdmittedPlatformForward(root, control, introduced, source.path, source.bytes, release)).not.toThrow();
       }
+      git("update-ref", "refs/remotes/origin/main", control);
+      for (const eventName of ["pull_request", "merge_group"]) await expect(nativeAdmission(root, control, introduced, eventName)).resolves.toMatchObject({ verdict: "PASS", head: introduced });
       const changed = structuredClone(registry); changed.channelIngestForwards[0]!.sha256 = "0".repeat(64);
       put(registryPath, encode(changed)); const repinned = commit();
       expect(() => assertForwardApproval(root, introduced, repinned)).toThrow(/approved separately/u);
