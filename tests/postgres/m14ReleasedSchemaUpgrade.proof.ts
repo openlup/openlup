@@ -57,8 +57,8 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
     "qualified-admin", { roleMode: input.installation.roleMode }) : manifest;
   const selectedUnits = [selected.baseline, ...selected.forward];
   const units = selectedUnits;
-  const releasedUnits = input.installation ? units.findIndex(unit => unit.file === backfillPath) : 77;
-  assert.equal(units.length, input.installation ? 91 : 88);
+  const releasedUnits = units.findIndex(unit => unit.file === backfillPath);
+  // The frozen released-prefix SHA below stays fixed; every later suffix comes from the selected plan.
   assert.ok(releasedUnits > 0);
   assert.equal(units[releasedUnits]!.file, backfillPath);
   const prefix = { baseline: units[0], forward: units.slice(1, releasedUnits) };

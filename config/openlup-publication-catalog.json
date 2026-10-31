@@ -25326,6 +25326,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/test/historicalBoundarySchema.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/test/historicalBoundarySchema.ts",
       "class": "public-output"
     },
@@ -26419,6 +26423,10 @@
     },
     {
       "path": "tests/helpers/invoicingNativeHarness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/issuedPlatformCatalog.ts",
       "class": "public-output"
     },
     {

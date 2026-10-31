@@ -23,6 +23,17 @@ export async function channelInstallerWitness(db:PoolClient) {
   }
   const who=(await db.query("SELECT current_user installer,session_user admin,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) super")).rows[0];
   if(!/^[a-z_]+$/u.test(who.installer)||!/^[a-z_]+$/u.test(who.admin))throw new Error("unsafe fixture installer");
+  expect((await db.query("SELECT rolcanlogin,rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls FROM pg_roles WHERE rolname='openlup_channel_purchase_writer'")).rows)
+    .toEqual([{rolcanlogin:false,rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolinherit:false,rolreplication:false,rolbypassrls:false}]);
+  const members=(await db.query("SELECT member::regrole::text member,grantor::int grantor,admin_option,inherit_option,set_option FROM pg_auth_members WHERE roleid='openlup_channel_purchase_writer'::regrole OR member='openlup_channel_purchase_writer'::regrole ORDER BY member,grantor")).rows;
+  expect(members).toEqual(who.super?[]:[{member:who.installer,grantor:10,admin_option:true,inherit_option:false,set_option:false}]);
+  for(const [signature,expected] of [
+    ["public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamp with time zone,jsonb,text)",["openlup_channel_purchase_writer","service_role"]],
+    ["public.inventory_consume_reservation_for_fulfillment(text,uuid,jsonb)",["service_role"]],
+  ] as const){
+    const actual=(await db.query("SELECT a.grantee::regrole::text role FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid=$1::regprocedure AND a.privilege_type='EXECUTE' AND a.grantee<>p.proowner ORDER BY role",[signature])).rows.map(row=>row.role);
+    expect(actual).toEqual(expected);
+  }
   const owned=(await db.query("SELECT oid::regprocedure::text signature FROM pg_proc WHERE proowner='openlup_channel_purchase_writer'::regrole ORDER BY oid")).rows;
   expect(owned).toHaveLength(6);
   // Trusted rollback-only preparation; production keeps its ADMIN-only/SET-false edge.

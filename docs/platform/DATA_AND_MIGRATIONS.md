@@ -526,7 +526,7 @@ creates the fixed group roles; operator-provisioned mode requires the exact
 existing flags and membership graph. Credentials and provisioning remain
 host-owned; this source profile does not qualify a restricted managed host.
 
-The explicit `qualified-admin` selection uses a different 91-unit fresh plan:
+The explicit `qualified-admin` selection starts with a different issued 91-unit prefix:
 the approved `qa_` baseline, four corrected `qb_` replacements, shared legacy
 forwards and the issued runtime-completion tail. It requires PostgreSQL 16,
 `current_user = session_user = M`, database ownership by M, and exact prefix
@@ -683,10 +683,10 @@ The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) has
 five fixed approvals at positions 8–12. Those `qa_` fixtures remain inert
 except for the selected baseline. A PostgreSQL parse failure in the approved
 actor unit led to four corrected `qb_` identities at positions 13–16, after a
-separate reader and approval checkpoint. The active 91-unit restricted
-generation selects the `qa_` baseline and four
+separate reader and approval checkpoint. The issued 91-unit restricted
+prefix selects the `qa_` baseline and four
 `qb_` replacements, reuses the issued completion tail, and excludes the
-qualified owner-path forward. It has two fixed role-mode inventories.
+qualified owner-path forward. That prefix has two fixed role-mode inventories.
 Its migration login is a trusted administrator retaining ADMIN membership,
 not an isolated principal.
 All six earlier approval rows and their byte identities remain unchanged. The runtime-completion tail grants
@@ -702,7 +702,7 @@ The reader reserves the qualified owner-path forward after runtime completion,
 at approval position seven before the five reserved restricted-bootstrap
 positions. Its prior approval binds the exact file and nine function preimages
 and definitions. The active forward pins name resolution on those definitions;
-the selected plan has 92 units. Earlier qualified units and their approvals
+the issued qualified prefix has 92 units. Earlier qualified units and their approvals
 remain immutable.
 
 Delivery uses three separately landed checkpoints. First prepare the exact
@@ -715,14 +715,17 @@ actual main, append the exact sixth hash in a pin-only change. Only after that
 approval is actual main may a feature introduce the identical active SQL and
 append its selected manifest row. Keep all trusted co-location checks intact.
 
-The active schema-2 manifest preserves legacy 88 units and the issued qualified
-91-unit prefix, then appends the exact owner-path forward as unit 92. Its two
+The issued schema-2 manifest preserved legacy 88 units and the qualified
+91-unit prefix, then appended the exact owner-path forward as unit 92. Its two
 restore-bound inventories were measured independently on clean PostgreSQL16
 references with migration/bootstrap aliased and distinct. The historical F90
 expectations and raw evidence remain retained; reference measurements do not
 establish production status/apply/replay or normal-runtime qualification. The
-existing four-case production-composition witness checks both shapes in the two
-existing role modes. It also exercises the actual normal-runtime preparation lane
+existing four-case production-composition witness checks both issued shapes in
+the two existing role modes, then applies every current shared suffix unit through
+the same runner and verifies the complete selected ledger and final inventory.
+Restricted composition preserves its independent issued-prefix pin the same way;
+current total and resume counts come from the selected plan. It also exercises the actual normal-runtime preparation lane
 and review receipt commands, with receipt mutation, context key and neighboring
 privilege refusals. Historical E-only 89-unit expectations retain their attribution.
 There is no optional `withRestoreForward` field or new selection mode.
@@ -1317,7 +1320,18 @@ of their canonical units; the managed bodies intentionally differ. Native
 functions retain the selected trusted migration owner and conditional service
 grants when that selected role exists. They do not introduce managed closed-role
 isolation into a native role graph. Managed capture uses its closed NOLOGIN
-writer. Both rails retain protected original captures outside generic source
+writer. Its explicit non-owner allocator EXECUTE grant is limited to the
+existing service role and that closed writer; fulfillment consumption keeps its
+service-only grant. The writer's catalog privileges are exactly non-grantable
+SELECT on catalog SKUs, bundles and bundle components. Its role flags and
+ADMIN-only installer edge grant no runtime login, SET or INHERIT path; the
+actual PostgreSQL witness checks those facts independently of the static ACL
+reader. Managed retained readback grants `service_role` SELECT only on
+`commerce_order_items` columns `id`, `sku_id`, `quantity`, `product_snapshot`,
+`order_id` and `allocation_ordinal`; it grants neither table-wide SELECT nor
+access to other item columns. Canonical-grant fixtures revoke adapter defaults
+before installation and verify the required read census on all four rails.
+Both rails retain protected original captures outside generic source
 envelopes, immutable line claims and original page receipts. Physical native
 conversion remains explicitly unavailable; no native payment or stock grant is
 invented. Privacy lifecycle export/erasure remains unavailable. The existing
@@ -1458,8 +1472,8 @@ completion does not authorize owner fallback, legacy relabelling or a new role m
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
 
-The separate `qualified-admin` 91-unit catalogue is a fresh installation
-generation. It is not an upgrade, relabel or migration-history conversion from
+The separate `qualified-admin` generation starts with its issued 91-unit prefix
+and appends current shared forwards. It is not an upgrade, relabel or migration-history conversion from
 legacy or `qualified-v2`. Its interrupted-prefix proof resumes only the same
 selected generation under the same actual migration login and fixed role mode;
 replay after completion applies no units. The [local PostgreSQL 16 connected

@@ -2461,7 +2461,7 @@
     },
     {
       "path": "supabase/migrations/20261030122000_channel_purchased_source.sql",
-      "sha256": "37a5b0860aae4404e582963d620af5632f368ce843b09ac658d6a181b7959c1a",
+      "sha256": "51b4606ff0ddf250fb7c4d79489fb2c12bf4bc03bc2670dc2bad708ef2fdb02e",
       "functions": [
         {
           "signature": "public.channel_purchase_json(jsonb)",
@@ -2569,6 +2569,10 @@
         {
           "sha256": "620ee098dcdcea06ef44c64ffe11b62521996daca89d1b5bad689debab3eefc8",
           "sql": "ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref\n  FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;"
+        },
+        {
+          "sha256": "316d2f88c44ccd58eb5e0325201ed182bdaad734fc9db1df832f302717181901",
+          "sql": "GRANT SELECT (id, sku_id, quantity, product_snapshot, order_id, allocation_ordinal) ON TABLE public.commerce_order_items TO service_role;"
         },
         {
           "sha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"

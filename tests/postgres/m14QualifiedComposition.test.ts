@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { beforeAll, expect, it } from "vitest";
@@ -26,7 +28,7 @@ beforeAll(async () => {
 // Exactly two production reference checks and two fresh other-mode targets.
 // Run in order: no parallel installations or additional role-mode cross product.
 for (const profile of profiles) for (const shape of shapes) {
-  it(`qualifies production E2+F+completion ${profile.name} ${shape.name} against its frozen pin`, async () => {
+  it(`qualifies production E2+F+completion ${profile.name} ${shape.name} issued prefix and current suffix`, async () => {
     let container: PostgresContainer | undefined;
     try {
       container = await runPostgresContainer({
@@ -49,9 +51,13 @@ for (const profile of profiles) for (const shape of shapes) {
           discriminators: profile.name === "target" && shape.name === "separate-restore" }),
       ], { timeout: 240_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
       const result = JSON.parse(stdout);
+      const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", {
+        migrationIsBootstrap: !shape.separate, hasRestore: true,
+      });
+      const count = 1 + current.forward.length;
       expect(result).toMatchObject({
-        inventorySha256: shape.sha256, ledgerRows: 92, pendingBefore: 92,
-        appliedNow: 92, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
+        inventorySha256: current.objectInventorySha256, issuedInventorySha256: shape.sha256, issuedLedgerRows: 92,
+        ledgerRows: count, pendingBefore: count, appliedNow: count, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
         runtimeLockPrivilegesProved: true, runtimeCompletionProved: true, ownerPathResolutionProved: true,
         nativeObservationRuntimeProved: profile.name === "target" && shape.name === "separate-restore",
         connectionRecipeProved: profile.name === "target" && shape.name === "separate-restore",

@@ -55,7 +55,7 @@
 -- error for an unresolvable identity, so a renamed or dropped object would let
 -- every assertion below pass vacuously.
 BEGIN;
-SELECT plan(25);
+SELECT plan(26);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -213,10 +213,26 @@ SELECT is(
    FROM catalog_authz_relation rel JOIN pg_class c ON c.oid = rel.ident::regclass
    CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) entry
    WHERE entry.grantee = 0
-      OR entry.grantee::regrole::text NOT IN ('postgres', 'service_role', 'authenticated', 'openlup_mcp_reader')
+      OR (entry.grantee::regrole::text NOT IN ('postgres', 'service_role', 'authenticated', 'openlup_mcp_reader')
+          AND NOT (entry.grantee::regrole::text = 'openlup_channel_purchase_writer'
+            AND rel.ident IN ('public.catalog_skus', 'public.catalog_bundles', 'public.catalog_bundle_components')
+            AND entry.privilege_type = 'SELECT' AND NOT entry.is_grantable))
       OR (entry.grantee::regrole::text IN ('authenticated', 'openlup_mcp_reader') AND entry.privilege_type <> 'SELECT')),
   NULL,
   'no PUBLIC, unknown principal or browser/reader writer is hidden by ACL ordering'
+);
+
+-- Admit exactly the closed writer's three read tuples, never a general role exception.
+SELECT results_eq(
+  $$SELECT rel.ident, entry.privilege_type, entry.is_grantable
+    FROM catalog_authz_relation rel JOIN pg_class c ON c.oid = rel.ident::regclass
+    CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) entry
+    WHERE entry.grantee = 'openlup_channel_purchase_writer'::regrole
+    ORDER BY rel.ident, entry.privilege_type$$,
+  $$VALUES ('public.catalog_bundle_components'::text, 'SELECT'::text, false),
+           ('public.catalog_bundles'::text, 'SELECT'::text, false),
+           ('public.catalog_skus'::text, 'SELECT'::text, false)$$,
+  'the closed channel writer has exactly three non-grantable catalog SELECT tuples'
 );
 
 -- The selected checkout reads exact catalog columns, not whole-table SELECT.

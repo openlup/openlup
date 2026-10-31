@@ -39,6 +39,8 @@ ALTER TABLE public.sales_channel_connections ADD COLUMN pull_capture_adopted_at 
 ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref
   FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;
 
+GRANT SELECT (id, sku_id, quantity, product_snapshot, order_id, allocation_ordinal) ON TABLE public.commerce_order_items TO service_role;
+
 CREATE FUNCTION public.channel_purchase_json(p_value jsonb) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$
 DECLARE answer text;

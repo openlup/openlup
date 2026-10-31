@@ -121,6 +121,7 @@ filesystem objects publish bytes and metadata together, bind an explicit access
 label to the filesystem owner's private policy and resume by verified readback.
 Row replay preserves exact JSON/numeric/time values, refuses conflicts and every
 enabled user INSERT trigger, and copies no schema, migration ledger or grants.
+With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, so the generic utility refuses it; that owner path is reference-source only.
 The host qualifies the canonical catalogue, credentials and source completeness.
 These helpers activate no executor and do not supply managed identity mapping,
 live changed-row catch-up or hosted old-worker fencing. Read the
