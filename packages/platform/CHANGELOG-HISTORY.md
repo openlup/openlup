@@ -2,6 +2,50 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.31.0]
+
+- Publishable on the npm `latest` dist-tag as `0.31.0`, from tag
+  `openlup-platform-v0.31.0`.
+
+### Runtime and scheduler
+
+- Keep the Node host's local HTTP listener available until admitted scheduler
+  callbacks finish, including callbacks waiting for advisory-lock acquisition
+  before calling their HTTP compatibility endpoint. Shutdown still attempts
+  listener and lock-session cleanup when draining fails.
+- Migration: Supply `createPgAdvisoryLock` with a dedicated direct connection or
+  session-mode pooler, never `Pool.query` or transaction pooling. If request work
+  uses a transaction pooler, inject a separate session connection for scheduler
+  locks and a direct connection for migration/admin work. On uncertain lock
+  acquisition or session-affinity refusal, drain the host, close its dedicated
+  connection and retire any stranded lock backend before restarting. Follow the
+  source repository's PostgreSQL connection recipe; finite observations do not
+  certify a pooler's future routing.
+
+### Migration admission and qualified reference source
+
+- Hardened migration ledger admission for status, dry-run and apply. Existing
+  canonical migration histories retain their exact-prefix and replay boundaries.
+- Migration: Migration-runner qualification covers PostgreSQL 16 and 17. Check
+  status on the existing installation before applying pending units; other majors
+  need separate qualification.
+- Pinned name resolution in qualified install owner paths used by acquisition
+  and restore operations.
+- Migration: The qualified-v2 reference-source PostgreSQL 16 catalogue now has
+  92 units, adding runtime completion and the qualified owner-path forward after
+  the previously issued 90-unit prefix. Preserve issued migration bytes and
+  apply the ordered forwards through the reference binding. Legacy selection
+  remains the unchanged 88-unit plan. The qualified migration login still needs
+  the declared database-owner SUPERUSER role; runtime and restore remain distinct
+  restricted nonowners. Restricted-bootstrap reader preparation does not activate
+  a non-superuser installation generation.
+- Qualified installation SQL, reference bindings, connected-store adapters and
+  portable operations defaults remain source-tree composition. The npm SQL
+  projections are not a complete installation or store-transfer catalogue.
+  Application upgrade and local handover witnesses establish only their bounded
+  profiles. No stable-framework, supported-upgrade, hosted-provider, full-store
+  transfer, M14 completion or production-readiness claim follows from this set.
+
 ## [0.30.0]
 
 - Publishable on the npm `latest` dist-tag as `0.30.0`, from tag

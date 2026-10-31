@@ -17,8 +17,8 @@ start with the installed package's README, CHANGELOG and declarations, and consu
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
 
-For the prepared `0.33.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0330) before selecting optional services. Experimental
+For the prepared `0.34.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0340) before selecting optional services. Experimental
 M13 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
