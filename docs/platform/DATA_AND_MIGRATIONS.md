@@ -1395,6 +1395,11 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The portable account newsletter withdrawal forward changes future account
+opt-outs only. Earlier opt-outs require the explicit, idempotent
+[operator upgrade statement](#account-newsletter-withdrawal-upgrade); installing
+or replaying the forward does not alter an existing recipient-consent row.
+
 The [recipe runner](RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
 composes this same released-history proof against its declared separate fresh
 schema target. That route requires the actual previous 0.23.0 application
@@ -1981,6 +1986,11 @@ idempotency rules that prevent duplicate or stale writes.
 
 ## Paired chains diverge, and each side must say so
 
+The portable account newsletter withdrawal forward has no managed twin: the
+managed account setter already records `marketing_newsletter` in the permission
+store its evaluator reads. The portable forward connects that same account
+purpose to its separate native recipient-consent store; it changes no managed SQL.
+
 Some forwards ship twice: once into the managed chain the hosted deployment
 applies, and once into the public platform catalogue an adopter applies. The two
 are behaviour-identical by intent, never byte-identical by accident, and **each
@@ -2035,10 +2045,12 @@ no compensating grants and never writes a fabricated native migration ledger.
 ## Communications projections
 
 `COMMUNICATIONS_MIGRATIONS` carries byte-identical projections of the existing
-canonical comms outbox, transactional receipt and communications control-plane
-units at positions 2, 9 and 20. Their hashes, runner positions and canonical paths
-are checked against the unchanged manifest. They are a sparse module inventory,
-not an independent install chain or a new forward. The full selected canonical
+canonical comms outbox, transactional receipt, communications control-plane,
+native operations and account newsletter withdrawal units at positions
+2, 9, 20, 70 and 88 in the legacy catalogue. The withdrawal forward follows the
+issued bootstrap tails in qualified plans. Their hashes and canonical paths
+are checked against the corresponding legacy manifest entries. This sparse
+module projection is not an independent install chain. The full selected canonical
 prefix and existing schema probes remain required. Managed receipt RPCs retain
 their current service scope; direct receipts retain one role-free transaction per
 operation and their accepted/failed replay boundaries.
@@ -2046,6 +2058,50 @@ operation and their accepted/failed replay boundaries.
 The narrowed import moves receipt stores and their ledger contracts. Reference
 mail-provider timeline/send-ledger implementations remain at their existing
 owners; no provider mapping or new schema enters the package.
+
+### Account newsletter withdrawal upgrade
+
+After installing the complete portable chain containing
+`20261030110000_customer_newsletter_withdrawal.sql`, every account newsletter
+opt-out atomically denies a missing or granted `marketing_newsletter` consent for
+the principal's usable email. An existing denial or suppression is unchanged;
+an older caller timestamp still denies a grant without moving its timestamp
+backwards. Other purposes remain untouched. Opt-in changes only the account
+preference: after opt-out and back in, the evaluator still refuses until an
+explicit grant is separately recorded, while account read-back shows the preference.
+
+An opt-out recorded before this version does not change an existing `granted`
+row until an operator runs the following statement through the direct migration
+or administration connection. It denies a newsletter grant only when its timestamp
+is at or before the matching false preference; a later explicit grant is kept.
+The statement preserves suppression, enabled preferences and other purposes.
+It is idempotent: a second run changes no row.
+
+<!-- account-newsletter-withdrawal-upgrade -->
+```sql
+UPDATE public.communication_recipient_consents AS consent
+SET state = 'denied',
+    updated_at = GREATEST(consent.updated_at, preference.updated_at)
+FROM public.clients AS client
+JOIN public.customer_communication_preferences AS preference
+  ON preference.principal_id = client.principal_id
+WHERE consent.recipient_fingerprint = encode(sha256(convert_to(lower(btrim(client.email)),'UTF8')),'hex')
+  AND consent.purpose = 'marketing_newsletter'
+  AND consent.state = 'granted'
+  AND preference.marketing_newsletter_consent = false
+  AND consent.updated_at <= preference.updated_at;
+```
+
+The account setter registers no external provider synchronization; compose any
+provider withdrawal separately. A recorded denial stays keyed to the old email
+fingerprint after an email change and does not follow a new address. The distinct
+`retention_marketing` purpose requires its own explicit grant at retention creation
+and claim; no packaged writer grants it, so the host capturing it also owns its
+withdrawal. `marketing_launch_offer` is independent as well. The
+[real PostgreSQL witness](../../tests/postgres/customerNewsletterWithdrawal.test.ts)
+executes this exact statement and exercises the real actor setter and evaluator
+across the selected legacy, qualified and restricted installation shapes.
+
 
 ## M09 invoicing forward design and control approval
 

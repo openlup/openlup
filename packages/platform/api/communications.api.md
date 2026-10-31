@@ -2168,6 +2168,12 @@ export declare const COMMUNICATIONS_MIGRATIONS: readonly [{
     readonly position: 70;
     readonly sha256: "1d28380f12324c3bcccaa5a6d38c22e72332c7992bbb1f90651774dfc5e24982";
     readonly url: URL;
+}, {
+    readonly id: "20261030110000_customer_newsletter_withdrawal";
+    readonly catalogPath: "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql";
+    readonly position: 88;
+    readonly sha256: "750b933c818ea374e07de8af62b4a74925e6c607e8e2f935ecfb00047dd32db2";
+    readonly url: URL;
 }];
 ```
 ## dist/communications/standardWebhooks.d.ts

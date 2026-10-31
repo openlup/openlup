@@ -206,6 +206,17 @@
           "afterSha256": "d08e15b9f33375d051292607b1a1ba813752ac77422a56a86442ac90806ea14a"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
+      "sha256": "750b933c818ea374e07de8af62b4a74925e6c607e8e2f935ecfb00047dd32db2",
+      "functions": [
+        {
+          "signature": "public.customer_communication_preferences_set_as_actor(boolean,timestamptz)",
+          "beforeSha256": "d75a7628af9bb77bcd7f5f6d0ae6c5067ccfc95f3b494a72ac719e73b22cd5ec",
+          "afterSha256": "3a172d5e20f63d954432d87337f666b21931b86b3b4e183bc5feba2f83e7b31a"
+        }
+      ]
     }
   ],
   "portableCreationForwards": [

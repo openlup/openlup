@@ -649,3 +649,136 @@ at this read checkpoint. Automatic repair cycles consumed: zero of three.
 Self-retro: the three-minute initial admission wait dominated the 84-second
 pre-read stages. Reusing the bump and history-preservation route, existing
 artifact discriminators and one task section avoided new release machinery.
+
+## Account newsletter withdrawal
+
+Outcome: a portable PostgreSQL account newsletter opt-out made after this change
+must make the native consent evaluator refuse `marketing_newsletter`, without
+creating or weakening another consent. The bounded delivery is an admission-only
+change followed by a body-only setter forward, one real-PostgreSQL witness,
+required manifest/catalogue/package assets, a pending change fragment, an operator
+upgrade statement and affected owner documentation. Historical reconciliation is
+excluded from the forward. Managed SQL, baselines, evaluator/policy, acquisition,
+retention, provider integration, versions and releases remain unchanged.
+
+The owner delegated local preparation and subsequent gated submission/queue
+delivery to one supervisor, with admission delivered first. A combined maintainer
+read of both local trees precedes DCO and native review. Release, publication,
+credentials, settings and hosted activation remain excluded. The current main and instruction pin is
+`fcbaacdf3183bc1c26f023b97248cdf678471171`. The fix belongs to the next set;
+the prepared `0.34.0` set does not contain it.
+The `0.34.0` set from `fcbaacdf` was published without this fix, which ships in the next set.
+
+The false call must deny absent/granted newsletter permissions on every call,
+preserve denied/suppressed rows and never decrease consent timestamps. A true
+call leaves all consent rows unchanged: after opting out and back in, evaluation
+continues refusing until a separate explicit grant, although account read-back
+reports the preference. The account response and managed setter name only
+`marketing_newsletter`, with managed copy version
+`customer_account_marketing_newsletter.v1`. Retention creation and claim require their own explicit
+grant. The packaged-writer/customer-copy audit is complete, with the source
+facts below. Pre-change SQL/JavaScript fingerprint parity passes for mixed-case
+and non-ASCII uppercase addresses on all seven selected installation shapes.
+
+The initial admission probes found the non-expand-only and function-identity
+boundaries. The owner approved one fourth fixed replacement slot and narrow
+identity handling for exactly this signature, preserving earlier slot positions
+and refusing unrelated boolean/default identities. Admission is prepared in its
+own tree; both working states explicitly merge current main without DCO.
+Branch heads remain at their original base until the read. One combined maintainer read remains pending. All three automatic
+repair cycles cover the whole change across both deliveries; none is consumed.
+
+Source audit: the packaged acquisition grant path accepts only newsletter and
+launch-offer purposes. Native preference synchronization accepts only denials or
+suppressions for newsletter, launch-offer and tester purposes; reconciliation
+writes suppressions. No packaged writer grants `retention_marketing`. Its creation
+and claim both require their own explicit granted row. A host capturing that
+purpose owns its withdrawal. The account UI submits only the newsletter boolean;
+its visible copy uses host translation keys, with no supplied text promising
+that this switch covers all marketing.
+Known limits: this setter registers no external provider synchronization; earlier
+opt-outs do not override an existing grant automatically. Operators have
+an exact idempotent upgrade statement in the data guide, with its own witness. An email-change
+witness confirms that a denial remains keyed to the old normalized-email
+fingerprint; a different normalized email reads a different key.
+
+Both assigned worktrees retain their original branch heads. Installation completed
+in each. The admission slot's 11 focused tests and full 686-test admission regression
+pass, along with strict five-project typecheck, lint (zero errors, 33 existing
+warnings), structural checks and neutrality. Policy passes on its exact unsigned
+snapshot with the proposed scoped documentation trailer, before DCO.
+The real setter fails first on all seven shapes: an account opt-out leaves the
+newsletter row granted. Legacy fixture roles are composed only after exact canonical installation
+and replay; qualified roles retain their production installation contract.
+No DCO, native review, submission or canonical verification is claimed.
+The seven-shape real-PostgreSQL matrix passes before the main merge (43.60
+seconds on the resumed run): legacy;
+qualified-v2 installer-managed and operator-provisioned with bootstrap and
+separate migrators; qualified-admin installer-managed and operator-provisioned.
+Each uses the real restricted actor/auth context and evaluator, checks definer
+INSERT/UPDATE authority, mixed-case and `Ä` fingerprint parity, atomic rollback,
+absent/denied/suppressed/granted behavior, unchanged-preference withdrawal,
+older timestamps, non-granting opt-in, other purposes, unusable email, manual
+upgrade boundaries (including equal timestamps) and idempotent replay.
+The three mutation probes fail at their intended behavior assertions: no consent
+write leaves a grant; admitting suppression downgrades its row; skipping repeated
+false calls leaves a later grant. The unmodified witness is restored byte-for-byte.
+The actual email-change case keeps the old denial while a separate grant for the
+new email is allowed. The upgrade statement runs through the declared migrator,
+not a compensating host runtime grant. The exact catalogue hashes were measured
+on all seven real installation shapes before their manifest pins were updated.
+The forward contains
+no set-version or publication-budget condition, and no cap increase is proposed.
+Baseline Platform packing measures 1,986,181 packed bytes, 9,258,510 unpacked
+bytes and 2,720 files (2,664 code files; 1,715,302 code gzip bytes), within every
+unchanged cap. The pending change fragment applies to the set carrying this
+forward, without assigning a release version.
+
+Self-retro: tracing the real header exposed the exact admission boundary before
+implementation. Initial fixture failures showed why the legacy inventory must
+precede host runtime grants and why principal uniqueness must be retained. The
+corrected fixture uses the existing boundaries rather than changing production
+controls. Shared resource admission, including a measured 391-second wait, is
+serialized; broader admission regression took 327.24 seconds.
+
+Fixture regroup: an initial legacy runtime role before installation changed the
+inventory, and later GRANT/REVOKE left stored ACLs during post-behavior replay.
+The remaining gap belongs to fixture ordering, not the forward: observe exact
+installation/replay while the canonical catalogue is intact, then compose the
+restricted legacy host login for actor/evaluator behavior. The passing full matrix
+preserves both proofs. Lesson: host fixture ACLs inside a canonical observer
+→ finish canonical replay before composing those ACLs.
+
+Current-main integration: both working states merge the fetched main above
+without rebasing. Admission merges and applies cleanly. The combined tree has
+only a task-record EOF conflict, resolved by preserving both appended sections
+verbatim. No control or migration conflict occurs. The inherited source release
+contract, package versions, release caps and consumed changelog content remain
+exactly main's. Forward version `20261030110000` passes the manifest
+evaluator and three-generation exact-prefix history on that main.
+
+Current-main proof passes: the full admission regression has 686 passing cases
+(337.50 seconds), including all eleven new refusal/success cases; the seven
+installation shapes pass again in 43.59 seconds. Strict typecheck on both trees
+has zero unresolved edges or consumer errors. Both lint runs pass with zero
+errors and the same 33 existing warnings; structural and tree/UI neutrality
+checks pass. The complete Platform suite passes all 7,630 cases with two workers,
+with every assertion and default timeout retained, followed by API validation.
+The default-worker run had one unchanged fulfillment stress-case timeout;
+the full bounded-worker rerun passed. An earlier lint execution error came from
+removing a temporary policy export during its scan; serializing those phases
+produced the passing lint run without a configuration or source exception.
+
+Same-main Platform pack measurement is 1,985,626 bytes / 9,257,083 unpacked
+bytes / 2,720 files before this fix and 1,986,557 / 9,261,193 / 2,721 after it.
+Code gzip is 1,715,526 bytes and documentation gzip 55,564 bytes after the fix;
+every unchanged cap passes. This is 931 packed bytes and one file added. No
+set-version or budget condition enters the forward. Admission and policy proof
+use exact exported unsigned snapshots: admission-only over current main, then
+the combined fix over that predecessor. No DCO, native review, canonical full
+verification, submission or hosted admission is claimed at this checkpoint.
+The full read packet binds both trees and proposed documentation trailers.
+
+Self-retro at this checkpoint: canonical replay before fixture ACL composition
+kept authority and inventory proof distinct. Temporary policy exports must finish
+before lint begins. All three whole-fix repair cycles remain available.
