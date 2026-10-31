@@ -1842,6 +1842,10 @@ if (${JSON.stringify(phase)} === "selection") {
 `);
 }
 
+export function platformConsumerInstallArgs(packages: string[], sdkPresent = false): string[] {
+  return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
+}
+
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
@@ -1868,7 +1872,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "platform-cold-consumer", private: true, type: "module" }));
     // The SDK-absent phase uses only npm's default cache. Legacy peer mode prevents automatic peer installs;
     // physical and independent resolution checks below prove what omission flags cannot.
-    const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", ["install", sdkPresent ? "--prefer-offline" : "--offline", "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages], consumer, isolatedConsumerEnv()));
+    const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", platformConsumerInstallArgs(packages, sdkPresent), consumer, isolatedConsumerEnv()));
     // The offline phase installs only local tarballs: npm ci caches the lockfile's tarballs but not their
     // registry metadata, so a cold runner cannot resolve version specs offline. Pack the locked runtime and
     // type inputs from the root's installed directories, as the Outbox proof does.

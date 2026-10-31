@@ -21,6 +21,9 @@ native rows. Unexpired completed keys refuse. Nonempty managed Storage refuses
 in this parcel; its separate typed object projection and managed-object witness
 belong to a later parcel. The existing portable leg still carries native
 private media and partial uploads through its object path.
+The separate [managed Storage witness](oss-m14-managed-storage-transfer.md)
+now covers its finite cohort and onward filesystem object copy; this
+three-installation journey itself still carries no managed Storage objects.
 The disposable fixture observes the source-only rows before teardown and
 reports their disposition; durable operation of the owner's archive is outside
 this local journey.

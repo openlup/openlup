@@ -339,7 +339,10 @@ that source installation. Its declared setup writer ends before final read-only
 capture; no managed Auth or Storage HTTP service starts. Typed catalog,
 consent and settlement facts are read back at both local PG16 targets.
 History-only settlement and expired-key rows stay in the operator source archive;
-nonempty managed Storage refuses until its separate typed object path is added.
+managed Storage remains outside that three-installation journey. The separate
+[managed Storage witness](../../tests/postgres/managedStorageTransfer.proof.ts)
+projects the finite operator-only cohort into a private filesystem store and
+copies the final objects onward through the existing portable object path.
 Native H1/H2 retirement and egress exclusion then run for the portable leg.
 This does not qualify a hosted managed source or a complete adopter writer
 inventory. The opt-in real-source witness supplies a fresh pinned managed

@@ -47,6 +47,15 @@ it("does no request until explicitly used, follows every terminal page and reche
   expect(f.send).toHaveBeenCalledTimes(7);
 });
 
+it("accepts empty optional headers on a complete GET while refusing an actual range", async () => {
+  const accepted = fixture(() => output("abc", {}, { ContentRange: "", ContentEncoding: "", CacheControl: "" }));
+  const read = await accepted.source.read("object.txt");
+  expect(await bytes(read)).toBe("abc");
+  expect(read.object.metadata).toEqual({});
+  const ranged = fixture(() => output("abc", {}, { ContentRange: "bytes 0-2/3" }));
+  await expect(ranged.source.read("object.txt")).rejects.toMatchObject({ code: "integrity_conflict" });
+});
+
 it("reads through the actual SDK deserializer and signing with explicit synthetic credentials and an injected HTTP handler", async () => {
   const script = String.raw`
 import { createRequire } from "node:module";
@@ -86,7 +95,7 @@ it("binds exact returned metadata and content, ignores ETag as a version and own
   const f = fixture(() => output("abc", metadata, fields));
   const original = await f.source.read("key with space");
   expect(original.object.sha256).toBe(createHash("sha256").update("abc").digest("hex"));
-  expect(original.object.metadata).toEqual({ "s3.content-type": "", "s3.cache-control": "max-age=7",
+  expect(original.object.metadata).toEqual({ "s3.cache-control": "max-age=7",
     "s3.expires-string": "Wed, 21 Oct 2037 07:28:00 GMT", "s3.website-redirect-location": "/original", "s3.user.Case": "żółć", "s3.user.empty": "" });
   fields = { ...fields, ETag: "different" };
   expect((await f.source.read("key with space", original.object.version)).object.version).toBe(original.object.version);

@@ -1482,6 +1482,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-managed-storage-transfer.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-object-access-transfer.md",
       "class": "public-output"
     },
@@ -26863,6 +26867,14 @@
     },
     {
       "path": "tests/postgres/managed-compat/supabase.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/managedStorageTransfer.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/managedStorageTransfer.test.ts",
       "class": "public-output"
     },
     {
