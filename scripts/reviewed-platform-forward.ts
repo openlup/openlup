@@ -16,6 +16,7 @@ const creations = new Set([
 const portableReplacements = new Set([
   "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
 ]);
+const accountWithdrawalSignature = "public.customer_communication_preferences_set_as_actor(boolean,timestamptz)";
 const paymentTerminalSignature = "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)";
 const managedInvoicing = [
   { path: "supabase/migrations/20261022193000_invoicing_correction_claims.sql", creation: true, signatures: [
@@ -221,12 +222,12 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
     }
   }
   if (raw.portableReplacementForwards !== undefined) {
-    if (!Array.isArray(raw.portableReplacementForwards) || ![1,2,3].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one, two or three fixed forwards");
+    if (!Array.isArray(raw.portableReplacementForwards) || ![1,2,3,4].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one, two, three or four fixed forwards");
     for (const [index, forward] of raw.portableReplacementForwards.entries()) {
       if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
       paths.add(forward.path);
       const binding = forward.functions[0]!;
-      if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : index === 1 ? forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature : forward.path === "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql" && binding.signature === "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)") || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
+      if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : index === 1 ? forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature : index === 2 ? forward.path === "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql" && binding.signature === "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)" : forward.path === "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql" && binding.signature === accountWithdrawalSignature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
     }
   }
   if (raw.managedInvoicingForwards !== undefined) {
@@ -351,18 +352,20 @@ export function assertQualifiedOwnerPathForward(binding: ForwardBinding, bytes: 
 /** Hash the raw CREATE statement, including its terminating semicolon; argument names/defaults are not identity. */
 function functionSignature(name: string, argumentsText: string): string {
   const types = argumentsText.trim() === "" ? [] : argumentsText.split(",").map((argument) => {
-    const match = /^(?:[a-z_][a-z0-9_]* )?(uuid|text|jsonb|integer|timestamp with time zone|timestamptz)(?: DEFAULT [\s\S]+)?$/iu.exec(argument.trim());
+    const match = /^(?:[a-z_][a-z0-9_]* )?(uuid|text|jsonb|integer|boolean|timestamp with time zone|timestamptz)(?: DEFAULT [\s\S]+)?$/iu.exec(argument.trim());
     if (!match) throw new Error("reviewed replacement has an unsupported argument identity");
     return match[1]!.toLowerCase();
   });
   const signature = `${name.toLowerCase()}(${types.join(",")})`;
+  if (types.includes("boolean") && signature !== accountWithdrawalSignature) throw new Error("reviewed replacement has an unsupported boolean identity");
   if (types.includes("timestamp with time zone") && !runtimeReplacements.has(signature)) throw new Error("reviewed replacement has an unsupported timestamp identity");
-  if (types.includes("timestamptz") && !portableReplacements.has(signature) && signature !== paymentTerminalSignature) throw new Error("reviewed replacement has an unsupported portable timestamp identity");
+  if (types.includes("timestamptz") && !portableReplacements.has(signature) && signature !== paymentTerminalSignature && signature !== accountWithdrawalSignature) throw new Error("reviewed replacement has an unsupported portable timestamp identity");
   return signature;
 }
 
-// The newly admitted due-reader alone has a timestamp default containing parentheses.
-const identityHeaderSql = (statement: string) => statement.replace(/(public\.subscription_list_due_for_renewal\([^;]*timestamp with time zone DEFAULT )now\(\)/iu, "$1now");
+// Mask only the two fixed now() defaults for identity; definition hashes retain raw SQL.
+const identityHeaderSql = (statement: string) => statement.replace(/(public\.subscription_list_due_for_renewal\([^;]*timestamp with time zone DEFAULT )now\(\)/iu, "$1now")
+  .replace(/(public\.customer_communication_preferences_set_as_actor\(\s*(?:[a-z_][a-z0-9_]*\s+)?boolean\s*,\s*(?:[a-z_][a-z0-9_]*\s+)?timestamptz DEFAULT )now\(\)/iu, "$1now");
 
 export function reviewedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
   const result = new Map<string, string>();
