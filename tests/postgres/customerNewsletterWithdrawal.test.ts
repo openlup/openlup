@@ -31,6 +31,7 @@ const originalInventories = {
 };
 const profiles = [
   { name: "legacy", generation: "legacy", mode: "installer-managed", separate: false },
+  { name: "legacy-icu", generation: "legacy", mode: "installer-managed", separate: false },
   ...(["installer-managed", "operator-provisioned"] as const).flatMap(mode => [false, true].map(separate => ({ name: `qualified-v2/${mode}/${separate ? "separate" : "bootstrap"}`, generation: "qualified-v2", mode, separate }))),
   ...(["installer-managed", "operator-provisioned"] as const).map(mode => ({ name: `qualified-admin/${mode}`, generation: "qualified-admin", mode, separate: true })),
 ] as const;
@@ -44,8 +45,17 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
   const pool = (connectionString: string, options?: string) => { const value = new Pool({ connectionString, options }); pools.push(value); return value; };
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Newsletter PostgreSQL unavailable");
-    const owner = pool(container.connectionString), password = randomUUID();
-    const login = (name: string) => { const url = new URL(container.connectionString); url.username = name; if (name !== "postgres") url.password = password; return url.toString(); };
+    const databaseUrl = new URL(container.connectionString);
+    if (profile.name === "legacy-icu") {
+      await pool(container.connectionString).query("CREATE DATABASE newsletter_icu TEMPLATE template0 LOCALE_PROVIDER icu ICU_LOCALE 'en-US' ENCODING 'UTF8'");
+      databaseUrl.pathname = "/newsletter_icu";
+    }
+    const owner = pool(databaseUrl.toString()), password = randomUUID();
+    if (profile.name === "legacy-icu") {
+      expect((await owner.query("SELECT datlocprovider AS provider,daticulocale AS locale,(SELECT collisdeterministic FROM pg_collation WHERE oid=100) AS deterministic FROM pg_database WHERE datname=current_database()")).rows).toEqual([{ provider: "i", locale: "en-US", deterministic: true }]);
+      console.info("newsletter-icu-default deterministic en-US UTF8");
+    }
+    const login = (name: string) => { const url = new URL(databaseUrl); url.username = name; if (name !== "postgres") url.password = password; return url.toString(); };
     const m = "newsletter_m", r = "newsletter_r", s = "newsletter_s", o = "newsletter_o";
     const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"];
     const admin = profile.generation === "qualified-admin", qualified = profile.generation !== "legacy";
@@ -174,7 +184,31 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
     const othersBefore = await consentRows(other.email!); await actor(other.principal, false);
     expect((await consentRows(other.email!)).filter(row => row.row.purpose !== "marketing_newsletter")).toEqual(othersBefore);
     expect((await decide(other.email!, "transactional")).allowed).toBe(true);
-    for (const email of ["invalid-address"]) { const noEmail = await subject(email); const count = (await owner.query("SELECT count(*) FROM public.communication_recipient_consents")).rows; await actor(noEmail.principal, false); expect(await preferenceRows(noEmail.principal)).toHaveLength(2); expect((await owner.query("SELECT count(*) FROM public.communication_recipient_consents")).rows).toEqual(count); }
+    if (profile.name === "legacy-icu") {
+      const address = "reader\u0085@example.invalid", customer = await subject(address);
+      await seed(address, "granted");
+      const before = await decide(address); expect(before.allowed).toBe(true);
+      expect((await owner.query("SELECT recipient_fingerprint FROM public.communication_native_policy_decisions WHERE id=$1", [before.decisionId])).rows[0].recipient_fingerprint).toBe(fingerprint(address));
+      expect((await owner.query(`SELECT ${sqlNormalForm.replace("client.email", "$1")} AS normalized`, [address])).rows[0].normalized).toBe(address.trim().toLowerCase());
+      await actor(customer.principal, false);
+      expect((await consentRows(address))[0].row.state, "ICU U+0085 opt-out must deny the evaluator grant").toBe("denied");
+      expect(await decide(address)).toMatchObject({ allowed: false, reason: "missing_marketing_permission" });
+      console.info("newsletter-icu-withdrawal U+0085 PASS");
+    }
+    for (const email of ["invalid-address"]) {
+      const noEmail = await subject(email);
+      const refused = { name: "ConsentEvaluationUnavailableError", cause: { message: "native_communications_email_invalid" } };
+      await expect(decide(email)).rejects.toMatchObject(refused);
+      const decisions = (await owner.query("SELECT count(*) FROM public.communication_native_policy_decisions")).rows;
+      const others = (await owner.query("SELECT to_jsonb(c) AS row FROM public.communication_recipient_consents c ORDER BY recipient_fingerprint,purpose")).rows;
+      await actor(noEmail.principal, false);
+      expect(await preferenceRows(noEmail.principal)).toHaveLength(2);
+      expect((await preferenceRows(noEmail.principal)).map(row => row.row.marketing_newsletter_consent)).toEqual([false, false]);
+      expect((await consentRows(email)).map(row => row.row)).toMatchObject([{ purpose: "marketing_newsletter", state: "denied" }]);
+      expect((await owner.query("SELECT to_jsonb(c) AS row FROM public.communication_recipient_consents c WHERE recipient_fingerprint <> $1 ORDER BY recipient_fingerprint,purpose", [fingerprint(email)])).rows).toEqual(others);
+      await expect(decide(email)).rejects.toMatchObject(refused);
+      expect((await owner.query("SELECT count(*) FROM public.communication_native_policy_decisions")).rows).toEqual(decisions);
+    }
     const unicode = await subject("ÄCCOUNT@EXAMPLE.INVALID"); await seed(unicode.email!, "granted"); await actor(unicode.principal, false);
     expect((await consentRows(unicode.email!))[0].row.state).toBe("denied"); expect((await decide(unicode.email!)).allowed).toBe(false);
     for (const character of ["\u00a0", "\ufeff"]) {

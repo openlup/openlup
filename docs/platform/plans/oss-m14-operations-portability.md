@@ -653,8 +653,8 @@ artifact discriminators and one task section avoided new release machinery.
 ## Account newsletter withdrawal
 
 Outcome: a portable PostgreSQL account newsletter opt-out made after this change
-must make the native consent evaluator refuse `marketing_newsletter` for usable
-emails whose database `lower()` agrees with JavaScript `toLowerCase()`, without
+must make the native consent evaluator refuse `marketing_newsletter` for
+evaluator-accepted emails whose database `lower()` agrees with JavaScript `toLowerCase()`, without
 creating or weakening another consent. All evaluator-accepted boundary whitespace
 is trimmed identically; database-dependent case mapping remains a stated limit. The bounded delivery is an admission-only
 change followed by a body-only setter forward, one real-PostgreSQL witness,
@@ -721,7 +721,7 @@ separate migrators; qualified-admin installer-managed and operator-provisioned.
 Each uses the real restricted actor/auth context and evaluator, checks definer
 INSERT/UPDATE authority, mixed-case and `Ä` fingerprint parity, atomic rollback,
 absent/denied/suppressed/granted behavior, unchanged-preference withdrawal,
-older timestamps, non-granting opt-in, other purposes, unusable email, manual
+older timestamps, non-granting opt-in, other purposes, evaluator-refused email, manual
 upgrade boundaries (including equal timestamps) and idempotent replay.
 The three mutation probes fail at their intended behavior assertions: no consent
 write leaves a grant; admitting suppression downgrades its row; skipping repeated
@@ -791,8 +791,9 @@ Unicode-whitespace repair (cycle 1 of 3): both independent native cards identify
 the same reachable SQL/JavaScript trim mismatch. The extended existing witness
 derives all evaluator-accepted trim characters from the runtime and fails first
 on the unchanged forward: U+00A0 and U+FEFF leave the evaluator grant active.
-The body-only replacement now uses the same explicit escaped trim set for its
-fingerprint and address check; the operator statement uses that normal form too.
+The cycle-1 body-only replacement used the same explicit escaped trim set for
+its fingerprint and then-existing address check; the operator statement uses that
+normal form too. Cycle 2 removes that address check.
 The function header, attributes, evaluator, acquisition and other functions stay
 unchanged. Canonical/package SQL and all byte-bound pins are re-derived.
 
@@ -843,3 +844,39 @@ DCO and fresh native review; both original cards remain open until that review.
 Self-retro: derive identity inputs through the public evaluator and refresh every
 SQL-byte consumer, including the exported tuple and generated API literal,
 before the broad gate. No new helper export or case-mapping mechanism is needed.
+
+
+Address-selection repair (cycle 2 of 3): two independent cards identified the same
+locale-dependent predicate outside the accepted lowercase/UTF8 limits. The lead
+ruled that the duplicate predicate protects no requirement and must be removed,
+not aligned. The only setter-body change removes the regex line; selection now
+uses only the principal ID. The evaluator's acceptance rule is deliberately not
+copied into SQL. Clients retain their nonnull/nonempty email invariant; a denial
+for an evaluator-refused address sits under a fingerprint the evaluator never
+reads and does not change its refused answer. No locale guard, replacement regex,
+new class, evaluator change or operator-statement change is introduced.
+
+The new legacy-only database case uses the existing container, pools and install
+runner to create a UTF8 database with deterministic ICU en-US default collation,
+without a fixture seam or extra role privilege. On the unchanged forward, the
+real authenticated actor leaves the U+0085 address's evaluator grant active;
+the failing-first assertion reports granted instead of denied. The seven existing
+installation shapes remain selected alongside this additional locale case.
+
+Self-retro: duplicated validation created an unnecessary selection boundary.
+Removing it leaves one address-acceptance owner in the evaluator and tests the
+complete selection-to-fingerprint-to-denial path. Accepted case mapping and UTF8
+limits remain unchanged. One cycle remains after this repair; a fresh material
+mechanism requires owner regroup before any further repair.
+
+Repair-cycle-2 proof: all seven original installation shapes plus the additional
+legacy ICU locale case pass in 47.07 seconds. All five mutations fail at their
+intended assertions, including restoration of the exact preceding predicate.
+The refused-address case writes preference, event and denial while preserving
+its evaluator refusal and every other consent row. Strict five-project typecheck
+and lint pass, with zero errors and 33 existing warnings. Platform build, all
+7,630 tests and API validation pass with the existing two-worker selection and
+unchanged assertions/timeouts. Packing measures 1,986,589 packed bytes,
+9,261,268 unpacked bytes and 2,721 files, within unchanged caps.
+Exact unsigned-tree policy, admission and package evidence is bound in the third
+read packet. No DCO or new native review is claimed before that read.

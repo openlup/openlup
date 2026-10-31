@@ -2063,13 +2063,17 @@ owners; no provider mapping or new schema enters the package.
 
 After installing the complete portable chain containing
 `20261030110000_customer_newsletter_withdrawal.sql`, every account newsletter
-opt-out atomically denies a missing or granted `marketing_newsletter` consent for
-the principal's usable email when database and JavaScript lowercase normalization
-agree. An existing denial or suppression is unchanged;
+opt-out atomically denies a missing or granted `marketing_newsletter` consent at
+the principal's stored email fingerprint. For evaluator-accepted addresses, this
+matches the evaluator when database and JavaScript lowercase normalization agree. An existing denial or suppression is unchanged;
 an older caller timestamp still denies a grant without moving its timestamp
 backwards. Other purposes remain untouched. Opt-in changes only the account
 preference: after opt-out and back in, the evaluator still refuses until an
 explicit grant is separately recorded, while account read-back shows the preference.
+
+The setter deliberately does not copy the evaluator's address-acceptance rule
+into SQL. An evaluator-refused address can receive a denial under a fingerprint
+that the evaluator never reads; its answer remains refused.
 
 The explicit trimming set matches the evaluator-accepted JavaScript whitespace
 class. Case folding still uses the database's `lower()` and its locale, as the

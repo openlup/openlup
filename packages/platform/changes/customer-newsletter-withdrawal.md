@@ -9,3 +9,6 @@
 - Newsletter withdrawal uses database-specific lowercase rules; addresses containing
   Turkish `İ` or context-dependent Greek `Σ` can still differ from JavaScript, and
   C-locale databases also differ for `Ä`; this withdrawal path assumes a UTF8 database.
+- Account withdrawal records newsletter denial without duplicating the evaluator's
+  address-acceptance rule. An evaluator-refused address remains refused even if a
+  denial is recorded under its fingerprint.

@@ -2172,7 +2172,7 @@ export declare const COMMUNICATIONS_MIGRATIONS: readonly [{
     readonly id: "20261030110000_customer_newsletter_withdrawal";
     readonly catalogPath: "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql";
     readonly position: 88;
-    readonly sha256: "977388ff1cf8518876a79fb8a77e7f98521a447b977b53d758fc48adc794c040";
+    readonly sha256: "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf";
     readonly url: URL;
 }];
 ```

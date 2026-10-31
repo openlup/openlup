@@ -49,7 +49,6 @@ BEGIN
       'marketing_newsletter', 'denied', p_now, p_now
     FROM public.clients AS client
     WHERE client.principal_id = v_principal_id
-      AND lower(btrim(client.email, E'\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')) ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
     ON CONFLICT (recipient_fingerprint, purpose) DO UPDATE
       SET state = EXCLUDED.state,
           updated_at = GREATEST(public.communication_recipient_consents.updated_at, EXCLUDED.updated_at)
