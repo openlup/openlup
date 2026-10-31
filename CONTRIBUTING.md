@@ -352,7 +352,11 @@ through the built package entry and real reference binding, then two fresh
 targets in the other role mode
 with changed principal names. The E2 predecessor retains its four 89-unit shapes
 and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
-shadow-symbol refusals without replacing expected digests.
+shadow-symbol refusals without replacing expected digests. Those digests bind
+the issued prefix. The qualified and restricted production witnesses then use
+the same runner to apply the complete current suffix from the selected plan,
+check its exact ledger and final inventory, and retain runtime/refusal checks
+on the complete installation. Total and resume counts follow the selected plan.
 Each installation also connects as its actual restricted runtime login to prove
 notification row locking and timestamp-only writes, diagnostic replay locking
 with actual event-update refusal, and privacy receipt locks, reads/inserts and

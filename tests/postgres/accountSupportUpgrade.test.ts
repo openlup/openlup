@@ -142,6 +142,7 @@ it.each(["native", "managed"] as const)("upgrades the complete %s prefix, proves
       return rows;
     };
     const saved = await effects(); expect((await issue("c".repeat(64))).rows[0].result.outcome).toBe("replayed"); expect(await effects()).toEqual(saved);
-    if (measuredDigest) expect(measuredDigest, "Supervisor must install the real-catalog measurement before final verification").toBe(manifest.objectInventorySha256);
+    // Frozen M12 issued-prefix measurement; later forwards do not change this subject.
+    if (measuredDigest) expect(measuredDigest).toBe("cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3");
   } finally { await closePostgres(container, pool); if (scratch) rmSync(scratch, { recursive: true, force: true }); }
 }, 600_000);

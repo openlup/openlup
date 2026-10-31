@@ -11,6 +11,7 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOpti
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { runReleasedSchemaUpgradeProof } from "./m14ReleasedSchemaUpgrade.proof.js";
+import { readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 
 const lockName = "openlup:public-platform-migrations:v1";
 const hash = (s: string): string => createHash("sha256").update(s).digest("hex");
@@ -54,15 +55,18 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   if (input.target !== undefined) { selection.target = input.target; selection.layout = input.layout; }
   const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest,
     "qualified-admin", { roleMode: input.roleMode });
-  assert.equal(manifest.objectInventorySha256, input.inventory);
+  const issued = selectPlatformMigrationManifest(readIssuedPlatformManifest(), "qualified-admin", { roleMode: input.roleMode });
+  assert.equal(issued.objectInventorySha256, input.inventory);
+  const issuedExpected = [issued.baseline, ...issued.forward];
+  assert.equal(issuedExpected.length, 91);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 91);
+  assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(hash(readFileSync(entry.file, "utf8")), entry.sha256);
   const migrationUrl = new URL(loginUrl(m));
   migrationUrl.searchParams.set("options", qualifiedAdminPostgresStartupOptions(selection));
   const migrationPool = pool(migrationUrl.toString());
-  const makeRunner = (factory: () => Pool = () => migrationPool) => createPostgresMigrationRunner({ connectionString: loginUrl(m) },
-    { installation: selection, poolFactory: async () => factory() });
+  const makeRunner = (factory: () => Pool = () => migrationPool, root?: string) => createPostgresMigrationRunner({ connectionString: loginUrl(m) },
+    { root, installation: selection, poolFactory: async () => factory() });
   const runner = makeRunner();
   if (input.schemaProof) return await runReleasedSchemaUpgradeProof({ database: { ...input.database,
     connectionString: loginUrl(m), options: qualifiedAdminPostgresStartupOptions(selection) }, installation: selection,
@@ -72,20 +76,41 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   assert.deepEqual((await migrationPool.query("SELECT current_user,session_user")).rows, [{ current_user: m, session_user: m }]);
   const roleFacts = (await migrationPool.query("SELECT rolsuper,rolcreaterole FROM pg_catalog.pg_roles WHERE rolname=current_user")).rows[0];
   assert.deepEqual(roleFacts, { rolsuper: false, rolcreaterole: input.roleMode === "installer-managed" });
-  let begins = 0;
-  const interruptingPool = { connect: async () => {
-    const actual = await migrationPool.connect();
-    return { query: (text: string, values?: unknown[]) => {
-      if (text === "BEGIN" && ++begins === 18) throw new Error("synthetic interruption before unit 18");
-      return actual.query(text, values);
-    }, release: (error?: Error) => actual.release(error) } as unknown as PoolClient;
-  } } as Pool;
-  await assert.rejects(makeRunner(() => interruptingPool).apply(), /synthetic interruption before unit 18/u);
-  const prefixStatus = await runner.status();
-  assert.equal(prefixStatus.applied.length, 17);
-  assert.equal(prefixStatus.pending.length, 74);
-  const resumed = await runner.apply();
-  assert.equal(resumed.applied.length, 74);
+  async function observeInventory(expectedInventory: string): Promise<string> {
+    const observer = await migrationPool.connect();
+    let inventory: string;
+    try {
+      await observer.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
+      inventory = hash(await qualifiedAdminPostgresCatalogPayload(observer, selection, lockName));
+      assert.equal(inventory, expectedInventory);
+    } finally { await observer.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]); observer.release(); }
+    return inventory;
+  }
+  const { prefixStatus, resumed, issuedInventory } = await withIssuedPlatformCatalog(async root => {
+    const prefixRunner = makeRunner(() => migrationPool, root);
+    assert.deepEqual(await prefixRunner.status(), { applied: [], pending: issuedExpected.map(entry => entry.file) });
+    let begins = 0;
+    const interruptingPool = { connect: async () => {
+      const actual = await migrationPool.connect();
+      return { query: (text: string, values?: unknown[]) => {
+        if (text === "BEGIN" && ++begins === 18) throw new Error("synthetic interruption before unit 18");
+        return actual.query(text, values);
+      }, release: (error?: Error) => actual.release(error) } as unknown as PoolClient;
+    } } as Pool;
+    await assert.rejects(makeRunner(() => interruptingPool, root).apply(), /synthetic interruption before unit 18/u);
+    const prefixStatus = await prefixRunner.status();
+    assert.equal(prefixStatus.applied.length, 17);
+    assert.equal(prefixStatus.pending.length, issuedExpected.length - 17);
+    const resumed = await prefixRunner.apply();
+    assert.equal(resumed.applied.length, issuedExpected.length - 17);
+    assert.deepEqual(await prefixRunner.apply(), { applied: [] });
+    const issuedInventory = await observeInventory(input.inventory);
+    return { prefixStatus, resumed, issuedInventory };
+  });
+  assert.deepEqual(await runner.status(), { applied: issuedExpected.map(entry => entry.file),
+    pending: expected.slice(issuedExpected.length).map(entry => entry.file) });
+  const suffix = await runner.apply();
+  assert.deepEqual(suffix.applied, expected.slice(issuedExpected.length).map(entry => entry.file));
   const installed = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
   assert.deepEqual(await runner.status(), { applied: expected.map(entry => entry.file), pending: [] });
@@ -96,13 +121,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   await switchedSession.query(`SET ROLE ${identifier(m)}`);
   try { await assert.rejects(makeRunner(() => switchedSession).status(), /actual_login_or_owner_mismatch/u); }
   finally { await switchedSession.query("RESET ROLE"); }
-  const observer = await migrationPool.connect();
-  let inventory: string;
-  try {
-    await observer.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
-    inventory = hash(await qualifiedAdminPostgresCatalogPayload(observer, selection, lockName));
-    assert.equal(inventory, input.inventory);
-  } finally { await observer.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]); observer.release(); }
+  const inventory = await observeInventory(manifest.objectInventorySha256);
 
   // The trusted migrator retains fixed ADMIN edges; runtime and restore cannot create objects.
   const edges = (await bootstrap.query(`SELECT role.rolname AS granted, member.rolname AS member, a.admin_option
@@ -277,8 +296,8 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   assert.deepEqual(await runner.apply(), { applied: [] });
   const finalLedger = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(finalLedger, installed);
-  return { identities: { migration: m, runtime: r, restore: s, bootstrap: bootstrapLogin, operator: input.roleMode === "operator-provisioned" ? o : null }, mode: input.roleMode, inventory, pendingBefore: before.pending.length, interruptedPrefix: prefixStatus.applied.length,
-    appliedAfterResume: resumed.applied.length, ledgerRows: installed.length, replayApplied: 0,
+  return { identities: { migration: m, runtime: r, restore: s, bootstrap: bootstrapLogin, operator: input.roleMode === "operator-provisioned" ? o : null }, mode: input.roleMode, inventory, issuedInventory, issuedLedgerRows: issuedExpected.length, pendingBefore: before.pending.length, interruptedPrefix: prefixStatus.applied.length,
+    appliedAfterResume: resumed.applied.length + suffix.applied.length, ledgerRows: installed.length, replayApplied: 0,
     runtimeProved: true, restoreProved: true, connectionRecipeProved: true,
     shadowMatrixProved: true, refusalsProved: true };
  } finally { await closePostgres(container, pools); }

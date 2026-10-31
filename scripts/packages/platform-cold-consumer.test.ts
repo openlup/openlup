@@ -199,8 +199,8 @@ function channelFixture(entries: readonly string[]) {
   writeFileSync(join(nodeTypes, "index.d.ts"), "export {};\n");
   return consumer;
 }
-it("accepts absent channel exports during the landing window", () => {
-  expect(assertExportInventory(channelFixture([]))).toEqual(NON_ADAPTER_ENTRIES);
+it("refuses absent channel exports after the landing window", () => {
+  expect(() => assertExportInventory(channelFixture([]))).toThrow(/inventory needs classification/);
 });
 it("includes the complete channel group in runtime imports and both declaration modes", () => {
   const consumer = channelFixture(channelEntries), entries = assertExportInventory(consumer);
