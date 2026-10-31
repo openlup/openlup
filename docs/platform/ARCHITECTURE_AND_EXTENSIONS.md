@@ -2558,14 +2558,21 @@ Referenced parents remain explicit prerequisites. There is no generic upsert,
 deletion scan, identity relinking, ledger copy or permission change.
 
 The [canonical PostgreSQL witness](../../tests/postgres/portabilityRows.test.ts)
-compares entire selected rows in two disposable canonical clusters, retains
-active subscriptions/frozen terms/in-flight outbox state, and checks replay,
-conflict rollback and unchanged migration ledger/ACLs. The existing
+compares entire supported rows in two disposable canonical clusters, retains
+active subscriptions and frozen terms, and checks exact replay, precision,
+conflict rollback and unchanged migration ledger/ACLs. It also copies in-flight
+outbox state when no INSERT guard is installed; with the complete channel
+catalogue it proves the generic utility refuses outbox restoration and leaves
+the source state intact. The existing
 [cold consumer](../../scripts/packages/platform-cold-consumer.ts) executes actual
-private bytes and injected-row refusal without optional peers, then selected
-outbox recovery against its existing canonical PostgreSQL fixture using installed
-artifacts. Its client-side query fixtures prove translation only; actual database
-effects depend on the separate connected proof.
+private bytes and injected-row refusal without optional peers, then proves
+trigger-free subscription-event loss/recovery using installed artifacts.
+Its outbox check proves identical replay on the earlier catalogue or typed
+refusal when the channel INSERT guard is installed. With the complete 0.34.0
+catalogue, outbox restoration needs the reference-source owner path; the generic
+utility refuses it. These are finite selected-row proofs. Client-side query
+fixtures prove translation only; complete-store effects depend on the separate
+connected proof.
 
 The [HTTP probe](../../packages/platform/test/payments/tpay/effectAuthority.test.ts)
 uses the existing payment client and a local synthetic provider. It demonstrates
