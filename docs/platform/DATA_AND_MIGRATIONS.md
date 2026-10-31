@@ -78,8 +78,12 @@ qualify managed-history mapping. The opt-in `--managed-catch-up` mode composes
 the finite managed typed capture/mapping with this same native import and checks
 source facts against both local targets before activation. History-only rows
 remain in the operator's source archive and are absent from target data.
-Managed Storage remains empty in this journey; nonempty Storage refuses until
-its separate typed object projection is available. Required managed first-leg
+Managed Storage remains empty in this journey. The separate
+[managed Storage witness](../../tests/postgres/managedStorageTransfer.proof.ts)
+uses the finite operator-only projection described below and copies its final
+filesystem objects onward through the existing portable object path. It does
+not add managed objects to the three-installation journey or repeat its row
+second leg. Required managed first-leg
 tests use the stock-PG17 compatibility adapter; the opt-in real-source runner
 repeats them on the pinned managed source and executes the complete journey.
 This does not qualify an
@@ -97,7 +101,9 @@ for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
 The managed source extractor inventories one disposable managed snapshot,
-including Auth identity metadata and Storage metadata relations. The capture
+including Auth identity metadata and Storage metadata relations.
+The managed source extractor is reference-source code and is not part of any
+published `@openlup/*` package. The capture
 login must be exempt from row security and able to read every relation; a login
 that row security would filter refuses instead of reading an empty source. It
 projects only the finite typed obligations into a qualified canonical target. Full
@@ -141,9 +147,13 @@ Any managed invoice row refuses, including issued
 invoices, so a source with invoice rows cannot transfer yet. A starter-pack marker,
 a synthetic test subscription, a quote line that disagrees with its price agreement
 and an order item with no SKU also refuse. Nonempty unknown relations, incomplete typed obligations and
-other settlement or idempotency states refuse transfer. Managed Storage objects are not yet transferred;
-nonempty managed Storage refuses. A separate managed object projection is
-required before that source state can transfer. Source-keyed terminal effects
+other settlement or idempotency states refuse transfer. Standard nonpublic managed Storage buckets, including
+empty buckets, admit only policies whose role set is exactly `{service_role}`
+or no policies. Both Storage relations must have row security enabled.
+They project through the existing object path into
+its private filesystem store. Local S3 probes corroborate bytes and access;
+they do not establish exact S3 destination metadata. Other active Storage
+semantics refuse. Source-keyed terminal effects
 do not become active target command keys. Managed capture is local evidence
 only; it does not qualify hosted managed data, object access or recovery.
 

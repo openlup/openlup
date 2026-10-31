@@ -57,6 +57,9 @@ The managed source extractor in this directory is also a
 transfer adapter: it reads a bounded source snapshot and emits a finite typed
 canonical projection, rather than serving a normal request or adding a
 provider connection.
+Its managed Storage projection accepts explicitly selected existing S3 sources
+for bytes; the SQL snapshot independently names the object rows. The retained
+transfer section below owns the finite cohort and destination limits.
 
 ## Restricted PostgreSQL installation binding
 
@@ -185,8 +188,12 @@ Any managed invoice row refuses, including issued invoices, so a source with inv
 rows cannot transfer yet. A starter-pack marker, a synthetic test subscription, a
 quote line that disagrees with its price agreement and an order item with no SKU also
 refuse. Other settlement or idempotency
-states refuse. Managed Storage objects are not yet transferred;
-nonempty managed Storage refuses pending a typed object projection. Unknown
+states refuse. Standard nonpublic managed Storage buckets,
+including empty buckets, admit no policies except those whose role set is
+exactly `{service_role}`; both Storage relations must have row security enabled.
+They use the existing object path and private filesystem
+destination. Local S3 probes corroborate bytes and access only; an S3 destination
+store is a separate contract. Other active Storage semantics refuse. Unknown
 nonempty relations and source state that the typed path cannot carry also
 refuse before restore. This local adapter does not prove provider service access
 or complete managed activation.
@@ -304,6 +311,8 @@ or proof of conditional GET support. A returned native version ID is retained
 as metadata and bound into the logical version. The adapter retains
 returned user metadata, content type/encoding/disposition/language, cache
 control, expiry representations and website redirect without supplying defaults.
+An empty optional response header is absent metadata; a nonempty range response
+still refuses as a partial read.
 Declared missing metadata and observed nonzero tags refuse. Native version
 history, ACLs, tags and provider-private metadata remain outside this export;
 the selected profile cannot qualify them by omission. The fixed

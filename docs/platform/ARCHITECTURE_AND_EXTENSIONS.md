@@ -2419,8 +2419,13 @@ leg then reaches an independent PG16 target. The managed fixture ends its sole
 writer/DDL lane before final read-only capture. Changed catalog and consent
 rows, settled payment state and source-archive dispositions are checked against
 both targets. Reconciled settlement details and expired completed keys remain
-at the operator source and are absent from target data. Nonempty managed
-Storage refuses here; its typed object transfer is a separate boundary.
+at the operator source and are absent from target data. This three-installation
+journey keeps managed Storage empty. The separate
+[managed Storage witness](../../tests/postgres/managedStorageTransfer.proof.ts)
+projects the finite operator-only cohort through the existing object path into
+one private filesystem store and onward into an independent second store.
+It reuses the 8B descriptor/reader contract and existing copy function without
+adding managed objects to this journey or repeating its row second leg.
 This fixture establishes no hosted qualification, restricted managed source
 capture login or adopter writer inventory. The required Vitest journey suite
 exercises this managed first leg. The separate real-source runner repeats its
