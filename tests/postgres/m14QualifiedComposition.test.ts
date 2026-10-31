@@ -8,11 +8,11 @@ import {
 } from "../helpers/postgresContainer.js";
 
 const exec = promisify(execFile);
-// Frozen two-reference 92-unit measurements are independent expectations, never
+// Frozen two-reference 93-unit measurements are independent expectations, never
 // target-derived replacements. The complete issued 91-unit prefix remains unchanged.
 const shapes = [
-  { name: "bootstrap-restore", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", separate: false, sha256: "b422e9600dc34efb787cf91f42f48cd7cc7b1a396d849d424d6d9b52255bf73f" },
+  { name: "separate-restore", separate: true, sha256: "5fc8702f85ec1ab7c7afcc248d13ea8850c4ca84db0f9591c08104128b64ad9a" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -50,8 +50,8 @@ for (const profile of profiles) for (const shape of shapes) {
       ], { timeout: 240_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
       const result = JSON.parse(stdout);
       expect(result).toMatchObject({
-        inventorySha256: shape.sha256, ledgerRows: 92, pendingBefore: 92,
-        appliedNow: 92, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
+        inventorySha256: shape.sha256, ledgerRows: 93, pendingBefore: 93,
+        appliedNow: 93, pendingAfter: 0, replayApplied: 0, retainedRuntime: true,
         runtimeLockPrivilegesProved: true, runtimeCompletionProved: true, ownerPathResolutionProved: true,
         nativeObservationRuntimeProved: profile.name === "target" && shape.name === "separate-restore",
         connectionRecipeProved: profile.name === "target" && shape.name === "separate-restore",

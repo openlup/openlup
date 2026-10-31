@@ -656,7 +656,7 @@ async function prove() {
   });
   assert.equal(manifest.objectInventorySha256, input.expectedInventory);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 92);
+  assert.equal(expected.length, 93);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;
   await assert.rejects(createPostgresMigrationRunner({ connectionString: input.connectionString }, { installation: withoutRestore }).status(),

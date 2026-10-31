@@ -56,7 +56,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     "qualified-admin", { roleMode: input.roleMode });
   assert.equal(manifest.objectInventorySha256, input.inventory);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 91);
+  assert.equal(expected.length, 92);
   for (const entry of expected) assert.equal(hash(readFileSync(entry.file, "utf8")), entry.sha256);
   const migrationUrl = new URL(loginUrl(m));
   migrationUrl.searchParams.set("options", qualifiedAdminPostgresStartupOptions(selection));
@@ -83,9 +83,9 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   await assert.rejects(makeRunner(() => interruptingPool).apply(), /synthetic interruption before unit 18/u);
   const prefixStatus = await runner.status();
   assert.equal(prefixStatus.applied.length, 17);
-  assert.equal(prefixStatus.pending.length, 74);
+  assert.equal(prefixStatus.pending.length, 75);
   const resumed = await runner.apply();
-  assert.equal(resumed.applied.length, 74);
+  assert.equal(resumed.applied.length, 75);
   const installed = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
   assert.deepEqual(await runner.status(), { applied: expected.map(entry => entry.file), pending: [] });

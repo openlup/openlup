@@ -76,9 +76,9 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
     expect((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
       [selection.bootstrapLogin])).rows).toEqual([{ rolsuper: false, rolcreaterole: true, rolcreatedb: true }]);
     await expect(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
-    expect((await runner.status()).pending).toHaveLength(91);
+    expect((await runner.status()).pending).toHaveLength(92);
     if (apply) {
-      expect((await runner.apply()).applied).toHaveLength(91);
+      expect((await runner.apply()).applied).toHaveLength(92);
       expect((await runner.status()).pending).toEqual([]);
     }
     return { container, pools, owner, runner, selection, inventory: manifest.objectInventorySha256 };
@@ -140,7 +140,7 @@ for (const role of ["rds_password", "rds_iam", "rds_ad"] as const) {
       fixture.selection.trustedControlPlane = { roleNames: [...fixture.selection.trustedControlPlane!.roleNames, role] };
       await expect(fixture.runner.status()).rejects.toThrow("control_plane_membership_missing");
       await fixture.pools[0]!.query("GRANT rds_superuser TO host_bootstrap WITH ADMIN TRUE, INHERIT TRUE, SET TRUE");
-      expect((await fixture.runner.status()).pending).toHaveLength(91);
+      expect((await fixture.runner.status()).pending).toHaveLength(92);
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
 }
@@ -153,7 +153,7 @@ for (const outside of ["grantor", "member"] as const) {
       const outsideName = outside === "grantor" ? "rds_superuser" : "declared_outsider";
       await fixture.pools[0]!.query(`CREATE ROLE ${outsideName} NOLOGIN`);
       fixture.selection.trustedControlPlane = { roleNames: [...fixture.selection.trustedControlPlane!.roleNames, outsideName] };
-      expect((await fixture.runner.status()).pending).toHaveLength(91);
+      expect((await fixture.runner.status()).pending).toHaveLength(92);
       await fixture.pools[0]!.query(`GRANT pg_monitor TO ${outsideName} WITH ADMIN TRUE, INHERIT TRUE, SET TRUE`);
       await expect(fixture.runner.status()).rejects.toThrow("protected_membership_graph_differs");
     } finally { await closePostgres(fixture.container, fixture.pools); }
