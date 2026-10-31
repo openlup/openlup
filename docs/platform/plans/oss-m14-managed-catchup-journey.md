@@ -283,8 +283,13 @@ restricted captures retain the existing inherited acquisition-owner window.
 The adapter now sets local row security off, so filtered reads refuse. Its new
 negative login test first explicitly sets row security on, observes zero rows
 without error, then records SQLSTATE `42501` and capture's `database_unavailable`.
-The separate native JSON witness captures/restores an outbox payload and reads
-`9007199254740993` exactly as PostgreSQL text. Both passed; no rounding occurred.
+At that recorded tree, the separate native JSON witness captured/restored an
+outbox payload and read `9007199254740993` exactly as PostgreSQL text. Both
+passed; no rounding occurred. The current generic witness retains supported-row
+precision and recovery proof, but refuses outbox restoration when the channel
+INSERT guard is installed; the installed cold witness recovers trigger-free
+subscription events and checks outbox replay or refusal for the selected
+catalogue.
 
 The earlier local run stopped with `target_conflict` on
 `public.commerce_order_items`: both synthetic order-item inserts omitted
