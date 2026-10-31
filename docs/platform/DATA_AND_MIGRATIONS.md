@@ -1291,7 +1291,9 @@ R1 supplies all four exact file, function and ordered-statement pins with the
 SQL introduction; an absent class remains readable in historical registries.
 The checker fixes signatures, creation or replacement, preimages, headers and
 ordered companions, including triggers and ACLs. Registry pins cannot widen
-that inventory. Complete ordered prefixes retain earlier issued same-rail pins;
+that inventory. PR, release and native queue checks require a binding at each
+fixed path even when its SQL is expand-only and the registry is unchanged.
+Complete ordered prefixes retain earlier issued same-rail pins;
 release checks bind the unique introduction and refuse later repinning or
 removal. Changing admission machinery together with SQL remains forbidden.
 This control installs no SQL and establishes no PostgreSQL semantic proof; the
