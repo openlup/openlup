@@ -68,11 +68,17 @@ describe("M17 unmounted managed reference on local compatibility PostgreSQL", ()
     pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 2 });
     db = await pool.connect();
     await db.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
+    // Match canonical installation rather than borrowing adapter defaults.
+    for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"])
+      for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"])
+        await db.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${role}${scope} REVOKE ALL ON ${kind} FROM PUBLIC,anon,authenticated,service_role`);
     await db.query("SET ROLE postgres; SET search_path=public,extensions");
     for (const name of readdirSync("supabase/migrations").filter(value => /^\d{14}_.+\.sql$/u.test(value)).sort()) {
       await db.query(readFileSync(`supabase/migrations/${name}`, "utf8").replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
     }
     await db.query("RESET ROLE; SET row_security=on; SET search_path=public,extensions");
+    expect((await db.query("SELECT has_table_privilege('service_role','public.commerce_order_items','SELECT') allowed")).rows)
+      .toEqual([{ allowed: false }]);
   }, postgresSetupTimeoutMs);
   afterEach(async () => { if (db) await db.query("ROLLBACK; RESET ROLE"); });
   afterAll(async () => { db?.release(); await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
