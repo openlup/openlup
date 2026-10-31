@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.34.0]
+
+- Publishable on the npm `latest` dist-tag as `0.34.0`, from tag
+  `openlup-outbox-v0.34.0`.
+
+- Republish with the complete `0.34.0` package set and an exact
+  `@openlup/core@0.34.0` peer. Outbox runtime, exports and SQL are unchanged.
+
 ## [0.33.0]
 
 - Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
@@ -22,8 +30,3 @@
   source paths, line ranges and excerpt digests. Core's installed offline
   `openlup-context` command can find it; check the cited source before relying
   on an excerpt. It adds no dependency or runtime activation.
-
-## [0.31.0]
-
-- Publishable on the npm `latest` dist-tag as `0.31.0`, from tag
-  `openlup-outbox-v0.31.0`.
