@@ -242,7 +242,7 @@ async function executeRecipe(config, receipt) {
       "workspace source proof; no installed-current-package claim", "backend switching; no PgBouncer qualification", "no hosted qualification inferred", "operator owns target teardown"] };
   receipt.install = { status: "RUNNING", modes: [] };
   for (const mode of modes.slice(0, 2)) {
-    const inventory = mode === "installer-managed" ? "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" : "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d";
+    const inventory = mode === "installer-managed" ? "96d431befa603ec0d301af13fc580ccd68c25beedefb0bdc1410f5acb847875f" : "1501b40ba66da68f261e8c564b322f27ad68f319d431f775e08998dc6b841283";
     receipt.activePhase = `install:${mode}`;
     const result = await runQualifiedAdminCompositionProof({ roleMode: mode, inventory, database: databases[mode] });
     receipt.install.modes.push(result);

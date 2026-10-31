@@ -1190,6 +1190,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -3007,6 +3011,10 @@
     },
     {
       "path": "packages/platform/sql/20261026120000_account_support_operator_authority.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261030110000_customer_newsletter_withdrawal.sql",
       "class": "public-output"
     },
     {
@@ -26407,6 +26415,10 @@
     },
     {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerNewsletterWithdrawal.test.ts",
       "class": "public-output"
     },
     {

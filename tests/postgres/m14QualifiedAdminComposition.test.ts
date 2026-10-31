@@ -3,8 +3,8 @@ import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresCont
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
 const modes = [
-  { roleMode: "installer-managed", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
-  { roleMode: "operator-provisioned", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
+  { roleMode: "installer-managed", inventory: "96d431befa603ec0d301af13fc580ccd68c25beedefb0bdc1410f5acb847875f" },
+  { roleMode: "operator-provisioned", inventory: "1501b40ba66da68f261e8c564b322f27ad68f319d431f775e08998dc6b841283" },
 ] as const;
 
 beforeAll(async () => {
@@ -12,11 +12,11 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 for (const mode of modes) {
-  it(`qualifies the restricted 91-unit production installation in ${mode.roleMode} mode`, async () => {
+  it(`qualifies the restricted 92-unit production installation in ${mode.roleMode} mode`, async () => {
     const result = await runQualifiedAdminCompositionProof(mode);
     expect(result).toMatchObject({
-      mode: mode.roleMode, inventory: mode.inventory, pendingBefore: 91, interruptedPrefix: 17,
-      appliedAfterResume: 74, ledgerRows: 91, replayApplied: 0, runtimeProved: true,
+      mode: mode.roleMode, inventory: mode.inventory, pendingBefore: 92, interruptedPrefix: 17,
+      appliedAfterResume: 75, ledgerRows: 92, replayApplied: 0, runtimeProved: true,
       restoreProved: true, connectionRecipeProved: true, shadowMatrixProved: true,
       refusalsProved: true,
     });
