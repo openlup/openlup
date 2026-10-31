@@ -154,10 +154,16 @@ for (const name of ["@openlup/core", "@openlup/platform"]) {
 `);
 }
 
-export function assertExportInventory(consumer: string): void {
+// Temporary landing window: R3 makes this complete group mandatory.
+const CHANNEL_ENTRIES = ["channels", "channels/contracts", "channels/server"] as const;
+
+export function assertExportInventory(consumer: string): readonly string[] {
   const metadata = JSON.parse(readFileSync(join(consumer, "node_modules/@openlup/platform/package.json"), "utf8"));
-  const expected = [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
+  const entries = CHANNEL_ENTRIES.some(name => Object.hasOwn(metadata.exports, `./${name}`))
+    ? [...NON_ADAPTER_ENTRIES, ...CHANNEL_ENTRIES] : NON_ADAPTER_ENTRIES;
+  const expected = [...entries, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
+  return entries;
 }
 
 
@@ -1886,8 +1892,8 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     };
     install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
     assertConsumerIsolation(consumer, checkout);
-    assertExportInventory(consumer);
-    for (const entry of NON_ADAPTER_ENTRIES) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
+    const entries = assertExportInventory(consumer);
+    for (const entry of entries) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
     consumerNode(consumer, `
 import assert from "node:assert/strict";
 import * as catalog from "@openlup/platform/catalog";
@@ -2012,7 +2018,7 @@ await assert.rejects(applyPromotionCodesV2({ ...input, port: { resolve: async ()
 assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type: "unknown", discount_value: 0 }), /promotion_v1_benefit_invalid/);
 `);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
-    compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
+    compileConsumer(consumer, entries, compiler);
     compileReferenceDelegationTypes(consumer, compiler);
     for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
@@ -2052,7 +2058,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
-    compileConsumer(consumer, [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES], compiler);
+    compileConsumer(consumer, [...entries, ...ADAPTER_ENTRIES], compiler);
     compileOperationsConsumer(consumer, compiler);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
