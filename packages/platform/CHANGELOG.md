@@ -10,6 +10,20 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.34.0]
+
+- Publishable on the npm `latest` dist-tag as `0.34.0`, from tag
+  `openlup-platform-v0.34.0`.
+
+Add optional `consentPolicy` modes to the data-layer factory. The default `analytics-only` mode preserves legacy behavior. `independent` admits optional events under either stored purpose grant; `host-authorized` also admits events before choice and after refusal for explicitly authorized consent-aware host tags. Both opt-in modes emit independent stored purpose signals. Hosts must fence private routes, authorize denied-state transmission and gate every tag by purpose. Explicit all-denial updates remain available; no replay is added.
+
+- Add experimental normalized channel contracts/helpers and Node ingest, retained paid-source, webhook/operator, pull and recovery bindings at existing Platform subpaths. Existing commerce owners retain order, payment, inventory and fulfillment effects.
+- Preserve original capture/approval/BOM/money/payment identities and page/CAS receipts. Managed retained conversion uses the existing ATP hook and unchanged allocator; portable physical conversion refuses by name. Privacy lifecycle export/erasure is unavailable.
+
+### Migration
+
+Install the complete selected catalogue including the two new channel forwards; sparse `CHANNEL_INGEST_MIGRATIONS` package assets are byte-identical projections, not an install chain. Hosts explicitly supply provider decoding, owner ports, currency policy and enablement. Importing the package enables no route, job, simulator or provider. No hosted or provider qualification is implied.
+
 ## [0.33.0]
 
 - Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
@@ -103,47 +117,3 @@ in the source repository.
   without a distinct-key count cap, policy-readiness retry conditions,
   reference display-only offer use, and the host-owned monitoring check for
   caller-side policy reasons.
-
-## [0.31.0]
-
-- Publishable on the npm `latest` dist-tag as `0.31.0`, from tag
-  `openlup-platform-v0.31.0`.
-
-### Runtime and scheduler
-
-- Keep the Node host's local HTTP listener available until admitted scheduler
-  callbacks finish, including callbacks waiting for advisory-lock acquisition
-  before calling their HTTP compatibility endpoint. Shutdown still attempts
-  listener and lock-session cleanup when draining fails.
-- Migration: Supply `createPgAdvisoryLock` with a dedicated direct connection or
-  session-mode pooler, never `Pool.query` or transaction pooling. If request work
-  uses a transaction pooler, inject a separate session connection for scheduler
-  locks and a direct connection for migration/admin work. On uncertain lock
-  acquisition or session-affinity refusal, drain the host, close its dedicated
-  connection and retire any stranded lock backend before restarting. Follow the
-  source repository's PostgreSQL connection recipe; finite observations do not
-  certify a pooler's future routing.
-
-### Migration admission and qualified reference source
-
-- Hardened migration ledger admission for status, dry-run and apply. Existing
-  canonical migration histories retain their exact-prefix and replay boundaries.
-- Migration: Migration-runner qualification covers PostgreSQL 16 and 17. Check
-  status on the existing installation before applying pending units; other majors
-  need separate qualification.
-- Pinned name resolution in qualified install owner paths used by acquisition
-  and restore operations.
-- Migration: The qualified-v2 reference-source PostgreSQL 16 catalogue now has
-  92 units, adding runtime completion and the qualified owner-path forward after
-  the previously issued 90-unit prefix. Preserve issued migration bytes and
-  apply the ordered forwards through the reference binding. Legacy selection
-  remains the unchanged 88-unit plan. The qualified migration login still needs
-  the declared database-owner SUPERUSER role; runtime and restore remain distinct
-  restricted nonowners. Restricted-bootstrap reader preparation does not activate
-  a non-superuser installation generation.
-- Qualified installation SQL, reference bindings, connected-store adapters and
-  portable operations defaults remain source-tree composition. The npm SQL
-  projections are not a complete installation or store-transfer catalogue.
-  Application upgrade and local handover witnesses establish only their bounded
-  profiles. No stable-framework, supported-upgrade, hosted-provider, full-store
-  transfer, M14 completion or production-readiness claim follows from this set.

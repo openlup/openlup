@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.34.0]
+
+- Publishable on the npm `latest` dist-tag as `0.34.0`, from tag
+  `openlup-core-v0.34.0`.
+
 ## [0.33.0]
 
 - Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
@@ -34,8 +39,3 @@ in the source repository.
   an optional bounded local code scan, and adds no runtime dependency. A root
   `AGENT_CONTEXT.md` packages excerpts of canonical guidance with source paths,
   line ranges and excerpt digests; check cited source before relying on them.
-
-## [0.31.0]
-
-- Publishable on the npm `latest` dist-tag as `0.31.0`, from tag
-  `openlup-core-v0.31.0`.

@@ -8,16 +8,17 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.33.0` set includes Platform's experimental company-identity and
-market-pack entries and Node scheduler stop fix. Core's commerce kernel exports
-are unchanged. The installed `openlup-context` command now separates nested
-sections, removes duplicate copied excerpts and
-offers opt-in `--package-code` search of installed package source. Generated
-guidance adds migration, idempotency, provider-adapter and delivery routes.
-Upgrade all packages together and read [the set notes](CHANGELOG.md#0330);
-Core introduces no schema migration. Size comparison uses the published `0.32.0`
-tarball; releases before `0.31.0` remain in the source-only
+The prepared `0.34.0` set adds Platform's experimental normalized channel
+entries and opt-in marketing consent modes. Core's commerce kernel exports are
+unchanged. Upgrade all packages together and read [the set notes](CHANGELOG.md#0340);
+Core introduces no schema migration. Size comparison uses the published `0.33.0`
+tarball; releases before `0.32.0` remain in the source-only
 `CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+
+The installed `openlup-context` command separates nested sections, removes
+duplicate copied excerpts and offers opt-in `--package-code` search of installed
+package source. Generated guidance includes migration, idempotency,
+provider-adapter and delivery routes.
 
 The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Oversized constrained collections fail before per-element errors accumulate;
