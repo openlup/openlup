@@ -35,11 +35,26 @@ describe.each(["portable", "managed"] as const)("channel purchased-source SQL: %
     db = await pool.connect();
     if (rail === "managed") {
       await db.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
+      // Match the canonical managed installer, rather than borrowing the
+      // compatibility adapter's broad default table/function grants.
+      for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"])
+        for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"])
+          await db.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${role}${scope} REVOKE ALL ON ${kind} FROM PUBLIC,anon,authenticated,service_role`);
       await db.query("SET ROLE postgres; SET search_path=public,extensions");
       for (const filename of readdirSync("supabase/migrations").filter(name => /^\d{14}_.+\.sql$/u.test(name)).sort()) {
         await db.query(readFileSync(`supabase/migrations/${filename}`, "utf8").replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
       }
       await db.query("RESET ROLE; SET row_security=on; SET search_path=public,extensions");
+      await db.query("CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions");
+      // The canonical runner grants only assertion-extension members after
+      // default-ACL revocation; business functions keep their exact grants.
+      await db.query(`DO $$ DECLARE fn regprocedure; BEGIN
+        FOR fn IN SELECT p.oid::regprocedure FROM pg_proc p
+          JOIN pg_depend d ON d.objid=p.oid AND d.classid='pg_proc'::regclass
+          JOIN pg_extension e ON e.oid=d.refobjid
+          WHERE e.extname='pgtap' AND d.deptype='e'
+        LOOP EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC',fn); END LOOP;
+      END $$;`);
     } else {
       await db.query("CREATE ROLE service_role NOLOGIN");
       const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -55,6 +70,32 @@ describe.each(["portable", "managed"] as const)("channel purchased-source SQL: %
   }, postgresSetupTimeoutMs);
   afterEach(async()=>{if(db)await db.query("ROLLBACK; RESET ROLE");});
   afterAll(async () => { db?.release(); await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
+  if (rail === "managed") it("has exactly the canonical managed read closure without adapter defaults", async () => {
+    const required: Record<string, string[]> = {
+      commerce_order_items: ["id", "sku_id", "quantity", "product_snapshot", "order_id", "allocation_ordinal"],
+      inventory_reservations: ["id", "order_item_id", "sku_id", "quantity", "status", "expires_at", "idempotency_key", "metadata", "order_id"],
+      sales_channel_connections: ["id", "application_ref"],
+      sales_channels: ["id", "connection_id", "channel_external_ref", "slug"],
+      sales_channel_listings: ["id", "channel_id", "external_offer_ref", "exposure_generation", "exposure_issued_basis_ref"],
+      outbox_events: ["id", "event_type", "metadata"],
+      channel_order_ingests: ["id", "channel_id", "purchase_capture_text", "status", "created_at"],
+    };
+    for (const [table, columns] of Object.entries(required)) {
+      for (const column of columns) expect((await db.query(
+        "SELECT has_column_privilege('service_role',$1,$2,'SELECT') allowed", [`public.${table}`, column],
+      )).rows[0].allowed, `${table}.${column}`).toBe(true);
+    }
+    expect((await db.query("SELECT has_table_privilege('service_role','public.commerce_order_items','SELECT') allowed")).rows[0].allowed).toBe(false);
+    const columns = (await db.query(`SELECT attname,has_column_privilege('service_role',attrelid,attnum,'SELECT') allowed
+      FROM pg_attribute WHERE attrelid='public.commerce_order_items'::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum`)).rows;
+    expect(columns.filter(row => row.allowed).map(row => row.attname).sort()).toEqual([...required.commerce_order_items].sort());
+    await db.query("BEGIN; SET LOCAL ROLE service_role");
+    try {
+      await expect(db.query("SELECT id,sku_id,quantity,product_snapshot FROM public.commerce_order_items WHERE order_id=$1 ORDER BY allocation_ordinal", [randomUUID()])).resolves.toMatchObject({rowCount:0});
+      await expect(db.query("SELECT * FROM public.commerce_order_items LIMIT 0")).rejects.toMatchObject({code:"42501"});
+    } finally { await db.query("ROLLBACK"); }
+  });
+
   it("captures original purchased evidence, exact readback, page-before-CAS and replay", async () => {
     await db.query("BEGIN");
     try {

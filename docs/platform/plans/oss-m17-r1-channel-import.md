@@ -1287,3 +1287,41 @@ respecting the existing payment owner's annotation made the recovery witness
 accurate. The M12 fixture needed its actual historical prefix, not a live tail.
 No new allocator, policy, validation framework, dependency or follow-up wave was
 needed.
+
+## Delivery witness fit after the complete catalogue
+
+The generic compatible-row utility still refuses every enabled user INSERT
+trigger. With the complete 0.35.0 catalogue, ordinary outbox restoration needs
+the reference-source owner path; protected channel evidence still refuses.
+The preceding witness prerequisite now proves installed event recovery and
+separates baseline outbox replay from guarded outbox refusal.
+
+The static ACL reader handles every target in an explicit multi-function grant
+and canonical timestamp aliases. Its boundary check admits exactly the closed
+channel writer beside the service role for reservation, retaining service-only
+fulfillment consumption. Actual PostgreSQL checks independently require the
+writer's closed flags, exact ADMIN-only installer edge and exact primitive ACLs.
+The catalog witness admits only these non-grantable SELECT tuples:
+
+- `public.catalog_skus:openlup_channel_purchase_writer:SELECT`
+- `public.catalog_bundles:openlup_channel_purchase_writer:SELECT`
+- `public.catalog_bundle_components:openlup_channel_purchase_writer:SELECT`
+
+Every other PUBLIC, unknown-principal and browser/reader-writer refusal remains.
+The source graph drops its unused channel-contracts type edge; the directory
+fixture explicitly includes the existing server module.
+
+Historical installation witnesses retain their independently frozen issued
+prefixes and inventory digests. Qualified witnesses install that prefix through
+the existing runner root seam, verify its frozen inventory, then apply every
+current selected suffix unit and verify the full ledger and final inventory.
+Current total/resume counts come from the selected plan. The native support
+upgrade compares its own issued-prefix digest, and the released-schema upgrade
+keeps its original released-prefix SHA while deriving the current suffix.
+A shared test-only fixture supplies the three issued plans; it adds no runner,
+release admission rule or runtime capability.
+
+These are the approved delivery witness repairs. The importer, outbox guard,
+owner adapter, issued SQL/classes, allocator, Part C, frozen characterization
+and package caps remain unchanged. Working and committed verification evidence
+is recorded separately below.
