@@ -2008,13 +2008,16 @@ Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The M17 reference's adjacent guard
 tests cover off/portable selection; `tests/postgres/m17ChannelReference.test.ts`
-uses actual imported locked rows in local managed compatibility PostgreSQL to
-prove page/capture/CAS order, original money groups, current-run recovery and
+uses actual imported locked rows in local managed compatibility PostgreSQL,
+with adapter defaults revoked before installation, to prove page/capture/CAS
+order, original money groups, current-run recovery and
 ACK debt. This local witness does not qualify hosted managed or provider access. The paired PostgreSQL boundary
 fixture and selected-native inventory proofs live under `tests/postgres`;
 managed pgTAP retains 48 source-boundary assertions and the existing dispatch
 owner witness. Installed artifact proof belongs in `tests/platform/channels`;
-canonical cold-runner entry registration remains a later composition step.
+the canonical cold runner requires all three channel entries and checks their
+imports and both declaration modes. Registration alone does not establish
+passing final canonical verification.
 These local witnesses do not establish real-provider or hosted qualification.
 
 #### Choose a location and proof
