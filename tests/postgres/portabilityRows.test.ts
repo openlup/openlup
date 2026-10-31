@@ -55,14 +55,22 @@ it("moves compatible canonical rows atomically, preserves clocks/money/duties an
     VALUES($1,'subscription',$2,'synthetic.owed','original-key','{"unknownEffect":true}','processing',3)`, [outbox, subscription]);
   const beforeLedger = (await target.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows;
   const beforeAcl = (await target.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows;
-  const tables: CompatiblePostgresTable[] = ["subscriptions", "subscription_events", "subscription_renewal_terms", "subscription_renewal_term_lines", "outbox_events"];
+  const guardedOutbox = (await target.query("SELECT to_regclass('public.sales_channel_control_operations') IS NOT NULL AS installed")).rows[0].installed;
+  const tables: CompatiblePostgresTable[] = ["subscriptions", "subscription_events", "subscription_renewal_terms", "subscription_renewal_term_lines", ...(guardedOutbox ? [] : ["outbox_events" as const])];
+  if (guardedOutbox) {
+    expect((await target.query("SELECT count(*)::int AS count FROM pg_trigger WHERE tgrelid='public.outbox_events'::regclass AND tgname='channel_purchase_outbox_guard' AND NOT tgisinternal AND tgenabled<>'D' AND (tgtype & 4)<>0")).rows[0].count).toBe(1);
+    const outboxPacket = await capture(["outbox_events"]);
+    await expect(restoreCompatiblePostgresRows({ target: destination, catalogueId, packet: outboxPacket })).rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: "outbox_events" });
+    expect((await target.query("SELECT id FROM public.outbox_events WHERE id=$1", [outbox])).rows).toEqual([]);
+    expect((await source.query("SELECT status,attempts,payload FROM public.outbox_events WHERE id=$1", [outbox])).rows[0]).toEqual({ status: "processing", attempts: 3, payload: { unknownEffect: true } });
+  }
   const packet = await capture(tables);
   expect(packet.tables.find(table => table.table === "subscription_renewal_term_lines")?.rows.join("")).toContain("9007199254740993");
   expect(packet.tables.find(table => table.table === "subscriptions")?.rows.join("")).toContain("123456");
   const copyStarted = performance.now();
   const first = await restoreCompatiblePostgresRows({ target: destination, catalogueId, packet });
   const copyMs = performance.now() - copyStarted;
-  expect(first.inserted).toBe(5);
+  expect(first.inserted).toBe(tables.length);
   for (const table of tables) {
     // Independent row census; no JS Date or numeric deserialization.
     const sql = `SELECT to_jsonb(t)::text AS value FROM public.${table} t`;
@@ -70,11 +78,11 @@ it("moves compatible canonical rows atomically, preserves clocks/money/duties an
   }
   const tupleVersions = (await target.query("SELECT xmin::text FROM public.subscriptions WHERE id=$1", [subscription])).rows;
   const resumeStarted = performance.now();
-  expect(await restoreCompatiblePostgresRows({ target: destination, catalogueId, packet })).toEqual({ inserted: 0, replayed: 5, sha256: packet.sha256 });
-  console.info(`M14 local selected-row recovery rows=5 missing=0 bytes=${packet.tables.reduce((total, table) => total + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0)} copyMs=${copyMs.toFixed(2)} replayMs=${(performance.now() - resumeStarted).toFixed(2)}`);
+  expect(await restoreCompatiblePostgresRows({ target: destination, catalogueId, packet })).toEqual({ inserted: 0, replayed: tables.length, sha256: packet.sha256 });
+  console.info(`M14 local selected-row recovery rows=${tables.length} missing=0 bytes=${packet.tables.reduce((total, table) => total + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0)} copyMs=${copyMs.toFixed(2)} replayMs=${(performance.now() - resumeStarted).toFixed(2)}`);
   expect((await target.query("SELECT xmin::text FROM public.subscriptions WHERE id=$1", [subscription])).rows).toEqual(tupleVersions);
   expect((await target.query("SELECT status,next_cycle_at::text FROM public.subscriptions WHERE id=$1", [subscription])).rows[0]).toMatchObject({ status: "active", next_cycle_at: "2027-01-01 12:00:00.123456+00" });
-  expect((await target.query("SELECT status,attempts,payload FROM public.outbox_events WHERE id=$1", [outbox])).rows[0]).toEqual({ status: "processing", attempts: 3, payload: { unknownEffect: true } });
+  if (!guardedOutbox) expect((await target.query("SELECT status,attempts,payload FROM public.outbox_events WHERE id=$1", [outbox])).rows[0]).toEqual({ status: "processing", attempts: 3, payload: { unknownEffect: true } });
   expect((await target.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows).toEqual(beforeLedger);
   expect((await target.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows).toEqual(beforeAcl);
   // Source catch-up may append compatible history. A changed retained row

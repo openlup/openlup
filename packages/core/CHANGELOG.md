@@ -15,6 +15,9 @@ in the source repository.
 - Publishable on the npm `latest` dist-tag as `0.34.0`, from tag
   `openlup-core-v0.34.0`.
 
+- Republish with the complete `0.34.0` package set for Platform’s optional
+  measurement consent policies. Core runtime, exports and SQL are unchanged.
+
 ## [0.33.0]
 
 - Publishable on the npm `latest` dist-tag as `0.33.0`, from tag

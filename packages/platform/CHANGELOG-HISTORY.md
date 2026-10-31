@@ -45,6 +45,7 @@ Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the curren
   Application upgrade and local handover witnesses establish only their bounded
   profiles. No stable-framework, supported-upgrade, hosted-provider, full-store
   transfer, M14 completion or production-readiness claim follows from this set.
+
 ## [0.30.0]
 
 - Publishable on the npm `latest` dist-tag as `0.30.0`, from tag

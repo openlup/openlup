@@ -185,6 +185,44 @@ it("refuses an unclassified export", () => {
   const metadata = JSON.parse(readFileSync(path, "utf8")); metadata.exports["./new-capability"] = "./index.js"; writeFileSync(path, JSON.stringify(metadata));
   expect(() => assertExportInventory(consumer)).toThrow(/inventory needs classification/);
 });
+const channelEntries = ["channels", "channels/contracts", "channels/server"] as const;
+function channelFixture(entries: readonly string[]) {
+  const consumer = fixture(), path = join(consumer, "node_modules/@openlup/platform/package.json");
+  const metadata = JSON.parse(readFileSync(path, "utf8"));
+  for (const entry of channelEntries) delete metadata.exports[`./${entry}`];
+  for (const entry of entries) metadata.exports[`./${entry}`] = { types: "./channel.d.ts", default: "./channel.js" };
+  writeFileSync(path, JSON.stringify(metadata));
+  const platform = dirname(path);
+  writeFileSync(join(platform, "channel.js"), "export {};\n");
+  writeFileSync(join(platform, "channel.d.ts"), "export {};\n");
+  const nodeTypes = join(consumer, "node_modules/@types/node"); mkdirSync(nodeTypes, { recursive: true });
+  writeFileSync(join(nodeTypes, "index.d.ts"), "export {};\n");
+  return consumer;
+}
+it("accepts absent channel exports during the landing window", () => {
+  expect(assertExportInventory(channelFixture([]))).toEqual(NON_ADAPTER_ENTRIES);
+});
+it("includes the complete channel group in runtime imports and both declaration modes", () => {
+  const consumer = channelFixture(channelEntries), entries = assertExportInventory(consumer);
+  expect(entries.filter(entry => channelEntries.includes(entry as typeof channelEntries[number]))).toEqual(channelEntries);
+  for (const entry of entries) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
+  const compiler = join(root, "node_modules/typescript/bin/tsc");
+  compileConsumer(consumer, entries, compiler);
+  const platform = join(consumer, "node_modules/@openlup/platform");
+  writeFileSync(join(platform, "channel.js"), 'throw new Error("channel initialization refused");\n');
+  for (const entry of channelEntries) expect(() => consumerNode(consumer, `await import("@openlup/platform/${entry}");`)).toThrow(/channel initialization refused/);
+  writeFileSync(join(platform, "channel.d.ts"), 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
+  expect(() => compileConsumer(consumer, entries, compiler)).toThrow();
+});
+it.each(channelEntries)("refuses a partial channel group missing %s", missing => {
+  expect(() => assertExportInventory(channelFixture(channelEntries.filter(entry => entry !== missing)))).toThrow(/inventory needs classification/);
+});
+it.each(channelEntries)("refuses a partial channel group containing only %s", entry => {
+  expect(() => assertExportInventory(channelFixture([entry]))).toThrow(/inventory needs classification/);
+});
+it("refuses an unknown export beside the complete channel group", () => {
+  expect(() => assertExportInventory(channelFixture([...channelEntries, "channels/unknown"])) ).toThrow(/inventory needs classification/);
+});
 it("refuses missing artifact environment before creating or installing a consumer", () => {
   expect(() => runPlatformColdConsumer(root, {})).toThrow(/OPENLUP_PACK_MANIFEST/);
 });

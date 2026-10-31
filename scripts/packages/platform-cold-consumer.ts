@@ -157,10 +157,16 @@ for (const name of ["@openlup/core", "@openlup/platform"]) {
 `);
 }
 
-export function assertExportInventory(consumer: string): void {
+// Temporary landing window: R3 makes this complete group mandatory.
+const CHANNEL_ENTRIES = ["channels", "channels/contracts", "channels/server"] as const;
+
+export function assertExportInventory(consumer: string): readonly string[] {
   const metadata = JSON.parse(readFileSync(join(consumer, "node_modules/@openlup/platform/package.json"), "utf8"));
-  const expected = [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
+  const entries = CHANNEL_ENTRIES.some(name => Object.hasOwn(metadata.exports, `./${name}`))
+    ? [...NON_ADAPTER_ENTRIES, ...CHANNEL_ENTRIES] : NON_ADAPTER_ENTRIES;
+  const expected = [...entries, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
+  return entries;
 }
 
 
@@ -1636,31 +1642,47 @@ import {randomUUID} from "node:crypto";
 import pg from "pg";
 import {captureCompatiblePostgresRows,restoreCompatiblePostgresRows} from "@openlup/platform/portability";
 const client=new pg.Client({connectionString:process.argv[2]});await client.connect();
-const id=randomUUID(),key="installed-transfer:"+id,catalogueId="owned-canonical-install";
+const id=randomUUID(),parent=randomUUID(),owner=randomUUID(),key="installed-transfer:"+id,catalogueId="owned-canonical-install";
 async function transaction(readOnly,work){await client.query(readOnly?"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY":"BEGIN");try{const result=await work(client);await client.query("COMMIT");return result;}catch(error){await client.query("ROLLBACK");throw error;}}
+async function capture(table){return captureCompatiblePostgresRows({source:{withSnapshot:work=>transaction(true,work)},sourceId:"owned-installed-source",catalogueId,tables:[table],maximumRows:1000,maximumBytes:4194304});}
+function input(packet){return {target:{withTransaction:work=>transaction(false,work)},catalogueId,packet};}
 try{
  const ledger=await client.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position");
  const acl=await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname");
- const payload='{"large":9007199254740993}';
+ const payload='{"large":9007199254740993,"state":"processing","attempts":3}';
+ // Parents are authored through their normal owner path, not generic restore.
+ // Their append-only lifecycle history is disposed with the owned database.
+ await client.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[owner,owner+"@example.invalid"]);
+ await client.query("INSERT INTO public.subscriptions(id,client_id,cadence_days) VALUES($1,$2,28)",[parent,owner]);
+ await client.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload,occurred_at) VALUES($1,$2,'synthetic.transfer',$3,$4::jsonb,'2026-10-31T01:02:03.123456Z')",[id,parent,key,payload]);
+ const before=(await client.query("SELECT to_jsonb(t)::text AS value FROM public.subscription_events t WHERE id=$1",[id])).rows;
+ assert.match(before[0].value,/9007199254740993/);assert.match(before[0].value,/01:02:03.123456/);
+ const packet=await capture("subscription_events");
+ assert.equal((await restoreCompatiblePostgresRows(input(packet))).inserted,0);
+ // Recover the exact retained event, key, state-bearing JSON and microseconds.
+ await client.query("DELETE FROM public.subscription_events WHERE id=$1",[id]);
+ assert.equal((await restoreCompatiblePostgresRows(input(packet))).inserted,1);
+ assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.subscription_events t WHERE id=$1",[id])).rows,before);
+ const retained=(await client.query("SELECT xmin::text AS version FROM public.subscription_events WHERE id=$1",[id])).rows;
+ assert.equal((await restoreCompatiblePostgresRows(input(packet))).inserted,0);
+ assert.deepEqual((await client.query("SELECT xmin::text AS version FROM public.subscription_events WHERE id=$1",[id])).rows,retained);
+ await client.query("UPDATE public.subscription_events SET payload=jsonb_set(payload,'{attempts}','4') WHERE id=$1",[id]);
+ await assert.rejects(restoreCompatiblePostgresRows(input(packet)),{code:"target_conflict"});
+ // The complete channel catalogue adds an INSERT guard to outbox. Generic
+ // transfer must refuse even an ordinary row; only reference owner paths admit it.
  await client.query("INSERT INTO public.outbox_events(id,aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,attempts) VALUES($1,'synthetic',$1,'synthetic.transfer',$2,$3::jsonb,'processing',3)",[id,key,payload]);
- const before=(await client.query("SELECT to_jsonb(t)::text AS value FROM public.outbox_events t WHERE id=$1",[id])).rows;
- const packet=await captureCompatiblePostgresRows({source:{withSnapshot:work=>transaction(true,work)},sourceId:"owned-installed-source",catalogueId,tables:["outbox_events"],maximumRows:1000,maximumBytes:4194304});
- const input={target:{withTransaction:work=>transaction(false,work)},catalogueId,packet};
- assert.equal((await restoreCompatiblePostgresRows(input)).inserted,0);
- // Owned fixture loss: recover the exact retained row without resetting its
- // in-flight status, attempts, original key or precision-bearing payload.
- await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);
- assert.equal((await restoreCompatiblePostgresRows(input)).inserted,1);
- assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.outbox_events t WHERE id=$1",[id])).rows,before);
- const retained=(await client.query("SELECT xmin::text AS version FROM public.outbox_events WHERE id=$1",[id])).rows;
- assert.equal((await restoreCompatiblePostgresRows(input)).inserted,0);
- assert.deepEqual((await client.query("SELECT xmin::text AS version FROM public.outbox_events WHERE id=$1",[id])).rows,retained);
- await client.query("UPDATE public.outbox_events SET attempts=4 WHERE id=$1",[id]);
- await assert.rejects(restoreCompatiblePostgresRows(input),{code:"target_conflict"});
+ const outboxBefore=(await client.query("SELECT to_jsonb(t)::text AS value,xmin::text AS version FROM public.outbox_events t ORDER BY id")).rows;
+ const outbox=await capture("outbox_events");
+ const channels=(await client.query("SELECT to_regclass('public.sales_channel_control_operations') IS NOT NULL AS installed")).rows[0].installed;
+ if(channels){
+   assert.equal((await client.query("SELECT count(*)::int AS count FROM pg_trigger WHERE tgrelid='public.outbox_events'::regclass AND tgname='channel_purchase_outbox_guard' AND NOT tgisinternal AND tgenabled<>'D' AND (tgtype & 4)<>0")).rows[0].count,1);
+   await assert.rejects(restoreCompatiblePostgresRows(input(outbox)),{code:"insert_trigger_requires_owner",table:"outbox_events"});
+ }else{assert.equal((await restoreCompatiblePostgresRows(input(outbox))).inserted,0);}
+ assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value,xmin::text AS version FROM public.outbox_events t ORDER BY id")).rows,outboxBefore);
  assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows,ledger.rows);
  assert.deepEqual((await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows,acl.rows);
- console.log("Portability installed canonical selected-row recovery PASS");
-}finally{await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);await client.end();}
+ console.log("Portability installed canonical selected-row recovery PASS (trigger-free event, exact replay/conflict/precision, guarded outbox refusal when installed)");
+}finally{await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);await client.query("DELETE FROM public.subscription_events WHERE subscription_id=$1",[parent]);await client.end();}
 `, [connectionString]);
 }
 
@@ -1889,8 +1911,8 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     };
     install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
     assertConsumerIsolation(consumer, checkout);
-    assertExportInventory(consumer);
-    for (const entry of NON_ADAPTER_ENTRIES) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
+    const entries = assertExportInventory(consumer);
+    for (const entry of entries) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
     consumerNode(consumer, `
 import assert from "node:assert/strict";
 import * as catalog from "@openlup/platform/catalog";
@@ -2015,7 +2037,7 @@ await assert.rejects(applyPromotionCodesV2({ ...input, port: { resolve: async ()
 assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type: "unknown", discount_value: 0 }), /promotion_v1_benefit_invalid/);
 `);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
-    compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
+    compileConsumer(consumer, entries, compiler);
     compileReferenceDelegationTypes(consumer, compiler);
     for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
@@ -2055,7 +2077,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
-    compileConsumer(consumer, [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES], compiler);
+    compileConsumer(consumer, [...entries, ...ADAPTER_ENTRIES], compiler);
     compileOperationsConsumer(consumer, compiler);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
