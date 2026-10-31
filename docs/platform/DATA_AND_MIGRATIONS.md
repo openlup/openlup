@@ -2064,11 +2064,20 @@ owners; no provider mapping or new schema enters the package.
 After installing the complete portable chain containing
 `20261030110000_customer_newsletter_withdrawal.sql`, every account newsletter
 opt-out atomically denies a missing or granted `marketing_newsletter` consent for
-the principal's usable email. An existing denial or suppression is unchanged;
+the principal's usable email when database and JavaScript lowercase normalization
+agree. An existing denial or suppression is unchanged;
 an older caller timestamp still denies a grant without moving its timestamp
 backwards. Other purposes remain untouched. Opt-in changes only the account
 preference: after opt-out and back in, the evaluator still refuses until an
 explicit grant is separately recorded, while account read-back shows the preference.
+
+The explicit trimming set matches the evaluator-accepted JavaScript whitespace
+class. Case folding still uses the database's `lower()` and its locale, as the
+existing acquisition path does. On the measured `en_US.utf8` image it differs
+from JavaScript for Turkish `İ`, context-dependent Greek `Σ` and some newer
+letters; a C-locale database also leaves `Ä` uppercase. Withdrawal and the operator
+statement target the evaluator's fingerprint only where the lowercase results
+agree. No case-mapping change is included here; this withdrawal path assumes a UTF8 database.
 
 An opt-out recorded before this version does not change an existing `granted`
 row until an operator runs the following statement through the direct migration
@@ -2085,7 +2094,7 @@ SET state = 'denied',
 FROM public.clients AS client
 JOIN public.customer_communication_preferences AS preference
   ON preference.principal_id = client.principal_id
-WHERE consent.recipient_fingerprint = encode(sha256(convert_to(lower(btrim(client.email)),'UTF8')),'hex')
+WHERE consent.recipient_fingerprint = encode(sha256(convert_to(lower(btrim(client.email, E'\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')),'UTF8')),'hex')
   AND consent.purpose = 'marketing_newsletter'
   AND consent.state = 'granted'
   AND preference.marketing_newsletter_consent = false

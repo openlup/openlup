@@ -209,12 +209,12 @@
     },
     {
       "path": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
-      "sha256": "750b933c818ea374e07de8af62b4a74925e6c607e8e2f935ecfb00047dd32db2",
+      "sha256": "977388ff1cf8518876a79fb8a77e7f98521a447b977b53d758fc48adc794c040",
       "functions": [
         {
           "signature": "public.customer_communication_preferences_set_as_actor(boolean,timestamptz)",
           "beforeSha256": "d75a7628af9bb77bcd7f5f6d0ae6c5067ccfc95f3b494a72ac719e73b22cd5ec",
-          "afterSha256": "3a172d5e20f63d954432d87337f666b21931b86b3b4e183bc5feba2f83e7b31a"
+          "afterSha256": "c9dd6e842e521ada1812c82666f0cfa6b704b1adf0370385dc3798664cb967cd"
         }
       ]
     }

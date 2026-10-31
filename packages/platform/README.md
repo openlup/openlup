@@ -1038,7 +1038,7 @@ The sparse `COMMUNICATIONS_MIGRATIONS` inventory includes the portable account
 newsletter withdrawal forward; install the complete canonical chain. Account
 opt-out denies only `marketing_newsletter` and preserves suppression. Opt-in
 changes the preference without granting consent. Earlier opt-outs need the
-[operator upgrade statement](../../docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
+[operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
 which also documents the provider-sync and email-change limits.
 
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.

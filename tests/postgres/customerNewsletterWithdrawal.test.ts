@@ -13,6 +13,14 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresCont
 const file = "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const fingerprint = (email: string) => hash(email.trim().toLowerCase());
+// Derive the evaluator-accepted trim class from this Node runtime, including new Unicode versions.
+const trimCandidates: string[] = [];
+for (let point = 0; point <= 0x10ffff; point++) {
+  const character = String.fromCodePoint(point), address = character + "reader@example.invalid";
+  if (address.trim() === "reader@example.invalid") trimCandidates.push(character);
+}
+const sqlNormalForm = /lower\(btrim\(client\.email(?:, E'[^']*')?\)\)/u.exec(readFileSync(file, "utf8"))?.[0];
+if (!sqlNormalForm) throw new Error("newsletter_normal_form_missing");
 const oldAt = "2026-10-20T10:00:00.000Z", preferenceAt = "2026-10-21T10:00:00.000Z", laterAt = "2026-10-22T10:00:00.000Z";
 const originalInventories = {
   legacy: "cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3",
@@ -100,11 +108,6 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
     const consentRows = async (email: string) => (await owner.query("SELECT to_jsonb(c) AS row,xmin::text AS xmin,ctid::text AS ctid FROM public.communication_recipient_consents c WHERE recipient_fingerprint=$1 ORDER BY purpose", [fingerprint(email)])).rows;
     const decide = (email: string, purpose = "marketing_newsletter") => evaluator.evaluate({ email, purpose });
     const preferenceRows = async (principal: string) => (await owner.query("SELECT to_jsonb(p) AS row FROM public.customer_communication_preferences p WHERE principal_id=$1 UNION ALL SELECT to_jsonb(e) FROM public.customer_communication_preference_events e WHERE principal_id=$1", [principal])).rows;
-    for (const email of [" Mixed.Case@Example.invalid ", "ÄCCOUNT@EXAMPLE.INVALID"]) {
-      const sqlHash = (await owner.query("SELECT encode(sha256(convert_to(lower(btrim($1)),'UTF8')),'hex') AS fingerprint", [email])).rows[0].fingerprint;
-      expect(sqlHash, "SQL/evaluator normalized email fingerprint parity").toBe(fingerprint(email));
-      console.info(`newsletter-fingerprint-parity ${profile.name} ${email.includes("Ä") ? "non-ASCII-uppercase" : "mixed-case"} PASS`);
-    }
     // Fail first against the unchanged real setter, through the actual actor role.
     const customer = await subject(" Mixed.Case@Example.invalid ");
     await seed(customer.email!, "granted");
@@ -112,8 +115,10 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
         ["earlier", false, "granted", oldAt, "marketing_newsletter"], ["equal", false, "granted", preferenceAt, "marketing_newsletter"], ["later", false, "granted", laterAt, "marketing_newsletter"],
         ["enabled", true, "granted", oldAt, "marketing_newsletter"], ["suppressed", false, "suppressed", oldAt, "marketing_newsletter"],
         ["other", false, "granted", oldAt, "marketing_launch_offer"],
+        ["unicode-nbsp", false, "granted", oldAt, "marketing_newsletter"], ["unicode-bom", false, "granted", oldAt, "marketing_newsletter"],
       ] as const) {
-        const historic = await subject(`historic-${label}@example.invalid`);
+        const whitespace = label === "unicode-nbsp" ? "\u00a0" : label === "unicode-bom" ? "\ufeff" : "";
+        const historic = await subject(`${whitespace}historic-${label}@example.invalid${whitespace}`);
         await owner.query("INSERT INTO public.customer_communication_preferences(principal_id,marketing_newsletter_consent,revision,updated_at) VALUES($1,$2,1,$3)", [historic.principal, preference, preferenceAt]);
         await seed(historic.email!, state, purpose, at);
       }
@@ -172,6 +177,44 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
     for (const email of ["invalid-address"]) { const noEmail = await subject(email); const count = (await owner.query("SELECT count(*) FROM public.communication_recipient_consents")).rows; await actor(noEmail.principal, false); expect(await preferenceRows(noEmail.principal)).toHaveLength(2); expect((await owner.query("SELECT count(*) FROM public.communication_recipient_consents")).rows).toEqual(count); }
     const unicode = await subject("ÄCCOUNT@EXAMPLE.INVALID"); await seed(unicode.email!, "granted"); await actor(unicode.principal, false);
     expect((await consentRows(unicode.email!))[0].row.state).toBe("denied"); expect((await decide(unicode.email!)).allowed).toBe(false);
+    for (const character of ["\u00a0", "\ufeff"]) {
+      const point = character.codePointAt(0)!.toString(16).toUpperCase();
+      const address = `${character}withdrawal-${point}@example.invalid${character}`;
+      const customer = await subject(address); await seed(address, "granted");
+      expect((await decide(address)).allowed).toBe(true);
+      await actor(customer.principal, false);
+      expect.soft((await consentRows(address))[0].row.state, `Unicode U+${point} opt-out must deny the evaluator grant`).toBe("denied");
+      expect.soft(await decide(address), `Unicode U+${point} evaluator must refuse after opt-out`).toMatchObject({ allowed: false, reason: "missing_marketing_permission" });
+    }
+    const trimCharacters: string[] = [];
+    for (const character of trimCandidates) {
+      const address = `${character}reader@example.invalid${character}`;
+      const code = character.codePointAt(0)!.toString(16).toUpperCase();
+      let decision;
+      try { decision = await decide(address); }
+      catch (error) {
+        // Only nativeEmail's control-character refusal excludes a runtime trim candidate.
+        expect(error).toMatchObject({ cause: { message: "native_communications_text_invalid" } });
+        continue;
+      }
+      trimCharacters.push(character);
+      // The real evaluator records nativeFingerprint(nativeEmail(address)); no private import or copied validation.
+      const evaluatorFingerprint = (await owner.query("SELECT recipient_fingerprint FROM public.communication_native_policy_decisions WHERE id=$1", [decision.decisionId])).rows[0].recipient_fingerprint;
+      expect(evaluatorFingerprint).toBe(fingerprint(address));
+      for (const setting of ["on", "off"]) {
+        await owner.query(`SET standard_conforming_strings = ${setting}`);
+        const sqlHash = (await owner.query(`SELECT encode(sha256(convert_to(${sqlNormalForm.replace("client.email", "$1")},'UTF8')),'hex') AS fingerprint`, [address])).rows[0].fingerprint;
+        expect.soft(sqlHash, `SQL/evaluator trim fingerprint parity U+${code}, standard_conforming_strings=${setting}`).toBe(evaluatorFingerprint);
+      }
+    }
+    await owner.query("SET standard_conforming_strings = on");
+    expect(trimCharacters.length).toBeGreaterThan(0);
+    console.info(`newsletter-trim-class ${profile.name} count=${trimCharacters.length} codepoints=${trimCharacters.map(character => character.codePointAt(0)!.toString(16).toUpperCase()).join(",")}`);
+    for (const email of [" Mixed.Case@Example.invalid ", "ÄCCOUNT@EXAMPLE.INVALID"]) {
+      const sqlHash = (await owner.query(`SELECT encode(sha256(convert_to(${sqlNormalForm.replace("client.email", "$1")},'UTF8')),'hex') AS fingerprint`, [email])).rows[0].fingerprint;
+      expect(sqlHash, "SQL/evaluator normalized email fingerprint parity").toBe(fingerprint(email));
+      console.info(`newsletter-fingerprint-parity ${profile.name} ${email.includes("Ä") ? "non-ASCII-uppercase" : "mixed-case"} PASS`);
+    }
     const denialBeforeEmailChange = await consentRows(absent.email!); await owner.query("UPDATE public.clients SET email='changed@example.invalid' WHERE id=$1", [absent.id]);
     expect(await consentRows(absent.email!)).toEqual(denialBeforeEmailChange); expect(await consentRows("changed@example.invalid")).toEqual([]);
     await seed("changed@example.invalid", "granted", "marketing_newsletter", laterAt); expect((await decide("changed@example.invalid")).allowed).toBe(true);
@@ -180,10 +223,11 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
       const note = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8");
       const statement = /<!-- account-newsletter-withdrawal-upgrade -->\n```sql\n([\s\S]*?)\n```/u.exec(note)?.[1]; expect(statement).toBeTruthy();
       const snapshot = async () => (await owner.query("SELECT to_jsonb(c) AS row,xmin::text AS xmin,ctid::text AS ctid FROM public.communication_recipient_consents c ORDER BY recipient_fingerprint,purpose")).rows;
-      const before = await snapshot(); const update = await migrator.query(statement!); expect(update.rowCount).toBe(2);
+      const before = await snapshot(); const update = await migrator.query(statement!); expect(update.rowCount).toBe(4);
       expect((await consentRows("historic-earlier@example.invalid"))[0].row.state).toBe("denied");
       expect((await consentRows("historic-equal@example.invalid"))[0].row.state).toBe("denied");
-      const reconciledKeys = [fingerprint("historic-earlier@example.invalid"), fingerprint("historic-equal@example.invalid")];
+      for (const label of ["unicode-nbsp", "unicode-bom"]) expect((await consentRows(`historic-${label}@example.invalid`))[0].row.state).toBe("denied");
+      const reconciledKeys = ["earlier", "equal", "unicode-nbsp", "unicode-bom"].map(label => fingerprint(`historic-${label}@example.invalid`));
       expect((await snapshot()).filter(row => !reconciledKeys.includes(row.row.recipient_fingerprint))).toEqual(before.filter(row => !reconciledKeys.includes(row.row.recipient_fingerprint)));
       const reconciled = await snapshot(); expect((await migrator.query(statement!)).rowCount).toBe(0); expect(await snapshot()).toEqual(reconciled);
       if (!qualified) {

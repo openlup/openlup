@@ -653,8 +653,10 @@ artifact discriminators and one task section avoided new release machinery.
 ## Account newsletter withdrawal
 
 Outcome: a portable PostgreSQL account newsletter opt-out made after this change
-must make the native consent evaluator refuse `marketing_newsletter`, without
-creating or weakening another consent. The bounded delivery is an admission-only
+must make the native consent evaluator refuse `marketing_newsletter` for usable
+emails whose database `lower()` agrees with JavaScript `toLowerCase()`, without
+creating or weakening another consent. All evaluator-accepted boundary whitespace
+is trimmed identically; database-dependent case mapping remains a stated limit. The bounded delivery is an admission-only
 change followed by a body-only setter forward, one real-PostgreSQL witness,
 required manifest/catalogue/package assets, a pending change fragment, an operator
 upgrade statement and affected owner documentation. Historical reconciliation is
@@ -669,7 +671,8 @@ credentials, settings and hosted activation remain excluded. The current main an
 the prepared `0.34.0` set does not contain it.
 The `0.34.0` set from `fcbaacdf` was published without this fix, which ships in the next set.
 
-The false call must deny absent/granted newsletter permissions on every call,
+Within that email-normalization boundary, every false call must deny
+absent/granted newsletter permissions,
 preserve denied/suppressed rows and never decrease consent timestamps. A true
 call leaves all consent rows unchanged: after opting out and back in, evaluation
 continues refusing until a separate explicit grant, although account read-back
@@ -782,3 +785,61 @@ The full read packet binds both trees and proposed documentation trailers.
 Self-retro at this checkpoint: canonical replay before fixture ACL composition
 kept authority and inventory proof distinct. Temporary policy exports must finish
 before lint begins. All three whole-fix repair cycles remain available.
+
+
+Unicode-whitespace repair (cycle 1 of 3): both independent native cards identify
+the same reachable SQL/JavaScript trim mismatch. The extended existing witness
+derives all evaluator-accepted trim characters from the runtime and fails first
+on the unchanged forward: U+00A0 and U+FEFF leave the evaluator grant active.
+The body-only replacement now uses the same explicit escaped trim set for its
+fingerprint and address check; the operator statement uses that normal form too.
+The function header, attributes, evaluator, acquisition and other functions stay
+unchanged. Canonical/package SQL and all byte-bound pins are re-derived.
+
+Case-mapping measurement uses PostgreSQL 16.15 on its pinned image,
+`en_US.utf8` / libc collation version 2.41, against Node 24.21.0 / Unicode 17.0.
+All 297,333 PostgreSQL-representable assigned Unicode scalar values are placed
+at both ends of an address's local part (594,666 addresses); NUL and the 2,048
+surrogate code points cannot be represented as PostgreSQL text and are excluded.
+There are 30 differing code points and 59 differing address results:
+U+0130, U+03A3, U+A7CE, U+A7D2, U+A7D4 and U+16EA0–U+16EB8.
+These include common Turkish `İ` and context-dependent Greek `Σ`, not only newer
+letters. A real C-locale UTF8 database leaves `Ä` uppercase while JavaScript
+produces `ä`. This residue also exists in the acquisition normalization; this
+repair does not change case folding. Evaluator refusal is guaranteed only where
+the database and JavaScript lowercase results agree. The fragment and upgrade
+guide state this boundary, and the installed README upgrade link is absolute.
+
+Self-retro for this repair: installation-shape breadth shared the same narrow
+normalization samples; deriving the accepted trim class tests the actual identity
+boundary without extending the evaluator. The measurement's first C-locale
+metadata query used an unavailable setting name; querying the database catalogue
+instead produced the complete result without changing any product code.
+
+The first repair lint run refused a private package-helper import in the root
+witness and diagnostic script. The witness now derives acceptance through the
+public evaluator and compares the SQL hash with its recorded decision fingerprint,
+which is the real nativeFingerprint(nativeEmail(address)) result. It verifies the
+specific control-character refusal before excluding a runtime trim candidate;
+other errors still fail. No export, import exception or copied validator was added.
+The executed diagnostic source remains archived as private evidence.
+
+The first full package run caught the remaining old digest in the communications
+migration tuple (7,629 tests passed; its one asset-integrity test refused). The
+tuple and generated API literal are refreshed from the same canonical SQL hash;
+no tuple identity, path, position or API structure changes.
+
+Repair proof: the final public-boundary witness passes all seven existing install
+shapes in 43.20 seconds, deriving the same 20 accepted trim characters per shape
+and checking both string-literal settings. All four mutations fail at their
+intended behavior assertions, including reverting to plain btrim. Strict
+five-project typecheck and lint pass; lint retains 33 existing warnings and zero
+errors. Platform build, all 7,630 tests and API validation pass with two workers,
+retaining all assertions and default timeouts. Platform packing measures
+1,986,625 packed bytes, 9,261,482 unpacked bytes and 2,721 files, within every
+unchanged cap. The final unsigned tree's policy, admission and package results
+are bound in the second read packet. Repair cycle 1 remains pending its read,
+DCO and fresh native review; both original cards remain open until that review.
+Self-retro: derive identity inputs through the public evaluator and refresh every
+SQL-byte consumer, including the exported tuple and generated API literal,
+before the broad gate. No new helper export or case-mapping mechanism is needed.

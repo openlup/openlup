@@ -355,10 +355,10 @@
     },
     {
       "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
-      "sha256": "750b933c818ea374e07de8af62b4a74925e6c607e8e2f935ecfb00047dd32db2"
+      "sha256": "977388ff1cf8518876a79fb8a77e7f98521a447b977b53d758fc48adc794c040"
     }
   ],
-  "objectInventorySha256": "3baed59cbf0a5f77bedd716d1e8d4b6966303c0a6a1e50f63325b144136aae08",
+  "objectInventorySha256": "8362a74af523409b7b7ab0b81ecb8e6304c0fb1da02ecd6f49628f185e2c4fec",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -731,15 +731,15 @@
       },
       {
         "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
-        "sha256": "750b933c818ea374e07de8af62b4a74925e6c607e8e2f935ecfb00047dd32db2"
+        "sha256": "977388ff1cf8518876a79fb8a77e7f98521a447b977b53d758fc48adc794c040"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "9095b4c35eb54c4e526693b576a6e8ed32959ec2398d8db89ac3a3a89ac2acae"
+        "withRestore": "1edcff41f5cb5b62e508d045af683c3b4c1f1ddd1031c09b12623eaaa6cd1540"
       },
       "separateMigrator": {
-        "withRestore": "2c19fea64acc2040c51a41cbf0464689d3f82f57353b76b8fc906a2460d36b3a"
+        "withRestore": "71ba9141c581df48cad910b0dd541cdc48dffb715f6ffdf3b71db06b2d4fa856"
       }
     }
   },
@@ -1111,12 +1111,12 @@
       },
       {
         "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
-        "sha256": "750b933c818ea374e07de8af62b4a74925e6c607e8e2f935ecfb00047dd32db2"
+        "sha256": "977388ff1cf8518876a79fb8a77e7f98521a447b977b53d758fc48adc794c040"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "761ac67e1c9f394802a56230e333ea043414e6fe054f598909de4883d1d4a038",
-      "operatorProvisioned": "76199975bcb350653d76354385e4f4acd2aea28ca7f84b07ac6cc27424153a7b"
+      "installerManaged": "2d57a7e22d67772c93d5c88389ca009dfc478ffd41095f6e0bb6cf025eb1f411",
+      "operatorProvisioned": "a6c691cb4e162df7b4643baeb01a86071c5ba32aaec64732e5caa99ba7f86cc7"
     }
   }
 }
