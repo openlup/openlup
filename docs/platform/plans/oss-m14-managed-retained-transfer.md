@@ -536,7 +536,7 @@ own ordinary restore admission.
 | `public.payment_external_refs`: settled matching / checked terminal unpaid / other | b / b / c | settled provider ID is typed on the intent; source reference and payload stay archived; unsafe state refuses |
 | `public.commerce_payment_reconciliation_runs`, `public.accounting_invoice_operations`, `public.accounting_invoice_correction_outbox`, `public.accounting_invoice_delivery_outbox` | c | nonempty rows fail existing finite check |
 | `public.communication_delivery_events`, `public.communication_provider_events`, `public.communication_permission_events`, `public.subscription_dunning_cases`, `public.subscription_dunning_notifications` | c | nonempty rows fail existing finite check |
-| `storage.buckets`, `storage.objects` | c | current limitation: nonempty managed Storage awaits the separate typed object path |
+| `storage.buckets`, `storage.objects` | c | Standard nonpublic operator-only cohort uses the existing object path; other state refuses |
 | Auth sessions/tokens and service installation records | b: excluded | target login/service owns new installation state |
 | Any other nonempty relation | c | unknown table refusal; empty unknown is `unsupported-empty` |
 
@@ -587,9 +587,10 @@ transaction's capture time. The operator waits until outstanding idempotency
 windows expire, then captures. Other statuses and unexpired windows refuse.
 No sidecar or new disposition value is introduced.
 
-Nonempty managed Storage remains a current refusal pending the separate 8E
-typed managed-object projection through the existing object path. It is not a
-final disposition for the connected managed journey. `payment_external_refs`
+At this amendment, nonempty managed Storage refused pending the separate 8E
+typed managed-object projection. The [managed Storage record](oss-m14-managed-storage-transfer.md)
+now owns the finite operator-only cohort through the existing object path;
+this historical refusal is not its current capability boundary. `payment_external_refs`
 is named in the active profile and is absent from `uncarried`, but the current
 business mapper has no corresponding target-row projection and omits it from
 `mappedRelations`. A populated row therefore reaches `unsupported_table` for
@@ -601,7 +602,7 @@ CLI 2.122.0 source. Reconciled/matched settlement rows and an expired completed
 idempotency receipt are declared `retained-history` and absent from the typed
 packet; settled intent rows remain exact in the target. Unexpired completed
 and expired but unfinished idempotency keys refuse; a non-reconciled batch
-refuses; nonempty managed Storage still refuses. A populated
+refuses; the then-current nonempty managed Storage case also refused. A populated
 `payment_external_refs` fixture reaches the existing active-profile admission
 check and refuses `unsupported_table`, precisely because the mapper has neither
 a projected target row nor this relation in `mappedRelations`. That requested
@@ -994,7 +995,7 @@ later material finding must show a wrong row or a missing relation.
 | Relation | Disposition | Proving test |
 | --- | --- | --- |
 | `auth.users` | Metadata; typed identity | projects typed managed obligations |
-| `auth.identities`, `auth.sessions`, `auth.refresh_tokens`, `auth.flow_state`, `auth.one_time_tokens`, `auth.mfa_factors`, `auth.mfa_challenges`, `auth.audit_log_entries` | Credential-excluded; counted, never selected | projects typed managed obligations (`auth.identities`); the rest share the same list and branch |
+| `auth.identities`, `auth.sessions`, `auth.refresh_tokens`, `auth.flow_state`, `auth.one_time_tokens`, `auth.mfa_factors`, `auth.mfa_challenges`, `auth.mfa_amr_claims`, `auth.audit_log_entries` | Credential-excluded; counted, never selected | projects typed managed obligations (`auth.identities`); the rest share the same list and branch |
 | Service migration tables and `_realtime.*` in the installation list | Service installation history; counted | Same list and branch as above; `_realtime.feature_flags` handled by the real-source runner |
 | `public.clients`, `public.admin_users` | Typed | projects typed managed obligations; refuses conflicting mapped fields |
 | `public.identity_privacy_erasures`, `public.customer_subject_lifecycle_events` | Typed through the item 7 mapping | `tests/postgres/connectedStoreTransfer.test.ts` managed identity cases |
@@ -1013,8 +1014,8 @@ later material finding must show a wrong row or a missing relation.
 | `public.payment_external_refs` | Matching settled or checked unpaid archive-only; other refuses | refuses in-flight, mismatched, extra and unmapped provider reference |
 | `public.accounting_invoices`, `accounting_invoice_issue_outbox`, `accounting_invoice_operations`, `accounting_invoice_correction_outbox`, `accounting_invoice_delivery_outbox` | Refuses | refuses every invoice state and every uncarried obligation relation |
 | `public.commerce_payment_reconciliation_runs`, `communication_delivery_events`, `communication_provider_events`, `communication_permission_events`, `subscription_dunning_cases`, `subscription_dunning_notifications` | Refuses | refuses every invoice state and every uncarried obligation relation |
-| `storage.buckets`, `storage.objects` | Refuses when nonempty; current limitation | refuses unknown nonempty relations and uncarried Storage metadata |
-| Any other relation | Refuses when nonempty; empty is `unsupported-empty` | refuses unknown nonempty relations and uncarried Storage metadata |
+| `storage.buckets`, `storage.objects` | Standard nonpublic buckets, including empty buckets, project through the existing object path with row security enabled and no policies except exact `{service_role}`; other state refuses | `managedStorageTransfer.test.ts`; refuses unknown nonempty relations and Storage without a selected object source |
+| Any other relation | Refuses when nonempty; empty is `unsupported-empty` | refuses unknown nonempty relations and Storage without a selected object source |
 
 Carried settled history opening new work: `invoicing_due_sources` is empty after restore
 (projects typed managed obligations). A static read of the platform's other due readers,
@@ -1145,7 +1146,7 @@ normalisation runs at UTC.
 
 | Dimension | What must be true | Proof | State |
 | --- | --- | --- | --- |
-| Relations | Every relation in the capture's finite lists has one disposition; a nonempty unknown relation refuses | Obligation table in the CD-M14-78 section; `refuses unknown nonempty relations and uncarried Storage metadata` | Proved |
+| Relations | Every relation in the capture's finite lists has one disposition; a nonempty unknown relation refuses | Obligation table in the CD-M14-78 section; `refuses unknown nonempty relations and Storage without a selected object source` | Proved |
 | Row classes | Every row class of a carried relation is typed, archive-only or refused | `refuses every row class with no typed path`; the unreached table in the CD-M14-83 section, measured by coverage. This reaches each refusal; it does not enumerate every admitted combination of status, links and counts | Proved for each refusal branch |
 | Hand-built fields | Each target field built by hand holds the right source value | Exact expected rows in `projects typed managed obligations`; one mutation run over 58 fields, reported in the CD-M14-83 section | Proved |
 | Copied fields: types | A same-name column has the same type on both sides | Measured over the nine copied relations: none differs | Measured once; no standing test |

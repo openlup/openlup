@@ -993,7 +993,7 @@ and compiles its types in strict NodeNext and Bundler modes without skipping
 library checks. A type leak fails the proof even if runtime imports pass.
 
 It then checks actual missing-SDK refusals, installs the three peers at the root
-lockfile's exact versions using `npm install --prefer-offline --no-audit --fund=false`
+lockfile's exact versions using `npm install --prefer-offline --min-release-age=3 --no-audit --fund=false`
 and the default npm cache, compiles all adapter declarations and runs the real SDKs against owned
 in-memory fixtures: S3 upload/HEAD/list/delete through the real SDK and
 deterministic invalid-URL refusals after the default SDK/driver loads.
@@ -1005,6 +1005,7 @@ without either the proof fails. Temporary consumer files, the proof database and
 are removed on completion. Missing cached packages fail the initial offline installation;
 the SDK-present install can fetch missing registry metadata or packages. Neither
 phase redirects npm to an empty temporary cache.
+Raising a peer pin within three days of that version's release makes this proof fail with npm's own no-matching-version error until the version ages.
 
 The composition declarations describe the injected Supabase factory structurally;
 they do not import the data entry or its PostgreSQL types. The cold proof still
