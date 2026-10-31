@@ -1,4 +1,6 @@
 import { beforeAll, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
@@ -12,11 +14,13 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 for (const mode of modes) {
-  it(`qualifies the restricted 91-unit production installation in ${mode.roleMode} mode`, async () => {
+  it(`qualifies the restricted issued prefix and current production suffix in ${mode.roleMode} mode`, async () => {
+    const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-admin", { roleMode: mode.roleMode });
+    const count = 1 + current.forward.length;
     const result = await runQualifiedAdminCompositionProof(mode);
     expect(result).toMatchObject({
-      mode: mode.roleMode, inventory: mode.inventory, pendingBefore: 91, interruptedPrefix: 17,
-      appliedAfterResume: 74, ledgerRows: 91, replayApplied: 0, runtimeProved: true,
+      mode: mode.roleMode, inventory: current.objectInventorySha256, issuedInventory: mode.inventory, issuedLedgerRows: 91,
+      pendingBefore: count, interruptedPrefix: 17, appliedAfterResume: count - 17, ledgerRows: count, replayApplied: 0, runtimeProved: true,
       restoreProved: true, connectionRecipeProved: true, shadowMatrixProved: true,
       refusalsProved: true,
     });

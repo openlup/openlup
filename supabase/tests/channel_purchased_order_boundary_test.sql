@@ -25,7 +25,7 @@ SELECT throws_ok($$SELECT public.channel_control_ref('synthetic')$$,'42501','per
 SELECT throws_ok($$SELECT public.channel_purchase_scope(NULL,NULL,NULL,false,NULL)$$,'42501','permission denied for function channel_purchase_scope','service scope call denied');
 SELECT lives_ok($$INSERT INTO public.outbox_events(id,aggregate_type,aggregate_id,event_type,idempotency_key,payload) VALUES('71000000-0000-4000-8000-000000000090','order','71000000-0000-4000-8000-000000000091','commerce.order.created','channel-test:ordinary','{}')$$,'ordinary service insert survives');
 SELECT lives_ok($$UPDATE public.outbox_events SET metadata='{"safe":true}' WHERE id='71000000-0000-4000-8000-000000000090'$$,'ordinary service update survives');
-SELECT lives_ok($$DELETE FROM public.outbox_events WHERE id='71000000-0000-4000-8000-000000000090'$$,'ordinary service delete survives');
+SELECT throws_ok($$DELETE FROM public.outbox_events WHERE id='71000000-0000-4000-8000-000000000090'$$,'42501','permission denied for table outbox_events','ordinary service delete retains the existing table refusal');
 RESET ROLE;
 INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES('71000000-0000-4000-8000-000000000001','synthetic-actor@example.invalid','admin',true);
 INSERT INTO public.sales_channel_connections(id,slug,connector_provider_kind,connector_shape,display_name,status,application_ref,environment_ref,seller_external_ref)

@@ -25,9 +25,10 @@ describe("inventory hidden boundary", () => {
     }
   });
 
-  it("keeps inventory RPCs service-role-only and hidden from providers", () => {
+  it("keeps inventory RPCs behind service and the exact closed channel writer", () => {
     for (const name of functions) for (const roles of explicitFunctionExecuteRoles(name).values()) {
-      expect([...roles]).toEqual(["service_role"]);
+      expect([...roles].sort()).toEqual(name === "inventory_reserve_order"
+        ? ["openlup_channel_purchase_writer", "service_role"] : ["service_role"]);
     }
     for (const table of tables) {
       expect(currentTableStatements(table)).toContain("ENABLE ROW LEVEL SECURITY");
