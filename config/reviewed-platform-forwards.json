@@ -1921,5 +1921,6 @@
       "path": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
       "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
     }
-  ]
+  ],
+  "channelIngestForwards": []
 }

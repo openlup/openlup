@@ -1282,6 +1282,26 @@ trigger, CHECK and identity-row changes. Sequence allocation during a later
 command may leave gaps; installation rollback removes a newly created sequence.
 Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
 
+### M17 channelIngestForwards
+
+The reviewed registry declares `channelIngestForwards: []` before SQL can land.
+Its fixed class admits only `20261030121000_channel_retained_basis.sql` and
+`20261030122000_channel_purchased_source.sql` on each native and managed rail.
+R1 supplies all four exact file, function and ordered-statement pins with the
+SQL introduction; an absent class remains readable in historical registries.
+The checker fixes signatures, creation or replacement, preimages, headers and
+ordered companions, including triggers and ACLs. Registry pins cannot widen
+that inventory. PR, release and native queue checks require a binding at each
+fixed path even when its SQL is expand-only and the registry is unchanged.
+Complete ordered prefixes retain earlier issued same-rail pins;
+release checks bind the unique introduction and refuse later repinning or
+removal. Changing admission machinery together with SQL remains forbidden.
+This control installs no SQL and establishes no PostgreSQL semantic proof; the
+SQL introduction owns that proof. The existing
+[admission witness](../../scripts/reviewed-batch-forward.test.ts) uses synthetic
+function bodies under fixed headers and exact companions to test lexical and
+Git-history success and refusal boundaries.
+
 ## Disposable managed reference baseline
 
 The opt-in [subscription reference](SUBSCRIPTION_REFERENCE.md) selects the

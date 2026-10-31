@@ -1,13 +1,14 @@
-import { selectPlatformMigrationManifest } from "./platform-migration-manifest.js";
+import { PLATFORM_BASELINE_FILE, selectPlatformMigrationManifest } from "./platform-migration-manifest.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
 import { describe, expect, it } from "vitest";
-import { assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding, type ManagedCommerceForwardBinding } from "./reviewed-platform-forward.ts";
+import { assertChannelIngestForward, assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding, type ManagedCommerceForwardBinding, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
+import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
@@ -1365,3 +1366,378 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
   } finally { f.cleanup(); }
 }, 120_000);
 const REVIEWED_PATH = "config/reviewed-platform-forwards.json";
+
+
+describe("M17 channel ingest approval", () => {
+  const registryPath = "config/reviewed-platform-forwards.json";
+  const marker = readReviewedForwardRegistry(readFileSync(registryPath));
+  const encode = (registry: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(registry));
+  // Synthetic dollar bodies prove lexical admission only. Exact headers and
+  // companion statements exercise the fixed class without installing its SQL.
+  const synthetic = [
+    {
+      path: "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+      statements: [
+        "ALTER TABLE public.catalog_bundles ADD COLUMN composition_locked_at timestamptz,\n  ADD COLUMN composition_digest text,\n  ADD CONSTRAINT channel_bundle_retained_lock_shape CHECK(\n    (composition_locked_at IS NULL AND composition_digest IS NULL) OR\n    (composition_locked_at IS NOT NULL AND composition_digest ~ '^[0-9a-f]{64}$'));",
+        "ALTER TABLE public.sales_channel_connections\n  ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN application_ref text CHECK(application_ref IS NULL OR btrim(application_ref)<>''),\n  ADD COLUMN environment_ref text CHECK(environment_ref IS NULL OR btrim(environment_ref)<>''),\n  ADD COLUMN seller_external_ref text CHECK(seller_external_ref IS NULL OR btrim(seller_external_ref)<>'');",
+        "ALTER TABLE public.sales_channels ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991);",
+        "ALTER TABLE public.sales_channel_listings ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN current_qualification_id uuid, ADD COLUMN current_approval_id uuid, ADD COLUMN manual_stop boolean NOT NULL DEFAULT false,\n  ADD COLUMN exposure_issued_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_converted_units bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_withdrawn_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_generation bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_issued_basis_ref uuid,\n  ADD CONSTRAINT channel_exposure_retained_conservation CHECK(exposure_issued_units BETWEEN 0 AND 9007199254740991\n    AND exposure_converted_units BETWEEN 0 AND 9007199254740991 AND exposure_withdrawn_units BETWEEN 0 AND 9007199254740991\n    AND exposure_generation BETWEEN 0 AND 9007199254740991 AND exposure_converted_units::numeric+exposure_withdrawn_units<=exposure_issued_units);",
+        "CREATE TABLE public.sales_channel_control_operations (\n  resource_kind text NOT NULL CHECK(resource_kind IN ('connection','channel','listing')), resource_id uuid NOT NULL,\n  operation text NOT NULL CHECK(operation IN ('registry_apply','listing_prepare','listing_record_qualification','listing_approve',\n    'listing_manual_stop','exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold')),\n  operation_id uuid NOT NULL, actor_id uuid NOT NULL, input_digest text NOT NULL CHECK(input_digest ~ '^[0-9a-f]{64}$'),\n  canonical_text text NOT NULL CHECK(octet_length(canonical_text) BETWEEN 2 AND 262144), result jsonb NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(resource_kind,resource_id,operation,operation_id));",
+        "CREATE TABLE public.sales_channel_listing_qualifications (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 0 AND 9007199254740990),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));",
+        "CREATE TABLE public.sales_channel_listing_approvals (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  qualification_id uuid NOT NULL REFERENCES public.sales_channel_listing_qualifications(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 1 AND 9007199254740991),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));",
+        "ALTER TABLE public.sales_channel_listings\n  ADD CONSTRAINT channel_retained_qualification_scope FOREIGN KEY(current_qualification_id,id) REFERENCES public.sales_channel_listing_qualifications(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_approval_scope FOREIGN KEY(current_approval_id,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_exposure_basis_scope FOREIGN KEY(exposure_issued_basis_ref,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT;",
+        "CREATE UNIQUE INDEX channel_retained_exposure_sale ON public.sales_channel_control_operations(resource_id,\n  (canonical_text::jsonb#>>'{payload,ingestId}'),(canonical_text::jsonb#>>'{payload,externalLineRef}')) WHERE operation='exposure_convert_sale';",
+        "CREATE UNIQUE INDEX channel_retained_exposure_generation ON public.sales_channel_control_operations(resource_id,((result->>'appliedGeneration')::bigint))\n  WHERE operation IN ('exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold');",
+        "CREATE FUNCTION public.channel_control_keys(p_value jsonb,p_keys jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_control_ref(p_value text) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.catalog_bundle_composition_digest(p_bundle_id uuid) RETURNS text LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_control_actor(p_actor_id uuid,p_human boolean) RETURNS text\nLANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_control_scope(p_listing_id uuid) RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_listing_read(p_listing_id uuid,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_retained_bundle_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_retained_bundle_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundles FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "CREATE TRIGGER channel_retained_component_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundle_components FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "CREATE TRIGGER channel_retained_bundle_truncate BEFORE TRUNCATE ON public.catalog_bundles FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "CREATE TRIGGER channel_retained_component_truncate BEFORE TRUNCATE ON public.catalog_bundle_components FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM PUBLIC;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM authenticated;';\n  END IF;\nEND; $$;",
+        "REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM PUBLIC;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM authenticated;';\n  END IF;\nEND; $$;",
+        "CREATE FUNCTION public.channel_retained_fact_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_retained_qualification_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_qualifications\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "CREATE TRIGGER channel_retained_approval_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_approvals\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "CREATE TRIGGER channel_retained_qualification_truncate BEFORE TRUNCATE ON public.sales_channel_listing_qualifications\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "CREATE TRIGGER channel_retained_approval_truncate BEFORE TRUNCATE ON public.sales_channel_listing_approvals\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM PUBLIC;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM authenticated;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM service_role;';\n  END IF;\nEND; $$;",
+        "CREATE FUNCTION public.channel_retained_listing_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_retained_listing_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listings\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_listing_guard();",
+        "CREATE TRIGGER channel_retained_listing_truncate BEFORE TRUNCATE ON public.sales_channel_listings\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_listing_guard();",
+        "REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM PUBLIC;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM authenticated;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM service_role;';\n  END IF;\nEND; $$;",
+      ],
+    },
+    {
+      path: "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+      statements: [
+        "ALTER TABLE public.channel_order_ingests ADD COLUMN purchase_capture_text text,\n  ADD COLUMN purchase_capture_digest text;",
+        "ALTER TABLE public.sales_channel_connections ADD COLUMN pull_capture_adopted_at timestamptz,\n  ADD COLUMN pull_page_ref uuid, ADD COLUMN pull_page_generation bigint NOT NULL DEFAULT 0\n  CHECK(pull_page_generation BETWEEN 0 AND 9007199254740991);",
+        "ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref\n  FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;",
+        "CREATE FUNCTION public.channel_purchase_json(p_value jsonb) RETURNS text\nLANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_packet(p_text text,p_digest text,p_kind text) RETURNS jsonb\nLANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_scope(p_body jsonb,p_actor uuid,p_job uuid,p_fresh boolean,p_live_job uuid DEFAULT NULL) RETURNS uuid\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_guard() RETURNS trigger\nLANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_purchase_connection_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_connections\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_ingest_guard BEFORE INSERT OR UPDATE OR DELETE ON public.channel_order_ingests\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_outbox_guard BEFORE INSERT OR UPDATE OR DELETE ON public.outbox_events\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_connection_truncate BEFORE TRUNCATE ON public.sales_channel_connections\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_ingest_truncate BEFORE TRUNCATE ON public.channel_order_ingests\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox_events\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE FUNCTION public.channel_pull_page_record(p_connection_id uuid,p_actor_id uuid,p_job_run_id uuid,\n  p_page_packet_id uuid,p_canonical_text text,p_input_digest text) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_pull_page_read(p_connection_id uuid,p_page_packet_id uuid,p_actor_id uuid,p_input_digest text) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_pull_progress_commit(p_connection_id uuid,p_actor_id uuid,p_job_run_id uuid,p_page_packet_id uuid,\n  p_expected_cursor text,p_expected_watermark timestamptz,p_expected_generation bigint,p_next_cursor text,p_next_watermark timestamptz) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_ingest_record_inbound_event(p_channel_id uuid,p_external_order_ref text,\n  p_external_order_revision text,p_provider_event_id text,p_normalized jsonb,p_capture_text text,p_capture_digest text) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_ingest_capture_read(p_channel_id uuid,p_provider_event_id text,p_actor_id uuid) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_conversion_command(p_ledger_id uuid,p_external_line_ref text,p_actor_id uuid,\n  p_job_run_id uuid,p_command_text text) RETURNS text\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM PUBLIC;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM authenticated;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM service_role;';\n  END IF;\nEND; $$;",
+        "REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM PUBLIC;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM authenticated;';\n  END IF;\nEND; $$;",
+        "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'GRANT EXECUTE ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) TO service_role;';\n  END IF;\nEND; $$;",
+      ],
+    },
+    {
+      path: "supabase/migrations/20261030121000_channel_retained_basis.sql",
+      statements: [
+        "ALTER TABLE public.catalog_bundles ADD COLUMN composition_locked_at timestamptz,\n  ADD COLUMN composition_digest text,\n  ADD CONSTRAINT channel_bundle_retained_lock_shape CHECK(\n    (composition_locked_at IS NULL AND composition_digest IS NULL) OR\n    (composition_locked_at IS NOT NULL AND composition_digest ~ '^[0-9a-f]{64}$'));",
+        "ALTER TABLE public.sales_channel_connections\n  ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN application_ref text CHECK(application_ref IS NULL OR btrim(application_ref)<>''),\n  ADD COLUMN environment_ref text CHECK(environment_ref IS NULL OR btrim(environment_ref)<>''),\n  ADD COLUMN seller_external_ref text CHECK(seller_external_ref IS NULL OR btrim(seller_external_ref)<>'');",
+        "ALTER TABLE public.sales_channels ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991);",
+        "ALTER TABLE public.sales_channel_listings ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN current_qualification_id uuid, ADD COLUMN current_approval_id uuid, ADD COLUMN manual_stop boolean NOT NULL DEFAULT false,\n  ADD COLUMN exposure_issued_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_converted_units bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_withdrawn_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_generation bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_issued_basis_ref uuid,\n  ADD CONSTRAINT channel_exposure_retained_conservation CHECK(exposure_issued_units BETWEEN 0 AND 9007199254740991\n    AND exposure_converted_units BETWEEN 0 AND 9007199254740991 AND exposure_withdrawn_units BETWEEN 0 AND 9007199254740991\n    AND exposure_generation BETWEEN 0 AND 9007199254740991 AND exposure_converted_units::numeric+exposure_withdrawn_units<=exposure_issued_units);",
+        "CREATE TABLE public.sales_channel_control_operations (\n  resource_kind text NOT NULL CHECK(resource_kind IN ('connection','channel','listing')), resource_id uuid NOT NULL,\n  operation text NOT NULL CHECK(operation IN ('registry_apply','listing_prepare','listing_record_qualification','listing_approve',\n    'listing_manual_stop','exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold')),\n  operation_id uuid NOT NULL, actor_id uuid NOT NULL, input_digest text NOT NULL CHECK(input_digest ~ '^[0-9a-f]{64}$'),\n  canonical_text text NOT NULL CHECK(octet_length(canonical_text) BETWEEN 2 AND 262144), result jsonb NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(resource_kind,resource_id,operation,operation_id));",
+        "CREATE TABLE public.sales_channel_listing_qualifications (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 0 AND 9007199254740990),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));",
+        "CREATE TABLE public.sales_channel_listing_approvals (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  qualification_id uuid NOT NULL REFERENCES public.sales_channel_listing_qualifications(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 1 AND 9007199254740991),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));",
+        "ALTER TABLE public.sales_channel_listings\n  ADD CONSTRAINT channel_retained_qualification_scope FOREIGN KEY(current_qualification_id,id) REFERENCES public.sales_channel_listing_qualifications(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_approval_scope FOREIGN KEY(current_approval_id,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_exposure_basis_scope FOREIGN KEY(exposure_issued_basis_ref,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT;",
+        "CREATE UNIQUE INDEX channel_retained_exposure_sale ON public.sales_channel_control_operations(resource_id,\n  (canonical_text::jsonb#>>'{payload,ingestId}'),(canonical_text::jsonb#>>'{payload,externalLineRef}')) WHERE operation='exposure_convert_sale';",
+        "CREATE UNIQUE INDEX channel_retained_exposure_generation ON public.sales_channel_control_operations(resource_id,((result->>'appliedGeneration')::bigint))\n  WHERE operation IN ('exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold');",
+        "CREATE FUNCTION public.channel_control_keys(p_value jsonb,p_keys jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_control_ref(p_value text) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.catalog_bundle_composition_digest(p_bundle_id uuid) RETURNS text LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_control_actor(p_actor_id uuid,p_human boolean) RETURNS text\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_control_scope(p_listing_id uuid) RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_listing_read(p_listing_id uuid,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_retained_bundle_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_retained_bundle_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundles FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "CREATE TRIGGER channel_retained_component_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundle_components FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "CREATE TRIGGER channel_retained_bundle_truncate BEFORE TRUNCATE ON public.catalog_bundles FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "CREATE TRIGGER channel_retained_component_truncate BEFORE TRUNCATE ON public.catalog_bundle_components FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();",
+        "REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;",
+        "REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM PUBLIC,anon,authenticated;",
+        "ALTER TABLE public.sales_channel_control_operations ENABLE ROW LEVEL SECURITY;",
+        "ALTER TABLE public.sales_channel_listing_qualifications ENABLE ROW LEVEL SECURITY;",
+        "ALTER TABLE public.sales_channel_listing_approvals ENABLE ROW LEVEL SECURITY;",
+        "REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM service_role,openlup_mcp_reader;",
+        "REVOKE ALL ON FUNCTION public.channel_listing_read(uuid,uuid) FROM service_role,openlup_mcp_reader;",
+        "GRANT EXECUTE ON FUNCTION public.channel_listing_read(uuid,uuid) TO service_role;",
+        "CREATE FUNCTION public.channel_retained_fact_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_retained_qualification_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_qualifications\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "CREATE TRIGGER channel_retained_approval_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_approvals\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "CREATE TRIGGER channel_retained_qualification_truncate BEFORE TRUNCATE ON public.sales_channel_listing_qualifications\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "CREATE TRIGGER channel_retained_approval_truncate BEFORE TRUNCATE ON public.sales_channel_listing_approvals\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();",
+        "REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;",
+        "CREATE FUNCTION public.channel_retained_listing_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_retained_listing_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listings\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_listing_guard();",
+        "CREATE TRIGGER channel_retained_listing_truncate BEFORE TRUNCATE ON public.sales_channel_listings\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_listing_guard();",
+        "REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;",
+      ],
+    },
+    {
+      path: "supabase/migrations/20261030122000_channel_purchased_source.sql",
+      statements: [
+        "DO $$ DECLARE installer oid; owner_id oid; BEGIN\n  SELECT oid INTO installer FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole);\n  IF installer IS NULL THEN RAISE EXCEPTION 'channel_purchase_installer_authority_required' USING ERRCODE='42501'; END IF;\n  IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='openlup_channel_purchase_writer') THEN\n    CREATE ROLE openlup_channel_purchase_writer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;\n  END IF;\n  SELECT oid INTO owner_id FROM pg_roles WHERE rolname='openlup_channel_purchase_writer';\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE oid=owner_id AND\n    (rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit))\n    OR EXISTS(SELECT 1 FROM pg_auth_members m WHERE (m.roleid=owner_id OR m.member=owner_id) AND NOT\n      (m.roleid=owner_id AND m.member=installer AND m.grantor=10 AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option\n        AND EXISTS(SELECT 1 FROM pg_roles WHERE oid=installer AND rolcreaterole AND NOT rolsuper))) THEN\n    RAISE EXCEPTION 'channel_purchase_writer_role_unsafe';\n  END IF;\nEND; $$;",
+        "GRANT USAGE ON SCHEMA public TO openlup_channel_purchase_writer;",
+        "ALTER TABLE public.channel_order_ingests ADD COLUMN purchase_capture_text text,\n  ADD COLUMN purchase_capture_digest text;",
+        "ALTER TABLE public.sales_channel_connections ADD COLUMN pull_capture_adopted_at timestamptz,\n  ADD COLUMN pull_page_ref uuid, ADD COLUMN pull_page_generation bigint NOT NULL DEFAULT 0\n  CHECK(pull_page_generation BETWEEN 0 AND 9007199254740991);",
+        "ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref\n  FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;",
+        "CREATE FUNCTION public.channel_purchase_json(p_value jsonb) RETURNS text\nLANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_packet(p_text text,p_digest text,p_kind text) RETURNS jsonb\nLANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_scope(p_body jsonb,p_actor uuid,p_job uuid,p_fresh boolean,p_live_job uuid DEFAULT NULL) RETURNS uuid\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_guard() RETURNS trigger\nLANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE TRIGGER channel_purchase_connection_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_connections\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_ingest_guard BEFORE INSERT OR UPDATE OR DELETE ON public.channel_order_ingests\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_outbox_guard BEFORE INSERT OR UPDATE OR DELETE ON public.outbox_events\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_connection_truncate BEFORE TRUNCATE ON public.sales_channel_connections\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_ingest_truncate BEFORE TRUNCATE ON public.channel_order_ingests\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox_events\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();",
+        "CREATE FUNCTION public.channel_pull_page_record(p_connection_id uuid,p_actor_id uuid,p_job_run_id uuid,\n  p_page_packet_id uuid,p_canonical_text text,p_input_digest text) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_pull_page_read(p_connection_id uuid,p_page_packet_id uuid,p_actor_id uuid,p_input_digest text) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_pull_progress_commit(p_connection_id uuid,p_actor_id uuid,p_job_run_id uuid,p_page_packet_id uuid,\n  p_expected_cursor text,p_expected_watermark timestamptz,p_expected_generation bigint,p_next_cursor text,p_next_watermark timestamptz) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_ingest_record_inbound_event(p_channel_id uuid,p_external_order_ref text,\n  p_external_order_revision text,p_provider_event_id text,p_normalized jsonb,p_capture_text text,p_capture_digest text) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_ingest_capture_read(p_channel_id uuid,p_provider_event_id text,p_actor_id uuid) RETURNS jsonb\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE FUNCTION public.channel_purchase_retained_lines(p_ledger_id uuid,p_rows jsonb) RETURNS void\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE OR REPLACE FUNCTION public.commerce_create_channel_order(\n  p_idempotency_key text,\n  p_ledger_id uuid,\n  p_expanded_lines jsonb DEFAULT NULL\n)\nRETURNS jsonb\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public, pg_catalog\nAS $$ BEGIN RETURN NULL; END; $$;",
+        "CREATE OR REPLACE FUNCTION public.inventory_channel_exposure_quantity(p_sku_id uuid)\nRETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "REVOKE ALL ON FUNCTION public.inventory_channel_exposure_quantity(uuid) FROM PUBLIC,anon,authenticated,openlup_mcp_reader;",
+        "GRANT EXECUTE ON FUNCTION public.inventory_channel_exposure_quantity(uuid) TO service_role;",
+        "CREATE FUNCTION public.channel_purchase_stock_enter(p_order_id uuid,p_items jsonb,p_provider_kind text) RETURNS void\nLANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_stock_enter(uuid,jsonb,text) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;",
+        "CREATE FUNCTION public.channel_reserve_order_items(p_idempotency_key text,p_order_id uuid,p_items jsonb,p_metadata jsonb,p_provider_kind text)\nRETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "REVOKE ALL ON FUNCTION public.channel_reserve_order_items(text,uuid,jsonb,jsonb,text) FROM PUBLIC,anon,authenticated,openlup_mcp_reader;",
+        "GRANT EXECUTE ON FUNCTION public.channel_reserve_order_items(text,uuid,jsonb,jsonb,text) TO service_role;",
+        "CREATE FUNCTION public.channel_purchase_paid_source(p_listing_id uuid,p_payload jsonb) RETURNS jsonb\nLANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_paid_source(uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;",
+        "CREATE FUNCTION public.channel_exposure_apply(p_listing_id uuid,p_operation text,p_operation_id uuid,p_actor_id uuid,\n p_expected_generation bigint,p_input_digest text,p_canonical_text text) RETURNS jsonb\nLANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "REVOKE ALL ON FUNCTION public.channel_exposure_apply(uuid,text,uuid,uuid,bigint,text,text) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;",
+        "CREATE FUNCTION public.channel_purchase_conversion_command(p_ledger_id uuid,p_external_line_ref text,p_actor_id uuid,\n  p_job_run_id uuid,p_command_text text) RETURNS text\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
+        "GRANT SELECT,UPDATE ON public.sales_channel_listings TO openlup_channel_purchase_writer;",
+        "GRANT SELECT,INSERT ON public.sales_channel_control_operations TO openlup_channel_purchase_writer;",
+        "GRANT SELECT ON public.sales_channels,public.catalog_bundles,public.catalog_bundle_components,public.catalog_skus,\n public.commerce_orders,public.commerce_order_items,public.fulfillment_provider_stock_current,public.inventory_balances TO openlup_channel_purchase_writer;",
+        "GRANT UPDATE ON public.commerce_orders,public.commerce_order_items,public.fulfillment_provider_stock_current,public.inventory_balances TO openlup_channel_purchase_writer;",
+        "GRANT SELECT,UPDATE ON public.inventory_reservations TO openlup_channel_purchase_writer;",
+        "GRANT EXECUTE ON FUNCTION public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text),\n public.catalog_bundle_composition_digest(uuid) TO openlup_channel_purchase_writer;",
+        "CREATE POLICY channel_purchase_writer_control ON public.sales_channel_control_operations FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "GRANT EXECUTE ON FUNCTION public.channel_exposure_apply(uuid,text,uuid,uuid,bigint,text,text) TO openlup_channel_purchase_writer;",
+        "CREATE POLICY channel_purchase_writer_listing ON public.sales_channel_listings FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.commerce_orders FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.commerce_order_items FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.fulfillment_provider_stock_current FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.inventory_balances FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.inventory_reservations FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.catalog_bundles FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_select ON public.catalog_bundle_components FOR SELECT TO openlup_channel_purchase_writer USING(true);",
+        "CREATE POLICY channel_purchase_writer_update ON public.commerce_orders FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_update ON public.commerce_order_items FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_update ON public.fulfillment_provider_stock_current FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_update ON public.inventory_balances FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_update ON public.inventory_reservations FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_update ON public.sales_channel_listings FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "REVOKE ALL ON FUNCTION public.channel_ingest_capture_read(uuid,text,uuid) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_pull_page_read(uuid,uuid,uuid,text) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_packet(text,text,text) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_retained_lines(uuid,jsonb) FROM anon,authenticated;",
+        "REVOKE ALL ON FUNCTION public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid) FROM anon,authenticated;",
+        "GRANT SELECT,INSERT,UPDATE ON public.channel_order_ingests,public.outbox_events,public.sales_channel_connections TO openlup_channel_purchase_writer;",
+        "GRANT EXECUTE ON FUNCTION public.channel_control_actor(uuid,boolean),public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),\n  public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb) TO openlup_channel_purchase_writer;",
+        "DO $$ DECLARE fn record; installer name:=current_user; super_install boolean; had_create boolean; BEGIN\n  SELECT rolsuper INTO super_install FROM pg_roles WHERE rolname=installer;\n  had_create:=has_schema_privilege('openlup_channel_purchase_writer','public','CREATE');\n  IF NOT super_install THEN\n    EXECUTE format('GRANT openlup_channel_purchase_writer TO %I WITH ADMIN FALSE, SET TRUE, INHERIT FALSE GRANTED BY %I',installer,installer);\n    IF NOT had_create THEN GRANT CREATE ON SCHEMA public TO openlup_channel_purchase_writer; END IF;\n    IF NOT has_schema_privilege('openlup_channel_purchase_writer','public','CREATE') THEN\n      RAISE EXCEPTION 'channel_purchase_schema_grant_authority_required' USING ERRCODE='42501'; END IF;\n  END IF;\n  FOR fn IN SELECT p.oid::regprocedure signature,p.proname,p.pronargs FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace\n    WHERE n.nspname='public' AND (p.proname LIKE 'channel_purchase_%' OR p.proname IN ('channel_ingest_capture_read',\n      'channel_pull_page_record','channel_pull_page_read','channel_pull_progress_commit') OR\n      (p.proname='channel_ingest_record_inbound_event' AND p.pronargs=7)) ORDER BY p.oid LOOP\n    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader',fn.signature);\n    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO openlup_channel_purchase_writer',fn.signature);\n    IF fn.proname IN ('channel_purchase_conversion_command','channel_ingest_capture_read','channel_pull_page_record','channel_pull_page_read','channel_pull_progress_commit')\n      OR (fn.proname='channel_ingest_record_inbound_event' AND fn.pronargs=7) THEN\n      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role',fn.signature);\n      EXECUTE format('ALTER FUNCTION %s OWNER TO openlup_channel_purchase_writer',fn.signature);\n    END IF;\n  END LOOP;\n  EXECUTE format('SET LOCAL ROLE %I',installer);\n  IF NOT super_install THEN\n    IF NOT had_create THEN REVOKE CREATE ON SCHEMA public FROM openlup_channel_purchase_writer; END IF;\n    EXECUTE format('REVOKE openlup_channel_purchase_writer FROM %I GRANTED BY %I',installer,installer);\n  END IF;\nEND; $$;",
+        "CREATE POLICY channel_purchase_writer_ingest ON public.channel_order_ingests FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_outbox ON public.outbox_events FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "CREATE POLICY channel_purchase_writer_connection ON public.sales_channel_connections FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);",
+        "INSERT INTO public.outbox_dormant_event_types(event_type,owner,reason) VALUES\n  ('channel.purchase-source.v1','channels/captured-source','Immutable accepted channel purchase capture is retained evidence, not a dispatcher command or provider ACK.'),\n  ('channel.purchase-line.v1','channels/captured-source','Immutable scoped purchased-line claims preserve one paid obligation across provider form aliases; no dispatcher effect is registered.'),\n  ('channel.pull-page.v1','channels/captured-source','Immutable captured provider pages and original cursor receipts remain evidence; page presence never proves journal completeness.')\nON CONFLICT(event_type) DO NOTHING;",
+      ],
+    },
+   ];
+  const preimages = new Map([
+    ["public.commerce_create_channel_order(text,uuid,jsonb)", "0b31361c2a8ff731a128d5632a4f182edacc21853dae145e0432c96071840546"],
+    ["public.inventory_channel_exposure_quantity(uuid)", "1aeb7d89182ad987f049eec6eb752c8d7ec32d5b238e584c4d3771ffd5cd1867"],
+  ]);
+  function pin(path: string, sql: string): BatchedForwardBinding {
+    return {
+      path, sha256: sqlSha256(sql),
+      functions: [...batchedFunctionDefinitions(Buffer.from(sql))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: preimages.get(signature) ?? null })),
+      statements: sqlStatements(sql).map(statement => ({ sha256: sqlSha256(statement), ...(/^CREATE(?: OR REPLACE)? FUNCTION /u.test(statement) ? {} : { sql: statement }) })),
+    };
+  }
+  const sources = synthetic.map(source => ({ path: source.path, bytes: Buffer.from(source.statements.join("\n")) }));
+  const registry = { ...marker, channelIngestForwards: sources.map(source => pin(source.path, source.bytes.toString())) };
+  function prefix(path: string): { path: string; bytes: Buffer }[] {
+    const directory = dirname(path);
+    const issued = [...marker.batchedForwards ?? [], ...marker.managedCommerceForwards ?? [], ...marker.supportAuthorityForwards ?? []].filter(pin => dirname(pin.path) === directory && pin.path < path);
+    const paths = [...new Set([...readdirSync(directory).filter(file => file.endsWith(".sql")).map(file => `${directory}/${file}`), ...issued.map(pin => pin.path), ...sources.filter(source => dirname(source.path) === directory).map(source => source.path)])].filter(file => file < path).sort();
+    return paths.map(path => {
+      const synthetic = sources.find(source => source.path === path);
+      if (synthetic) return synthetic;
+      const file = [path, ...["m10", "m11", "m12"].map(module => `scripts/fixtures/reviewed-${module}/${path}`)].find(existsSync);
+      if (!file) throw new Error(`missing existing rail fixture: ${path}`);
+      return { path, bytes: readFileSync(file) };
+    });
+  }
+  function repin(index: number, sql: string) {
+    const candidate = structuredClone(registry);
+    candidate.channelIngestForwards[index] = pin(sources[index]!.path, sql);
+    return candidate;
+  }
+
+  describe("fixed M17 channel class", () => {
+    it("keeps historical registries readable and declares only an empty marker", () => {
+      expect(marker.channelIngestForwards).toEqual([]);
+      const absent = structuredClone(marker); delete absent.channelIngestForwards;
+      expect(() => readReviewedForwardRegistry(encode(absent))).not.toThrow();
+      expect(changedForwardApprovals(encode(absent), encode(marker))).toEqual([]);
+      expect(changedForwardApprovals(encode(marker), encode(registry))).toEqual(sources.map(source => source.path));
+      expect(() => changedForwardApprovals(encode(marker), encode(absent))).toThrow(/cannot be removed/u);
+      const { channelIngestForwards: _marker, ...ordinary } = marker;
+      expect(readReviewedForwardRegistry(encode(absent))).toEqual(ordinary);
+    });
+
+    it.each(sources)("accepts the fixed synthetic inventory over its actual prefix: $path", source => {
+      expect(() => assertChannelIngestForward(registry, source.path, source.bytes, prefix(source.path))).not.toThrow();
+      expect(() => assertChannelIngestForward(registry, source.path, Buffer.concat([source.bytes, Buffer.from(" ")]), prefix(source.path))).toThrow(/bytes drifted/u);
+      expect(() => assertChannelIngestForward(marker, source.path, source.bytes, prefix(source.path))).toThrow(/path or bytes/u);
+    });
+
+    it.each(["path", "missing path", "extra path", "order", "signature", "missing signature", "extra signature", "preimage"])("refuses a coherently declared %s", attack => {
+      const candidate = structuredClone(registry), entries = candidate.channelIngestForwards;
+      if (attack === "path") entries[0]!.path += ".other";
+      if (attack === "missing path") entries.pop();
+      if (attack === "extra path") entries.push(entries[0]!);
+      if (attack === "order") entries.reverse();
+      if (attack === "signature") entries[0]!.functions[0]!.signature = "public.channel_unknown()";
+      if (attack === "missing signature") entries[0]!.functions.pop();
+      if (attack === "extra signature") entries[0]!.functions.push(entries[0]!.functions[0]!);
+      if (attack === "preimage") entries[0]!.functions[0]!.beforeSha256 = "0".repeat(64);
+      expect(() => readReviewedForwardRegistry(encode(candidate))).toThrow(/reviewed M17 channel/u);
+    });
+
+    it.each(["header", "creation", "companion", "extra statement", "missing statement", "reordered statement"])("refuses repinned %s drift", attack => {
+      const source = sources[0]!;
+      let sql = source.bytes.toString();
+      if (attack === "header") sql = sql.replace("SET search_path=pg_catalog", "SET search_path=public");
+      if (attack === "creation") sql = sql.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
+      if (attack === "companion") sql = sql.replace("BEFORE TRUNCATE", "AFTER TRUNCATE");
+      if (attack === "extra statement") sql += "\nGRANT SELECT ON public.sales_channels TO PUBLIC;";
+      if (attack === "missing statement") sql = sqlStatements(sql).slice(1).join("\n");
+      if (attack === "reordered statement") { const rows = sqlStatements(sql); [rows[0], rows[1]] = [rows[1]!, rows[0]!]; sql = rows.join("\n"); }
+      expect(sql).not.toBe(source.bytes.toString());
+      expect(() => assertChannelIngestForward(repin(0, sql), source.path, Buffer.from(sql), prefix(source.path))).toThrow(/reviewed M17 channel/u);
+    });
+
+    it("refuses incomplete, reordered and mutated preceding rails", () => {
+      const source = sources[1]!, prior = prefix(source.path);
+      expect(() => assertChannelIngestForward(registry, source.path, source.bytes, prior.slice(0, -1))).toThrow(/earlier same-rail/u);
+      expect(() => assertChannelIngestForward(registry, source.path, source.bytes, [...prior].reverse())).toThrow(/ordered complete/u);
+      const fn = synthetic[1]!.statements.find(statement => statement.startsWith("CREATE FUNCTION "))!;
+      const changed = [...prior, { path: `${dirname(source.path)}/20261030121959_preimage.sql`, bytes: Buffer.from(fn) }];
+      expect(() => assertChannelIngestForward(registry, source.path, source.bytes, changed)).toThrow(/actual function preimage/u);
+    });
+  });
+
+  async function nativeAdmission(root: string, base: string, head: string, eventName: string) {
+    const candidate = await captureCommittedReviewCandidate(root, base, head);
+    let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "Fixed M17 channel admission" }, authorSessionId: "m17-fixture-author" }, 1000);
+    for (const reviewer of ["m17-fixture-a", "m17-fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [], documentation: "Fixture assessment: exact channel class and its documented admission boundary." }, 1000);
+    const receipt = receiptSummary(session, 12, 1000);
+    const merged = execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit-tree", candidate.tree, "-p", base, "-p", head, "-m", "M17 event merge"], { encoding: "utf8" }).trim();
+    const ref = `refs/heads/gh-readonly-queue/main/pr-12-${base}`;
+    const event = { number: 12, repository: { private: false }, action: "checks_requested", pull_request: { head: { sha: head } }, merge_group: { base_ref: "refs/heads/main", head_ref: ref, base_sha: base, head_sha: merged } };
+    const env = { GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_SHA: merged, GITHUB_REF: ref };
+    const api = { get: async (path: string) => path.includes("/pulls/") ? { number: 12, state: "open", draft: false, base: { ref: "main" }, head: { sha: head } } : path.includes("/issues/") ? [{ id: 1, user: { login: "fixture-owner", type: "User" }, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes("/collaborators/") ? { permission: "write" } : { object: { sha: base } } };
+    const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
+    return waitNativeAdmission({ cwd: root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 });
+  }
+
+  describe.each(["PR", "release", "approval", "co-location", "pull_request", "merge_group"])("fixed M17 missing binding at %s caller", caller => {
+    it.each(sources)("refuses expand-only SQL at reserved path $path with an unchanged empty marker", async source => {
+      const root = mkdtempSync(join(tmpdir(), "openlup-m17-unbound-"));
+      const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+      const put = (path: string, bytes: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), bytes); };
+      const commit = () => { git("add", "."); git("commit", "-qm", "Unbound reserved path fixture"); return git("rev-parse", "HEAD"); };
+      try {
+        git("init", "-q", "-b", "main"); put(registryPath, encode(marker)); const base = commit();
+        git("update-ref", "refs/remotes/origin/main", base);
+        const sql = Buffer.from("CREATE TABLE public.m17_unbound(id uuid);");
+        put(source.path, sql); const head = commit();
+        expect(git("diff", "--name-only", base, head)).toBe(source.path);
+        if (caller === "PR" || caller === "release") {
+          expect(() => assertAdmittedPlatformForward(root, base, head, source.path, sql, caller === "release")).toThrow(/reviewed.*path or bytes|binding/u);
+          expect(() => assertAdmittedPlatformForward(root, base, head, "supabase/migrations/20261030123000_ordinary.sql", sql, caller === "release")).not.toThrow();
+        } else if (caller === "approval") expect(() => assertForwardApproval(root, base, head)).toThrow(/binding/u);
+        else if (caller === "co-location") expect(() => assertCoLocatedForwardApproval(root, base, head)).toThrow(/binding/u);
+        else await expect(nativeAdmission(root, base, head, caller)).rejects.toThrow(/binding/u);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+  });
+
+  it("binds class approval, SQL introduction and immutable pins through actual Git history", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openlup-m17-approval-"));
+    const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+    const put = (path: string, bytes: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), bytes); };
+    const commit = () => { git("add", "."); git("commit", "-qm", "M17 approval fixture"); return git("rev-parse", "HEAD"); };
+    const install = (candidate = registry) => { put(registryPath, encode(candidate)); for (const source of sources) put(source.path, source.bytes); };
+    try {
+      git("init", "-q", "-b", "main");
+      for (const source of sources) for (const previous of prefix(source.path)) if (!sources.some(source => source.path === previous.path)) put(previous.path, previous.bytes);
+      put(PLATFORM_BASELINE_FILE, readFileSync(PLATFORM_BASELINE_FILE));
+      const absent = structuredClone(marker); delete absent.channelIngestForwards;
+      const historical = structuredClone(absent); historical.batchedForwards = historical.batchedForwards!.slice(0, 16);
+      put(registryPath, encode(historical)); const historicalBase = commit();
+      put("ordinary.txt", "Unrelated unchanged-registry fixture"); const ordinary = commit();
+      expect(() => readReviewedForwardRegistry(encode(historical))).toThrow();
+      expect(() => assertForwardApproval(root, historicalBase, ordinary)).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(root, historicalBase, ordinary)).not.toThrow();
+      put(registryPath, encode(absent)); const old = commit();
+      put(registryPath, encode(marker)); const control = commit();
+      expect(() => assertCoLocatedForwardApproval(root, old, control)).not.toThrow();
+      install(); const introduced = commit();
+      expect(() => assertForwardApproval(root, old, introduced)).toThrow(/class must be approved separately/u);
+      expect(() => assertCoLocatedForwardApproval(root, old, introduced)).toThrow(/class must be approved separately/u);
+      expect(() => assertCoLocatedForwardApproval(root, control, introduced)).not.toThrow();
+      for (const source of sources) {
+        expect(() => assertReviewedPlatformForward(root, control, introduced, source.path, source.bytes)).not.toThrow();
+        expect(() => assertReviewedPlatformForward(root, old, introduced, source.path, source.bytes, true)).not.toThrow();
+        for (const release of [false, true]) expect(() => assertAdmittedPlatformForward(root, control, introduced, source.path, source.bytes, release)).not.toThrow();
+      }
+      git("update-ref", "refs/remotes/origin/main", control);
+      for (const eventName of ["pull_request", "merge_group"]) await expect(nativeAdmission(root, control, introduced, eventName)).resolves.toMatchObject({ verdict: "PASS", head: introduced });
+      const changed = structuredClone(registry); changed.channelIngestForwards[0]!.sha256 = "0".repeat(64);
+      put(registryPath, encode(changed)); const repinned = commit();
+      expect(() => assertForwardApproval(root, introduced, repinned)).toThrow(/approved separately/u);
+      expect(() => assertCoLocatedForwardApproval(root, introduced, repinned)).toThrow(/immutable/u);
+      expect(() => assertReviewedPlatformForward(root, old, repinned, sources[0]!.path, sources[0]!.bytes, true)).toThrow(/approved separately/u);
+      put(registryPath, encode(marker)); const removed = commit();
+      expect(() => assertCoLocatedForwardApproval(root, introduced, removed)).toThrow(/immutable/u);
+      put(registryPath, encode(absent)); const removedClass = commit();
+      expect(() => assertCoLocatedForwardApproval(root, control, removedClass)).toThrow(/cannot be removed/u);
+      git("reset", "--hard", control); install(); put("scripts/reviewed-platform-forward.ts", "candidate machinery"); const machinery = commit();
+      expect(() => assertCoLocatedForwardApproval(root, control, machinery)).toThrow(/machinery/u);
+      git("reset", "--hard", old); for (const source of sources) put(source.path, source.bytes); const noMarker = commit();
+      expect(() => assertForwardApproval(root, old, noMarker)).toThrow(/class must be approved separately/u);
+      expect(() => assertCoLocatedForwardApproval(root, old, noMarker)).toThrow(/class must be approved separately/u);
+      git("reset", "--hard", control); put(registryPath, encode(changed)); const lateApproval = commit();
+      expect(() => assertForwardApproval(root, control, lateApproval)).toThrow(/SQL is introduced/u);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+});
