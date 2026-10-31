@@ -1234,7 +1234,9 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
   const twinPath = `packages/platform/sql/${support[0]!.path.split("/").at(-1)}`;
   for (const path of [...support.map(pin => pin.path), twinPath]) rmSync(join(f.root, path), { force: true });
   const baseManifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
-  baseManifest.forward = baseManifest.forward.filter((row: { file: string }) => !support.some(pin => pin.path === row.file));
+  const supportIndex = baseManifest.forward.findIndex(row => row.file === support[0]!.path);
+  expect(supportIndex).toBeGreaterThanOrEqual(0);
+  baseManifest.forward = baseManifest.forward.slice(0, supportIndex);
   f.put("config/platform-migration-manifest.json", JSON.stringify(baseManifest));
   const without = structuredClone(registry); delete without.supportAuthorityForwards;
   const encode = (value: typeof registry) => Buffer.from(JSON.stringify(value));

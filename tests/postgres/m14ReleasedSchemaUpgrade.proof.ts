@@ -58,7 +58,7 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
   const selectedUnits = [selected.baseline, ...selected.forward];
   const units = selectedUnits;
   const releasedUnits = input.installation ? units.findIndex(unit => unit.file === backfillPath) : 77;
-  assert.equal(units.length, input.installation ? 91 : 88);
+  assert.equal(units.length, input.installation ? 92 : 89);
   assert.ok(releasedUnits > 0);
   assert.equal(units[releasedUnits]!.file, backfillPath);
   const prefix = { baseline: units[0], forward: units.slice(1, releasedUnits) };

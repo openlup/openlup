@@ -54,8 +54,8 @@ export async function runRdsRecipe({ config, receipt, databases, identity, asser
   const actions = { databaseCreates: 0, databaseDrops: 0, roleDrops: 0, phaseLaunches: 0, freshnessReads: 0 };
   receipt.effortCleanup = { status: "RUNNING", actions, phases: cleanup };
   const inventory = mode => mode === "operator-provisioned"
-    ? "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d"
-    : "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7";
+    ? "1501b40ba66da68f261e8c564b322f27ad68f319d431f775e08998dc6b841283"
+    : "96d431befa603ec0d301af13fc580ccd68c25beedefb0bdc1410f5acb847875f";
   const configFor = name => { const url = new URL(adminConfig.connectionString); url.pathname = `/${name}`;
     return { ...adminConfig, connectionString: url.toString(), application_name: "m14-10r-recipe" }; };
   async function fresh(activeDatabase) {
