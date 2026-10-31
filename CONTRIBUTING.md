@@ -230,9 +230,13 @@ macOS arm64, refuses missing pins or prerequisites, and records ordered Vitest
 names/statuses and source-image evidence under private scratch. It is outside
 the root-test filename patterns. Node 24.21.0, npm 11.19.0, Docker, curl and tar
 and an already-local immutable Node 24.21.0 image are required. Neither route
-qualifies hosted managed data. The runner's owned
-stack boundary is the extension point for the separate Storage API, GoTrue and
-authenticated object-read witness.
+qualifies hosted managed data. Only the typed-source job's owned stack enables
+Storage API and GoTrue for the authenticated object-read and source actor witness;
+the first-leg and journey jobs keep those services off. Required managed-Storage
+tests use the same object projection/copy assertions with the stock-PG17 adapter
+and local Versity; required discovery never starts the CLI or service stack.
+The portable object destination is the existing private filesystem store, with
+local S3 byte/access corroboration only.
 
 The existing policy/self-check also validates ordinary local Markdown file links
 and fragments, beyond mapped owner anchors. Source ownership is narrowed by

@@ -302,7 +302,8 @@ it("projects typed managed obligations and leaves source history in the operator
     expect(JSON.stringify(zoned.packet.compatible.tables.find(value => value.table === "commerce_orders"))).toContain("+00:00");
     expect(JSON.stringify(zoned.packet)).not.toContain("+05:30");
   } finally { await zonedOwner.query("RESET TimeZone"); zonedOwner.release(); }
-  expect(Object.keys(mapped).sort()).toEqual(["identitySubjects", "packet"]);
+  expect(Object.keys(mapped).sort()).toEqual(["identitySubjects", "packet", "storageObjects"]);
+  expect(mapped.storageObjects).toEqual([]);
   expect(mapped.packet.compatible.tables.find(value => value.table === "commerce_orders")?.rows).toHaveLength(4);
   expect(mapped.packet.compatible.tables.find(value => value.table === "commerce_settlement_intents")?.rows).toHaveLength(2);
   expect(mapped.packet.compatible.tables.find(value => value.table === "commerce_settlement_transitions")?.rows).toHaveLength(2);
@@ -1064,18 +1065,23 @@ it("refuses a source login that row security would silently filter", async () =>
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
 
-it("refuses unknown nonempty relations and uncarried Storage metadata", async () => {
+it("refuses unknown nonempty relations and Storage without a selected object source", async () => {
   await managed.owner.query("CREATE TABLE public.managed_unmapped_evidence(id uuid PRIMARY KEY)");
   try {
     await managed.owner.query("INSERT INTO public.managed_unmapped_evidence(id) VALUES($1)", [randomUUID()]);
     await expect(capture()).rejects.toMatchObject({ code: "unsupported_table", table: "public.managed_unmapped_evidence" });
   } finally { await managed.owner.query("DROP TABLE public.managed_unmapped_evidence"); }
   await managed.owner.query("INSERT INTO storage.buckets(id,name,public) VALUES('retained','retained',false)");
-  await managed.owner.query("INSERT INTO storage.objects(bucket_id,name,owner_id,metadata) VALUES('retained','unowned.txt',NULL,'{}')");
-  await expect(capture()).rejects.toMatchObject({ code: "invalid_input", table: "storage.objects" });
-  await managed.owner.query("UPDATE storage.objects SET owner_id=$1 WHERE bucket_id='retained'", [userId]);
-  const source = await capture(), fresh = freshBaseline;
-  await expect(mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
-    freshTarget: fresh, targetOwner: targetOwner! }))
-    .rejects.toMatchObject({ code: "unsupported_table", table: "storage.buckets" });
+  try {
+    await managed.owner.query("INSERT INTO storage.objects(bucket_id,name,owner_id,metadata) VALUES('retained','unowned.txt',NULL,'{}')");
+    await expect(capture()).resolves.toMatchObject({ sourceId });
+    const source = await capture(), fresh = freshBaseline;
+    await expect(mapManagedRetainedBusiness({ capture: source, issuer: "https://issuer.example.invalid/managed",
+      freshTarget: fresh, targetOwner: targetOwner! }))
+      .rejects.toMatchObject({ code: "unsupported_table", table: "storage.objects" });
+  } finally {
+    // The opt-in runner owns service-API cleanup on its real source.
+    if (processEnvironment.OPENLUP_M14_MANAGED_SOURCE_PORT === undefined)
+      await managed.owner.query("DELETE FROM storage.objects WHERE bucket_id='retained'; DELETE FROM storage.buckets WHERE id='retained'");
+  }
 });

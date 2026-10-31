@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
-import { PostgresTransferError, type CompatiblePostgresSnapshot } from "@openlup/platform/portability";
+import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferObjectInventory } from "@openlup/platform/portability";
 import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingResult, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
 import { connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import type { createS3TransferObjectSource, S3SourceReferenceSnapshot, S3TransferObjectCensus } from "../s3/transferObjectSource.js";
 
 type Row = Record<string, unknown>;
 type Disposition = "requires-active-mapping" | "retained-history" | "unsupported-empty" |
@@ -12,6 +13,14 @@ export interface ManagedSourceCapture {
   observation: { cluster: string; database: string; login: string; snapshot: string };
   dispositions: { relation: string; rows: number; disposition: Disposition; reason: string }[];
   sha256: string;
+}
+type S3Source = ReturnType<typeof createS3TransferObjectSource>;
+export interface ManagedStorageProjection {
+  bucket: string;
+  source: S3Source;
+  inventory: TransferObjectInventory;
+  census: S3TransferObjectCensus & { referenceSnapshotId: string;
+    features: S3SourceReferenceSnapshot["features"]; obligations: S3SourceReferenceSnapshot["obligations"] };
 }
 
 // The positive managed profile is finite. A nonempty relation outside this
@@ -51,12 +60,10 @@ const channelDormantRegistrations: Readonly<Record<string, string>> = {
 };
 const credentials = new Set([
   "auth.sessions", "auth.refresh_tokens", "auth.flow_state", "auth.one_time_tokens", "auth.identities",
-  "auth.mfa_factors", "auth.mfa_challenges", "auth.audit_log_entries",
+  "auth.mfa_factors", "auth.mfa_challenges", "auth.mfa_amr_claims", "auth.audit_log_entries",
 ]);
 const metadata = new Set(["auth.users", "storage.buckets", "storage.objects"]);
-// Managed Storage has no typed object path in this parcel. The other finite
-// source classes below use their existing state checks and disposition values.
-const uncarried = new Set(["storage.buckets", "storage.objects"]);
+const storageRelations = new Set(["storage.buckets", "storage.objects"]);
 const attemptLinks = (intent: Row, payment: Row, attempt: Row | undefined, transition: Row | undefined): boolean =>
   !!attempt && !!transition && attempt.payment_intent_id === intent.id && attempt.payment_id === payment.id
   && attempt.amount_cents === intent.amount_cents && attempt.currency === intent.currency
@@ -117,6 +124,7 @@ const digest = (value: string | Uint8Array) => createHash("sha256").update(value
 // Source rows are used for the immediate typed projection only. Neither the
 // capture result nor the connected restore packet contains a source-row archive.
 const projectionRows = new WeakMap<ManagedSourceCapture, Map<string, Row[]>>();
+const storagePolicies = new WeakMap<ManagedSourceCapture, number>();
 const priceListEligibility = "snapshot.price_list_eligibility";
 function fail(code: ConstructorParameters<typeof PostgresTransferError>[0], relation?: string): never {
   throw new PostgresTransferError(code, relation);
@@ -211,7 +219,7 @@ export async function captureManagedSourceGraph(input: {
         }
         // Auth's metadata projection is deliberately narrower than auth.users;
         // no password, token or provider credential enters the manifest. Storage
-        // relations are inventoried, then refused if their state has no typed path.
+        // relations are inventoried for the separate typed object projection.
         const expression = name === "auth.users"
           ? "pg_catalog.jsonb_build_object('id',t.id,'email',t.email,'created_at',t.created_at,'updated_at',t.updated_at)"
           : "pg_catalog.to_jsonb(t)";
@@ -228,7 +236,7 @@ export async function captureManagedSourceGraph(input: {
         if (totalRows > input.maximumRows || totalBytes > input.maximumBytes) fail("limit_exceeded", name);
         const parsed = raw.map(row => (active.has(name) ? JSON.parse(row.value, exactNumbers(name)) : JSON.parse(row.value)) as Row);
         sourceRows.set(name, parsed);
-        const required = active.has(name) || name === "auth.users" || raw.length > 0 && uncarried.has(name);
+        const required = active.has(name) || name === "auth.users" || raw.length > 0 && storageRelations.has(name);
         dispositions.push({ relation: name, rows: raw.length, disposition: required
           ? "requires-active-mapping" : "retained-history", reason: required ? "typed target projection required before publication"
           : "operator source archive; no transfer row" });
@@ -254,7 +262,16 @@ export async function captureManagedSourceGraph(input: {
         observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot },
         dispositions };
       const capture = { ...body, sha256: digest(JSON.stringify(body)) };
+      const policyCount = (await db.query<{ count: string }>(`SELECT (count(*) + (SELECT count(*) FROM pg_catalog.pg_class
+          WHERE oid IN ('storage.buckets'::pg_catalog.regclass, 'storage.objects'::pg_catalog.regclass)
+            AND NOT relrowsecurity))::pg_catalog.text AS count
+        FROM pg_catalog.pg_policy WHERE polrelid IN ('storage.buckets'::pg_catalog.regclass,
+          'storage.objects'::pg_catalog.regclass)
+        AND polroles IS DISTINCT FROM ARRAY[(SELECT oid FROM pg_catalog.pg_roles
+          WHERE rolname = 'service_role')]::oid[]`)).rows[0]?.count;
+      if (policyCount === undefined || !Number.isSafeInteger(Number(policyCount))) fail("invalid_input", "storage.objects");
       projectionRows.set(capture, sourceRows);
+      storagePolicies.set(capture, Number(policyCount));
       return capture;
     });
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("database_unavailable"); }
@@ -423,7 +440,8 @@ function subjectOwners(all: Map<string, Row[]>): (relation: string, row: Row) =>
       return unionLinks(relation, [[row.aggregate_id, id => byAggregate(row.aggregate_type, id)]]);
     }
     if (relation === "storage.buckets") return [];
-    if (relation === "storage.objects") return typeof row.owner_id === "string" && row.owner_id ? [row.owner_id] : null;
+    if (relation === "storage.objects") return row.owner_id === null || row.owner_id === undefined ? []
+      : typeof row.owner_id === "string" && row.owner_id ? [row.owner_id] : null;
     return null;
   };
 }
@@ -461,6 +479,106 @@ export function managedIdentityEvidence(capture: ManagedSourceCapture, issuer: s
     lifecycleEvents: values("public.customer_subject_lifecycle_events") };
 }
 
+/** Project the finite operator-only Storage cohort from the held managed snapshot. */
+async function projectManagedStorage(capture: ManagedSourceCapture,
+  subjects: ManagedIdentityMappingResult["subjects"], sources: ReadonlyMap<string, S3Source> | undefined):
+  Promise<ManagedStorageProjection[]> {
+  const rows = projectionRows.get(capture);
+  if (!rows) fail("invalid_input");
+  const buckets = rows.get("storage.buckets") ?? [], objects = rows.get("storage.objects") ?? [];
+  if (!buckets.length && !objects.length) return [];
+  if (!sources || storagePolicies.get(capture) !== 0) fail("unsupported_table", "storage.objects");
+  const erased = new Set((rows.get("public.identity_privacy_erasures") ?? [])
+    .filter(row => typeof row.completed_at === "string" && typeof row.principal_id === "string")
+    .map(row => String(row.principal_id).toLowerCase()));
+  const subjectIds = new Map<string, string>();
+  for (const subject of subjects) {
+    const key = subject.managedId.toLowerCase();
+    if (subjectIds.has(key)) fail("target_conflict", "auth.users");
+    subjectIds.set(key, subject.principalId);
+  }
+  const owner = (row: Row, relation: string): void => {
+    const current = row.owner_id, old = row.owner;
+    if (current !== null && current !== undefined && (typeof current !== "string" || !current)
+      || old !== null && old !== undefined && (typeof old !== "string" || !old)
+      || typeof current === "string" && typeof old === "string" && current.toLowerCase() !== old.toLowerCase())
+      fail("invalid_input", relation);
+    const value = current ?? old;
+    if (typeof value === "string" && (erased.has(value.toLowerCase()) || !subjectIds.has(value.toLowerCase())))
+      fail("target_conflict", relation);
+  };
+  const acceptedBuckets = new Map<string, Row>();
+  for (const bucket of buckets) {
+    if (typeof bucket.id !== "string" || !bucket.id || bucket.name !== bucket.id || acceptedBuckets.has(bucket.id)
+      || bucket.public !== false || bucket.type !== "STANDARD"
+      || bucket.max_file_size_kb !== undefined && bucket.max_file_size_kb !== null
+      || bucket.file_size_limit !== undefined && bucket.file_size_limit !== null
+      || bucket.allowed_mime_types !== null
+      || bucket.avif_autodetection !== false || bucket.versioning_status !== "DISABLED"
+      || bucket.lifecycle_configuration !== null || bucket.lifecycle_configuration_generation !== null)
+      fail("unsupported_table", "storage.buckets");
+    owner(bucket, "storage.buckets");
+    acceptedBuckets.set(bucket.id, bucket);
+  }
+  const byBucket = new Map<string, Row[]>([...acceptedBuckets.keys()].map(bucket => [bucket, []]));
+  for (const object of objects) {
+    if (typeof object.bucket_id !== "string" || !acceptedBuckets.has(object.bucket_id)
+      || typeof object.id !== "string" || !object.id
+      || typeof object.name !== "string" || !object.name
+      || object.archived_at !== null || object.is_delete_marker !== false || object.is_versioned !== false
+      || object.version !== null && (typeof object.version !== "string" || !object.version))
+      fail("unsupported_table", "storage.objects");
+    owner(object, "storage.objects");
+    if (object.path_tokens !== undefined && JSON.stringify(object.path_tokens) !== JSON.stringify(object.name.split("/")))
+      fail("invalid_input", "storage.objects");
+    byBucket.set(object.bucket_id, [...(byBucket.get(object.bucket_id) ?? []), object]);
+  }
+  if (acceptedBuckets.size !== byBucket.size) fail("unsupported_table", "storage.buckets");
+  const projected: ManagedStorageProjection[] = [];
+  for (const [bucket, records] of byBucket) {
+    const source = sources.get(bucket);
+    if (!source || sources.size !== byBucket.size) fail("invalid_input", "storage.buckets");
+    const references: S3SourceReferenceSnapshot["objects"][number][] = [];
+    const keys = new Set<string>();
+    for (const row of records) {
+      const key = String(row.name);
+      if (keys.has(key)) fail("target_conflict", "storage.objects");
+      keys.add(key);
+      const metadata = row.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) fail("invalid_input", "storage.objects");
+      const stored = metadata as Row;
+      const read = await source.read(key);
+      if (!Number.isSafeInteger(stored.size) || stored.size !== read.object.bytes
+        || typeof stored.mimetype !== "string" || stored.mimetype !== read.object.metadata["s3.content-type"]
+        || stored.cacheControl !== undefined && stored.cacheControl !== null && typeof stored.cacheControl !== "string"
+        || (stored.cacheControl || undefined) !== read.object.metadata["s3.cache-control"]
+        || stored.contentEncoding !== undefined && stored.contentEncoding !== null
+          && typeof stored.contentEncoding !== "string"
+        || (stored.contentEncoding || undefined) !== read.object.metadata["s3.content-encoding"]
+        || stored.expires !== undefined && stored.expires !== null)
+        fail("target_conflict", "storage.objects");
+      const user = row.user_metadata;
+      if (user !== null && (typeof user !== "object" || Array.isArray(user))) fail("invalid_input", "storage.objects");
+      const userPairs = Object.entries(user ?? {});
+      if (userPairs.some(([name, value]) => typeof value !== "string"
+        || read.object.metadata[`s3.user.${name.toLowerCase()}`] !== value)
+        || Object.keys(read.object.metadata).filter(name => name.startsWith("s3.user.")).length !== userPairs.length)
+        fail("target_conflict", "storage.objects");
+      references.push({ key, version: read.object.version, bytes: read.object.bytes,
+        sha256: read.object.sha256, metadata: read.object.metadata });
+    }
+    const reference: S3SourceReferenceSnapshot = { bucket, snapshotId: capture.observation.snapshot,
+      features: { nativeVersionHistory: "none", objectTags: "none", multipartUploads: "none" },
+      objects: references, obligations: [] };
+    const census = await source.captureAgainstReferences(async () => reference);
+    projected.push({ bucket, source, census,
+      inventory: { sourceId: capture.sourceId, snapshot: { kind: "quiesced", id: capture.observation.snapshot },
+        objects: census.objects } });
+  }
+  if (sources.size !== byBucket.size) fail("invalid_input", "storage.buckets");
+  return projected;
+}
+
 /**
  * A deliberately narrow managed money projection. Unsafe external attempts and
  * unsupported active row classes refuse before any target restore can begin.
@@ -471,7 +589,9 @@ export async function mapManagedRetainedBusiness(input: {
   issuer: string;
   freshTarget: ConnectedNativeStoreCapture;
   targetOwner: Pool;
-}): Promise<{ packet: ConnectedNativeStoreCapture; identitySubjects: ManagedIdentityMappingResult["subjects"] }> {
+  storageSources?: ReadonlyMap<string, S3Source>;
+}): Promise<{ packet: ConnectedNativeStoreCapture; identitySubjects: ManagedIdentityMappingResult["subjects"];
+  storageObjects: ManagedStorageProjection[] }> {
   validateCapture(input.capture);
   const raw = projectionRows.get(input.capture);
   if (!raw) fail("invalid_input");
@@ -488,13 +608,13 @@ export async function mapManagedRetainedBusiness(input: {
       fail("target_conflict", "public.commerce_payment_intents");
   }
   for (const entry of input.capture.dispositions)
-    if (entry.rows && (uncarried.has(entry.relation)
-      || stateClass.has(entry.relation) && !active.has(entry.relation)
+    if (entry.rows && (stateClass.has(entry.relation) && !active.has(entry.relation)
         && entry.disposition === "requires-active-mapping"))
       fail("unsupported_table", entry.relation);
   const identitySource = managedIdentityEvidence(input.capture, input.issuer);
   const mapped = await mapManagedIdentityForConnectedRestore({ source: identitySource,
     freshTarget: input.freshTarget, targetOwner: input.targetOwner });
+  const storageObjects = await projectManagedStorage(input.capture, mapped.subjects, input.storageSources);
   const packet = mapped.packet;
   const values = (relation: string): Row[] => raw.get(`public.${relation}`) ?? [];
   const byId = (rows: Row[]) => new Map(rows.map(row => [row.id, row]));
@@ -767,7 +887,7 @@ export async function mapManagedRetainedBusiness(input: {
   packet.sha256 = digest(JSON.stringify(outer));
   if (values("communication_email_deliveries").some(row => row.status !== "failed"))
     fail("unsupported_table", "public.communication_email_deliveries");
-  return { packet, identitySubjects: mapped.subjects };
+  return { packet, identitySubjects: mapped.subjects, storageObjects };
 }
 
 async function replaceTargetRows(packet: ConnectedNativeStoreCapture, table: string, rows: Row[], owner: Pool): Promise<void> {

@@ -293,3 +293,52 @@ Final instruction freshness was checked against fetched `origin/main`
 have no changes from policy pin `6747206c239d3c1f5822e38732be96c9ac5e6d4a`.
 This fetch changes no candidate source or stack base; current-main integration
 remains deferred to GO. The executable proof above therefore remains applicable.
+
+## CD-M17-19 GO integration evidence
+
+The approved GO continuation carries current main
+`717fa0b527e712ae48ba768acd68ac6155f4bb12` once into R0, then normally merges
+that predecessor through R0a, R1, R2 and R3 without rebase or force. The same
+revision is the instruction-freshness pin, separately from each predecessor
+comparison base. R1's only conflict was the generated platform agent context;
+it was regenerated from the merged canonical owners. All executable source
+merged automatically, preserving the approved channel repairs and landed
+managed Storage transfer behavior. The data owner's explicit reference-source
+and non-package status remains intact.
+
+The new Storage witness now installs the exact two M17 managed forwards in its
+disposable stock-PostgreSQL source; its qualified native target already installs
+their twins through the selected manifest. This fixture-only addition changes
+no production admission, refusal, protected evidence class or carried business
+row. The current cold-consumer route retains `--min-release-age=3` for its
+SDK-present installation branch.
+
+After actual heavy-gate admission with exit zero and no wait, the frozen
+integrated source passed full lint (zero errors, 33 existing warnings), all five
+projected typecheck projects (zero unresolved edges and consumer errors), and
+platform API comparison. The complete ten-file transfer, restricted restore,
+managed capture/catch-up and journey selection passed 70/70 in 78.38 seconds,
+including the new Storage witness in 8.963 seconds. The bounded channel,
+inventory, reference composition, installed-consumer, cold-consumer and manifest
+selection passed 345/345 across 23 files in 38.45 seconds. The exact channel
+admission selection passed 21/21 (630 unrelated cases unselected). Both
+neutrality gates, publication inventory, redacted staged-secret and whitespace
+checks passed. No registry installation error occurred. All owned proof
+processes completed before the shared heavy lane was returned.
+
+The retained working-tree `0.33.0` platform artifact has SHA-256
+`dd7422ece98e0ce38c27765725fc12e08bde57d79db026dfc41aa63051a64708`.
+It measures 2,095,418 packed bytes, 9,772,612 unpacked bytes, 2,827 files,
+1,805,117 code gzip bytes and 2,769 code files; documentation is 57,439 gzip
+bytes and six files, and the browser contract entry is 20 bytes. Existing
+content, artifact-budget and browser-budget checks report no findings. Caps,
+release-growth baselines and package versions remain unchanged. These are local
+integration and retained-artifact results; counted review, canonical verification,
+external delivery and any publication retain their separate supervisor gates.
+
+Self-retro: the automatic merge plus canonical regeneration preserved both
+owners without manual runtime resolution. A preliminary policy check correctly
+refused an edited newly-added witness whose index still contained the merge
+version; staging the exact frozen candidate settled that input mismatch. This
+required no new control or broader admission, and no further optimization was
+justified.

@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
+  platformConsumerInstallArgs,
   proveRiskConsumer,
   RISK_WORKFLOW_PROOFS,
   proveRiskWorkflowConsumer,
@@ -48,6 +49,14 @@ import { ACCOUNT_SUPPORT_COMPOSITION_PROOFS, proveAccountSupportCompositionConsu
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
+it("applies the three-day release age only to the network install", () => {
+  const packages = ["/packs/platform.tgz", "pg@8.21.0"];
+  const common = ["--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
+  expect(platformConsumerInstallArgs(packages, true)).toEqual(["install", "--prefer-offline", "--min-release-age=3", ...common]);
+  expect(platformConsumerInstallArgs(packages)).toEqual(["install", "--offline", ...common]);
+  expect(platformConsumerInstallArgs(packages, false)).toEqual(["install", "--offline", ...common]);
+});
+
 function scratch() { const path = mkdtempSync(join(tmpdir(), "platform-consumer-falsifier-")); temporary.push(path); return path; }
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
