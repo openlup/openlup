@@ -19,6 +19,8 @@ const compatible = [
 
 const owned = [
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
+  "catalog_products", "catalog_skus", "price_lists", "price_entries", "subscription_lines",
+  "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "commerce_operators", "commerce_order_holds", "commerce_order_operations",
@@ -90,6 +92,8 @@ export async function captureConnectedNativeStore(input: {
         pg_catalog.current_database() AS database, session_user::pg_catalog.text AS login,
         pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") throw new PostgresTransferError("invalid_input");
+      // A login that row security would filter must fail here, not read an empty source.
+      await db.query("SET LOCAL row_security = off");
       await db.query("SET LOCAL TimeZone = 'UTC'");
       // Existing utility validates source IDs, limits, schema and lossless rows;
       // its callback reuses this held client without another BEGIN/COMMIT.
