@@ -77,7 +77,11 @@ function syncResult(input: SyncRequest, result: SyncResult): void {
       "receipt_required", "Return the original admitted mutation receipt for mutation and erasure read results");
     if ("receipt" in result) {
       const original = input.operation === "erasure.read" ? input.payload.receipt.request : input;
-      requireFact(same(result.receipt.request, original) && result.receipt.operation === original.operation,
+      // Replay refreshes the call's fences, not the original admission receipt.
+      const sameMutation = (["binding", "operation", "subjectReference", "requestId", "audience", "payload"] as const)
+        .every(key => same(result.receipt.request[key], original[key]));
+      requireFact((input.operation === "erasure.read" ? same(result.receipt.request, original) : sameMutation)
+        && result.receipt.operation === original.operation,
         "receipt_identity", "Retain the original admitted mutation in the receipt");
     }
   }
@@ -117,7 +121,7 @@ export async function runCommunicationsAdapterConformance(
       const cases: string[] = [];
       if (subject.kind === "email") {
         requireFact(subject.fixtures.some(row => row.expected.outcome.ok && !row.expected.outcome.suppressed)
-          && subject.fixtures.some(row => !row.expected.outcome.ok)
+          && subject.fixtures.some(row => !row.expected.outcome.ok && !row.expected.outcome.suppressed)
           && subject.fixtures.some(row => row.expected.outcome.suppressed === "drop"),
         "email_fixtures", "Supply accepted, failed and suppressed email fixtures");
         for (const [fixtureIndex, row] of subject.fixtures.entries()) {
@@ -148,10 +152,8 @@ export async function runCommunicationsAdapterConformance(
           if (capability.state === "supported") supported.add(row.input.operation);
           const result = await dispatch(adapter, row.input);
           syncResult(row.input, result);
-          if (result.kind === "accepted" || result.kind === "acknowledged" || result.kind === "completed") {
-            requireFact(same(row.input.binding, adapter.capabilities.binding) && same(row.input.audience, adapter.capabilities.audience),
-              "capability_scope", "Refuse requests outside the adapter's declared binding and audience before effects");
-          }
+          requireFact(same(row.input.binding, adapter.capabilities.binding) && same(row.input.audience, adapter.capabilities.audience)
+            || result.kind === "refused", "capability_scope", "Refuse requests outside the adapter's declared binding and audience before effects");
           requireFact(capability.state === "supported" || result.kind === "refused" && subject.fixtures.some(fixture =>
             fixture.input.operation === row.input.operation && fixture.expected.kind === "refused" && fixture.expected.reason === capability.state),
           "declared_capability", "Refuse unavailable operations and supply a refusal fixture with the declared unsupported or verification_pending reason");

@@ -102,6 +102,38 @@ an additive communications snapshot and no marketing snapshot delta. Do not
 change the snapshot generator or accept unrelated API churn.
 Lesson: early helper type expansion → preserve the owner's declaration order.
 
+## Native review follow-up
+
+The initial signed candidate received two independent reviews. Their material
+findings remain open: suppression could satisfy the provider-failure witness;
+an unknown mutation result could bypass declared scope; and refreshed-generation
+replay incorrectly required its original receipt to equal the current call.
+The existing marketing-sync owner keeps replay identity separate from current
+generation fences and retains the original admitted request in the receipt.
+
+The bounded repair requires an unsuppressed failure fixture, unconditional
+refusal outside declared binding/audience with zero mutations, and comparison of
+the stable mutation identity and payload for mutation receipts. Erasure readback
+still requires its exact original receipt. Added regressions distinguish all
+three defects and retain rejection of altered receipt keys or effect fields.
+No new API, fixture seam, registry, dependency or runtime composition is needed.
+The repair needs a new maintainer read before another signed commit and fresh
+native review. No material finding is closed by a local test result alone.
+
+Focused repair proof on the same pinned toolchain reproduced five expected
+regression failures against the initial runner, then passed all 18 conformance
+cases after the three direct repairs (446 ms). Lint/builds, the focused
+structural scan, all five typecheck projects with zero errors, API contracts and
+publication/documentation policy pass. The communications API snapshot is byte
+identical to the initial signed candidate. The unchanged projection's five-case
+proof remains the earlier scoped result.
+
+The repaired real pack is 2,111,198 compressed bytes, 9,838,399 unpacked bytes and
+2,843 files: +6,621 / +28,897 / +3 against the retained original base artifact,
+or +143 compressed bytes and no added files against the initial candidate.
+All existing artifact caps pass without a budget change. Canonical verification,
+coverage, isolated packed-consumer execution and hosted checks remain pending.
+
 ## Self-retro
 
 One machine admission timed out after 542 seconds before a repeated wait passed.
@@ -110,3 +142,6 @@ test helper after the existing owner types removed it without changing the
 snapshot generator. A pure evidence projection also avoided an unnecessary
 execution-control change. Retain the existing proof routes rather than adding
 a CLI or registry for this kit.
+Initial review also exposed overlapping proof classes and conflated receipt/call
+identity. Lesson: require distinct outcome witnesses and compare stable effect
+identity separately from refreshed call fences.

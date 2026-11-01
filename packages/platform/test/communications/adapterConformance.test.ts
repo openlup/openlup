@@ -64,6 +64,76 @@ it("requires subjects, refusal and replay witnesses instead of accepting empty p
   await expect(runCommunicationsAdapterConformance([{ ...subject, fixtures: subject.fixtures.map(row => ({ ...row, replay: false })) }])).rejects.toThrow("replay_required");
 });
 
+it("requires a provider failure separate from suppression", async () => {
+  const accepted = { outcome: { ok: true, resendId: "notice:1", httpStatus: 202, providerError: null, aborted: false }, providerResponse: {} };
+  const suppressed = { outcome: { ok: false, resendId: null, httpStatus: 0, providerError: null, aborted: false, suppressed: "drop" as const }, providerResponse: {} };
+  const input = { from: "sender@example.invalid", to: "reader@example.invalid", subject: "accepted", html: "<p>Notice</p>" };
+  const subject: CommunicationsAdapterConformanceSubject = { kind: "email", subjectId: "missing-provider-failure", create() {
+    let effects = 0;
+    return { readEffectCount: () => effects, adapter: { providerKind: "offline", async send(message) {
+      if (message.subject === "suppressed") return suppressed;
+      effects++; return accepted;
+    } } };
+  }, fixtures: [
+    { input, expected: accepted, expectedEffects: 1 },
+    { input: { ...input, subject: "suppressed" }, expected: suppressed, expectedEffects: 0 },
+  ] };
+  await expect(runCommunicationsAdapterConformance([subject])).rejects.toThrow("email_fixtures");
+});
+
+it.each(["binding", "audience"] as const)("refuses an unknown mutation with effects outside declared %s", async fault => {
+  const subject = marketingSubject();
+  if (subject.kind !== "marketing-sync") throw new Error("test fixture kind");
+  const input = request("profile.sync", { requestId: "scope:unknown", ...(fault === "binding"
+    ? { binding: { ...request("profile.sync").binding, account: "foreign" } }
+    : { audience: { kind: "audience", reference: "foreign" } }) });
+  const expected: SyncResult<"profile.sync"> = { binding: input.binding, operation: input.operation,
+    subjectReference: input.subjectReference, requestId: input.requestId, generation: input.generation,
+    kind: "unknown", reason: "acceptance_ambiguous" };
+  const bad = { ...subject, fixtures: [{ input, expected, expectedEffects: 1 }, ...subject.fixtures], async create(selected: SyncRequest) {
+    if (selected.requestId !== input.requestId) return subject.create(selected);
+    const h = synthetic(); let effects = 0;
+    return { adapter: { ...h.provider, profiles: { async sync() { effects++; return expected; } } }, readEffectCount: () => effects };
+  } };
+  await expect(runCommunicationsAdapterConformance([bad])).rejects.toThrow("capability_scope");
+});
+
+it.each(["profile.sync", "erasure.request"] as const)("retains the original %s receipt on refreshed-generation replay", async operation => {
+  const subject = marketingSubject();
+  if (subject.kind !== "marketing-sync") throw new Error("test fixture kind");
+  const original = subject.fixtures.find(row => row.input.operation === operation && row.replay);
+  if (!original) throw new Error("test mutation fixture");
+  const refreshed = { input: { ...original.input, generation: 2, deadlineMs: 200 },
+    expected: { ...original.expected, generation: 2 }, expectedEffects: 0, replay: true } as (typeof subject.fixtures)[number];
+  const replay = { ...subject, fixtures: [...subject.fixtures, refreshed], async create(input: SyncRequest) {
+    if (input.generation !== 2) return subject.create(input);
+    const h = synthetic();
+    if (operation === "profile.sync") await h.provider.profiles.sync(original.input as SyncRequest<"profile.sync">);
+    else await h.provider.erasure.request(original.input as SyncRequest<"erasure.request">);
+    h.state.generation = 2;
+    return { adapter: h.provider, readEffectCount: () => h.effects.length };
+  } };
+  expect((await runCommunicationsAdapterConformance([replay])).subjects[0].cases.at(-1)).toBe(`${operation}:acknowledged:replay`);
+});
+
+it.each(["requestId", "payload"] as const)("refuses altered receipt %s even when the fixture expects it", async field => {
+  const subject = marketingSubject();
+  if (subject.kind !== "marketing-sync") throw new Error("test fixture kind");
+  const mutate = (result: SyncResult<"profile.sync">): SyncResult<"profile.sync"> => {
+    if (!("receipt" in result) || !result.receipt) return result;
+    const original = result.receipt.request;
+    return { ...result, receipt: { ...result.receipt, request: { ...original, ...(field === "requestId"
+      ? { requestId: "foreign" } : { payload: { ...original.payload, consentEvidenceReference: "foreign" } }) } } };
+  };
+  const bad = { ...subject, fixtures: subject.fixtures.map(row => row.input.operation === "profile.sync"
+    ? { ...row, expected: mutate(row.expected as SyncResult<"profile.sync">) } : row) as typeof subject.fixtures,
+  async create(input: SyncRequest) {
+    const h = await subject.create(input);
+    return { ...h, adapter: { ...h.adapter, profiles: { sync: async (selected: SyncRequest<"profile.sync">) => mutate(await h.adapter.profiles.sync(selected)) } } };
+  } };
+  await expect(runCommunicationsAdapterConformance([bad])).rejects.toThrow("receipt_identity");
+});
+
 it.each(["unsupported", "verification_pending"] as const)("checks declared %s refusals while preserving earlier binding refusal", async state => {
   const subject = marketingSubject();
   if (subject.kind !== "marketing-sync") throw new Error("test fixture kind");
