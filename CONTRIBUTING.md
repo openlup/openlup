@@ -154,6 +154,13 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Cold installed-artifact discovery classifies `channels`, `channels/contracts`
+and `channels/server` as non-adapter entries. Their declarations and runtime
+imports must work without optional database/provider peers; the existing
+export-inventory check refuses an unclassified public subpath. The inert M17
+reference proof exercises imported history on local managed compatibility
+PostgreSQL separately from this distribution boundary.
+
 The opt-in [local self-host recipe](docs/platform/RUNTIME_AND_SELF_HOSTING.md#recipe-conformance-runner)
 calls the existing installation, schema, catch-up and older-snapshot witnesses,
 then real issuer, local gateway and Node/OCI fixture compositions. Its plain-Node
@@ -1999,11 +2006,18 @@ package, coverage or full verification gates.
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
-discovered by the existing root Node project. The paired PostgreSQL boundary
+discovered by the existing root Node project. The M17 reference's adjacent guard
+tests cover off/portable selection; `tests/postgres/m17ChannelReference.test.ts`
+uses actual imported locked rows in local managed compatibility PostgreSQL,
+with adapter defaults revoked before installation, to prove page/capture/CAS
+order, original money groups, current-run recovery and
+ACK debt. This local witness does not qualify hosted managed or provider access. The paired PostgreSQL boundary
 fixture and selected-native inventory proofs live under `tests/postgres`;
 managed pgTAP retains 48 source-boundary assertions and the existing dispatch
 owner witness. Installed artifact proof belongs in `tests/platform/channels`;
-canonical cold-runner entry registration remains a later composition step.
+the canonical cold runner requires all three channel entries and checks their
+imports and both declaration modes. Registration alone does not establish
+passing final canonical verification.
 These local witnesses do not establish real-provider or hosted qualification.
 
 #### Choose a location and proof

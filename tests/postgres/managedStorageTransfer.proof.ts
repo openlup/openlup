@@ -102,6 +102,8 @@ async function main() {
         throw new Error("Managed baseline pin changed");
       await managed.query("SET ROLE postgres; SET search_path=public,extensions");
       await managed.query(baseline.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
+      for (const file of ["20261030121000_channel_retained_basis.sql", "20261030122000_channel_purchased_source.sql"])
+        await managed.query(readFileSync(`supabase/migrations/${file}`, "utf8"));
       await managed.query("RESET ROLE");
       // Add the finite fields consumed by this projection to this disposable
       // fixture only. The opt-in runner separately records the service schema.

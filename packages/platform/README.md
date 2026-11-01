@@ -1555,6 +1555,13 @@ provider payload decoding, accepted currencies and enablement; jobs and simulato
 remain default-off. Optional connector port types describe host capabilities,
 not implemented outbound publication or synchronization.
 
+The repository's inert [M17 reference recipe](../../server/runtime/public-reference/m17ChannelBinding.ts)
+composes these public exports with explicit host clients and the existing M05
+catalog and payment owners. Its separate historical bundle port reads imported
+locked facts, independent of current active catalog selection. It exposes managed
+webhook/page/recovery callables without mounting routes or jobs; portable selection
+exposes source-only operations. This recipe is application source, outside the tarball.
+
 Both webhook composition and retained-purchase composition refuse missing channel
 reads before missing ingest rails, before any saga effect. Retained composition
 then requires the original retained rows before reading the saga dependencies.
