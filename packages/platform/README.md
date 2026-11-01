@@ -581,6 +581,35 @@ caller-declared schema requirements. Missing proof keeps the named refusal.
 
 ## Inventory
 
+The local purchase-reservation draft exposes `createPostgresPurchaseReservationPort`:
+an atomic ordered item batch over finalized order items, per-reservation release,
+and bounded expiry. The trusted host supplies its observed-stock source and
+server payment status, wires checkout compensation and schedules expiry. Item
+arrays are serialized as JSON for node-postgres. Existing native ATP counts its
+live holds together with renewal holds, while the fourteen-day subscription
+priority remains in force for purchase admission. Matching replay retains the
+reservation identity and current status; changed keyed input and elapsed initial
+expiry refuse. Local lots, locations, balance counters and movement history are
+outside this slice. The ownership alteration and narrowed donor slice await
+admission; this is not an installed npm capability. See the
+[G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
+
+`createPostgresAbandonedCheckoutCompensationPort(executor, now?)` supplies
+`CheckoutCompensationPort.cancelAbandonedOrder` on native PostgreSQL. The bounded
+routine closes the pending order, created intents and provisional activation,
+then releases its purchase holds in the same transaction. It retains strict
+keyed replay, refuses renewal orders and leaves existing payment/uncertainty
+facts untouched. The host withholds this operation for uncertain dispatch.
+Dedicated promotion cancellation (`cancelUnstartedPromotionOrder`) remains
+unbound on native PostgreSQL. No table grant, withdrawal marker or provider
+dispatch is added. The owner read is accepted; the prior admission control
+remains required before landing.
+
+Reservation keys, stock-source references and cancellation reasons can contain
+identifying strings, as can receipt metadata. Hosts should use opaque references
+and keep personal details out of those fields. There is no erasure path for
+these retained reservations, receipts or compensation history yet.
+
 `createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Preview availability subtracts all live holds, remaining subscription demand inside 14 days and channel exposure, clamped at zero. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).

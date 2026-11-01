@@ -131,6 +131,20 @@ omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
 
+The purchase-hold draft adds observed current stock, reservation headers/lines
+and purchase command receipts, plus aggregate compensation history and provisional
+activation state, to the fixed capture and ordered restore lists.
+Headers follow their order and renewal-operation parents; lines follow headers.
+Receipts preserve exact PostgreSQL command/result JSON, including arbitrary
+metadata that may contain personal data. Existing whole-packet row/byte bounds,
+owner-only snapshot/restore authority, unknown-table refusal and target-writer
+exclusion still apply; the transfer read covers these six additions. A focused
+real-PostgreSQL witness checks unchanged rows, matching replay after restore,
+changed-input refusal and table-specific bounded capture for activation,
+compensation and command receipts. Restored cancellation replays its original
+answer and preserves released holds. This is local draft evidence, not a
+whole purchase-journey or hosted qualification claim.
+
 Ordinary outbox rows use this pinned owner insertion path while the generic
 compatible-row importer keeps its INSERT-trigger refusal. The exact
 `channel_purchase_outbox_guard` name is admitted under the existing qualified

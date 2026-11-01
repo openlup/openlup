@@ -1,3 +1,4 @@
+import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput } from "@openlup/platform/inventory";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
@@ -33,6 +34,8 @@ type Installation = { owner: Pool; ownerUrl: string; runtime: Pool; restore: Poo
 let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
+let purchaseHold: PurchaseReservationInput, purchaseHoldId: string;
+let retainedCancellation: { idempotencyKey: string; orderId: string; reason: string };
 let identity: Awaited<ReturnType<typeof identityFixture>>;
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
@@ -214,6 +217,34 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
+  const purchaseOrder = randomUUID(), purchaseItem = randomUUID();
+  await source.owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+    inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+    VALUES('retained-stock','retained-sku',10,10,0,'sellable','2026-09-01','2027-12-01','retained','retained',$1)`, ["a".repeat(64)]);
+  const purchaseWriter = await source.owner.connect();
+  try {
+    await purchaseWriter.query("BEGIN");
+    await purchaseWriter.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'pending_payment','XXX',0)", [purchaseOrder, graph.client]);
+    await purchaseWriter.query("INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,$3,1,2,0,0)", [purchaseItem, purchaseOrder, sku]);
+    await purchaseWriter.query("COMMIT");
+  } catch (error) { await purchaseWriter.query("ROLLBACK"); throw error; } finally { purchaseWriter.release(); }
+  purchaseHold = { idempotencyKey: "retained-purchase-hold", orderId: purchaseOrder, stockSourceKey: "retained-stock",
+    items: [{ orderItemId: purchaseItem, skuId: sku, quantity: 2 }], paymentStatus: "created",
+    expiresAt: "2026-09-02T12:00:00.000Z", now: "2026-09-01T12:00:00.000Z", metadata: { note: "retained@example.invalid", padding: "x".repeat(32768) } };
+  purchaseHoldId = (await createPostgresPurchaseReservationPort(source.runtime).reserveOrderItems(purchaseHold)).reservations[0]!.reservationId;
+  const cancelledOrder = randomUUID(), cancelledItem = randomUUID();
+  const cancelledWriter = await source.owner.connect();
+  try {
+    await cancelledWriter.query("BEGIN");
+    await cancelledWriter.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'pending_payment','XXX',0)", [cancelledOrder, graph.client]);
+    await cancelledWriter.query("INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,$3,1,2,0,0)", [cancelledItem, cancelledOrder, sku]);
+    await cancelledWriter.query("COMMIT");
+  } catch (error) { await cancelledWriter.query("ROLLBACK"); throw error; } finally { cancelledWriter.release(); }
+  await source.owner.query("SELECT public.subscription_declare_provisional_activation($1,$2,28,'2026-09-01')", [randomUUID(), cancelledOrder]);
+  await createPostgresPurchaseReservationPort(source.runtime).reserveOrderItems({ ...purchaseHold, idempotencyKey: "retained-cancelled-hold", orderId: cancelledOrder,
+    items: [{ orderItemId: cancelledItem, skuId: sku, quantity: 2 }] });
+  retainedCancellation = { idempotencyKey: "retained-cancellation", orderId: cancelledOrder, reason: "retained@example.invalid" };
+  expect(await createPostgresAbandonedCheckoutCompensationPort(source.runtime, () => "2026-09-01T12:00:00Z").cancelAbandonedOrder(retainedCancellation)).toEqual({ cancelled: true });
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -253,6 +284,38 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   const { sha256: _outer, ...outer } = copy; copy.sha256 = hash(outer);
   return copy;
 }
+
+it("transfers purchase owners, lines and receipts losslessly and preserves replay and bounded capture", async () => {
+  for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
+    expect(packet.owned.find(value => value.table === table)?.rows.length).toBeGreaterThan(0);
+  }
+  const heldClient = await source.owner.connect();
+  try {
+    await heldClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_purchase_reservation_receipts"]) {
+      const index = packet.owned.findIndex(value => value.table === table);
+      const priorBytes = [...packet.compatible.tables, ...packet.owned.slice(0, index)]
+        .reduce((sum, rowset) => sum + rowset.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+      const bytes = packet.owned[index]!.rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
+      await expect(captureConnectedNativeStore({ sourceId: "bounded-purchase-metadata", catalogueId: selected.objectInventorySha256,
+        maximumRows: 10000, maximumBytes: priorBytes + bytes - 1, source: { withSnapshot: work => work({ query: (sql, values) => heldClient.query(sql, values ? [...values] : undefined) }) } }))
+        .rejects.toMatchObject({ code: "limit_exceeded", table });
+    }
+  } finally { await heldClient.query("ROLLBACK"); heldClient.release(); }
+  expect((await restore()).replayed).toBe(false);
+  const sourceRows = await census(source.owner), targetRows = await census(target.owner);
+  for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
+    expect(targetRows[table]).toEqual(sourceRows[table]);
+  }
+  expect((await restore()).replayed).toBe(true);
+  const cancellation = createPostgresAbandonedCheckoutCompensationPort(target.runtime, () => "2026-09-03T12:00:00Z");
+  expect(await cancellation.cancelAbandonedOrder(retainedCancellation)).toEqual({ cancelled: true });
+  await expect(cancellation.cancelAbandonedOrder({ ...retainedCancellation, reason: "changed" })).rejects.toMatchObject({ code: "23505" });
+  const port = createPostgresPurchaseReservationPort(target.runtime);
+  expect(await port.reserveOrderItems(purchaseHold)).toMatchObject({ replayed: true, reservations: [{ reservationId: purchaseHoldId }] });
+  await expect(port.reserveOrderItems({ ...purchaseHold, metadata: { note: "changed" } })).rejects.toMatchObject({ code: "23505" });
+  expect((await target.owner.query("SELECT count(*)::int n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1", [purchaseHold.orderId])).rows).toEqual([{ n: 1 }]);
+});
 
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";

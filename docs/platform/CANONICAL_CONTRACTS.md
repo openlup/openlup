@@ -585,6 +585,17 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The G4 purchase-hold draft appends the same native forward path/hash to all three
+manifest selections, with a separate measured catalogue digest for each existing
+installation shape. It preserves every prior source pin and defines four new
+bounded routines rather than replacing ATP or renewal functions. Abandoned compensation wraps
+the unchanged aggregate donor and releases purchase holds atomically; it adds
+neither withdrawal markers nor raw runtime ledger grants. Manifest
+selection is not SQL admission: the ownership alteration and narrowed donor
+slice and stabilized read are accepted; the small prior control remains
+required before landing. No reviewed
+forward approval pin is added by the feature draft.
+
 The M17 channel suffix appends two native units to each existing selected plan:
 legacy now has 91 units, qualified selections 95, and restricted selections 94.
 Each installation shape retains its separately measured catalogue digest. Four
