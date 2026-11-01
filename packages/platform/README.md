@@ -1129,6 +1129,13 @@ See [disposable identity composition](https://github.com/openlup/openlup/blob/ma
 
 ## Communications import
 
+The Node-only communications entry includes `runCommunicationsAdapterConformance`
+for adapter-owned offline email and marketing-sync fixtures. It returns passed
+case labels or throws a sanitized finding with a fix and recheck instruction.
+This fixture proof does not qualify live providers or consent-push lifecycles.
+See the [extension-kit recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#run-an-adapter-conformance-check)
+at a source revision matching the installed export.
+
 The sparse `COMMUNICATIONS_MIGRATIONS` inventory includes the portable account
 newsletter withdrawal forward; install the complete canonical chain. Account
 opt-out denies only `marketing_newsletter` and preserves suppression. Opt-in

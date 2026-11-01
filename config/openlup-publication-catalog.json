@@ -1346,6 +1346,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/communications-conformance.mjs",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
       "class": "public-output"
     },
@@ -1571,6 +1575,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m18-s1-0-36-0.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-kit.md",
       "class": "public-output"
     },
     {
@@ -4774,6 +4782,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/testing/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/transactionalDelivery.ts",
       "class": "public-output"
     },
@@ -7714,6 +7726,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/adapterOptIn.test.ts",
       "class": "public-output"
     },
@@ -9891,6 +9907,14 @@
     },
     {
       "path": "scripts/packages/changelog-fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/consumer-evidence.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/consumer-evidence.test.ts",
       "class": "public-output"
     },
     {

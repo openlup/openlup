@@ -23,6 +23,10 @@ existing PostgreSQL 16 role profile before calling apply. Install the optional
 `pg` peer. Existing histories cannot change generation. Managed history and
 application activation are unaffected.
 
+- Add `runCommunicationsAdapterConformance` and its subject/evidence types to the
+  existing communications entry for offline email and marketing-sync fixtures.
+  Findings give a bounded fix/recheck; passing fixtures do not qualify a provider.
+
 ## [0.36.0]
 
 - Publishable on the npm `latest` dist-tag as `0.36.0`, from tag
