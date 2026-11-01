@@ -1,6 +1,6 @@
 
 export type { ChannelOrderIngestedPayload } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 import { channelSlugSchema, externalRefSchema } from "./contracts.js";
 // Vocabulary only: no event producer, dispatcher or ACK is installed here.
 export const CHANNEL_PURCHASE_SOURCE_EVENT_TYPE = "channel.purchase-source.v1";

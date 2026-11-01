@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "../../validation.js";
 import { channelControlIdSchema as id, channelScopeSchema } from "../../channelRegistryContracts.js";
 import { channelPurchaseCaptureSchema, type ChannelPurchaseCapture } from "../../channelPurchaseSourceContracts.js";
 import { channelBundleBindingSchema, channelListingDetailSchema, type ChannelBundleBinding } from "../../channelListingContracts.js";

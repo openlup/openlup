@@ -1,6 +1,6 @@
 
 export type { NormalizedChannelOrder, NormalizedChannelOrderLine, NormalizedChannelOrderBuyer, UnmappedChannelSignal } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 import {
   channelCountryCodeSchema,
   channelCurrencySchema,

@@ -3526,6 +3526,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/channels/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/adapters/managed/commerceOmsControlPlane.ts",
       "class": "public-output"
     },
