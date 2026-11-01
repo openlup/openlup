@@ -1499,6 +1499,50 @@ schedules or workers. See the
 [reference recipe](https://github.com/openlup/openlup/blob/main/docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
 
+### Native account persistence reads
+
+`@openlup/platform/account-support` supplies
+`createPostgresCustomerOrderHistoryReadStore`, `createPostgresAccountReadSources`
+and `readPostgresCustomerAccountClient`. Supply a host-authenticated principal
+and client pair plus a server-authorized query executor on the restricted runtime
+lane. Every native query rechecks that pair, including order/subscription
+companion reads. The factories create no connection, route or default binding.
+Order presentation and invoice summaries remain selected owner ports.
+
+The detail translator uses captured quote money and native promoted-line
+allocations. Historical summaries retain the recorded total and currency, and
+the store's line reader retains recorded line amounts. Detail without captured
+money refuses `native_account_order_money_unavailable`: required tax, discount
+and shipping fields cannot express absence. It invents no zero amounts, backfill
+or current prices. Native observations supply tracking links; external tracking
+IDs alone carry no invented URL. Existing replacement selection is retained.
+`readPaidActivationGaps(orderIds)` on both native reader factories returns an
+owned order companion keyed by order ID, with `orderId` and `paidAt`. Use it on
+the order view; no provisional subscription association is invented. The shared
+order-summary DTO remains unchanged.
+
+`createPostgresAccountReadSources` implements native subscriptions, accepted line
+prices, blockers, pause windows, method/stock-wait evidence, delivery alignment
+and dunning/cycle action states. Extension and next-charge policy are required
+host inputs. Saved addresses, billing profiles, payment/delivery preferences and
+account events are optional explicit sources: each missing section throws
+`host_binding_required` with its section name. The same limit applies to the
+private-profile view. These refusals do not prevent independent reads of owned
+profile identity, orders and native subscription evidence. The aggregate account
+snapshot requires every selected section; a missing section refuses that call.
+No new native profile table or empty-array success is supplied.
+
+For existing actor routines, bind `createPostgresCustomerSubscriptionSnapshotPort`
+or `createPostgresCustomerNewsletterPreferencesPort` to a verified actor gateway.
+They validate the existing snapshot/newsletter DTOs and retain SQL errors and
+null ownership results. Their DTO types are available from the isolated
+`account-support/contracts` entry. Newsletter read and withdrawal are available;
+a saved true flag exposed as granted without evaluator evidence throws
+`host_binding_required` for `newsletterConsent`. Complete purpose choices and
+grants remain named refusals until the separate consent change lands. No true
+command is advertised. No managed constructor or managed behaviour changes, and
+no release is implied.
+
 ## Operations and diagnostics
 
 The experimental `./operations` entry contains browser-safe operational schemas,

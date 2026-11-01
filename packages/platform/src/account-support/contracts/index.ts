@@ -139,3 +139,4 @@ export type {
 export type {
   OperatorAuthorityCapabilities
 } from "./capabilities.js";
+export type { NativeCustomerSubscriptionSnapshot, NativeCustomerNewsletterPreferences } from "./account.js";

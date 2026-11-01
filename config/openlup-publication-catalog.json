@@ -1574,6 +1574,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g11.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -3154,7 +3158,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/postgresAccountReadScope.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresAccountSources.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresCustomerActorReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/postgresOperatorAuthority.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresOrderHistory.ts",
       "class": "public-output"
     },
     {
@@ -6831,6 +6851,10 @@
     },
     {
       "path": "packages/platform/test/account-support/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/postgresAccountReads.test.ts",
       "class": "public-output"
     },
     {
@@ -26967,6 +26991,10 @@
     },
     {
       "path": "tests/postgres/marketDirectoryPreservation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeAccountReads.test.ts",
       "class": "public-output"
     },
     {

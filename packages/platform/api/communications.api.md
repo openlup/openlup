@@ -386,7 +386,7 @@ export declare function consentStateFromBoolean(value: boolean | null | undefine
 import type { CommunicationPurpose } from "./contracts/types.js";
 import type { CommunicationPurposeDefinition, CommunicationPurposeRegistry } from "./contracts/consent.js";
 export declare function createCommunicationPurposeRegistry<const Purpose extends string = never>(additions?: readonly CommunicationPurposeDefinition<Purpose>[]): CommunicationPurposeRegistry<CommunicationPurpose | Purpose>;
-export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"subscription_dunning" | "transactional" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "admin_notification">;
+export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"marketing_newsletter" | "subscription_dunning" | "transactional" | "marketing_launch_offer" | "tester_program" | "admin_notification">;
 ```
 ## dist/communications/contracts/authEmail.d.ts
 
@@ -1697,8 +1697,8 @@ export declare const defaultNewsletterProviderCapabilities: NewsletterProviderCa
 export declare const fullNewsletterProviderCapabilities: NewsletterProviderCapabilities;
 export declare const newsletterProviderKindSchema: z.ZodString;
 export declare const newsletterMarketingPurposeSchema: z.ZodEnum<{
-    marketing_launch_offer: "marketing_launch_offer";
     marketing_newsletter: "marketing_newsletter";
+    marketing_launch_offer: "marketing_launch_offer";
 }>;
 export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
     suppress: "suppress";
@@ -1746,8 +1746,8 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     remoteListId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     purpose: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        marketing_launch_offer: "marketing_launch_offer";
         marketing_newsletter: "marketing_newsletter";
+        marketing_launch_offer: "marketing_launch_offer";
     }>>>;
     explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
     doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
