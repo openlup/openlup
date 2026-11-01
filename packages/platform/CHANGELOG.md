@@ -10,6 +10,19 @@ in the source repository.
 
 ## [Unreleased]
 
+- Package the complete canonical PostgreSQL migration histories, including
+  qualified-v2 and restricted qualified-admin, with a generated drift-checked
+  manifest. Add `createPlatformPostgresMigrationRunner` to `/migrations` for
+  explicit installation/status through the existing executor without a checkout.
+  The package factory requires an explicit installation selection; the repository
+  legacy default and low-level runner API remain unchanged. Existing units
+  keep their SQL bytes, ledger paths, hashes and order; no new forward is added.
+
+Migration: fresh consumers select a qualified generation and provision its
+existing PostgreSQL 16 role profile before calling apply. Install the optional
+`pg` peer. Existing histories cannot change generation. Managed history and
+application activation are unaffected.
+
 ## [0.36.0]
 
 - Publishable on the npm `latest` dist-tag as `0.36.0`, from tag

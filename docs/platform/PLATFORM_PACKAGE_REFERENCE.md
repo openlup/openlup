@@ -9,6 +9,13 @@ This page holds the longer module recipes kept out of the packed README so the
 package's documentation stays under its packed size cap. The
 [package README](../../packages/platform/README.md) remains the package entry point.
 
+The `/migrations` entry also provides the complete installed PostgreSQL catalogue
+through `createPlatformPostgresMigrationRunner`. See the self-contained
+[installation recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
+It reuses the existing runner and exact canonical SQL history; qualified host
+profiles remain explicit. The package factory requires `installation`; only the
+repository facade defaults to legacy. No checkout is required.
+
 ## Application file upgrade
 
 This development-preview recipe uses the experimental `@openlup/platform/lifecycle`

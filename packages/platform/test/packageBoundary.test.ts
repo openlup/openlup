@@ -22,6 +22,9 @@ const PG_ADAPTERS = new Set([
   "marketing/server/postgres/partnerAcquisitionRoutines.ts",
   "data/queryBuilder.ts",
   "migrations/postgresRunner.ts",
+  "migrations/platformRunner.ts",
+  "migrations/qualifiedInstall.ts",
+  "migrations/selectedCatalogProjection.ts",
   "scheduler/advisoryLock.ts",
 ]);
 
