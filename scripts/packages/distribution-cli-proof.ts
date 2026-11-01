@@ -78,6 +78,7 @@ export function proveDistributionCliConsumer(consumer: string): void {
     assert.match(run(["--help"], 0), /No SQL, package installation or hooks/);
     assert.equal(json(["verify"], 2).state, "unknown");
     assert.equal(json(["verify", "--unexpected"], 64).state, "refused");
+    assert.equal(json(["verify", "--app", ""], 64).state, "refused");
     assert.equal(json(["verify", "--app", "missing.mjs"], 74).state, "failed");
 
     writeFileSync(join(root, "state.json"), JSON.stringify({ binder: false, schema: "previous", schedule: false }));
@@ -120,6 +121,17 @@ export function createVerificationInput() {
     assert(unknown.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND").evidence.checked.includes("Unknown"));
     writeFileSync(join(root, "bad-app.mjs"), 'throw Error("synthetic-private-detail");');
     assert(!run(["verify", "--app", "./bad-app.mjs", "--json"], 74).includes("synthetic-private-detail"));
+    for (const source of [
+      "export const = 1;",
+      'throw new TypeError("synthetic-private-detail");',
+      'export function createVerificationInput() { throw new SyntaxError("synthetic-private-detail"); }',
+      'export function createVerificationInput() { throw new TypeError("synthetic-private-detail"); }',
+    ]) {
+      writeFileSync(join(root, "bad-app.mjs"), source);
+      const failure = run(["verify", "--app", "./bad-app.mjs", "--json"], 74);
+      assert.equal(JSON.parse(failure).state, "failed");
+      assert(!failure.includes("synthetic-private-detail"));
+    }
 
     // The harness prepares real published packages before invoking the CLI.
     // Upgrade never extracts/installs packages; it changes only explicit app files.
@@ -155,6 +167,8 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
     writeFileSync(join(root, "from.json"), JSON.stringify(from));
     writeFileSync(join(root, "to.json"), JSON.stringify(to));
     const options = ["--root", app, "--from", "from.json", "--to", "to.json", "--schema-version", "1"];
+    writeFileSync(join(root, "malformed.json"), "{");
+    assert.equal(json(["upgrade", "plan", ...options.map(value => value === "from.json" ? "malformed.json" : value)], 64).state, "refused");
     const before = () => Object.fromEntries(readdirSync(app).sort().map(name => [name, readFileSync(join(app, name), "utf8")]));
     const original = before();
     const plan = json(["upgrade", "plan", ...options], 0);

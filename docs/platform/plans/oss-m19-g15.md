@@ -1,7 +1,8 @@
 # Application upgrade and diagnosis tooling
 
-Status: implementation candidate; maintainer read accepted with the bounded
-registry-proof repair below. Native review and canonical verification remain pending.
+Status: first committed candidate received two failing native reviews for one
+exit-classification defect. The staged repair below awaits its required fresh
+maintainer read before DCO; native closure and canonical verification remain pending.
 
 ## Finite outcome and authority
 
@@ -15,9 +16,10 @@ Bart Roszkowski is the accountable human. The accepted programme delegates local
 work, DCO commits, submission, receipts and merge through existing gates in the
 lead's order. No publication, release dispatch, tags, hosted resources, costs,
 credentials, settings or production grant exists. The stabilized API, npm bin
-and publication-data changes received the designated maintainer read before DCO,
-conditional on the bounded proof repair below. Two independent fresh reviewers
-then assess the exact signed candidate. Canonical
+and publication-data changes received the designated maintainer read before the
+first DCO commit, conditional on the bounded proof repair below. A later change
+to the accepted bin requires another read before its repair commit. Two
+independent fresh reviewers assess every signed candidate. Canonical
 verification waits for the lead to name this PR next to land; focused work uses
 its own shared admission gate. No native review cycle or queue retry is consumed.
 
@@ -95,9 +97,9 @@ warnings. Structural scan passed. Public typecheck passed all five projects with
 zero unresolved edges and zero consumer errors. Generated lifecycle API snapshot
 and API check passed; no other package API report changed.
 
-Real platform working pack: 2,112,932 packed bytes, 9,837,031 unpacked bytes,
+Real repaired platform working pack: 2,112,963 packed bytes, 9,837,138 unpacked bytes,
 2,844 files. Against integrity-verified published 0.36.0 (2,104,577 packed bytes,
-9,809,502 unpacked bytes, 2,840 files): +8,355 packed bytes, +27,529 unpacked bytes,
+9,809,502 unpacked bytes, 2,840 files): +8,386 packed bytes, +27,636 unpacked bytes,
 +4 files. Existing code/docs/total size and file caps all pass. No cap raise.
 
 The maintainer accepted the read candidate tree
@@ -105,9 +107,10 @@ The maintainer accepted the read candidate tree
 repair required before sign-off. The post-repair source snapshot, before updating
 this task-record evidence, is tree
 `e0b72951382dbf56e86dd334b3e6abb90fed99f5`. It includes the original task-record
-blob; it is not a self-reference to this record's final tree. Relative to the
-accepted snapshot, only `scripts/packages/distribution-cli-proof.ts` and this
-evidence record change. The final committed head/tree belong in the checkpoint.
+blob; it is not a self-reference to this record's final tree. That first post-read
+repair changed only `scripts/packages/distribution-cli-proof.ts` and this evidence
+record. The later exit repair below also changes the bin. Final candidate
+identities belong in the checkpoint, avoiding a self-referential task hash.
 
 The proof now makes at most two attempts per immutable archive, each with a
 60-second fetch/body deadline and a 195-second enclosing process limit. The one
@@ -123,9 +126,9 @@ Post-repair scratch regression: 11 deterministic cases of the exact emitted
 fetch code pass, including network/body failure, numeric/date Retry-After,
 quota versus unavailable, two-attempt bound and excessive retry-delay refusal.
 The installed real-version CLI and actual PostgreSQL proof pass again. The
-three package diagnosis cases pass again. The code under `packages/platform`
-is byte-identical to the accepted tree, so the measured shipped-byte delta
-above is unchanged; the repair and task record are outside the tarball.
+three package diagnosis cases pass again. At that stage the code under `packages/platform` was byte-identical to the
+accepted tree. The later bin repair below adds 31 packed and 107 unpacked bytes
+to that measurement; the current re-measured totals are above.
 
 Policy/navigation was regenerated on the would-be committed set. Ownership,
 repository and tooling obligations use exact delta-bound no-impact commit
@@ -145,9 +148,43 @@ PR-body text prepared for later authorized submission:
 > failures. Two red runs caused by HTTP 429 or a registry outage mean the proof
 > moves to a cache the same day.
 
-This record is frozen before native review. No native PASS, receipt, push, PR
-or canonical verification exists at preparation. After sign-off and actual
-policy PASS: obtain two fresh reviews, then request the lead's verify turn.
+## First review and staged exit repair
+
+The signed first candidate is head
+`3b9cd387eb53829e8545b7445935d103839815eb`, tree
+`8c70acc4ec81da7072301e8e26b2352ae193d90b`. Its policy check passed with all
+seven obligations answered; commit gitleaks passed. Two independent fresh native
+reviews both failed for the same concrete defect (G15-A1 and G15-B-1): a valid
+`--app` module's JavaScript syntax or type error was classified as exit 64 rather
+than the already documented operation/loading failure 74. No other material
+finding was returned. Both reports are recorded; neither is a PASS. This is one
+completed candidate evaluation, native cycle 0 of 3, with both findings open.
+
+The discriminating installed test failed against the old packed bin with
+`64 !== 74`. The staged repair marks the end of explicit invocation/snapshot
+validation before importing lifecycle/application code. The catch then uses both
+the operation phase and exception kind: malformed invocation/JSON remains 64;
+application syntax/type failures become 74 with state failed and raw errors
+withheld. No public wording, API, ownership, engine or refusal contract changes.
+The proof adds actual module syntax/top-level type/factory syntax/factory type
+cases, an empty-app-path refusal and malformed snapshot JSON alongside existing
+refusal/recovery cases. The repaired packed executable passes them and the full
+focused real-version/actual PostgreSQL witnesses again. Existing 11 deterministic
+registry checks also pass; no registry-outage/quota red run occurred.
+
+The post-exit-repair source snapshot before this task-record update is tree
+`bd3d8cefd68dfb8a098f1f54b5cf7127796653c1` (the preceding task-record blob is
+retained in that snapshot). The staged delta over the signed first candidate is
+only the bin, its existing proof script and this task record. A real new pack
+passes content/size checks with the re-measured totals above and no cap change.
+The required new read precedes DCO for this bin repair; no repair commit or new
+native preparation exists yet. The current repair count remains 0; after read
+and commit, ordinary prepare accounts for the next candidate in the same history.
+
+No native PASS, receipt, push, PR or canonical verification exists. After the
+new read: sign the repair with the fresh exact tooling no-impact trailer, obtain
+actual policy PASS, prepare and launch two new independent fresh reviewers with
+both finding cards for explicit closure. Then request the lead's verify turn.
 Canonical verify, push and PR creation remain held for that explicit instruction.
 Do not extend work into the separately assigned distribution rows.
 
@@ -165,4 +202,6 @@ report binding facts instead of inferring a kind from a shared subject. The
 current authority register already settled publication-data scope and should be
 read before repeating that coordination question. Bounded retries and realistic
 child deadlines address registry/load noise without replacing immutable inputs
-or weakening refusal. No separate process change.
+or weakening refusal. The first review exposed a missing failure class:
+constructor-based error classification → explicit input/operation boundary.
+The task carries that lesson; no out-of-scope guidance edit or successor is added.

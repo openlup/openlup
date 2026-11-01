@@ -13,6 +13,7 @@ Verify loads no app implicitly. --app explicitly trusts and imports application 
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 operation or application loading failure. JSON uses formatVersion=1, one object on stdout.
 `;
 let json = process.argv.slice(2).includes("--json");
+let validatingInput = true;
 
 function emit(value, text) {
   process.stdout.write(json ? `${JSON.stringify({ formatVersion: 1, ...value })}\n` : `${text}\n`);
@@ -40,7 +41,6 @@ try {
   if (values.help) {
     emit({ command: "help", state: "complete", exitCode: 0, help }, help.trimEnd());
   } else if (positionals[0] === "upgrade" && ["plan", "apply"].includes(positionals[1]) && positionals.length === 2 && values.app === undefined && values.root && values.from && values.to && /^(0|[1-9][0-9]*)$/u.test(values["schema-version"] ?? "") && Number.isSafeInteger(Number(values["schema-version"]))) {
-    const { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError } = await import("@openlup/platform/lifecycle");
     const command = `upgrade ${positionals[1]}`;
     const requestedRoot = resolve(values.root);
     const stat = await fs.lstat(requestedRoot);
@@ -51,6 +51,8 @@ try {
       to: JSON.parse(await fs.readFile(resolve(values.to), "utf8")),
       schemaVersion: Number(values["schema-version"]),
     };
+    validatingInput = false;
+    const { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError } = await import("@openlup/platform/lifecycle");
     const boundary = "Only explicit snapshot paths are upgrade-managed. All unlisted files are application-owned. Upstream-unchanged paths preserve local edits. No SQL, installs, deployment, version marker or hooks run. Apply needs exclusive access; a complete upgrade is not atomic.";
     const describe = plan => plan.files.map(file => ({ ...file, ownership: file.action === "preserved" || file.action === "unchanged" ? "locally-customizable" : "upgrade-managed" }));
     try {
@@ -62,9 +64,10 @@ try {
       emit({ command, state: "refused", exitCode: 1, boundary, conflicts: error.conflicts, applied: [] }, `${command}: refused before any write\n${boundary}\n${error.conflicts.map(item => `${item.path || "schema"}: ${item.reason}`).join("\n")}\nFix: reconcile touched files with the predecessor or candidate snapshot, then rerun the same command.`);
     }
   } else if (positionals.length === 1 && positionals[0] === "verify" && ![values.root, values.from, values.to, values["schema-version"]].some(value => value !== undefined)) {
+    if (values.app === "") throw new TypeError("empty_app_path");
+    validatingInput = false;
     const { verifyApp, APP_VERIFICATION_BOUNDARY } = await import("@openlup/platform/lifecycle");
     const boundary = `${APP_VERIFICATION_BOUNDARY} Explicit --app imports trusted application code, which must not boot a host or execute effects; this is not a sandbox.`;
-    if (values.app === "") throw new TypeError("empty_app_path");
     if (values.app === undefined) {
       const finding = { code: "OPENLUP_E_APP_UNKNOWN", observed: "No application observations were loaded.", cause: "The CLI does not discover or start application code implicitly.", fix: "Create an application-owned module exporting createVerificationInput(), returning your existing ReadinessInput (actual selected contributions, binding identities and read-only schema observer); pass its path with --app.", recheck: "openlup verify --app ./application-observations.mjs", evidence: { declared: "Unknown", bound: "Unknown", checked: "Nothing loaded", unknown: ["Application composition and schema"] } };
       emit({ command: "verify", state: "unknown", exitCode: 2, boundary, findings: [finding] }, `verify: unknown\n${boundary}\n${renderFinding(finding)}`);
@@ -83,6 +86,6 @@ try {
   }
 } catch (error) {
   // Never print raw application errors, configured values, connection strings or file contents.
-  const invalid = error instanceof SyntaxError || error instanceof TypeError || (typeof error?.code === "string" && error.code.startsWith("ERR_PARSE_ARGS"));
+  const invalid = validatingInput && (error instanceof SyntaxError || error instanceof TypeError || (typeof error?.code === "string" && error.code.startsWith("ERR_PARSE_ARGS")));
   refuse(invalid ? 64 : 74, invalid ? "OPENLUP_E_CLI_INPUT" : "OPENLUP_E_CLI_FAILURE", "The operation could not complete; raw input and application errors are withheld.", "Check the command, readable JSON snapshots and schema ordinal, or the trusted --app module and its read-only probe. After a partial upgrade, rerun the identical snapshots under exclusive access.");
 }
