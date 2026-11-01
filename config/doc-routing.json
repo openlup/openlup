@@ -465,10 +465,13 @@
     },
     {
       "id": "domain-partners",
-      "when": "Partner contracts and partner-facing domain rules",
+      "when": "Partner contracts, acquisition schemas/port/store and partner-facing domain/data rules through existing marketing package entries",
       "paths": [
         "src/domains/partners/**",
-        "server/domains/partners/**"
+        "server/domains/partners/**",
+        "packages/platform/src/marketing/partnerAcquisitionSchemas.ts",
+        "packages/platform/src/marketing/contracts/partnerAcquisition.ts",
+        "packages/platform/src/marketing/server/postgres/partnerAcquisitionRoutines.ts"
       ],
       "doc": "src/domains/partners/README.md",
       "anchor": ""

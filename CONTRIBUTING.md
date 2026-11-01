@@ -1751,14 +1751,21 @@ local DTO shapes, including reachable acquisition ports, portable prelaunch
 types and shared organization/contact/legal/privacy content slots. Retired admission schemas are excluded from both browser entries. The
 separate `marketing/server` entry admits marketing and identity-contract values,
 plus HTTP, BFF, marketing-contract and communications-contract type
-edges. Its two PostgreSQL
-files alone admit the existing pg peer and are exported through
+edges. Its PostgreSQL adapters are named explicitly in the package boundary
+inventory; those files alone admit the existing pg peer through
 `marketing/server/postgres`. Package boundary checks validate that graph with the
 other modules and prevent the handler entry from reaching PostgreSQL adapters or
 `pg`. The installed consumer imports and compiles `marketing/server` without
 optional peers, exercising a historical count and a conflict refusal through
 injected bindings. It proves the `/postgres` missing-peer import refusal before
 selecting pg, then checks the adapter factories and their connection refusal.
+
+Partner preservation uses `packages/platform/test/marketing/` and the installed
+default-factory witness `tests/postgres/partnerAcquisition.test.ts`. The latter
+executes the complete current legacy native catalogue and fails if Docker is
+unavailable; SQL actor UUID presence is not host administrator authorization.
+The existing cold marketing consumer also checks partner schema/CSP parsing,
+type-only contracts and both declaration modes within its existing peer phases.
 
 Marketing analytics facts use the same isolated runtime/contracts graph. The
 reference keeps host policy and wire literals in thin bindings; its purchase
@@ -2949,6 +2956,11 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-11-01, partner contribution: vertical proofs missed secondary guidance
+  and synthetic compiler fixtures → follow [test scope](#test-scope-and-diagnostics)
+  through changed helpers' callers and fixtures, and check related guidance under
+  [documentation impact](docs/platform/DOCUMENTATION.md#impact).
 
 - 2026-11-01, M17 port parity: neutral import rewrite can drop a wrapper’s module-level initialization → keep the owning seam and prove a cold public import.
 

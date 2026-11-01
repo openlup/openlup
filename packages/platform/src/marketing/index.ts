@@ -14,3 +14,4 @@ export * from "./seo/metadata.js";
 export * from "./seo/jsonLd.js";
 export type * from "./contracts/contactLegal.js";
 export * from "./contactLegal.js";
+export * from "./partnerAcquisitionSchemas.js";

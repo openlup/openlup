@@ -19,6 +19,35 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Partner acquisition data
+
+Partners owns the `partner_inquiry` slice of `acquisition_private.cases`, its
+contacts and `partner_details`, shared command receipts, audit actor references
+and keyed fingerprints. The four issued partner lifecycle/validation/locale
+units already belong to each source installation plan. The R1 package adapter
+calls `partner_acquisition_submit_v1`, `partner_acquisition_operator_list_v1`
+and `partner_acquisition_transition_v1`; it introduces no forward, grant,
+object, installation rail or SQL carrier. Install the complete selected source
+catalogue through the existing runner. The sparse npm SQL assets are not a
+complete partner catalogue; npm installation alone does not establish readiness.
+The [installed witness](../../tests/postgres/partnerAcquisition.test.ts) executes
+the current full native catalogue with a separate non-superuser login assuming
+`platform_acquisition_runtime`. Its actor UUID checks do not establish host
+administrator membership or hosted/other-rail behavioral qualification.
+
+Contact email/phone, organization/name/notes, case references and original
+command result projections can contain personal data. Audit retains actor and
+case references; fingerprints remain protected linked evidence. Partner
+export/erasure coverage is unavailable; the existing
+marketing contributor must not be claimed complete for partner resources.
+Do not rewrite append-only command or audit evidence. The private installation
+key is secret material, never a subject-export resource. Partners must supply an
+explicit resource disposition before broader privacy coverage can be claimed.
+The existing transfer admission refuses nonempty acquisition business state;
+this package contribution adds no supported partner transfer or erasure path.
+An adopter continuing with its own existing SQL keeps those objects; consuming
+this adapter does not authorize applying public migrations to that database.
+
 ## Connection roles
 
 Use the [runtime connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)

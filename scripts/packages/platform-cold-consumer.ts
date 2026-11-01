@@ -522,6 +522,15 @@ assert.deepEqual(trace,[]);
 export function proveMarketingConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
+let constructions = 0;
+globalThis.Function = new Proxy(globalThis.Function, { construct() { constructions++; throw Error("CSP Function forbidden"); }, apply() { constructions++; throw Error("CSP Function forbidden"); } });
+const marketing = await import("@openlup/platform/marketing");
+assert.equal(marketing.partnersB2BInquirySubmitRequestSchema.parse({ company: "North Studio", country: "GB", firstName: "Ada", lastName: "Vale", email: "ada@studio.example" }).country, "GB");
+assert.equal(marketing.partnerAcquisitionListRequestSchema.parse({ view: "partner_acquisition_v1" }).limit, 25);
+assert.equal(constructions, 0);
+`);
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
 import * as marketing from "@openlup/platform/marketing";
 import * as contracts from "@openlup/platform/marketing/contracts";
 import * as core from "@openlup/core/marketing/research";
@@ -531,6 +540,11 @@ assert.deepEqual(marketing.prelaunchAcquisitionListRequestSchema.parse({ view: m
 assert.equal(marketing.prelaunchAcquisitionDetailRequestSchema.safeParse({ sourceRef: "case:one" }).success, false);
 assert.equal("MARKETING_PRELAUNCH_CONTRACT_VERSION" in marketing, false);
 assert.deepEqual(Object.keys(contracts), []);
+assert.deepEqual(marketing.partnerAcquisitionListRequestSchema.parse({ view: "partner_acquisition_v1" }), { view: "partner_acquisition_v1", limit: 25 });
+const partner = { company: "North Studio", country: "GB", firstName: "Ada", lastName: "Vale", email: "ada@studio.example", phone: null, notes: null, openlupInternalCheck: "silent" };
+assert.deepEqual(marketing.partnersB2BInquirySubmitRequestSchema.parse(partner), partner);
+assert.equal(marketing.partnersB2BInquirySubmitRequestSchema.safeParse({ ...partner, unknownInternalCheck: "silent" }).success, false);
+await assert.rejects(import("@openlup/platform/dist/marketing/partnerAcquisitionSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 assert.equal(marketing.createNoopAnalytics().trackPageView("/"), undefined);
 assert.deepEqual(marketing.createAnalyticsDataLayer().emitAnalyticsEvent("page_view", { page_path: "/" }), { deployment: false, optional: false });
 const routes = marketing.createAnalyticsRoutePolicy({ publicPaths: ["/entry"], redirectSources: [], privatePathPrefixes: [], privateAuthPaths: [], capabilityPathPrefixes: [] });
@@ -911,6 +925,13 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
     'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
     'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest, ContactContent, LegalDocumentContent, PrivacyProcessorDisclosure } from "@openlup/platform/marketing/contracts";',
+    'import { partnerAcquisitionListRequestSchema, partnersB2BInquirySubmitRequestSchema } from "@openlup/platform/marketing";',
+    'import type { PartnerAcquisitionPort, PartnerAcquisitionListRequest, PartnersB2BInquirySubmitRequest } from "@openlup/platform/marketing/contracts";',
+    'export const partnerList: PartnerAcquisitionListRequest = partnerAcquisitionListRequestSchema.parse({ view: "partner_acquisition_v1" });',
+    'export const partnerSubmit: PartnersB2BInquirySubmitRequest = partnersB2BInquirySubmitRequestSchema.parse({ company: "North Studio", country: "GB", firstName: "Ada", lastName: "Vale", email: "ada@studio.example" });',
+    'declare const partnerPort: PartnerAcquisitionPort;',
+    'export const partnerRows = partnerPort.list({ ...partnerList, actorRef: "actor" });',
+    'export const partnerCaptured = partnerPort.submit({ request: partnerSubmit, idempotencyKey: "partner-key", requesterKey: "requester", policyVersion: "privacy-v1", sourcePath: "/partners/b2b-inquiries", acceptedAt: "2026-01-12T10:00:00Z" });',
     'export const marketingRequest: AcquisitionCaseListRequest = acquisitionCaseListRequestSchema.parse({ view: "acquisition_case_v1" });',
     '// @ts-expect-error parsed default is required in the output type',
     'export const missingMarketingLimit: AcquisitionCaseListRequest = { view: "acquisition_case_v1" };',
@@ -1171,9 +1192,11 @@ export function proveInstalledAdapters(consumer: string): void {
 import * as sdk from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
 import { createS3ClientFromEnv } from "@openlup/platform/blob";
-import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server/postgres";
+import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort, createPostgresPartnerAcquisitionPort } from "@openlup/platform/marketing/server/postgres";
 assert.equal(typeof createPostgresAcquisitionCasePort, "function");
 assert.equal(typeof createPostgresAcquisitionEvidencePort, "function");
+assert.equal(typeof createPostgresPartnerAcquisitionPort, "function");
+assert.throws(() => createPostgresPartnerAcquisitionPort({ connectionString: " " }), /partner_acquisition_database_url_required/);
 assert.throws(() => createPostgresAcquisitionCasePort({ connectionString: " " }), /acquisition_case_database_url_required/);
 assert.throws(() => createPostgresAcquisitionEvidencePort({ connectionString: " " }), /acquisition_evidence_database_url_required/);
 // The default loaders must reach real SDK configuration, without opening a socket.

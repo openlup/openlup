@@ -270,6 +270,40 @@ require different keys; do not collapse them into one user-controlled value.
 Persist the ledger before reporting success, and make concurrent repeats resolve
 to one canonical effect.
 
+## Partner acquisition
+
+The partner acquisition vocabulary is `new`, `contacted`, `qualified`,
+`disqualified`, `closed_won`, `closed_lost`. The direct lifecycle permits
+`new → contacted|disqualified`,
+`contacted → qualified|disqualified|closed_lost`, and
+`qualified → closed_won|closed_lost|disqualified`; the last three statuses are
+terminal. `closed_won` records pipeline progression only, without a customer
+identity, commerce mutation or marketing permission. The richer managed admin
+surface retains its own contract; it is not this direct transition API.
+
+The [partner package schemas](../../packages/platform/src/marketing/partnerAcquisitionSchemas.ts)
+retain the exact bounded case projection and strict public
+`openlupInternalCheck` property. Submit normalization collapses organization,
+names and notes, uppercases country, lowercases email and retains digit-based
+phone normalization. Schema admission and SQL validation have intentionally
+unchanged boundaries: country `OTHER` and a leading-zero normalized phone can
+pass form/schema admission and fail SQL. Host wire validation and authorization
+remain outside the direct adapter. See the
+[Partners owner](../../src/domains/partners/README.md) for source availability
+and explicit unavailable privacy duties.
+
+Partner submit and transition have distinct persisted command scopes and
+installation-keyed fingerprints. Exact replay returns the original projection,
+even after later status changes or a new port instance; changed command payload
+or transition actor conflicts. Submit replay runs before quota and contact
+dedupe. A fresh-key attempt updates requester/email windows before quota or
+contact refusal, so refusal can advance quotas without creating lifecycle rows.
+The one-hour reset is inclusive. Descending list cursors retain the timestamp
+and UUID tuple; expected-version transitions lock the case and append exactly
+one accepted receipt/audit. The
+[installed PostgreSQL witness](../../tests/postgres/partnerAcquisition.test.ts)
+freezes these behaviors using the existing three routines.
+
 ## Provider adapters
 
 Domain code depends on a port, not on a provider SDK. An adapter translates the

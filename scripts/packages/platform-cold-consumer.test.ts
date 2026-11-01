@@ -92,6 +92,11 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    'export type PartnerAcquisitionListRequest = { view: "partner_acquisition_v1"; limit: number; cursor?: string };',
+    'export type PartnersB2BInquirySubmitRequest = { company: string; country: string; firstName: string; lastName: string; email: string; phone?: string | null; notes?: string | null; openlupInternalCheck?: string };',
+    'export declare const partnerAcquisitionListRequestSchema: { parse(value: unknown): PartnerAcquisitionListRequest };',
+    'export declare const partnersB2BInquirySubmitRequestSchema: { parse(value: unknown): PartnersB2BInquirySubmitRequest };',
+    'export interface PartnerAcquisitionPort { list(query: PartnerAcquisitionListRequest & { actorRef: string }): Promise<unknown>; submit(command: { request: PartnersB2BInquirySubmitRequest; idempotencyKey: string; requesterKey: string; policyVersion: string; sourcePath: "/partners/b2b-inquiries"; acceptedAt: string }): Promise<unknown>; transition(command: { actorRef: string; idempotencyKey: string; request: { id: string; expectedVersion: number; status: "contacted" | "qualified" | "disqualified" | "closed_won" | "closed_lost" } }): Promise<unknown>; close(): Promise<void> }',
     'export type AcquisitionCaseListRequest = { view: "acquisition_case_v1"; limit: number; cursor?: string };',
     'export declare const acquisitionCaseListRequestSchema: { parse(value: unknown): AcquisitionCaseListRequest };',
     'export type PrelaunchAcquisitionListRequest = { view: "prelaunch_acquisition_v1"; limit: number; cursor?: string };',

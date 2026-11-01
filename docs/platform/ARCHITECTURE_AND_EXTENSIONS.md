@@ -70,11 +70,30 @@ retain retired adapter signatures without publishing admission schemas.
 Research contracts/ports retain their core compatibility owner; notification
 delivery uses communications/contracts. The server graph admits marketing value
 imports, identity-contract values, and HTTP, BFF, marketing-contract,
-communications-contract type edges. The existing optional pg peer is imported only by the two PostgreSQL
+communications-contract type edges. The existing optional pg peer is imported only by the three PostgreSQL
 files. SQL text, transaction role selection and pool ownership are unchanged.
 Portable prelaunch validators remain browser-safe package contracts; rich
 prelaunch joins and orchestration remain in the reference application. No route,
 executor, scheduler or profile is activated by importing the package.
+
+Partner acquisition is packaged under the existing marketing entries while
+[Partners](../../src/domains/partners/README.md) retains its domain and data
+ownership. Browser schemas and type-only port contracts stay separate from
+`createPostgresPartnerAcquisitionPort` in the PostgreSQL entry. R1 contributes
+the existing normalization and three-routine store unchanged; reference contract
+and adapter copies remain until the separate R2 delegation. Hosts retain HTTP
+method/wire validation, neutral-view selection, authorization before binding,
+drain policy, routing, environment selection, connection caching and disposal.
+No public controller or new entry is needed for this store contribution, and
+an import activates no route. The public catch-all dispatcher currently has an
+empty route table; leaf handlers are source interfaces only.
+
+The [R1 record](plans/oss-m18-r1-partner-acquisition.md) distinguishes the bounded
+pipeline contribution from later delegation and version preparation. Rich
+managed CRM/UI transitions, customer conversion, marketing opt-in and partner
+privacy export/erasure are outside this port's capabilities. An actor UUID is
+SQL input, not administrator membership. The actual host must establish its
+authority before resolving this port.
 
 The marketing browser entry also owns neutral analytics vocabulary, inert defaults,
 instance-scoped data-layer and route-policy factories, structural paid-purchase

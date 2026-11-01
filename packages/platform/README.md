@@ -19,7 +19,7 @@ proof of compatibility or support for an installed artifact.
 
 For the prepared `0.35.0` set, read the [adjacent-release migration and known
 limitations](CHANGELOG.md#0350) before selecting optional services. Experimental
-M13 marketing uses browser-safe `./marketing`, type-only browser-safe
+marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
 inert and default-off. Experimental
@@ -160,9 +160,9 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
-| `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
+| `./marketing/server/postgres` | Tester acquisition, partner inquiry and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
-| `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
+| `./marketing`, `./marketing/contracts` | Browser-safe tester history, partner inquiry lifecycle, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and tester/partner/research ports |
 | `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
 | `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
@@ -214,12 +214,13 @@ reference syntax. No entry registers a route automatically.
 
 `./marketing/contracts` exports only types. Explicit acquisition DTO shapes are
 checked against the runtime schema inference by an executed TypeScript equality
-witness. Reachable case ports expose list, get, active count and close; the app
+witness. The tester case port exposes list, get, active count and close; the app
 uses the server-only compatibility port for its retired methods. Evidence ports retain survey submission,
 survey listing and consent application. Port types are also forwarded through
 the runtime entry, following the commerce boundary. Both entries forward research schemas or types from the compatibility
 owner, `@openlup/core/marketing/research`; runtime schemas retain object identity.
-Case locale remains `en|pl`, matching the persisted constraint. Widening it requires
+Tester case locale remains `en|pl`, matching its persisted constraint; partner
+inquiry SQL retains `und`. Widening it requires
 a separate migration. Historical wire values remain unchanged.
 
 The source and built entries have browser graph proofs. The root test runner
@@ -231,7 +232,7 @@ response client and host composition.
 `./marketing/server` owns acquisition case handlers, list/count and prelaunch
 list/detail factories, survey evidence submit/list and consent application,
 research submit/admin handlers and managed survey orchestration without loading
-`pg`. Select `./marketing/server/postgres` for the two PostgreSQL port factories
+`pg`. Select `./marketing/server/postgres` for the three PostgreSQL port factories
 after installing the existing optional `pg` peer. Hosts inject the BFF responder,
 authorization and binding resolvers. Direct case reads receive the host bundle
 predicate at their original guard; prelaunch and evidence dispatch stays in the
@@ -240,6 +241,44 @@ HTML rendering before the subject clock read. The reference owns retired
 route refusals, raw signed consent ingress and notification copy. PostgreSQL
 SQL, role selection and transaction/pool handling remain unchanged. The
 server-only compatibility command types do not expose retired admission schemas.
+
+The partner lifecycle uses these same entries: `./marketing` exports the strict
+`partner_acquisition_v1` case/list/transition and inquiry submit schemas;
+`./marketing/contracts` exports their DTOs and `PartnerAcquisitionPort`;
+`./marketing/server/postgres` exports `createPostgresPartnerAcquisitionPort`.
+Partners retains domain and data ownership. The factory accepts an explicit
+`connectionString`, opens its pool lazily, and runs submit/list/transition through
+`BEGIN → SET LOCAL ROLE platform_acquisition_runtime → routine → COMMIT`.
+It preserves normalization, original command receipts, quota effects, descending
+cursor tuples and version fences. The host validates wire input, selects the
+neutral list view and authorizes operators before binding. The direct adapter
+does not enforce administrator membership; its SQL checks actor UUID presence.
+
+Install the complete selected [source catalogue](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#partner-acquisition-data)
+before using the factory. The four existing partner SQL units are present in
+all three source plans; the npm package's sparse SQL assets do not constitute a
+complete partner installer. R1 adds no SQL, grants, route activation or host
+binding. The reference catch-all router has an empty route table; source BFF
+leaves alone do not establish serving endpoints. Host routing, authorization,
+legacy drain, environment selection, connection cache and pool disposal remain
+application-owned.
+
+`closed_won` is a partner pipeline fact. It creates neither a customer identity
+nor marketing consent, provider notification or managed CRM transition. Rich
+managed inquiry/admin contracts stay separate. The strict submit schema accepts
+`openlupInternalCheck`; a host using another sentinel must map it explicitly at
+its compatibility seam. Current forms admit country `OTHER` and leading-zero
+phones that direct SQL refuses; this contribution preserves those refusals.
+
+Partner personal-data export/erasure is unavailable, with
+resource duties recorded by the [Partners owner](https://github.com/openlup/openlup/blob/main/src/domains/partners/README.md).
+Existing marketing privacy-contributor coverage must not be read as partner
+coverage. Append-only receipts and audit are retained; nonempty acquisition
+state remains outside supported store transfer. The package contract, public
+counterpart/producer and real PostgreSQL witnesses freeze these limits. The
+PostgreSQL witness packs the current artifact, compiles both declaration modes,
+and executes its default factory against a disposable full native catalogue;
+it establishes no provider or hosted qualification.
 
 Analytics facts share these browser-safe entries. `createNoopAnalytics` implements
 Core's existing analytics port; deployment and advertising defaults remain inert.

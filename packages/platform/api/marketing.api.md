@@ -665,6 +665,98 @@ export interface PrivacyProcessorDisclosure {
     details?: string;
 }
 ```
+## dist/marketing/contracts/partnerAcquisition.d.ts
+
+```ts
+import type { PartnersB2BInquiryStatus } from "@openlup/core/partners";
+/** A captured inquiry contact is not a customer identity or marketing permission. */
+export interface PartnerAcquisitionCase {
+    contractVersion: "partner_acquisition_v1";
+    caseRef: string;
+    contactRef: string;
+    organization: {
+        name: string;
+        country: string;
+    };
+    contact: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone: string | null;
+    };
+    notes: string | null;
+    status: PartnersB2BInquiryStatus;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface PartnerAcquisitionListRequest {
+    view: "partner_acquisition_v1";
+    cursor?: string | undefined;
+    limit: number;
+}
+export interface PartnerAcquisitionListResponse {
+    contractVersion: "partner_acquisition_v1";
+    cases: PartnerAcquisitionCase[];
+    nextCursor: string | null;
+}
+export interface PartnerAcquisitionTransitionRequest {
+    id: string;
+    expectedVersion: number;
+    status: Exclude<PartnersB2BInquiryStatus, "new">;
+}
+export interface PartnerAcquisitionTransitionResponse {
+    updated: true;
+    acquisitionCase: PartnerAcquisitionCase;
+    replayed: boolean;
+}
+export type PartnerAcquisitionIdempotencyKey = string;
+export interface PartnersB2BInquirySubmitRequest {
+    company: string;
+    country: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string | null | undefined;
+    notes?: string | null | undefined;
+    openlupInternalCheck?: string | undefined;
+}
+export interface PartnersB2BInquirySubmitResponse {
+    success: true;
+    id?: string | undefined;
+    skipped?: string | undefined;
+}
+export type PartnerAcquisitionFailureKind = "invalid" | "conflict" | "rate_limited" | "not_found" | "unavailable";
+export type PartnerAcquisitionResult<T> = {
+    ok: true;
+    value: T;
+    replayed?: boolean;
+} | {
+    ok: false;
+    error: {
+        kind: PartnerAcquisitionFailureKind;
+    };
+};
+export interface PartnerAcquisitionPort {
+    submit(command: {
+        idempotencyKey: string;
+        requesterKey: string;
+        policyVersion: string;
+        sourcePath: "/partners/b2b-inquiries";
+        acceptedAt: string;
+        request: PartnersB2BInquirySubmitRequest;
+    }): Promise<PartnerAcquisitionResult<PartnerAcquisitionCase>>;
+    list(query: PartnerAcquisitionListRequest & {
+        actorRef: string;
+    }): Promise<PartnerAcquisitionResult<PartnerAcquisitionListResponse>>;
+    transition(command: {
+        actorRef: string;
+        idempotencyKey: string;
+        request: PartnerAcquisitionTransitionRequest;
+    }): Promise<PartnerAcquisitionResult<PartnerAcquisitionCase>>;
+    close(): Promise<void>;
+}
+```
 ## dist/marketing/index.d.ts
 
 ```ts
@@ -684,6 +776,136 @@ export * from "./seo/metadata.js";
 export * from "./seo/jsonLd.js";
 export type * from "./contracts/contactLegal.js";
 export * from "./contactLegal.js";
+export * from "./partnerAcquisitionSchemas.js";
+```
+## dist/marketing/partnerAcquisitionSchemas.d.ts
+
+```ts
+import { z } from "./validation.js";
+export declare const PARTNER_ACQUISITION_VIEW: "partner_acquisition_v1";
+export declare const PARTNER_ACQUISITION_CONTRACT_VERSION: "partner_acquisition_v1";
+export declare const partnerAcquisitionCaseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"partner_acquisition_v1">;
+    caseRef: z.ZodString;
+    contactRef: z.ZodString;
+    organization: z.ZodObject<{
+        name: z.ZodString;
+        country: z.ZodString;
+    }, z.core.$strict>;
+    contact: z.ZodObject<{
+        firstName: z.ZodString;
+        lastName: z.ZodString;
+        email: z.ZodString;
+        phone: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    notes: z.ZodNullable<z.ZodString>;
+    status: z.ZodEnum<{
+        new: "new";
+        contacted: "contacted";
+        qualified: "qualified";
+        disqualified: "disqualified";
+        closed_won: "closed_won";
+        closed_lost: "closed_lost";
+    }>;
+    version: z.ZodNumber;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strict>;
+export declare const partnerAcquisitionListRequestSchema: z.ZodObject<{
+    view: z.ZodLiteral<"partner_acquisition_v1">;
+    cursor: z.ZodOptional<z.ZodString>;
+    limit: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+}, z.core.$strict>;
+export declare const partnerAcquisitionListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"partner_acquisition_v1">;
+    cases: z.ZodArray<z.ZodObject<{
+        contractVersion: z.ZodLiteral<"partner_acquisition_v1">;
+        caseRef: z.ZodString;
+        contactRef: z.ZodString;
+        organization: z.ZodObject<{
+            name: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        contact: z.ZodObject<{
+            firstName: z.ZodString;
+            lastName: z.ZodString;
+            email: z.ZodString;
+            phone: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        notes: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            new: "new";
+            contacted: "contacted";
+            qualified: "qualified";
+            disqualified: "disqualified";
+            closed_won: "closed_won";
+            closed_lost: "closed_lost";
+        }>;
+        version: z.ZodNumber;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>>;
+    nextCursor: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const partnerAcquisitionTransitionRequestSchema: z.ZodObject<{
+    id: z.ZodString;
+    expectedVersion: z.ZodCoercedNumber<unknown>;
+    status: z.ZodEnum<{
+        qualified: "qualified";
+        contacted: "contacted";
+        disqualified: "disqualified";
+        closed_won: "closed_won";
+        closed_lost: "closed_lost";
+    }>;
+}, z.core.$strict>;
+export declare const partnerAcquisitionTransitionResponseSchema: z.ZodObject<{
+    updated: z.ZodLiteral<true>;
+    acquisitionCase: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"partner_acquisition_v1">;
+        caseRef: z.ZodString;
+        contactRef: z.ZodString;
+        organization: z.ZodObject<{
+            name: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        contact: z.ZodObject<{
+            firstName: z.ZodString;
+            lastName: z.ZodString;
+            email: z.ZodString;
+            phone: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        notes: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            new: "new";
+            contacted: "contacted";
+            qualified: "qualified";
+            disqualified: "disqualified";
+            closed_won: "closed_won";
+            closed_lost: "closed_lost";
+        }>;
+        version: z.ZodNumber;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>;
+export declare const partnerAcquisitionIdempotencyKeySchema: z.ZodString;
+export declare const partnersB2BInquirySubmitRequestSchema: z.ZodObject<{
+    company: z.ZodString;
+    country: z.ZodString;
+    firstName: z.ZodString;
+    lastName: z.ZodString;
+    email: z.ZodString;
+    phone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    openlupInternalCheck: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+export declare const partnersB2BInquirySubmitResponseSchema: z.ZodObject<{
+    success: z.ZodLiteral<true>;
+    id: z.ZodOptional<z.ZodString>;
+    skipped: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+export type * from "./contracts/partnerAcquisition.js";
 ```
 ## dist/marketing/prelaunchAcquisitionSchemas.d.ts
 
