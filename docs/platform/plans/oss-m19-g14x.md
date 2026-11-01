@@ -1,6 +1,6 @@
 # Bundle admin write-store export
 
-Status: both coordinator reads accepted; documentation review repair checked for fresh review (2026-11-01).
+Status: both coordinator reads accepted; canonical documentation repair checked for cycle two (2026-11-01).
 
 ## Outcome, scope and authority
 
@@ -322,3 +322,57 @@ committed tree. Final canonical verification and landing require the lead's slot
 Review self-retro: appending an accurate ownership paragraph left contradictory
 current owner prose. Check the existing ownership section and related owner page
 when relocating a declaration; correct those statements directly before review.
+
+## Documentation regroup before the second repair
+
+Two completed evaluations leave the same documentation-accuracy obstacle:
+the initial tree `605e230d` retained incorrect package/domain ownership statements;
+the next tree `ebacf4a5` corrected those statements but left the selected canonical
+runtime-boundaries section contradictory. G14X-R1 and G14X-B-DOC-1 are closed;
+G14X-C-DOC-1 and G14X-D-DOC-1 identify the remaining canonical ownership/data-edge
+statements. Complete reports remain in the same native session history. Cycle one
+of three is used; this regroup grants no additional cycles or evidence expiry.
+
+Cause and simpler path: reviewing appended explanation and narrow no-impact
+reasons missed existing prose in the canonical owner section. Update the current
+ownership statements themselves, rather than add another explanatory paragraph
+or test. A targeted search for bundle writer/error/transaction ownership and
+catalog data-edge claims across current guides also finds the same stale RPC
+subclass/writer ownership in Canonical contracts and an ambiguous read-only-store
+statement in Data and migrations. Historical dated plans remain historical.
+
+The next discriminating step is a single bounded prose correction in those
+three canonical sections, followed by policy/link checks and two fresh full
+reviews tracing each no-impact reason to its selected section. Expected result:
+all current guides agree that catalog owns the writer, pooled binding, shared
+marshalling and error classes, while hosts retain authorization, response mapping,
+managed transport and lifecycle composition; SQL and protection limits stay the
+same. No production, public declaration, control, fixture or proof obligation
+changes. These are corrective descriptions of the already accepted boundary,
+under the existing prose-only no-read exception.
+
+Read-only HEAD-relative and base-relative zero-context diffs show the architecture
+edits are disjoint from the other rows' sections, and the data-guide edit is
+disjoint from the foundation row's additions. No shared section is reordered.
+The runtime guide, source map, package Catalog guide, current bundle owner pages
+and affected capability map were checked for the same ownership claim.
+
+Lesson: repeated ownership claims → correct the selected canonical section and
+follow its related owner explanations before relying on a no-impact trailer.
+The existing Documentation impact guidance already requires this; no additional
+rule or process is introduced.
+
+The second repair corrects only the three named canonical guide sections and
+this record. Focused admission was immediate; ast-grep and full lint pass with
+zero errors and the same 33 warnings. Policy/docs-update passes all nine
+obligations without an unanswered item. The preceding clean-tree package check
+also passes for all three packages; no package file changes in this repair, so
+the measured artifact delta remains +6,601 packed bytes, +27,149 unpacked bytes
+and +15 files. A clean committed packages check will confirm that same integrity
+before readiness. Native preparation will retain the same history and remaining
+finding cards, with cycle two of three used, followed by two new full reviews.
+Final verification and landing remain held for the lead's slot.
+
+Second-repair self-retro: narrow symbol searches must include the canonical
+section selected by each no-impact reason. Existing current prose, rather than
+an added correct paragraph or a passing fingerprint, establishes aligned guidance.
