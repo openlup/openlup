@@ -1,6 +1,6 @@
 
 export type { ChannelOrderOpsResponse } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export const channelOrderOpsResponseSchema = z.object({
   contractVersion: z.literal("channels.ops.v1"), orderId: z.string(),
   channel: z.object({ slug: z.string(), displayName: z.string(), status: z.string() }).nullable(),

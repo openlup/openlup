@@ -1,6 +1,6 @@
 
 export type { ChannelPurchaseNamespace, ChannelPurchasedProductFacts, ChannelPurchasedExpandedLine, ChannelPurchaseCapture, ChannelPullPage, ChannelPullProgressState, ChannelPullCursorReceipt } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 import { normalizedChannelOrderSchema } from "./orderContracts.js";
 
 import { channelScopeSchema, channelControlIdSchema as id, channelControlRefSchema as ref,
