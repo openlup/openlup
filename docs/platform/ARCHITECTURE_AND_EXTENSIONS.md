@@ -535,6 +535,78 @@ dependency. Likewise, do not remove a platform capability merely because one
 adopter customizes it: the platform remains responsible for a complete useful
 module at its own boundary.
 
+## Run an adapter conformance check
+
+The Node-only `@openlup/platform/communications` entry exports
+`runCommunicationsAdapterConformance`, following the existing payment, invoice
+and fulfillment runner naming. Its subject union accepts email transports or
+marketing-sync providers, adapter-owned fixtures and a fresh offline factory
+with an external mutation counter for each fixture. The factory receives the
+fixture input and may asynchronously seed its offline state before measurement.
+Fixtures supply exact
+expected results and effect counts. Email requires accepted, failed and
+suppressed cases; suppression must perform no external mutation. Marketing sync
+requires all four operations, an explicit refusal and successful replay for each
+supported mutation. Refusals and read operations must perform no mutation.
+Each supported read operation also requires a completed fixture.
+Result identity, declared scope/capability, negative feedback and evidence-bound
+erasure completion are checked independently of fixture expectations. Raw
+adapter exceptions are replaced with a bounded finding and recheck instruction.
+Use opaque, non-sensitive subject labels: evidence returns those labels and
+passed case names, never provider payloads.
+
+Copy the complete [red-to-green Node example](communications-conformance.mjs)
+into a consumer with a version of `@openlup/platform` exporting the helper, then
+run `node communications-conformance.mjs`. It first constructs a deliberately
+bad offline adapter that reports a failed send as accepted. The runner refuses
+it with `COMMUNICATIONS_CONFORMANCE:email_fixture`, asks the implementer to match
+the expected outcome and provider response, and names the recheck function.
+The corrected adapter retains the failure and passes all three email fixtures.
+The same executable file runs inside the isolated packed consumer; the
+[focused witness](../../packages/platform/test/communications/adapterConformance.test.ts)
+also applies defects from the existing marketing-sync conformance helper.
+
+This is supplied-fixture proof, not exhaustive conformance, consent-push
+qualification, durable-store atomicity, host wiring, provider-account readiness
+or permission to send real messages. Keep the existing owner suites for those
+boundaries. The runner itself adds no network client, provider, registry, CLI
+command or automatic fixture discovery. Adapter factories must inject offline
+transports; the helper cannot sandbox an arbitrary factory's I/O.
+
+## Find consumer evidence for an export
+
+Every export's existing `packageSurface[export].packageSmokeEvidence` in its
+installed `release-gates.json` remains the evidence source. The
+[documentation contract](../../packages/core/scripts/documentation-contract.ts)
+already binds source witness paths to the package's surface table. The
+[consumer evidence projection](../../scripts/packages/consumer-evidence.mjs)
+reads that same metadata and the selected manifest without storing another
+catalogue. Copy that pure helper locally as `consumer-evidence.mjs`, then save
+the following consumer-owned script as `show-evidence.mjs` and run
+`node show-evidence.mjs` from the application root:
+
+```js
+import { readFileSync } from "node:fs";
+import { consumerEvidence } from "./consumer-evidence.mjs";
+const directory = "./node_modules/@openlup/platform";
+const read = name => JSON.parse(readFileSync(`${directory}/${name}`, "utf8"));
+console.log(JSON.stringify(consumerEvidence(read("package.json"), read("release-gates.json")), null, 2));
+```
+
+The JSON contains one row for each actual export, its original source witness
+paths, maturity and a `consumerCheck` executable/argument array. Run that array
+from the consumer directory to import that installed entry with its selected
+peers. An import failure identifies an unavailable artifact, dependency or entry;
+fix that installation and rerun the same check. Passing proves resolution and
+evaluation only. It does not execute source tests or prove declarations, browser
+safety or behaviour. Each `sourceCheck` maps the original witness paths directly
+to a Vitest invocation in that package's matching source directory, after its
+stated install/build prerequisites. Tests are not assumed to ship in the tarball.
+Use the conformance
+runner above with your own fixtures for adapter behaviour. The projection's
+[deterministic tests](../../scripts/packages/consumer-evidence.test.ts) cover all
+current core, outbox and platform exports and refuse missing evidence.
+
 ## Source ejection
 
 An adopter can copy a component or page into its own source. This is source
