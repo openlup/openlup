@@ -385,6 +385,14 @@ proof, without adding a package entry, installed-default claim or hosted
 observability certification. Runtime guidance describes the host-supplied ports
 and captured delivery boundary separately.
 
+Partner acquisition keeps its existing Partners semantic owner when the neutral
+schemas, type-only port and PostgreSQL store are contributed under marketing.
+Exact source selectors extend the existing Partners route; marketing retains
+shared entry/distribution responsibilities. The Partners page links its package,
+public-producer and installed PostgreSQL witnesses, while data and architecture
+pages retain privacy/catalogue and host-composition duties. This routing creates
+no new domain, capability or installation claim.
+
 Most domains use `src/domains/<domain>/README.md` as their semantic owner. A
 server README adds server-specific security, money, authorization or operational
 constraints when needed. The [server layer guide](../../server/domains/README.md)

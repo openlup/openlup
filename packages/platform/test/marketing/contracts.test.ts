@@ -16,6 +16,16 @@ export type MarketingPrivacyContributorCompatibility = [
   Assert<Equal<NonNullable<ReturnType<typeof Server.createMarketingPrivacyBindings<null>>["contributor"]>, PersonalDataContributor<null>>>,
 ];
 export type MarketingContractEquality = [
+  Assert<Equal<Contracts.PartnerAcquisitionCase, z.infer<typeof Runtime.partnerAcquisitionCaseSchema>>>,
+  Assert<Equal<Contracts.PartnerAcquisitionListRequest, z.infer<typeof Runtime.partnerAcquisitionListRequestSchema>>>,
+  Assert<Equal<Contracts.PartnerAcquisitionListResponse, z.infer<typeof Runtime.partnerAcquisitionListResponseSchema>>>,
+  Assert<Equal<Contracts.PartnerAcquisitionTransitionRequest, z.infer<typeof Runtime.partnerAcquisitionTransitionRequestSchema>>>,
+  Assert<Equal<Contracts.PartnerAcquisitionTransitionResponse, z.infer<typeof Runtime.partnerAcquisitionTransitionResponseSchema>>>,
+  Assert<Equal<Contracts.PartnerAcquisitionIdempotencyKey, z.infer<typeof Runtime.partnerAcquisitionIdempotencyKeySchema>>>,
+  Assert<Equal<Contracts.PartnersB2BInquirySubmitRequest, z.infer<typeof Runtime.partnersB2BInquirySubmitRequestSchema>>>,
+  Assert<Equal<Contracts.PartnersB2BInquirySubmitResponse, z.infer<typeof Runtime.partnersB2BInquirySubmitResponseSchema>>>,
+  Assert<Equal<keyof Contracts.PartnerAcquisitionPort, "submit" | "list" | "transition" | "close">>,
+  Assert<Equal<Contracts.PartnerAcquisitionPort, Runtime.PartnerAcquisitionPort>>,
   Assert<Equal<Contracts.AnalyticsCheckoutItem, Runtime.AnalyticsCheckoutItem>>,
   Assert<Equal<Contracts.AnalyticsPurchaseItem, Runtime.AnalyticsPurchaseItem>>,
   Assert<Equal<Contracts.AnalyticsCheckoutMode, Runtime.AnalyticsCheckoutMode>>,

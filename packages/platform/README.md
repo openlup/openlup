@@ -231,7 +231,7 @@ response client and host composition.
 `./marketing/server` owns acquisition case handlers, list/count and prelaunch
 list/detail factories, survey evidence submit/list and consent application,
 research submit/admin handlers and managed survey orchestration without loading
-`pg`. Select `./marketing/server/postgres` for the two PostgreSQL port factories
+`pg`. Select `./marketing/server/postgres` for the three PostgreSQL port factories
 after installing the existing optional `pg` peer. Hosts inject the BFF responder,
 authorization and binding resolvers. Direct case reads receive the host bundle
 predicate at their original guard; prelaunch and evidence dispatch stays in the
@@ -240,6 +240,44 @@ HTML rendering before the subject clock read. The reference owns retired
 route refusals, raw signed consent ingress and notification copy. PostgreSQL
 SQL, role selection and transaction/pool handling remain unchanged. The
 server-only compatibility command types do not expose retired admission schemas.
+
+The partner lifecycle uses these same entries: `./marketing` exports the strict
+`partner_acquisition_v1` case/list/transition and inquiry submit schemas;
+`./marketing/contracts` exports their DTOs and `PartnerAcquisitionPort`;
+`./marketing/server/postgres` exports `createPostgresPartnerAcquisitionPort`.
+Partners retains domain and data ownership. The factory accepts an explicit
+`connectionString`, opens its pool lazily, and runs submit/list/transition through
+`BEGIN → SET LOCAL ROLE platform_acquisition_runtime → routine → COMMIT`.
+It preserves normalization, original command receipts, quota effects, descending
+cursor tuples and version fences. The host validates wire input, selects the
+neutral list view and authorizes operators before binding. The direct adapter
+does not enforce administrator membership; its SQL checks actor UUID presence.
+
+Install the complete selected [source catalogue](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#partner-acquisition-data)
+before using the factory. The four existing partner SQL units are present in
+all three source plans; the npm package's sparse SQL assets do not constitute a
+complete partner installer. R1 adds no SQL, grants, route activation or host
+binding. The reference catch-all router has an empty route table; source BFF
+leaves alone do not establish serving endpoints. Host routing, authorization,
+legacy drain, environment selection, connection cache and pool disposal remain
+application-owned.
+
+`closed_won` is a partner pipeline fact. It creates neither a customer identity
+nor marketing consent, provider notification or managed CRM transition. Rich
+managed inquiry/admin contracts stay separate. The strict submit schema accepts
+`openlupInternalCheck`; a host using another sentinel must map it explicitly at
+its compatibility seam. Current forms admit country `OTHER` and leading-zero
+phones that direct SQL refuses; this contribution preserves those refusals.
+
+Partner personal-data export/erasure is unavailable, with
+resource duties recorded by the [Partners owner](https://github.com/openlup/openlup/blob/main/src/domains/partners/README.md).
+Existing marketing privacy-contributor coverage must not be read as partner
+coverage. Append-only receipts and audit are retained; nonempty acquisition
+state remains outside supported store transfer. The package contract, public
+counterpart/producer and real PostgreSQL witnesses freeze these limits. The
+PostgreSQL witness packs the current artifact, compiles both declaration modes,
+and executes its default factory against a disposable full native catalogue;
+it establishes no provider or hosted qualification.
 
 Analytics facts share these browser-safe entries. `createNoopAnalytics` implements
 Core's existing analytics port; deployment and advertising defaults remain inert.

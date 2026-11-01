@@ -652,7 +652,8 @@
         "test/marketing/dataLayer.test.ts",
         "test/marketing/routePolicy.test.ts",
         "test/marketing/purchaseFacts.test.ts",
-        "test/marketing/consentEvidence.test.ts"
+        "test/marketing/consentEvidence.test.ts",
+        "test/marketing/partnerAcquisition.test.ts"
       ],
       "entrypoint": "dist/marketing/index.d.ts",
       "snapshot": "api/marketing.api.md"
@@ -670,7 +671,8 @@
         "test/marketing/dataLayer.test.ts",
         "test/marketing/routePolicy.test.ts",
         "test/marketing/purchaseFacts.test.ts",
-        "test/marketing/consentEvidence.test.ts"
+        "test/marketing/consentEvidence.test.ts",
+        "test/marketing/partnerAcquisition.test.ts"
       ],
       "entrypoint": "dist/marketing/contracts/index.d.ts",
       "snapshot": "api/marketing-contracts.api.md"
@@ -701,7 +703,8 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/marketing/server/postgres/acquisitionCaseRoutines.test.ts",
-        "test/marketing/server/postgres/acquisitionEvidenceRoutines.test.ts"
+        "test/marketing/server/postgres/acquisitionEvidenceRoutines.test.ts",
+        "test/marketing/server/postgres/partnerAcquisitionRoutines.test.ts"
       ],
       "entrypoint": "dist/marketing/server/postgres/index.d.ts",
       "snapshot": "api/marketing-server-postgres.api.md"

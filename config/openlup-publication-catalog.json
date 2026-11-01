@@ -1562,6 +1562,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m18-r1-partner-acquisition.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -5678,11 +5682,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/contracts/partnerAcquisition.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/contracts/prelaunch.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/marketing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/partnerAcquisitionSchemas.ts",
       "class": "public-output"
     },
     {
@@ -5751,6 +5763,10 @@
     },
     {
       "path": "packages/platform/src/marketing/server/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/postgres/partnerAcquisitionRoutines.ts",
       "class": "public-output"
     },
     {
@@ -8138,6 +8154,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/privacyContributor.test.ts",
       "class": "public-output"
     },
@@ -8179,6 +8199,10 @@
     },
     {
       "path": "packages/platform/test/marketing/server/postgres/acquisitionEvidenceRoutines.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/postgres/partnerAcquisitionRoutines.test.ts",
       "class": "public-output"
     },
     {
@@ -26594,6 +26618,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/partners/partnerAcquisitionParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/promotions/adminBinding.test.ts",
       "class": "public-output"
     },
@@ -26979,6 +27007,10 @@
     },
     {
       "path": "tests/postgres/operatorInvitationManaged.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/partnerAcquisition.test.ts",
       "class": "public-output"
     },
     {
