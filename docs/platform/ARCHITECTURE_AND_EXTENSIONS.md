@@ -2373,6 +2373,101 @@ limited to `legacy-fresh-bootstrap-role-prerequisites` and
 readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
 defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
+### Application command-line tooling
+
+The tool-only Node executable
+[`openlup`](../../packages/platform/src/openlup.mjs) ships inside
+`@openlup/platform`. It is separate from imported engine entries and adds no
+package, host bundle or dependency installer. Use the executable from your exact
+installed package set; a source candidate does not establish availability in an
+older release. `openlup --help` gives the installed syntax.
+
+For a local npm installation, run `npm exec --no -- openlup --help` from the
+application root. The examples and report rechecks below use the bin name, as
+inside an npm script; use that same npm prefix in an ordinary shell. `--no`
+prevents fetching an unrelated package when the local executable is absent.
+
+```sh
+openlup upgrade plan --root ./my-app --from ./previous.json --to ./candidate.json --schema-version 53 --json
+# State-changing: exclusive access to my-app is required.
+openlup upgrade apply --root ./my-app --from ./previous.json --to ./candidate.json --schema-version 53 --json
+```
+
+Each JSON input is an `AppVersionSnapshot`, with `version`, an inclusive
+`schema: { min, max }` ordinal range, and `files`, a map of relative paths to exact
+UTF-8 content. The ordinal above is illustrative: observe your database's actual
+applied chain before supplying it. These inputs describe application files,
+including dependency declarations when explicitly managed; they are not tarball
+paths. `openlup` neither installs dependencies nor runs migrations. Acquire and
+verify release artifacts through the existing package/provenance route.
+
+Plan reports `application-owned` for every unlisted path, `locally-customizable`
+for unchanged upstream paths, and `upgrade-managed` for paths changed between the
+explicit snapshots. The existing lifecycle rules above govern every write.
+Apply re-inspects the whole tree and refuses conflicts before its first write.
+Keep the same snapshots when recovering an interrupted run; exact completed bytes
+become `already-applied`. Reconcile divergent files explicitly and repeat plan.
+Do not start the application while the file set is partially upgraded.
+
+`openlup verify` is the composed application's single diagnosis command:
+
+```sh
+openlup verify
+openlup verify --app ./application-observations.mjs
+openlup verify --app ./application-observations.mjs --json
+```
+
+With no `--app`, it returns `unknown` and loads no application code. The explicit
+module must export `createVerificationInput()`, returning the existing
+[`ReadinessInput`](../../packages/core/src/readiness/contracts.ts) from the
+application's actual composition. Reuse its selected contributions, complete
+loaded package inventory, binding objects/callable identities, event vocabulary,
+owned exemptions and bounded read-only schema observer. Do not build a second
+module catalogue or mark a declared name as a bound adapter. Binding keys retain
+the existing `package/module:port-or-job` identity (or `package:subject` when no
+module is selected). A trigger observation must reference the actual `run`
+function and match the declared cadence.
+
+The application owns this module. Importing it explicitly trusts its code; the
+CLI provides no sandbox. The module must not write stdout. It must assemble
+observations without booting a server,
+registering timers, replaying migrations or sending effects. Its schema observer
+must use read-only credentials/operations, return the observed database and
+migration identity, and close resources it opens within each observation. The
+CLI neither discovers application modules nor reads a `.env` file implicitly.
+Candidate identities must be sanitized identifiers, never credentials or URLs
+containing credentials.
+
+[`verifyApp`](../../packages/platform/src/lifecycle/appVerification.ts), exported
+through `./lifecycle`, calls the existing `checkReadiness` evaluator. It invokes
+only that supplied schema observer, never an adapter operation, handler, route or
+schedule. Each finding includes observed state, cause, fix, recheck and separate
+declared/bound/checked/unknown evidence. A missing port names the exact binding
+key; an unwired schedule names its actual callable/cadence relationship; a schema
+mismatch names the existing migration requirement. Fix composition in application
+source or apply the appropriate migration through its owner, then rerun the same
+command. Probe failure or wrong database identity stays `unknown`; catalog
+presence does not establish SQL behavior, authorization or provider delivery.
+`ready` means the supplied readiness observations agree, with those limits.
+
+Text and JSON share the same findings. JSON is one stdout object with
+`formatVersion: 1`, `command`, `state` and `exitCode`; diagnosis adds its boundary
+and findings, upgrade adds its plan/applied paths or conflicts. Exit codes are
+`0` for satisfied/completed, `1` for unsatisfied/conflict, `2` for unknown, `64`
+for invalid invocation/JSON and `74` for operation or application-loading failure.
+Raw application exceptions are withheld. An I/O failure during apply may follow
+completed writes; rerun the identical snapshots under exclusive access.
+
+The [diagnosis witnesses](../../packages/platform/test/lifecycle/appVerification.test.ts)
+and [installed CLI witness](../../scripts/packages/distribution-cli-proof.ts)
+exercise the three repair reports, read-only effect boundary, exit codes,
+ownership, conflict refusal and interruption/resume. The CLI witness acquires integrity-pinned published `0.35.0` and `0.36.0`
+platform archives before running the command. Its application executes each
+version's public lifecycle entry, refuses a divergent touched file before writes,
+stops after a real replacement and resumes without changing local theme/policy.
+The fixture harness prepares dependencies; the upgrade command never installs
+them. Registry unavailability or an integrity mismatch fails the proof.
+
 ## Existing-store transfer and recovery
 
 The [local handover witness](../../tests/postgres/runM14EffectHandover.ts)
