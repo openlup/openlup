@@ -764,7 +764,9 @@
       "paths": [
         "packages/platform/src/subscriptions/**",
         "packages/platform/test/subscriptions/**",
-        "packages/platform/api/subscriptions*.api.md"
+        "packages/platform/api/subscriptions*.api.md",
+        "tests/postgres/subscriptionPurchaseRenewal.test.ts",
+        "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#subscription-contracts"

@@ -5,6 +5,30 @@ it does not certify a migration path or an upgrade service.
 
 ## Data ownership
 
+The native `20261101223000_subscription_purchase_renewal.sql` forward records
+purchase facts and renewal-attachment duties beside the existing activation
+spine. Activation commits service plus the duty; renewal header/lines/method
+materialization is a separate atomic transaction. An incomplete duty remains
+enumerable and does not pause service. Bounded definer writers avoid granting
+runtime INSERT on renewal headers or method states. The new fact/event tables
+explicitly revoke all table access from PUBLIC, anon, authenticated and
+service_role, including access inherited from installer default grants. No table
+grant or row-level-security change is added. Fixed
+definer readers expose only a bounded pending-duty list and three completed
+snapshot fields; the runtime never reads the method-event ledger. Their search
+path is `pg_catalog, pg_temp`, and
+the original activation RPC signature and commit-helper attributes are retained.
+The incumbent term-line collection INSERT/DELETE grants remain unchanged.
+Created functions revoke PUBLIC individually before conditional constant-string
+function ACL blocks for anon, authenticated and service_role. The replaced
+activation helper retains its ACL. Method transitions compare expected health and persist event evidence without
+rewriting subscription service state. Sandbox observation uses invoker rights
+and the existing operation/outcome capabilities, without another attempt table.
+The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+describes the codec and retry duties. Installing or releasing this forward still
+requires its separately admitted SQL-control inventory and ordinary review;
+local PostgreSQL proof does not establish that admission or a published chain.
+
 The platform owns its schema, migration history, and documented data contracts.
 An adopter owns tables and migrations for its own extensions in the `app` schema.
 The platform never writes there; the adopter owns extension compatibility and

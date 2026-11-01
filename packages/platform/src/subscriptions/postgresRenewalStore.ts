@@ -4,7 +4,7 @@ import type { RenewalDue, RenewalFrozenSnapshot, RenewalReadback, RenewalSchedul
 export interface SubscriptionQueryExecutor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
-/** The host preserves its native wire snapshot, identity dialect and evidence-bound numbering. */
+/** Custom dialects remain injectable; createNativeRenewalCodec supplies the purchase lineage dialect. */
 export interface NativeRenewalCodec {
   due(row: Record<string, unknown>): RenewalDue;
   freeze(row: Record<string, unknown>, schedule: RenewalSchedule): RenewalFrozenSnapshot;
@@ -14,11 +14,21 @@ export interface NativeRenewalCodec {
   identity(snapshot: RenewalFrozenSnapshot): string;
   fingerprint(snapshot: RenewalFrozenSnapshot): string;
 }
-const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.next_cycle_at::text AS scheduled_at,t.*,
+const CORRELATION_SQL = `o.subscription_cycle_id AS activation_cycle_id,
+ ac.status='paid' AS activation_cycle_paid,
+ (SELECT count(*)::integer FROM public.subscription_cycles pc
+  WHERE pc.subscription_id=s.id AND pc.status='paid' AND pc.scheduled_at<s.next_cycle_at) AS paid_cycle_count`;
+const CORRELATION_JOIN = `LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id
+ LEFT JOIN public.commerce_orders o ON o.id=a.order_id
+ LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id`;
+const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,s.next_cycle_at::text AS scheduled_at,t.*,
+ ${CORRELATION_SQL},m.health_state,public.subscription_renewal_purchase_facts(s.id) AS purchase_facts,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,
  'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l
  WHERE l.subscription_id=s.id),'[]'::jsonb) AS lines
  FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id
+ LEFT JOIN public.subscription_method_states m ON m.subscription_id=s.id
+ ${CORRELATION_JOIN}
  WHERE s.id=$1::uuid AND s.next_cycle_at=$2::timestamptz`;
 export function subscriptionRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("subscription_renewal_response_invalid");
@@ -38,8 +48,9 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     transactions: { graph: "native", prepare: "cycle_order_items_settlement_reservation_attempt",
       outcome: "settlement_outcome_schedule_counter_reservation", recovery: "settlement_cycle_receipt_case_counter" },
     async listDue(limit, asOf) {
-      const result = await executor.query(`SELECT due.*,due.scheduled_at::text AS scheduled_at
-        FROM public.subscription_list_due_renewals($1::timestamptz,$2::integer) due`, [asOf, limit]);
+      const result = await executor.query(`SELECT due.*,due.scheduled_at::text AS scheduled_at,${CORRELATION_SQL}
+        FROM public.subscription_list_due_renewals($1::timestamptz,$2::integer) due
+        JOIN public.subscriptions s ON s.id=due.subscription_id ${CORRELATION_JOIN}`, [asOf, limit]);
       return result.rows.map(row => codec.due(row));
     },
     async buildCycleSnapshots(input) {
@@ -49,7 +60,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     },
     async readMandateEvidence(input) {
       const row = await header(input);
-      return { authorized: true, authorizationRef: String(row.authorization_ref),
+      return { authorized: row.health_state === "healthy", authorizationRef: String(row.authorization_ref),
         authorizedAt: row.unattended_charge_authorized_at instanceof Date
           ? row.unattended_charge_authorized_at.toISOString() : String(row.unattended_charge_authorized_at) };
     },

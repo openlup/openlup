@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import * as jose from "jose";
+import * as renewal from "@openlup/platform/subscriptions";
+import { createPostgresPaymentTruthPort } from "@openlup/platform/payments";
+import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
+import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
@@ -37,6 +41,60 @@ let identity: Awaited<ReturnType<typeof identityFixture>>;
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
+const renewalAt = "2026-09-01T12:00:00.000Z", renewalDue = "2026-09-29T12:01:00.000Z";
+// Identifying-looking synthetic references deliberately demonstrate that the
+// sandbox channel check does not enforce nonpersonal reference contents.
+const renewalFacts: renewal.NativeRenewalPurchaseFacts = {
+  settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization:customer@example.invalid",
+  unattendedChargeAuthorizedAt: renewalAt, payerAccountRef: "payer@example.invalid",
+  methodRef: "sandbox-method:customer@example.invalid", methodEvidenceRef: "sandbox-evidence:customer@example.invalid",
+  stockSourceKey: "transfer-renewal", templateId: "transfer-refill", cadenceDays: 28, currency: "XXX",
+  lines: [{ lineOrdinal: 1, sku: "retained-sku", quantity: 2, unitAmountMinor: 100 }], shippingAmountMinor: 0,
+  acquisitionRef: "acquisition:customer@example.invalid",
+};
+let retainedRenewal: { orderId: string; subscriptionId: string }, pendingRenewal: typeof retainedRenewal;
+
+async function renewalPurchase(complete: boolean) {
+  const call = async (name: string, values: unknown[]) => (await source.runtime.query(
+    `SELECT public.${name}(${values.map((_, index) => `$${index + 1}`).join(",")}) AS value`, values)).rows[0].value;
+  const key = randomUUID();
+  // Match the retained-transfer suite's existing order fixture. G5 owns
+  // checkout draft receipts; every G2 row below is produced by its real writer.
+  const orderId = randomUUID(), order = await source.owner.connect();
+  try {
+    await order.query("BEGIN");
+    await order.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'pending_payment','XXX',200)", [orderId, graph.client]);
+    await order.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,sku_id,quantity,unit_amount_minor,line_amount_minor) SELECT $1,1,id,2,100,200 FROM public.catalog_skus WHERE sku='retained-sku'", [orderId]);
+    await order.query("COMMIT");
+  } catch (error) { await order.query("ROLLBACK"); throw error; } finally { order.release(); }
+  const intent = await call("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", "{}", renewalAt]);
+  await createPostgresPaymentTruthPort(source.runtime, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" })
+    .ingestEvent({ sourceEventId: `transfer-purchase:${key}`, idempotencyKey: `transfer-truth:${key}`, settlementIntentId: intent.settlement.id,
+      outcome: "captured", amountMinor: 200, currency: "XXX", occurredAt: renewalAt, failure: null,
+      evidence: { sourceKind: "accepted_event", sourceReference: `sandbox:${key}`, observedStatus: "captured", observedAt: renewalAt,
+        payloadFingerprint: createHash("sha256").update(key).digest("hex") } });
+  await call("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, renewalAt]);
+  const writer = renewal.createPostgresPurchaseRenewalWriter(source.runtime);
+  await writer.register(orderId, renewalFacts);
+  const intentRow = (await source.runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
+  const fingerprint = createHash("sha256").update(intentRow.external_ref ?? intentRow.id).digest("hex");
+  const activated = await call("subscription_activate_from_captured_payment", [`activate:${key}`, orderId, fingerprint]);
+  if (complete) {
+    await writer.complete(orderId);
+    const change = { subscriptionId: activated.subscriptionId, eventKey: `missing:${orderId}`, expectedState: "healthy" as const,
+      healthState: "method_missing" as const, methodRef: renewalFacts.methodRef, evidenceRef: "sandbox-missing:customer@example.invalid" };
+    await writer.transitionMethod(change);
+    await writer.transitionMethod({ ...change, eventKey: `repair:${orderId}`, expectedState: "method_missing", healthState: "healthy",
+      evidenceRef: "sandbox-repaired:customer@example.invalid" });
+    // Explicit synthetic delivered-parcel fact for the carried enforcing
+    // alignment policy. Never confirm the original fixture's undelivered replacement.
+    const shipment = randomUUID();
+    await source.owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key) VALUES($1,$2,'fixture-port','3pl',$3)", [shipment, orderId, `transfer-parcel:${orderId}`]);
+    await source.runtime.query("SELECT public.fulfillment_record_alignment_arrival($1,$2,$3,$4)",
+      [`transfer-arrival:${orderId}`, shipment, "2026-09-02T12:00:00.000Z", `evidence:transfer-arrival:${orderId}`]);
+  }
+  return { orderId, subscriptionId: String(activated.subscriptionId) };
+}
 
 function pool(connectionString: string): Pool { const result = new Pool({ connectionString }); pools.push(result); return result; }
 async function installation(label: string): Promise<Installation> {
@@ -214,6 +272,8 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
+  retainedRenewal = await renewalPurchase(true);
+  pendingRenewal = await renewalPurchase(false);
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -343,6 +403,87 @@ it("refuses private business omission and nonpristine targets without deleting e
   }
   expect(await census(target.owner)).toEqual(targetBefore);
 });
+
+it("bounds customer-linked purchase facts, method events and method state in transfer", async () => {
+  const compatibleRows = packet.compatible.tables.reduce((sum, table) => sum + table.rows.length, 0);
+  const compatibleBytes = packet.compatible.tables.reduce((sum, table) => sum + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0);
+  let rows = compatibleRows, bytes = compatibleBytes;
+  for (const name of ["subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations"]) {
+    const held = packet.owned.find(table => table.table === name)!;
+    expect(held.rows.length).toBeGreaterThan(0);
+    rows += held.rows.length; bytes += held.rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
+    for (const limits of [{ maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 }, { maximumRows: 10000, maximumBytes: bytes - 1 }]) {
+      await expect(captureConnectedNativeStore({ sourceId: "bounded-renewal-source", catalogueId: selected.objectInventorySha256, ...limits,
+        source: { async withSnapshot(work) {
+          const client = await source.owner.connect();
+          try {
+            await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+            return await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
+          } finally { await client.query("ROLLBACK"); client.release(); }
+        } },
+      })).rejects.toMatchObject({ code: "limit_exceeded", table: name });
+    }
+  }
+  const oversized = structuredClone(packet), held = oversized.owned.find(table => table.table === "subscription_method_states")!;
+  held.rows = Array.from({ length: 10001 }, () => held.rows[0]);
+  const { sha256: _old, ...body } = oversized;
+  oversized.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
+  expect(await census(target.owner)).toEqual(Object.fromEntries([...pristine.compatible.tables, ...pristine.owned].map(table => [table.table, [...table.rows].sort()])));
+});
+
+it("restores writer-produced renewal data and pending duties, then renews through the restricted runtime", async () => {
+  await restore();
+  expect((await restore()).replayed).toBe(true);
+  for (const table of ["subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states",
+    "subscription_renewal_terms", "subscription_renewal_term_lines", "subscription_activations"] as const) {
+    const rows = (await target.owner.query(`SELECT to_jsonb(t)::text AS value FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+    expect(rows).toEqual((await source.owner.query(`SELECT to_jsonb(t)::text AS value FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows);
+  }
+  for (const table of ["subscription_renewal_attachments", "subscription_method_state_events"]) {
+    await expect(target.runtime.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });
+  }
+  const writer = renewal.createPostgresPurchaseRenewalWriter(target.runtime);
+  expect(await writer.pending()).toContainEqual({ ...pendingRenewal, hasPurchaseFacts: true });
+  expect(await writer.complete(pendingRenewal.orderId)).toMatchObject({ subscriptionId: pendingRenewal.subscriptionId, replayed: false });
+  expect(await writer.complete(pendingRenewal.orderId)).toMatchObject({ replayed: true });
+  await expect(writer.register(pendingRenewal.orderId, { ...renewalFacts, payerAccountRef: "different@example.invalid" })).rejects.toThrow("purchase_conflict");
+  expect(await writer.readMethod(retainedRenewal.subscriptionId)).toMatchObject({ healthState: "healthy",
+    methodRef: renewalFacts.methodRef, evidenceRef: "sandbox-repaired:customer@example.invalid" });
+  // The row proof supplies current stock after restore through its production
+  // writer; inventory-history transfer belongs to the final joined witness.
+  await createPostgresFulfillmentStockSyncPort(target.runtime, { sourceKey: renewalFacts.stockSourceKey, readLocalInventoryStock: async () => [] })
+    .recordProviderStockCurrent({ requestKey: "fixture-stock", snapshot: { providerRef: "sandbox-stock", collectedAt: renewalAt,
+      sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot", skuRef: "retained-sku", totalQuantity: 100,
+      forSaleQuantity: 100, reservedOrUnavailableQuantity: 0, syncRunId: "transfer-stock" }, inventoryClass: "sellable",
+      lastSyncedAt: renewalAt, staleAfter: "2027-01-01T00:00:00.000Z" });
+  const codec = renewal.createNativeRenewalCodec(), store = renewal.createPostgresRenewalStore(target.runtime, codec);
+  const call = async <T = Record<string, unknown>>(name: string, values: unknown[]): Promise<T> =>
+    (await target.runtime.query(`SELECT public.${name}(${values.map((_, index) => `$${index + 1}`).join(",")}) AS value`, values)).rows[0].value as T;
+  const settlement: RenewalSettlementPort = {
+    prepareRenewal: i => call<RenewalPreparedSettlement>("commerce_prepare_subscription_renewal", [i.operationId, i.claimToken, i.now]),
+    acknowledgeExternalAttempt: async i => codec.readback(await call("commerce_acknowledge_subscription_renewal_attempt", [i.operationId, i.operationFingerprint, i.externalAttemptRef, i.acknowledgedAt])),
+    recordTerminalOutcome: async i => codec.readback(await call("commerce_record_subscription_renewal_outcome", [i.operationId, i.eventKey, i.operationFingerprint, i.outcome, i.externalRef ?? null, i.reason ?? null, i.occurredAt])),
+  };
+  const due = (await store.listDue(100, renewalDue)).find(row => row.subscriptionId === retainedRenewal.subscriptionId)!;
+  const snapshot = await store.buildCycleSnapshots(due);
+  expect(snapshot.cycle.status).toBe("correlated");
+  expect(snapshot.payerAccountRef).toBe(renewalFacts.payerAccountRef);
+  expect(await call("subscription_delivery_alignment_admit_renewal", [due.subscriptionId, due.scheduledAt, renewalDue]))
+    .toMatchObject({ allowed: true, reason: "predecessor_delivered" });
+  const rail = renewal.createPostgresSandboxRenewalRail(target.runtime, { scenario: "succeeded", now: () => renewalDue });
+  const lifecycle = renewal.createPostgresRetryLifecycleBinding({ executor: target.runtime, async withTransaction(work) {
+    const client = await target.runtime.connect();
+    try { await client.query("BEGIN"); const value = await work(client); await client.query("COMMIT"); return value; }
+    catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }, settlement: () => settlement, correlate: wire => codec.decode(wire).cycle, failureTemplate: "failed", recoveryPath: "/recover" });
+  const result = await renewal.runOneAutomaticSubscriptionRenewal({ store, settlement: lifecycle.settlement, failureHandoff: lifecycle.failureHandoff,
+    inventory: { expireReservations: async () => 0, reserve: i => call<RenewalReservationResult>("fulfillment_reserve_subscription_renewal", [i.operationId, i.claimToken, 900, i.now]) },
+    paymentRails: { resolve: channel => channel === "sandbox" ? rail : null }, workerId: "transfer-renewal", policy: renewal.createSandboxRenewalPolicy(renewalFacts.methodRef),
+  }, due, renewalDue);
+  expect(result.status).toBe("succeeded");
+  expect((await target.runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [retainedRenewal.subscriptionId])).rows[0].status).toBe("active");
+}, 30_000);
 
 // Three real restore outcomes, full graph censuses and post-replay runtime
 // checks share one bounded hosted integration deadline; retry remains zero.

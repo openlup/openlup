@@ -1202,6 +1202,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1571,6 +1575,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m18-s1-0-36-0.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g2.md",
       "class": "public-output"
     },
     {
@@ -6742,6 +6750,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativePurchaseRenewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeRenewalCodec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
       "class": "public-output"
     },
@@ -6775,6 +6791,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sandboxRenewalRail.ts",
       "class": "public-output"
     },
     {
@@ -27119,6 +27139,10 @@
     },
     {
       "path": "tests/postgres/subscriptionNativeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPurchaseRenewal.test.ts",
       "class": "public-output"
     },
     {

@@ -1292,6 +1292,20 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+The native purchase-renewal forward adds bounded attachment and method-state
+writers through `createPostgresPurchaseRenewalWriter`, plus the independently
+committed `activateNativePurchaseWithRenewal` convenience call. A completion
+failure leaves an enumerable durable duty while paid service remains active.
+`createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
+`createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
+renewal success, decline and ambiguity using the existing native operation fence.
+Hosts supply trusted purchase facts and current method identity and retry pending
+attachment duties. These source-preview exports require the selected database
+forward; they claim no real PSP, mandate, automatic repair, default runner or
+published complete migration chain. See the
+[subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+for the fingerprint dialect, transaction boundaries and recovery limits.
+
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor; `./subscriptions/contracts` is
 browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)

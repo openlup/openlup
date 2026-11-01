@@ -147,6 +147,27 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+The native profile also carries purchase-renewal attachments, method-state
+history, current method state and their activation lineage. Attachments preserve pending duties and the
+exact purchase facts used for renewal snapshots: authorization and nullable payer
+account references, method/evidence references, acquisition reference, catalog
+lines/prices, template, cadence and stock source. Current method state carries
+health, activation-gap status and nullable method/evidence references. Event
+input carries the expected/new health and method/evidence references; the event
+key may also be supplied by the host. Activation lineage keeps order/customer/
+subscription IDs, cadence, activation state/times, replay keys and the payment
+fingerprint needed to correlate a future renewal or complete a pending duty.
+These are customer-linked payment metadata.
+Hosts should use opaque references because these fields can hold identifying
+strings. These tables have no privacy-lifecycle erasure path yet.
+The writer restricts the settlement channel to sandbox and bounds the fields;
+it does not enforce synthetic or nonpersonal reference contents. Transfer keeps
+those values unredacted for durable replay, inside the existing host-controlled
+snapshot and retention/erasure boundary. The same aggregate row and byte limits
+include these rows, and restore retains its 10,000-row/64-MiB cap. No credential
+or personal-data exclusion is inferred from the sandbox label. This native
+profile addition does not qualify managed-subscription lifecycle carry.
+
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
 writer. The connected observation uses ordinary-session database incarnation
