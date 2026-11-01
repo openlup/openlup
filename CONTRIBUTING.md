@@ -2957,9 +2957,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
-- 2026-11-01, partner acquisition: an exclusive adapter count and a short export
-  table drifted from their inventory → check secondary guidance before claiming
-  no documentation impact, and link the authoritative inventory.
+- 2026-11-01, partner contribution: vertical proofs missed secondary guidance
+  and synthetic compiler fixtures → follow [test scope](#test-scope-and-diagnostics)
+  through changed helpers' callers and fixtures, and check related guidance under
+  [documentation impact](docs/platform/DOCUMENTATION.md#impact).
 
 - 2026-11-01, M17 port parity: neutral import rewrite can drop a wrapper’s module-level initialization → keep the owning seam and prove a cold public import.
 
