@@ -32,6 +32,7 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 
 - [Partner acquisition R1](plans/oss-m18-r1-partner-acquisition.md) — unchanged contribution, frozen witnesses, explicit privacy and later-phase limits.
 - [Partner reference delegation R2](plans/oss-m18-r2-reference-delegation.md) — thin source bindings, installed-artifact proof and preserved host behavior.
+- [Partner package set S1](plans/oss-m18-s1-0-36-0.md) — coherent 0.36.0 source preparation and publication boundary.
 
 - [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
 

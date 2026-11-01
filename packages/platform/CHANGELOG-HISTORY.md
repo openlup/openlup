@@ -2,6 +2,46 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.33.0]
+
+- Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
+  `openlup-platform-v0.33.0`.
+
+### Runtime and portability
+
+- Fix Node scheduler shutdown so each timer's stop method retains its original
+  receiver. Existing stop/drain behavior and public signatures are preserved.
+- In the reference source, add typed connected-transfer projections and bounded
+  object/access reconciliation with restricted connected restore. Local catch-up
+  and older-snapshot recovery witnesses retain database rows, private objects,
+  privacy obligations and effect reconciliation before target activation.
+- Add a local self-host recipe receipt covering the declared PostgreSQL,
+  identity, object-storage and Node/OCI fixtures, including owned cleanup.
+  Snapshot age and recovery timings are finite fixture measurements, not SLOs.
+  Hosted recipe receipts remain pending.
+- Migration: Upgrade the complete package set together. Reference-source
+  installation and transfer bindings remain separate from the sparse npm SQL
+  projections; those projections are not a complete installation or transfer
+  catalogue. No new SQL migration is introduced by this set. The local witnesses
+  establish only their declared profiles, with unresolved effects visibly fenced;
+  they do not qualify hosted providers or a general adopter recovery service.
+
+### Company identity and market packs
+
+- Add experimental `company-identity`, `company-identity/contracts`,
+  `company-identity/server` and `market-packs` subpaths. Company lookup preserves
+  provider order, registry extensions and shared cache; handlers accept the
+  host's existing BFF responder and optional identity rules.
+- Expose pure settlement, fiscal and formatting helpers and a market descriptor.
+  Reference facades delegate through the platform seams with application-owned
+  currency/browser policy and explicit host composition. Core contracts retain
+  their existing owners.
+- Migration: Existing callers retain their signatures and defaults. The market
+  descriptor requires explicit language and settlement facts. Country, currency,
+  pricing region, fiscal jurisdiction and display facts remain independent caller
+  inputs; importing a package installs no market defaults, routes or ambient
+  initialization. No environment key, persisted key or SQL change is required.
+  These experimental entries make no all-market qualification claim.
 ## [0.32.0]
 
 - Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
