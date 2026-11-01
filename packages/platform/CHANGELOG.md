@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+- Add `commerce/server/native-checkout` for restricted-runtime native draft
+  persistence. It preserves quote and draft money snapshots, replays one durable
+  receipt and refuses changed input without superseding or paying the order.
+  Existing native money-shape limits remain; no SQL or managed behavior changes.
+
 ## [0.36.0]
 
 - Publishable on the npm `latest` dist-tag as `0.36.0`, from tag

@@ -122,6 +122,11 @@
       "import": "./dist/commerce/server/index.js",
       "default": "./dist/commerce/server/index.js"
     },
+    "./commerce/server/native-checkout": {
+      "types": "./dist/commerce/server/nativeCheckoutPersistence.d.ts",
+      "import": "./dist/commerce/server/nativeCheckoutPersistence.js",
+      "default": "./dist/commerce/server/nativeCheckoutPersistence.js"
+    },
     "./communications": {
       "types": "./dist/communications/index.d.ts",
       "import": "./dist/communications/index.js",
