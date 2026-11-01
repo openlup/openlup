@@ -71,6 +71,7 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "fulfillment/native",
   "operations/server",
   "risk/server",
   "marketing/server/postgres",
@@ -2215,6 +2216,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveSelfServiceConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
+    proveG10FulfillmentConsumer(consumer);
     installPartnerAcquisitionHostBinding(consumer, checkout);
     provePartnerAcquisitionBindingConsumer(consumer);
     installA1HostBinding(consumer, checkout);
@@ -2416,4 +2418,47 @@ void [handled, slot, trusted, untrusted, missingActor, contribution];
     strict: true, skipLibCheck: true, noEmit: true, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")],
   }, files: [file] }));
   process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+}
+
+/** G10: offline captured dispatch and explicit native preparation from installed bytes. */
+export function proveG10FulfillmentConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createCapturedFulfillmentAdapter, runFulfillmentAdapterConformance, createNativeUnsupportedFulfillmentPorts, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
+import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
+assert(import.meta.resolve("@openlup/platform/fulfillment/native").startsWith(new URL("./node_modules/",import.meta.url).href));
+const request = { requestKey:"legacy-request-a",fulfillmentRef:"fulfillment-a",orderRef:"order-a",orderNumber:null,parcelRef:null,
+  contactRevision:{schemaVersion:1,source:"contact",revision:1},
+  recipient:{name:null,email:null,phone:null,line1:"Synthetic 1",line2:null,city:"Example",postalCode:"00000",country:"XX",deliveryInstructions:null,courierInstructions:null},
+  lines:[{skuRef:"sku-a",title:null,quantity:1,productRef:null,packRef:null}],
+  selection:{providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null}};
+const captures=[{request,outcome:{kind:"accepted",externalRef:"captured-external"}}];
+const off=createCapturedFulfillmentAdapter({providerRef:"warehouse-a",captures});
+assert.equal((await off.dispatch.prepare(request)).refusal.reason,"disabled");
+const adapter=createCapturedFulfillmentAdapter({providerRef:"warehouse-a",selected:true,captures});
+const fingerprint="16d2b4609da4b2dc83f3bd7668aecad400a7dd0436ac3bf7099f81ba804e3bad";
+const evidence={commandFingerprint:fingerprint,contactRevision:request.contactRevision,providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a"};
+const acceptance={kind:"accepted",externalRef:"captured-external",evidence,providerAttemptKey:"captured-attempt:"+fingerprint,labelKey:"captured-receipt:"+fingerprint};
+const proof=await runFulfillmentAdapterConformance([{subjectId:"captured-installed",adapter,readIoCount:adapter.readSubmissionCount,sensitiveValues:["Synthetic 1"],fixtures:{dispatch:[
+  {input:request,expectedPrepare:{kind:"prepared",evidence},expectedDispatch:acceptance,replay:true},
+  {input:{...request,lines:[]},expectedPrepare:{kind:"refused",refusal:{reason:"not_dispatchable",phase:"prepare",retryable:false}}}
+]}}]);
+assert.equal(proof.subjects.length,1);assert.equal(adapter.readSubmissionCount(),1);
+const calls=[];
+const db={query:async(sql,values)=>{calls.push([sql,values]);return {rows:sql.includes("SELECT id, order_id")?[{id:request.fulfillmentRef,order_id:request.orderRef}]:[]};}};
+const options={transactions:{run:async work=>work(db),close:async()=>{}},preparation:{readAuthoritative:async()=>({candidate:request,withheld:false})},
+  services:{selection:request.selection,capability:adapter.capabilities,provider:adapter.dispatch,readiness:async()=>({ready:true}),listCandidates:async()=>[],
+    keys:{request:value=>value.requestKey,mappedAttempt:key=>key,acceptance:ref=>({providerAttemptKey:"attempt:"+ref,labelKey:"receipt:"+ref})},config:{mode:"stage",batchLimit:1}},
+  version:"fixture",requiredSchema:{version:"fixture",migration:"fixture",objects:[]}};
+const disabled=createNativeFulfillmentBinding(options);
+assert.equal((await disabled.prepare(request.fulfillmentRef)).refusal.reason,"disabled");assert.equal(calls.length,0);
+const binding=createNativeFulfillmentBinding({...options,enabled:true});
+assert.deepEqual(await binding.prepare(request.fulfillmentRef),{disposition:"ready",contactRevision:1});
+assert(calls[0][0].includes("pg_advisory_xact_lock"));assert(calls[1][0].includes("FOR UPDATE"));assert(calls[2][0].includes("INSERT INTO public.fulfillment_dispatch_contexts"));
+assert.deepEqual(JSON.parse(calls[2][1][1]),request.contactRevision);
+assert.deepEqual(binding.contributions[0].schedules,[]);
+const unsupported=createNativeUnsupportedFulfillmentPorts();
+assert.equal(await unsupported.listCommerceFulfillmentOrders({page:1,pageSize:25}),FULFILLMENT_NATIVE_UNSUPPORTED);
+assert.equal(await unsupported.getCommerceFulfillmentOrderDetail({orderId:"order-a"}),FULFILLMENT_NATIVE_UNSUPPORTED);
+`);
 }

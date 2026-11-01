@@ -164,6 +164,7 @@ export const PLATFORM_MODULE_GRAPH = {
   "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] },
   invoicing: { contracts: true, values: [], types: [] },
   fulfillment: { contracts: true, values: [], types: [] },
+  "fulfillment/native": { values: ["fulfillment", "composition"], types: ["data", "fulfillment/contracts"] },
   subscriptions: { contracts: true, values: [], types: [] },
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
