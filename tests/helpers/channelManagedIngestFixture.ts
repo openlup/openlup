@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { PgGatewayClient } from "@openlup/platform/data";
-import { createManagedChannelPurchasedContextRead, type PurchasedReadClient, createManagedChannelIngestStore, createManagedChannelIngestPayments, createChannelExposureReservationRail, runChannelOrderIngest, type ChannelIngestPortOptions } from "@openlup/platform/channels/server";
+import { createManagedChannelPurchasedContextRead, type PurchasedReadClient, createManagedChannelIngestStore, createManagedChannelIngestPayments, createChannelExposureReservationRail, ingestRetainedChannelPurchase, type ChannelIngestPortOptions } from "@openlup/platform/channels/server";
 import { createManagedPaymentControlRuntimePort } from "../../server/adapters/managed/commerce/paymentControlRuntimePort.js";
 import type { channelPurchaseFixture } from "./channelPurchaseFixture.js";
 
@@ -45,8 +45,7 @@ export async function channelManagedIngestFixture(db: PoolClient, f: Awaited<Ret
       payments:createManagedChannelIngestPayments({rpc:f.rpc},createManagedPaymentControlRuntimePort({rpc:f.rpc})) } };
   async function run(ledgerId:string) {
     const reservations=createChannelExposureReservationRail({jobRunId:f.job,ledgerId,capture:f.capture,source:f.source,read,newId:randomUUID});
-    return runChannelOrderIngest({ ...options.rails!,store,channels,reservations,purchasedRows:f.capture.retainedRows,
-      acceptedCurrencies:["EUR"],noopSettlementForbidden:true },f.capture.normalized).catch(error=>{throw new Error(JSON.stringify(f.failures),{cause:error});});
+    return ingestRetainedChannelPurchase({capture:f.capture,options,reservations}).catch(error=>{throw new Error(JSON.stringify(f.failures),{cause:error});});
   }
   return { stock,store,options,read,run };
 }
