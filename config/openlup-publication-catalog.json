@@ -1558,6 +1558,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m17-s1-release-preparation.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },

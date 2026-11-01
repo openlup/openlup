@@ -2,6 +2,19 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.32.0]
+
+- Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
+  `openlup-core-v0.32.0`.
+
+- Clarify that the payment retry-count helper enforces only its local numeric
+  bound and does not establish retry permission or compliance; runtime behavior
+  is unchanged.
+- Add the Node-only `openlup-context` bin for offline lookup across installed
+  package documentation. It returns source citations, supports JSON results and
+  an optional bounded local code scan, and adds no runtime dependency. A root
+  `AGENT_CONTEXT.md` packages excerpts of canonical guidance with source paths,
+  line ranges and excerpt digests; check cited source before relying on them.
 ## [0.31.0]
 
 - Publishable on the npm `latest` dist-tag as `0.31.0`, from tag

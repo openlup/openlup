@@ -17,8 +17,8 @@ start with the installed package's README, CHANGELOG and declarations, and consu
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
 
-For the prepared `0.34.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0340) before selecting optional services. Experimental
+For the prepared `0.35.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0350) before selecting optional services. Experimental
 M13 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -31,13 +31,13 @@ migration notes before replacing retired callers. Experimental
 commerce schemas and ports use `./commerce` and `./commerce/contracts`;
 handlers, adapters and checkout engines use the Node-only `./commerce/server`.
 The commerce contribution and reference binding remain inert and default-off.
-Install the complete native chain through the M12 support-authority forward
-(`20261026120000_account_support_operator_authority.sql`). Sparse SQL projections
+Install the complete native chain through the M17 purchased-source forward
+(`20261030122000_channel_purchased_source.sql`). Sparse SQL projections
 are not an install chain. Native runtime
 roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
 the release notes.
-Managed hosts apply the complete prefix through `20261026120100`, including
-the current support-authority forward and M11's nine forwards for preference/return ownership, operator receipts,
+Managed hosts apply the complete prefix through `20261030122000`, including
+the two channel forwards, the support-authority forward and M11's nine forwards for preference/return ownership, operator receipts,
 acquisition/finalize admission, ATP preview and starter graduation. Legacy
 omitted-country input uses the configured settlement region; neutral commands
 require explicit country. Starter graduation admits 14, 21 or 28 days; rollback
@@ -61,7 +61,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.32.0` tarball. Preparation and offline
+Size comparison uses the published `0.34.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
