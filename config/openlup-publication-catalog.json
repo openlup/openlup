@@ -1574,6 +1574,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g9.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2719,6 +2723,10 @@
     },
     {
       "path": "packages/platform/api/invoicing-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/invoicing-postgres.api.md",
       "class": "public-output"
     },
     {
@@ -5546,6 +5554,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/postgres/accountHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/captured.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/postgresInvoiceStore.ts",
       "class": "public-output"
     },
@@ -8047,6 +8067,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/issue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/nativePostgres.test.ts",
       "class": "public-output"
     },
     {
@@ -26827,6 +26851,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingCaptured.test.ts",
       "class": "public-output"
     },
     {
