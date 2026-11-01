@@ -113,7 +113,7 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts"
       ],
-      "entrypoint": "dist/commerce/server/nativeCheckoutPersistence.d.ts",
+      "entrypoint": "dist/commerce/server/native-checkout/index.d.ts",
       "snapshot": "api/commerce-native-checkout.api.md"
     },
     "./communications": {

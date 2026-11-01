@@ -4086,7 +4086,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/commerce/server/nativeCheckoutPersistence.ts",
+      "path": "packages/platform/src/commerce/server/native-checkout/index.ts",
       "class": "public-output"
     },
     {

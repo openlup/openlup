@@ -1,7 +1,7 @@
 # M19 G5: native checkout persistence
 
-Status: implemented locally; required public API read pending, development
-preview (2026-11-01). No commit or PR yet.
+Status: initial candidate signed and reviewed; package-entry repair requires
+a renewed API read, development preview (2026-11-01). No PR yet.
 Audience: the money-stream supervisor, implementer and independent reviewers.
 
 ## Outcome and boundary
@@ -125,8 +125,8 @@ not `packages:check --pack`. A subsequent real
 `npm run packages:check -- --pack` now passes for all three packages with no
 findings. It ran on an exact staged-tree export in this worktree's ignored
 scratch, using an unsigned measurement-only Git snapshot to satisfy the
-checker's clean-source requirement. The task branch remains uncommitted and
-unsigned; this is not its final post-review verification.
+checker's clean-source requirement. At that measurement the task branch was uncommitted and
+unsigned; it was not final post-review verification.
 
 The full check reproduces the identical platform tarball: 2,106,268 packed
 bytes, 9,822,946 unpacked bytes and 2,843 files. Against the probe's reported
@@ -163,23 +163,24 @@ Executed working-tree evidence on Node 24.21.0 / npm 11.19.0:
   Code class: 1,812,124 bytes / 2,784 files; documentation class: 58,586 bytes /
   6 files. Signed-candidate package proof and canonical verification remain unrun.
 - Policy/navigation check ran on the would-be committed set. Two no-impact
-  trailers for the unchanged contributor tests/tooling guidance remain to be
-  recorded with the signed commit after the required read; their exact source
-  fingerprints and substantive reasons accompany the read packet. Other
-  documentation obligations are answered. No contributor-control file changes.
+  trailers for the unchanged contributor tests/tooling guidance were subsequently
+  recorded with the initial signed commit after the accepted read. Their exact
+  source fingerprints and substantive reasons accompany the read packet, and
+  the committed policy check passes. Other documentation obligations are
+  answered. No contributor-control file changes.
 
 An initial PostgreSQL run failed subscription checkout because the synthetic
 SKU fixture omitted the existing opt-in sellability flag. The fixture now
 sets it explicitly. Initial lint also caught deep imports across the pricing
 module boundary; the implementation now uses that module's public entry.
-Both repairs passed the subsequent applicable checks. No native review
-session, repair cycle or queue retry has been consumed.
+Both repairs passed the subsequent applicable checks. At that evidence freeze,
+no native review session, repair cycle or queue retry had been consumed; the
+initial review outcome and pending repair are recorded below.
 
-Remaining: required public API/npm-export read before DCO, signed candidate
-with the documentation trailers, two independent fresh-context reviews,
-lead-named final verification and authorized delivery. No canonical verify,
-push, PR, receipt or merge has been attempted. Preserve evidence and budgets
-on resume. G5 writes neither `supersededByStableJourneyKey` nor
+Remaining: renewed read and DCO for the package-entry repair, two fresh
+independent reviews closing the initial findings, lead-named final verification
+and authorized delivery. No canonical verify, push, PR, receipt or merge has
+been attempted. Preserve evidence and budgets on resume. G5 writes neither `supersededByStableJourneyKey` nor
 `checkoutAbandoned`, and adds no dispatched-attempt field or store.
 
 Self-retro: the probe reduced G5 to a binding and proof task, avoiding a forward.
@@ -190,3 +191,57 @@ control change is proposed. The compensation trace distinguishes the managed
 RPC from the native routine and exposes the missing automatic binding without
 changing either. The full package checker reproduced the earlier preview's
 bytes and hash without signing the task candidate.
+
+
+## Package-entry review repair
+
+The initial API read was accepted for the frozen candidate, which was then
+DCO-signed and prepared for two independent fresh-context native reviews. Both
+reviews found the same material package-boundary mismatch: the new subpath
+was absent from the test's closed nested-entry inventory and targeted a direct
+file instead of the required entry directory. The focused package-boundary
+run reproduced it: 2,818 passed, one failed. The committed documentation-impact
+trailers passed the policy check with zero unanswered obligations.
+
+The repair keeps the existing boundary helper and all its checks. The native
+implementation moves to `commerce/server/native-checkout/index.ts`, with only
+relative import paths adjusted; its export and declaration targets follow that
+layout. The test's exact inventory gains this one entry. No helper, assertion,
+refusal, privilege, numeric budget, behavior or API signature is relaxed. The
+API snapshot and catalogue follow the new source location. A renewed maintainer
+read covers these package-source and target changes before repair sign-off;
+the initial FAIL reports remain open until fresh reviewers close them.
+
+Native abandoned-order compensation is not bound or qualified by G5. The
+unchanged generic adapter fails closed with `42883`; a follow-on must bind and
+prove compensation before overall money-path acceptance counts it. G5 writes
+neither withdrawn marker and adds no location for a dispatched attempt.
+
+Self-retro: pack and installed PostgreSQL proof did not cover the package's
+closed export inventory. Check that inventory with the new entry before counted
+review; preserve its existing standard layout rather than adding an exception.
+
+
+The repaired entry passes all 2,819 package-boundary cases and all five installed
+real-PostgreSQL cases (13.08 seconds including setup). The fresh full
+`packages:check --pack` passes all three packages on an exact staged-source
+fixture in this worktree's ignored scratch. This is the same unsigned
+measurement-only method as before; it does not sign the repair or substitute
+for final verification. The repaired platform tarball is 2,106,571 packed bytes,
+9,822,963 unpacked bytes and 2,843 files, SHA-256
+`a9f07ce7b1e119496a98cc5fa11fb904651c3a3ec70fbd3c8df927035a246a37`.
+Against the probe's reported same-base pack (not independently rebuilt), this
+is +3,800 packed bytes, +13,461 unpacked bytes and +3 files, superseding the
+earlier +3,497-byte measurement. No SQL bytes or numeric cap change.
+The estimate remains 1–2 working days. The extra changed test path is
+`packages/platform/test/packageBoundary.test.ts`; it changes only the exact
+entry list and is explicitly included in the renewed read.
+
+Repair checks also pass: API declaration check, ast-grep and strict root
+typecheck (zero unresolved edges and zero consumer-side errors). Full lint
+passes with zero errors and 99 warnings in unchanged files. The focused gate
+for that lint run waited 520 seconds; there is no rule or suppression change.
+Native review is still at cycle zero on the initial committed candidate, with
+two FAIL reports and no counted PASS. The first repair is staged but remains
+unsigned and unprepared pending the renewed read. Canonical verification has
+not run.

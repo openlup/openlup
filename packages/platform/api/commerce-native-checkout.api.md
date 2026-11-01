@@ -233,11 +233,11 @@ export interface CommerceFulfillmentEligibilityInput<PaymentState extends string
 }
 export type OmsPaymentStatus<PaymentState extends string> = "not_started" | PaymentState;
 ```
-## dist/commerce/server/nativeCheckoutPersistence.d.ts
+## dist/commerce/server/native-checkout/index.d.ts
 
 ```ts
-import { COMMERCE_CONTRACT_VERSION, type CreateQuoteResponse } from "../../pricing/index.js";
-import type { OrderDraftSummary } from "../contracts/order.js";
+import { COMMERCE_CONTRACT_VERSION, type CreateQuoteResponse } from "../../../pricing/index.js";
+import type { OrderDraftSummary } from "../../contracts/order.js";
 export interface NativeCheckoutQuery {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];

@@ -123,9 +123,9 @@
       "default": "./dist/commerce/server/index.js"
     },
     "./commerce/server/native-checkout": {
-      "types": "./dist/commerce/server/nativeCheckoutPersistence.d.ts",
-      "import": "./dist/commerce/server/nativeCheckoutPersistence.js",
-      "default": "./dist/commerce/server/nativeCheckoutPersistence.js"
+      "types": "./dist/commerce/server/native-checkout/index.d.ts",
+      "import": "./dist/commerce/server/native-checkout/index.js",
+      "default": "./dist/commerce/server/native-checkout/index.js"
     },
     "./communications": {
       "types": "./dist/communications/index.d.ts",
