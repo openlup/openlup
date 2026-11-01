@@ -4,11 +4,11 @@ Development preview, kind `rail`. One at-least-once dispatch engine, lease-bound
 
 The publication catalogue admits this complete rail to the release set. Catalogue admission does not publish it: direct directory publishing still refuses, and the reviewed release workflow owns provenance-backed publication. New API and shipped SQL require the next minor set.
 
-The prepared `0.35.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.35.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.35.0 notes](CHANGELOG.md#0350);
-releases before `0.33.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.34.0` tarball; preparation grants no
+The prepared `0.36.0` set republishes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.36.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.36.0 notes](CHANGELOG.md#0360);
+releases before `0.34.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.35.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Installed agent context

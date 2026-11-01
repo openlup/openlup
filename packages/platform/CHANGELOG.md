@@ -10,6 +10,38 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.36.0]
+
+- Publishable on the npm `latest` dist-tag as `0.36.0`, from tag
+  `openlup-platform-v0.36.0`.
+
+Add the existing neutral partner-acquisition schemas, type-only port and unchanged
+three-operation PostgreSQL factory through the existing marketing entries.
+Partners retains domain/data ownership; host routing, authorization and runtime
+selection stay separate. Pipeline `closed_won` does not create a customer or
+marketing consent. Partner privacy export/erasure remains unavailable.
+
+Migration: before, partner submit/list/transition required reference-source
+contracts and store imports; after, consumers can use the existing marketing,
+marketing/contracts and marketing/server/postgres exports against a complete
+compatible source catalogue. No SQL, grants, npm export subpaths or automatic
+route activation change. Sparse npm SQL assets alone are not a complete install.
+
+- The public reference partner schemas, neutral ports and PostgreSQL factory
+  delegate to the existing marketing package exports. Rich managed contracts and
+  host authorization, drain, environment selection and connection ownership are
+  unchanged. Frozen R1 expectations remain unchanged.
+- The shared isolated consumer adds the actual public default-binding journey
+  against its existing native catalogue fixture, covering original persisted
+  replay and cache/close/reopen without an injected factory.
+
+Migration: before, reference neutral schemas, ports and the PostgreSQL store had
+local copies; after, the same reference import paths delegate to the existing
+`@openlup/platform/marketing` schemas, `marketing/contracts` types and
+`marketing/server/postgres` factory with unchanged observable contracts. Install
+no new SQL or grants for this delegation. Existing compatible adopter SQL remains
+owned by that adopter; this source refactor grants no publication or activation.
+
 ## [0.35.0]
 
 - Publishable on the npm `latest` dist-tag as `0.35.0`, from tag
@@ -66,44 +98,3 @@ With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, s
   authorize every admitted event and its data. Queue admission does not grant
   storage consent or establish delivery or attribution. No SQL migration is
   introduced by this set.
-
-## [0.33.0]
-
-- Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
-  `openlup-platform-v0.33.0`.
-
-### Runtime and portability
-
-- Fix Node scheduler shutdown so each timer's stop method retains its original
-  receiver. Existing stop/drain behavior and public signatures are preserved.
-- In the reference source, add typed connected-transfer projections and bounded
-  object/access reconciliation with restricted connected restore. Local catch-up
-  and older-snapshot recovery witnesses retain database rows, private objects,
-  privacy obligations and effect reconciliation before target activation.
-- Add a local self-host recipe receipt covering the declared PostgreSQL,
-  identity, object-storage and Node/OCI fixtures, including owned cleanup.
-  Snapshot age and recovery timings are finite fixture measurements, not SLOs.
-  Hosted recipe receipts remain pending.
-- Migration: Upgrade the complete package set together. Reference-source
-  installation and transfer bindings remain separate from the sparse npm SQL
-  projections; those projections are not a complete installation or transfer
-  catalogue. No new SQL migration is introduced by this set. The local witnesses
-  establish only their declared profiles, with unresolved effects visibly fenced;
-  they do not qualify hosted providers or a general adopter recovery service.
-
-### Company identity and market packs
-
-- Add experimental `company-identity`, `company-identity/contracts`,
-  `company-identity/server` and `market-packs` subpaths. Company lookup preserves
-  provider order, registry extensions and shared cache; handlers accept the
-  host's existing BFF responder and optional identity rules.
-- Expose pure settlement, fiscal and formatting helpers and a market descriptor.
-  Reference facades delegate through the platform seams with application-owned
-  currency/browser policy and explicit host composition. Core contracts retain
-  their existing owners.
-- Migration: Existing callers retain their signatures and defaults. The market
-  descriptor requires explicit language and settlement facts. Country, currency,
-  pricing region, fiscal jurisdiction and display facts remain independent caller
-  inputs; importing a package installs no market defaults, routes or ambient
-  initialization. No environment key, persisted key or SQL change is required.
-  These experimental entries make no all-market qualification claim.
