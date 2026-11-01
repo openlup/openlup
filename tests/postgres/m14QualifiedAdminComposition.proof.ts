@@ -60,6 +60,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const issuedExpected = [issued.baseline, ...issued.forward];
   assert.equal(issuedExpected.length, 91);
   const expected = [manifest.baseline, ...manifest.forward];
+  assert.equal(expected.length, 94);
   assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(hash(readFileSync(entry.file, "utf8")), entry.sha256);
   const migrationUrl = new URL(loginUrl(m));

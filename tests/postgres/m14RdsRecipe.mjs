@@ -53,6 +53,7 @@ export async function runRdsRecipe({ config, receipt, databases, identity, asser
   const cleanup = [];
   const actions = { databaseCreates: 0, databaseDrops: 0, roleDrops: 0, phaseLaunches: 0, freshnessReads: 0 };
   receipt.effortCleanup = { status: "RUNNING", actions, phases: cleanup };
+  // Frozen issued-prefix input; the shared proof then installs and checks the current suffix.
   const inventory = mode => mode === "operator-provisioned"
     ? "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d"
     : "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7";

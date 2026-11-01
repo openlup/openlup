@@ -662,6 +662,7 @@ async function prove() {
   const issuedExpected = [issued.baseline, ...issued.forward];
   assert.equal(issuedExpected.length, 92);
   const expected = [manifest.baseline, ...manifest.forward];
+  assert.equal(expected.length, 95);
   assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;

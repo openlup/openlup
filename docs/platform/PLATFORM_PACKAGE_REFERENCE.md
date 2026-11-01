@@ -478,9 +478,9 @@ not select a deployment, mount a route or schedule another executor.
 inventory; supplied handlers, schedules, routes and ports describe only that
 host's selection.
 
-`COMMUNICATIONS_MIGRATIONS` projects three existing canonical units byte for byte:
+`COMMUNICATIONS_MIGRATIONS` projects the canonical units byte for byte:
 comms outbox (position 2), transactional receipts (9) and communications control
-plane (20). This sparse list is not a standalone migration chain. Apply the full
+plane (20), native operations (70) and account newsletter withdrawal (88). This sparse list is not a standalone migration chain. Apply the full
 selected canonical prefix through its existing runner; importing the module does
 not apply SQL or advertise missing managed/direct capabilities.
 
@@ -664,7 +664,10 @@ The server entry `@openlup/platform/communications` additionally exports
 `createPostgresNotificationRecipientsPort` and `createPostgresConsentEvaluator`.
 Install the complete canonical manifest through position 70 before selecting
 these factories. `COMMUNICATIONS_MIGRATIONS` now projects positions 2, 9, 20 and
-70; it remains a sparse inventory, not an installer. Missing schema/configuration
+70 plus account newsletter withdrawal at 88; it remains a sparse inventory, not an installer.
+The latter changes future newsletter opt-outs only; see the
+[operator upgrade statement](DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade)
+for earlier opt-outs and provider/email-change limits. Missing schema/configuration
 is an error, never an empty queue or an allow decision.
 
 Each factory owns a capability-local, role-free transaction lane and lazy `pg`

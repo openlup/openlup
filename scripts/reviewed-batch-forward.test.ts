@@ -15,6 +15,67 @@ import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "
 
 const registryBytes = readFileSync("config/reviewed-platform-forwards.json");
 const registry = readReviewedForwardRegistry(registryBytes);
+
+// Synthetic bodies exercise admission independently of the later behavior forward.
+describe("account withdrawal fixed replacement slot", () => {
+  const path = "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql";
+  const signature = "public.customer_communication_preferences_set_as_actor(boolean,timestamptz)";
+  const before = "CREATE FUNCTION public.customer_communication_preferences_set_as_actor(p_marketing_newsletter_consent boolean, p_now timestamptz DEFAULT now()) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth, pg_catalog AS $$ BEGIN RETURN '{}'::jsonb; END; $$;";
+  const after = before.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'{}'::jsonb", "'{\"changed\":true}'::jsonb");
+  const pin = (sql = after) => ({ path, sha256: sqlSha256(sql), functions: [{ signature,
+    beforeSha256: reviewedFunctionDefinitions(Buffer.from(before)).get(signature)!,
+    afterSha256: reviewedFunctionDefinitions(Buffer.from(sql)).get(signature)! }] });
+  const candidate = () => { const value = structuredClone(registry); value.portableReplacementForwards = value.portableReplacementForwards!.slice(0, 3); value.portableReplacementForwards.push(pin()); return value; };
+
+  it("accepts only slot four and preserves historical registry lengths and raw definition hashes", () => {
+    for (const length of [1, 2, 3]) {
+      const historical = structuredClone(registry); historical.portableReplacementForwards = historical.portableReplacementForwards!.slice(0, length);
+      expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(historical)))).not.toThrow();
+    }
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(candidate())))).not.toThrow();
+    expect(reviewedFunctionDefinitions(Buffer.from(after)).get(signature)).toBe(sqlSha256(after));
+    expect(reviewedFunctionDefinitions(Buffer.from(after.replace("DEFAULT now()", "DEFAULT NULL"))).get(signature)).not.toBe(sqlSha256(after));
+  });
+  it.each(["wrong path", "wrong signature", "slot zero", "slot one", "slot two", "fifth slot"])("refuses registry %s", attack => {
+    const value = candidate(), list = value.portableReplacementForwards!;
+    if (attack === "wrong path") list[3]!.path = path.replace("110000", "110001");
+    if (attack === "wrong signature") list[3]!.functions[0]!.signature = "public.another(boolean,timestamptz)";
+    if (attack.startsWith("slot ")) { const index = ["slot zero", "slot one", "slot two"].indexOf(attack); list[index] = list.pop()!; }
+    if (attack === "fifth slot") list.push({ ...pin(), path: path.replace("110000", "110001") });
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(value)))).toThrow(/reviewed portable replacement/u);
+  });
+  it.each([
+    "CREATE FUNCTION public.another(p_flag boolean) RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;",
+    "CREATE FUNCTION public.another(p_now timestamptz DEFAULT now()) RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;",
+    "CREATE FUNCTION public.another(p_now timestamptz) RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;",
+  ])("refuses unrelated argument/default identity: %s", sql => {
+    expect(() => reviewedFunctionDefinitions(Buffer.from(sql))).toThrow(/unsupported/u);
+  });
+  it("admits the synthetic body replacement and refuses repinned header, privilege and row-update changes", () => {
+    const folder = mkdtempSync(join(tmpdir(), "openlup-account-withdrawal-"));
+    const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
+    const put = (file: string, value: string) => { mkdirSync(dirname(join(folder, file)), { recursive: true }); writeFileSync(join(folder, file), value); };
+    const commit = () => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "Synthetic admission"); return git("rev-parse", "HEAD"); };
+    try {
+      git("init", "--quiet"); put(PLATFORM_BASELINE_FILE, before); put("config/reviewed-platform-forwards.json", JSON.stringify(registry));
+      const base = commit();
+      for (const [label, sql] of [
+        ["success", after],
+        ["changed header", after.replace("SECURITY DEFINER", "SECURITY INVOKER")],
+        ["privilege", after + "\nGRANT EXECUTE ON FUNCTION public.customer_communication_preferences_set_as_actor(boolean,timestamptz) TO authenticated;"],
+        ["row update", after + "\nUPDATE public.communication_recipient_consents SET state='denied';"],
+      ]) {
+        const value = candidate(); value.portableReplacementForwards![3] = pin(sql);
+        put(path, sql); put("config/reviewed-platform-forwards.json", JSON.stringify(value)); const head = commit();
+        const check = () => assertReviewedPlatformForward(folder, base, head, path, Buffer.from(sql));
+        if (label === "success") expect(check).not.toThrow();
+        else expect(check, label).toThrow(/reviewed portable replacement/u);
+        git("reset", "--hard", base);
+      }
+    } finally { rmSync(folder, { recursive: true, force: true }); }
+  });
+});
+
 const pins = registry.batchedForwards!;
 const bytes = (pin: BatchedForwardBinding) => readFileSync(`scripts/fixtures/reviewed-m10/${pin.path}`);
 const rail = (pin: BatchedForwardBinding) => pin.path.startsWith("db/") ? "db/platform/migrations" : "supabase/migrations";
@@ -1172,7 +1233,9 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
   const twinPath = `packages/platform/sql/${support[0]!.path.split("/").at(-1)}`;
   for (const path of [...support.map(pin => pin.path), twinPath]) rmSync(join(f.root, path), { force: true });
   const baseManifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
-  baseManifest.forward = baseManifest.forward.filter((row: { file: string }) => row.file < support[0]!.path);
+  const supportIndex = baseManifest.forward.findIndex(row => row.file === support[0]!.path);
+  expect(supportIndex).toBeGreaterThanOrEqual(0);
+  baseManifest.forward = baseManifest.forward.slice(0, supportIndex);
   f.put("config/platform-migration-manifest.json", JSON.stringify(baseManifest));
   const without = structuredClone(registry); delete without.supportAuthorityForwards;
   const encode = (value: typeof registry) => Buffer.from(JSON.stringify(value));
