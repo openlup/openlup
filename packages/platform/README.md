@@ -19,7 +19,7 @@ proof of compatibility or support for an installed artifact.
 
 For the prepared `0.35.0` set, read the [adjacent-release migration and known
 limitations](CHANGELOG.md#0350) before selecting optional services. Experimental
-M13 marketing uses browser-safe `./marketing`, type-only browser-safe
+marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
 inert and default-off. Experimental
@@ -160,9 +160,9 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
-| `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
+| `./marketing/server/postgres` | Tester acquisition, partner inquiry and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
-| `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
+| `./marketing`, `./marketing/contracts` | Browser-safe tester history, partner inquiry lifecycle, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and tester/partner/research ports |
 | `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
 | `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
@@ -214,12 +214,13 @@ reference syntax. No entry registers a route automatically.
 
 `./marketing/contracts` exports only types. Explicit acquisition DTO shapes are
 checked against the runtime schema inference by an executed TypeScript equality
-witness. Reachable case ports expose list, get, active count and close; the app
+witness. The tester case port exposes list, get, active count and close; the app
 uses the server-only compatibility port for its retired methods. Evidence ports retain survey submission,
 survey listing and consent application. Port types are also forwarded through
 the runtime entry, following the commerce boundary. Both entries forward research schemas or types from the compatibility
 owner, `@openlup/core/marketing/research`; runtime schemas retain object identity.
-Case locale remains `en|pl`, matching the persisted constraint. Widening it requires
+Tester case locale remains `en|pl`, matching its persisted constraint; partner
+inquiry SQL retains `und`. Widening it requires
 a separate migration. Historical wire values remain unchanged.
 
 The source and built entries have browser graph proofs. The root test runner
