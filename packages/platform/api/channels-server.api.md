@@ -3458,13 +3458,13 @@ export { CHANNEL_INGEST_MIGRATIONS } from "./migrations.js";
 export declare const CHANNEL_INGEST_MIGRATIONS: readonly [{
     readonly id: "20261030121000_channel_retained_basis";
     readonly catalogPath: "db/platform/migrations/20261030121000_channel_retained_basis.sql";
-    readonly position: 88;
+    readonly position: 89;
     readonly sha256: "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf";
     readonly url: URL;
 }, {
     readonly id: "20261030122000_channel_purchased_source";
     readonly catalogPath: "db/platform/migrations/20261030122000_channel_purchased_source.sql";
-    readonly position: 89;
+    readonly position: 90;
     readonly sha256: "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2";
     readonly url: URL;
 }];
