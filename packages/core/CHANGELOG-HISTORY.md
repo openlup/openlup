@@ -2,6 +2,16 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.33.0]
+
+- Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
+  `openlup-core-v0.33.0`.
+
+- Improve installed context results by separating nested Markdown sections,
+  suppressing copied excerpts when their installed owner page is also found,
+  and adding opt-in `--package-code` source search. The small generated context
+  now includes migration, idempotency, provider-adapter and
+  subscription/delivery owner routes.
 ## [0.32.0]
 
 - Publishable on the npm `latest` dist-tag as `0.32.0`, from tag
