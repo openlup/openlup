@@ -108,3 +108,12 @@ invalid-set refusal, draft fulfillment and activation authority; the single
 binding case proves DTO/schema parity and both browser closures. Adapter,
 browser-client and MCP suites remain at their current owners. Native stores,
 SQL and durable parity evidence belong to the next bounded slice.
+
+
+The catalog server entry also owns the unchanged native bundle admin writer and
+shared marshalling. Reference store and error paths re-export its factories and
+constructors; `DomainRpcError` identity and the host response mapper are retained.
+The host still supplies verified human authorization and mutation/activation
+gates. The [package recipe](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-bundle-admin-writes)
+links the installed restricted-runtime and constructor-identity witnesses.
+This relocation adds no SQL, native actor-kind gate or concurrency guarantee.

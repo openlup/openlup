@@ -798,11 +798,14 @@ SKUs across compositions, calls the injected port once when SKUs are present and
 skips it otherwise; the host port owns its query strategy, and missing answers
 remain unknown. Named reference wrappers inject lifecycle and stock
 helpers, existing admin kit/spec/flags, validators, responder, wire versions and
-the reference-owned RPC error constructor. The read error has one package identity.
+the packaged RPC error constructor. Read and write errors retain one package identity.
 `createPostgresBundleCatalogStore` now accepts the data entry's injected
 `PgQueryExecutor`; it renders the incumbent list/detail/feed/history SELECTs
-without constructing a pool or switching roles. The writer, pooled transaction
-binding and transport adapters remain reference-owned. `BUNDLE_MIGRATIONS`
+without constructing a pool or switching roles. `createPostgresBundleAdminWriteStore`
+binds the unchanged shared writer to the data entry's pooled role-free transaction
+lane; hosts retain authorization, response mapping and transport composition.
+`BundleRpcError` and its `DomainRpcError` base are exported by this entry;
+reference paths re-export those same constructors. `BUNDLE_MIGRATIONS`
 projects canonical units 16 and 19 with their original paths, positions, hashes
 and byte-identical SQL. These sparse projections are not an installation chain:
 apply the complete canonical manifest. No new migration or activation is added.

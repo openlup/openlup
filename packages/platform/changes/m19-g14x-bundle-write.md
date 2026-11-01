@@ -1,0 +1,1 @@
+Expose the existing PostgreSQL bundle admin write store, shared marshalling and error constructors through the catalog entry. Reference facades preserve constructor identity and existing SQLSTATE mapping. No SQL, authorization or write behavior changes.

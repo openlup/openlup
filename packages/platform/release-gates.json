@@ -40,6 +40,9 @@
         "test/catalog/catalogMediaResolution.test.ts",
         "test/catalog/catalogLifecycleContracts.test.ts",
         "test/catalog/bundleRules.test.ts",
+        "test/catalog/bundleAdminWriteStore.test.ts",
+        "../../tests/postgres/m19BundleWriteExport.test.ts",
+        "../../tests/postgres/m19BundleWriteIdentity.test.ts",
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
@@ -56,6 +59,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "../../tests/postgres/m19BundleWriteExport.test.ts",
         "test/packageBoundary.test.ts",
         "test/catalog/catalogFoundationContracts.test.ts",
         "test/catalog/catalogProductTypeContracts.test.ts",
