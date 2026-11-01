@@ -1286,6 +1286,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/DOCUMENTATION.md",
       "class": "platform-documentation"
     },
@@ -1296,6 +1300,10 @@
     {
       "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/OUTCOME_PROJECTION.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
@@ -1571,6 +1579,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m18-s1-0-36-0.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g16.md",
       "class": "public-output"
     },
     {
@@ -9486,6 +9498,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/generate-outcome-projection-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/git-review-scope.ts",
       "class": "public-output"
     },
@@ -9659,6 +9683,18 @@
     },
     {
       "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.ts",
       "class": "public-output"
     },
     {

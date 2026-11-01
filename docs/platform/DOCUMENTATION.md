@@ -69,6 +69,15 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The source-only outcome and package-set BOM generators route to
+[distribution evidence](DISTRIBUTION_EVIDENCE.md). Its projection section owns
+class grouping, exact input fingerprints and refusal of partial outcome claims;
+its BOM section owns committed inventory and verified artifact identity. The
+publication catalogue includes their helpers, wrappers, witnesses and the one
+generated outcome file. README evaluation paths and installation policy retain
+preview and sandbox-payment limits. Generated navigation grants no execution,
+installation, publication or support qualification.
+
 The hosted S3 task and storage witness are public source outputs. The runner
 owner in runtime guidance defines its explicit storage-only declaration, private
 lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
