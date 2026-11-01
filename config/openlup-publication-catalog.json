@@ -1574,6 +1574,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g18.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -1599,6 +1603,30 @@
     },
     {
       "path": "eslint.config.js",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/.gitignore",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/app.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/package.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/run.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/verify.test.mjs",
       "class": "public-output"
     },
     {
