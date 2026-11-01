@@ -80,16 +80,18 @@ Partner acquisition is packaged under the existing marketing entries while
 [Partners](../../src/domains/partners/README.md) retains its domain and data
 ownership. Browser schemas and type-only port contracts stay separate from
 `createPostgresPartnerAcquisitionPort` in the PostgreSQL entry. R1 contributes
-the existing normalization and three-routine store unchanged; reference contract
-and adapter copies remain until the separate R2 delegation. Hosts retain HTTP
+the existing normalization and three-routine store unchanged; reference neutral
+contracts/ports and the PostgreSQL factory now delegate through those package
+entries. Rich managed inquiry/list/status contracts remain in source. Hosts retain HTTP
 method/wire validation, neutral-view selection, authorization before binding,
 drain policy, routing, environment selection, connection caching and disposal.
 No public controller or new entry is needed for this store contribution, and
 an import activates no route. The public catch-all dispatcher currently has an
 empty route table; leaf handlers are source interfaces only.
 
-The [R1 record](plans/oss-m18-r1-partner-acquisition.md) distinguishes the bounded
-pipeline contribution from later delegation and version preparation. Rich
+The [R1 record](plans/oss-m18-r1-partner-acquisition.md) and
+[R2 record](plans/oss-m18-r2-reference-delegation.md) distinguish unchanged
+contribution and reference delegation from separate version preparation. Rich
 managed CRM/UI transitions, customer conversion, marketing opt-in and partner
 privacy export/erasure are outside this port's capabilities. An actor UUID is
 SQL input, not administrator membership. The actual host must establish its

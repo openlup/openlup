@@ -27,6 +27,8 @@ import {
   proveFulfillmentConsumer,
   provePaymentAdapterConsumer,
   provePaymentsConsumer,
+  installPartnerAcquisitionHostBinding,
+  provePartnerAcquisitionBindingConsumer,
   installA1HostBinding,
   proveA1ReferenceBindingConsumer,
   ADAPTER_ENTRIES,
@@ -1159,3 +1161,27 @@ it.each(RISK_WORKFLOW_PROOFS)("M15 R2 packed workflow: %s", proof => {
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   proveRiskWorkflowConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"), proof);
 }, 30_000);
+
+it("runs the actual partner host selection guards without the optional pg peer", () => {
+  const consumer = pristinePackedA1Fixture();
+  installPartnerAcquisitionHostBinding(consumer);
+  assertConsumerIsolation(consumer, root);
+  provePartnerAcquisitionBindingConsumer(consumer);
+});
+
+it.each(["eager adapter", "missing URL guard", "shadow factory"] as const)("rejects broken partner host delegation: %s", corruption => {
+  const consumer = pristinePackedA1Fixture();
+  installPartnerAcquisitionHostBinding(consumer);
+  const path = join(consumer, corruption === "shadow factory"
+    ? "server/adapters/postgres/partners/partnerAcquisitionRoutines.js"
+    : "server/runtime/partners/partnerAcquisitionBinding.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = corruption === "eager adapter" ? 'import "../../adapters/postgres/partners/partnerAcquisitionRoutines.js";\n' + original
+    : corruption === "missing URL guard" ? original.replace("if (!connectionString) return null;", "")
+    : 'export function createPostgresPartnerAcquisitionPort() { throw new Error("shadow factory"); }\n';
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => provePartnerAcquisitionBindingConsumer(consumer)).toThrow();
+  } finally { writeFileSync(path, original); }
+});

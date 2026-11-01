@@ -53,6 +53,24 @@ shared by recipe freshness and RDS-scoped installation admission. It is
 installation data under the narrower installer contract below; the names alone
 grant no authority.
 
+Acquisition case, research evidence and partner acquisition PostgreSQL adapters
+delegate through thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain
+lazy adapter imports after bundle and connection guards, host environment
+selection and pool-close ownership. Handler imports from the separate
+`@openlup/platform/marketing/server` entry do not load the optional `pg` peer.
+Schemas/DTOs use the browser marketing entries; server-only structural command
+types preserve the historical adapter's submit/transition signatures. Retired
+admission schemas and terminal route factories stay application-owned. SQL text,
+argument order, result parsing, role selection, replay and pool handling are
+unchanged. Package tests own the adapter assertions; the real PostgreSQL witness
+connects through a login granted only `platform_acquisition_runtime` membership.
+The partner reference binding also reaches the installed factory through its
+actual three-file public host closure in the shared cold-consumer native fixture.
+It preserves default selection, trimmed-URL cache, close/reopen and original
+persisted replay; this fixture uses its existing owner and adds no privilege
+qualification. [Partners](../../src/domains/partners/README.md#store-and-host-ownership)
+owns the richer source contracts and unchanged BFF/auth/drain boundaries.
+
 The managed source extractor in this directory is also a
 transfer adapter: it reads a bounded source snapshot and emits a finite typed
 canonical projection, rather than serving a normal request or adding a
@@ -397,18 +415,6 @@ this adapter opens no connection, issues no provider request and adds no SQL or
 grant. Its [architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
 and [restricted-login proof](../../docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
 define the scope.
-
-Acquisition case and research evidence PostgreSQL adapters delegate through
-thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain
-lazy adapter imports after bundle and connection guards, host environment
-selection and pool-close ownership. Handler imports from the separate
-`@openlup/platform/marketing/server` entry do not load the optional `pg` peer.
-Schemas/DTOs use the browser marketing entries; server-only structural command
-types preserve the historical adapter's submit/transition signatures. Retired
-admission schemas and terminal route factories stay application-owned. SQL text,
-argument order, result parsing, role selection, replay and pool handling are
-unchanged. Package tests own the adapter assertions; the real PostgreSQL witness
-connects through a login granted only `platform_acquisition_runtime` membership.
 
 Commerce returns and native review lifecycle/media adapters delegate to
 `@openlup/platform/commerce/server`; the former paths retain factory identity. Returns

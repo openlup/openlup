@@ -1,8 +1,4 @@
 import type {
-  PartnerAcquisitionCase,
-  PartnerAcquisitionListRequest,
-  PartnerAcquisitionListResponse,
-  PartnerAcquisitionTransitionRequest,
   PartnersB2BInquiryListRequest,
   PartnersB2BInquiryListResponse,
   PartnersB2BInquirySubmitRequest,
@@ -35,33 +31,8 @@ export interface PartnersB2BInquiryAdminPort extends PartnersB2BInquiryStatusUpd
   ): Promise<PartnersB2BInquiryListResponse>;
 }
 
-export type PartnerAcquisitionFailureKind =
-  | "invalid"
-  | "conflict"
-  | "rate_limited"
-  | "not_found"
-  | "unavailable";
-
-export type PartnerAcquisitionResult<T> =
-  | { ok: true; value: T; replayed?: boolean }
-  | { ok: false; error: { kind: PartnerAcquisitionFailureKind } };
-
-export interface PartnerAcquisitionPort {
-  submit(command: {
-    idempotencyKey: string;
-    requesterKey: string;
-    policyVersion: string;
-    sourcePath: "/partners/b2b-inquiries";
-    acceptedAt: string;
-    request: PartnersB2BInquirySubmitRequest;
-  }): Promise<PartnerAcquisitionResult<PartnerAcquisitionCase>>;
-  list(query: PartnerAcquisitionListRequest & { actorRef: string }): Promise<
-    PartnerAcquisitionResult<PartnerAcquisitionListResponse>
-  >;
-  transition(command: {
-    actorRef: string;
-    idempotencyKey: string;
-    request: PartnerAcquisitionTransitionRequest;
-  }): Promise<PartnerAcquisitionResult<PartnerAcquisitionCase>>;
-  close(): Promise<void>;
-}
+export type {
+  PartnerAcquisitionFailureKind,
+  PartnerAcquisitionResult,
+  PartnerAcquisitionPort,
+} from "@openlup/platform/marketing/contracts";

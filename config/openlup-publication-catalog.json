@@ -1566,6 +1566,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m18-r2-reference-delegation.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },

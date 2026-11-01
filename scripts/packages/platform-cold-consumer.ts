@@ -1737,6 +1737,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
     proveNativeCommunicationsOperations(consumer,connectionString);
     proveOperationsPostgres(consumer,connectionString);
     provePortabilityPostgres(consumer,connectionString);
+    provePartnerAcquisitionBindingPostgres(consumer,connectionString);
   } finally {docker(["rm","--force",name]);}
   console.log(`Native communications installed proof PASS (PostgreSQL 16, complete canonical catalogue; ${Math.round(performance.now()-started)} ms including setup/cleanup)`);
 }
@@ -1816,6 +1817,133 @@ assert.equal(selected.ports["@openlup/platform/pricing:quote"], quote);
 assert.throws(selected.ports["@openlup/platform/pricing:quote"], /synthetic_quote_unavailable/);
 assert.deepEqual(selected.contributions.map(item => item.manifest.module.id), ["catalog", "pricing", "promotions"]);
 `);
+}
+
+/** The actual public host closure, with package imports resolving only installed bytes. */
+export function installPartnerAcquisitionHostBinding(consumer: string, checkout = root): void {
+  for (const relative of [
+    "server/runtime/partners/partnerAcquisitionBinding",
+    "server/domains/platform-runtime/platformKernel",
+    "server/adapters/postgres/partners/partnerAcquisitionRoutines",
+  ]) {
+    const target = join(consumer, relative + ".js");
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, stripTypeScriptTypes(readFileSync(join(checkout, relative + ".ts"), "utf8")));
+  }
+}
+
+/** No optional driver may be loaded before the actual host's selection guards. */
+export function provePartnerAcquisitionBindingConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+assert.throws(() => require.resolve("pg"), { code: "MODULE_NOT_FOUND" });
+const { resolvePartnerAcquisitionBinding, closePartnerAcquisitionBindings } = await import("./server/runtime/partners/partnerAcquisitionBinding.js");
+try {
+  for (const env of [
+    { PLATFORM_BUNDLE: "vercel-supabase", DATABASE_URL: "postgresql://unused.invalid/partners" },
+    { PLATFORM_BUNDLE: "node-postgres" },
+    { PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: "   " },
+  ]) assert.equal(await resolvePartnerAcquisitionBinding(env), null);
+  await assert.rejects(resolvePartnerAcquisitionBinding({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: "postgresql://unused.invalid/partners" }),
+    error => error.code === "ERR_MODULE_NOT_FOUND" && error.message.includes("pg"));
+} finally {
+  // A failed default import is cached by the unchanged host. Disposal also
+  // rejects that promise, after clearing the cache; preserve that fault mode.
+  await assert.rejects(closePartnerAcquisitionBindings(), error => error.code === "ERR_MODULE_NOT_FOUND");
+  await closePartnerAcquisitionBindings();
+}
+`);
+}
+
+/** Real default host binding, using the existing complete native catalogue fixture. */
+function provePartnerAcquisitionBindingPostgres(consumer: string, connectionString: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import pg from "pg";
+import { fileURLToPath } from "node:url";
+import { createPostgresPartnerAcquisitionPort } from "@openlup/platform/marketing/server/postgres";
+import * as facade from "./server/adapters/postgres/partners/partnerAcquisitionRoutines.js";
+import { resolvePartnerAcquisitionBinding, closePartnerAcquisitionBindings } from "./server/runtime/partners/partnerAcquisitionBinding.js";
+assert.equal(facade.createPostgresPartnerAcquisitionPort, createPostgresPartnerAcquisitionPort);
+assert(fileURLToPath(import.meta.resolve("@openlup/platform/marketing/server/postgres")).startsWith(process.cwd() + "/node_modules/"));
+const connectionString = process.argv[2], actorRef = "b3000000-0000-4000-8000-000000000001";
+const env = { PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: "  " + connectionString + "  " };
+const usedPools = new Set(), endedPools = [], connections = [];
+const connect = pg.Pool.prototype.connect, end = pg.Pool.prototype.end;
+pg.Pool.prototype.connect = function(...args) {
+  usedPools.add(this); connections.push(this);
+  return Reflect.apply(connect, this, args);
+};
+pg.Pool.prototype.end = function(...args) {
+  endedPools.push(this);
+  return Reflect.apply(end, this, args);
+};
+const inspection = new pg.Client({ connectionString });
+try {
+  await inspection.connect();
+  const [port, concurrent] = await Promise.all([resolvePartnerAcquisitionBinding(env), resolvePartnerAcquisitionBinding({ ...env, DATABASE_URL: connectionString })]);
+  assert(port); assert.equal(concurrent, port);
+  assert.equal(await resolvePartnerAcquisitionBinding(env), port);
+  assert.equal(connections.length, 0, "host resolution must not connect");
+  const input = { idempotencyKey: "partner-reference-submit-0001", requesterKey: "partner-reference-requester", policyVersion: "privacy-v1",
+    sourcePath: "/partners/b2b-inquiries", acceptedAt: "2026-01-12T10:00:00.000Z",
+    request: { company: "  North  Studio  ", country: " gb ", firstName: " Ada ", lastName: " Vale ",
+      email: " Reference@Studio.Example ", phone: "+44 (20) 1234-5678", notes: " Distinct  reference note " } };
+  const submitted = await port.submit(input);
+  assert.equal(submitted.ok, true); assert.equal(submitted.replayed, false);
+  const row = submitted.value;
+  assert.match(row.caseRef, /^acquisition-case:[0-9a-f-]{36}$/);
+  assert.match(row.contactRef, /^acquisition-contact:[0-9a-f-]{36}$/);
+  assert.equal(Date.parse(row.createdAt), Date.parse(input.acceptedAt));
+  assert.equal(Date.parse(row.updatedAt), Date.parse(input.acceptedAt));
+  assert.deepEqual(row, { contractVersion: "partner_acquisition_v1", caseRef: row.caseRef, contactRef: row.contactRef,
+    organization: { name: "North Studio", country: "GB" }, contact: { firstName: "Ada", lastName: "Vale", email: "reference@studio.example", phone: "+442012345678" },
+    notes: "Distinct reference note", status: "new", version: 1, createdAt: row.createdAt, updatedAt: row.updatedAt });
+  const query = { actorRef, view: "partner_acquisition_v1", limit: 100 };
+  const listed = await port.list(query);
+  assert.equal(listed.ok, true);
+  assert.deepEqual(listed.value, { contractVersion: "partner_acquisition_v1", cases: [row], nextCursor: null });
+  const command = { actorRef, idempotencyKey: "partner-reference-transition-0001", request: { id: row.caseRef, expectedVersion: 1, status: "contacted" } };
+  const transitioned = await port.transition(command);
+  assert.equal(transitioned.ok, true); assert.equal(transitioned.replayed, false);
+  assert(Number.isFinite(Date.parse(transitioned.value.updatedAt)));
+  assert.deepEqual(transitioned.value, { ...row, status: "contacted", version: 2, updatedAt: transitioned.value.updatedAt });
+  const snapshot = async () => (await inspection.query(
+    "SELECT c.source_kind,c.policy_version,c.source_path,c.lifecycle,c.state_version,contact.contact_reference,contact.normalized_email,contact.normalized_phone,d.organization_name,d.country_code,d.first_name,d.last_name,d.notes,(SELECT jsonb_agg(jsonb_build_object('scope',scope,'projection',result_projection) ORDER BY scope) FROM acquisition_private.commands WHERE case_id=c.id) receipts,(SELECT jsonb_agg(jsonb_build_object('action',action,'actor',actor_id) ORDER BY action) FROM acquisition_private.audit WHERE case_id=c.id) audit FROM acquisition_private.cases c JOIN acquisition_private.contacts contact ON contact.case_id=c.id JOIN acquisition_private.partner_details d ON d.case_id=c.id WHERE c.case_reference=$1", [row.caseRef])).rows;
+  const stored = await snapshot();
+  assert.deepEqual(stored, [{ source_kind: "partner_inquiry", policy_version: "privacy-v1", source_path: input.sourcePath,
+    lifecycle: "contacted", state_version: "2", contact_reference: row.contactRef, normalized_email: row.contact.email, normalized_phone: row.contact.phone,
+    organization_name: row.organization.name, country_code: row.organization.country, first_name: row.contact.firstName, last_name: row.contact.lastName, notes: row.notes,
+    receipts: [{ scope: "partner_submit", projection: row }, { scope: "partner_transition", projection: transitioned.value }],
+    audit: [{ action: "submitted", actor: null }, { action: "transitioned", actor: actorRef }] }]);
+  assert.equal(usedPools.size, 1); assert.equal(connections.length, 3);
+  const originalPool = [...usedPools][0];
+  await closePartnerAcquisitionBindings(); assert.deepEqual(endedPools, [originalPool]);
+  await closePartnerAcquisitionBindings(); assert.deepEqual(endedPools, [originalPool]);
+  const reopened = await resolvePartnerAcquisitionBinding(env);
+  assert(reopened); assert.notEqual(reopened, port);
+  assert.equal(connections.length, 3, "reopening must not connect before work");
+  const retained = await reopened.list(query);
+  assert.equal(retained.ok, true);
+  assert.deepEqual(retained.value, { contractVersion: "partner_acquisition_v1", cases: [transitioned.value], nextCursor: null });
+  assert.deepEqual(await reopened.submit(input), { ok: true, value: row, replayed: true });
+  assert.deepEqual(await reopened.transition(command), { ok: true, value: transitioned.value, replayed: true });
+  assert.deepEqual(await snapshot(), stored, "replays must not mutate persisted fields, receipts or audit");
+  assert.equal(usedPools.size, 2); assert.equal(connections.length, 6);
+  await closePartnerAcquisitionBindings();
+  assert.deepEqual(endedPools, [...usedPools]);
+  await closePartnerAcquisitionBindings(); assert.equal(endedPools.length, 2);
+} finally {
+  try { await closePartnerAcquisitionBindings(); }
+  finally {
+    pg.Pool.prototype.connect = connect; pg.Pool.prototype.end = end;
+    await inspection.end();
+  }
+}
+console.log("Partner reference default binding installed PostgreSQL PASS (fields, original replay, cache, close/reopen)");
+`, [connectionString]);
 }
 
 /** Copy only the actual host composition; all package imports resolve installed bytes. */
@@ -2087,6 +2215,8 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveSelfServiceConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
+    installPartnerAcquisitionHostBinding(consumer, checkout);
+    provePartnerAcquisitionBindingConsumer(consumer);
     installA1HostBinding(consumer, checkout);
     proveA1ReferenceBindingConsumer(consumer, "imports");
     proveA1ReferenceBindingConsumer(consumer, "selection");
