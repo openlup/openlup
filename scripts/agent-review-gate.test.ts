@@ -5,11 +5,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { assertMergePreflight, captureSessionCandidate, git as reviewGit, sessionMain, verifyCandidateCommand } from './agent-review-session.mjs';
-import { carryOverSourceReview, waitNativeAdmission } from './agent-review-queue.mjs';
+import { carryOverSourceReview, parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const cwd of directories.splice(0)) await rm(cwd, { recursive: true, force: true }); });
 const intent = { risk: 'routine', criteria: 'Preserve the reviewed source' };
+const trailerMessage = 'docs: explain unchanged guidance\n\nOpenLup-Doc-Impact: {"unit":"tooling","digest":"sha256-' + 'a'.repeat(64) + '","reason":"The current guidance still applies."}\nSigned-off-by: Fixture <fixture@example.invalid>';
 async function fixture(prefix = 'native-review-v2-') {
   const cwd = await mkdtemp(join(tmpdir(), prefix)); directories.push(cwd);
   const git = (...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', ...args], { encoding: 'utf8' }).trim();
@@ -153,7 +154,7 @@ describe('six real Git witnesses', () => {
       expect(run).not.toHaveBeenCalled();
     }
   });
-  it.each(['mechanical', 'extra merge edits', 'manual resolution', 'later repair'])('preserves integration coverage and charges actual repairs: %s', async scenario => {
+  it.each(['mechanical', 'extra merge edits', 'manual resolution', 'later repair', 'trailer-only', 'trailer after extra merge edits'])('preserves integration coverage and charges actual repairs: %s', async scenario => {
     const f = await fixture(); const prior = await f.review();
     f.git('checkout', '-q', '--detach', f.base);
     await mkdir(join(f.cwd, 'scripts'), { recursive: true });
@@ -165,17 +166,21 @@ describe('six real Git witnesses', () => {
     const merge = () => f.git('merge', '--no-ff', '--no-commit', main);
     if (scenario === 'manual resolution') expect(merge).toThrow();
     else merge();
-    if (['extra merge edits', 'manual resolution'].includes(scenario)) await writeFile(join(f.cwd, 'source.txt'), 'new implementation\n');
+    if (['extra merge edits', 'manual resolution', 'trailer after extra merge edits'].includes(scenario)) await writeFile(join(f.cwd, 'source.txt'), 'new implementation\n');
     f.git('add', 'source.txt'); f.git('commit', '-qm', 'integrate main');
+    const mergeHead = f.git('rev-parse', 'HEAD');
+    if (scenario.startsWith('trailer')) f.git('commit', '--allow-empty', '-qm', trailerMessage);
     if (scenario === 'later repair') { await writeFile(join(f.cwd, 'source.txt'), 'later implementation\n'); f.commit(); }
     await f.cli('prepare', join(f.scratch, 'intent.json'));
     const next = JSON.parse(await readFile(f.statePath, 'utf8'));
-    expect(next.cycle).toBe(prior.cycle + (scenario === 'mechanical' ? 0 : 1));
+    const mechanical = ['mechanical', 'trailer-only'].includes(scenario);
+    expect(next.cycle).toBe(prior.cycle + (mechanical ? 0 : 1));
     expect(next.candidate.base).toBe(main);
+    expect(next.candidate.head).toBe(f.git('rev-parse', 'HEAD'));
     expect(next.history.slice(0, -1)).toEqual(prior.history);
     if (scenario === 'later repair') expect(next.candidate).not.toHaveProperty('integration');
     else {
-      expect(next.candidate.integration).toEqual({ base: f.base, head: f.head, tree: prior.candidate.tree, expires: prior.history.at(-1).at + 86400000, mechanical: scenario === 'mechanical' });
+      expect(next.candidate.integration).toEqual({ base: f.base, head: f.head, tree: prior.candidate.tree, expires: prior.history.at(-1).at + 86400000, mechanical });
       await f.cli('prepare', join(f.scratch, 'intent.json'));
       expect(JSON.parse(await readFile(f.statePath, 'utf8'))).toEqual(next);
       const path = join(f.scratch, 'integration-report.json');
@@ -185,6 +190,71 @@ describe('six real Git witnesses', () => {
       await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-2', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
       await expect(f.cli('verify')).resolves.toBe(0);
+      if (scenario === 'trailer-only') {
+        expect(next.candidate.head).not.toBe(mergeHead);
+        expect(next.candidate.tree).toBe(f.git('rev-parse', `${mergeHead}^{tree}`));
+        const reviewed = JSON.parse(await readFile(f.statePath, 'utf8'));
+        const run = vi.fn(async () => 0);
+        await expect(verifyCandidateCommand({ cwd: f.cwd, session: reviewed, command: 'focused-check', run, env: {} })).resolves.toBe(0);
+        expect(run).toHaveBeenCalledOnce();
+        await f.cli('receipt', '12');
+        const body = vi.mocked(console.log).mock.calls.at(-1)![0];
+        const receipt = parseReceipt(body);
+        expect(receipt).toMatchObject({ head: next.candidate.head, tree: next.candidate.tree, risk: 'behavior', expires: next.candidate.integration.expires });
+        const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: next.candidate.head } };
+        const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, body }] : path.includes('/collaborators/') ? { permission: 'write' } : { object: { sha: main } }) };
+        const runGit = vi.fn(async (cwd, ...args) => args.includes('fetch') ? '' : reviewGit(cwd, ...args));
+        const groupHead = f.git('commit-tree', next.candidate.tree, '-p', main, '-p', next.candidate.head, '-m', 'queue group');
+        for (const group of [false, true]) {
+          const event = group ? { repository: { private: false }, action: 'checks_requested', merge_group: { head_ref: 'refs/heads/gh-readonly-queue/main/pr-12-abcdef', base_ref: 'refs/heads/main', head_sha: groupHead, base_sha: main } }
+            : { repository: { private: false }, number: 12, pull_request: { head: pr.head } };
+          await expect(waitNativeAdmission({ cwd: f.cwd, event, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: group ? 'merge_group' : 'pull_request' }, api, runGit })).resolves.toEqual(receipt);
+        }
+        // Equal trees never let the reviewed merge stand in for the actual tip.
+        f.git('checkout', '-q', '--detach', mergeHead);
+        await expect(f.cli('verify')).rejects.toThrow('candidate changed');
+        await expect(f.cli('receipt', '12')).rejects.toThrow('candidate changed');
+        await expect(waitNativeAdmission({ cwd: f.cwd, event: { repository: { private: false }, number: 12, pull_request: { head: pr.head } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api: { get: async path => path.includes('/pulls/') ? { ...pr, head: { sha: mergeHead } } : api.get(path) }, runGit })).rejects.toThrow('PR head changed');
+      }
+    }
+  });
+  it.each(['non-empty tip', 'two tips', 'other trailer', 'body text', 'missing doc trailer', 'non-merge parent', 'reversed merge parents', 'wrong reviewed parent', 'wrong main parent', 'merge-on-top', 'changed intent', 'changed author'])('refuses trailer integration with %s', async scenario => {
+    const f = await fixture(); const prior = await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'main.txt'), 'main addition\n');
+    f.git('add', 'main.txt'); f.git('commit', '-qm', 'main move');
+    const main = f.git('rev-parse', 'HEAD'); f.git('update-ref', 'refs/remotes/origin/main', main);
+    const tree = f.git('merge-tree', '--write-tree', f.head, main);
+    const alternate = f.git('commit-tree', prior.candidate.tree, '-p', f.head, '-m', 'extra predecessor');
+    const alternateMain = f.git('commit-tree', tree, '-p', main, '-m', 'extra main descendant');
+    const parents = scenario === 'non-merge parent' ? [f.head]
+      : scenario === 'reversed merge parents' ? [main, f.head]
+        : scenario === 'wrong reviewed parent' ? [alternate, main]
+          : scenario === 'wrong main parent' ? [f.head, alternateMain] : [f.head, main];
+    const merge = f.git('commit-tree', tree, ...parents.flatMap(parent => ['-p', parent]), '-m', 'integrate main');
+    f.git('checkout', '-q', '--detach', merge);
+    let message = trailerMessage;
+    if (scenario === 'other trailer') message += '\nReviewed-by: Someone';
+    if (scenario === 'body text') message = message.replace('\n\n', '\n\nUnreviewed explanation\n\n');
+    if (scenario === 'missing doc trailer') message = 'empty repair\n\nSigned-off-by: Fixture <fixture@example.invalid>';
+    if (scenario === 'non-empty tip') await writeFile(join(f.cwd, 'source.txt'), 'changed tree\n');
+    if (scenario === 'merge-on-top') {
+      const head = f.git('commit-tree', tree, '-p', merge, '-p', alternate, '-m', message);
+      f.git('checkout', '-q', '--detach', head);
+    } else {
+      f.git('add', 'source.txt'); f.git('commit', '--allow-empty', '-qm', message);
+      if (scenario === 'two tips') f.git('commit', '--allow-empty', '-qm', message);
+    }
+    const request = join(f.scratch, 'intent.json');
+    if (scenario === 'changed intent' || scenario === 'changed author') {
+      await writeFile(request, JSON.stringify({ authorSessionId: scenario === 'changed author' ? 'different-author' : 'author', intent: scenario === 'changed intent' ? { ...intent, criteria: 'Different task' } : intent }));
+      await expect(f.cli('prepare', request)).rejects.toThrow('author or intent changed');
+      expect(JSON.parse(await readFile(f.statePath, 'utf8'))).toEqual(prior);
+    } else {
+      await f.cli('prepare', request);
+      const next = JSON.parse(await readFile(f.statePath, 'utf8'));
+      expect(next.candidate).not.toHaveProperty('integration');
+      await expect(f.cli('verify')).rejects.toThrow('independent PASS');
     }
   });
   it('requires full local review for an exact merge of an unlanded stacked predecessor', async () => {
