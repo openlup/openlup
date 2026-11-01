@@ -1,7 +1,7 @@
 # M19 G5: native checkout persistence
 
-Status: initial candidate signed and reviewed; package-entry repair requires
-a renewed API read, development preview (2026-11-01). No PR yet.
+Status: package-entry repair read accepted and DCO-signed; fresh native review
+pending, development preview (2026-11-01). No PR yet.
 Audience: the money-stream supervisor, implementer and independent reviewers.
 
 ## Outcome and boundary
@@ -177,9 +177,9 @@ Both repairs passed the subsequent applicable checks. At that evidence freeze,
 no native review session, repair cycle or queue retry had been consumed; the
 initial review outcome and pending repair are recorded below.
 
-Remaining: renewed read and DCO for the package-entry repair, two fresh
-independent reviews closing the initial findings, lead-named final verification
-and authorized delivery. No canonical verify, push, PR, receipt or merge has
+Remaining: two fresh independent reviews closing the package-entry findings,
+lead-named final verification and authorized delivery. The renewed read and
+repair DCO are complete. No canonical verify, push, PR, receipt or merge has
 been attempted. Preserve evidence and budgets on resume. G5 writes neither `supersededByStableJourneyKey` nor
 `checkoutAbandoned`, and adds no dispatched-attempt field or store.
 
@@ -213,8 +213,9 @@ read covers these package-source and target changes before repair sign-off;
 the initial FAIL reports remain open until fresh reviewers close them.
 
 Native abandoned-order compensation is not bound or qualified by G5. The
-unchanged generic adapter fails closed with `42883`; a follow-on must bind and
-prove compensation before overall money-path acceptance counts it. G5 writes
+unchanged generic adapter fails closed with `42883`; the binding and proof are
+owned by G4's PR and must pass before overall money-path acceptance counts
+compensation. G5 writes
 neither withdrawn marker and adds no location for a dispatched attempt.
 
 Self-retro: pack and installed PostgreSQL proof did not cover the package's
@@ -241,7 +242,23 @@ Repair checks also pass: API declaration check, ast-grep and strict root
 typecheck (zero unresolved edges and zero consumer-side errors). Full lint
 passes with zero errors and 99 warnings in unchanged files. The focused gate
 for that lint run waited 520 seconds; there is no rule or suppression change.
-Native review is still at cycle zero on the initial committed candidate, with
-two FAIL reports and no counted PASS. The first repair is staged but remains
-unsigned and unprepared pending the renewed read. Canonical verification has
-not run.
+At the repair read freeze, native review was at cycle zero on the initial
+committed candidate, with two reports and no counted PASS. The first repair
+was staged and unsigned pending that read; its current cycle is recorded below.
+Canonical verification has not run.
+
+
+## Current review state
+
+The accepted package-entry repair was committed with its exact read tree. This
+is repair cycle 1 of 3, including the current run's factual record update; the
+initial findings remain open until two new independent fresh-context reviewers
+close them. The renewed read is accepted for DCO. Native abandoned-order
+compensation remains outside G5 and is owned by G4's PR. Its binding and real
+PostgreSQL proof are required before overall money-path acceptance counts it.
+No canonical verification, PR or delivery has run.
+
+This record-only correction adds the assigned follow-on owner and current cycle
+accounting without changing source, API, budgets, controls or qualification.
+Self-retro: keep repair accounting explicit across a paused read and preserve
+the original exact read commit before recording later factual ownership.
