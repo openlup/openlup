@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import * as channels from "../../src/channels/index.js";
@@ -23,6 +24,16 @@ describe("R1 package boundary and bundle helper witness", () => {
     expect(result.outputFiles[0].text).not.toMatch(/process\.env|channel_ingest_rails_unbound/);
     expect(channels).not.toHaveProperty("createChannelWebhookHandler");
     expect(channels).not.toHaveProperty("createManagedChannelIngestPayments");
+    const coldProbe = execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { readFileSync } from "node:fs";
+      let functionAttempts = 0;
+      globalThis.Function = function () { functionAttempts++; throw new Error("synthetic CSP refusal"); };
+      const entry = await import("data:text/javascript;base64," + Buffer.from(readFileSync(0, "utf8")).toString("base64"));
+      const parsed = entry.channelOrderOpsResponseSchema.parse({ contractVersion: "channels.ops.v1", orderId: "cold-order",
+        channel: null, ingest: null, openQuarantineCount: 0 });
+      process.stdout.write(JSON.stringify({ functionAttempts, orderId: parsed.orderId }));
+    `], { input: result.outputFiles[0].text, encoding: "utf8", timeout: 30_000 });
+    expect(JSON.parse(coldProbe)).toEqual({ functionAttempts: 0, orderId: "cold-order" });
   });
   it("passes SKU lines through exactly and preserves omitted expansion semantics", () => {
     const order = orderFixture(); expect(expandChannelBundleLines(order, [])).toEqual({ ok: true, expanded: false, lines: [{

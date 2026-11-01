@@ -1,6 +1,6 @@
 
 export type { ChannelScope } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 import { channelCurrencySchema, channelCountryCodeSchema, connectorProviderKindSchema, externalRefSchema } from "./contracts.js";
 
 export const CHANNEL_CONTROL_JSON_LIMITS = { maxDepth: 24, maxBytes: 262144,

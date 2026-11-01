@@ -2950,6 +2950,8 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-11-01, M17 port parity: neutral import rewrite can drop a wrapper’s module-level initialization → keep the owning seam and prove a cold public import.
+
 - 2026-10-30, M14 hosted RDS recipe: superuser fixture assumptions in lock
   timing and teardown → synchronize after restricted admission, then remove
   test resources through the actual owner and role-grant dependency order.

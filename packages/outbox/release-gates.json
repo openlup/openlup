@@ -50,8 +50,8 @@
     "maxUnpackedBytes": 266240,
     "maxFiles": 90,
     "baseline": {
-      "version": "0.33.0",
-      "packedBytes": 41549
+      "version": "0.34.0",
+      "packedBytes": 41585
     },
     "browserEntries": {}
   }

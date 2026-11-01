@@ -1190,6 +1190,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
       "class": "public-output"
     },
@@ -3046,6 +3050,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261030110000_customer_newsletter_withdrawal.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261030121000_channel_retained_basis.sql",
       "class": "public-output"
     },
@@ -3523,6 +3531,10 @@
     },
     {
       "path": "packages/platform/src/channels/server/quarantineClassifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/validation.ts",
       "class": "public-output"
     },
     {
@@ -26687,6 +26699,10 @@
     },
     {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerNewsletterWithdrawal.test.ts",
       "class": "public-output"
     },
     {

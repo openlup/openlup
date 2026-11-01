@@ -17,8 +17,8 @@ start with the installed package's README, CHANGELOG and declarations, and consu
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
 
-For the prepared `0.34.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0340) before selecting optional services. Experimental
+For the prepared `0.35.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0350) before selecting optional services. Experimental
 M13 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -61,7 +61,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.33.0` tarball. Preparation and offline
+Size comparison uses the published `0.34.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -1034,6 +1034,13 @@ The opt-in reference identity shell consumes the existing identity exports with 
 See [disposable identity composition](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#disposable-identity-composition) for its boundary and reference guide.
 
 ## Communications import
+
+The sparse `COMMUNICATIONS_MIGRATIONS` inventory includes the portable account
+newsletter withdrawal forward; install the complete canonical chain. Account
+opt-out denies only `marketing_newsletter` and preserves suppression. Opt-in
+changes the preference without granting consent. Earlier opt-outs need the
+[operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
+which also documents the provider-sync and email-change limits.
 
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.
 See the [communications recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import) for migration, email rendering and native operations.

@@ -1,6 +1,6 @@
 
 export type { ConnectorShape, SalesChannelStatus, BuyerCommsOwner, InvoicePolicy } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 
 // Shared vocabulary for the sales-channel domain: external marketplaces,
 // aggregators, and any future sales source (storefront, mobile app, POS).

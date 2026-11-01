@@ -1073,6 +1073,10 @@ BEGIN
 END $$;
 `;
     const approved = readReviewedForwardRegistry(readFileSync(new URL("../config/reviewed-platform-forwards.json", import.meta.url)));
+    // This fixture models introduction of the named stock slot, before later approvals.
+    const stockSlot = approved.portableReplacementForwards!.findIndex(pin => pin.path === path);
+    expect(stockSlot).toBe(2);
+    approved.portableReplacementForwards = approved.portableReplacementForwards!.slice(0, stockSlot + 1);
     const migration = readFileSync(new URL(`../${priorPath}`, import.meta.url), "utf8");
     const start = migration.indexOf("CREATE FUNCTION public.fulfillment_record_stock_evidence(");
     const priorSql = migration.slice(start, migration.indexOf("$$;", start) + 3);
@@ -1166,7 +1170,7 @@ END $$;
       } finally { sample.cleanup(); }
     });
     it.each(["new approval", "changed approval"])("admits co-located stock approval under the existing class: %s", probe => {
-      const sample = stockFixture(probe === "new approval" ? registry => { registry.portableReplacementForwards!.pop(); } : undefined);
+      const sample = stockFixture(probe === "new approval" ? registry => { registry.portableReplacementForwards = registry.portableReplacementForwards!.slice(0, stockSlot); } : undefined);
       try {
         const sql = probe === "changed approval" ? exactSql + "\n" : exactSql;
         sample.append(sql);
