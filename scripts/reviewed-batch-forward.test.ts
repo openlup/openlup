@@ -1561,6 +1561,7 @@ describe("M17 channel ingest approval", () => {
         "ALTER TABLE public.channel_order_ingests ADD COLUMN purchase_capture_text text,\n  ADD COLUMN purchase_capture_digest text;",
         "ALTER TABLE public.sales_channel_connections ADD COLUMN pull_capture_adopted_at timestamptz,\n  ADD COLUMN pull_page_ref uuid, ADD COLUMN pull_page_generation bigint NOT NULL DEFAULT 0\n  CHECK(pull_page_generation BETWEEN 0 AND 9007199254740991);",
         "ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref\n  FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;",
+        "GRANT SELECT (id, sku_id, quantity, product_snapshot, order_id, allocation_ordinal) ON TABLE public.commerce_order_items TO service_role;",
         "CREATE FUNCTION public.channel_purchase_json(p_value jsonb) RETURNS text\nLANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
         "CREATE FUNCTION public.channel_purchase_packet(p_text text,p_digest text,p_kind text) RETURNS jsonb\nLANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$ BEGIN RETURN NULL; END; $$;",
         "CREATE FUNCTION public.channel_purchase_scope(p_body jsonb,p_actor uuid,p_job uuid,p_fresh boolean,p_live_job uuid DEFAULT NULL) RETURNS uuid\nLANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN RETURN NULL; END; $$;",
@@ -1706,6 +1707,23 @@ describe("M17 channel ingest approval", () => {
       if (attack === "reordered statement") { const rows = sqlStatements(sql); [rows[0], rows[1]] = [rows[1]!, rows[0]!]; sql = rows.join("\n"); }
       expect(sql).not.toBe(source.bytes.toString());
       expect(() => assertChannelIngestForward(repin(0, sql), source.path, Buffer.from(sql), prefix(source.path))).toThrow(/reviewed M17 channel/u);
+    });
+
+    it.each(["table-wide", "extra column", "other role", "missing", "reordered"])("refuses repinned managed read grant: %s", attack => {
+      const source = sources[3]!;
+      const grant = "GRANT SELECT (id, sku_id, quantity, product_snapshot, order_id, allocation_ordinal) ON TABLE public.commerce_order_items TO service_role;";
+      let sql = source.bytes.toString();
+      if (attack === "table-wide") sql = sql.replace(grant, "GRANT SELECT ON TABLE public.commerce_order_items TO service_role;");
+      if (attack === "extra column") sql = sql.replace(grant, grant.replace("allocation_ordinal)", "allocation_ordinal, unit_price_gross)"));
+      if (attack === "other role") sql = sql.replace(grant, grant.replace("service_role", "authenticated"));
+      if (attack === "missing") sql = sql.replace(grant, "");
+      if (attack === "reordered") {
+        const rows = sqlStatements(sql);
+        [rows[4], rows[5]] = [rows[5]!, rows[4]!];
+        sql = rows.join("\n");
+      }
+      expect(sql).not.toBe(source.bytes.toString());
+      expect(() => assertChannelIngestForward(repin(3, sql), source.path, Buffer.from(sql), prefix(source.path))).toThrow(/reviewed M17 channel/u);
     });
 
     it("refuses incomplete, reordered and mutated preceding rails", () => {
