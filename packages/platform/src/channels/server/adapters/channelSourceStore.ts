@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { canonicalJson } from "../../canonicalJson.js";
 import { CHANNEL_CONTROL_JSON_LIMITS } from "../../channelRegistryContracts.js";
 import { CHANNEL_INGEST_ORDERED_STATUSES, CHANNEL_INGEST_HALTED_STATUSES } from "../../channelIngestStorePort.js";
-import { z } from "zod";
+import { z } from "../../validation.js";
 import { channelControlIdSchema as id, channelControlRefSchema as ref } from "../../channelRegistryContracts.js";
 import { channelPurchaseCaptureSchema, channelPurchaseCaptureReadSchema, channelPullPageSchema,
   channelPullPageReadSchema, channelPullCursorReceiptSchema, type ChannelPurchaseCapture, type ChannelPullPage } from "../../channelPurchaseSourceContracts.js";

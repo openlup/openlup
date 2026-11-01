@@ -673,7 +673,7 @@ fixed companion data only; no new parser, checker or signature class is needed.
 
 - Core/Outbox/Platform build passed. Package channel and manifest cases passed
   156/156. Structural scans passed after the authored changes.
-- Five native reference catalogues were measured through the production runner
+- Before newsletter integration, five native reference catalogues were measured through the production runner
   under an admitted resource gate, then separate fresh installations compared
   against the recorded pins and replayed without applying another unit. Counts:
   legacy 90; qualified bootstrap/separate 94; restricted managed/operator 93.
@@ -1252,7 +1252,7 @@ Final local evidence:
   19 manifest cases and both channel restore/installation cases also pass.
 - The five catalogue expectations were refreshed only from real measurements;
   independent fresh installs then matched every digest and replayed without new
-  units. Counts remain legacy 90, qualified 94/94 and restricted 93/93.
+  units. At that pre-newsletter checkpoint, counts were legacy 90, qualified 94/94 and restricted 93/93.
 - Both isolated installed-consumer cases pass (8.01 seconds): NodeNext/Bundler,
   runtime exports without optional peers, and exact packed native SQL executing
   capture/read/CAS with named physical refusal.

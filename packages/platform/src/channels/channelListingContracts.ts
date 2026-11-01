@@ -1,6 +1,6 @@
 
 export type { ChannelListingDraft, ChannelBundleBinding, ChannelOfferObservation, ChannelBasis, ChannelQualification, ChannelApproval, ChannelListingDetail } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 import { channelCurrencySchema } from "./contracts.js";
 import { channelControlIdSchema as id, channelControlRefSchema as ref,
   channelControlDigestSchema as digest, channelControlTimeSchema as time,

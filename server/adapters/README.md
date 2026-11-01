@@ -626,8 +626,8 @@ The direct [migration binding](postgres/migrationRunner.ts) delegates to the
 package executor and keeps legacy as its default. Explicit qualified selection
 adds the reference catalogue, restricted runtime/optional restore principal
 bindings, startup transport and [read-only session admission](postgres/qualifiedInstall.ts).
-Its explicit qualified source selection currently contains 91 units; the
-legacy selection remains the default at 88 units. Neither source plan is
+Its explicit qualified source selection currently contains 95 units; the
+legacy selection remains the default at 91 units. Neither source plan is
 installed or hosted qualification. The
 [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 records its binding shapes and outstanding production proof.

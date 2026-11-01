@@ -58,7 +58,7 @@ export type { ChannelConnectionPullRow, ChannelConnectionPullPort } from "./cont
 
 ```ts
 export type { ChannelListingDraft, ChannelBundleBinding, ChannelOfferObservation, ChannelBasis, ChannelQualification, ChannelApproval, ChannelListingDetail } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const channelMappingSchema: z.ZodArray<z.ZodObject<{
     skuId: z.ZodGUID;
     externalProductRef: z.ZodPipe<z.ZodString, z.ZodString>;
@@ -502,7 +502,7 @@ export declare function allocateChannelMoney(input: ChannelMoneyAllocationInput)
 
 ```ts
 export type { ChannelPurchaseNamespace, ChannelPurchasedProductFacts, ChannelPurchasedExpandedLine, ChannelPurchaseCapture, ChannelPullPage, ChannelPullProgressState, ChannelPullCursorReceipt } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const channelPurchaseNamespaceSchema: z.ZodObject<{
     applicationRef: z.ZodPipe<z.ZodString, z.ZodString>;
     channelExternalRef: z.ZodNullable<z.ZodPipe<z.ZodString, z.ZodString>>;
@@ -806,7 +806,7 @@ export declare const channelPurchaseLineClaimSchema: z.ZodObject<{
 
 ```ts
 export type { ChannelScope } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const CHANNEL_CONTROL_JSON_LIMITS: {
     maxDepth: number;
     maxBytes: number;
@@ -843,7 +843,7 @@ export type { ChannelConnectorCorrelationContract, ChannelConnectorCapabilities,
 
 ```ts
 export type { ConnectorShape, SalesChannelStatus, BuyerCommsOwner, InvoicePolicy } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const CHANNELS_CONTRACT_VERSION = "channels.v1";
 /** Operator-facing stable identity of a sales channel, e.g. "marketplace-eu". */
 export declare const channelSlugSchema: z.ZodString;
@@ -1701,7 +1701,7 @@ export * from "./outboxEventContracts.js";
 
 ```ts
 export type { ChannelOrderOpsResponse } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const channelOrderOpsResponseSchema: z.ZodObject<{
     contractVersion: z.ZodLiteral<"channels.ops.v1">;
     orderId: z.ZodString;
@@ -1727,7 +1727,7 @@ export declare function channelIngestNeedsAttention(status: string | null | unde
 
 ```ts
 export type { NormalizedChannelOrder, NormalizedChannelOrderLine, NormalizedChannelOrderBuyer, UnmappedChannelSignal } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const CHANNEL_ORDER_CONTRACT_VERSION = "channel.order.v1";
 /** Settlement state a connector may report; the wave-1 saga admits only this value. */
 export declare const CHANNEL_ORDER_PAID_EXTERNALLY_STATE = "paid_externally";
@@ -1813,7 +1813,7 @@ export declare const unmappedChannelSignalSchema: z.ZodObject<{
 
 ```ts
 export type { ChannelOrderIngestedPayload } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const CHANNEL_PURCHASE_SOURCE_EVENT_TYPE = "channel.purchase-source.v1";
 export declare const CHANNEL_PURCHASE_LINE_EVENT_TYPE = "channel.purchase-line.v1";
 export declare const CHANNEL_PULL_PAGE_EVENT_TYPE = "channel.pull-page.v1";
@@ -1826,4 +1826,10 @@ export declare const channelOrderIngestedPayloadSchema: z.ZodObject<{
     external_order_ref: z.ZodString;
     ingested_at: z.ZodString;
 }, z.core.$strict>;
+```
+## dist/channels/validation.d.ts
+
+```ts
+import { z } from "zod";
+export { z };
 ```

@@ -552,7 +552,7 @@ privileges and complete catalogue installation are described in
 ## Compatibility posture
 
 The M17 channel suffix appends two native units to each existing selected plan:
-legacy now has 90 units, qualified selections 94, and restricted selections 93.
+legacy now has 91 units, qualified selections 95, and restricted selections 94.
 Each installation shape retains its separately measured catalogue digest. Four
 reviewed source pins bind the two native and two managed forwards, including
 ordered companion statements; they grant no installation or provider authority.

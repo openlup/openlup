@@ -486,7 +486,12 @@ and two new price-setup functions, plus an optional runtime list with the
 five-function capability forward and a second service-only identity capabilities
 forward. The optional portable replacement list binds code-fixed signatures for
 the dunning invariant repair, payment-terminal decoupling and stock-evidence
-replay reopening. Each file admits only comments and its single function
+replay reopening, and account newsletter withdrawal. The fourth slot fixes only
+the portable file `20261030110000_customer_newsletter_withdrawal.sql` and
+`public.customer_communication_preferences_set_as_actor(boolean,timestamptz)`.
+Historical one-, two- and three-slot registries remain readable. Boolean identity
+and this setter's `timestamptz DEFAULT now()` are admitted only for that signature;
+raw definition hashes remain unchanged by identity parsing. Each file admits only comments and its single function
 replacement, with unchanged header attributes and no privilege statements.
 Priors come only from the portable baseline and earlier portable forwards.
 The managed counts remain two replacement files, one creation file and one or

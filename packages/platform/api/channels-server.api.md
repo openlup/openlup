@@ -199,7 +199,7 @@ export type { ChannelConnectionPullRow, ChannelConnectionPullPort } from "./cont
 
 ```ts
 export type { ChannelListingDraft, ChannelBundleBinding, ChannelOfferObservation, ChannelBasis, ChannelQualification, ChannelApproval, ChannelListingDetail } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const channelMappingSchema: z.ZodArray<z.ZodObject<{
     skuId: z.ZodGUID;
     externalProductRef: z.ZodPipe<z.ZodString, z.ZodString>;
@@ -635,7 +635,7 @@ export declare const channelListingDetailSchema: z.ZodObject<{
 
 ```ts
 export type { ChannelPurchaseNamespace, ChannelPurchasedProductFacts, ChannelPurchasedExpandedLine, ChannelPurchaseCapture, ChannelPullPage, ChannelPullProgressState, ChannelPullCursorReceipt } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const channelPurchaseNamespaceSchema: z.ZodObject<{
     applicationRef: z.ZodPipe<z.ZodString, z.ZodString>;
     channelExternalRef: z.ZodNullable<z.ZodPipe<z.ZodString, z.ZodString>>;
@@ -939,7 +939,7 @@ export declare const channelPurchaseLineClaimSchema: z.ZodObject<{
 
 ```ts
 export type { ChannelScope } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const CHANNEL_CONTROL_JSON_LIMITS: {
     maxDepth: number;
     maxBytes: number;
@@ -1756,7 +1756,7 @@ export interface ChannelConnectionPullPort {
 
 ```ts
 export type { NormalizedChannelOrder, NormalizedChannelOrderLine, NormalizedChannelOrderBuyer, UnmappedChannelSignal } from "./contracts/index.js";
-import { z } from "zod";
+import { z } from "./validation.js";
 export declare const CHANNEL_ORDER_CONTRACT_VERSION = "channel.order.v1";
 /** Settlement state a connector may report; the wave-1 saga admits only this value. */
 export declare const CHANNEL_ORDER_PAID_EXTERNALLY_STATE = "paid_externally";
@@ -3458,13 +3458,13 @@ export { CHANNEL_INGEST_MIGRATIONS } from "./migrations.js";
 export declare const CHANNEL_INGEST_MIGRATIONS: readonly [{
     readonly id: "20261030121000_channel_retained_basis";
     readonly catalogPath: "db/platform/migrations/20261030121000_channel_retained_basis.sql";
-    readonly position: 88;
+    readonly position: 89;
     readonly sha256: "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf";
     readonly url: URL;
 }, {
     readonly id: "20261030122000_channel_purchased_source";
     readonly catalogPath: "db/platform/migrations/20261030122000_channel_purchased_source.sql";
-    readonly position: 89;
+    readonly position: 90;
     readonly sha256: "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2";
     readonly url: URL;
 }];
@@ -3494,6 +3494,12 @@ export declare function classifyQuarantineReason(error: unknown): ChannelQuarant
  * side's, and is only ever reached when the payload carried no token to blame.
  */
 export declare function quarantineVocabulary(error: unknown, wireToken: string | null): string;
+```
+## dist/channels/validation.d.ts
+
+```ts
+import { z } from "zod";
+export { z };
 ```
 ## dist/http/deadline.d.ts
 

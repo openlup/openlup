@@ -649,3 +649,234 @@ at this read checkpoint. Automatic repair cycles consumed: zero of three.
 Self-retro: the three-minute initial admission wait dominated the 84-second
 pre-read stages. Reusing the bump and history-preservation route, existing
 artifact discriminators and one task section avoided new release machinery.
+
+## Account newsletter withdrawal
+
+Outcome: a portable PostgreSQL account newsletter opt-out made after this change
+must make the native consent evaluator refuse `marketing_newsletter` for
+evaluator-accepted emails whose database `lower()` agrees with JavaScript `toLowerCase()`, without
+creating or weakening another consent. All evaluator-accepted boundary whitespace
+is trimmed identically; database-dependent case mapping remains a stated limit. The bounded delivery is an admission-only
+change followed by a body-only setter forward, one real-PostgreSQL witness,
+required manifest/catalogue/package assets, a pending change fragment, an operator
+upgrade statement and affected owner documentation. Historical reconciliation is
+excluded from the forward. Managed SQL, baselines, evaluator/policy, acquisition,
+retention, provider integration, versions and releases remain unchanged.
+
+The owner delegated local preparation and subsequent gated submission/queue
+delivery to one supervisor, with admission delivered first. A combined maintainer
+read of both local trees precedes DCO and native review. Release, publication,
+credentials, settings and hosted activation remain excluded. The current main and instruction pin is
+`fcbaacdf3183bc1c26f023b97248cdf678471171`. The fix belongs to the next set;
+the prepared `0.34.0` set does not contain it.
+The `0.34.0` set from `fcbaacdf` was published without this fix, which ships in the next set.
+
+Within that email-normalization boundary, every false call must deny
+absent/granted newsletter permissions,
+preserve denied/suppressed rows and never decrease consent timestamps. A true
+call leaves all consent rows unchanged: after opting out and back in, evaluation
+continues refusing until a separate explicit grant, although account read-back
+reports the preference. The account response and managed setter name only
+`marketing_newsletter`, with managed copy version
+`customer_account_marketing_newsletter.v1`. Retention creation and claim require their own explicit
+grant. The packaged-writer/customer-copy audit is complete, with the source
+facts below. Pre-change SQL/JavaScript fingerprint parity passes for mixed-case
+and non-ASCII uppercase addresses on all seven selected installation shapes.
+
+The initial admission probes found the non-expand-only and function-identity
+boundaries. The owner approved one fourth fixed replacement slot and narrow
+identity handling for exactly this signature, preserving earlier slot positions
+and refusing unrelated boolean/default identities. Admission is prepared in its
+own tree; both working states explicitly merge current main without DCO.
+Branch heads remain at their original base until the read. One combined maintainer read remains pending. All three automatic
+repair cycles cover the whole change across both deliveries; none is consumed.
+
+Source audit: the packaged acquisition grant path accepts only newsletter and
+launch-offer purposes. Native preference synchronization accepts only denials or
+suppressions for newsletter, launch-offer and tester purposes; reconciliation
+writes suppressions. No packaged writer grants `retention_marketing`. Its creation
+and claim both require their own explicit granted row. A host capturing that
+purpose owns its withdrawal. The account UI submits only the newsletter boolean;
+its visible copy uses host translation keys, with no supplied text promising
+that this switch covers all marketing.
+Known limits: this setter registers no external provider synchronization; earlier
+opt-outs do not override an existing grant automatically. Operators have
+an exact idempotent upgrade statement in the data guide, with its own witness. An email-change
+witness confirms that a denial remains keyed to the old normalized-email
+fingerprint; a different normalized email reads a different key.
+
+Both assigned worktrees retain their original branch heads. Installation completed
+in each. The admission slot's 11 focused tests and full 686-test admission regression
+pass, along with strict five-project typecheck, lint (zero errors, 33 existing
+warnings), structural checks and neutrality. Policy passes on its exact unsigned
+snapshot with the proposed scoped documentation trailer, before DCO.
+The real setter fails first on all seven shapes: an account opt-out leaves the
+newsletter row granted. Legacy fixture roles are composed only after exact canonical installation
+and replay; qualified roles retain their production installation contract.
+No DCO, native review, submission or canonical verification is claimed.
+The seven-shape real-PostgreSQL matrix passes before the main merge (43.60
+seconds on the resumed run): legacy;
+qualified-v2 installer-managed and operator-provisioned with bootstrap and
+separate migrators; qualified-admin installer-managed and operator-provisioned.
+Each uses the real restricted actor/auth context and evaluator, checks definer
+INSERT/UPDATE authority, mixed-case and `Ä` fingerprint parity, atomic rollback,
+absent/denied/suppressed/granted behavior, unchanged-preference withdrawal,
+older timestamps, non-granting opt-in, other purposes, evaluator-refused email, manual
+upgrade boundaries (including equal timestamps) and idempotent replay.
+The three mutation probes fail at their intended behavior assertions: no consent
+write leaves a grant; admitting suppression downgrades its row; skipping repeated
+false calls leaves a later grant. The unmodified witness is restored byte-for-byte.
+The actual email-change case keeps the old denial while a separate grant for the
+new email is allowed. The upgrade statement runs through the declared migrator,
+not a compensating host runtime grant. The exact catalogue hashes were measured
+on all seven real installation shapes before their manifest pins were updated.
+The forward contains
+no set-version or publication-budget condition, and no cap increase is proposed.
+Baseline Platform packing measures 1,986,181 packed bytes, 9,258,510 unpacked
+bytes and 2,720 files (2,664 code files; 1,715,302 code gzip bytes), within every
+unchanged cap. The pending change fragment applies to the set carrying this
+forward, without assigning a release version.
+
+Self-retro: tracing the real header exposed the exact admission boundary before
+implementation. Initial fixture failures showed why the legacy inventory must
+precede host runtime grants and why principal uniqueness must be retained. The
+corrected fixture uses the existing boundaries rather than changing production
+controls. Shared resource admission, including a measured 391-second wait, is
+serialized; broader admission regression took 327.24 seconds.
+
+Fixture regroup: an initial legacy runtime role before installation changed the
+inventory, and later GRANT/REVOKE left stored ACLs during post-behavior replay.
+The remaining gap belongs to fixture ordering, not the forward: observe exact
+installation/replay while the canonical catalogue is intact, then compose the
+restricted legacy host login for actor/evaluator behavior. The passing full matrix
+preserves both proofs. Lesson: host fixture ACLs inside a canonical observer
+→ finish canonical replay before composing those ACLs.
+
+Current-main integration: both working states merge the fetched main above
+without rebasing. Admission merges and applies cleanly. The combined tree has
+only a task-record EOF conflict, resolved by preserving both appended sections
+verbatim. No control or migration conflict occurs. The inherited source release
+contract, package versions, release caps and consumed changelog content remain
+exactly main's. Forward version `20261030110000` passes the manifest
+evaluator and three-generation exact-prefix history on that main.
+
+Current-main proof passes: the full admission regression has 686 passing cases
+(337.50 seconds), including all eleven new refusal/success cases; the seven
+installation shapes pass again in 43.59 seconds. Strict typecheck on both trees
+has zero unresolved edges or consumer errors. Both lint runs pass with zero
+errors and the same 33 existing warnings; structural and tree/UI neutrality
+checks pass. The complete Platform suite passes all 7,630 cases with two workers,
+with every assertion and default timeout retained, followed by API validation.
+The default-worker run had one unchanged fulfillment stress-case timeout;
+the full bounded-worker rerun passed. An earlier lint execution error came from
+removing a temporary policy export during its scan; serializing those phases
+produced the passing lint run without a configuration or source exception.
+
+Same-main Platform pack measurement is 1,985,626 bytes / 9,257,083 unpacked
+bytes / 2,720 files before this fix and 1,986,557 / 9,261,193 / 2,721 after it.
+Code gzip is 1,715,526 bytes and documentation gzip 55,564 bytes after the fix;
+every unchanged cap passes. This is 931 packed bytes and one file added. No
+set-version or budget condition enters the forward. Admission and policy proof
+use exact exported unsigned snapshots: admission-only over current main, then
+the combined fix over that predecessor. No DCO, native review, canonical full
+verification, submission or hosted admission is claimed at this checkpoint.
+The full read packet binds both trees and proposed documentation trailers.
+
+Self-retro at this checkpoint: canonical replay before fixture ACL composition
+kept authority and inventory proof distinct. Temporary policy exports must finish
+before lint begins. All three whole-fix repair cycles remain available.
+
+
+Unicode-whitespace repair (cycle 1 of 3): both independent native cards identify
+the same reachable SQL/JavaScript trim mismatch. The extended existing witness
+derives all evaluator-accepted trim characters from the runtime and fails first
+on the unchanged forward: U+00A0 and U+FEFF leave the evaluator grant active.
+The cycle-1 body-only replacement used the same explicit escaped trim set for
+its fingerprint and then-existing address check; the operator statement uses that
+normal form too. Cycle 2 removes that address check.
+The function header, attributes, evaluator, acquisition and other functions stay
+unchanged. Canonical/package SQL and all byte-bound pins are re-derived.
+
+Case-mapping measurement uses PostgreSQL 16.15 on its pinned image,
+`en_US.utf8` / libc collation version 2.41, against Node 24.21.0 / Unicode 17.0.
+All 297,333 PostgreSQL-representable assigned Unicode scalar values are placed
+at both ends of an address's local part (594,666 addresses); NUL and the 2,048
+surrogate code points cannot be represented as PostgreSQL text and are excluded.
+There are 30 differing code points and 59 differing address results:
+U+0130, U+03A3, U+A7CE, U+A7D2, U+A7D4 and U+16EA0–U+16EB8.
+These include common Turkish `İ` and context-dependent Greek `Σ`, not only newer
+letters. A real C-locale UTF8 database leaves `Ä` uppercase while JavaScript
+produces `ä`. This residue also exists in the acquisition normalization; this
+repair does not change case folding. Evaluator refusal is guaranteed only where
+the database and JavaScript lowercase results agree. The fragment and upgrade
+guide state this boundary, and the installed README upgrade link is absolute.
+
+Self-retro for this repair: installation-shape breadth shared the same narrow
+normalization samples; deriving the accepted trim class tests the actual identity
+boundary without extending the evaluator. The measurement's first C-locale
+metadata query used an unavailable setting name; querying the database catalogue
+instead produced the complete result without changing any product code.
+
+The first repair lint run refused a private package-helper import in the root
+witness and diagnostic script. The witness now derives acceptance through the
+public evaluator and compares the SQL hash with its recorded decision fingerprint,
+which is the real nativeFingerprint(nativeEmail(address)) result. It verifies the
+specific control-character refusal before excluding a runtime trim candidate;
+other errors still fail. No export, import exception or copied validator was added.
+The executed diagnostic source remains archived as private evidence.
+
+The first full package run caught the remaining old digest in the communications
+migration tuple (7,629 tests passed; its one asset-integrity test refused). The
+tuple and generated API literal are refreshed from the same canonical SQL hash;
+no tuple identity, path, position or API structure changes.
+
+Repair proof: the final public-boundary witness passes all seven existing install
+shapes in 43.20 seconds, deriving the same 20 accepted trim characters per shape
+and checking both string-literal settings. All four mutations fail at their
+intended behavior assertions, including reverting to plain btrim. Strict
+five-project typecheck and lint pass; lint retains 33 existing warnings and zero
+errors. Platform build, all 7,630 tests and API validation pass with two workers,
+retaining all assertions and default timeouts. Platform packing measures
+1,986,625 packed bytes, 9,261,482 unpacked bytes and 2,721 files, within every
+unchanged cap. The final unsigned tree's policy, admission and package results
+are bound in the second read packet. Repair cycle 1 remains pending its read,
+DCO and fresh native review; both original cards remain open until that review.
+Self-retro: derive identity inputs through the public evaluator and refresh every
+SQL-byte consumer, including the exported tuple and generated API literal,
+before the broad gate. No new helper export or case-mapping mechanism is needed.
+
+
+Address-selection repair (cycle 2 of 3): two independent cards identified the same
+locale-dependent predicate outside the accepted lowercase/UTF8 limits. The lead
+ruled that the duplicate predicate protects no requirement and must be removed,
+not aligned. The only setter-body change removes the regex line; selection now
+uses only the principal ID. The evaluator's acceptance rule is deliberately not
+copied into SQL. Clients retain their nonnull/nonempty email invariant; a denial
+for an evaluator-refused address sits under a fingerprint the evaluator never
+reads and does not change its refused answer. No locale guard, replacement regex,
+new class, evaluator change or operator-statement change is introduced.
+
+The new legacy-only database case uses the existing container, pools and install
+runner to create a UTF8 database with deterministic ICU en-US default collation,
+without a fixture seam or extra role privilege. On the unchanged forward, the
+real authenticated actor leaves the U+0085 address's evaluator grant active;
+the failing-first assertion reports granted instead of denied. The seven existing
+installation shapes remain selected alongside this additional locale case.
+
+Self-retro: duplicated validation created an unnecessary selection boundary.
+Removing it leaves one address-acceptance owner in the evaluator and tests the
+complete selection-to-fingerprint-to-denial path. Accepted case mapping and UTF8
+limits remain unchanged. One cycle remains after this repair; a fresh material
+mechanism requires owner regroup before any further repair.
+
+Repair-cycle-2 proof: all seven original installation shapes plus the additional
+legacy ICU locale case pass in 47.07 seconds. All five mutations fail at their
+intended assertions, including restoration of the exact preceding predicate.
+The refused-address case writes preference, event and denial while preserving
+its evaluator refusal and every other consent row. Strict five-project typecheck
+and lint pass, with zero errors and 33 existing warnings. Platform build, all
+7,630 tests and API validation pass with the existing two-worker selection and
+unchanged assertions/timeouts. Packing measures 1,986,589 packed bytes,
+9,261,268 unpacked bytes and 2,721 files, within unchanged caps.
+Exact unsigned-tree policy, admission and package evidence is bound in the third
+read packet. No DCO or new native review is claimed before that read.
