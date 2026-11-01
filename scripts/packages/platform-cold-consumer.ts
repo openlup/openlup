@@ -2189,6 +2189,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     consumerNode(consumer, MARKET_DESCRIPTOR_CONSUMER_PROOF);
     consumerNode(consumer, REFERENCE_DELEGATION_CONSUMER_PROOF);
+    consumerNode(consumer, readFileSync(join(root, "docs/platform/communications-conformance.mjs"), "utf8"));
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
