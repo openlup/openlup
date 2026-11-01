@@ -264,6 +264,38 @@ describe('six real Git witnesses', () => {
       await expect(f.cli('verify')).rejects.toThrow('independent PASS');
     }
   });
+  // Headers are outside the message allowlist; the synthetic signature is not verified here.
+  // EOF whitespace is trimmed, while an interior CR is outside the LF trailer-line grammar.
+  it.each([
+    ['gpgsig header', 'gpgsig -----BEGIN PGP SIGNATURE-----\n \n synthetic-signature\n -----END PGP SIGNATURE-----', trailerMessage, 'utf8', true],
+    ['non-UTF-8 encoding header', 'encoding ISO-8859-1', trailerMessage.replace('current guidance', 'current café guidance'), 'latin1', true],
+    ['extra header', 'x-extra fixture', trailerMessage, 'utf8', true],
+    ['header continuation lines', 'x-extra first\n continued value\n \n last value', trailerMessage, 'utf8', true],
+    ['trailer trailing whitespace', '', trailerMessage.replace('\nSigned-off-by:', ' \t\nSigned-off-by:'), 'utf8', true],
+    ['interior CRLF trailer line', '', trailerMessage.replace('\nSigned-off-by:', '\r\nSigned-off-by:'), 'utf8', false],
+    ['CRLF message lines', '', trailerMessage.replaceAll('\n', '\r\n'), 'utf8', false],
+    ['final sign-off CRLF', '', `${trailerMessage}\r\n`, 'utf8', true],
+  ] as const)('classifies a raw trailer tip with %s', async (_name, extraHeaders, message, encoding, accepted) => {
+    const f = await fixture(); const prior = await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'main.txt'), 'main addition\n');
+    f.git('add', 'main.txt'); f.git('commit', '-qm', 'main move');
+    const main = f.git('rev-parse', 'HEAD'); f.git('update-ref', 'refs/remotes/origin/main', main);
+    const tree = f.git('merge-tree', '--write-tree', f.head, main);
+    const merge = f.git('commit-tree', tree, '-p', f.head, '-p', main, '-m', 'integrate main');
+    const headers = [`tree ${tree}`, `parent ${merge}`, 'author Fixture <fixture@example.invalid> 1000000000 +0000', 'committer Fixture <fixture@example.invalid> 1000000000 +0000', extraHeaders].filter(Boolean).join('\n');
+    const raw = Buffer.concat([Buffer.from(`${headers}\n\n`), Buffer.from(`${message}\n`, encoding)]);
+    const head = execFileSync('git', ['-C', f.cwd, 'hash-object', '--literally', '-t', 'commit', '-w', '--stdin'], { input: raw, encoding: 'utf8' }).trim();
+    f.git('checkout', '-q', '--detach', head);
+    await f.cli('prepare', join(f.scratch, 'intent.json'));
+    const next = JSON.parse(await readFile(f.statePath, 'utf8'));
+    expect(next.candidate.head).toBe(head);
+    expect(next.candidate.tree).toBe(tree);
+    expect(next.history.slice(0, -1)).toEqual(prior.history);
+    expect(Boolean(next.candidate.integration)).toBe(accepted);
+    if (accepted) expect(next.candidate.integration).toMatchObject({ head: f.head, mechanical: true, expires: prior.history.at(-1).at + 86400000 });
+    await expect(f.cli('verify')).rejects.toThrow('independent PASS');
+  });
   it('requires full local review for an exact merge of an unlanded stacked predecessor', async () => {
     const f = await fixture(); await f.review();
     f.git('checkout', '-q', '--detach', f.base);
