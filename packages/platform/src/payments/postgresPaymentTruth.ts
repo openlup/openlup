@@ -112,6 +112,8 @@ function readback(value: unknown): PaymentTruthReadback {
       fingerprint: event.fingerprint,
       state,
       outcome,
+      ...(event.applicationStatus === "awaiting_evidence" || event.applicationStatus === "applied" || event.applicationStatus === "review_required"
+        ? { applicationStatus: event.applicationStatus, reviewRequiredAt: nullableString(event.reviewRequiredAt) } : {}),
       replayed: event.replayed,
     },
     effects: {

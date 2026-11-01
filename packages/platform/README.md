@@ -1115,6 +1115,45 @@ PostgreSQL cases cover fresh/prefix installs, replay/conflict, unknown readback,
 lost acknowledgement, rollback, denied access, dunning/recovery, concurrency and
 later-only dates; this does not claim managed-store parity or host activation.
 
+The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
+native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
+commands use the existing `sandbox` settlement channel only. The host authorizes
+`beginAttempt`, `recordObservation` and `readAttempt`; do not expose those commands
+as unauthenticated browser actions. No key or provider SDK is needed. Beginning
+records dispatch conservatively; a replay returns the same row with `replayed`
+and never authorizes another dispatch. An unresolved/indeterminate attempt
+blocks a replacement. Terminal ingress also resolves older unknown truth for the
+same attempt; replacement waits while such truth is still open. A definite refusal or expiry may be followed by a new
+attempt; a still-active refused/expired attempt can instead receive late capture.
+
+The simulator's `ingress` composes the existing verified ingress and PostgreSQL
+truth port. Deliver original JSON bytes containing exactly `settlementIntentId`,
+`attemptId` and `observationId`. Verification reads a server-recorded observation;
+a browser return/status without that fact refuses. Recording an observation
+alone never marks an order paid. A stale durable observation is acknowledged with
+the existing `result_attempt_mismatch` skip and cannot apply money. Exact identity, money, observation and active
+attempt checks use only durable database state. Accepted event replay preserves
+the original fact after a later observation or attempt, including after restart.
+No generic prepared provider store, real mandate or real money is enabled;
+`paymentSchemaDescriptor` and real-provider refusals keep their meaning.
+
+Attempt readback includes `settlementChannelKey` and `methodFacts`:
+`authorizationRef`, `unattendedChargeAuthorizedAt`, nullable `payerAccountRef`,
+`methodRef` and `methodEvidenceRef`. Empty initial facts request synthetic server
+references. Subsequent renewal/retry/recovery can pass the saved facts explicitly,
+retaining the original authorization time. Attach purchase terms only after the
+exact active captured attempt's order is paid and its settlement settled. Renewal
+composition reuses the attempt store with its existing settlement transaction;
+it must not also settle that renewal through purchase ingress.
+
+A verified capture after cancellation remains an operator-visible captured truth
+row with `reviewRequiredAt` and `applicationStatus: "review_required"`. Its stored
+state remains `open` with no settlement transition, but it is terminal for the
+open-event sweep and reconciliation. The order stays cancelled; no automatic
+refund or fiscal work is created. Recovery-notice contention can still roll back
+ordinary capture settlement: retain the observation and redeliver the same event
+after contention clears. The simulator never redispatches that captured attempt.
+
 Attempt input adds optional method selection with opaque, persistable channelRef
 and transient payer email/name. Payer contact is dispatch-only: never persist,
 audit, log or diagnose it. Missing adapter-required input must refuse before

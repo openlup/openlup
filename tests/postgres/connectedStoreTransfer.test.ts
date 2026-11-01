@@ -7,6 +7,8 @@ import { Pool } from "pg";
 import * as jose from "jose";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
+import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -34,6 +36,9 @@ let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
 let identity: Awaited<ReturnType<typeof identityFixture>>;
+let payments: Awaited<ReturnType<typeof paymentTransferFixture>>;
+const paymentOptions = { dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered" };
+const paymentAt = "2026-10-30T12:00:00.123Z";
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
@@ -61,8 +66,8 @@ async function installation(label: string): Promise<Installation> {
   expect((await runner.status()).pending).toEqual([]);
   return { owner, ownerUrl: url(selection.migrationLogin, true), runtime: pool(url(selection.runtimeLogin)), restore: pool(url(selection.restoreLogin!)), runtimeUrl: url(selection.runtimeLogin) };
 }
-async function capture(db: Pool, sourceId: string): Promise<ConnectedNativeStoreCapture> {
-  return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+async function capture(db: Pool, sourceId: string, limits = { maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 }): Promise<ConnectedNativeStoreCapture> {
+  return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, ...limits,
     source: { async withSnapshot(work) {
       const client = await db.connect();
       try {
@@ -74,6 +79,51 @@ async function capture(db: Pool, sourceId: string): Promise<ConnectedNativeStore
     } },
   });
 }
+function paymentPort(db: Pool) { return createPostgresSandboxPaymentSimulator(db, paymentOptions); }
+function paymentReceive(db: Pool, attempt: SandboxPaymentAttempt, observationId: string) {
+  return paymentPort(db).ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({
+    settlementIntentId: attempt.settlementIntentId, attemptId: attempt.id, observationId,
+  })), headers: {}, receivedAt: paymentAt });
+}
+async function paymentObservation(db: Pool, attempt: SandboxPaymentAttempt, outcome: SandboxPaymentOutcome) {
+  const input = { attemptId: attempt.id, idempotencyKey: `observation:${randomUUID()}`, outcome, occurredAt: paymentAt,
+    payerEmail: "dispatch-only@example.invalid", rawPayload: { contact: "dispatch-only@example.invalid" } };
+  const observation = await paymentPort(db).recordObservation(input);
+  return { input, ...observation };
+}
+async function paymentFixture() {
+  const clientId = randomUUID(), orderId = randomUUID(), writer = await source.owner.connect();
+  try {
+    await writer.query("BEGIN");
+    await writer.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [clientId, `${clientId}@example.invalid`]);
+    await writer.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',900)", [orderId, clientId]);
+    await writer.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)", [orderId]);
+    await writer.query("COMMIT");
+  } catch (error) { await writer.query("ROLLBACK"); throw error; } finally { writer.release(); }
+  await source.runtime.query("SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',900,'XXX','{}'::jsonb,$3)", [`open:${orderId}`, orderId, paymentAt]);
+  const intentId = (await source.owner.query("SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1", [orderId])).rows[0].id as string;
+  const input = { settlementIntentId: intentId, idempotencyKey: `attempt:${randomUUID()}`, requestFingerprint: "b".repeat(64), at: paymentAt };
+  const extraFacts = { authorizationRef: "sandbox:authorization", unattendedChargeAuthorizedAt: paymentAt,
+    payerAccountRef: "sandbox:payer", methodRef: "sandbox:method", methodEvidenceRef: "sandbox:evidence", payerEmail: "dispatch-only@example.invalid" };
+  await expect(paymentPort(source.runtime).beginAttempt({ ...input, methodFacts: extraFacts })).rejects.toThrow("payment_simulator_method_facts_invalid");
+  return { orderId, intentId, input, attempt: await paymentPort(source.runtime).beginAttempt(input) };
+}
+async function paymentTransferFixture() {
+  const open = await paymentFixture(), fenced = await paymentFixture(), pending = await paymentFixture(), review = await paymentFixture();
+  const refused = await paymentObservation(source.runtime, fenced.attempt, "refused");
+  expect((await paymentReceive(source.runtime, fenced.attempt, refused.id)).status).toBe(200);
+  const nextInput = { ...fenced.input, idempotencyKey: `attempt:${randomUUID()}` };
+  const active = await paymentPort(source.runtime).beginAttempt(nextInput);
+  const unknown = await paymentObservation(source.runtime, active, "indeterminate");
+  expect((await paymentReceive(source.runtime, active, unknown.id)).status).toBe(200);
+  const captured = await paymentObservation(source.runtime, pending.attempt, "captured");
+  await source.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${review.orderId}`, review.orderId]);
+  const cancelled = await paymentObservation(source.runtime, review.attempt, "captured");
+  expect((await paymentReceive(source.runtime, review.attempt, cancelled.id)).status).toBe(200);
+  const reviewEvent = (await source.owner.query("SELECT id FROM public.payment_truth_events WHERE source_event_id=$1", [`sandbox:${cancelled.id}`])).rows[0].id as string;
+  return { open, fenced, active, nextInput, refused, pending, captured, review, cancelled, reviewEvent };
+}
+
 async function identityFixture() {
   const issuer = "https://issuer.example.invalid/retained-store", audience = "customer-api";
   const key = await jose.generateKeyPair("ES256"), jwk = { ...await jose.exportJWK(key.publicKey), kid: "native-source", alg: "ES256", use: "sig" };
@@ -214,6 +264,7 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
+  payments = await paymentTransferFixture();
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -253,6 +304,82 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   const { sha256: _outer, ...outer } = copy; copy.sha256 = hash(outer);
   return copy;
 }
+
+it("restores writer-created sandbox attempts, cyclic observations and terminal review truth, then continues once", async () => {
+  const before = await census(source.owner);
+  expect(JSON.stringify(packet)).not.toContain("dispatch-only@example.invalid");
+  expect((await restore()).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(before);
+  expect((await restore()).replayed).toBe(true);
+  const restarted = pool(target.runtimeUrl), port = paymentPort(restarted), truth = createPostgresPaymentTruthPort(restarted, paymentOptions);
+  const p = payments;
+  expect(await port.readAttempt({ settlementIntentId: p.open.intentId })).toMatchObject({ id: p.open.attempt.id, state: "dispatched", latestObservation: null });
+  expect((await port.beginAttempt(p.open.input)).replayed).toBe(true);
+  await expect(port.beginAttempt({ ...p.open.input, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
+  expect(await port.readAttempt({ settlementIntentId: p.fenced.intentId })).toMatchObject({ id: p.active.id, state: "indeterminate" });
+  expect((await port.beginAttempt(p.nextInput)).replayed).toBe(true);
+  await expect(port.beginAttempt({ ...p.nextInput, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
+  await expect(port.recordObservation({ ...p.refused.input, idempotencyKey: `observation:${randomUUID()}`, outcome: "captured" })).rejects.toThrow("wrong_attempt");
+  expect(await paymentReceive(restarted, p.fenced.attempt, p.refused.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  expect(await port.recordObservation(p.captured.input)).toEqual({ id: p.captured.id, replayed: true });
+  expect((await paymentReceive(restarted, p.pending.attempt, p.captured.id)).status).toBe(200);
+  expect(await paymentReceive(restarted, p.pending.attempt, p.captured.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  for (const current of [{ ...p.open, active: p.open.attempt }, { ...p.fenced, active: p.active }]) {
+    const late = await paymentObservation(restarted, current.active, "captured");
+    expect((await paymentReceive(restarted, current.active, late.id)).status).toBe(200);
+    expect(await paymentReceive(restarted, current.active, late.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  }
+  for (const current of [p.open, p.fenced, p.pending]) {
+    expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [current.intentId])).rows).toHaveLength(1);
+    expect((await target.owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid'", [current.orderId])).rows).toHaveLength(1);
+  }
+  const original = await createPostgresPaymentTruthPort(source.runtime, paymentOptions).readEvent(p.reviewEvent);
+  expect(await truth.readEvent(p.reviewEvent)).toEqual(original);
+  expect(original).toMatchObject({ event: { applicationStatus: "review_required", state: "open", outcome: "captured" }, financial: { orderStatus: "cancelled" } });
+  expect(original!.event.reviewRequiredAt).toBeTruthy();
+  const observation = (await port.readAttempt({ settlementIntentId: p.review.intentId }))!.latestObservation!;
+  const reconciliation = { eventId: p.reviewEvent, idempotencyKey: randomUUID(), evidenceStatus: "observed" as const, outcome: "captured" as const,
+    occurredAt: paymentAt, failure: null, evidence: { sourceKind: "reconciliation_read" as const, sourceReference: observation.id,
+      observedStatus: observation.outcome, observedAt: observation.occurredAt, payloadFingerprint: observation.fingerprint, attemptRef: p.review.attempt.id } };
+  expect((await truth.recordReconciliation(reconciliation)).event.applicationStatus).toBe("review_required");
+  expect((await truth.recordReconciliation(reconciliation)).event.replayed).toBe(true);
+  for (let n = 0; n < 2; n++) expect((await truth.sweepOpenEvents({ now: "2030-01-01T00:00:00Z", limit: 1000 })).eventIds).not.toContain(p.reviewEvent);
+  expect(await paymentReceive(restarted, p.review.attempt, p.cancelled.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  expect((await target.owner.query("SELECT e.review_required_at IS NOT NULL AS review,e.outcome,o.status FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id JOIN public.commerce_orders o ON o.id=i.order_id WHERE e.id=$1", [p.reviewEvent])).rows)
+    .toEqual([{ review: true, outcome: "captured", status: "cancelled" }]);
+  const reviewTransitions = "SELECT id,outcome FROM public.commerce_settlement_transitions WHERE intent_id=$1 ORDER BY id";
+  expect((await target.owner.query(reviewTransitions, [p.review.intentId])).rows).toEqual((await source.owner.query(reviewTransitions, [p.review.intentId])).rows);
+  expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [p.review.intentId])).rows).toEqual([]);
+  for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) {
+    const rows = packet.owned.find(data => data.table === table)!.rows;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.join()).not.toContain("dispatch-only@example.invalid");
+    expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
+  }
+});
+
+it("rolls back the whole restore when a captured simulator observation is missing", async () => {
+  const corrupted = structuredClone(packet), observations = corrupted.owned.find(data => data.table === "payment_simulator_observations")!;
+  observations.rows = observations.rows.filter(row => (JSON.parse(row) as { id: string }).id !== payments.captured.id);
+  const { sha256: _hash, ...body } = corrupted; corrupted.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  const before = await census(target.owner);
+  await expect(restore(corrupted)).rejects.toMatchObject({ code: "target_conflict" });
+  expect(await census(target.owner)).toEqual(before);
+});
+
+for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) it(`counts linkable ${table} rows and bytes toward the transfer limits`, async () => {
+  const all = [...packet.compatible.tables, ...packet.owned], index = all.findIndex(data => data.table === table);
+  const through = all.slice(0, index + 1), rows = through.reduce((sum, data) => sum + data.rows.length, 0);
+  const bytes = through.reduce((sum, data) => sum + data.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+  await expect(capture(source.owner, "sandbox-row-limit", { maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 })).rejects.toMatchObject({ code: "limit_exceeded", table });
+  await expect(capture(source.owner, "sandbox-byte-limit", { maximumRows: 10000, maximumBytes: bytes - 1 })).rejects.toMatchObject({ code: "limit_exceeded", table });
+  const oversized = structuredClone(packet), targetRows = oversized.owned.find(data => data.table === table)!;
+  targetRows.rows = Array.from({ length: 10001 }, () => targetRows.rows[0]!);
+  const { sha256: _hash, ...body } = oversized; oversized.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  const before = await census(target.owner);
+  await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
+  expect(await census(target.owner)).toEqual(before);
+});
 
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";

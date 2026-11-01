@@ -147,6 +147,25 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+The sandbox payment companions `payment_simulator_attempts` and
+`payment_simulator_observations` travel with payment truth, including
+`payment_truth_events.review_required_at`. Restore stages an attempt's state as
+`dispatched` and its observation pointer as null, inserts observations, then
+restores both captured values before the locked transaction's exact final census.
+This satisfies the immediate cyclic references and state CHECK without disabling
+constraints or exposing intermediate state. Inactive attempt history, unresolved
+fences and terminal review facts remain part of the restored store.
+
+These tables contain linkable order/attempt identities, opaque request/event keys,
+fingerprints, timestamps, synthetic method references and synthetic outcomes.
+The bounded writers expose no payer-contact or raw-payload column/argument;
+method facts accept exactly five named keys and sandbox-prefixed references.
+Reference/key strings are not a general personal-data scrubber: the host must not
+embed contact details or secrets in them. Treat these rows as personal data under
+the transfer's existing operator access, retention and erasure responsibilities.
+The existing 10,000-row and 64-MiB transfer ceilings include both tables; capture
+also checks the caller's lower row/byte limits. This adds no transfer budget.
+
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
 writer. The connected observation uses ordinary-session database incarnation
