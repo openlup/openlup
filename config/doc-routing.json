@@ -1294,6 +1294,15 @@
       ],
       "doc": "packages/platform/README.md",
       "anchor": "#channels"
+    },
+    {
+      "id": "starter-application",
+      "when": "Independent starter application, owned customization and local sandbox composition",
+      "paths": [
+        "examples/neutral-store/**"
+      ],
+      "doc": "examples/neutral-store/README.md",
+      "anchor": ""
     }
   ]
 }

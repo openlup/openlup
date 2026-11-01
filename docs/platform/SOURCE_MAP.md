@@ -144,6 +144,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | core-partners | Partner inquiry lifecycle status and update acknowledgement contracts | [packages/core/README.md](../../packages/core/README.md#partner-lifecycle-contracts) | `packages/core/src/partners/**` |
 | core-risk | Pure risk-rule matching, scoring and mode-dependent enforcement results | [packages/core/README.md](../../packages/core/README.md#risk-evaluation-contracts) | `packages/core/src/risk/**` |
 | platform-channels | Normalized external-channel ingest, retained purchased source and explicit owner bindings | [packages/platform/README.md](../../packages/platform/README.md#channels) | `packages/platform/src/channels/**`; `packages/platform/test/channels/**`; `packages/platform/api/channels.api.md`; `packages/platform/api/channels-contracts.api.md`; `packages/platform/api/channels-server.api.md` |
+| starter-application | Independent starter application, owned customization and local sandbox composition | [examples/neutral-store/README.md](../../examples/neutral-store/README.md) | `examples/neutral-store/**` |
 <!-- openlup-generated:end -->
 
 ## Drill down to a file

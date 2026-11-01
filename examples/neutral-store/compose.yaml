@@ -1,0 +1,15 @@
+name: neutral-store
+services:
+  application:
+    build: .
+    environment:
+      STORE_CONFIGURATION: ${STORE_CONFIGURATION:-}
+      PORT: '4319'
+      STARTER_CONTAINER: '1'
+    ports:
+      - '127.0.0.1:4319:4319'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4319/api/config').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12

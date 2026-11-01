@@ -1,0 +1,28 @@
+{
+  "name": "neutral-store-application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.x" },
+  "packageManager": "npm@11.19.0",
+  "scripts": {
+    "build": "vite build",
+    "start": "node --experimental-strip-types host/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@openlup/core": "file:artifacts/openlup-core.tgz",
+    "@openlup/outbox": "file:artifacts/openlup-outbox.tgz",
+    "@openlup/platform": "file:artifacts/openlup-platform.tgz",
+    "pg": "8.22.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0",
+    "@types/node": "24.13.3",
+    "@types/pg": "8.20.0",
+    "typescript": "6.0.3",
+    "vite": "8.1.6"
+  }
+}

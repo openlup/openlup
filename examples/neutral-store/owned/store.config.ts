@@ -1,0 +1,142 @@
+import type { StoreConfig } from '../shared/config.ts';
+
+/** Change this single input to personalize the running application. */
+export const configurations: Record<string, StoreConfig> = {
+  supplements: {
+    id: 'supplements',
+    brand: {
+      name: 'Aster Goods',
+      strapline: { en: 'A fictional everyday collection', pl: 'Fikcyjna kolekcja na co dzień' },
+      description: {
+        en: 'A demonstration supplement catalogue. No health claims or consumption advice.',
+        pl: 'Demonstracyjny katalog suplementów. Bez oświadczeń zdrowotnych i porad dotyczących spożycia.',
+      },
+    },
+    theme: { ink: '#222b2a', paper: '#f7f7f2', accent: '#3d6657', accentInk: '#ffffff', border: '#ccd6cf' },
+    copy: {
+      heroTitle: { en: 'A small collection. Your own routine.', pl: 'Mała kolekcja. Twój własny rytm.' },
+      heroBody: {
+        en: 'Explore fictional products, choose a box and try a sandbox purchase. Nothing is charged or shipped.',
+        pl: 'Poznaj fikcyjne produkty, skomponuj pakiet i wypróbuj zakup testowy. Bez obciążenia i wysyłki.',
+      },
+      offerTitle: { en: 'Build your collection', pl: 'Skomponuj swoją kolekcję' },
+      offerBody: { en: 'Choose products and a purchase frequency.', pl: 'Wybierz produkty i częstotliwość zakupu.' },
+      shippingNote: { en: 'Demo shipping prices include no real carrier service.', pl: 'Ceny testowej dostawy nie obejmują rzeczywistej usługi przewoźnika.' },
+    },
+    media: {
+      hero: '/media/collection.svg',
+      heroAlt: { en: 'Three illustrated fictional containers', pl: 'Trzy ilustracje fikcyjnych opakowań' },
+    },
+    market: { country: 'PL', currency: 'PLN', timezone: 'Europe/Warsaw', locales: ['en', 'pl'] },
+    offer: {
+      layout: 'cards',
+      minUnits: 1,
+      maxUnits: 12,
+      shippingMinor: 1200,
+      freeShippingFromMinor: 15000,
+      subscriptionDiscountBps: 500,
+      cadenceDays: [28, 56],
+      defaultCadenceDays: 28,
+      products: [
+        {
+          sku: 'ASTER-DAWN-60', slug: 'dawn', title: 'Dawn',
+          name: { en: 'Dawn', pl: 'Świt' },
+          description: { en: 'A fictional supplement in a simple amber container.', pl: 'Fikcyjny suplement w prostym bursztynowym opakowaniu.' },
+          details: { en: 'Demonstration product. The label is fictional and gives no consumption instructions.', pl: 'Produkt demonstracyjny. Etykieta jest fikcyjna i nie zawiera zaleceń spożycia.' },
+          media: '/media/dawn.svg', mediaAlt: { en: 'Illustrated Dawn container', pl: 'Ilustracja opakowania Świt' },
+          contents: '60 units', unitPrice: { amountMinor: 3900, currency: 'PLN' },
+          permittedPurchaseModes: ['one_time', 'subscription'],
+        },
+        {
+          sku: 'ASTER-NOON-60', slug: 'noon', title: 'Noon',
+          name: { en: 'Noon', pl: 'Południe' },
+          description: { en: 'A fictional supplement with a pale green label.', pl: 'Fikcyjny suplement z jasnozieloną etykietą.' },
+          details: { en: 'An inert catalogue example for testing product selection, prices and recurring orders.', pl: 'Przykład katalogowy do testowania wyboru produktów, cen i zamówień cyklicznych.' },
+          media: '/media/noon.svg', mediaAlt: { en: 'Illustrated Noon container', pl: 'Ilustracja opakowania Południe' },
+          contents: '60 units', unitPrice: { amountMinor: 4500, currency: 'PLN' },
+          permittedPurchaseModes: ['one_time', 'subscription'],
+        },
+        {
+          sku: 'ASTER-DUSK-30', slug: 'dusk', title: 'Dusk',
+          name: { en: 'Dusk', pl: 'Zmierzch' },
+          description: { en: 'A fictional supplement with a muted blue label.', pl: 'Fikcyjny suplement ze stonowaną niebieską etykietą.' },
+          details: { en: 'No medical benefit is implied. No physical product is supplied by this application.', pl: 'Nie przypisujemy produktowi korzyści medycznych. Aplikacja nie dostarcza fizycznych produktów.' },
+          media: '/media/dusk.svg', mediaAlt: { en: 'Illustrated Dusk container', pl: 'Ilustracja opakowania Zmierzch' },
+          contents: '30 units', unitPrice: { amountMinor: 2900, currency: 'PLN' },
+          permittedPurchaseModes: ['one_time', 'subscription'],
+        },
+      ],
+    },
+    legal: { revision: 'demo-1', returnsDays: 14, demoOnly: true },
+    features: { reviews: true, acquisition: true, research: true, partners: true, risk: false, normalizedIngest: true },
+  },
+  coffee: {
+    id: 'coffee',
+    brand: {
+      name: 'Pebble Coffee',
+      strapline: { en: 'A fictional coffee shelf', pl: 'Fikcyjna półka z kawą' },
+      description: {
+        en: 'A demonstration coffee catalogue using the same commerce and subscription engine.',
+        pl: 'Demonstracyjny katalog kawy korzystający z tego samego silnika sprzedaży i subskrypcji.',
+      },
+    },
+    theme: { ink: '#352e2a', paper: '#fbf7ef', accent: '#805139', accentInk: '#ffffff', border: '#d9cdbf' },
+    copy: {
+      heroTitle: { en: 'Choose your next fictional coffee.', pl: 'Wybierz swoją kolejną fikcyjną kawę.' },
+      heroBody: {
+        en: 'Three illustrative roasts, one shared engine. Try a single order or a recurring box in the sandbox.',
+        pl: 'Trzy przykładowe palenia, jeden wspólny silnik. Wypróbuj zakup jednorazowy lub cykliczny pakiet w piaskownicy.',
+      },
+      offerTitle: { en: 'Make a coffee box', pl: 'Skomponuj pakiet kawy' },
+      offerBody: { en: 'Mix the fictional roasts and choose your frequency.', pl: 'Połącz fikcyjne kawy i wybierz częstotliwość.' },
+      shippingNote: { en: 'No real roasting, charging or shipping takes place.', pl: 'Nie odbywa się rzeczywiste palenie, pobieranie płatności ani wysyłka.' },
+    },
+    media: { hero: '/media/coffee.svg', heroAlt: { en: 'Illustrated coffee bags', pl: 'Ilustracja torebek kawy' } },
+    market: { country: 'PL', currency: 'PLN', timezone: 'Europe/Warsaw', locales: ['en', 'pl'] },
+    offer: {
+      layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 1200,
+      freeShippingFromMinor: 15000, subscriptionDiscountBps: 500,
+      cadenceDays: [14, 28, 56], defaultCadenceDays: 28,
+      products: [
+        {
+          sku: 'PEBBLE-LIGHT-250', slug: 'light-roast', title: 'Light roast',
+          name: { en: 'Light roast', pl: 'Jasne palenie' },
+          description: { en: 'A fictional light roast in a paper bag.', pl: 'Fikcyjna jasno palona kawa w papierowej torebce.' },
+          details: { en: 'Illustrative whole-bean coffee. No actual origin, certification or stock is claimed.', pl: 'Przykładowa kawa ziarnista. Bez deklaracji rzeczywistego pochodzenia, certyfikacji lub zapasu.' },
+          media: '/media/light.svg', mediaAlt: { en: 'Illustrated light roast bag', pl: 'Ilustracja torebki jasnego palenia' },
+          contents: '250 g', unitPrice: { amountMinor: 4200, currency: 'PLN' },
+          permittedPurchaseModes: ['one_time', 'subscription'],
+        },
+        {
+          sku: 'PEBBLE-MEDIUM-250', slug: 'medium-roast', title: 'Medium roast',
+          name: { en: 'Medium roast', pl: 'Średnie palenie' },
+          description: { en: 'A fictional medium roast for your demonstration box.', pl: 'Fikcyjna średnio palona kawa do demonstracyjnego pakietu.' },
+          details: { en: 'Use this product to test mixed boxes and recurring cadence. No real coffee is supplied.', pl: 'Ten produkt służy do testowania pakietów mieszanych i częstotliwości. Nie dostarczamy rzeczywistej kawy.' },
+          media: '/media/medium.svg', mediaAlt: { en: 'Illustrated medium roast bag', pl: 'Ilustracja torebki średniego palenia' },
+          contents: '250 g', unitPrice: { amountMinor: 4600, currency: 'PLN' },
+          permittedPurchaseModes: ['one_time', 'subscription'],
+        },
+        {
+          sku: 'PEBBLE-DARK-250', slug: 'dark-roast', title: 'Dark roast',
+          name: { en: 'Dark roast', pl: 'Ciemne palenie' },
+          description: { en: 'A fictional dark roast with an illustrated label.', pl: 'Fikcyjna ciemno palona kawa z ilustrowaną etykietą.' },
+          details: { en: 'The product, media and prices are fictional demonstration data.', pl: 'Produkt, ilustracje i ceny są fikcyjnymi danymi demonstracyjnymi.' },
+          media: '/media/dark.svg', mediaAlt: { en: 'Illustrated dark roast bag', pl: 'Ilustracja torebki ciemnego palenia' },
+          contents: '250 g', unitPrice: { amountMinor: 4900, currency: 'PLN' },
+          permittedPurchaseModes: ['one_time', 'subscription'],
+        },
+      ],
+    },
+    legal: { revision: 'demo-1', returnsDays: 14, demoOnly: true },
+    features: { reviews: true, acquisition: true, research: true, partners: true, risk: false, normalizedIngest: true },
+  },
+};
+
+/** The application owns its default identity and registry, including additional brands. */
+export const defaultConfigurationId = 'supplements';
+
+export function selectConfiguration(id: string = defaultConfigurationId): StoreConfig {
+  const config = Object.hasOwn(configurations, id) ? configurations[id] : undefined;
+  if (!config) throw new Error('starter_configuration_unknown');
+  return config;
+}
