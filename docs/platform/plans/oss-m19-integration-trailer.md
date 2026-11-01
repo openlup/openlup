@@ -69,10 +69,10 @@ Execution evidence (2026-11-01, Node 24.21.0 / npm 11.19.0):
   unpacked sizes: 765,428 / 143,183 / 9,838,399 bytes. Total delta: zero bytes
   compressed and unpacked. Baseline extraction and artifacts stay in task scratch.
 
-Pre-read checkpoint: source and guidance are ready for the stabilized control
-read; no DCO commit, counted review, push, PR or landing has occurred. Native
-repair cycles consumed: zero. After the read, obtain two fresh reviews and stop
-for supervisor selection of canonical verification.
+Initial pre-read checkpoint: source and guidance were ready for the stabilized control
+read; at that checkpoint no DCO commit, counted review, push, PR or landing had
+occurred. Native repair cycles consumed were zero. The next steps were the read,
+two fresh reviews and supervisor selection of canonical verification.
 
 Review saving: none realized at this checkpoint. The two-reviewer floor is
 unchanged; the saving to measure is repeat full-source inspection versus the
@@ -85,3 +85,59 @@ decision state, verify, receipt and queue schemas. Build package declarations
 before direct typecheck on a fresh install; the premature run cost one failed
 typecheck without a source defect. No rethink condition was reached. If this
 optimization exceeds one day or review stops converging, stop and report.
+
+## First native review and raw-message repair
+
+The coordinator accepted the initial staged tree
+`58b94f7f051db86cb8aed6b2dd43e6b5c29176ec` for DCO. Signed commit
+`a51f6cce706c17accb823378cd8e18f95a183771` preserves that tree. Committed policy
+passed with zero unanswered obligations and needed no trailer because the tooling
+owner section was updated. DCO passed for the one commit. The configured gitleaks
+scan passed across all 1,089 commits reachable from the task branch; an initial
+run without the repository config reported historical findings and was superseded
+by the canonical configured scan. No task WIP ref was created.
+
+The two fresh independent native reviewers completed the initial candidate:
+one PASS and one FAIL. Material finding `M19-TRAILER-NUL-01` demonstrated that
+Git's pretty-printed `%B` can truncate a raw commit message at NUL, hiding
+prohibited body text from the classifier. A task-owned literal Git-object witness
+confirmed the truncation, `git fsck` warning with exit zero, and incorrect focused
+recognition with mechanical status. The new real-object regression failed on
+the committed implementation, discriminating this missing refusal boundary.
+
+Repair: retain Git's parent/tree metadata, but obtain the complete message with
+`git cat-file commit`, reject NUL and check every raw message line. This preserves
+the existing head identity, parent checks and all other controls. The additional
+fixture hashes the malformed commit literally within its disposable repository;
+it never modifies another worktree or shared ref. The production-control repair
+must receive its stabilized read before DCO, then fresh required review; the
+finding is not closed by the author's proof. Native cycle remains zero until the
+repair is committed and prepared. Neither first-review report is copied to the
+repair tree. Canonical verification and all external delivery remain unrun.
+
+Repair proof: the raw-object regression failed on the initial committed code,
+then the complete real-Git gate suite passed all 37 cases in 19.18 seconds
+(18.97 seconds in tests) after the raw-message repair. Installed package inputs
+are unchanged, so the existing byte-identical real pack comparison remains
+applicable. Additional current working-tree checks are recorded in task scratch
+with the stabilized repair read: ast-grep, lint (zero errors, 33 existing warnings),
+published-tree typecheck (zero unresolved edges and consumer errors), and policy
+with navigation regeneration (zero unanswered) passed. No final verification is
+claimed. The current stop is the required read of the production-control repair
+before its DCO commit and fresh reviews; the original material finding stays open.
+
+Measured workload context from the existing forced-integration case: its complete
+own diff contains 76 paths, 21,365 changed lines and 1,211,743 patch bytes. Its
+integration delta contains 14 paths, 789 added lines and 58,759 patch bytes; the
+base delta has those same path/line counts and 58,629 bytes. The integration
+delta input is 96.31% smaller by changed-line count. This is not a measured total
+review-time saving: reviewers still inspect both deltas, both own-diff versions
+and interactions. The supplied evidence says fresh integration reviewers were
+not run and provides no timing/token comparison. No time saving is invented.
+
+Updated self-retro: raw commit bytes are the message-shape boundary; pretty
+display is insufficient. The discriminating raw-object witness was more useful
+than adding ordinary body-text variants. Keep the actual tip rather than add
+identity exceptions, and use the repository gitleaks config from the first scan.
+One completed review evaluation exposed the finding; no regroup condition or
+review-budget exhaustion was reached.

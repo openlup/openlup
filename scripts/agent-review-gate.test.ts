@@ -218,7 +218,7 @@ describe('six real Git witnesses', () => {
       }
     }
   });
-  it.each(['non-empty tip', 'two tips', 'other trailer', 'body text', 'missing doc trailer', 'non-merge parent', 'reversed merge parents', 'wrong reviewed parent', 'wrong main parent', 'merge-on-top', 'changed intent', 'changed author'])('refuses trailer integration with %s', async scenario => {
+  it.each(['non-empty tip', 'two tips', 'other trailer', 'body text', 'NUL-hidden body', 'missing doc trailer', 'non-merge parent', 'reversed merge parents', 'wrong reviewed parent', 'wrong main parent', 'merge-on-top', 'changed intent', 'changed author'])('refuses trailer integration with %s', async scenario => {
     const f = await fixture(); const prior = await f.review();
     f.git('checkout', '-q', '--detach', f.base);
     await writeFile(join(f.cwd, 'main.txt'), 'main addition\n');
@@ -244,6 +244,13 @@ describe('six real Git witnesses', () => {
     } else {
       f.git('add', 'source.txt'); f.git('commit', '--allow-empty', '-qm', message);
       if (scenario === 'two tips') f.git('commit', '--allow-empty', '-qm', message);
+      if (scenario === 'NUL-hidden body') {
+        // A literal Git object preserves bytes that pretty-printed %B can truncate.
+        const raw = f.git('cat-file', 'commit', 'HEAD');
+        const head = execFileSync('git', ['-C', f.cwd, 'hash-object', '--literally', '-t', 'commit', '-w', '--stdin'], { input: `${raw}\0\nUnreviewed hidden body\n`, encoding: 'utf8' }).trim();
+        f.git('checkout', '-q', '--detach', head);
+        expect(f.git('cat-file', 'commit', head)).toContain('\0\nUnreviewed hidden body');
+      }
     }
     const request = join(f.scratch, 'intent.json');
     if (scenario === 'changed intent' || scenario === 'changed author') {

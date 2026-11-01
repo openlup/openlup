@@ -48,9 +48,14 @@ async function ancestor(runGit, cwd, base, head) {
 }
 // Normalize lineage evidence only; the candidate/receipt still binds the actual tip.
 async function integrationParents(cwd, head) {
-  const [parentLine, tree, subject, ...body] = (await git(cwd, 'show', '-s', '--format=%P%n%T%n%B', head)).trimEnd().split('\n');
+  const [parentLine, tree] = (await git(cwd, 'show', '-s', '--format=%P%n%T', head)).trimEnd().split('\n');
   const parents = parentLine.split(' ').filter(Boolean);
-  if (parents.length !== 1 || !subject?.trim() || body[0] !== '' ||
+  if (parents.length !== 1) return parents;
+  // Pretty-printed %B truncates at NUL; validate the complete raw message instead.
+  const commit = await git(cwd, 'cat-file', 'commit', head); const boundary = commit.indexOf('\n\n');
+  if (boundary < 0 || commit.includes('\0')) return parents;
+  const [subject, ...body] = commit.slice(boundary + 2).trimEnd().split('\n');
+  if (!subject?.trim() || body[0] !== '' ||
     !body.some(line => /^OpenLup-Doc-Impact:[ \t]*\S/u.test(line)) ||
     !body.every(line => line === '' || /^(?:OpenLup-Doc-Impact|Signed-off-by):[ \t]*\S[^\r\n]*$/u.test(line))) return parents;
   const [mergeParents, mergeTree] = (await git(cwd, 'show', '-s', '--format=%P%n%T', parents[0])).trim().split('\n');
