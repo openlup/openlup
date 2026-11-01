@@ -1574,6 +1574,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-forward-class.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -9470,6 +9474,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-native-store/before.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-native-store/registry.json",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -9919,6 +9931,10 @@
     },
     {
       "path": "scripts/reviewed-batch-rail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-native-store-forward.test.ts",
       "class": "public-output"
     },
     {

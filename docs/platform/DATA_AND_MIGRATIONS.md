@@ -1334,6 +1334,63 @@ trigger, CHECK and identity-row changes. Sequence allocation during a later
 command may leave gaps; installation rollback removes a newly created sequence.
 Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
 
+### Closed native store forwards
+
+`nativeStoreForwardClass` in the [reviewed registry](../../config/reviewed-platform-forwards.json)
+owns up to seven exact native paths, their ordered rows and three closed lists:
+replaced functions with before-hashes, created functions with pinned search
+paths, and grant-only existing functions with closed role/verb capabilities.
+Only firm rows
+are registered; an absent row authorizes nothing. Additional inventory requires
+a separate control change and maintainer read. Set `sealed: true` in the store's
+set-version preparation (S1); subsequent slot changes or unsealing refuse.
+The [admission witness](../../scripts/reviewed-native-store-forward.test.ts)
+uses an independent synthetic registry, never production placeholder approvals.
+
+Feature SQL supplies `nativeStoreForwards` with whole-file and function
+after-hashes. It cannot change class data or admission machinery in that PR.
+Every earlier non-empty slot needs prior inventory and unchanged landed pins;
+issued native file pins must also be present unchanged.
+Reserved timestamps require approval even for expand-only SQL. Unlisted function
+signatures, drifted preimages, destructive statements, default privileges and
+role statements refuse. Tables and indexes retain the existing expand-only
+rules; data statements require exact prior slot entries. Only the account-consent
+slot may replace the named native sync-purpose CHECK, preserving every prior
+value and binding the original table statement's hash.
+
+One signature may be replaced by at most one slot. Its before-hash binds the
+latest definition in the pre-class native prefix, and replacement headers stay
+identical apart from the CREATE OR REPLACE introducer. The class-local identity
+reader normalizes scalar aliases, schema-qualified composite/table arguments and
+arrays against exact listed signatures; earlier identity readers stay unchanged.
+Adding a nullable column or a new CHECK on an existing table already follows the
+existing expand-only rules; this class adds no DROP NOT NULL permission.
+
+Each created function must revoke all PUBLIC privileges before its grants and
+conditional blocks. SECURITY DEFINER requires the slot's exact pinned
+`search_path`, such as `pg_catalog, pg_temp`. Grant-only signatures must exist in
+the pre-class native prefix and be disjoint from the replaced/created lists.
+They cannot be redefined or named by a direct privilege statement. Only their
+pinned conditional role/verb capabilities are admitted, without demanding a new
+PUBLIC revoke. A block naming created functions still requires their revokes;
+a block naming only grant-only functions does not.
+The sole DO exception is one block per role, verb and object kind (FUNCTION or
+TABLE): an exact `pg_roles` existence guard around one constant privilege
+EXECUTE, on admitted targets, for the same role. `anon` admits revokes only;
+`authenticated` and `service_role` admit revokes or EXECUTE grants. Extra
+statements, branches, dynamic strings and PUBLIC grants refuse.
+
+Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
+statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
+TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
+`ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
+another slot, an unqualified/IF NOT EXISTS creation, or any table GRANT refuses.
+The existing expand-only grammar and every other class retain their refusals.
+Each feature PR using this narrowing must provide real-PostgreSQL proof that its
+restricted runtime retains the access required by its row after the revokes/RLS;
+reviewers of that feature PR must assess the proof. This control cannot supply it.
+These are lexical admission controls, not SQL behavior or hosted qualification.
+
 ### M17 channelIngestForwards
 
 The reviewed registry declares `channelIngestForwards: []` before SQL can land.

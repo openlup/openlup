@@ -62,7 +62,11 @@ type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding
 export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: string; sql?: string }[] };
 export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraints?: { table: string; name: string; beforeSha256: string; beforeSql: string }[] };
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
-export type ReviewedForwardRegistry = { qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
+type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null };
+type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
+export type ReviewedForwardRegistry = { nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -255,6 +259,7 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
   }
   if (raw.supportAuthorityForwards !== undefined) validateSupportAuthorityForwards(raw.supportAuthorityForwards, paths);
   if (raw.channelIngestForwards !== undefined) validateChannelIngestForwards(raw.channelIngestForwards, paths);
+  validateNativeStoreClass(raw, paths);
   return raw;
 }
 
@@ -778,9 +783,9 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
   return git(root, ["cat-file", "blob", match[1]!]);
 }
 
-const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations", "channelIngestForwards"] as const;
+const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations", "channelIngestForwards", "nativeStoreForwards"] as const;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-const sharedApproval = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !FORWARD_LISTS.includes(key as typeof FORWARD_LISTS[number])));
+const sharedApproval = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => key !== "nativeStoreForwardClass" && !FORWARD_LISTS.includes(key as typeof FORWARD_LISTS[number])));
 const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
   for (const list of FORWARD_LISTS) {
     const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
@@ -792,6 +797,8 @@ const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
 /** Only an existing policy class may bind the SQL introduced by this candidate. */
 export function changedForwardApprovals(before: Buffer, after: Buffer): string[] {
   const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
+  assertNativeStoreClassTransition(prior, current);
+  if (canonical(prior.nativeStoreForwardClass) !== canonical(current.nativeStoreForwardClass)) throw new Error("reviewed native store class must be approved separately");
   if (canonical(sharedApproval(prior)) !== canonical(sharedApproval(current))) throw new Error("reviewed replacement shared approval fields must be approved separately");
   if (prior.channelIngestForwards !== undefined && current.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
   const changed: string[] = [];
@@ -810,10 +817,14 @@ export function assertForwardApproval(root: string, base: string, head: string):
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
   const introducedChannel = channelIngestShapes.filter(shape => !blob(root, base, shape.path) && blob(root, head, shape.path));
-  if (before.equals(after) && introducedChannel.length === 0) return;
+  const introducedNative = git(root, ["diff", "--name-only", "--diff-filter=A", base, head, "--", "db/platform/migrations/"]).toString("utf8").trim().split("\n").filter(isNativeStoreMigrationPath);
+  if (before.equals(after) && introducedChannel.length === 0 && introducedNative.length === 0) return;
   const previous = readReviewedForwardRegistry(before);
   if (previous.channelIngestForwards === undefined && introducedChannel.length > 0) throw new Error("reviewed M17 channel class must be approved separately before its SQL");
   const current = readReviewedForwardRegistry(after);
+  assertNativeStoreClassTransition(previous, current);
+  if (introducedNative.length && canonical(previous.nativeStoreForwardClass) !== canonical(current.nativeStoreForwardClass)) throw new Error("reviewed native store class must be approved separately before SQL");
+  for (const path of introducedNative) if (!previous.nativeStoreForwardClass?.slots.some(slot => slot.path === path) || !current.nativeStoreForwards?.some(pin => pin.path === path)) throw new Error(`reviewed native store requires a prior exact slot and feature binding: ${path}`);
   for (const { path } of introducedChannel) if (!current.channelIngestForwards?.some(pin => pin.path === path)) throw new Error(`reviewed M17 channel requires a binding: ${path}`);
   if (before.equals(after)) return;
   for (const path of changedForwardApprovals(before, after)) {
@@ -833,7 +844,8 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
       try {
         const prior = readForwardRegistry(before, true), current = readForwardRegistry(after, true);
         const previous = approvalBinding(prior, path), next = approvalBinding(current, path);
-        if (canonical(sharedApproval(prior)) === canonical(sharedApproval(current)) && previous && next && canonical(previous) === canonical(next)) return;
+        const nativeSlot = (registry: ReviewedForwardRegistry) => registry.nativeStoreForwardClass?.slots.find(slot => slot.path === path);
+        if (canonical(nativeSlot(prior)) === canonical(nativeSlot(current)) && canonical(sharedApproval(prior)) === canonical(sharedApproval(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
     }
   }
@@ -844,6 +856,7 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string, trustedBase = base): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (before && after && !before.equals(after)) {
+    assertNativeStoreClassTransition(readForwardRegistry(before, true), readReviewedForwardRegistry(after));
     const previousData = JSON.parse(before.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
     const currentData = JSON.parse(after.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
     if (previousData?.channelIngestForwards !== undefined && currentData?.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
@@ -860,7 +873,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
     }
   }
   const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
-  if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path))) return;
+  if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path))) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
   const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "package.json", "package-lock.json"];
@@ -906,7 +919,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const registry = readReviewedForwardRegistry(targetRegistry);
   const portable = path.startsWith("db/platform/migrations/");
   const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? []), ...(registry.managedInvoicingForwards ?? [])];
-  const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? []), ...(registry.supportAuthorityForwards ?? []), ...(registry.qualifiedInstallations ?? []), ...(registry.channelIngestForwards ?? [])].find((entry) => entry.path === path);
+  const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? []), ...(registry.supportAuthorityForwards ?? []), ...(registry.qualifiedInstallations ?? []), ...(registry.channelIngestForwards ?? []), ...(registry.nativeStoreForwards ?? [])].find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   if (isQualifiedPlatformMigrationPath(path) && sqlSha256(bytes) !== forward.sha256) throw new Error(`qualified installation differs from its exact approved bytes: ${path}`);
   let approval = base;
@@ -936,7 +949,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
-  if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) {
+  if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding) || registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
     const entries = git(root, ["ls-tree", "-rz", "--full-tree", head, "--", portable ? "db/platform/migrations/" : "supabase/migrations/"]).toString("utf8").split("\0").filter(Boolean);
     const preceding = entries.flatMap(entry => {
       const priorPath = entry.slice(entry.indexOf("\t") + 1);
@@ -947,7 +960,8 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     }).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
     const sources = readDocumentationObjects(root, preceding.map(source => source.oid));
     const prefix = preceding.map((source, index) => ({ path: source.path, bytes: sources[index]! }));
-    if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
+    if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) assertNativeStoreForward(registry, path, bytes, prefix);
+    else if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
     else assertSupportAuthorityForward(registry, path, bytes, prefix);
     return;
   }
@@ -1814,4 +1828,239 @@ export function assertChannelIngestForward(registry: ReviewedForwardRegistry, pa
     for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
   }
   for (const fn of forward.functions) if ((prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed M17 channel actual function preimage drifted");
+}
+
+const nativeStoreRows = ["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"];
+const nativeStoreTimes = ["20261101222000", "20261101223000", "20261101224000", "20261101225000", "20261101230000", "20261101231000", "20261101232000"];
+const nativeStoreRoles = ["anon", "authenticated", "service_role"];
+// This reader belongs only to the closed class. Earlier identity readers retain
+// their issued restrictions; a parseable type never authorizes a signature.
+function nativeStoreIdentity(name: string, args: string): string {
+  const types = args.trim() ? args.split(",").map(argument => {
+    if (/^(?:IN|OUT|INOUT|VARIADIC)\b/iu.test(argument.trim())) throw new Error("reviewed native store unsupported argument mode");
+    const match = /^(?:[a-z_][a-z0-9_]*\s+)?((?:uuid|text|jsonb|integer|bigint|boolean|timestamptz|bool|int|int4|int8|timestamp\s+with\s+time\s+zone|[a-z_][a-z0-9_]*\s*\.\s*[a-z_][a-z0-9_]*)(?:\s*\[\s*\])*)(?:\s+DEFAULT\s+[\s\S]+)?$/iu.exec(argument.trim());
+    if (!match) throw new Error("reviewed native store unsupported argument identity");
+    const type = match[1]!.toLowerCase().replace(/\s+/gu, " ").replace(/\s*\.\s*/gu, ".").replace(/(?:\s*\[\s*\])+$/u, "[]");
+    const array = type.endsWith("[]") ? "[]" : "", scalar = array ? type.slice(0, -2) : type;
+    const aliases: Record<string, string> = { bool: "boolean", int: "integer", int4: "integer", int8: "bigint", "timestamp with time zone": "timestamptz" };
+    const builtin = scalar.replace(/^pg_catalog\./u, "");
+    return `${["uuid", "text", "jsonb", "integer", "bigint", "boolean", "timestamptz", ...Object.keys(aliases)].includes(builtin) ? aliases[builtin] ?? builtin : scalar}${array}`;
+  }) : [];
+  return `${name.toLowerCase()}(${types.join(",")})`;
+}
+const nativeStoreSignature = (signature: string): string | null => {
+  const match = /^(public\.[a-z_][a-z0-9_]*)\s*\((.*)\)$/iu.exec(signature);
+  if (!match) return null;
+  try { return nativeStoreIdentity(match[1]!, match[2]!); } catch { return null; }
+};
+const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [...slot.replacedFunctions, ...slot.createdFunctions.map(fn => ({ ...fn, beforeSha256: null }))];
+
+/** Raw statement hashes, with normalized types and exact class-list membership. */
+export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readonly string[], preceding = false): Map<string, string> {
+  const allowed = new Set(signatures), names = new Set(signatures.map(signature => signature.split("(")[0]!)), result = new Map<string, string>();
+  for (const statement of sqlStatements(bytes.toString("utf8"), preceding)) {
+    const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+    if (preceding && (!prefix || !names.has(prefix[1]!.toLowerCase()))) continue;
+    if (!/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) continue;
+    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\s*\(([\s\S]*?)\)\s*RETURNS\s/iu.exec(statement);
+    if (!header) throw new Error("reviewed native store unsupported function header");
+    const signature = nativeStoreIdentity(header[1]!, header[2]!);
+    if (!allowed.has(signature)) {
+      if (preceding) continue; // A different issued overload is not this slot's preimage.
+      throw new Error(`reviewed native store unlisted signature: ${signature}`);
+    }
+    if (!preceding && result.has(signature)) throw new Error("reviewed native store duplicate function definition");
+    result.set(signature, sqlSha256(statement));
+  }
+  return result;
+}
+const purposeTable = "public.communication_native_sync_state";
+const purposeConstraint = "communication_native_sync_state_purpose_check";
+const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(",") === keys;
+export const isNativeStoreMigrationPath = (path: string): boolean => nativeStoreTimes.some(time => path.startsWith(`db/platform/migrations/${time}_`));
+
+function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
+  const control = registry.nativeStoreForwardClass;
+  if (control === undefined) {
+    if (registry.nativeStoreForwards !== undefined) throw new Error("reviewed native store bindings require prior class approval");
+    return;
+  }
+  if (!keysAre(control, "sealed,slots") || typeof control.sealed !== "boolean" || !Array.isArray(control.slots) || control.slots.length > 7) throw new Error("reviewed native store requires at most seven closed slots");
+  let previous = -1;
+  const replacements = new Set<string>();
+  for (const slot of control.slots) {
+    const index = nativeStoreRows.indexOf(slot.row);
+    if (!keysAre(slot, slot.purposeCheck ? "createdFunctions,dataStatements,grantOnlyFunctions,path,purposeCheck,replacedFunctions,row" : "createdFunctions,dataStatements,grantOnlyFunctions,path,replacedFunctions,row") || index <= previous || index < 0 || !new RegExp(`^db/platform/migrations/${nativeStoreTimes[index]}_[a-z][a-z0-9_]*\\.sql$`, "u").test(slot.path) || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
+    previous = index;
+    paths.add(slot.path);
+    if (!Array.isArray(slot.replacedFunctions) || !Array.isArray(slot.createdFunctions) || !Array.isArray(slot.grantOnlyFunctions)) throw new Error("reviewed native store requires three closed function lists");
+    const functions = nativeStoreFunctions(slot);
+    if (slot.replacedFunctions.some(fn => !keysAre(fn, "beforeSha256,searchPath,signature") || !hash(fn.beforeSha256)) || slot.createdFunctions.some(fn => !keysAre(fn, "searchPath,signature")) || functions.some(fn => nativeStoreSignature(fn.signature) !== fn.signature || (fn.searchPath !== null && !/^[a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*$/u.test(fn.searchPath)))) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
+    for (const fn of slot.replacedFunctions) {
+      if (replacements.has(fn.signature)) throw new Error("reviewed native store a signature may be replaced by only one slot");
+      replacements.add(fn.signature);
+    }
+    for (const fn of slot.grantOnlyFunctions) {
+      if (!keysAre(fn, "grantTo,revokeFrom,signature") || nativeStoreSignature(fn.signature) !== fn.signature || !Array.isArray(fn.grantTo) || !Array.isArray(fn.revokeFrom) || fn.grantTo.length + fn.revokeFrom.length === 0 || fn.grantTo.includes("anon") || [...fn.grantTo, ...fn.revokeFrom].some(role => !nativeStoreRoles.includes(role)) || new Set(fn.grantTo).size !== fn.grantTo.length || new Set(fn.revokeFrom).size !== fn.revokeFrom.length) throw new Error("reviewed native store invalid grant-only signature or role capability");
+    }
+    const signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
+    if (new Set(signatures).size !== signatures.length) throw new Error("reviewed native store function lists must be disjoint and unique");
+    if (!Array.isArray(slot.dataStatements) || slot.dataStatements.some(sql => typeof sql !== "string" || !/^(?:INSERT|UPDATE|DELETE) /u.test(sql) || sqlStatements(sql).length !== 1) || new Set(slot.dataStatements).size !== slot.dataStatements.length) throw new Error("reviewed native store data statements must be exact named statements");
+    if (slot.purposeCheck && (slot.row !== "G11-c" || !keysAre(slot.purposeCheck, "beforeSha256,values") || !hash(slot.purposeCheck.beforeSha256) || !Array.isArray(slot.purposeCheck.values) || slot.purposeCheck.values.length === 0 || slot.purposeCheck.values.some(value => !/^[a-z][a-z0-9_]*$/u.test(value)) || new Set(slot.purposeCheck.values).size !== slot.purposeCheck.values.length)) throw new Error("reviewed native store permits only the account-consent purpose CHECK");
+  }
+  const forwards = registry.nativeStoreForwards;
+  if (!Array.isArray(forwards) || forwards.length > control.slots.length) throw new Error("reviewed native store requires feature bindings within its slots");
+  let priorIndex = -1;
+  for (const forward of forwards) {
+    const index = control.slots.findIndex(slot => slot.path === forward.path), slot = control.slots[index];
+    const functions = slot ? nativeStoreFunctions(slot) : [];
+    if (!slot || index <= priorIndex || !keysAre(forward, "functions,path,sha256") || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== functions.length) throw new Error("reviewed native store feature path, order or inventory drifted");
+    priorIndex = index;
+    for (const [position, fn] of forward.functions.entries()) {
+      const fixed = functions[position]!;
+      if (!keysAre(fn, "afterSha256,beforeSha256,signature") || fn.signature !== fixed.signature || fn.beforeSha256 !== fixed.beforeSha256 || !hash(fn.afterSha256)) throw new Error("reviewed native store feature signature or before-hash drifted");
+    }
+  }
+}
+
+function assertNativeStoreClassTransition(before: ReviewedForwardRegistry, after: ReviewedForwardRegistry): void {
+  const prior = before.nativeStoreForwardClass, current = after.nativeStoreForwardClass;
+  if (prior && !current) throw new Error("reviewed native store class cannot be removed");
+  if (prior?.sealed && (!current?.sealed || canonical(prior.slots) !== canonical(current.slots))) throw new Error("reviewed native store admits no slot changes after S1 sealing");
+  for (const pin of before.nativeStoreForwards ?? []) {
+    if (canonical(after.nativeStoreForwards?.find(next => next.path === pin.path)) !== canonical(pin)
+      || canonical(prior?.slots.find(slot => slot.path === pin.path)) !== canonical(current?.slots.find(slot => slot.path === pin.path))) throw new Error("reviewed native store issued bindings and slots are immutable");
+  }
+}
+
+// CD-M19-47: narrowing only, on qualified tables created earlier in this file.
+// Keep this beside the DO rule; neither exception changes expand-only admission.
+function nativeStoreTableNarrowing(statement: string, tables: Set<string>): { kind: "RLS" } | { kind: "TABLE"; targets: string[]; role: string; grant: false } | null {
+  const rls = /^ALTER TABLE (public\.[a-z_][a-z0-9_]*) ENABLE ROW LEVEL SECURITY;$/iu.exec(statement);
+  const revoke = /^REVOKE ALL ON TABLE (public\.[a-z_][a-z0-9_]*(?:\s*,\s*public\.[a-z_][a-z0-9_]*)*) FROM (PUBLIC|anon|authenticated|service_role);$/iu.exec(statement);
+  if (!rls && !revoke) return null;
+  const targets = rls ? [rls[1]!.toLowerCase()] : revoke![1]!.split(",").map(table => table.trim().toLowerCase());
+  if (targets.some(table => !tables.has(table)) || new Set(targets).size !== targets.length) throw new Error("reviewed native store table narrowing requires tables created earlier in the same slot file");
+  return rls ? { kind: "RLS" } : { kind: "TABLE", targets, role: revoke![2]!.toLowerCase(), grant: false };
+}
+
+// The sole DO exception. Keep its grammar and role policy together so a later
+// control can tighten or remove it without changing the generic SQL splitter.
+function nativeStorePrivilege(statement: string, tables: Set<string>): { kind: "RLS" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
+  let sql = statement, roleGuard: string | undefined;
+  const conditional = /^DO\b/iu.test(statement);
+  if (conditional) {
+    const block = /^DO \$\$\s*BEGIN\s+IF EXISTS\s*\(SELECT 1 FROM pg_roles WHERE rolname\s*=\s*'(anon|authenticated|service_role)'\) THEN\s+EXECUTE '([^']+)';\s*END IF;\s*END;\s*\$\$;$/iu.exec(statement);
+    if (!block || block[1] !== block[1]!.toLowerCase()) throw new Error("reviewed native store refuses DO outside the single constant role privilege shape");
+    roleGuard = block[1]!.toLowerCase(); sql = block[2]!.replace(/;?$/u, ";");
+  }
+  const table = nativeStoreTableNarrowing(sql.replace(/\s+/gu, " ").trim(), tables);
+  if (table) {
+    if (table.kind === "RLS") {
+      if (conditional) throw new Error("reviewed native store conditional RLS refused");
+      return table;
+    }
+    if (conditional ? table.role !== roleGuard : table.role !== "public" || table.targets.length !== 1) throw new Error("reviewed native store table revoke requires PUBLIC or the same conditional role");
+    return { ...table, conditional };
+  }
+  const match = /^(GRANT EXECUTE|REVOKE (?:ALL(?: PRIVILEGES)?|EXECUTE)) ON FUNCTION (.+) (TO|FROM) (PUBLIC|anon|authenticated|service_role);$/iu.exec(sql.replace(/\s+/gu, " ").trim());
+  if (!match) {
+    if (conditional) throw new Error("reviewed native store conditional privilege target or role refused");
+    return null;
+  }
+  const grant = match[1]!.toUpperCase() === "GRANT EXECUTE", role = match[4]!.toLowerCase();
+  const signatures = match[2]!.split(/\)\s*,\s*/u).map((part, index, parts) => nativeStoreSignature(`${part.trim()}${index < parts.length - 1 ? ")" : ""}`));
+  if (signatures.some(signature => signature === null) || new Set(signatures).size !== signatures.length || (grant ? match[3]!.toUpperCase() !== "TO" || role === "public" || role === "anon" : match[3]!.toUpperCase() !== "FROM") || (role === "public" && !/^REVOKE ALL(?: PRIVILEGES)? /iu.test(match[1]! + " ")) || (conditional && role !== roleGuard)) throw new Error("reviewed native store privilege role, verb or function shape refused");
+  return { kind: "FUNCTION", targets: signatures as string[], role, grant, conditional };
+}
+
+/** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
+export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
+  validateNativeStoreClass(registry, new Set());
+  const control = registry.nativeStoreForwardClass, slot = control?.slots.find(slot => slot.path === path);
+  const forward = registry.nativeStoreForwards?.find(pin => pin.path === path);
+  if (!slot || !forward || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed native store path or file hash drifted");
+  if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed native store refuses control characters");
+  if (preceding[0]?.path !== PLATFORM_BASELINE_FILE || preceding.some((source, index) => !/^db\/platform\/migrations\/\d{14}_[a-zA-Z0-9_-]+\.sql$/u.test(source.path) || source.path >= path || (index > 0 && source.path <= preceding[index - 1]!.path))) throw new Error("reviewed native store requires an ordered same-rail prefix and baseline");
+  for (const row of nativeStoreRows.slice(0, nativeStoreRows.indexOf(slot.row))) {
+    const earlier = control!.slots.find(earlier => earlier.row === row);
+    const pin = registry.nativeStoreForwards!.find(pin => pin.path === earlier?.path), source = preceding.find(source => source.path === earlier?.path);
+    if (!pin || !source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store requires every earlier slot landed first");
+  }
+  for (const pin of [...registry.batchedForwards ?? [], ...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? [], ...registry.channelIngestForwards ?? []].filter(pin => pin.path.startsWith("db/") && pin.path < path)) {
+    const source = preceding.find(source => source.path === pin.path);
+    if (!source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store prior issued file drifted");
+  }
+  const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
+  const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), baseStatements = new Map<string, string>();
+  let checkSource: string | undefined;
+  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+    if (source.path !== PLATFORM_BASELINE_FILE && [...names].some(name => statement.toLowerCase().includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed native store unsupported preceding function DDL");
+    for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), signatures, true)) {
+      prior.set(signature, digest);
+      if (source.path < `db/platform/migrations/${nativeStoreTimes[0]}_`) { baseDefinitions.set(signature, digest); baseStatements.set(signature, statement); }
+    }
+    if (slot.purposeCheck && statement.startsWith(`CREATE TABLE ${purposeTable} (`)) checkSource = statement;
+    if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
+  }
+  for (const fn of functions) if ((baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
+  for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
+  const statements = sqlStatements(bytes.toString("utf8")), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
+  if (definitions.size !== functions.length || functions.some(fn => definitions.get(fn.signature) !== forward.functions.find(pin => pin.signature === fn.signature)?.afterSha256)) throw new Error("reviewed native store unlisted, missing or drifted function definition");
+  const created = new Set(slot.createdFunctions.map(fn => fn.signature));
+  const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
+  let droppedCheck = false, addedCheck = false;
+  for (const statement of statements) {
+    if (droppedCheck && !addedCheck && !statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) throw new Error("reviewed native store requires the adjacent purpose CHECK replacement");
+    if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) {
+      const signature = [...nativeStoreFunctionDefinitions(Buffer.from(statement), signatures).keys()][0]!, fixed = functions.find(fn => fn.signature === signature);
+      if (!fixed || statement.startsWith("CREATE OR REPLACE FUNCTION ") !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
+      const header = headerAttributes(statement).replace(/\s+/gu, " ").trim();
+      if (fixed.beforeSha256 !== null && headerAttributes(statement).trim() !== headerAttributes(baseStatements.get(signature)!).trim()) throw new Error("reviewed native store replacement header drifted");
+      const searchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(header)?.[1]?.toLowerCase() ?? null;
+      if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
+      defined.add(signature); continue;
+    }
+    const privilege = nativeStorePrivilege(statement, tables);
+    if (privilege) {
+      if (privilege.kind === "RLS") continue;
+      if (privilege.kind === "FUNCTION") {
+        for (const signature of privilege.targets) {
+          const grantOnly = slot.grantOnlyFunctions.find(fn => fn.signature === signature);
+          if (grantOnly) {
+            if (!privilege.conditional || !(privilege.grant ? grantOnly.grantTo : grantOnly.revokeFrom).includes(privilege.role)) throw new Error("reviewed native store grant-only privilege must use its closed conditional role/verb");
+          } else if (!defined.has(signature)) throw new Error("reviewed native store privilege names an unlisted or not-yet-defined function");
+        }
+        if (privilege.role === "public") for (const signature of privilege.targets) revoked.add(signature);
+        else if ((privilege.grant || privilege.conditional) && privilege.targets.some(signature => created.has(signature)) && [...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store requires PUBLIC revoke before every created-function grant or conditional block");
+      }
+      if (privilege.conditional) {
+        const key = `${privilege.role}:${privilege.grant ? "GRANT" : "REVOKE"}:${privilege.kind}`;
+        if (blocks.has(key)) throw new Error("reviewed native store permits one conditional block per role, verb and object kind");
+        blocks.add(key);
+      }
+      continue;
+    }
+    if (statement === `ALTER TABLE ${purposeTable} DROP CONSTRAINT ${purposeConstraint};`) {
+      if (!slot.purposeCheck || droppedCheck || !checkSource || sqlSha256(checkSource) !== slot.purposeCheck.beforeSha256) throw new Error("reviewed native store purpose CHECK preimage drifted");
+      const values = /purpose text NOT NULL CHECK \(purpose IN \(([^)]+)\)\)/u.exec(checkSource)?.[1]?.match(/'[a-z][a-z0-9_]*'/gu)?.map(value => value.slice(1, -1));
+      if (canonical(values) !== canonical(slot.purposeCheck.values)) throw new Error("reviewed native store purpose CHECK values drifted");
+      droppedCheck = true; continue;
+    }
+    if (statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) {
+      const values = /^ALTER TABLE public\.communication_native_sync_state ADD CONSTRAINT communication_native_sync_state_purpose_check CHECK \(purpose IN \(('[a-z][a-z0-9_]*'(?:,\s*'[a-z][a-z0-9_]*')*)\)\);$/u.exec(statement)?.[1]?.match(/'[a-z][a-z0-9_]*'/gu)?.map(value => value.slice(1, -1));
+      if (!slot.purposeCheck || !droppedCheck || addedCheck || !values || slot.purposeCheck.values.some(value => !values.includes(value))) throw new Error("reviewed native store purpose CHECK must only widen");
+      addedCheck = true; continue;
+    }
+    if (slot.dataStatements.includes(statement)) { data.add(statement); continue; }
+    if (/^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX) |ALTER TABLE )/u.test(statement) && isExpandOnlyPlatformForward(statement)) {
+      const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+      if (table) tables.add(table[1]!.toLowerCase());
+      continue;
+    }
+    throw new Error("reviewed native store refuses statement outside its closed shapes");
+  }
+  if ([...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store created function missing PUBLIC revoke");
+  if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");
+  if (data.size !== slot.dataStatements.length) throw new Error("reviewed native store named data statement missing");
 }
