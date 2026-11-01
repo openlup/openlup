@@ -3,7 +3,6 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { promisify } from "node:util";
@@ -29,18 +28,6 @@ const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync("config
   "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
 const limits = { maximumObjectBytes: 1024, maximumTotalBytes: 4096, maximumFiles: 10, maximumPages: 4 };
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-const free = (port: number) => new Promise<boolean>((resolve, reject) => {
-  const server = createServer();
-  server.once("error", error => error.message.includes("EADDRINUSE") ? resolve(false) : reject(error));
-  server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
-});
-async function block(): Promise<number> {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const value = 55000 + Number.parseInt(randomBytes(2).toString("hex"), 16) % 8000;
-    if ((await Promise.all([0, 1, 2, 3, 4, 9, 10].map(offset => free(value + offset)))).every(Boolean)) return value;
-  }
-  throw new Error("No disposable managed port block");
-}
 function snapshot(pool: Pool, managedSource = false): CompatiblePostgresSnapshot {
   return { async withSnapshot(work) {
     const client = await pool.connect();
@@ -72,7 +59,6 @@ async function main() {
     port: number; bucket: string; customer: string; clientId: string; customerToken: string;
     endpoint: string; region: string; accessKeyId: string; secretAccessKey: string;
   };
-  const targetPort = await block();
   const bucket = supplied?.bucket ?? `managed${randomBytes(4).toString("hex")}`;
   const targetBucket = `target${randomBytes(4).toString("hex")}`;
   const finalBucket = `final${randomBytes(4).toString("hex")}`;
@@ -156,15 +142,17 @@ async function main() {
     target = new Pool({ connectionString: targetUrl.toString() });
     const runner = createPostgresMigrationRunner({ connectionString: plainUrl }, { installation: selection, poolFactory: () => target! });
     expect((await runner.apply()).applied).toEqual([selected.baseline, ...selected.forward].map(unit => unit.file));
-    const targetEndpoint = `http://127.0.0.1:${targetPort + 1}`;
     const compose = readFileSync("docker-compose.yml", "utf8");
     const image = /\n {4}image: (\S+)\n/.exec(compose.slice(compose.indexOf("\n  object-storage:\n")))?.[1];
     if (!image) throw new Error("Missing pinned local S3 image");
     await run("docker", ["run", ...disposableLabelArgs(), "-d", "--rm", "--name", container,
-      "-p", `127.0.0.1:${targetPort + 1}:7070`, "--read-only", "--tmpfs", "/data", "--cap-drop", "ALL",
+      "-p", "127.0.0.1::7070", "--read-only", "--tmpfs", "/data", "--cap-drop", "ALL",
       "--security-opt", "no-new-privileges:true", image, "--access", s3Access, "--secret", s3Secret, "posix", "/data"],
     { timeout: 30_000 });
     targetStarted = true;
+    const targetAddress = (await run("docker", ["port", container, "7070/tcp"])).stdout.trim();
+    expect(targetAddress).toMatch(/^127\.0\.0\.1:\d+$/);
+    const targetEndpoint = `http://${targetAddress}`;
     targetS3 = new sdk.S3Client({ region: "us-east-1", endpoint: targetEndpoint, forcePathStyle: true,
       credentials: { accessKeyId: s3Access, secretAccessKey: s3Secret } });
     let s3Ready = false;

@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PartnerAcquisitionCase, PartnerAcquisitionPort, PartnerAcquisitionResult } from "@openlup/platform/marketing/contracts";
-import { assertConsumerIsolation } from "../../scripts/packages/platform-cold-consumer.js";
+import { assertConsumerIsolation, platformConsumerInstallArgs } from "../../scripts/packages/platform-cold-consumer.js";
 import { evaluateSelectedPlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -71,14 +71,14 @@ beforeAll(async () => {
   });
   consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
-  npm(["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--omit=optional", "--no-audit", "--no-fund", ...tarballs], consumer);
+  npm(platformConsumerInstallArgs(tarballs), consumer);
   assertConsumerIsolation(consumer, process.cwd());
   // Missing-driver refusal and CSP-safe cold parsing are already shared cold
   // consumer bodies. Select only the existing pg peer for the real DB phase.
   const peerArgs = ["pg", "@types/pg", "@types/node"].map(name => {
     const metadata = JSON.parse(readFileSync(`node_modules/${name}/package.json`, "utf8")); return `${name}@${metadata.version}`;
   });
-  npm(["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--omit=optional", "--no-audit", "--no-fund", ...peerArgs], consumer);
+  npm(platformConsumerInstallArgs(peerArgs, true), consumer);
   assertConsumerIsolation(consumer, process.cwd(), false);
   const installedResolve = createRequire(join(consumer, "package.json")).resolve;
   adapters = await import(pathToFileURL(installedResolve("@openlup/platform/marketing/server/postgres")).href);

@@ -43,6 +43,12 @@ findings, cycles or expiry are inherited.
   navigation and a migration-note fragment. Measured artifact growth must fit
   existing caps; no increase is granted.
 
+Required delivery-test repairs also cover the peer-install setup in
+`tests/postgres/partnerAcquisition.test.ts` and loopback-port allocation in
+`tests/postgres/managedStorageTransfer.proof.ts`. They reuse the existing
+SDK-present installation policy and Docker's atomic port allocation, preserving
+the lifecycle/storage assertions and changing no production behavior or budget.
+
 Simplicity pre-check for review: use the existing entries, catalogue runner,
 container helper and cold-consumer test bodies. One packed-default-factory DB
 witness covers the ten preserved behavior classes; a second implementation,
