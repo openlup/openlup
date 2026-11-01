@@ -356,9 +356,17 @@
     {
       "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
       "sha256": "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf"
+    },
+    {
+      "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+      "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+    },
+    {
+      "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+      "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
     }
   ],
-  "objectInventorySha256": "4a92ff669e54405c1b7bcc628e4cfd25f65a566c1d1053af01cc96bf3aac3f1d",
+  "objectInventorySha256": "797a126525ea6e9ccb3fc7ef8e5cb1e8be15177eed96c031c88533c9313907e2",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -732,14 +740,22 @@
       {
         "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
         "sha256": "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf"
+      },
+      {
+        "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+        "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+      },
+      {
+        "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+        "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "b422e9600dc34efb787cf91f42f48cd7cc7b1a396d849d424d6d9b52255bf73f"
+        "withRestore": "a458b8bbc65b626759d8c27addf6d114d43e8e24aa67f5d90af1833035f8c5bf"
       },
       "separateMigrator": {
-        "withRestore": "5fc8702f85ec1ab7c7afcc248d13ea8850c4ca84db0f9591c08104128b64ad9a"
+        "withRestore": "894164222f03e296ebdb05b18c9065ad1a53bd2ec27e53f28c46812fb5267af3"
       }
     }
   },
@@ -1112,11 +1128,19 @@
       {
         "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
         "sha256": "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf"
+      },
+      {
+        "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+        "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+      },
+      {
+        "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+        "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "96d431befa603ec0d301af13fc580ccd68c25beedefb0bdc1410f5acb847875f",
-      "operatorProvisioned": "1501b40ba66da68f261e8c564b322f27ad68f319d431f775e08998dc6b841283"
+      "installerManaged": "6b840a483d12533d5f1f514ac6a92cadba95aadfa0707bd4d759a495b20873e3",
+      "operatorProvisioned": "036ad01f7299bef143dc765cbd87c262bd88cdb86c0cd2e2e4b56224e941c870"
     }
   }
 }

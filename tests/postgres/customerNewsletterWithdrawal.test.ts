@@ -9,6 +9,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { readIssuedPlatformManifest } from "../helpers/issuedPlatformCatalog.js";
 
 const file = "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -90,13 +91,18 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
         console.info(`newsletter-inventory ${profile.name} ${hash(payload)}`); return payload;
       } });
     const current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-    const previous = structuredClone(current);
-    for (const plan of [previous, previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter((entry: { file: string }) => entry.file !== file);
-    previous.objectInventorySha256 = originalInventories.legacy;
-    previous.qualified.objectInventorySha256.bootstrapMigrator.withRestore = originalInventories.bootstrap;
-    previous.qualified.objectInventorySha256.separateMigrator.withRestore = originalInventories.separate;
-    previous.qualifiedAdmin.objectInventorySha256.installerManaged = originalInventories.managed;
-    previous.qualifiedAdmin.objectInventorySha256.operatorProvisioned = originalInventories.operator;
+    // The pre-withdrawal state is the named issued prefix, before any later module suffix.
+    const previous = readIssuedPlatformManifest();
+    expect({ legacy: previous.objectInventorySha256,
+      bootstrap: previous.qualified.objectInventorySha256.bootstrapMigrator.withRestore,
+      separate: previous.qualified.objectInventorySha256.separateMigrator.withRestore,
+      managed: previous.qualifiedAdmin.objectInventorySha256.installerManaged,
+      operator: previous.qualifiedAdmin.objectInventorySha256.operatorProvisioned }).toEqual(originalInventories);
+    for (const [plan, prior] of [[current, previous], [current.qualified, previous.qualified],
+      [current.qualifiedAdmin, previous.qualifiedAdmin]] as const) {
+      expect(plan.forward.slice(0, prior.forward.length)).toEqual(prior.forward);
+      expect(plan.forward[prior.forward.length].file).toBe(file);
+    }
     prefix = mkdtempSync(join(tmpdir(), "newsletter-prefix-"));
     const entries = [previous, previous.qualified, previous.qualifiedAdmin].flatMap(plan => [plan.baseline, ...plan.forward]);
     for (const entry of entries) { const destination = join(prefix, entry.file); mkdirSync(dirname(destination), { recursive: true }); writeFileSync(destination, readFileSync(entry.file)); }

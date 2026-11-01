@@ -1734,8 +1734,11 @@ Managed ATP subtracts live provider hard holds, fulfillable-location safety and
 remaining active subscription demand within 14 days. Only the concrete
 order/cycle allocator may use the renewal exemption; a one-time order cannot
 obtain it through metadata or hold kind. Refund of cycle 1 or a renewal preserves
-future-cycle hard holds and soft demand. The exposure hook is zero; current
-donor global/channel admission remains deferred. Existing own commitments can
+future-cycle hard holds and soft demand. M17 fills the existing managed exposure
+hook with retained outstanding channel commitments. Its channel-only admission
+locks stock before ATP, then calls the unchanged M06 allocator; the ordinary
+read-before-admission window remains a registered limitation. No subscription
+lock or ordinary allocator wrapper is added. Existing own commitments can
 survive a lower fresh stock observation, as in the donor. The managed SQL does
 not establish an advance reservation lifecycle or a package purchase-write port.
 See [managed installation and refund boundaries](DATA_AND_MIGRATIONS.md#managed-stock-wait-atp-and-refund-parity).
@@ -2579,3 +2582,17 @@ database or hosted revocation certification. Full-store import, managed identity
 mapping, consistent live catch-up and independently enforced old-executor fencing
 remain [M14 obligations](plans/oss-m14-operations-portability.md), including the
 [import-safe domain dependency](DATA_AND_MIGRATIONS.md#compatible-data-transfer).
+
+## Normalized channel ingest
+
+The experimental channels module lives at existing Platform subpaths; see the
+[package contract](../../packages/platform/README.md#channels). Browser-safe
+contracts/helpers remain separate from Node orchestration. Hosts inject the
+existing order, payment, inventory, catalog-history and connection owners,
+provider decoding and enablement. This module creates no second stock, payment,
+fulfillment, communications or invoice engine. Retained paid debt uses original
+first approval/qualification and locked physical facts; fresh catalog/listing
+commercial decisions and outbound publication remain excluded. Portable source
+capture/read/CAS and named physical refusal are distinct from managed full
+normalized ingest. No installed export implies a mounted handler or an enabled
+job, simulator or provider.

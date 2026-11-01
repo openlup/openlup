@@ -18,6 +18,7 @@ import { createPostgresFulfillmentObservationLifecycle } from "../../server/adap
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { createM08FulfillmentReferenceBinding } from "../../server/runtime/public-reference/m08FulfillmentBinding.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { profile, request } from "../helpers/fulfillmentComposition.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 
@@ -654,9 +655,15 @@ async function prove() {
   const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", {
     migrationIsBootstrap: selection.migrationLogin === selection.bootstrapLogin, hasRestore: selection.restoreLogin !== undefined,
   });
-  assert.equal(manifest.objectInventorySha256, input.expectedInventory);
+  const issued = selectPlatformMigrationManifest(readIssuedPlatformManifest(), "qualified-v2", {
+    migrationIsBootstrap: selection.migrationLogin === selection.bootstrapLogin, hasRestore: selection.restoreLogin !== undefined,
+  });
+  assert.equal(issued.objectInventorySha256, input.expectedInventory);
+  const issuedExpected = [issued.baseline, ...issued.forward];
+  assert.equal(issuedExpected.length, 92);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 93);
+  assert.equal(expected.length, 95);
+  assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;
   await assert.rejects(createPostgresMigrationRunner({ connectionString: input.connectionString }, { installation: withoutRestore }).status(),
@@ -693,10 +700,41 @@ async function prove() {
   }
   const connectionString = loginUrl(selection.migrationLogin,
     selection.migrationLogin === selection.bootstrapLogin ? "synthetic-conformance" : password);
+  async function observeInventory(expectedInventory: string): Promise<string> {
+    const observerUrl = new URL(connectionString);
+    observerUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
+    const observer = pool(observerUrl.toString());
+    const client = await observer.connect();
+    let inventorySha256: string;
+    try {
+      assert.deepEqual((await client.query("SELECT current_user AS migration, session_user AS session")).rows,
+        [{ migration: selection.migrationLogin, session: selection.migrationLogin }]);
+      await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
+      inventorySha256 = digest(await qualifiedPostgresCatalogPayload(client, selection, lockName));
+      assert.equal(inventorySha256, expectedInventory);
+    } finally {
+      await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
+      client.release();
+    }
+    return inventorySha256;
+  }
   const runner = createPostgresMigrationRunner({ connectionString }, { installation: selection });
   const before = await runner.status();
   assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
-  const appliedNow = await runner.apply();
+  let issuedInventorySha256 = "";
+  const prefixApplied = await withIssuedPlatformCatalog(async root => {
+    const prefixRunner = createPostgresMigrationRunner({ connectionString }, { root, installation: selection });
+    assert.deepEqual(await prefixRunner.status(), { applied: [], pending: issuedExpected.map(entry => entry.file) });
+    const applied = await prefixRunner.apply();
+    assert.deepEqual(applied.applied, issuedExpected.map(entry => entry.file));
+    assert.deepEqual(await prefixRunner.apply(), { applied: [] });
+    issuedInventorySha256 = await observeInventory(input.expectedInventory);
+    return applied.applied;
+  });
+  assert.deepEqual(await runner.status(), { applied: prefixApplied, pending: expected.slice(prefixApplied.length).map(entry => entry.file) });
+  const suffixApplied = await runner.apply();
+  assert.deepEqual(suffixApplied.applied, expected.slice(prefixApplied.length).map(entry => entry.file));
+  const appliedNow = { applied: [...prefixApplied, ...suffixApplied.applied] };
   assert.deepEqual(appliedNow, { applied: expected.map(entry => entry.file) });
   const ledger = async () => (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM public.platform_schema_migrations ORDER BY position")).rows;
   const installed = await ledger();
@@ -707,23 +745,7 @@ async function prove() {
   const replay = await runner.apply();
   assert.deepEqual(replay, { applied: [] });
   assert.deepEqual(await ledger(), installed);
-  // Observe the actual production payload independently under its real session
-  // lock. This is a measured result compared to the prior pin, never an override.
-  const observerUrl = new URL(connectionString);
-  observerUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
-  const observer = pool(observerUrl.toString());
-  const client = await observer.connect();
-  let inventorySha256: string;
-  try {
-    assert.deepEqual((await client.query("SELECT current_user AS migration, session_user AS session")).rows,
-      [{ migration: selection.migrationLogin, session: selection.migrationLogin }]);
-    await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
-    inventorySha256 = digest(await qualifiedPostgresCatalogPayload(client, selection, lockName));
-    assert.equal(inventorySha256, input.expectedInventory);
-  } finally {
-    await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
-    client.release();
-  }
+  const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
   await proveRetainedRuntime(bootstrap);
   await proveOwnerPathResolution(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
@@ -806,7 +828,7 @@ async function prove() {
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await runner.apply(), { applied: [] });
   assert.deepEqual(await ledger(), installed);
-  return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
+  return { inventorySha256, issuedInventorySha256, issuedLedgerRows: issuedExpected.length, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
     runtimeCompletionProved: true, ownerPathResolutionProved: true, nativeObservationRuntimeProved: input.discriminators,
     connectionRecipeProved: input.discriminators,

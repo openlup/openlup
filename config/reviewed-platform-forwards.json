@@ -1933,5 +1933,918 @@
       "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
     }
   ],
-  "channelIngestForwards": []
+  "channelIngestForwards": [
+    {
+      "path": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+      "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf",
+      "functions": [
+        {
+          "signature": "public.channel_control_keys(jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "87c1338bb454be56ceb45b13d9313ef7814094a87b2c0fbac76e35c8885d5cb2"
+        },
+        {
+          "signature": "public.channel_control_ref(text)",
+          "beforeSha256": null,
+          "afterSha256": "200d642f20e01a2d894d0dff649b4aa1fcf205f596a6a04737755fcef7e6945f"
+        },
+        {
+          "signature": "public.catalog_bundle_composition_digest(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "42a899077005ceb96bc5d692eecb4dfc43a36687e957b223a8ae2808a4f022ee"
+        },
+        {
+          "signature": "public.channel_control_actor(uuid,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "f693e34b64de833e3045ee681e48e4671cad761bdca83775ff696e78c6fcff4a"
+        },
+        {
+          "signature": "public.channel_control_scope(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "874ab29bdc55efcdb0ceccfe19b7d1c3af5f7a268c8ef6c4b9fc4434b85df333"
+        },
+        {
+          "signature": "public.channel_listing_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0225c9fecb6e562c5708b3bbd3afa63893697be995471aa2cbf5a151b0c4c803"
+        },
+        {
+          "signature": "public.channel_retained_bundle_guard()",
+          "beforeSha256": null,
+          "afterSha256": "95838024697b227f8394ce194515a7f006f2db9987bec9c01b07665586b42e5d"
+        },
+        {
+          "signature": "public.channel_retained_fact_guard()",
+          "beforeSha256": null,
+          "afterSha256": "34901805e6b354e88f94700f1414a69cd94ec153f8931ac244360c65cfe70ea7"
+        },
+        {
+          "signature": "public.channel_retained_listing_guard()",
+          "beforeSha256": null,
+          "afterSha256": "9ceba778d3d720b1c4413fcbf0674c5ddd04824e840f6dbcc18251a702cbac21"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "23c5051398cb5318e65fa5b53e830900fa5630f09d8ecd7f5ed730a6c7ec642f",
+          "sql": "ALTER TABLE public.catalog_bundles ADD COLUMN composition_locked_at timestamptz,\n  ADD COLUMN composition_digest text,\n  ADD CONSTRAINT channel_bundle_retained_lock_shape CHECK(\n    (composition_locked_at IS NULL AND composition_digest IS NULL) OR\n    (composition_locked_at IS NOT NULL AND composition_digest ~ '^[0-9a-f]{64}$'));"
+        },
+        {
+          "sha256": "979cc1b26fbbcd5f92580afc4146893a7a488276e10cf20a60d1f2910439451d",
+          "sql": "ALTER TABLE public.sales_channel_connections\n  ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN application_ref text CHECK(application_ref IS NULL OR btrim(application_ref)<>''),\n  ADD COLUMN environment_ref text CHECK(environment_ref IS NULL OR btrim(environment_ref)<>''),\n  ADD COLUMN seller_external_ref text CHECK(seller_external_ref IS NULL OR btrim(seller_external_ref)<>'');"
+        },
+        {
+          "sha256": "1257d8ab5177165673e4278b4fe5cf4430e4613358c8802920a2bfc2ee17bd92",
+          "sql": "ALTER TABLE public.sales_channels ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991);"
+        },
+        {
+          "sha256": "c7f932ee2ffde3cdb32ff4c7d0668fac313aae4c7658148794452c2183b641ea",
+          "sql": "ALTER TABLE public.sales_channel_listings ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN current_qualification_id uuid, ADD COLUMN current_approval_id uuid, ADD COLUMN manual_stop boolean NOT NULL DEFAULT false,\n  ADD COLUMN exposure_issued_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_converted_units bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_withdrawn_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_generation bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_issued_basis_ref uuid,\n  ADD CONSTRAINT channel_exposure_retained_conservation CHECK(exposure_issued_units BETWEEN 0 AND 9007199254740991\n    AND exposure_converted_units BETWEEN 0 AND 9007199254740991 AND exposure_withdrawn_units BETWEEN 0 AND 9007199254740991\n    AND exposure_generation BETWEEN 0 AND 9007199254740991 AND exposure_converted_units::numeric+exposure_withdrawn_units<=exposure_issued_units);"
+        },
+        {
+          "sha256": "c30fc4072408a9efac838d007cd45958564f74ef3f89512473755f99d7d7e21a",
+          "sql": "CREATE TABLE public.sales_channel_control_operations (\n  resource_kind text NOT NULL CHECK(resource_kind IN ('connection','channel','listing')), resource_id uuid NOT NULL,\n  operation text NOT NULL CHECK(operation IN ('registry_apply','listing_prepare','listing_record_qualification','listing_approve',\n    'listing_manual_stop','exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold')),\n  operation_id uuid NOT NULL, actor_id uuid NOT NULL, input_digest text NOT NULL CHECK(input_digest ~ '^[0-9a-f]{64}$'),\n  canonical_text text NOT NULL CHECK(octet_length(canonical_text) BETWEEN 2 AND 262144), result jsonb NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(resource_kind,resource_id,operation,operation_id));"
+        },
+        {
+          "sha256": "d02e91e6aaa2250402301b6b5ee9f687badc447c0ccfaf4bf9d202a173a14d0b",
+          "sql": "CREATE TABLE public.sales_channel_listing_qualifications (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 0 AND 9007199254740990),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));"
+        },
+        {
+          "sha256": "d0ff9aa50c6c5fbe05cf3510b0e1aead52a717533b8baa5890435ce94bcf123e",
+          "sql": "CREATE TABLE public.sales_channel_listing_approvals (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  qualification_id uuid NOT NULL REFERENCES public.sales_channel_listing_qualifications(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 1 AND 9007199254740991),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));"
+        },
+        {
+          "sha256": "4f43b195bd0b080d612b792d2556f3fcc8ad108ca803d38fb3bb51e0a64ff5c7",
+          "sql": "ALTER TABLE public.sales_channel_listings\n  ADD CONSTRAINT channel_retained_qualification_scope FOREIGN KEY(current_qualification_id,id) REFERENCES public.sales_channel_listing_qualifications(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_approval_scope FOREIGN KEY(current_approval_id,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_exposure_basis_scope FOREIGN KEY(exposure_issued_basis_ref,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT;"
+        },
+        {
+          "sha256": "d5c0039a23ac65b630449165c41686329f10767dd857c4eb8fdef63eb07250ee",
+          "sql": "CREATE UNIQUE INDEX channel_retained_exposure_sale ON public.sales_channel_control_operations(resource_id,\n  (canonical_text::jsonb#>>'{payload,ingestId}'),(canonical_text::jsonb#>>'{payload,externalLineRef}')) WHERE operation='exposure_convert_sale';"
+        },
+        {
+          "sha256": "f36f5a79ec11e790a92395808bbc549cc98373c63bbe57ac56b70dc08de3f7ee",
+          "sql": "CREATE UNIQUE INDEX channel_retained_exposure_generation ON public.sales_channel_control_operations(resource_id,((result->>'appliedGeneration')::bigint))\n  WHERE operation IN ('exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold');"
+        },
+        {
+          "sha256": "87c1338bb454be56ceb45b13d9313ef7814094a87b2c0fbac76e35c8885d5cb2"
+        },
+        {
+          "sha256": "200d642f20e01a2d894d0dff649b4aa1fcf205f596a6a04737755fcef7e6945f"
+        },
+        {
+          "sha256": "42a899077005ceb96bc5d692eecb4dfc43a36687e957b223a8ae2808a4f022ee"
+        },
+        {
+          "sha256": "f693e34b64de833e3045ee681e48e4671cad761bdca83775ff696e78c6fcff4a"
+        },
+        {
+          "sha256": "874ab29bdc55efcdb0ceccfe19b7d1c3af5f7a268c8ef6c4b9fc4434b85df333"
+        },
+        {
+          "sha256": "0225c9fecb6e562c5708b3bbd3afa63893697be995471aa2cbf5a151b0c4c803"
+        },
+        {
+          "sha256": "95838024697b227f8394ce194515a7f006f2db9987bec9c01b07665586b42e5d"
+        },
+        {
+          "sha256": "338eca6c610f317c0a2999552482da7c59ecc5fba65bc13d6ebba4015006cbeb",
+          "sql": "CREATE TRIGGER channel_retained_bundle_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundles FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "7f10692a1750ee5db52c55e71a60e8cd0d58bf00a96cf4e0e762242cddad706e",
+          "sql": "CREATE TRIGGER channel_retained_component_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundle_components FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "861dcc689d2eed6db8d54fab67ed626d3088cbbd62275f2bacfa0347abec0eb5",
+          "sql": "CREATE TRIGGER channel_retained_bundle_truncate BEFORE TRUNCATE ON public.catalog_bundles FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "3ffad443dbce8f4f5c1c0a3f3ee87ae79771045f83568b8849832a0ca5bb6516",
+          "sql": "CREATE TRIGGER channel_retained_component_truncate BEFORE TRUNCATE ON public.catalog_bundle_components FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "38dbcae7bb984f2c5e2e9f1872cb233d5b498462b49ddebf436a171907a61067",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM PUBLIC;"
+        },
+        {
+          "sha256": "e88b9c04f0c9ccd20439fa9befbc44e74fd940d7e8185b9cf376519265fc2e55",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM authenticated;';\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "762fa8ffea395ebb1420747db267312f8d75ced5f00e3aca5c7d2217089c5800",
+          "sql": "REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM PUBLIC;"
+        },
+        {
+          "sha256": "c6bd85d6c2e7c7f734939104d2280650bc7afcffe190cc45d49037bd49112d32",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM authenticated;';\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "34901805e6b354e88f94700f1414a69cd94ec153f8931ac244360c65cfe70ea7"
+        },
+        {
+          "sha256": "540d65889a497db91b08d00a90fd18529f89edd01bb91fe811e200b696c8c5e8",
+          "sql": "CREATE TRIGGER channel_retained_qualification_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_qualifications\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "d31297c82514b6eff91c7499a10aa05ecab9d2faef2e3b11070fc9b2c67c3c91",
+          "sql": "CREATE TRIGGER channel_retained_approval_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_approvals\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "4ecaee830a3263472f480fc6ecac7db4d0c3f062fdc34113f351f49baf46c811",
+          "sql": "CREATE TRIGGER channel_retained_qualification_truncate BEFORE TRUNCATE ON public.sales_channel_listing_qualifications\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "119427b95756cccd51423c758616d9763229c77413005bb35bd490dc83751c1a",
+          "sql": "CREATE TRIGGER channel_retained_approval_truncate BEFORE TRUNCATE ON public.sales_channel_listing_approvals\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "b01ef47f10b7e7fe52a315dc3dfb0f61ab2682c7711fa0a5104c5c28300a0087",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM PUBLIC;"
+        },
+        {
+          "sha256": "f18312f82a96e562ac7b17e34b9348b517c2a8c36716ed1a6d0936ac233d803c",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM authenticated;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM service_role;';\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "9ceba778d3d720b1c4413fcbf0674c5ddd04824e840f6dbcc18251a702cbac21"
+        },
+        {
+          "sha256": "f46a2dfe797055ebd7368ebd69ff1028fd71685dcb1a9bacaa41e87a937f0cc5",
+          "sql": "CREATE TRIGGER channel_retained_listing_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listings\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_listing_guard();"
+        },
+        {
+          "sha256": "36dfcb6155889be4e337299049004b80db06360629e160da290aa66961e1a900",
+          "sql": "CREATE TRIGGER channel_retained_listing_truncate BEFORE TRUNCATE ON public.sales_channel_listings\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_listing_guard();"
+        },
+        {
+          "sha256": "d807fd660a14c02393111ab952d87d37d98ff087d81d2e970f245c39c1ef2563",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM PUBLIC;"
+        },
+        {
+          "sha256": "87531c19105520418015d9c5fbd070558fe492057a0d256b7ac85c26452c9f4c",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM authenticated;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM service_role;';\n  END IF;\nEND; $$;"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+      "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2",
+      "functions": [
+        {
+          "signature": "public.channel_purchase_json(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"
+        },
+        {
+          "signature": "public.channel_purchase_packet(text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
+        },
+        {
+          "signature": "public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "05267420e880daadd3a36e8583dfbf49ceffbbf58d2a0868f24fcc9426e08ab8"
+        },
+        {
+          "signature": "public.channel_purchase_guard()",
+          "beforeSha256": null,
+          "afterSha256": "0fe093e5e3b02bc3beb69d690b7aa1c6e098cb7086cee62db3d6d9cff3f85151"
+        },
+        {
+          "signature": "public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
+        },
+        {
+          "signature": "public.channel_pull_page_read(uuid,uuid,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "6738323014e9bc1fcab5e9d16b6edc649bb875d386608bba3e6015773964d1d5"
+        },
+        {
+          "signature": "public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "8ed54ae193b54f0544c418b2f95821ea59910b9aff30e9a69f997b71d132a529"
+        },
+        {
+          "signature": "public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "6f88d6f821344328e899db448a2646b9f23d38b97c968525c0d7d90dbe513e69"
+        },
+        {
+          "signature": "public.channel_ingest_capture_read(uuid,text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "af69e838cc9512f8f92e2679ec71beaf9235b1af340eff98599d76bb278f302d"
+        },
+        {
+          "signature": "public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "c5c60d71211ab7d4b74f55914f9e390b50ae3f6d9bab825128e5d78c14164dde"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "98142a842e2940d9662fc8aa0ee38f8034d7f9e3c2280a4360b3e82e4dd550e6",
+          "sql": "ALTER TABLE public.channel_order_ingests ADD COLUMN purchase_capture_text text,\n  ADD COLUMN purchase_capture_digest text;"
+        },
+        {
+          "sha256": "7f93aae572e6ca13fa436659f9edebbb8178183254596a35b2c27358df545916",
+          "sql": "ALTER TABLE public.sales_channel_connections ADD COLUMN pull_capture_adopted_at timestamptz,\n  ADD COLUMN pull_page_ref uuid, ADD COLUMN pull_page_generation bigint NOT NULL DEFAULT 0\n  CHECK(pull_page_generation BETWEEN 0 AND 9007199254740991);"
+        },
+        {
+          "sha256": "620ee098dcdcea06ef44c64ffe11b62521996daca89d1b5bad689debab3eefc8",
+          "sql": "ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref\n  FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;"
+        },
+        {
+          "sha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"
+        },
+        {
+          "sha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
+        },
+        {
+          "sha256": "05267420e880daadd3a36e8583dfbf49ceffbbf58d2a0868f24fcc9426e08ab8"
+        },
+        {
+          "sha256": "0fe093e5e3b02bc3beb69d690b7aa1c6e098cb7086cee62db3d6d9cff3f85151"
+        },
+        {
+          "sha256": "002597309e10272df8532546fea6a782a9c4239505b23793f7cd09a145b34353",
+          "sql": "CREATE TRIGGER channel_purchase_connection_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_connections\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "6e05be99701bc622b1f185d724b56f13dcc64a6b8f1b5efa2db247bf5f7ba9d1",
+          "sql": "CREATE TRIGGER channel_purchase_ingest_guard BEFORE INSERT OR UPDATE OR DELETE ON public.channel_order_ingests\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "aaedb2e9737c9e2379e88b6a7f9f37109ccd2ecaa327bc11f8fa4f6285ef34af",
+          "sql": "CREATE TRIGGER channel_purchase_outbox_guard BEFORE INSERT OR UPDATE OR DELETE ON public.outbox_events\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "4cd79d2e3c07968adc637247985a46ea00aad20b2ec666b067d42840b9112f97",
+          "sql": "CREATE TRIGGER channel_purchase_connection_truncate BEFORE TRUNCATE ON public.sales_channel_connections\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "ce6a0e5f229adebbd133340173c5255c29682e33b5cb6a413626175097db22cd",
+          "sql": "CREATE TRIGGER channel_purchase_ingest_truncate BEFORE TRUNCATE ON public.channel_order_ingests\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "f9660bd7b945d1bde432db41ecf4ec6731af71cbfc2cdc95ea9e34a54beaf008",
+          "sql": "CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox_events\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
+        },
+        {
+          "sha256": "6738323014e9bc1fcab5e9d16b6edc649bb875d386608bba3e6015773964d1d5"
+        },
+        {
+          "sha256": "8ed54ae193b54f0544c418b2f95821ea59910b9aff30e9a69f997b71d132a529"
+        },
+        {
+          "sha256": "6f88d6f821344328e899db448a2646b9f23d38b97c968525c0d7d90dbe513e69"
+        },
+        {
+          "sha256": "af69e838cc9512f8f92e2679ec71beaf9235b1af340eff98599d76bb278f302d"
+        },
+        {
+          "sha256": "c5c60d71211ab7d4b74f55914f9e390b50ae3f6d9bab825128e5d78c14164dde"
+        },
+        {
+          "sha256": "bed7b683fd8a8c0c91338d8b3a02ee5aae895862205b92b1569f2f1e40aa4d5a",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM PUBLIC;"
+        },
+        {
+          "sha256": "02c7948396e76331543a2b09565036e250d95415df7f6bcbab652709790f09ea",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM authenticated;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb),public.channel_purchase_packet(text,text,text),\n public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid),public.channel_purchase_guard() FROM service_role;';\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "9e7f6e84332d12906d923a9f8ffccd7e69d9794842fb6ee7899bbaf4f1648682",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM PUBLIC;"
+        },
+        {
+          "sha256": "6dca795beeec1080d8a1d8a99b094e10606d129ad6be034a44e6fffccb6ea2c5",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM anon;';\n  END IF;\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN\n    EXECUTE 'REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM authenticated;';\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "855bb751df7644ca4f08757c7fd9230380d1af4147855a3bedc3dcec2a02e837",
+          "sql": "DO $$ BEGIN\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN\n    EXECUTE 'GRANT EXECUTE ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text),\n public.channel_ingest_capture_read(uuid,text,uuid),public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text),\n public.channel_pull_page_read(uuid,uuid,uuid,text),public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz),\n public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) TO service_role;';\n  END IF;\nEND; $$;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030121000_channel_retained_basis.sql",
+      "sha256": "aa25552e77153b6f3266e57c819e63c9cc6e59bed1e6b5ff10cf690f08a6a1ee",
+      "functions": [
+        {
+          "signature": "public.channel_control_keys(jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "87c1338bb454be56ceb45b13d9313ef7814094a87b2c0fbac76e35c8885d5cb2"
+        },
+        {
+          "signature": "public.channel_control_ref(text)",
+          "beforeSha256": null,
+          "afterSha256": "200d642f20e01a2d894d0dff649b4aa1fcf205f596a6a04737755fcef7e6945f"
+        },
+        {
+          "signature": "public.catalog_bundle_composition_digest(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "42a899077005ceb96bc5d692eecb4dfc43a36687e957b223a8ae2808a4f022ee"
+        },
+        {
+          "signature": "public.channel_control_actor(uuid,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "e78d36ebb0005ed293d983c2ed2c5c45f010499a69532fd251b3243da9275f3d"
+        },
+        {
+          "signature": "public.channel_control_scope(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "874ab29bdc55efcdb0ceccfe19b7d1c3af5f7a268c8ef6c4b9fc4434b85df333"
+        },
+        {
+          "signature": "public.channel_listing_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0225c9fecb6e562c5708b3bbd3afa63893697be995471aa2cbf5a151b0c4c803"
+        },
+        {
+          "signature": "public.channel_retained_bundle_guard()",
+          "beforeSha256": null,
+          "afterSha256": "95838024697b227f8394ce194515a7f006f2db9987bec9c01b07665586b42e5d"
+        },
+        {
+          "signature": "public.channel_retained_fact_guard()",
+          "beforeSha256": null,
+          "afterSha256": "34901805e6b354e88f94700f1414a69cd94ec153f8931ac244360c65cfe70ea7"
+        },
+        {
+          "signature": "public.channel_retained_listing_guard()",
+          "beforeSha256": null,
+          "afterSha256": "9ceba778d3d720b1c4413fcbf0674c5ddd04824e840f6dbcc18251a702cbac21"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "23c5051398cb5318e65fa5b53e830900fa5630f09d8ecd7f5ed730a6c7ec642f",
+          "sql": "ALTER TABLE public.catalog_bundles ADD COLUMN composition_locked_at timestamptz,\n  ADD COLUMN composition_digest text,\n  ADD CONSTRAINT channel_bundle_retained_lock_shape CHECK(\n    (composition_locked_at IS NULL AND composition_digest IS NULL) OR\n    (composition_locked_at IS NOT NULL AND composition_digest ~ '^[0-9a-f]{64}$'));"
+        },
+        {
+          "sha256": "979cc1b26fbbcd5f92580afc4146893a7a488276e10cf20a60d1f2910439451d",
+          "sql": "ALTER TABLE public.sales_channel_connections\n  ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN application_ref text CHECK(application_ref IS NULL OR btrim(application_ref)<>''),\n  ADD COLUMN environment_ref text CHECK(environment_ref IS NULL OR btrim(environment_ref)<>''),\n  ADD COLUMN seller_external_ref text CHECK(seller_external_ref IS NULL OR btrim(seller_external_ref)<>'');"
+        },
+        {
+          "sha256": "1257d8ab5177165673e4278b4fe5cf4430e4613358c8802920a2bfc2ee17bd92",
+          "sql": "ALTER TABLE public.sales_channels ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991);"
+        },
+        {
+          "sha256": "c7f932ee2ffde3cdb32ff4c7d0668fac313aae4c7658148794452c2183b641ea",
+          "sql": "ALTER TABLE public.sales_channel_listings ADD COLUMN control_version bigint NOT NULL DEFAULT 0 CHECK(control_version BETWEEN 0 AND 9007199254740991),\n  ADD COLUMN current_qualification_id uuid, ADD COLUMN current_approval_id uuid, ADD COLUMN manual_stop boolean NOT NULL DEFAULT false,\n  ADD COLUMN exposure_issued_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_converted_units bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_withdrawn_units bigint NOT NULL DEFAULT 0, ADD COLUMN exposure_generation bigint NOT NULL DEFAULT 0,\n  ADD COLUMN exposure_issued_basis_ref uuid,\n  ADD CONSTRAINT channel_exposure_retained_conservation CHECK(exposure_issued_units BETWEEN 0 AND 9007199254740991\n    AND exposure_converted_units BETWEEN 0 AND 9007199254740991 AND exposure_withdrawn_units BETWEEN 0 AND 9007199254740991\n    AND exposure_generation BETWEEN 0 AND 9007199254740991 AND exposure_converted_units::numeric+exposure_withdrawn_units<=exposure_issued_units);"
+        },
+        {
+          "sha256": "c30fc4072408a9efac838d007cd45958564f74ef3f89512473755f99d7d7e21a",
+          "sql": "CREATE TABLE public.sales_channel_control_operations (\n  resource_kind text NOT NULL CHECK(resource_kind IN ('connection','channel','listing')), resource_id uuid NOT NULL,\n  operation text NOT NULL CHECK(operation IN ('registry_apply','listing_prepare','listing_record_qualification','listing_approve',\n    'listing_manual_stop','exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold')),\n  operation_id uuid NOT NULL, actor_id uuid NOT NULL, input_digest text NOT NULL CHECK(input_digest ~ '^[0-9a-f]{64}$'),\n  canonical_text text NOT NULL CHECK(octet_length(canonical_text) BETWEEN 2 AND 262144), result jsonb NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(resource_kind,resource_id,operation,operation_id));"
+        },
+        {
+          "sha256": "d02e91e6aaa2250402301b6b5ee9f687badc447c0ccfaf4bf9d202a173a14d0b",
+          "sql": "CREATE TABLE public.sales_channel_listing_qualifications (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 0 AND 9007199254740990),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));"
+        },
+        {
+          "sha256": "d0ff9aa50c6c5fbe05cf3510b0e1aead52a717533b8baa5890435ce94bcf123e",
+          "sql": "CREATE TABLE public.sales_channel_listing_approvals (\n  id uuid PRIMARY KEY, listing_id uuid NOT NULL REFERENCES public.sales_channel_listings(id) ON DELETE RESTRICT,\n  qualification_id uuid NOT NULL REFERENCES public.sales_channel_listing_qualifications(id) ON DELETE RESTRICT,\n  actor_id uuid NOT NULL, listing_version bigint NOT NULL CHECK(listing_version BETWEEN 1 AND 9007199254740991),\n  body jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(id,listing_id), UNIQUE(listing_id,listing_version));"
+        },
+        {
+          "sha256": "4f43b195bd0b080d612b792d2556f3fcc8ad108ca803d38fb3bb51e0a64ff5c7",
+          "sql": "ALTER TABLE public.sales_channel_listings\n  ADD CONSTRAINT channel_retained_qualification_scope FOREIGN KEY(current_qualification_id,id) REFERENCES public.sales_channel_listing_qualifications(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_approval_scope FOREIGN KEY(current_approval_id,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT,\n  ADD CONSTRAINT channel_retained_exposure_basis_scope FOREIGN KEY(exposure_issued_basis_ref,id) REFERENCES public.sales_channel_listing_approvals(id,listing_id) ON DELETE RESTRICT;"
+        },
+        {
+          "sha256": "d5c0039a23ac65b630449165c41686329f10767dd857c4eb8fdef63eb07250ee",
+          "sql": "CREATE UNIQUE INDEX channel_retained_exposure_sale ON public.sales_channel_control_operations(resource_id,\n  (canonical_text::jsonb#>>'{payload,ingestId}'),(canonical_text::jsonb#>>'{payload,externalLineRef}')) WHERE operation='exposure_convert_sale';"
+        },
+        {
+          "sha256": "f36f5a79ec11e790a92395808bbc549cc98373c63bbe57ac56b70dc08de3f7ee",
+          "sql": "CREATE UNIQUE INDEX channel_retained_exposure_generation ON public.sales_channel_control_operations(resource_id,((result->>'appliedGeneration')::bigint))\n  WHERE operation IN ('exposure_allocate','exposure_convert_sale','exposure_reclaim_unsold');"
+        },
+        {
+          "sha256": "87c1338bb454be56ceb45b13d9313ef7814094a87b2c0fbac76e35c8885d5cb2"
+        },
+        {
+          "sha256": "200d642f20e01a2d894d0dff649b4aa1fcf205f596a6a04737755fcef7e6945f"
+        },
+        {
+          "sha256": "42a899077005ceb96bc5d692eecb4dfc43a36687e957b223a8ae2808a4f022ee"
+        },
+        {
+          "sha256": "e78d36ebb0005ed293d983c2ed2c5c45f010499a69532fd251b3243da9275f3d"
+        },
+        {
+          "sha256": "874ab29bdc55efcdb0ceccfe19b7d1c3af5f7a268c8ef6c4b9fc4434b85df333"
+        },
+        {
+          "sha256": "0225c9fecb6e562c5708b3bbd3afa63893697be995471aa2cbf5a151b0c4c803"
+        },
+        {
+          "sha256": "95838024697b227f8394ce194515a7f006f2db9987bec9c01b07665586b42e5d"
+        },
+        {
+          "sha256": "338eca6c610f317c0a2999552482da7c59ecc5fba65bc13d6ebba4015006cbeb",
+          "sql": "CREATE TRIGGER channel_retained_bundle_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundles FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "7f10692a1750ee5db52c55e71a60e8cd0d58bf00a96cf4e0e762242cddad706e",
+          "sql": "CREATE TRIGGER channel_retained_component_guard BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_bundle_components FOR EACH ROW EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "861dcc689d2eed6db8d54fab67ed626d3088cbbd62275f2bacfa0347abec0eb5",
+          "sql": "CREATE TRIGGER channel_retained_bundle_truncate BEFORE TRUNCATE ON public.catalog_bundles FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "3ffad443dbce8f4f5c1c0a3f3ee87ae79771045f83568b8849832a0ca5bb6516",
+          "sql": "CREATE TRIGGER channel_retained_component_truncate BEFORE TRUNCATE ON public.catalog_bundle_components FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_bundle_guard();"
+        },
+        {
+          "sha256": "ae4694e41367e2842cda27f7aa1a0943feedf68da675738783ed9d8cb261f742",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),public.channel_control_actor(uuid,boolean),\n  public.channel_control_scope(uuid),public.catalog_bundle_composition_digest(uuid),public.channel_retained_bundle_guard(),public.channel_listing_read(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "a089933a8bfa754cac8f6d09ac4762973537b3c6bc476a9d322b1cb8f26493f1",
+          "sql": "REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "5bed4086eede97750b22dd30f80598daeccef2e3ee6d3555544a93e1f66db06d",
+          "sql": "ALTER TABLE public.sales_channel_control_operations ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "sha256": "9f61b125301dae7f84b68d5997a7f22378309c0cb85ed40f9b8b1e2fbf1e986b",
+          "sql": "ALTER TABLE public.sales_channel_listing_qualifications ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "sha256": "87a7b1ab5f5bf75b53f63e997170b78de875b1b565dd0d1251bbd83b502a9e1b",
+          "sql": "ALTER TABLE public.sales_channel_listing_approvals ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "sha256": "0d838c6277573657d2a5d3f0c87d5120572155d9a7478b2eaffbd8b31df5aa1f",
+          "sql": "REVOKE ALL ON public.sales_channel_control_operations,public.sales_channel_listing_qualifications,public.sales_channel_listing_approvals FROM service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "446ec339ef9f84aad5fff7ac629ebb781628bbd01188895974b6fed120522a43",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_listing_read(uuid,uuid) FROM service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "bf9f4f092dbc3b77c0c02993bf7e680f972d5ef03e473ca738bf82052a226680",
+          "sql": "GRANT EXECUTE ON FUNCTION public.channel_listing_read(uuid,uuid) TO service_role;"
+        },
+        {
+          "sha256": "34901805e6b354e88f94700f1414a69cd94ec153f8931ac244360c65cfe70ea7"
+        },
+        {
+          "sha256": "540d65889a497db91b08d00a90fd18529f89edd01bb91fe811e200b696c8c5e8",
+          "sql": "CREATE TRIGGER channel_retained_qualification_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_qualifications\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "d31297c82514b6eff91c7499a10aa05ecab9d2faef2e3b11070fc9b2c67c3c91",
+          "sql": "CREATE TRIGGER channel_retained_approval_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listing_approvals\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "4ecaee830a3263472f480fc6ecac7db4d0c3f062fdc34113f351f49baf46c811",
+          "sql": "CREATE TRIGGER channel_retained_qualification_truncate BEFORE TRUNCATE ON public.sales_channel_listing_qualifications\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "119427b95756cccd51423c758616d9763229c77413005bb35bd490dc83751c1a",
+          "sql": "CREATE TRIGGER channel_retained_approval_truncate BEFORE TRUNCATE ON public.sales_channel_listing_approvals\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_fact_guard();"
+        },
+        {
+          "sha256": "6132d013dba916ab961651fbcd57e4af18c12925ccae5e967f4b5e59822df302",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_retained_fact_guard() FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "9ceba778d3d720b1c4413fcbf0674c5ddd04824e840f6dbcc18251a702cbac21"
+        },
+        {
+          "sha256": "f46a2dfe797055ebd7368ebd69ff1028fd71685dcb1a9bacaa41e87a937f0cc5",
+          "sql": "CREATE TRIGGER channel_retained_listing_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_listings\n FOR EACH ROW EXECUTE FUNCTION public.channel_retained_listing_guard();"
+        },
+        {
+          "sha256": "36dfcb6155889be4e337299049004b80db06360629e160da290aa66961e1a900",
+          "sql": "CREATE TRIGGER channel_retained_listing_truncate BEFORE TRUNCATE ON public.sales_channel_listings\n FOR EACH STATEMENT EXECUTE FUNCTION public.channel_retained_listing_guard();"
+        },
+        {
+          "sha256": "163c10f8c94f6ac8e2501844b7f76eb9b5816c2efc51fb62920b01e7ef76b4a0",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_retained_listing_guard() FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030122000_channel_purchased_source.sql",
+      "sha256": "51b4606ff0ddf250fb7c4d79489fb2c12bf4bc03bc2670dc2bad708ef2fdb02e",
+      "functions": [
+        {
+          "signature": "public.channel_purchase_json(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"
+        },
+        {
+          "signature": "public.channel_purchase_packet(text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
+        },
+        {
+          "signature": "public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "9e235266c1da05c32fcb8d44fb6608a2e985cc72b0c86c15667f32d580f1fb2f"
+        },
+        {
+          "signature": "public.channel_purchase_guard()",
+          "beforeSha256": null,
+          "afterSha256": "d60a69a2db846a691d38a4129ce6ba49c416b2e3f3207b8726622b333a87c59d"
+        },
+        {
+          "signature": "public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
+        },
+        {
+          "signature": "public.channel_pull_page_read(uuid,uuid,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "6738323014e9bc1fcab5e9d16b6edc649bb875d386608bba3e6015773964d1d5"
+        },
+        {
+          "signature": "public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "8ed54ae193b54f0544c418b2f95821ea59910b9aff30e9a69f997b71d132a529"
+        },
+        {
+          "signature": "public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "7a30da1226aa7a23eec86b68c56271eb17df36bacf64eb49381256803e2b4c38"
+        },
+        {
+          "signature": "public.channel_ingest_capture_read(uuid,text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "af69e838cc9512f8f92e2679ec71beaf9235b1af340eff98599d76bb278f302d"
+        },
+        {
+          "signature": "public.channel_purchase_retained_lines(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "a121e283f435ba19b90996d4084057bab088c6d70581b610dff30e9e42b9fefb"
+        },
+        {
+          "signature": "public.commerce_create_channel_order(text,uuid,jsonb)",
+          "beforeSha256": "0b31361c2a8ff731a128d5632a4f182edacc21853dae145e0432c96071840546",
+          "afterSha256": "645d6e63375b8ab08fae6ebdab2b5ddf9655217236f28e8c9a57bce14bec9823"
+        },
+        {
+          "signature": "public.inventory_channel_exposure_quantity(uuid)",
+          "beforeSha256": "1aeb7d89182ad987f049eec6eb752c8d7ec32d5b238e584c4d3771ffd5cd1867",
+          "afterSha256": "b45c432b165769c5b8a549e4991afc59bb4192bfb5f91122a93ecc311119a2cd"
+        },
+        {
+          "signature": "public.channel_purchase_stock_enter(uuid,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "8629ddcd5d744d8f284e98a3c59fed1e15b12a75e507a48ab790f7971987ecf7"
+        },
+        {
+          "signature": "public.channel_reserve_order_items(text,uuid,jsonb,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "f08534cb5bb38ce75f42aa66153cbc0bc8940003143226e24c2fa71d53a60550"
+        },
+        {
+          "signature": "public.channel_purchase_paid_source(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "99b650e4c148e2fb9e50e910d4217a95448ed262acbf04566993bef2948102d1"
+        },
+        {
+          "signature": "public.channel_exposure_apply(uuid,text,uuid,uuid,bigint,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "6996d8feef0768f37f4cdc8cf511bb3ba20c5b84ac683071589be2786830fb39"
+        },
+        {
+          "signature": "public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "225898aaaaeedff29dc0a4dcf60865d72284b5ff45f49d40c70b6fc8b914387a"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "94bca48d075ac9416d14a46d648beed480d1554acd6770082683220752822748",
+          "sql": "DO $$ DECLARE installer oid; owner_id oid; BEGIN\n  SELECT oid INTO installer FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole);\n  IF installer IS NULL THEN RAISE EXCEPTION 'channel_purchase_installer_authority_required' USING ERRCODE='42501'; END IF;\n  IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='openlup_channel_purchase_writer') THEN\n    CREATE ROLE openlup_channel_purchase_writer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;\n  END IF;\n  SELECT oid INTO owner_id FROM pg_roles WHERE rolname='openlup_channel_purchase_writer';\n  IF EXISTS(SELECT 1 FROM pg_roles WHERE oid=owner_id AND\n    (rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit))\n    OR EXISTS(SELECT 1 FROM pg_auth_members m WHERE (m.roleid=owner_id OR m.member=owner_id) AND NOT\n      (m.roleid=owner_id AND m.member=installer AND m.grantor=10 AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option\n        AND EXISTS(SELECT 1 FROM pg_roles WHERE oid=installer AND rolcreaterole AND NOT rolsuper))) THEN\n    RAISE EXCEPTION 'channel_purchase_writer_role_unsafe';\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "4f75085a273600d4593c88d4b9417cb9de20806ce9cd16622d732d709392888a",
+          "sql": "GRANT USAGE ON SCHEMA public TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "98142a842e2940d9662fc8aa0ee38f8034d7f9e3c2280a4360b3e82e4dd550e6",
+          "sql": "ALTER TABLE public.channel_order_ingests ADD COLUMN purchase_capture_text text,\n  ADD COLUMN purchase_capture_digest text;"
+        },
+        {
+          "sha256": "7f93aae572e6ca13fa436659f9edebbb8178183254596a35b2c27358df545916",
+          "sql": "ALTER TABLE public.sales_channel_connections ADD COLUMN pull_capture_adopted_at timestamptz,\n  ADD COLUMN pull_page_ref uuid, ADD COLUMN pull_page_generation bigint NOT NULL DEFAULT 0\n  CHECK(pull_page_generation BETWEEN 0 AND 9007199254740991);"
+        },
+        {
+          "sha256": "620ee098dcdcea06ef44c64ffe11b62521996daca89d1b5bad689debab3eefc8",
+          "sql": "ALTER TABLE public.sales_channel_connections ADD CONSTRAINT channel_pull_page_ref\n  FOREIGN KEY(pull_page_ref) REFERENCES public.outbox_events(id) ON DELETE RESTRICT ;"
+        },
+        {
+          "sha256": "316d2f88c44ccd58eb5e0325201ed182bdaad734fc9db1df832f302717181901",
+          "sql": "GRANT SELECT (id, sku_id, quantity, product_snapshot, order_id, allocation_ordinal) ON TABLE public.commerce_order_items TO service_role;"
+        },
+        {
+          "sha256": "e7eb928eb20e382b086fee7e8cba3374975ee5bb413098be2972dc1e5c43a67b"
+        },
+        {
+          "sha256": "d80825a606bc83e587bad33641b6f58c531fb17cb20a2f028dc106a66a774cba"
+        },
+        {
+          "sha256": "9e235266c1da05c32fcb8d44fb6608a2e985cc72b0c86c15667f32d580f1fb2f"
+        },
+        {
+          "sha256": "d60a69a2db846a691d38a4129ce6ba49c416b2e3f3207b8726622b333a87c59d"
+        },
+        {
+          "sha256": "002597309e10272df8532546fea6a782a9c4239505b23793f7cd09a145b34353",
+          "sql": "CREATE TRIGGER channel_purchase_connection_guard BEFORE INSERT OR UPDATE OR DELETE ON public.sales_channel_connections\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "6e05be99701bc622b1f185d724b56f13dcc64a6b8f1b5efa2db247bf5f7ba9d1",
+          "sql": "CREATE TRIGGER channel_purchase_ingest_guard BEFORE INSERT OR UPDATE OR DELETE ON public.channel_order_ingests\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "aaedb2e9737c9e2379e88b6a7f9f37109ccd2ecaa327bc11f8fa4f6285ef34af",
+          "sql": "CREATE TRIGGER channel_purchase_outbox_guard BEFORE INSERT OR UPDATE OR DELETE ON public.outbox_events\n  FOR EACH ROW EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "4cd79d2e3c07968adc637247985a46ea00aad20b2ec666b067d42840b9112f97",
+          "sql": "CREATE TRIGGER channel_purchase_connection_truncate BEFORE TRUNCATE ON public.sales_channel_connections\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "ce6a0e5f229adebbd133340173c5255c29682e33b5cb6a413626175097db22cd",
+          "sql": "CREATE TRIGGER channel_purchase_ingest_truncate BEFORE TRUNCATE ON public.channel_order_ingests\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "f9660bd7b945d1bde432db41ecf4ec6731af71cbfc2cdc95ea9e34a54beaf008",
+          "sql": "CREATE TRIGGER channel_purchase_outbox_truncate BEFORE TRUNCATE ON public.outbox_events\n  FOR EACH STATEMENT EXECUTE FUNCTION public.channel_purchase_guard();"
+        },
+        {
+          "sha256": "5ccd013104cd90a73cfbb27ab0621378284de775d4d1855544d6ad4d885f0e8f"
+        },
+        {
+          "sha256": "6738323014e9bc1fcab5e9d16b6edc649bb875d386608bba3e6015773964d1d5"
+        },
+        {
+          "sha256": "8ed54ae193b54f0544c418b2f95821ea59910b9aff30e9a69f997b71d132a529"
+        },
+        {
+          "sha256": "7a30da1226aa7a23eec86b68c56271eb17df36bacf64eb49381256803e2b4c38"
+        },
+        {
+          "sha256": "af69e838cc9512f8f92e2679ec71beaf9235b1af340eff98599d76bb278f302d"
+        },
+        {
+          "sha256": "a121e283f435ba19b90996d4084057bab088c6d70581b610dff30e9e42b9fefb"
+        },
+        {
+          "sha256": "645d6e63375b8ab08fae6ebdab2b5ddf9655217236f28e8c9a57bce14bec9823"
+        },
+        {
+          "sha256": "b45c432b165769c5b8a549e4991afc59bb4192bfb5f91122a93ecc311119a2cd"
+        },
+        {
+          "sha256": "a6f8b93aaba5b9372207e273930ca34c42858dd9329c6bff7c026a3e893d3a9b",
+          "sql": "REVOKE ALL ON FUNCTION public.inventory_channel_exposure_quantity(uuid) FROM PUBLIC,anon,authenticated,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "01f2efccca3dcdc0f7447b2e60ba9aa35b2c4bc878370a22ee7a0b603c3c5b44",
+          "sql": "GRANT EXECUTE ON FUNCTION public.inventory_channel_exposure_quantity(uuid) TO service_role;"
+        },
+        {
+          "sha256": "8629ddcd5d744d8f284e98a3c59fed1e15b12a75e507a48ab790f7971987ecf7"
+        },
+        {
+          "sha256": "b6dc29e70e3d98e361d16dd3a38af8ff954008acfbb2fbdf6ca1c9b5ba5b7d86",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_stock_enter(uuid,jsonb,text) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "f08534cb5bb38ce75f42aa66153cbc0bc8940003143226e24c2fa71d53a60550"
+        },
+        {
+          "sha256": "c6694bb90fcbbae4743fd0c0ef6bbf5ca5628f9da085641757fc228539a5dd31",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_reserve_order_items(text,uuid,jsonb,jsonb,text) FROM PUBLIC,anon,authenticated,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "e79eb5b6aca35004d6830bcd2148962440bc09e2ff9d06025ac9c44006d19f47",
+          "sql": "GRANT EXECUTE ON FUNCTION public.channel_reserve_order_items(text,uuid,jsonb,jsonb,text) TO service_role;"
+        },
+        {
+          "sha256": "99b650e4c148e2fb9e50e910d4217a95448ed262acbf04566993bef2948102d1"
+        },
+        {
+          "sha256": "0de3f2a892fc0e1c0228f0f9e69b25330f44a773e842c719be8c092fa5cd7a5b",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_paid_source(uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "6996d8feef0768f37f4cdc8cf511bb3ba20c5b84ac683071589be2786830fb39"
+        },
+        {
+          "sha256": "4b14702638286c8f1b1cd074e0466ca99768f89823eebe7a535ff5f1adf98d52",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_exposure_apply(uuid,text,uuid,uuid,bigint,text,text) FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader;"
+        },
+        {
+          "sha256": "225898aaaaeedff29dc0a4dcf60865d72284b5ff45f49d40c70b6fc8b914387a"
+        },
+        {
+          "sha256": "ebc769e2da2cc2958ae53f6509458428034542ce6ea9cb140e5ebe7bb451c689",
+          "sql": "GRANT SELECT,UPDATE ON public.sales_channel_listings TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "b50f700cc8da6257c4877a74db987b2e72ccfceb42248c8f0b88afc0b24e72b0",
+          "sql": "GRANT SELECT,INSERT ON public.sales_channel_control_operations TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "56a70a0b4769181404d479b61f75d99d0ced6f0c1b169f2a9507a846a7cfa781",
+          "sql": "GRANT SELECT ON public.sales_channels,public.catalog_bundles,public.catalog_bundle_components,public.catalog_skus,\n public.commerce_orders,public.commerce_order_items,public.fulfillment_provider_stock_current,public.inventory_balances TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "a33d8a31f979252e68d5a8cb365b6e2d2934ec240d1dace790f93572c6b9fa25",
+          "sql": "GRANT UPDATE ON public.commerce_orders,public.commerce_order_items,public.fulfillment_provider_stock_current,public.inventory_balances TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "e1ff172ec5e4140ca79f62320e03b6c7a0bb054e28439b65082c82a109966ff6",
+          "sql": "GRANT SELECT,UPDATE ON public.inventory_reservations TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "345f79363dddbd9cf24f43aadb798298a98b2ad388c69782c995b9f82e06dfca",
+          "sql": "GRANT EXECUTE ON FUNCTION public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text),\n public.catalog_bundle_composition_digest(uuid) TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "a0801092feedd319b37efbbf3e8ffad5bb082ef797b3b39f6637e752b0b5af49",
+          "sql": "CREATE POLICY channel_purchase_writer_control ON public.sales_channel_control_operations FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "77809bd087d61660da001b1a3a11aa91fe346e40ad27f414835ea1b5b0b1ee23",
+          "sql": "GRANT EXECUTE ON FUNCTION public.channel_exposure_apply(uuid,text,uuid,uuid,bigint,text,text) TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "afe14763ebe33e0bef1f3c0658a730db860182298037bf79b30799b6921d8799",
+          "sql": "CREATE POLICY channel_purchase_writer_listing ON public.sales_channel_listings FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "1a59c58d12fbee4c2f8a1b06016d1c38f2ad459b4fdfa96792192910be032df9",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.commerce_orders FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "6bf68f47fa093fc147cf307fb436b0e8380d9b476b75271320d9acab69d13224",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.commerce_order_items FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "9ab01af030ad85baf031754cad9e326b1b709e550903f1bce202eebedda79b94",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.fulfillment_provider_stock_current FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "468241f122016dfb0dd61bdd8f11e2e19f8c2fb2b7553bd06006ba3a582f8aa3",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.inventory_balances FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "cabde93eee8a834368cd1afc06e20a160463e7fcb215897ba05819143b3d58a8",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.inventory_reservations FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "e08b08db75fcf20cfae3f66829884fb84dbd64dcdbd18b59030ffd146259c725",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.catalog_bundles FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "86381ebf52f1ef23a0be8008f7ba0388914326fcf84269ab1d005027239c09e5",
+          "sql": "CREATE POLICY channel_purchase_writer_select ON public.catalog_bundle_components FOR SELECT TO openlup_channel_purchase_writer USING(true);"
+        },
+        {
+          "sha256": "d07642096ec90cdb23dccbe2877ae246adc17e935250ef93369dd2bf528e60b0",
+          "sql": "CREATE POLICY channel_purchase_writer_update ON public.commerce_orders FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "14f357e0a28fbbe84205e1146b4c150ebc87e4032908d1d10832ae87becc33af",
+          "sql": "CREATE POLICY channel_purchase_writer_update ON public.commerce_order_items FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "6766d2184505c28d94a9c1f9a43212f0c928ea7f42b43e03d4a15be6ee1cfc5d",
+          "sql": "CREATE POLICY channel_purchase_writer_update ON public.fulfillment_provider_stock_current FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "645fa5c358e57234a236b622eacbfbe3008d80ebcb0e45a75d799f52c5eb3a33",
+          "sql": "CREATE POLICY channel_purchase_writer_update ON public.inventory_balances FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "eed3023ee1a6e03e6fb4832448a3318577d8ec4e0d15ac2eddca833cb6a82045",
+          "sql": "CREATE POLICY channel_purchase_writer_update ON public.inventory_reservations FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "744ba8459e535a8c137179d5fa5e6fe5c08a42e91602d9a470915d2ea37e98fc",
+          "sql": "CREATE POLICY channel_purchase_writer_update ON public.sales_channel_listings FOR UPDATE TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "304e497cbd2e2bfa4887b00a455f18145a924f12473d0eaa9101bfa7e295cf64",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_ingest_capture_read(uuid,text,uuid) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "5e94bcd7119e4de238fadf59b710ca4780f2e49d4c9b66a2d928c98dfbbcc493",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "98c72134ba3567430a6fcda4e77380f987d4b0f15598463ef189e8c81291c4ab",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_pull_page_read(uuid,uuid,uuid,text) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "14017920007ae8dc7894fce5380fcc0e6c2d25d23ddc2cdb991a83bfc88a0627",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "2db03779a41e77adba872a89911ad5db70a6530065bbee4564bd19a9a0188156",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "edbcd61eb377e2df54b9c38024c0cd06acad953f0c3a7a30445aa88550451f6b",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "b1c2d692510c8f5692cdc3bce2f6e497476db9f9fa8143652deb5e7f9c141958",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_json(jsonb) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "558867974925b0ec65a4dd4d3b4769bd6f0e368377d892dca6b2b44d3cae7561",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_packet(text,text,text) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "cd4c6ae775f2354bef7fd6b4b15adc55d04638f3733141dee380f042038ae9e0",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_retained_lines(uuid,jsonb) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "5658382dc2385d4ffac6797a4fb80943dcbc9b139928cda4114d5da4b06fda65",
+          "sql": "REVOKE ALL ON FUNCTION public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid) FROM anon,authenticated;"
+        },
+        {
+          "sha256": "0297ed5272d5eafefb695b13ba590211d7646a8e5d52888cc36137cd06570e51",
+          "sql": "GRANT SELECT,INSERT,UPDATE ON public.channel_order_ingests,public.outbox_events,public.sales_channel_connections TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "55cfe63d4f3746cb16bef353b9c17e377a6577781536d22bafbe098f9dac1b42",
+          "sql": "GRANT EXECUTE ON FUNCTION public.channel_control_actor(uuid,boolean),public.channel_control_keys(jsonb,jsonb),public.channel_control_ref(text),\n  public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb) TO openlup_channel_purchase_writer;"
+        },
+        {
+          "sha256": "0c6bd61fd61c9bdddec0bd39a24d03d8ec3ed8cf868b87129f06a20a936bf1b9",
+          "sql": "DO $$ DECLARE fn record; installer name:=current_user; super_install boolean; had_create boolean; BEGIN\n  SELECT rolsuper INTO super_install FROM pg_roles WHERE rolname=installer;\n  had_create:=has_schema_privilege('openlup_channel_purchase_writer','public','CREATE');\n  IF NOT super_install THEN\n    EXECUTE format('GRANT openlup_channel_purchase_writer TO %I WITH ADMIN FALSE, SET TRUE, INHERIT FALSE GRANTED BY %I',installer,installer);\n    IF NOT had_create THEN GRANT CREATE ON SCHEMA public TO openlup_channel_purchase_writer; END IF;\n    IF NOT has_schema_privilege('openlup_channel_purchase_writer','public','CREATE') THEN\n      RAISE EXCEPTION 'channel_purchase_schema_grant_authority_required' USING ERRCODE='42501'; END IF;\n  END IF;\n  FOR fn IN SELECT p.oid::regprocedure signature,p.proname,p.pronargs FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace\n    WHERE n.nspname='public' AND (p.proname LIKE 'channel_purchase_%' OR p.proname IN ('channel_ingest_capture_read',\n      'channel_pull_page_record','channel_pull_page_read','channel_pull_progress_commit') OR\n      (p.proname='channel_ingest_record_inbound_event' AND p.pronargs=7)) ORDER BY p.oid LOOP\n    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,openlup_mcp_reader',fn.signature);\n    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO openlup_channel_purchase_writer',fn.signature);\n    IF fn.proname IN ('channel_purchase_conversion_command','channel_ingest_capture_read','channel_pull_page_record','channel_pull_page_read','channel_pull_progress_commit')\n      OR (fn.proname='channel_ingest_record_inbound_event' AND fn.pronargs=7) THEN\n      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role',fn.signature);\n      EXECUTE format('ALTER FUNCTION %s OWNER TO openlup_channel_purchase_writer',fn.signature);\n    END IF;\n  END LOOP;\n  EXECUTE format('SET LOCAL ROLE %I',installer);\n  IF NOT super_install THEN\n    IF NOT had_create THEN REVOKE CREATE ON SCHEMA public FROM openlup_channel_purchase_writer; END IF;\n    EXECUTE format('REVOKE openlup_channel_purchase_writer FROM %I GRANTED BY %I',installer,installer);\n  END IF;\nEND; $$;"
+        },
+        {
+          "sha256": "9c218bb630d6e1eeea307b9e25846fbfbabebd509089ef64e92cd653450d6005",
+          "sql": "CREATE POLICY channel_purchase_writer_ingest ON public.channel_order_ingests FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "37e9508c8cf08102a6acc2c218b605763da6381a6fc4747243dd434d8354ec05",
+          "sql": "CREATE POLICY channel_purchase_writer_outbox ON public.outbox_events FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "b1803f3e3826e8040998ce439c603f2fa656ab45c9d39ce420599a2ecbf74b49",
+          "sql": "CREATE POLICY channel_purchase_writer_connection ON public.sales_channel_connections FOR ALL TO openlup_channel_purchase_writer USING(true) WITH CHECK(true);"
+        },
+        {
+          "sha256": "4194e8b9fc478a163b8647f57c8611b2bfd083489fbcfb1b213d1fb72fd4cb76",
+          "sql": "INSERT INTO public.outbox_dormant_event_types(event_type,owner,reason) VALUES\n  ('channel.purchase-source.v1','channels/captured-source','Immutable accepted channel purchase capture is retained evidence, not a dispatcher command or provider ACK.'),\n  ('channel.purchase-line.v1','channels/captured-source','Immutable scoped purchased-line claims preserve one paid obligation across provider form aliases; no dispatcher effect is registered.'),\n  ('channel.pull-page.v1','channels/captured-source','Immutable captured provider pages and original cursor receipts remain evidence; page presence never proves journal completeness.')\nON CONFLICT(event_type) DO NOTHING;"
+        }
+      ]
+    }
+  ]
 }

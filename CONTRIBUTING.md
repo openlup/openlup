@@ -345,7 +345,11 @@ through the built package entry and real reference binding, then two fresh
 targets in the other role mode
 with changed principal names. The E2 predecessor retains its four 89-unit shapes
 and eight installations on its own branch. Its healthy target supplies inventory, unsafe-session and
-shadow-symbol refusals without replacing expected digests.
+shadow-symbol refusals without replacing expected digests. Those digests bind
+the issued prefix. The qualified and restricted production witnesses then use
+the same runner to apply the complete current suffix from the selected plan,
+check its exact ledger and final inventory, and retain runtime/refusal checks
+on the complete installation. Total and resume counts follow the selected plan.
 Each installation also connects as its actual restricted runtime login to prove
 notification row locking and timestamp-only writes, diagnostic replay locking
 with actual event-update refusal, and privacy receipt locks, reads/inserts and
@@ -1994,6 +1998,14 @@ package, coverage or full verification gates.
 
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
+Channel preservation tests live in `packages/platform/test/channels` and are
+discovered by the existing root Node project. The paired PostgreSQL boundary
+fixture and selected-native inventory proofs live under `tests/postgres`;
+managed pgTAP retains 48 source-boundary assertions and the existing dispatch
+owner witness. Installed artifact proof belongs in `tests/platform/channels`;
+canonical cold-runner entry registration remains a later composition step.
+These local witnesses do not establish real-provider or hosted qualification.
+
 #### Choose a location and proof
 
 Acquisition server characterization belongs under
@@ -2923,6 +2935,8 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-11-01, M17 port parity: neutral import rewrite can drop a wrapper’s module-level initialization → keep the owning seam and prove a cold public import.
 
 - 2026-10-30, M14 hosted RDS recipe: superuser fixture assumptions in lock
   timing and teardown → synchronize after restricted admission, then remove

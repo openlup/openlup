@@ -51,6 +51,13 @@ const absentFromBaseline = new Set(["public.identity_privacy_erasures", "public.
 const installation = new Set(["auth.schema_migrations", "storage.migrations", "public.schema_migrations",
   "_realtime.extensions", "_realtime.schema_migrations", "_realtime.tenants", "realtime.schema_migrations",
   "supabase_functions.migrations", "supabase_migrations.schema_migrations"]);
+// Only these immutable registrations are installation metadata. They have no
+// business-row projection and never enter the retained restore packet.
+const channelDormantRegistrations: Readonly<Record<string, string>> = {
+  "channel.purchase-source.v1": "Immutable accepted channel purchase capture is retained evidence, not a dispatcher command or provider ACK.",
+  "channel.purchase-line.v1": "Immutable scoped purchased-line claims preserve one paid obligation across provider form aliases; no dispatcher effect is registered.",
+  "channel.pull-page.v1": "Immutable captured provider pages and original cursor receipts remain evidence; page presence never proves journal completeness.",
+};
 const credentials = new Set([
   "auth.sessions", "auth.refresh_tokens", "auth.flow_state", "auth.one_time_tokens", "auth.identities",
   "auth.mfa_factors", "auth.mfa_challenges", "auth.mfa_amr_claims", "auth.audit_log_entries",
@@ -175,6 +182,29 @@ export async function captureManagedSourceGraph(input: {
       for (const relation of relations) {
         const name = `${relation.schema}.${relation.table}`;
         const qualified = `${quoted(relation.schema)}.${quoted(relation.table)}`;
+        if (name === "public.outbox_dormant_event_types") {
+          const rows = (await db.query<{ value: string; finite: boolean }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value,
+            pg_catalog.isfinite(t.created_at) AND pg_catalog.isfinite(t.updated_at) AS finite FROM ${qualified} t LIMIT 4`)).rows;
+          if (!rows.length) {
+            dispositions.push({ relation: name, rows: 0, disposition: "unsupported-empty", reason: "no source class mapping" });
+            continue;
+          }
+          if (rows.length !== 3) fail("unsupported_table", name);
+          const timestamp = (JSON.parse(rows[0]!.value) as Row).created_at;
+          const seen = new Set<unknown>();
+          for (const { value, finite } of rows) {
+            const row = JSON.parse(value) as Row;
+            const expected = { event_type: row.event_type, owner: "channels/captured-source",
+              reason: channelDormantRegistrations[String(row.event_type)], created_at: timestamp, updated_at: timestamp };
+            if (expected.reason === undefined || seen.has(row.event_type) || !finite || typeof timestamp !== "string"
+              || Object.keys(row).sort().join("\0") !== Object.keys(expected).sort().join("\0")
+              || Object.entries(expected).some(([key, entry]) => row[key] !== entry)) fail("unsupported_table", name);
+            seen.add(row.event_type);
+          }
+          dispositions.push({ relation: name, rows: rows.length, disposition: "service-installation-history",
+            reason: "exact dormant channel registrations belong to the target installation" });
+          continue;
+        }
         if (credentials.has(name) || installation.has(name)) {
           const rows = Number((await db.query<{ count: string }>(`SELECT count(*)::pg_catalog.text AS count FROM ${qualified}`)).rows[0]?.count);
           if (!Number.isSafeInteger(rows)) fail("limit_exceeded", name);

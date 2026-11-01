@@ -37,7 +37,7 @@ may reuse one backend throughout a check. Nor does it fence a job after admissio
 if a connection subsequently fails. Correct transport configuration, job leases,
 idempotency and external-effect fencing retain their existing duties.
 The [qualified composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
-uses the real 91-unit selected installation, pooled request work and restricted
+uses the real 95-unit selected installation, pooled request work and restricted
 runtime lock sessions. Its deterministic backend-switch/reset cases use real
 PostgreSQL sessions, not a PgBouncer deployment; they prove observed-violation
 refusal before the job body. This is local PG16 evidence, not hosted Neon/RDS

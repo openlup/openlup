@@ -25,6 +25,7 @@ import {
 } from "./platform-migration-manifest.js";
 
 const raw = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+const current = raw;
 // Structural generation-introduction fixtures stop at their named issued tails;
 // the live shared suffix is exercised separately below.
 const historical = structuredClone(raw);
@@ -105,7 +106,7 @@ describe("canonical qualified migration selection", () => {
     expect(evaluatePlatformMigrationManifestHistory(issued, manifest, files)).toEqual([]);
     for (const roleMode of ["installer-managed", "operator-provisioned"] as const) {
       const selected = selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode });
-      expect([selected.baseline, ...selected.forward]).toHaveLength(91);
+      expect([selected.baseline, ...selected.forward]).toHaveLength(1 + admin.forward.length);
       expect(selected.forward.at(-1)?.file).toBe(QUALIFIED_RUNTIME_COMPLETION_FILE);
       expect(selected.objectInventorySha256).toBe(admin.objectInventorySha256[roleMode === "installer-managed" ? "installerManaged" : "operatorProvisioned"]);
     }
@@ -281,13 +282,13 @@ describe("canonical qualified migration selection", () => {
 
 describe("shared forwards after issued generation tails", () => {
   function appendedFixture() {
-    if (raw.schemaVersion !== 3) throw new Error("shared suffix fixture requires all three issued generations");
+    if (current.schemaVersion !== 3) throw new Error("shared suffix fixture requires all three issued generations");
     const migrations = [1, 2].map(index => ({
-      file: `db/platform/migrations/2026103012000${index}_shared_suffix.sql`,
+      file: `db/platform/migrations/${BigInt(current.forward.at(-1)!.file.split("/").at(-1)!.slice(0,14)) + BigInt(index)}_shared_suffix.sql`,
       content: `-- synthetic shared forward ${index}\nSELECT ${index};\n`,
     }));
     const suffix = migrations.map(({ file, content }) => ({ file, sha256: sha256(content) }));
-    const manifest = structuredClone(raw);
+    const manifest = structuredClone(current);
     for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push(...structuredClone(suffix));
     return { manifest, migrations: [...readPlatformMigrations(process.cwd()).migrations, ...migrations], suffix };
   }
@@ -295,14 +296,14 @@ describe("shared forwards after issued generation tails", () => {
   it("selects the identical ordered suffix after every unchanged issued prefix", () => {
     const { manifest, migrations, suffix } = appendedFixture();
     expect(evaluatePlatformMigrationManifest({ manifest, migrations })).toEqual([]);
-    expect(evaluatePlatformMigrationManifestHistory(raw, manifest, suffix.map(({ file }) => file))).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(current, manifest, suffix.map(({ file }) => file))).toEqual([]);
     const selections = [
       selectPlatformMigrationManifest(manifest, "legacy"),
       selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }),
       selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode: "installer-managed" }),
     ];
-    if (raw.schemaVersion !== 3) throw new Error("expected three issued generations");
-    for (const [index, previous] of [raw, raw.qualified, raw.qualifiedAdmin].entries()) {
+    if (current.schemaVersion !== 3) throw new Error("expected three issued generations");
+    for (const [index, previous] of [current, current.qualified, current.qualifiedAdmin].entries()) {
       expect(selections[index]!.forward.slice(0, previous.forward.length)).toEqual(previous.forward);
       expect(selections[index]!.forward.slice(previous.forward.length)).toEqual(suffix);
       const paths = new Set([selections[index]!.baseline.file, ...selections[index]!.forward.map(({ file }) => file)]);
@@ -346,7 +347,7 @@ describe("shared forwards after issued generation tails", () => {
     ]) {
       const { manifest, suffix } = appendedFixture();
       change((generation === "legacy" ? manifest : manifest[generation]).forward);
-      expect(evaluatePlatformMigrationManifestHistory(raw, manifest, suffix.map(({ file }) => file)))
+      expect(evaluatePlatformMigrationManifestHistory(current, manifest, suffix.map(({ file }) => file)))
         .toEqual(expect.arrayContaining([expect.stringContaining("preserve the previous prefix")]));
     }
   });

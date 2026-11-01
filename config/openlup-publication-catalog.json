@@ -1194,6 +1194,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1535,6 +1543,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m16-r1-market-import.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m17-r1-channel-import.md",
       "class": "public-output"
     },
     {
@@ -2590,6 +2602,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/channels-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/channels-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/channels.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/commerce-contracts.api.md",
       "class": "public-output"
     },
@@ -3018,6 +3042,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261030121000_channel_retained_basis.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/accountReadFacade.ts",
       "class": "public-output"
     },
@@ -3347,6 +3379,150 @@
     },
     {
       "path": "packages/platform/src/catalog/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/bundleLineExpansion.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/canonicalJson.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/channelComponentMoneyRows.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/channelIngestStorePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/channelListingContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/channelMoneyAllocation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/channelPurchaseSourceContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/channelRegistryContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/connectorPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/opsSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/orderContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/outboxEventContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/adapters/channelIngestStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/adapters/channelPurchasedContextRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/adapters/channelSourceStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/adminChannelOpsHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelBundleIngestStep.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelExposureReservationRail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelIngestAdmission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelIngestComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelIngestRails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelIngestRefusals.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelOrderIngestSaga.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelOrderPullService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelOrderRecoveryService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelPurchaseResolver.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelPurchasedIngestStep.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/channelWebhookHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/server/quarantineClassifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/validation.ts",
       "class": "public-output"
     },
     {
@@ -6755,6 +6931,34 @@
     },
     {
       "path": "packages/platform/test/catalog/sellableBundleHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelIngestCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelPackageBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelPullCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelPurchaseCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelRailsAndOpsCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelWebhookCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/fixtures.ts",
       "class": "public-output"
     },
     {
@@ -25118,6 +25322,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/test/historicalBoundarySchema.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/test/historicalBoundarySchema.ts",
       "class": "public-output"
     },
@@ -25254,6 +25462,14 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261030121000_channel_retained_basis.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -25375,6 +25591,10 @@
     },
     {
       "path": "supabase/tests/channel_order_reaches_the_dispatch_gate_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/channel_purchased_order_boundary_test.sql",
       "class": "public-output"
     },
     {
@@ -26174,6 +26394,22 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/channelInstallerWitness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/channelManagedIngestFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/channelMigrationInventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/channelPurchaseFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/fulfillmentComposition.ts",
       "class": "public-output"
     },
@@ -26183,6 +26419,10 @@
     },
     {
       "path": "tests/helpers/invoicingNativeHarness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/issuedPlatformCatalog.ts",
       "class": "public-output"
     },
     {
@@ -26251,6 +26491,10 @@
     },
     {
       "path": "tests/platform/catalog/referenceUi.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/channels/channelConsumer.test.ts",
       "class": "public-output"
     },
     {
@@ -26395,6 +26639,22 @@
     },
     {
       "path": "tests/postgres/bundleNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/channelConnectedRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/channelManagedRetainedInstallation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/channelMigrationInventory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/channelPurchase.conformance.test.ts",
       "class": "public-output"
     },
     {

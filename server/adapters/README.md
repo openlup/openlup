@@ -61,6 +61,13 @@ Its managed Storage projection accepts explicitly selected existing S3 sources
 for bytes; the SQL snapshot independently names the object rows. The retained
 transfer section below owns the finite cohort and destination limits.
 
+Its channel exception is limited to three exact dormant installation
+registrations. It checks all five row columns, including a common finite
+PostgreSQL installation timestamp, and emits only their installation-history
+census. No registration or channel business row enters the typed projection;
+empty baseline metadata keeps its original unsupported-empty disposition.
+Unknown or drifted registrations and nonempty channel relations refuse.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
@@ -105,6 +112,13 @@ tables, including acquisition-private business data, refuse rather than being
 omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
+
+Ordinary outbox rows use this pinned owner insertion path while the generic
+compatible-row importer keeps its INSERT-trigger refusal. The exact
+`channel_purchase_outbox_guard` name is admitted under the existing qualified
+catalogue pins. Protected channel source, line and page event types still refuse
+with `unsupported_table` before INSERT, independent of the active owner role.
+A refusal rolls back earlier imported rows in the same transaction.
 
 The fixed profile now includes the existing native catalog, price-list and
 subscription-line rows needed by retained subscription terms, plus recipient
@@ -612,8 +626,8 @@ The direct [migration binding](postgres/migrationRunner.ts) delegates to the
 package executor and keeps legacy as its default. Explicit qualified selection
 adds the reference catalogue, restricted runtime/optional restore principal
 bindings, startup transport and [read-only session admission](postgres/qualifiedInstall.ts).
-Its explicit qualified source selection currently contains 91 units; the
-legacy selection remains the default at 88 units. Neither source plan is
+Its explicit qualified source selection currently contains 95 units; the
+legacy selection remains the default at 91 units. Neither source plan is
 installed or hosted qualification. The
 [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 records its binding shapes and outstanding production proof.

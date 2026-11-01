@@ -17,8 +17,17 @@ export function currentTrigger(name: string): string {
 /** Explicit function ACL statements in chain order; live SQL owns effective privileges. */
 export function functionAclStatements(name: string): string[] {
   if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error(`Invalid function name: ${name}`);
-  const statements = new RegExp(`(?:GRANT|REVOKE) [^;\\n]* ON FUNCTION public\\.${name}\\([^;]*?;`, "gi");
-  const result = allMigrations().flatMap(({ content }) => [...content.matchAll(statements)].map(([sql]) => sql));
+  const result: string[] = [];
+  // An explicit ACL may name several regprocedures; return only the requested
+  // target, so callers replaying these statements never grant a neighboring RPC.
+  const statement = /(?:GRANT|REVOKE)\s+(?:ALL|EXECUTE)\s+ON FUNCTION\s+[^;]+?\s+(?:TO|FROM)\s+[^;]+;/gi;
+  for (const { content } of allMigrations()) for (const [sql] of content.matchAll(statement)) {
+    const acl = sql.match(/^(GRANT|REVOKE)\s+(ALL|EXECUTE)\s+ON FUNCTION\s+(.*?)\s+(TO|FROM)\s+([^;]+);$/s);
+    if (!acl) throw new Error("Unsupported explicit function ACL");
+    for (const target of acl[3].matchAll(/public\.([a-z0-9_]+)\(([^()]*)\)/g)) {
+      if (target[1] === name) result.push(acl[1] + " " + acl[2] + " ON FUNCTION " + target[0] + " " + acl[4] + " " + acl[5] + ";");
+    }
+  }
   if (!result.length) throw new Error(`No explicit function ACL: ${name}`);
   return result;
 }
@@ -30,7 +39,7 @@ export function explicitFunctionExecuteRoles(name: string): Map<string, Set<stri
     const match = sql.match(/^(GRANT|REVOKE)\s+(ALL|EXECUTE)\s+ON FUNCTION public\.[a-z0-9_]+\((.*?)\)\s+(?:TO|FROM)\s+([^;]+);$/s);
     if (!match) throw new Error(`Unsupported function ACL statement: ${sql}`);
     // pg_dump includes parameter names while additive grants can omit them.
-    const signature = match[3].split(",").map((argument) => argument.trim().replace(/^p_[a-z_]+\s+/, "")).join(",");
+    const signature = match[3].split(",").map((argument) => argument.trim().replace(/^p_[a-z_]+\s+/, "").replace(/\btimestamptz\b/g, "timestamp with time zone").replace(/\s+/g, " ")).join(",");
     const roles = overloads.get(signature) ?? new Set(["PUBLIC"]);
     for (const role of match[4].split(",").map((role) => role.trim())) {
       if (match[1] === "GRANT") roles.add(role);
