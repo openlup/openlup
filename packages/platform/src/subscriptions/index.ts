@@ -48,5 +48,6 @@ export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
 export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";

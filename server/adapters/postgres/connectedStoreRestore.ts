@@ -240,6 +240,7 @@ const order = [
   "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_settlement_intents", "commerce_settlement_transitions",
+  "subscription_dunning_cases", "subscription_dunning_notifications", "subscription_reminder_ledger", "transactional_delivery_receipts",
   "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts",

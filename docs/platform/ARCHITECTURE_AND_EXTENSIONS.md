@@ -1886,6 +1886,30 @@ port, preserving actor, time and key. Authentication and client authorization
 precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
+`createPostgresLifecycleMessages` is a native scheduled-host binding over the
+existing dunning queue, reminder ledger and subscription events. It maps native
+activation and customer pause/resume/cancel/skip/slide/bundle-edit facts to the
+existing lifecycle templates; it does not invent a parcel arrival or service
+pause. Both reminder producers run explicitly in this scheduled operation.
+`run(limit)` accepts 1–100 and mounts no HTTP route or scheduler. Supply one
+exclusive autocommit connection per `withSession` callback, host-composed transactional delivery
+send/read-receipt ports, and a trusted recipient/rendering/access-link binder.
+Session advisory locks serialize matching sends without holding a database
+transaction across delivery. Accepted receipts prevent sequential replay sends;
+dunning finalizers retain the native claim-token fence. Failed delivery changes
+notice/receipt work only. Failed event/reminder receipts stop automatic selection
+after six recorded attempts; expired dunning claims at their native attempt
+ceiling remain visible for host repair. These outcomes never pause service.
+Recipient and send-control/consent helpers retain their native rules. The runtime
+can read arbitrary client contacts and invoke reminder producers directly; SQL
+does not authorize end users or jobs. Keep the binding behind the trusted job
+host, never a browser-controlled endpoint. Rendering, locale, link authority and
+transport idempotency on ambiguous acceptance remain host responsibilities;
+captured proof does not qualify a live communications provider. The
+[notice task record](plans/oss-m19-g8.md) assesses the eight function-only grants and
+the [PostgreSQL witness](../../tests/postgres/m19NoticeIsolation.test.ts) exercises
+the selected binding and its failure/replay boundaries.
+
 ## Invoicing contracts
 
 `createInvoiceServices` and `createInvoiceContribution` are exported through
@@ -2374,6 +2398,14 @@ readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstr
 defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
+
+The finite native table profile includes dunning cases, fenced notifications,
+reminder-ledger rows and transactional delivery receipts. Restore inserts cases
+before their notifications and retains accepted receipt identities rather than
+creating another delivery. The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts)
+compares those four row sets after connected capture/restore and repeats the
+restore against the same pristine baseline. No arbitrary table mapping or
+target activation is added.
 
 The [local handover witness](../../tests/postgres/runM14EffectHandover.ts)
 combines the existing canonical graph/private-media transfer with three dispatch

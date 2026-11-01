@@ -585,8 +585,8 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
-The M17 channel suffix appends two native units to each existing selected plan:
-legacy now has 91 units, qualified selections 95, and restricted selections 94.
+The channel suffix established the preceding selected-plan prefix of
+91 legacy units, 95 qualified units and 94 restricted units.
 Each installation shape retains its separately measured catalogue digest. Four
 reviewed source pins bind the two native and two managed forwards, including
 ordered companion statements; they grant no installation or provider authority.
@@ -594,6 +594,19 @@ The RPC catalogue records the normalized ingest and existing payment owner call
 sites. Managed settlement uses the existing ATP exposure hook and allocator;
 portable source capture/read/CAS declares physical conversion unavailable. Fresh
 qualification and privacy lifecycle capabilities remain outside this import.
+
+The native paid-notice suffix appends one source unit, preserving those exact
+prefixes: selected source plans now contain 92, 96 and 95 units respectively.
+All five installation-shape inventories are measured separately before and
+after applying the forward. The conditional grants expose only the eight
+existing native notice helpers to service_role; an absent legacy role receives
+no grant. Invoker rights and browser refusals remain unchanged. These manifests
+describe installation inputs, not authority to run jobs, disclose contacts or
+send messages. The [native notice binding](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+requires trusted scheduled-host admission and preserves transactional delivery receipt replay.
+The forward's separate class/pin admission and eventual package projection
+remain delivery prerequisites; a measured local catalog is not publication or
+provider qualification.
 
 Corrections to these unissued forwards keep their source hashes, packed SQL
 hash and measured fingerprints for all five installation shapes in agreement.

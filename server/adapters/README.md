@@ -147,6 +147,15 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+The native notice binding also retains existing dunning cases and notifications,
+the reminder ledger and transactional delivery receipts. These are finite owned
+tables, with cases restored before notification references; accepted delivery
+receipts keep their original keys and evidence. The
+[notice suite](../../tests/postgres/m19NoticeIsolation.test.ts) captures native
+writer output and compares all four row sets after restore, then proves exact
+restore replay. No new privilege, generic table importer or delivery is added by
+this transfer path.
+
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
 writer. The connected observation uses ordinary-session database incarnation

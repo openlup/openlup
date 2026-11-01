@@ -1085,6 +1085,7 @@ export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
 export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
 export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
 ```
@@ -1148,6 +1149,61 @@ export declare function createPostgresSubscriptionCommands(binding: NativeSubscr
         action: "edit_future_terms";
     }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
 };
+```
+## dist/subscriptions/postgresLifecycleMessages.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeLifecycleNotice {
+    id: string;
+    messageKey: string;
+    source: "dunning" | "event" | "reminder";
+    subscriptionId: string;
+    clientId: string;
+    kind: string;
+    templateSlug: string;
+    payload: Record<string, unknown>;
+    recoveryUrlPath: string | null;
+}
+type NoticeCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+    accessGrantReference?: string;
+};
+type NoticeReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+};
+export interface NativeLifecycleMessagesOptions {
+    /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Host composes the transactional delivery engine and durable receipt reader. */
+    delivery: {
+        send(command: NoticeCommand): Promise<NoticeReceipt>;
+        readReceipt(key: string): Promise<NoticeReceipt | null>;
+    };
+    /** Trusted host rendering/locale/access-link binding. Never accepts browser-supplied recipient facts. */
+    bind(notice: NativeLifecycleNotice, recipient: {
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+}
+/** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.
+ * Session advisory locks serialize this binding's sends without a transaction across transport.
+ * A transport must preserve command idempotency on ambiguous acceptance; no live-provider claim. */
+export declare function createPostgresLifecycleMessages(options: NativeLifecycleMessagesOptions): {
+    run(limit?: number): Promise<{
+        sent: number;
+        replayed: number;
+        failed: number;
+        skipped: number;
+        busy: number;
+        stale: number;
+    }>;
+};
+export {};
 ```
 ## dist/subscriptions/postgresRenewalStore.d.ts
 

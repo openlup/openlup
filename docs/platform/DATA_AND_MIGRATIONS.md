@@ -129,6 +129,11 @@ recipient-consent, native send/observation and communication-sync rows needed
 for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
+Native dunning cases, fenced notifications, reminder-ledger rows and transactional
+delivery receipts are also retained. Cases precede their notifications during
+restore, and accepted delivery evidence keeps its original idempotency key.
+The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts) compares all
+four row sets after real connected capture/restore and repeats the restore.
 
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
@@ -1462,6 +1467,57 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The native [paid-email forward](../../db/platform/migrations/20261101231000_native_paid_email.sql)
+replaces only the paid-notification trigger function, preserving its invoker
+header and existing paid event. The additional mail event uses order_<UUID>,
+a separate idempotency key and the native cycle/draft mode. Its mail-only block
+bounds lock waits, absorbs insertion/cancellation errors and restores the
+caller's timeout, so this added effect cannot roll back settlement. A missed mail
+event leaves the retained paid event/order as operator-repair evidence; this is
+best-effort capture, not a new durable mail obligation. Existing rows and historic
+events are not rewritten. Eight existing notice, recipient, policy and reminder
+routines gain conditional service_role EXECUTE, without new table privileges,
+definers or changes to their bodies. The condition preserves legacy installs
+where service_role is absent. Native case/notice creation remains atomic;
+explicit notice-storage contention rolls back cleanly and is retried after
+release. The [scheduled binding boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+and [grant assessment](plans/oss-m19-g8.md#grant-exposure-assessment) own caller
+trust and contact-data exposure. The feature retains its separate prior
+admission-control prerequisite; local SQL proof alone does not admit it.
+
+The existing `subscription_dunning_notifications` and
+`transactional_delivery_receipts` tables can hold customer-linked delivery facts.
+There is no erasure path for these tables yet. Capturing or restoring these rows
+does not qualify customer-data erasure; a host must account for this limit before
+using the native notice path with customer data.
+
+### Paid-mail capture repair
+
+Run this read query through the trusted runtime or operator connection to find
+paid orders with a retained paid event and no mail event:
+
+```sql
+SELECT o.id AS order_uuid, o.paid_at
+FROM public.commerce_orders AS o
+WHERE o.status = 'paid'
+  AND EXISTS (
+    SELECT 1 FROM public.outbox_events AS e
+    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+      AND e.event_type = 'commerce.order.paid'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM public.outbox_events AS e
+    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+      AND e.event_type = 'commerce.order.paid.email'
+  )
+ORDER BY o.paid_at, o.id;
+```
+
+This identifies missing capture, not provider delivery. It can include historical
+paid orders; reconcile their event history before an explicit host-controlled
+repair. The query changes no row and triggers no send. Settlement replay does
+not recreate a mail event omitted during the original paid transition.
 
 Fresh channel capture admission binds the normalized slug through the existing
 trusted scope read and the raw-source digest through its original page event.
