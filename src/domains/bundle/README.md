@@ -11,14 +11,14 @@ The application implementation now lives in
 This directory keeps named rule/availability compatibility bindings and local
 browser schema definitions. The server compatibility paths bind the existing
 admin kit, operation spec/flags, validators, responder and versions; BundleRpcError
-stays reference-owned and is injected by constructor identity. Core bundle
+is re-exported from catalog and injected by constructor identity. Core bundle
 contracts/ports are unchanged. The package publishes DTO types without moving
 Zod into its browser contracts or making browser code reach the server entry.
 The native read store and unchanged SQL queries now also live in catalog; its
 reference paths are named compatibility exports. The injected executor introduces
 a data type edge; effective bundle selection additionally uses the pricing
 authority through its public server entry. SQL 16/19 are sparse canonical projections, not a standalone
-installation chain. Write/transaction/transport composition stays reference-owned,
+installation chain. Host authorization, response mapping and transport composition stay reference-owned,
 and native human-only activation still depends on the handler gate.
 The optional `resolvedTargetPrice` detail field retains an explicitly resolved
 bundle target through the reference response schema; older details may omit it.
@@ -106,8 +106,8 @@ The five package bundle suites under `packages/platform/test/catalog/` retain
 18. Four neutral conformance cases capture composition through stock/allocation,
 invalid-set refusal, draft fulfillment and activation authority; the single
 binding case proves DTO/schema parity and both browser closures. Adapter,
-browser-client and MCP suites remain at their current owners. Native stores,
-SQL and durable parity evidence belong to the next bounded slice.
+browser-client and MCP suites remain at their current owners. The installed
+native writer and constructor-identity witnesses are linked below; SQL is unchanged.
 
 
 The catalog server entry also owns the native bundle admin writer and unchanged

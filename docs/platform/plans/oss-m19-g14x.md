@@ -1,6 +1,6 @@
 # Bundle admin write-store export
 
-Status: repair validated; delta-only coordinator read pending before fresh reviewers (2026-11-01).
+Status: both coordinator reads accepted; documentation review repair checked for fresh review (2026-11-01).
 
 ## Outcome, scope and authority
 
@@ -59,6 +59,7 @@ README edits are disjoint from this row. No other worktree is modified.
 - `server/_lib/admin-domain/rpcErrors.ts`: re-export the moved class and import rewrite for local use; mapper body unchanged.
 - `src/lib/agent-domain/lifecycleRules.ts`: re-export the unchanged AgentReason type.
 - `server/adapters/README.md`: documentation update for the native writer's package ownership.
+- `server/domains/bundle/README.md`: documentation update correcting relocated error, writer and shared-marshalling ownership; host authorization and managed transport remain reference-owned.
 - `src/domains/bundle/README.md`: documentation update linking the export and identity witnesses.
 
 Boundary-lint loosening: the existing catalog graph row moves data from types
@@ -281,3 +282,43 @@ observations. Strictly validate wire JSON, then preserve the existing logical
 scenario table. Enumerating all three migration-declared JSON inputs in the
 local adapter is the smallest adequate fix; a generic gateway serializer or a
 new injection seam would widen the change unnecessarily.
+
+## First native review and documentation repair
+
+The coordinator accepted the repair read for signed head
+`605e230db1777ba7da2cd26440c473e144f6b77a`, tree
+`08d6f09fced648cbfb517daa7c154120fe6ff35e`. Native preparation against the
+unchanged policy/base succeeded. Two independent fresh-context reviewers inspected
+both commits separately and identified current documentation contradictions:
+G14X-R1 covers the package's stale type-only data-edge statement and both bundle
+owner pages; G14X-B-DOC-1 covers the browser owner's stale error ownership sentence.
+Their complete reports and native session history are retained in ignored task
+evidence; fresh reviewers receive the neutral open finding cards.
+
+One bounded documentation repair corrects those existing statements to match the
+accepted implementation, including the stale future-tense native-witness sentence.
+Catalog owns the constructors, shared marshalling and native pooled binding;
+the host retains authorization, response mapping, managed transport and runtime
+composition. The package data dependency is a runtime edge. No implementation,
+public declaration, control, SQL, fixture or proof expectation changes. This is
+corrective prose under the existing no-read exception; no claim is widened.
+Read-only overlap checks found no other row's edit on the two bundle owner pages;
+all other package README hunks remain outside this row's Catalog section.
+
+`npm run packages:check` passed on the clean committed repair tree: all three
+packages, no findings, including release-gate evidence rows. Its focused admission
+wait was 61 seconds. The documentation repair passes policy/docs-update (nine
+obligations, none unanswered), ast-grep and full lint (zero errors, the same
+33 warnings); the next focused admission waited 120 seconds. A fresh real pack
+measures 2,109,372 packed bytes, 9,836,651 unpacked bytes and 2,855 files:
++6,601 packed bytes, +27,149 unpacked bytes and +15 files against the base.
+Code remains 1,816,267 compressed bytes / 2,796 files; docs are 58,154 bytes /
+six files. All existing caps pass. The README correction changes compressed
+size by minus one byte, with no code or declaration delta.
+Two new contexts must review the committed repair before readiness; native
+repair cycle becomes one of three. Final packages:check will run on that clean
+committed tree. Final canonical verification and landing require the lead's slot.
+
+Review self-retro: appending an accurate ownership paragraph left contradictory
+current owner prose. Check the existing ownership section and related owner page
+when relocating a declaration; correct those statements directly before review.
