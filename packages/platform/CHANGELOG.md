@@ -10,6 +10,19 @@ in the source repository.
 
 ## [Unreleased]
 
+- Package the complete canonical PostgreSQL migration histories, including
+  qualified-v2 and restricted qualified-admin, with a generated drift-checked
+  manifest. Add `createPlatformPostgresMigrationRunner` to `/migrations` for
+  explicit installation/status through the existing executor without a checkout.
+  The package factory requires an explicit installation selection; the repository
+  legacy default and low-level runner API remain unchanged. Existing units
+  keep their SQL bytes, ledger paths, hashes and order; no new forward is added.
+
+Migration: fresh consumers select a qualified generation and provision its
+existing PostgreSQL 16 role profile before calling apply. Install the optional
+`pg` peer. Existing histories cannot change generation. Managed history and
+application activation are unaffected.
+
 - Add `runCommunicationsAdapterConformance` and its subject/evidence types to the
   existing communications entry for offline email and marketing-sync fixtures.
   Findings give a bounded fix/recheck; passing fixtures do not qualify a provider.

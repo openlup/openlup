@@ -32,8 +32,8 @@ commerce schemas and ports use `./commerce` and `./commerce/contracts`;
 handlers, adapters and checkout engines use the Node-only `./commerce/server`.
 The commerce contribution and reference binding remain inert and default-off.
 Install the complete native chain through the M17 purchased-source forward
-(`20261030122000_channel_purchased_source.sql`). Sparse SQL projections
-are not an install chain. Native runtime
+(`20261030122000_channel_purchased_source.sql`). Use the complete packaged installer described below; individual module SQL
+projections are not an install chain. Native runtime
 roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
 the release notes.
 Managed hosts apply the complete prefix through `20261030122000`, including
@@ -84,6 +84,61 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+## Install the portable PostgreSQL schema
+
+`@openlup/platform/migrations` exports `createPlatformPostgresMigrationRunner`.
+It uses the existing executor with the complete packaged catalogue, canonical
+ledger paths, SHA-256 hashes, order and host-admission checks. No source checkout
+is required. Install the optional `pg` peer in the application. Call `status()`,
+`apply({ dryRun: true })` or `apply()` explicitly; imports install nothing.
+
+```ts
+import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
+
+const migrations = createPlatformPostgresMigrationRunner({ connectionString: directUrl }, {
+  installation: {
+    generation: "qualified-admin", roleMode: "installer-managed",
+    migrationLogin: "app_migrator", bootstrapLogin: "postgres",
+    runtimeLogin: "app_runtime", restoreLogin: "app_restore",
+  },
+});
+await migrations.apply();
+const status = await migrations.status();
+```
+
+Provision the selected PostgreSQL 16 host profile first. `qualified-v2` retains
+its privileged migration principal; `qualified-admin` uses the restricted
+principal. Both retain `installer-managed` and `operator-provisioned` role modes;
+`qualified-admin` in `operator-provisioned` mode also requires a distinct
+`operatorLogin`.
+These options observe and admit the existing profiles; they do not create host
+logins, qualify a provider or authorize access. Follow the source
+[data and migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+for the exact provisioning boundary and use the matching installed release.
+
+The package factory requires an explicit `installation`; omitting it refuses
+before catalogue or pool work. Select a qualified generation for a fresh qualified
+installation. `legacy` is a separate history; histories cannot be switched in place.
+The repository facade retains its legacy default. SQL resolves relative to
+the installed module, independent of the application's working directory.
+Missing or tampered units are refused by their canonical path before connection.
+A completed chain reports every selected unit applied; another apply is a no-op.
+`createPostgresMigrationRunner` keeps its original explicit source/options API.
+The convenience factory also retains `poolFactory`, `root` and
+`catalogProjectionPayload`, and accepts a `catalog` reader for repository-layout
+compatibility. Supplying a pool factory retains responsibility for startup
+options and pool lifetime. These are trusted host seams, not sandbox boundaries.
+
+The selection/validator in `src/migrations/catalog.ts` is an exact generated
+copy of the source tooling owner, checked by the same gate: source policy tools
+run before workspace build output exists. Do not edit the copy.
+`sql/manifest.json` is generated from the canonical source manifest and its
+issued SQL, following the outbox asset pattern. Do not edit it or its SQL copies.
+The required installed-consumer gate refuses drift. In a source checkout, run
+`node --experimental-strip-types --input-type=module -e "import { checkPlatformMigrationProjection } from './scripts/packages/platform-migration-projection.ts'; const errors = checkPlatformMigrationProjection(process.cwd(), true); if (errors.length) throw new Error(errors.join('\n'));"`
+to regenerate exact copies after an authorized canonical change.
+This packaging change adds no migration and changes no SQL bytes.
 
 ## Installed agent context
 
