@@ -242,6 +242,7 @@ const order = [
   "commerce_settlement_intents", "commerce_settlement_transitions",
   "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
+  "customer_account_consent_events", "customer_account_consent_sync_targets",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts",
   "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions", "fulfillment_dispatch_contexts",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",

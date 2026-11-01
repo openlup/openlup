@@ -1081,6 +1081,10 @@ changes the preference without granting consent. Earlier opt-outs need the
 [operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
 which also documents the provider-sync and email-change limits.
 
+The native delivery adapter suppresses newsletter, gifts/discounts, launch-offer
+and tester consent on a bounce or complaint. Complete account choices and their
+actor command boundary are documented in [Data and migrations](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#complete-account-consent-choices).
+
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.
 See the [communications recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import) for migration, email rendering and native operations.
 

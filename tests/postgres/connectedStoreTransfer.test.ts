@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Pool } from "pg";
 import * as jose from "jose";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
@@ -34,6 +35,7 @@ let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
 let identity: Awaited<ReturnType<typeof identityFixture>>;
+let consent: Awaited<ReturnType<typeof consentFixture>>;
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
@@ -91,6 +93,47 @@ async function identityFixture() {
   const accessToken = await token("original-native-subject"), verified = await verifier.verifyToken(accessToken);
   if (!verified.ok) throw new Error("Owned signed native fixture did not verify");
   return { verifier, token, accessToken, principal: verified.principal };
+}
+
+type AccountChoices = { marketingNewsletter: { state: string; granted: boolean }; marketingGiftsDiscounts: { state: string; granted: boolean } };
+type AccountReceipt = { permissionEventId: string; workId: string | null; replayed: boolean; choices: AccountChoices };
+async function consentActor<T>(db: Installation, principal: string, sql: string, values: unknown[]): Promise<T> {
+  const client = await db.runtime.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+    await client.query("SET LOCAL ROLE authenticated");
+    expect((await client.query("SELECT current_user,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS superuser")).rows).toEqual([{ current_user: "authenticated", superuser: false }]);
+    const result = (await client.query<{ result: T }>(sql, values)).rows[0]!.result;
+    await client.query("COMMIT"); return result;
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
+const consentRead = (db: Installation, principal: string, client: string) => consentActor<AccountChoices>(db, principal,
+  "SELECT public.customer_account_communication_choices_as_actor($1) AS result", [client]);
+const consentSet = (db: Installation, principal: string, client: string, purpose: string, value: boolean, key: string) => consentActor<AccountReceipt>(db, principal,
+  "SELECT public.customer_account_communication_choice_set_as_actor($1,$2,$3,$4) AS result", [client, purpose, value, key]);
+async function consentFixture() {
+  // Only client ownership and trusted install-time configuration are fixture rows.
+  // Every preference, evaluator choice, permission event and sync work is written by its actor routine.
+  await source.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('retained-account','synthetic-provider',true)");
+  const principal = identity.principal.principalId;
+  const newsletter = await consentSet(source, principal, graph.client, "marketing_newsletter", true, "transfer-newsletter");
+  const giftGrant = await consentSet(source, principal, graph.client, "marketing_gifts_discounts", true, "transfer-gift-grant");
+  await source.owner.query("UPDATE public.customer_account_consent_sync_targets SET enabled=false");
+  const giftWithdraw = await consentSet(source, principal, graph.client, "marketing_gifts_discounts", false, "transfer-gift-withdraw");
+  expect(giftWithdraw.workId).toBeNull();
+  await source.owner.query("UPDATE public.customer_account_consent_sync_targets SET enabled=true");
+  const heldClient = randomUUID(), heldPrincipal = randomUUID(), email = "held-consent@example.invalid";
+  await source.owner.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)", [heldClient, email, heldPrincipal]);
+  await consentSet(source, heldPrincipal, heldClient, "marketing_gifts_discounts", true, "transfer-before-bounce");
+  const delivery = createPostgresDeliveryReconciliationPort({ connectionString: source.runtimeUrl }, { binding: "retained-account" }); ports.push(delivery);
+  const at = new Date().toISOString(), messageId = "synthetic:consent-transfer";
+  const send = await delivery.registerNetworkTarget({ sourceKey: messageId, messageId, recipientEmail: email,
+    templateReference: "synthetic", acceptedAt: at, evidence: "network_accepted" });
+  await delivery.applyObservation({ sendId: send.id, messageId, observationKey: messageId, kind: "bounced", occurredAt: at, recipientEmail: email, source: "callback" });
+  const heldGrant = await consentSet(source, heldPrincipal, heldClient, "marketing_gifts_discounts", true, "transfer-after-bounce");
+  return { principal, heldClient, heldPrincipal, newsletter, giftGrant, giftWithdraw, heldGrant,
+    choices: await consentRead(source, principal, graph.client), heldChoices: await consentRead(source, heldPrincipal, heldClient) };
 }
 
 async function mediaFixture() {
@@ -214,6 +257,7 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
+  consent = await consentFixture();
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -410,6 +454,65 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   expect((await target.owner.query("SELECT next_cycle_at::text FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows).toEqual(schedule);
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
 }, 30_000);
+
+it("retains actor-written consent history, replay, suppression and trusted target across a store move", async () => {
+  expect(pristine.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows).toEqual([]);
+  await target.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('different-target','synthetic-provider',false)");
+  try {
+    await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
+    expect((await target.owner.query("SELECT binding,enabled FROM public.customer_account_consent_sync_targets")).rows).toEqual([{ binding: "different-target", enabled: false }]);
+  } finally { await target.owner.query("DELETE FROM public.customer_account_consent_sync_targets"); }
+  await restore();
+  expect(await census(target.owner)).toEqual(await census(source.owner));
+  expect(await consentRead(target, consent.principal, graph.client)).toEqual(consent.choices);
+  expect(consent.choices).toMatchObject({ marketingNewsletter: { state: "granted", granted: true }, marketingGiftsDiscounts: { state: "denied", granted: false } });
+  expect(await consentRead(target, consent.heldPrincipal, consent.heldClient)).toEqual(consent.heldChoices);
+  expect(consent.heldChoices.marketingGiftsDiscounts).toMatchObject({ state: "suppressed", granted: false });
+  const beforeReplay = await census(target.owner);
+  for (const [key, purpose, value, receipt] of [
+    ["transfer-newsletter", "marketing_newsletter", true, consent.newsletter],
+    ["transfer-gift-grant", "marketing_gifts_discounts", true, consent.giftGrant],
+    ["transfer-gift-withdraw", "marketing_gifts_discounts", false, consent.giftWithdraw],
+  ] as const) expect(await consentSet(target, consent.principal, graph.client, purpose, value, key)).toEqual({ ...receipt, replayed: true, choices: consent.choices });
+  expect(await consentSet(target, consent.heldPrincipal, consent.heldClient, "marketing_gifts_discounts", true, "transfer-after-bounce"))
+    .toEqual({ ...consent.heldGrant, replayed: true, choices: consent.heldChoices });
+  await expect(consentSet(target, consent.principal, graph.client, "marketing_gifts_discounts", false, "transfer-gift-grant"))
+    .rejects.toMatchObject({ code: "23505", message: "account_consent_idempotency_conflict" });
+  expect(await census(target.owner)).toEqual(beforeReplay);
+  expect((await restore()).replayed).toBe(true);
+  const result = await consentSet(target, consent.heldPrincipal, consent.heldClient, "marketing_gifts_discounts", true, "target-still-held");
+  expect(result.choices.marketingGiftsDiscounts).toMatchObject({ state: "suppressed", granted: false });
+  expect((await target.owner.query("SELECT binding,provider_kind,event_kind FROM public.communication_native_sync_state WHERE work_id=$1", [result.workId])).rows)
+    .toEqual([{ binding: "retained-account", provider_kind: "synthetic-provider", event_kind: "suppress" }]);
+  expect((await target.owner.query("SELECT count(*)::int AS n FROM public.customer_account_consent_events")).rows[0].n)
+    .toBe(beforeReplay.customer_account_consent_events.length + 1);
+  expect((await target.owner.query("SELECT to_jsonb(t)::text AS value FROM public.customer_account_consent_sync_targets t")).rows.map(row => row.value))
+    .toEqual(packet.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows);
+});
+
+it("counts personal consent history and attribution toward whole-capture row and byte limits", async () => {
+  const index = packet.owned.findIndex(table => table.table === "customer_account_consent_events");
+  const ledger = packet.owned[index]!;
+  expect(ledger.rows).toHaveLength(5);
+  const event = JSON.parse(ledger.rows[0]!) as Record<string, unknown>;
+  expect(event).toMatchObject({ source: "customer_communication_preferences", source_ref: { route: "/api/bff/customers/communication-preferences" } });
+  expect(event.recipient_fingerprint).toMatch(/^[0-9a-f]{64}$/);
+  expect(event.principal_id).toEqual(expect.any(String));
+  const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+  const priorRows = prior.reduce((total, table) => total + table.rows.length, 0);
+  const priorBytes = prior.reduce((total, table) => total + table.rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0), 0);
+  const ledgerBytes = ledger.rows.reduce((total, row) => total + Buffer.byteLength(row), 0);
+  for (const limits of [{ maximumRows: priorRows + ledger.rows.length - 1, maximumBytes: 64 * 1024 * 1024 },
+    { maximumRows: 10000, maximumBytes: priorBytes + ledgerBytes - 1 }]) {
+    await expect(captureConnectedNativeStore({ sourceId: "consent-limit-proof", catalogueId: selected.objectInventorySha256, ...limits,
+      source: { async withSnapshot(work) {
+        const client = await source.owner.connect();
+        try { await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); const result = await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) }); await client.query("COMMIT"); return result; }
+        catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+      } },
+    })).rejects.toMatchObject({ code: "limit_exceeded", table: "customer_account_consent_events" });
+  }
+});
 
 it("checks the identity mapper's erased-subject and conflict branches with synthetic records", async () => {
   const issuer = "https://issuer.example.invalid/managed";
