@@ -1766,6 +1766,12 @@ executes the complete current legacy native catalogue and fails if Docker is
 unavailable; SQL actor UUID presence is not host administrator authorization.
 The existing cold marketing consumer also checks partner schema/CSP parsing,
 type-only contracts and both declaration modes within its existing peer phases.
+Its actual public partner binding closure adds SDK-absent profile/URL guards and
+a default-binding journey on the existing full native fixture, with field,
+receipt/audit, replay and cache/close/reopen assertions. The owner fixture does
+not repeat the separate restricted-login qualification. Run the whole
+`scripts/packages/platform-cold-consumer.test.ts` after changing this shared
+helper; its synthetic compiler fixtures and existing falsifiers remain required.
 
 Marketing analytics facts use the same isolated runtime/contracts graph. The
 reference keeps host policy and wire literals in thin bindings; its purchase

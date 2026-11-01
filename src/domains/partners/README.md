@@ -15,11 +15,11 @@ submit, list, transition and close. The status vocabulary and legacy status
 update shape retain the `@openlup/core/partners` owner. This packaging location
 does not change Partners' domain or data ownership.
 
-R1 contributes these neutral contracts and the unchanged store. The reference
-`contracts.ts` and `ports.ts` still contain neutral compatibility definitions
-alongside the richer inquiry/list/status shapes; the source adapter remains
-until separate R2 thin delegation. Rich managed inquiry rows, CRM identifiers,
-provider evidence and managed admin transitions stay application-owned.
+The reference `contracts.ts` and `ports.ts` reexport the neutral package
+schemas and types; its PostgreSQL adapter reexports the package factory.
+The richer inquiry/list/status definitions and managed submit/admin ports remain
+in reference source. Rich managed inquiry rows, CRM identifiers, provider
+evidence and managed admin transitions stay application-owned.
 
 `publicB2BInquiryClient.ts` submits the seven form fields through the typed BFF
 client and carries the host's idempotency header. `adminB2BInquiryClient.ts`
@@ -79,10 +79,21 @@ packs the current artifact, compiles supported exports in both declaration
 modes, and executes the default factory against the current complete native
 catalogue using a separate non-superuser runtime login. It freezes ten behavior
 classes and cross-port persisted state; missing Docker fails this proof.
+The [shared cold consumer](../../../scripts/packages/platform-cold-consumer.ts)
+additionally copies only the actual public binding, kernel facade and store
+facade into its isolated installation. Without `pg`, the actual host refuses
+non-PostgreSQL profiles and absent/blank URLs before adapter loading. Its existing
+full native fixture then executes default binding submit/list/transition against
+the installed artifact, checking normalized fields, persisted receipts/audit,
+original replay after close/reopen, trimmed-URL cache reuse and pool disposal.
+Forwarded `connect`/`end` observations show no connection at resolution and one
+used pool per cache lifetime; the frozen R1 adapter witness separately pins lazy
+construction. This owner fixture does not repeat restricted-login qualification.
 These witnesses establish no provider integration, hosted qualification,
 customer conversion, opt-in, route availability or release authority.
 
 See [architecture](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md),
 [canonical contracts](../../../docs/platform/CANONICAL_CONTRACTS.md#partner-acquisition)
 and the [R1 task record](../../../docs/platform/plans/oss-m18-r1-partner-acquisition.md)
-for the contribution and later-phase boundaries.
+and [R2 delegation record](../../../docs/platform/plans/oss-m18-r2-reference-delegation.md)
+for the contribution, preserved witnesses and delivery boundaries.
