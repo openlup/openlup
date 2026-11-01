@@ -70,28 +70,31 @@ export function createPostgresCommerceOmsControlPlane(
   };
 }
 
-// Bundle parity with the managed queue RPC, which hides withdrawn checkout rows
-// in its `scoped_orders` CTE (20260903190000). `control_plane_v1` is the
-// projection whose whole purpose is that both bundles answer alike, so the
-// predicate is restated here rather than left to the managed path alone -
-// otherwise the same request returns different rows and a different totalCount
-// depending on which bundle serves it.
-//
-// FAILS CLOSED, exactly as the SQL does: the captured-payment clause means a
-// marker written in error can never hide an order that took money. The
-// control-plane request contract carries no `includeWithdrawn`, so - as on the
-// managed side - these rows are simply out of scope for this projection.
+// Hide cancelled checkout markers only without native evidence that money was
+// or may have been taken. Renewal-linked orders remain visible without facts.
+// Indeterminate truth deliberately keeps a row visible, in any event state.
+// Test the marker as TRUE so absent metadata keys do not hide unmarked orders.
+// List and count share this scope; detail remains an unscoped read by id.
 const NOT_WITHDRAWN = `NOT (
-              orders.status = 'cancelled'
+              (orders.status = 'cancelled'
               AND (
                 orders.metadata ? 'supersededByStableJourneyKey'
                 OR orders.metadata ->> 'checkoutAbandoned' = 'checkout_journey_consumed'
+              )) IS TRUE
+              AND orders.renewal_operation_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM public.commerce_settlement_intents intent
+                 WHERE intent.order_id = orders.id
+                   AND intent.status = 'settled'
               )
               AND NOT EXISTS (
                 SELECT 1
-                  FROM public.commerce_payments pay
-                 WHERE pay.order_id = orders.id
-                   AND pay.status IN ('succeeded', 'refunded', 'partially_refunded', 'disputed')
+                  FROM public.payment_truth_events event
+                  JOIN public.commerce_settlement_intents intent
+                    ON intent.id = event.settlement_intent_id
+                 WHERE intent.order_id = orders.id
+                   AND event.outcome IN ('captured', 'indeterminate')
               )
             )`;
 
