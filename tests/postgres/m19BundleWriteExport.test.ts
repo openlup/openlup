@@ -72,11 +72,24 @@ try {
  const identity=(await db.query('SELECT current_user,session_user,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
  assert.deepEqual(identity,{current_user:'bundle_runtime',session_user:'bundle_runtime',rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false,rolbypassrls:false});
  await assert.rejects(db.query('UPDATE public.platform_schema_migrations SET sha256=sha256 WHERE false'),e=>e.code==='42501');
- const draft={...envelope,idempotencyKey:'export-create',bundle:{code:'EXPORT-SET',title:'Synthetic set',fulfillmentMode:'virtual'}};
+ const originalConstraint={kind:'synthetic.constraint',version:1,data:{slots:['UNIT-A'],note:'quote: "; unicode: ☕'}};
+ const originalMetadata={nested:{enabled:true,values:[1,null,'UNIT-A']},literal:'{"keep":"as text"}'};
+ const draft={...envelope,idempotencyKey:'export-create',bundle:{code:'EXPORT-SET',title:'Synthetic set',fulfillmentMode:'virtual',compositionConstraint:originalConstraint,metadata:originalMetadata}};
  assert.equal((await store.upsertDraft(actor,draft)).idempotent,false);
  assert.equal((await store.upsertDraft(actor,draft)).idempotent,true);
- assert.equal((await store.updateDraft(actor,{...envelope,code:'EXPORT-SET',updates:{title:'Updated set'}})).idempotent,false);
- assert.equal(await store.loadCompositionConstraint('EXPORT-SET'),null);
+ const jsonFields=async code=>(await db.query('SELECT composition_constraint,metadata FROM public.catalog_bundles WHERE code=$1',[code])).rows[0];
+ assert.deepEqual(await jsonFields('EXPORT-SET'),{composition_constraint:originalConstraint,metadata:originalMetadata});
+ const constraint={kind:'synthetic.constraint',version:2,data:{slots:['UNIT-A'],nested:{enabled:false}}};
+ const metadata={nested:{enabled:false,values:[null,2,'quoted " text']},literal:'[true,null]'};
+ assert.equal((await store.updateDraft(actor,{...envelope,code:'EXPORT-SET',updates:{title:'Updated set',compositionConstraint:constraint,metadata}})).idempotent,false);
+ assert.deepEqual(await store.loadCompositionConstraint('EXPORT-SET'),constraint);
+ assert.deepEqual(await jsonFields('EXPORT-SET'),{composition_constraint:constraint,metadata});
+ // Omitted JSON arguments remain SQL NULL: update retains prior JSON and create uses SQL defaults.
+ await store.updateDraft(actor,{...envelope,code:'EXPORT-SET',updates:{title:'Updated set'}});
+ assert.deepEqual(await jsonFields('EXPORT-SET'),{composition_constraint:constraint,metadata});
+ await store.upsertDraft(actor,{...envelope,bundle:{code:'EXPORT-DEFAULTS',title:'Default JSON',fulfillmentMode:'virtual'}});
+ assert.deepEqual(await jsonFields('EXPORT-DEFAULTS'),{composition_constraint:{},metadata:{}});
+ assert.equal(await store.loadCompositionConstraint('EXPORT-DEFAULTS'),null);
  await assert.rejects(store.loadCompositionConstraint('ABSENT'),e=>e instanceof BundleRpcError && e instanceof DomainRpcError && e.sqlstate==='P0002');
  const components=[{sku:'UNIT-A',quantity:2,isAddon:false,sortOrder:0}];
  assert.equal((await store.setComposition(actor,{...envelope,code:'EXPORT-SET',components,idempotencyKey:'export-compose'})).componentCount,1);
@@ -85,6 +98,7 @@ try {
  const price={mode:'one_time',targetPriceMinor:1800,currency:'XXX',amountKind:'gross'};
  assert.equal((await store.setTargetPrice(actor,{...envelope,code:'EXPORT-SET',price})).idempotent,false);
  assert.equal((await store.cloneDraft(actor,{...envelope,sourceCode:'EXPORT-SET',code:'EXPORT-CLONE',title:'Cloned set'})).idempotent,false);
+ assert.deepEqual(await jsonFields('EXPORT-CLONE'),{composition_constraint:constraint,metadata});
  await assert.rejects(store.activate(actor,{...envelope,code:'EXPORT-CLONE'}),e=>e instanceof BundleRpcError && e.sqlstate==='P0001');
  await store.setTargetPrice(actor,{...envelope,code:'EXPORT-CLONE',price});
  for(const method of ['activate','deactivate','archive','restore']){

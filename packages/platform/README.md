@@ -803,7 +803,9 @@ the packaged RPC error constructor. Read and write errors retain one package ide
 `PgQueryExecutor`; it renders the incumbent list/detail/feed/history SELECTs
 without constructing a pool or switching roles. `createPostgresBundleAdminWriteStore`
 binds the unchanged shared writer to the data entry's pooled role-free transaction
-lane; hosts retain authorization, response mapping and transport composition.
+lane; it encodes the routines' three JSON arguments for the native driver while
+preserving SQL null/default behavior. Hosts retain authorization, response mapping
+and transport composition.
 `BundleRpcError` and its `DomainRpcError` base are exported by this entry;
 reference paths re-export those same constructors. `BUNDLE_MIGRATIONS`
 projects canonical units 16 and 19 with their original paths, positions, hashes

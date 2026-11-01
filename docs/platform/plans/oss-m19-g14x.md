@@ -1,14 +1,16 @@
 # Bundle admin write-store export
 
-Status: first read accepted; unchanged move followed by bounded native encoding repair (2026-11-01).
+Status: repair validated; delta-only coordinator read pending before fresh reviewers (2026-11-01).
 
 ## Outcome, scope and authority
 
 Expose the existing PostgreSQL bundle admin write binding through
 `@openlup/platform/catalog` for installed consumers: create/update drafts,
 composition, target price, clone, activate/deactivate, archive/restore.
-This is the export portion of M19 G14, rows T03-32 through T03-40, with unchanged
-behavior, transaction ownership and error/factory identity.
+This is the export portion of M19 G14, rows T03-32 through T03-40. The first
+commit preserves behavior and identity; the separately approved native JSON
+encoding repair below is the only behavior change. Transaction ownership and
+error/factory identity remain unchanged.
 
 Worktree: `oss-m19-g14x`; branch: `codex/oss-m19-g14x`.
 Code base and freshly fetched policy revision are independently recorded as
@@ -23,8 +25,9 @@ identity witness must then be committed and independently reviewed. Canonical
 verification and landing wait for the lead's named slot. Publication, release
 dispatch, credentials, settings, hosted resources and adopter changes are excluded.
 
-No SQL, migration, new behavior, injection seam, structural replacement class,
-managed refusal change, new native checkout or other store row is included.
+No SQL, migration, injection seam, structural replacement class, managed refusal
+change, new native checkout or other store row is included. The sole authorized
+behavior exception is the native JSON encoding repair recorded below.
 The human authorization and mutation/activation gates remain host-owned.
 An actor identifier is routine input, not authorization. Preserve the existing
 sequential replay boundary; add no concurrency or hosted qualification claim.
@@ -38,7 +41,7 @@ DomainRpcError base is used by the reference response mapper's instanceof check.
 
 Use the existing catalog server entry for the writer, native pooled binding and
 both constructors. This exposes the generic base solely as the existing bundle
-error's inherited contract; its placement is a question in the API read.
+error's inherited contract; its placement was accepted with the limit below.
 Move the exact AgentReason union to catalog/contracts and re-export it from the
 browser reference to avoid a server runtime edge. No new package or subpath.
 
@@ -195,3 +198,86 @@ No final verification, landing, queue action or publication is authorized at
 this stop. Native review/repair cycles remain zero; prior failures and proof
 are retained above and in ignored read-1 evidence. All existing source and
 policy pins remain unchanged on this resumption.
+
+
+## Repair execution
+
+The unchanged move is DCO-signed commit
+`1a7648fd1fe3fd40c0ff0e27d764ae2b6f52197a`, tree
+`a3a6c058087b5d4c3da9760c0d85ddf62a3723a4`. Its five documentation
+trailer identities were recomputed and matched the read-1 packet before sign-off.
+The committed identity witnesses are included. The committed ref passes gitleaks.
+
+Only the native store's rpc binding changes production behavior: it copies the
+arguments and JSON.stringify-encodes each non-null/non-undefined value for the
+three jsonb parameter names. Missing arguments and SQL NULL are left alone;
+all non-JSON arguments, transaction use and gateway error translation are untouched.
+No jsonb argument from the cited migration is omitted. Shared writer, managed
+adapter, error constructors, roles, SQL and migrations remain byte-unchanged
+against the move commit. The root PostgreSQL facade is unchanged and inherits
+THE ONE native behavior change: setComposition now works instead of always failing.
+
+The expanded installed witness at `.context/scratch/g14x/repair-before.log`
+FAILS on the unmodified move with SQLSTATE 22P02 at composition. Before that
+failure, the real runtime already round-trips metadata/constraint objects,
+nested arrays, quotes, Unicode and omitted-argument SQL defaults. After the
+native repair, `.context/scratch/g14x/repair-after.log` PASSES the same witness
+through the restricted bundle_runtime login: all nine mutations, composition
+replay, target price, clone, lifecycle replay, refusal, rollback and all three
+JSON parameters. No further real driver/routine failure appeared. Pools and
+owned containers were removed after each run.
+
+The initial post-repair scripted contract run has 71 PASS / 1 FAIL because its
+native observation compared JSON wire text directly with a logical array.
+The named `server/adapters/bundleAdminWritePortContract.test.ts` and its scenario
+table remain byte-unchanged. The helper below now requires a string for every
+non-null native JSON argument, strictly JSON-parses it, then applies the same
+full logical-value assertions. This strengthens the native wire check: the
+old array would now fail the string assertion. The managed branch is unchanged;
+no scenario, field expectation or refusal is removed or relaxed. The resulting
+native/managed suite PASSES all 72 cases.
+
+Additional touched source-tree test file:
+- `server/adapters/bundleAdminWritePortContract.testFixtures.ts`: test fixture only; strict native JSON wire decoding before unchanged logical argument comparisons.
+
+This is a test-observation correction, not another production behavior change;
+it must be explicit in the delta read. The smallest adequate repair remains
+local native encoding; no new abstraction, dependency, seam or gateway-wide
+change is needed. The catalog README documents that boundary, and its former
+unchanged-native-writer wording is narrowed in the bundle owner and changelog.
+API declaration checks PASS without snapshot changes. Fresh type/lint, final
+artifact measurement and the delta-only read remain to finish this continuation.
+No fresh reviewer, native session, final verify or delivery action has begun.
+
+
+### Final repair validation and read stop
+
+The final native implementation passes public typecheck, full lint, ast-grep and
+API declaration checks. Lint retains the same 33 warnings and zero errors. Its
+first rerun caught one unnecessary escape in the new fixture string; removing
+that escape preserves the runtime string payload and requires no production
+change. Current-artifact runs PASS: identity 2 cases, shared native/managed
+contract 72 cases, and installed qualified-v2 witness 1 case. The latter includes
+both declaration modes and all nine mutations through bundle_runtime. The other
+unchanged suites retain their recorded earlier green evidence. No further real
+failure appeared; no native review cycle was used.
+
+Final real pack: 2,109,373 packed bytes, 9,836,651 unpacked bytes, 2,855 files.
+The repair delta from the unchanged move is +371 packed bytes, +1,068 unpacked
+bytes and zero files. Overall from the assigned base: +6,602 packed bytes,
++27,149 unpacked bytes and +15 files. Code is 1,816,267 compressed bytes /
+2,796 files; docs 58,155 bytes / 6 files. All existing caps PASS without changes.
+The repair changes no public declarations, export map, dependency or lint rule.
+
+The repair commit carries fresh adapter/test documentation no-impact trailers
+where the new fixture observation and expanded witness changed the fingerprints.
+The first commit's remaining unchanged-owner explanations remain applicable.
+The delta packet binds the signed repair against the move commit, not a new
+whole-program read. Two independent fresh reviewers remain unstarted until the
+coordinator answers it; final verify and landing still wait for the lead's slot.
+
+Repair self-retro: native JSON values and pg wire representation are different
+observations. Strictly validate wire JSON, then preserve the existing logical
+scenario table. Enumerating all three migration-declared JSON inputs in the
+local adapter is the smallest adequate fix; a generic gateway serializer or a
+new injection seam would widen the change unnecessarily.

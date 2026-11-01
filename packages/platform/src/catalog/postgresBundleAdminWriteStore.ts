@@ -36,8 +36,16 @@ export function createPostgresBundleAdminWriteStore(
   // own rollback, exactly as the managed chain does, so the two behave identically.
   const client: BundleWriteRoutineClient = {
     rpc(name, args) {
+      // pg encodes arrays as PostgreSQL arrays. These routine arguments are jsonb;
+      // encode their JSON values explicitly, preserving SQL NULL/default behavior.
+      const parameters = { ...args };
+      for (const key of ["p_components", "p_composition_constraint", "p_metadata"]) {
+        if (parameters[key] !== null && parameters[key] !== undefined) {
+          parameters[key] = JSON.stringify(parameters[key]);
+        }
+      }
       return transactions.run((gateway) =>
-        Promise.resolve((gateway as BundleWriteRoutineClient).rpc(name, args)),
+        Promise.resolve((gateway as BundleWriteRoutineClient).rpc(name, parameters)),
       );
     },
     from(table) {
