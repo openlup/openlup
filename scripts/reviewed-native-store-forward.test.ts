@@ -304,6 +304,57 @@ describe("PostgreSQL identifier boundaries", () => {
     const statement = "CREATE FUNCTION public.fixture_probe(\tp_value text DEFAULT 'Żółć\u00a0')\nRETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p_value; $$;";
     expect(() => run(signature, statement, undefined, "CREATE TABLE public.fixture_literal (label text DEFAULT 'Żółć\u00a0');")).not.toThrow();
   });
+  it.each(["\u00a0", "\u2002", "\u2028", "\ufeff"])("refuses Unicode before statements with fresh pins: %s", separator => {
+    expect(() => run(probe, definition(), undefined, separator)).toThrow(/reviewed native store/u);
+    expect(() => run(probe, definition(), `${separator}REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses a Unicode spelling of the fixed guard relation", () => {
+    const privilege = block("service_role", "GRANT EXECUTE", probe).replace("pg_roles", "pg_role\u017f");
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${privilege}`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses Unicode keywords inside a conditional table privilege", () => {
+    const privilege = "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVO\u212aE ALL ON TABLE public.fixture_keep FROM anon;'; END IF; END; $$;";
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${privilege}`, "CREATE TABLE public.fixture_keep (id uuid);")).toThrow(/reviewed native store/u);
+  });
+  it.each(["create or replace FUNCTION", "Create OR Replace Function", "CREATE or REPLACE FUNCTION"])("refuses %s for a created signature", introducer => {
+    expect(() => run(probe, definition().replace("CREATE FUNCTION", introducer))).toThrow(/creation\/replacement/u);
+  });
+  it("retains plain CREATE with case-varied keywords", () => {
+    expect(() => run(probe, definition().replace("CREATE FUNCTION", "create FUNCTION"))).not.toThrow();
+  });
+  it.each([
+    "p_kind text DEFAULT 'x,uuid DEFAULT x,text DEFAULT x,jsonb DEFAULT x,timestamptz DEFAULT x'",
+    "p_key text, p_owner uuid, p_kind text DEFAULT 'x,jsonb DEFAULT x,timestamptz DEFAULT x'",
+    "p_kind text DEFAULT $value$x,uuid DEFAULT x,text DEFAULT x,jsonb DEFAULT x,timestamptz DEFAULT x$value$",
+  ])("refuses a listed argument count fabricated inside a default: %s", args => {
+    const signature = "public.fixture_probe(text,uuid,text,jsonb,timestamptz)";
+    const statement = definition(`public.fixture_probe(${args})`);
+    expect(() => run(signature, statement)).toThrow(/unlisted signature/u);
+  });
+  it.each([
+    ["text", "p_value text DEFAULT 'left,right'"],
+    ["text", "p_value text DEFAULT coalesce('left,right', 'Żółć')"],
+    ["text", "p_value text DEFAULT $value$Żółć,uuid DEFAULT x$value$"],
+    ["text[]", "p_value text[] DEFAULT ARRAY['left,right','Żółć']"],
+  ])("retains the actual %s identity with a complex default: %s", (type, args) => {
+    const signature = `public.fixture_probe(${type})`;
+    expect(() => run(signature, definition(`public.fixture_probe(${args})`))).not.toThrow();
+  });
+  it("does not treat identifier-adjacent dollars as default quote delimiters", () => {
+    const args = "p_text text DEFAULT public.fixture_x$value$one(), p_owner uuid DEFAULT public.fixture_x$value$two()";
+    const statement = definition(`public.fixture_probe(${args})`);
+    expect(() => run("public.fixture_probe(text)", statement)).toThrow(/unlisted signature/u);
+    expect(() => run("public.fixture_probe(text,uuid)", statement)).not.toThrow();
+  });
+  it("hashes the complete function when a return identifier contains dollar markers", () => {
+    const statement = "CREATE FUNCTION public.fixture_probe() RETURNS public.fixture_type$value$one LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $value$ SELECT NULL; $value$;";
+    expect(nativeStoreFunctionDefinitions(Buffer.from(statement), [probe]).get(probe)).toBe(sqlSha256(statement));
+  });
+  it("retains Unicode comments and literal data around statement delimiters", () => {
+    const signature = "public.fixture_probe(text)";
+    const statement = "CREATE FUNCTION public.fixture_probe(p_value text DEFAULT 'left; Żółć') RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'right; Żółć'; $$;";
+    expect(() => run(signature, statement, undefined, "-- Żółć\u00a0\n/* Żółć /* nested */ */")).not.toThrow();
+  });
 });
 
 describe("grant-only existing functions", () => {

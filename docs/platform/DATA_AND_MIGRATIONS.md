@@ -1378,6 +1378,12 @@ arrays against exact listed signatures; earlier identity readers stay unchanged.
 Token separators and case folding for closed object/type identities follow ASCII
 SQL spelling; Unicode whitespace lookalikes cannot become listed identifiers or
 roles. Unicode literal data remains allowed.
+Argument separation respects quoted defaults, dollar literals and nested
+parentheses/arrays before matching the listed types. Case-varied `OR REPLACE`
+remains replacement syntax and cannot create an entry reserved for plain CREATE.
+Native files opt into ASCII structural checking in the existing splitter;
+older splitter modes retain their behavior. Literal, comment and dollar-body
+data can contain Unicode. Conditional privilege syntax and targets use ASCII.
 Adding a nullable column or a new CHECK on an existing table already follows the
 existing expand-only rules; this class adds no DROP NOT NULL permission.
 

@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: repaired control DCO-committed after its accepted read; focused proof below.
+Status: first native review FAIL; bounded control repair awaiting a fresh read before DCO.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -362,3 +362,114 @@ Runtime pin mismatch → select the exact checkout-local toolchain without
 changing a test or policy. Per-file admission waits dominated the broad unchanged-line proof; no gate,
 fixture or budget was relaxed to reduce that delay. Stop after native review at
 READY_FOR_VERIFY; final verification and all external delivery await the lead.
+
+First native review and necessary repair (2026-11-02): two independent fresh
+whole-candidate reviewers returned FAIL on ed99d2ca/tree 453ae2c2, before any
+counted PASS. Their five material cards describe three causes: Unicode structural
+spellings (including the fixed role-catalog guard and leading whitespace),
+case-varied OR REPLACE misclassified as creation, and commas in quoted DEFAULT
+text manufacturing a listed argument identity. Both reports remain recorded in
+the existing native session. The author identity card is not considered closed:
+one reviewer reopened its broader family, and fresh review must validate all
+five cards. Cycle is still zero of three; the first repaired prepare will consume
+cycle one after its required read and DCO. There is no earliest PASS or expiry.
+
+The repair opts only native callers into ASCII structural validation before
+splitter whitespace skipping, uses ASCII matching for the constant privilege
+shape, recognizes creation kind consistently, and separates actual arguments
+through quotes, comments, dollar literals and nesting. Identifier-adjacent dollar
+markers remain identifier content. Older splitter modes, identity readers and
+expand-only grammar retain their behavior. Registry data, caller edits, active
+SQL, package inputs and budgets are unchanged. The canonical data owner section
+now describes these exact boundaries. No general parser or dependency was added.
+
+Independent raw-definition/file pins show all four concrete mutations admitted
+before repair and refused after it, while the unmutated G6 control admits. An
+owned network-isolated pinned PostgreSQL 16 probe confirms the default creates
+one actual argument instead of five, the long-s guard names another relation,
+mixed-case OR REPLACE replaces the object, and leading NBSP causes SQLSTATE
+42601. Its container was removed. Twenty appended native cases distinguish the
+failures, legitimate complex defaults, Unicode data and identifier-adjacent
+dollars; earlier assertions were not edited.
+
+The complete unchanged line rule was recomputed and repeated on frozen repaired
+source: 26 existing files match main byte-for-byte, the new native file passes
+167 cases, and an exact raw copy of its accepted 147-case ed99d2ca version also
+passes unchanged. Every execution used focused admission. Results:
+
+| File | Result |
+| --- | --- |
+| `scripts/reviewed-native-store-forward.test.ts` | PASS: 167 passed (167) |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS: 2 passed (2) |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/expandOnlyExpressions.test.ts` | PASS: 19 passed (19) |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS: 106 passed (106) |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS: 14 passed (14) |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS: 12 passed (12) |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS: 66 passed (66) |
+| `scripts/agent-review-gate.test.ts` | PASS: 22 passed (22) |
+| `scripts/agent-review-queue.test.ts` | PASS: 189 passed (189) |
+| `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) |
+| `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) |
+| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) |
+| `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) |
+| `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) |
+| `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) |
+| `scripts/packages/set-release.test.ts` | PASS: 68 passed (68) |
+| `scripts/public-ci-neutrality.test.ts` | PASS: 60 passed (60) |
+| `scripts/qualified-migration-admission.test.ts` | PASS: 24 passed (24) |
+| `scripts/reviewed-batch-forward.test.ts` | PASS: 691 passed (691) |
+| `scripts/source-preview-release.test.ts` | PASS: 718 passed (718) |
+| `scripts/source-release-preparation.test.ts` | PASS: 7 passed (7) |
+| `scripts/verify-local.test.ts` | PASS: 14 passed (14) |
+| `base-native-ed99d2ca` | PASS: 147 passed (147) |
+
+All 28 executions / 2,694 cases pass. Focused test admission waited
+3617 s and test execution took 860 s; logs, module selection and every
+file hash remain in ignored repair1-line-rule evidence. No existing test was
+changed to pass. The previous npm-pin failure remains recorded; this rerun uses
+the checkout-local pinned Node/npm, with the Docker CLI available to the ten
+owned-container PostgreSQL suites.
+
+Ast-grep, lint and public typecheck pass. Lint has zero errors and 99 warnings:
+33 existing warnings in the checkout plus the same warnings in two full baseline
+pack archives under ignored scratch. No lint rule or ignore was changed. Real
+paired Core/Outbox/Platform npm packs against main 09cd599b are byte-identical:
+0 B packed/unpacked delta, no changed entries. The normal policy check currently
+reports two obligations and one unanswered tooling digest because repaired
+control code is not DCO-signed before its new read. Its exact proposed trailer
+is in the stable packet; after accepted read it must be committed and policy
+must show zero unanswered. No policy PASS is inferred for this unsigned tree.
+
+Reporting-only older-class assessment: both reviewers find a reachable legacy
+Kelvin-sign identifier mismatch only after a separately approved control moves
+an unissued binding to a later appendable path with latest before-hashes and
+fresh file/after pins. The unchanged current legacy path is chronology-blocked;
+issued SQL is not repinned. Default expand-only admission already rejects such
+structural Unicode. No older class is repaired here; the concrete input and
+prerequisite admission path go to the coordinator in the packet.
+
+Nonblocking owner question: the existing predecessor loop requires every known
+historical row, including G4/G3 despite their absence from this control, before
+G7/G8/G11-c. This conservative refusal is unchanged. The packet asks whether
+that dependency is intended; no unregistered predecessor is silently skipped.
+
+Regroup/self-retro: the author evaluation accepted at CD-M19-67 proved the suffix
+repair; the first native candidate evaluation at ed99d2ca then left a material
+obstacle to the same closed-identity outcome. The remaining gap belongs to this
+class control, not the unchanged older classes. The first fix did not cover every
+structural boundary or quoted defaults. The review evidence led to
+one bounded repair using the existing lexical seam, consistent kind detection
+and a small argument separator. Fully repinned counterexamples and real database
+observations discriminate the causes: the next check required all four fully
+repinned mutants to refuse while the unchanged control admitted, and those
+observations now hold. Repeated lexical identity gaps → reuse the smallest
+existing token boundary and prove it against database interpretation. Preserve
+both FAIL reports and the same
+three-cycle budget. Rules-common step 4 requires a fresh stabilized control read
+before repaired DCO; stop NEEDS_READ, then obtain two new independent reviews.
+No canonical verify, push, PR, queue, release or other worktree mutation ran.
