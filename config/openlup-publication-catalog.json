@@ -1594,6 +1594,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g14x.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g16.md",
       "class": "public-output"
     },
@@ -3514,6 +3518,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleAvailability.ts",
       "class": "public-output"
     },
@@ -3539,6 +3547,10 @@
     },
     {
       "path": "packages/platform/src/catalog/bundlePriceSelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleRpcError.ts",
       "class": "public-output"
     },
     {
@@ -3602,6 +3614,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/rpcErrors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/sellable.ts",
       "class": "public-output"
     },
@@ -3642,6 +3658,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/productTypeSchemas.ts",
       "class": "public-output"
     },
@@ -3659,6 +3679,10 @@
     },
     {
       "path": "packages/platform/src/catalog/resolvedSkuProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/rpcErrors.ts",
       "class": "public-output"
     },
     {
@@ -7199,6 +7223,10 @@
     },
     {
       "path": "packages/platform/test/blob/vercel.transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleAdminWriteStore.test.ts",
       "class": "public-output"
     },
     {
@@ -27307,6 +27335,14 @@
     },
     {
       "path": "tests/postgres/m17ChannelReference.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19BundleWriteExport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19BundleWriteIdentity.test.ts",
       "class": "public-output"
     },
     {
