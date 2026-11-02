@@ -121,7 +121,11 @@ fresh full reports. Denied paths win over test/prose filenames. The initial
 noncontrol package smoke-list set is empty.
 
 Protected inputs include the existing trust paths, all review/documentation/
-reviewed-forward/CI machinery, forward catalog execution controls, workflows,
+reviewed-forward/CI machinery and every path already treated as sensitive by the
+existing risk classifier. The same selector also covers lint rules, generated
+context checks, public CI/pgTAP and coverage guards, site-route checks, package
+guard scripts/API snapshots, the secret-scan ignore file, UI neutrality and the
+named package-boundary/conformance proofs, alongside forward catalog execution controls, workflows,
 SQL/migrations, manifests/lockfiles, release gates/budgets, configuration and
 policy/agent instructions. Ordinary eligibility is limited to test/spec files,
 known test-fixture locations and Markdown prose outside these controls and the

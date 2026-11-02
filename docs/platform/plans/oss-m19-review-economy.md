@@ -176,3 +176,48 @@ a self-referential tree hash in its own tracked content.
 Related advice retained for follow-up: the AI contribution policy repeats the
 24-hour base expiry. It remains accurate because renewal is explicit and capped;
 that guidance is outside this change's file set and does not block this task.
+
+The initial full review identified omitted execution/security guards in the
+protected-path selector. The single batched repair includes the existing
+`scripts/check-*` guard family and the owned `scripts/ast-grep/` controls/rules
+in that same selector, used by policy snapshots, integration and renewal. Real
+Git histories change the actual client-secret and file-wide-ignore guards on
+main alongside a required conflicting catalog integration, proving refusal of
+inherited coverage and preservation of the two-review floor. No guard, existing
+test expectation, carrier, group carry-over or admission mechanism is changed.
+
+Unchanged-test assertion baseline corrected to immutable merged source `c1414c661255a615a5a348f60f98a653eef3204d`; no existing test or gate changed.
+
+The maintainer authorised one bounded same-cause sweep before freezing the repair.
+The protected selector now directly includes the existing sensitive-path
+predicate and trust paths, rather than duplicating their checker/DCO families.
+This conservative superset retains existing sensitive classifications for all
+reduced routes. Additional actual guard owners/inputs from the command closure
+are protected by their existing family or an exact path; no guard is changed.
+
+| Executed/read guard surface | Owners and policy inputs | Coverage |
+| --- | --- | --- |
+| Native verify and repository pre-push review/stamp contract | `verify-local.mjs`, `agent-review-*`, queue and forward owners | Existing protected families/trust paths; no tracked installed hook exists |
+| Lint and package prerequisites | `package.json`, package manifests, `eslint.config.js`, root/package compiler configs, `sgconfig.yml`, `scripts/ast-grep/` checker/rules/tests | Existing sensitive/config/manifests plus owned ast-grep family |
+| DCO and secret scanning | `scripts/dco-signoff-check.ts`, `config/gitleaks.toml`, `.gitleaksignore`; workflow pins tool version | Sensitive-path derivation, config, exact ignore file and workflow protection |
+| Policy, inventory, public typecheck and context check | `scripts/oss-*`, `scripts/documentation-*`, `scripts/agent-context/`, `config/` and compiler configs | Existing protected families plus context family |
+| Build guards | `scripts/check-*`, `scripts/site-routes.mjs`, environment/site-route config, Vite config | Sensitive-path derivation, site-route family and config |
+| Package API/admission/consumer entry guards | `scripts/packages/`, package `scripts/`, manifests, release-gates, `*.api.md`, core guard scripts, named platform boundary and communication conformance proof | Existing package-tool family/sensitive core, package-script/API families, exact proof paths |
+| Root test selection, coverage and containers | `run-*`, `ci-*`, `coverage-*`, `disposable-*`, native catalog controls, `assert-coverage-*`, Vitest/config exemption inputs | Existing selectors plus coverage-assert family; config protected |
+| Repository/UI neutrality and hosted reuse/dependency gates | `scripts/public-ci-*`, core neutrality scripts, `packages/ui/smoke/neutrality.ts`, neutrality baseline/config | Public-CI family, sensitive core, exact UI guard, config |
+| Optional pgTAP control | `public-ci-pgtap.mjs`, `pgtap-parity.mjs`, CI image/package config and SQL prerequisites | Public-CI/parity families, config and SQL protection |
+
+External installed-hook implementation and tool binaries are outside this
+checkout and were not inspected or changed. The repository's documented native
+pre-push boundary delegates to the same review/verification identity checks.
+Tested product source and ordinary fixture data remain reviewed inputs rather
+than new selector machinery; the named command/control owners and their policy
+inputs above are the bounded sweep. Real Git conflict histories now cover each
+new guard family and exact path, including DCO, secret-scan inputs, context,
+neutrality, parity, coverage, route guards, package entry/API and named proofs.
+
+Final repair checks pass: agent-review-registry 48, agent-review-session 98, agent-review-gate 45, agent-review-queue 189, reviewed-batch-forward 691, reviewed-native-store-forward 210, qualified-migration-admission 24, documentation-impact 111.
+Policy/navigation, public typecheck, ast-grep, lint and both neutrality checks
+exit zero. All existing importer suites remain byte-identical to the corrected
+merged baseline. Package input equality again proves 1,930 unchanged files
+against the merge main-side parent, with the same inventory hash and zero bytes.

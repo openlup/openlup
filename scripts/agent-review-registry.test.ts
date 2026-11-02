@@ -11,7 +11,7 @@ const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const DAY = 86400000;
 const RECORD = 'docs/platform/plans/demo.md';
-async function fixture(enabled = true) {
+async function fixture(enabled = true, controls: string[] = []) {
   await mkdir('.context/scratch', { recursive: true });
   const cwd = await mkdtemp(join(process.cwd(), '.context/scratch/review-economy-')); roots.push(cwd);
   const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
@@ -19,6 +19,7 @@ async function fixture(enabled = true) {
   git('init', '-q', '-b', 'main'); await write('.gitignore', '.context/\n');
   if (enabled) await write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n');
   for (const path of REGISTRY_PATHS) await write(path, await readFile(join(process.cwd(), path), 'utf8'));
+  for (const path of controls) await write(path, await readFile(join(process.cwd(), path), 'utf8'));
   await write('app.ts', 'export const before = 1;\n');
   const commit = () => { git('add', '-A'); git('commit', '-qm', 'fixture'); return git('rev-parse', 'HEAD'); };
   const base = commit(); git('update-ref', 'refs/remotes/origin/main', base);
@@ -101,6 +102,35 @@ describe('real Git coverage histories', () => {
     if (kind === 'hidden hand edit') await f.write('extra.ts', 'hidden edit\n');
     f.commit(); await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
     await expect(f.cli('verify')).rejects.toThrow('independent PASS');
+  });
+  it.each([
+    'scripts/check-client-secret-boundary.ts', 'scripts/ast-grep/check-filewide-ignore.mjs',
+    'scripts/dco-signoff-check.ts', '.gitleaksignore', 'config/gitleaks.toml',
+    'scripts/agent-context/generate.mjs', 'scripts/public-ci-neutrality.mjs',
+    'scripts/pgtap-parity.mjs', 'scripts/assert-coverage-no-zero.mjs', 'scripts/site-routes.mjs',
+    'packages/outbox/scripts/consumer-proof.ts', 'packages/ui/smoke/neutrality.ts',
+    'packages/platform/test/packageBoundary.test.ts', 'packages/outbox/api/index.api.md',
+    'docs/platform/communications-conformance.mjs', 'packages/core/scripts/neutrality-tree-counts.ts',
+  ])('refuses a required registry union with changed execution guard %s', async path => {
+    const f = await fixture(true, [path]); const catalog = REGISTRY_PATHS[0];
+    const source = await readFile(path, 'utf8');
+    const changed = path === 'scripts/check-client-secret-boundary.ts' ? source.replace('variable.secret === true', 'variable.secret === false')
+      : path === 'scripts/ast-grep/check-filewide-ignore.mjs' ? source.replace('return !failed;', 'return true;')
+      : path === 'scripts/dco-signoff-check.ts' ? source.replace('missing: commits.filter((commit) => !SIGN_OFF.test(commit.message))', 'missing: []')
+      : source + '\n';
+    expect(changed).not.toBe(source);
+    await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-a'));
+    const reviewed = f.commit(); const prior = await f.review();
+    const main = await f.mainMove(async () => {
+      await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-b'));
+      await f.write(path, changed);
+    });
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write(catalog, registryUnion(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', f.git('show', `${reviewed}:${catalog}`) + '\n', f.git('show', `${main}:${catalog}`) + '\n'));
+    f.commit(); await f.cli('prepare', f.request); const next = await f.state();
+    if (!REGISTRY_PATHS.includes(path)) expect(next.candidate.rules.head).not.toBe(prior.candidate.rules.head);
+    expect(next.candidate.coverage).toBeUndefined();
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
   });
   it('needs one fresh ordinary-delta report for a test repair, preserving initial full coverage', async () => {
     const f = await fixture(); const prior = await f.review();

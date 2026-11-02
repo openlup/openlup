@@ -50,19 +50,23 @@ const legacyReviewExpiry = session => Math.min(
   session.candidate.integration?.expires ?? Infinity,
 );
 const DAY = 86400000;
-const CONTROL_DOCS = new Set([
+const CONTROL_PATHS = new Set([
   'AGENTS.md', 'CONTRIBUTING.md', 'docs/platform/AGENT_GUIDE.md',
   'docs/platform/DOCUMENTATION.md', 'docs/platform/DEVELOPMENT_AND_RELEASE.md',
   'docs/platform/plans/native-review-simplification-proposal.md',
   'docs/platform/plans/ci-base-move-and-receipts.md',
   'docs/platform/plans/oss-m19-review-economy.md',
   'docs/platform/plans/oss-m19-integration-trailer.md',
+  '.gitleaksignore', 'packages/ui/smoke/neutrality.ts',
+  'packages/platform/test/packageBoundary.test.ts',
+  'docs/platform/communications-conformance.mjs',
 ]);
 export function protectedCoveragePath(path) {
   if (typeof path !== 'string' || /[\\\x00-\x1f\x7f]/u.test(path) || path.startsWith('/') || path.split('/').some(part => part === '.' || part === '..' || part === '')) return true;
-  return TRUST_PATHS.some(pattern => pattern.test(path)) || CONTROL_DOCS.has(path) || NATIVE_CATALOG_CONTROLS.includes(path) ||
+  return sensitivePath(path) || TRUST_PATHS.some(pattern => pattern.test(path)) || CONTROL_PATHS.has(path) || NATIVE_CATALOG_CONTROLS.includes(path) ||
     /^(?:config|db|supabase|\.github|tests\/setup)(?:\/|$)/u.test(path) ||
-    /^scripts\/(?:documentation-|reviewed-|ci-|platform-migration-manifest\.|run-|verify-|coverage-|disposable-|oss-|source-|packages\/)/u.test(path) ||
+    /^scripts\/(?:documentation-|reviewed-|ci-|ast-grep\/|agent-context\/|public-ci-|pgtap-|assert-coverage-|site-routes\.|platform-migration-manifest\.|run-|verify-|coverage-|disposable-|oss-|source-|packages\/)/u.test(path) ||
+    /^packages\/[^/]+\/scripts\//u.test(path) || /\.api\.md$/u.test(path) ||
     /^docs\/platform\/plans\/autonomous-reviewed-delivery/u.test(path) ||
     /(?:^|\/)(?:AGENTS|AGENT_GUIDE|CLAUDE|CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
     /(?:manifest|lockfile|release-gates|budget)|\.sql$|(?:^|\/)migrations(?:\/|$)/iu.test(path) ||
