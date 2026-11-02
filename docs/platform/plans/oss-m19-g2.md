@@ -683,3 +683,31 @@ This explicitly authorized test-only correction needs no new owner read. Evidenc
 Self-retro: test child configuration is still an environment boundary. Pass the
 small witness inputs explicitly and run the actual neutrality ratchet before
 signing; focused behavioral tests alone cannot detect this rule violation.
+
+
+## Offline installed-consumer correction
+
+The two installed subscription witnesses share the small test-only
+`tests/helpers/installSubscriptionConsumer.ts` function. It packs the locked local
+core/platform, zod and the thirteen-package PostgreSQL driver closure, then
+installs only those tarballs with offline mode, lifecycle scripts disabled,
+legacy peer resolution, optional dependencies omitted, and audit/funding disabled.
+The explicit list keeps the helper small; offline resolution refuses a newly
+required dependency. No additional package beyond that list was needed.
+Previous consumer modules and lockfiles are removed before installation, and a
+realpath guard rejects PostgreSQL driver resolution outside the consumer.
+
+With separate fresh empty caches supplied from outside the tests, purchase
+renewal passes 11/11 in 16.876 seconds and method-health compatibility passes
+3/3 in 15.966 seconds (whole test-command time, excluding the resource gate).
+Both consumer locks contain exactly sixteen local-file packages, and pg resolves
+inside each scratch consumer. All 102 existing expect calls are unchanged.
+Neutrality reports zero increases; lint and structural checks pass. The real
+platform tarballs are byte-identical to the official-toolchain baseline at
+2,338,713 B / 2,923 files. Raw SQL retains its recorded SHA-256. No production,
+package manifest, package input, assertion, baseline or checker change.
+
+Self-retro: an empty cache alone does not prove a cold consumer if its old modules
+remain. Remove those artifacts and check local driver resolution. A launcher-only
+PATH omission was corrected outside the tests before either suite executed.
+Evidence: `.context/scratch/g2/offline-consumer/`.
