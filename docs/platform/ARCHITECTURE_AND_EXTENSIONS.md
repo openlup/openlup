@@ -2692,3 +2692,20 @@ commercial decisions and outbound publication remain excluded. Portable source
 capture/read/CAS and named physical refusal are distinct from managed full
 normalized ingest. No installed export implies a mounted handler or an enabled
 job, simulator or provider.
+
+## Own-stack integration sample
+
+The [own-stack catalog example](../../examples/own-stack/README.md) adds draft
+authoring to a small application with its own Node HTTP routes and local
+operator-session verifier. It composes the released catalog handler/store and
+PostgreSQL data gateway through public exports; no starter is involved. The
+application supplies its verified operator ID without email inference. Copy the
+private, non-workspace example outside the monorepo and install its pinned
+registry packages. Its HTTP/real-PostgreSQL witness checks a durable write,
+conflict refusal and receipt replay. Runtime credentials and the local token stay
+in a gitignored JSON configuration file outside the platform checkout, without
+being passed as command-line values. The runner consumes that file on standard
+input; the witness reads it from the application directory. A complete portable
+catalogue and restricted
+runtime login are explicit prerequisites; the local session and witness establish
+no hosted-authentication or production qualification.

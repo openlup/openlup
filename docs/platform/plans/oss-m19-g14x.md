@@ -487,3 +487,80 @@ archived main snapshot). The tests documentation fingerprint is refreshed in
 the separate fix commit; its reason preserves commands, discovery, coverage,
 setup and role boundaries. Clean committed policy, neutrality and package checks
 and official-toolchain pack measurements follow in ignored round evidence.
+
+## Cold-runner install recovery and second forced integration
+
+One continuation was authorized, bounded to the installed-consumer test's
+install and one catalogue union with main. Any other finding returns to the
+maintainer; the additional allowance does not expand this outcome. Final proof,
+submission of the updated candidate, its receipt and queueing are authorized in
+the named landing lane, provided main stays at the integration pin below.
+
+Hosted run `41393465458`, root shard 3/4, failed before PostgreSQL setup:
+`npm install --offline` reported `ENOTCACHED` for the registry's `zod` metadata.
+The fixture had installed three packed platform artifacts plus registry specs
+for `pg`, its types and Node types. Locked installation caches tarballs but does
+not guarantee registry metadata for a new consumer's version resolution.
+
+The diagnosis reproduced five failures in five fresh, initially empty npm
+caches: the exact install and isolated probes for each of those three specs
+and `zod`. The normal-cache exact install passed and added 21 packages. The
+fully cold exact run surfaced Node types first; metadata requests began with
+`pg`, its types and Node types. Which error is surfaced depends on the cached
+inputs and npm's resolution, rather than a universal dependency failure order.
+
+The separate fix commit packs Core, Outbox, Platform and the locked root's
+installed `zod`, installing only four local tarballs with the original offline
+flags. Runtime `pg` and strict compilation's real driver and Node declarations
+come from the locked root installation. The two compiles point `typeRoots` to
+that installation; neither a type stub nor `skipLibCheck` is introduced.
+The installed `@openlup` declarations and JavaScript remain the bytes compiled
+and run. This does not claim the driver is absent or independently installed
+inside the consumer. Every assertion and expected value, the generated consumer
+source and the complete database/runtime witness body remain unchanged.
+
+The saved diagnosis script is
+`.context/scratch/g14x/cold-cache-diagnosis/reproduce.mjs`. From the task worktree,
+with the official Node 24.21.0 and npm 11.19.0 selected, repeat the original cold
+and normal controls with:
+
+```sh
+node .context/scratch/g14x/cold-cache-diagnosis/reproduce.mjs
+```
+
+It allocates a fresh zero-entry cache for each cold attempt and sets
+`npm_config_cache` on that child's environment. Repeat the repaired focused
+file using a new cache every time:
+
+```sh
+bundle_cache="$(mktemp -d "$PWD/.context/scratch/g14x/bundle-cold.XXXXXX")"
+npm_config_cache="$bundle_cache" npm_config_offline=true node node_modules/vitest/vitest.mjs run tests/postgres/m19BundleWriteExport.test.ts
+```
+
+The test's install arguments are `install --offline --ignore-scripts --no-audit
+--no-fund --package-lock=false`, followed only by those four local tarballs.
+The normal-cache focused run uses the same Vitest command without the two npm
+environment assignments. Focused work uses the existing admission gate.
+
+Native prepare refused the pre-merge fix with a conflict against main
+`51557ed2f9269b6c8a760bc1a2429f9b575844ab`. The only conflict was the publication
+catalogue, resolved as a **manual additive union**: every main row and its order
+are retained, with the same nine own rows added. No other conflict occurred;
+`scripts/packages/platform-cold-consumer.ts` is unchanged by this integration.
+Excluding this task record, stable patch IDs are
+`44e492c1d117b2d6f2ea9ded360b8da763561c98` against old base
+`99a0407a9cf62d19364167e0551d36bde0a3d525`, and
+`da1b424795d41976aebcb05ca9a0190d994fb84d` against the new main. Only the
+catalogue's per-file patch ID differs; all other per-file IDs are identical.
+This is an ordinary manual integration, not a mechanical-merge exemption.
+
+None of the earlier 30 focused test files, their changed runtime owners, or
+contract fixtures changed between these main pins. The existing importer list
+and results above remain applicable; the repaired file, package boundary and
+current cheap/package checks are run again before two fresh full reviews.
+
+Self-retro: a warm-cache install concealed a cold-runner fixture dependency.
+Local artifacts plus the existing locked driver and type inputs remove the
+unnecessary consumer dependency graph while preserving the exact platform
+bytes and all behavior assertions. No new setup privilege or production repair
+was needed.
