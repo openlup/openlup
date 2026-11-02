@@ -117,6 +117,11 @@
       "import": "./dist/commerce/contracts/index.js",
       "default": "./dist/commerce/contracts/index.js"
     },
+    "./commerce/server/destinations": {
+      "types": "./dist/commerce/server/destinations/index.d.ts",
+      "import": "./dist/commerce/server/destinations/index.js",
+      "default": "./dist/commerce/server/destinations/index.js"
+    },
     "./commerce/server": {
       "types": "./dist/commerce/server/index.d.ts",
       "import": "./dist/commerce/server/index.js",

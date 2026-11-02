@@ -94,6 +94,14 @@
       "entrypoint": "dist/commerce/contracts/index.d.ts",
       "snapshot": "api/commerce-contracts.api.md"
     },
+    "./commerce/server/destinations": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
+      "entrypoint": "dist/commerce/server/destinations/index.d.ts",
+      "snapshot": "api/commerce-destinations.api.md"
+    },
     "./commerce/server": {
       "role": "capability",
       "maturity": "experimental",
