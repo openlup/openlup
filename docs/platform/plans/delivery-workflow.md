@@ -206,8 +206,9 @@ head `4d72bfdf407bb23f93ea7b4c022eebd45418826d`, tree
 The timeout's cause remains unknown. It was not a broker refusal.
 Packages took 147.775 s then 148.566 s; root tests took 812.441 s then
 793.391 s. Retry wall time was 1,133.094 s; the two-run loop was 2,342.843 s.
-All three retained package manifests and tarballs were byte-identical and their
-hashes matched. Reusing the second package execution would hypothetically remove
+The retained set manifests were byte-identical, as were each of their three
+package tarballs, and the hashes matched. Reusing the second package execution
+would hypothetically remove
 148.566 s before validation overhead, or 13.1% of the retry and 6.3% of the loop.
 No such reuse was performed.
 
@@ -261,8 +262,10 @@ tree; no resume option, cache, new receipt, lock or compiler change is shipped.
 carry-over, ordinary repair review and evidence renewal. It does not add verify
 stage reuse. Assume that work is part of the intended integration environment;
 use its actual landed rules when applicable, without copying or self-activating
-them here. This record neither reviews #509 for delivery nor makes it an S3
-activation dependency.
+them here. The maintainer specified the landing order: **#507, then #509, then
+S3**. Keep S3 draft and stacked on #507 for preparation; integration before its
+eventual landing must include both predecessors. This order does not authorize
+this supervisor to merge any PR. This record does not review #509 for delivery.
 
 Self-retro — ADJUST/DROP: testing the actual closure exposed both the validation
 cost and the absence of a useful repair class. The original package-first choice
