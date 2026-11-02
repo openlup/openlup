@@ -115,8 +115,9 @@ it("narrows hostile default table grants without blocking the restricted simulat
     const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
     const forward = "db/platform/migrations/20261101222000_sandbox_payment_attempts.sql";
     const units = [manifest.baseline, ...manifest.forward];
-    expect(units.at(-1)?.file).toBe(forward);
-    for (const unit of units.slice(0, -1)) await owner.query(readFileSync(unit.file, "utf8"));
+    const forwardIndex = units.findIndex(unit => unit.file === forward);
+    expect(units.filter(unit => unit.file === forward)).toHaveLength(1);
+    for (const unit of units.slice(0, forwardIndex)) await owner.query(readFileSync(unit.file, "utf8"));
     await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS");
     await owner.query("CREATE ROLE m19_default_runtime LOGIN INHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS PASSWORD 'synthetic-conformance'; GRANT service_role TO m19_default_runtime");
     await owner.query("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO PUBLIC,anon,authenticated,service_role");

@@ -735,3 +735,5 @@ Native review has not begun; repair cycles remain zero.
 Self-retro: code-class gzip also changes with the comparison base while unpacked
 bytes and file growth stay constant. Apply the explicitly named measurement
 threshold, report the observed delta, and preserve the package implementation.
+
+Tail-position repair: the hostile-defaults case locates exactly one G6 forward and applies its preceding prefix; all 15 PostgreSQL cases pass. Lesson: bind a forward witness to identity. Native review still waits for the frozen control.
