@@ -1390,6 +1390,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/delivery-workflow.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/disposable-docker-test-resources.md",
       "class": "public-output"
     },
@@ -10851,6 +10855,14 @@
     },
     {
       "path": "scripts/vercel-function-tsconfig-contract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/verification-plan.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/verification-plan.test.ts",
       "class": "public-output"
     },
     {
