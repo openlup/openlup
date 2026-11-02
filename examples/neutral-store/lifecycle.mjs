@@ -14,6 +14,18 @@ function run(executable, argv, input) {
     ...(input === undefined ? {} : { input }) });
 }
 
+function configurationArgument(argv) {
+  let configuration;
+  for (let index = 0; index < argv.length; index += 2) {
+    if (argv[index] !== '--configuration') throw new Error('starter_argument_unknown');
+    if (configuration !== undefined) throw new Error('starter_argument_duplicate');
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
+    configuration = value;
+  }
+  return configuration;
+}
+
 if (command === 'candidate') {
   if (args.length !== 3) throw new Error('starter_candidate_requires_three_tarballs');
   const artifacts = [];
@@ -39,31 +51,41 @@ if (command === 'candidate') {
   }, null, 2) + '\n');
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
 } else if (command === 'up') {
-  const { installDemonstration } = await import('./installation/install.ts');
   const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
-    let configuration;
-    for (let index = 0; index < args.length; index += 2) {
-      if (args[index] !== '--configuration') throw new Error('starter_argument_unknown');
-      if (configuration !== undefined) throw new Error('starter_argument_duplicate');
-      const value = args[index + 1];
-      if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
-      configuration = value;
-    }
-    const config = selectConfiguration(configuration);
-    await installDemonstration(config);
-    // The same selected configuration reaches the installer and the container host.
+    const config = selectConfiguration(configurationArgument(args));
+    run('docker', ['compose', 'build']);
+    run('docker', ['compose', 'up', '--wait', 'database']);
+    run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
+      'node', 'lifecycle.mjs', 'install', '--configuration', config.id]);
+    // Install and runtime receive the same non-secret configuration through arguments.
     const override = { services: { application: { command: [
       'node', '--experimental-strip-types', 'host/server.ts',
       '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
     ] } } };
-    run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--build', '--wait'], JSON.stringify(override));
+    run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)
       ? error.message : 'starter_installation_failed';
     process.stderr.write(`${code}\n`);
     process.exitCode = 2;
   }
+} else if (command === 'install') {
+  // Internal one-shot Compose entry; no install connection reaches the HTTP host.
+  const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
+  const { selectConfiguration } = await import('./owned/store.config.ts');
+  try {
+    await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'starter_installation_failed';
+    process.stderr.write(`${code}\n`);
+    if (code === 'starter_seed_demonstration_database_required') {
+      process.stderr.write('See README.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
+    }
+    process.exitCode = 2;
+  }
+  // The installed runner owns its pool; this one-shot process owns its lifetime.
+  process.exit(process.exitCode ?? 0);
 } else if (command === 'down') {
   // Does not discard the database volume. Destruction is an explicit separate owner action.
   run('docker', ['compose', 'down']);

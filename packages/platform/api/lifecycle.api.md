@@ -62,11 +62,45 @@ export declare function applyAppUpgrade(input: AppUpgradeInput): Promise<{
     applied: string[];
 }>;
 ```
+## dist/lifecycle/appVerification.d.ts
+
+```ts
+import { type ReadinessInput, type ReadinessIssue, type ReadinessReport } from "@openlup/core/readiness";
+/** Evidence from the existing readiness declarations, bindings and observer only. */
+export interface AppVerificationFinding {
+    code: ReadinessIssue["code"];
+    package: string;
+    module?: string;
+    subject: string;
+    observed: string;
+    cause: string;
+    fix: string;
+    recheck: string;
+    evidence: {
+        declared: string;
+        bound: string;
+        checked: string;
+        unknown: readonly string[];
+    };
+}
+/** This describes the supplied composition; it is not operational qualification. */
+export interface AppVerificationReport {
+    state: ReadinessReport["state"];
+    boundary: string;
+    candidate: ReadinessReport["candidate"];
+    loadedPackages: ReadinessReport["loadedPackages"];
+    findings: readonly AppVerificationFinding[];
+}
+export declare const APP_VERIFICATION_BOUNDARY = "Read-only diagnosis of supplied composition observations. Only the supplied schema observer is called; handlers, routes, schedules, migrations and installs are never run. Host inventory, bindings and probe honesty remain application-owned. No SQL behavior, ACL, provider delivery or live scheduler execution is proven.";
+/** Reuses the one readiness evaluator; the caller owns read-only observation. */
+export declare function verifyApp(input: ReadinessInput): Promise<AppVerificationReport>;
+```
 ## dist/lifecycle/index.d.ts
 
 ```ts
 export { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError, type AppVersionSnapshot, type AppUpgradeInput, type AppUpgradeAction, type AppUpgradeConflict, type AppUpgradePlan, } from "./appUpgrade.js";
 export { inspectLegacyPostgresInstallRoles, type PostgresInstallQuery, type LegacyPostgresInstallRequest, type PostgresInstallRoleObservation, type PostgresInstallMembershipObservation, type LegacyPostgresInstallBlocker, type LegacyPostgresInstallRoleReport, } from "./postgresInstallQualification.js";
+export { verifyApp, APP_VERIFICATION_BOUNDARY, type AppVerificationFinding, type AppVerificationReport, } from "./appVerification.js";
 ```
 ## dist/lifecycle/postgresInstallQualification.d.ts
 

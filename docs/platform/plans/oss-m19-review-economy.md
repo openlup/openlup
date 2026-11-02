@@ -280,3 +280,74 @@ Self-retro: an extracted command catalogue moved an execution guard outside a
 prefix selector; enumerate actual owners before editing, then protect this exact
 owner and test the privilege boundary with real Git. No catalogue-derived
 selector mechanism or automatic successor is added here.
+
+
+## Verification-catalogue main integration proof
+
+The prerequisite landed as `31423ca5b3e44698eb9a1ce342addad3e58b5d71` with tree `8952682b17fdde3487879995845d3cfd985d8c86`.
+The repair parent is `5887b1202b324ed895323a0872a6fa125d1d6a7d`; the merge uses those two parents.
+No stack pin is used. Before merging, merge-tree exited 1 and named exactly
+`CONTRIBUTING.md` and `config/openlup-publication-catalog.json`.
+Its conflict-bearing prediction is `6fddc16ae43ba3ad8deea4d25fa67f70f92678d4`.
+The resolved union tree before this evidence prose is `b24f640b40fbe4038e2479a2052ba2ff1c357904`.
+Every other tree entry equals the Git prediction by a complete tree diff.
+
+There is one contribution hunk: eight lines of native-review guidance and
+fifteen incoming lines describing the shared local-plan catalogue and starter
+proof, inserted at the same empty gap. Both bodies are retained verbatim, in
+that order; neither rule is rewritten or weakened. There is one catalog hunk:
+one alternative path line on each side, within disjoint added row objects.
+The resolution keeps incoming literal objects in order and inserts only the
+three literal task-owned rows, in their sorted gaps; no carrier is reformatted.
+
+Own delta comparison: old main-side base `a7ce403cef3b790c28418d786f153e50ac595084` to the
+repair parent, versus new main to the resolved union tree above. The additional
+bounded repair is included on both sides. The earlier approved head was
+`bbd246f842642c3e2f38e7e788097cab15c138e9`; differences from that earlier version are
+only the authorized exact guard path, no-op regression witness and task proof.
+Run `git diff --no-ext-diff --no-renames --binary <base> <head> -- .` with
+the named exclude pathspecs; pipe each patch to `git patch-id --stable`.
+Content witnesses sort the complete single-sign plus/minus lines, excluding
+file headers, and hash the LF-joined lines with a trailing LF.
+
+| Selection | Before patch ID | After patch ID |
+| --- | --- | --- |
+| all | `198f103a184506c4ccd40f49258a53ae96cb0419` | `42e49154dd68cd86673dae67442112b4b86eeb97` |
+| withoutCatalog | `c37b217ac3bb6eb6bb762314476c369b7c2b5365` | `43c50f8fce83addb8512f4667e3e4330a748a073` |
+| withoutCatalogAndContributing | `199e82826aa39ea9c8cd1b43e668b0a29b06cc90` | `199e82826aa39ea9c8cd1b43e668b0a29b06cc90` |
+
+| Selection / sign | Before count / SHA-256 | After count / SHA-256 |
+| --- | --- | --- |
+| all / + | 1419 / `5abf9145bfc49c0c1f066eb6edfaffc9817b308f2bfcf021a360e335daae7cdf` | 1418 / `c6044b29a97ab263ac0aaceb74a229d63efef0f45764afb85d63b093b60579fc` |
+| all / - | 193 / `17498cfcaf1f46a023e8770a8a0333be271e9a796b57cbcab151371a4896dd28` | 193 / `17498cfcaf1f46a023e8770a8a0333be271e9a796b57cbcab151371a4896dd28` |
+| withoutCatalog / + | 1407 / `6970fadabcb71cf7d0f0232de5b1fe1c423f637abb0faf98537ac42d2c10e55d` | 1406 / `d1e7b027b3752e16d6796f9ccc8ba478ab8d3c2bbb48695ff7f69db7bd7e9987` |
+| withoutCatalog / - | 193 / `17498cfcaf1f46a023e8770a8a0333be271e9a796b57cbcab151371a4896dd28` | 193 / `17498cfcaf1f46a023e8770a8a0333be271e9a796b57cbcab151371a4896dd28` |
+| withoutCatalogAndContributing / + | 1335 / `d1ec7655bcb273fbc6dcba2fbfbe9e854c52fd0e7f11443cfab9773ea5773702` | 1335 / `d1ec7655bcb273fbc6dcba2fbfbe9e854c52fd0e7f11443cfab9773ea5773702` |
+| withoutCatalogAndContributing / - | 109 / `c8b380562904fdbd4e621d6e496c94323a24264dc214190099a7c839905f423c` | 109 / `c8b380562904fdbd4e621d6e496c94323a24264dc214190099a7c839905f423c` |
+
+Difference explanation: before integration the contribution addition supplied
+one empty added line. Incoming main already supplies that empty separator at
+the shared insertion gap, so the new diff represents it as existing context.
+The only content-line multiset difference is that one bare plus line; no
+nonempty added line or removed line differs. Excluding contribution and catalog,
+both patch IDs and all content hashes are equal. The initial scratch assertion
+incorrectly demanded equality for every selection; inspecting the exact line
+difference established this context-only blank-line cause. No text was changed
+to force a matching hash.
+
+Added catalog paths before and after are the equal set:
+
+- `docs/platform/plans/oss-m19-review-economy.md`
+- `scripts/agent-review-registry.mjs`
+- `scripts/agent-review-registry.test.ts`
+
+This proof pins the resolved content before its own record update, avoiding a
+self-referential identity. The evidence prose is the sole subsequent tracked
+addition to that union tree. Preparation and review bind the final commit/tree.
+
+The earlier pre-integration publication-policy refusal was an ordering artifact:
+the task record named the incoming module before its integration. The maintainer
+authorized committing the unchanged three-file repair first, then integrating
+the landed prerequisite. No markup workaround or control relaxation was made.
+All 1,417 pre-integration focused cases passed; all required checks are rerun
+on the merged tree, including the catalogue and local-runner suites.

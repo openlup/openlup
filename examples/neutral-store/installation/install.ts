@@ -15,14 +15,10 @@ export interface DemonstrationInstallation {
   close(): Promise<void>;
 }
 
-// The selected base candidate has no installed-catalogue/bootstrap binding.
-// A future installed bootstrap must create/migrate a NEW demonstration database,
-// mark that database, create restricted roles and return its dedicated install session.
 export type InstallationBootstrap = () => Promise<DemonstrationInstallation>;
 
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
-export async function installDemonstration(config: StoreConfig, bootstrap?: InstallationBootstrap): Promise<void> {
-  if (!bootstrap) throw new Error('starter_installation_binding_required');
+export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap): Promise<void> {
   const installation = await bootstrap();
   try { await applyDemoSeed(config, installation); }
   finally { await installation.close(); }
@@ -78,4 +74,58 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     await connection.query('ROLLBACK');
     throw error;
   }
+}
+
+/** Local demo only. Socket access is the install capability; the application never mounts it. */
+export async function bootstrapDemonstration(): Promise<DemonstrationInstallation> {
+  const migrations = await import('@openlup/platform/migrations').catch((error: unknown) => {
+    if (error instanceof Error && 'code' in error
+      && (error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' || error.code === 'ERR_MODULE_NOT_FOUND')
+      && /@openlup\/platform/.test(error.message)) {
+      throw new Error('starter_installation_binding_required');
+    }
+    throw error;
+  });
+  if (typeof migrations.createPlatformPostgresMigrationRunner !== 'function') {
+    throw new Error('starter_installation_binding_required');
+  }
+  const { default: pg } = await import('pg');
+  const socket = '/var/run/postgresql';
+  const database = 'neutral_store';
+  const installRole = 'starter_install';
+  const runtimeRole = 'starter_runtime';
+  const bootstrap = new pg.Client({ host: socket, database: 'postgres', user: 'postgres' });
+  await bootstrap.connect();
+  try {
+    // Serialize database creation and marker admission across concurrent startup invocations.
+    await bootstrap.query("SELECT pg_advisory_lock(hashtext('neutral-store-bootstrap'))");
+    const existing = await bootstrap.query(`SELECT pg_catalog.shobj_description(oid, 'pg_database') AS marker
+      FROM pg_catalog.pg_database WHERE datname = $1`, [database]);
+    if (existing.rows.length && existing.rows[0]?.marker !== demonstrationMarker) {
+      throw new Error('starter_seed_demonstration_database_required');
+    }
+    if (!existing.rows.length) {
+      await bootstrap.query(`CREATE ROLE starter_install LOGIN INHERIT SUPERUSER NOCREATEROLE
+        NOCREATEDB NOREPLICATION NOBYPASSRLS`);
+      await bootstrap.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE
+        NOCREATEDB NOREPLICATION NOBYPASSRLS`);
+      await bootstrap.query(`CREATE ROLE starter_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE
+        NOCREATEDB NOREPLICATION NOBYPASSRLS`);
+      await bootstrap.query('CREATE DATABASE neutral_store OWNER starter_install');
+      // This branch is reachable only after THIS invocation successfully created the database.
+      await bootstrap.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
+    }
+    const runner = migrations.createPlatformPostgresMigrationRunner({
+      connectionString: 'postgresql://starter_install@localhost/neutral_store?host=/var/run/postgresql',
+    }, { installation: { generation: 'qualified-v2', roleMode: 'installer-managed',
+      migrationLogin: installRole, bootstrapLogin: 'postgres', runtimeLogin: runtimeRole,
+      restoreLogin: 'starter_restore' } });
+    const applied = await runner.apply();
+    const status = await runner.status();
+    if (status.pending.length) throw new Error('starter_installation_incomplete');
+    process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
+  } finally { await bootstrap.end(); }
+  const connection = new pg.Client({ host: socket, database, user: installRole });
+  await connection.connect();
+  return { connection, installRole, runtimeRole, close: () => connection.end() };
 }

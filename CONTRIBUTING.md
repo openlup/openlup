@@ -162,6 +162,21 @@ checks. Read [native review](#native-review-and-accountability) before using
 those commands. The registry checker recognizes only the three named carrier
 arrays and compares the complete merged tree; it does not resolve queue groups.
 
+The public local runner and its read-only `--plan` explanation share one
+obligation catalogue. It retains every mandatory local phase and the existing
+package and root-test selection owners; tree-wide and UI neutrality run before
+dependency installation and heavy proof. See [required and raw checks](#required-and-raw-checks)
+for commands, prerequisites and the distinction between a plan and executed
+evidence. The [delivery workflow record](docs/platform/plans/delivery-workflow.md)
+tracks this bounded change and later, unimplemented improvements.
+
+The existing required platform cold consumer also runs the neutral starter's
+pure source tests, extracts an independent application, installs the complete
+local package set and locked dependency tarballs offline, then runs its pure
+tests, strict typecheck and build. It reports its added elapsed seconds. Browser
+journeys and timed Compose installation remain the starter's separate
+[execution recipe](examples/neutral-store/docs/proof.md); a missing purchase
+binding must still fail its required purchase spec.
 
 Cold installed-artifact discovery classifies `channels`, `channels/contracts`
 and `channels/server` as non-adapter entries. Their declarations and runtime
@@ -1502,6 +1517,27 @@ For communications characterization and mail-boundary witness evidence, see the
 [communications contract](docs/platform/CANONICAL_CONTRACTS.md#communications-import-compatibility)
 and [witness ledger](docs/platform/plans/oss-m04-communications-triggers.md).
 
+To inspect the same local obligation plan the runner executes, before committing
+or requesting review:
+
+```sh
+node scripts/verify-local.mjs --plan
+node scripts/verify-local.mjs --plan --json
+# Include the raw DB diagnostic when its inputs are in scope:
+node scripts/verify-local.mjs --plan --pgtap
+```
+
+Planning is read-only and works on an unreviewed, dirty task worktree without
+dependencies, a broker or scanner. It lists each phase's command, environment,
+owner, reason, prerequisites, resource profile and corresponding CI context.
+It does not select fewer mandatory phases, run checks, establish native review
+or create verification evidence. Output paths are placeholders until execution.
+An unreadable Git comparison reports unknown scope, retains all obligations and
+exits 2; recover the missing history or valid stack pin before execution.
+The candidate's changed paths describe committed changes only; `clean: false`
+also warns of pending working-tree changes. Package discovery and bounded root
+tooling selection remain with their existing owners, not a second selector.
+
 After committing and recording the required native reviews, run the normal full
 local command set with `node scripts/verify-local.mjs` from the task worktree root.
 Add `--pgtap` when the change reaches database inputs (including runtime, fixture,
@@ -1519,6 +1555,10 @@ resources, and an unknown phase refuses before execution. Otherwise the native
 wrapper runs directly. Logs retain exact commands, profiles, exits, timings and
 the first root-worker observation; later synthetic fixture output cannot stand
 in for it. Machine resource policy and explicit worker settings remain effective.
+Tree-wide and UI neutrality run before installation and heavy phases: their
+Node/Git checks need no dependencies. All thirteen mandatory phases remain;
+pgTAP is still explicitly selected. The runner consumes the explained plan;
+execution still checks the current candidate and review before/after commands.
 Build/package/root phases stay serial because they share generated outputs.
 SSR output stays in a unique ignored worktree scratch directory so external npm
 imports still resolve; cold package artifacts stay outside the checkout.
@@ -1526,13 +1566,19 @@ The first failure stops the run without an automatic retry or reuse of earlier
 passes. The manual equivalents remain available:
 
 ```bash
-npm ci
-
-# Direct typecheck consumes built Core, Outbox and Platform declarations.
-npm run pretest
-# npm run lint and npm test also build all three through npm pre-scripts
+# Cheap checks need no dependency install.
+npm run oss:published-tree -- --policy
+npm run oss:published-tree -- --inventory
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
+gitleaks git . --config config/gitleaks.toml --redact --no-banner
+node scripts/public-ci-neutrality.mjs --base-commit "$(git merge-base HEAD origin/main)"
+node --experimental-strip-types packages/ui/smoke/neutrality.ts
+# The runner uses the validated OPENLUP_STACK_BASE instead of the fork point
+# for a stacked task. Keep that exact same comparison base in manual commands.
+
+npm ci
+# npm run lint and npm test build Core, Outbox and Platform through pre-scripts.
 # typecheck
 npm run lint
 npm run oss:published-tree -- --typecheck
@@ -1551,15 +1597,8 @@ npm run test:scoped
 # Hosted test-full-shard runs four parallel independent installations, each with:
 # node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
 # npm test -- --shard=N/4 (N = 1, 2, 3, 4)
-# self-check (needs no install)
-npm run oss:published-tree -- --policy
-npm run oss:published-tree -- --inventory
-node scripts/public-ci-neutrality.mjs
-node --experimental-strip-types packages/ui/smoke/neutrality.ts
 # pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
-# gitleaks 8.30.1, as CI pins it, over the checkout's history
-gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
 
 The `prelint` and `pretest` scripts build Core, Outbox and Platform in dependency

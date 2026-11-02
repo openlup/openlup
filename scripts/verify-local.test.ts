@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -12,7 +12,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
-async function fixture(reviewed = true, nodePin = process.versions.node) {
+async function fixture(reviewed = true, nodePin = process.versions.node, uiViolation = false) {
   const cwd = await mkdtemp(join(tmpdir(), 'verify-local-')); directories.push(cwd);
   const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-C', cwd, '-c', 'user.name=Fixture',
     '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null',
@@ -21,9 +21,16 @@ async function fixture(reviewed = true, nodePin = process.versions.node) {
   await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n');
   await writeFile(join(cwd, '.nvmrc'), nodePin);
   await writeFile(join(cwd, 'package.json'), JSON.stringify({ packageManager: 'npm@11.19.0' }));
+  if (uiViolation) {
+    await mkdir(join(cwd, 'packages/ui/smoke'), { recursive: true });
+    await mkdir(join(cwd, 'packages/ui/src'));
+    await copyFile(resolve('packages/ui/smoke/neutrality.ts'), join(cwd, 'packages/ui/smoke/neutrality.ts'));
+  }
   await writeFile(join(cwd, 'source.txt'), 'base\n'); git('add', '.'); git('commit', '-qm', 'base');
   const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
-  await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', '.'); git('commit', '-qm', 'candidate');
+  await writeFile(join(cwd, 'source.txt'), 'candidate\n');
+  if (uiViolation) await writeFile(join(cwd, 'packages/ui/src/example.ts'), 'export const example = "process' + '.env";\n');
+  git('add', '.'); git('commit', '-qm', 'candidate');
   const scratch = join(cwd, '.context', 'scratch'); await mkdir(scratch, { recursive: true });
   const env = { PATH: `${scratch}:${dirname(process.execPath)}:/usr/bin:/bin`, CODEX_THREAD_ID: 'author' };
   await writeFile(join(scratch, 'gitleaks'), '#!/bin/sh\nprintf "8.30.1\\n"\n'); await chmod(join(scratch, 'gitleaks'), 0o700);
@@ -48,8 +55,8 @@ const candidate = { base: 'a'.repeat(40), head: 'b'.repeat(40) };
 describe('full local verification command ownership', () => {
   it('runs one installation and scoped suite, preserving package proof before tests and lint builds before typecheck', () => {
     const steps = verificationSteps(candidate, '/work/.context/scratch/run', '/tmp/packs', false);
-    expect(steps.map(step => step.name)).toEqual(['policy', 'inventory', 'dco', 'gitleaks', 'install', 'lint',
-      'typecheck', 'build', 'subscription', 'packages', 'tests', 'neutrality', 'ui-neutrality']);
+    expect(steps.map(step => step.name)).toEqual(['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality',
+      'install', 'lint', 'typecheck', 'build', 'subscription', 'packages', 'tests']);
     expect(steps.filter(step => step.command.includes('ci'))).toHaveLength(1);
     expect(steps.flatMap(step => step.command).join(' ')).not.toMatch(/--shard|pretest|test:required|public-ci-dependencies|public-ci-reuse/);
     expect(steps.find(step => step.name === 'tests')?.command).toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'run', 'test:scoped']);
@@ -78,6 +85,15 @@ describe('full local verification command ownership', () => {
 });
 
 describe('real Git and subprocess refusals', () => {
+  it('does not turn a successful explain into native review evidence', async () => {
+    const f = await fixture(false);
+    const before = await readdir(f.scratch);
+    const output = spawnSync(process.execPath, [resolve('scripts/verify-local.mjs'), '--plan', '--json'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+    expect(output.status).toBe(0); expect(JSON.parse(output.stdout).phases).toHaveLength(13);
+    expect(await readdir(f.scratch)).toEqual(before);
+    const run = vi.fn(); expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(1);
+    expect(run).not.toHaveBeenCalled(); expect((await f.result()).phases).toEqual([]);
+  });
   it.each(['missing review', 'dirty', 'changed commit'])('refuses %s before launching a gate', async scenario => {
     const f = await fixture(scenario !== 'missing review');
     if (scenario === 'dirty') await writeFile(join(f.cwd, 'source.txt'), 'dirty\n');
@@ -106,7 +122,21 @@ describe('real Git and subprocess refusals', () => {
     const result = await f.result(); directories.push(result.packs);
     expect(calls).toHaveLength(13); expect(result.phases).toHaveLength(13);
     expect(result.broker).toBe(broker); expect(result.hosted).toContain('remain separate');
-    expect(result.phases[8].env.OPENLUP_SSR_OUT_DIR).toMatch(new RegExp(`^${f.cwd}/\\.context/scratch/verify-local-`));
+    expect(result.phases.find(phase => phase.name === 'subscription').env.OPENLUP_SSR_OUT_DIR).toMatch(new RegExp(`^${f.cwd}/\\.context/scratch/verify-local-`));
+  });
+  it('executes the real UI checker and stops before install or any heavy phase on a neutrality failure', async () => {
+    const f = await fixture(true, process.versions.node, true);
+    const run = vi.fn(async (_command, args) => {
+      const command = args.slice(args.indexOf('--') + 1);
+      if (!command.includes('packages/ui/smoke/neutrality.ts')) return { code: 0 };
+      const child = spawnSync(command[0], command.slice(1), { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+      expect(child.stderr).toContain('env read');
+      return { code: child.status ?? 1 };
+    });
+    expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(1);
+    const result = await f.result(); directories.push(result.packs);
+    expect(result.phases.map(phase => phase.name)).toEqual(['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality']);
+    expect(run).toHaveBeenCalledTimes(6);
   });
   it('stops at the first failing command without retrying or claiming later proof', async () => {
     const f = await fixture(); const run = vi.fn(async () => ({ code: 124 }));

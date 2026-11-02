@@ -161,7 +161,7 @@ export const PLATFORM_MODULE_GRAPH = {
   marketing: { contracts: true, values: [], types: [] },
   "marketing/server": { values: ["marketing", "identity/contracts"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] },
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
-  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] },
+  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] },
   invoicing: { contracts: true, values: [], types: [] },
   fulfillment: { contracts: true, values: [], types: ["data"] },
   subscriptions: { contracts: true, values: [], types: [] },
@@ -186,7 +186,7 @@ export const PLATFORM_MODULE_GRAPH = {
   // The generic composer over the other modules' public ports and factories.
   composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: [] },
   inventory: { contracts: true, values: [], types: [] },
-  "account-support": { contracts: true, values: ["commerce", "invoicing", "shipping"], types: ["commerce/contracts", "invoicing/contracts"] },
+  "account-support": { contracts: true, values: ["commerce", "invoicing", "shipping", "data"], types: ["commerce/contracts", "invoicing/contracts"] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";
 
