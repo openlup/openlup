@@ -1705,6 +1705,13 @@ share a dispatch lock; direct submission supersedes only pristine, never-claimed
 queued commands, while effect-bearing history refuses it. ACK records native
 `dispatch` evidence, fencing cancellation without asserting an owned label or
 physical packing.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
 
 The native stores implement G14 mapped-attempt persistence, G15 coverage-gap
 cursors, G16 injected timed inventory-line reads with native reservation reads,

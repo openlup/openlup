@@ -1250,6 +1250,13 @@ and synchronizes only redacted dispatch context. All authoritative edits must
 use `editAuthoritative` with host authorization and replay receipts. Actor/key
 presence is not authorization. The host owns closing its lane. Construction is
 inert and the default is disabled; no route or schedule is registered.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
 
 `createCapturedFulfillmentAdapter` from `@openlup/platform/fulfillment` accepts
 `{ providerRef, selected, captures }`. Each synthetic capture contains a complete

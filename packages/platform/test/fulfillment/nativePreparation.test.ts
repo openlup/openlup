@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { createNativeFulfillmentBinding } from '@openlup/platform/fulfillment/native';
+import { createFulfillmentContribution } from '@openlup/platform/composition';
 import { profile, request } from './fixtures.js';
 import { createNativeFulfillmentBinding as builtBinding } from '../../dist/fulfillment/native/index.js';
 
@@ -13,7 +14,10 @@ it('default-off binding refuses every entry before invoking a worker, transactio
   expect(await binding.services.runDispatch()).toEqual(refusal);
   expect(await binding.prepare('shipment')).toEqual(refusal);
   expect(await binding.editAuthoritative({ fulfillmentRef: 'shipment', actorUserId: 'actor', idempotencyKey: 'edit' }, apply)).toEqual(refusal);
-  expect(binding.contributions[0].schedules).toEqual([]);
+  const contribution = createFulfillmentContribution({ version: binding.version, requiredSchema: binding.requiredSchema,
+    fulfillment: { dispatch: binding.dispatch }, handlers: [], schedules: [], routes: [] });
+  expect(contribution.contributions[0].schedules).toEqual([]);
+  expect(binding).not.toHaveProperty('contributions');
   for (const callback of [run, readAuthoritative, readiness, listCandidates, apply]) expect(callback).not.toHaveBeenCalled();
 });
 

@@ -1,6 +1,5 @@
 import { createFulfillmentServices, createPostgresFulfillmentDispatchStore } from '../index.js';
 import type { FulfillmentDispatchRequest, FulfillmentServicesOptions } from '../contracts/index.js';
-import { createFulfillmentContribution } from '../../composition/index.js';
 import type { RequiredSchema } from '@openlup/core/readiness';
 import type { PostgresRoleFreeTransactionLane as PostgresFulfillmentTransactionLane } from '../../data/index.js';
 
@@ -62,11 +61,8 @@ export function createNativeFulfillmentBinding(input: {
     if (!state.ready) return 'kind' in state.refusal ? state.refusal : { kind: 'refused' as const, refusal: state.refusal };
     return work();
   }
-  const contribution = createFulfillmentContribution({ version: input.version, requiredSchema: input.requiredSchema,
-    fulfillment: { dispatch: bound ? services.runDispatch : null }, handlers: [], schedules: [], routes: [],
-  });
   return {
-    services, ...contribution,
+    services, version: input.version, requiredSchema: input.requiredSchema, dispatch: bound ? services.runDispatch : null,
     /** No scheduler is registered. Preparation itself is also off until explicitly selected. */
     async prepare(ref: string) {
       return whenReady(async () => {

@@ -2524,6 +2524,7 @@ void [handled, slot, trusted, untrusted, missingActor, contribution];
 export function proveG10FulfillmentConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
+import { createFulfillmentContribution } from "@openlup/platform/composition";
 import { createCapturedFulfillmentAdapter, runFulfillmentAdapterConformance, createNativeUnsupportedFulfillmentPorts, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
 import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
 assert(import.meta.resolve("@openlup/platform/fulfillment/native").startsWith(new URL("./node_modules/",import.meta.url).href));
@@ -2556,7 +2557,10 @@ const binding=createNativeFulfillmentBinding({...options,enabled:true});
 assert.deepEqual(await binding.prepare(request.fulfillmentRef),{disposition:"ready",contactRevision:1});
 assert(calls[0][0].includes("pg_advisory_xact_lock"));assert(calls[1][0].includes("FOR UPDATE"));assert(calls[2][0].includes("INSERT INTO public.fulfillment_dispatch_contexts"));
 assert.deepEqual(JSON.parse(calls[2][1][1]),request.contactRevision);
-assert.deepEqual(binding.contributions[0].schedules,[]);
+assert(!("contributions" in binding));
+const contribution=createFulfillmentContribution({version:binding.version,requiredSchema:binding.requiredSchema,fulfillment:{dispatch:binding.dispatch},handlers:[],schedules:[],routes:[]});
+assert.deepEqual(contribution.contributions[0].schedules,[]);
+assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],binding.services.runDispatch);
 const unsupported=createNativeUnsupportedFulfillmentPorts();
 assert.equal(await unsupported.listCommerceFulfillmentOrders({page:1,pageSize:25}),FULFILLMENT_NATIVE_UNSUPPORTED);
 assert.equal(await unsupported.getCommerceFulfillmentOrderDetail({orderId:"order-a"}),FULFILLMENT_NATIVE_UNSUPPORTED);

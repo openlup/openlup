@@ -1,10 +1,9 @@
 # M19 G10: native fulfillment store promotion
 
-Status: the refreshed public API read was accepted with the public constructor
-rename and split proof imports described below. The affected focused checks and
-installed-package proof pass. The candidate is ready for the authorized DCO
-commit and two independent native reviews. Canonical verification and landing
-still wait for the named slot.
+Status: the composition-free package repair and host facade are staged for the
+refreshed API read. All 17 focused test files, strict typecheck, lint, neutrality
+and cold-cache installed-package proof passed. No repair commit or new counted
+review has occurred; the original on-main suites remain unchanged.
 
 ## Outcome, scope and authority
 
@@ -426,3 +425,197 @@ Self-retro: the direct alias and two scoped identity assertions preserve the
 existing constructor without a wrapper or duplicate body. Machine admission
 dominated this resume (several waits of 60–275 seconds); focused proof itself
 passed without source repairs. No further mechanism or optional cleanup is needed.
+
+
+## Module-boundary repair: forced integration and importer conflict
+
+Current policy/main pin: `38f60565d54fb7ec061f8e506b3c98a3c653a8bd`. The
+supervisor explicitly required main integration before the module-boundary repair.
+The DCO-signed merge is `eb1143b821a2a42651716ffd3919c1be87874709`, with parents
+`b7ffd9270a6abb81137e6938b3298cd2a7ab16dd` and that main pin.
+
+Only two files needed manual conflict resolution: the publication catalog retained
+all main entries and the additive task row; the package reference retained the
+complete main bundle-admin section followed by the complete fulfillment section.
+All other merge resolutions were automatic. The main catalog graph edit and
+package-boundary nested-entry union are retained. No G10 source or API repair is
+in the merge. The added/deleted lines of every G10 path are identical when
+comparing the old delta with the integrated delta; comparison evidence lives
+in ignored scratch. Stable patch IDs excluding this task record are different:
+`821c93ec668d87f5b3a20a54c7cf8210fb4d7f1f` before integration and
+`57b306549b661e80711545efb5b6d93033b0da1c` after integration. Context changed,
+and the manual merge is not claimed mechanical or eligible for proof carry-over.
+The G10 delta against main passes whitespace and staged-diff secret checks; an
+inherited SQL file's existing EOF whitespace was not changed.
+
+The requested repair removes the nested module row, adds only measured type
+edges to the parent fulfillment row, removes composition from the packaged
+binding and creates a host wrapper that adds its contribution. The supervisor
+requires every listed existing importer to remain unchanged and says to stop
+if an importer needs a change. Two assertions make those requirements conflict:
+
+- `tests/postgres/g10FulfillmentIdentity.test.ts` compares the root constructor
+  and packaged constructor with `toBe`. A host wrapper is a different function
+  object from the wrapped package factory and cannot satisfy this assertion.
+- `packages/platform/test/fulfillment/nativePreparation.test.ts` directly reads
+  `binding.contributions[0].schedules` from the packaged factory. Removing the
+  contribution from that public result makes the unchanged assertion invalid.
+
+Neither test was edited. The root facade, package implementation, graph row,
+API snapshot, package docs and installed-consumer helper are also unchanged.
+No repair signature has been staged; only this stopped-task record is updated.
+The supervisor must reconcile the importer constraints with the requested API
+shape before implementation can continue. The known import-map failure remains
+unrepaired; no test run is represented as proving a proposed implementation.
+
+No repair commit, new prepare, counted review, package measurement, neutrality
+run or canonical verification occurred on this resume. Native history remains
+at recorded cycle zero; the merge and eventual repair are intended to enter
+one changed-candidate cycle together. Earlier reviews, budgets and expiry are
+retained without renewal. G10-reads remains deferred.
+
+Self-retro: inspect identity and returned-shape assertions before selecting a
+host wrapper. Constructor identity and contribution-free package composition
+require an explicit contract reconciliation here; adding indirection cannot
+make two different function objects strictly equal.
+
+
+## Corrected witness ownership and module composition repair
+
+The supervisor verified the two stopped witnesses are additions of this task,
+not pre-existing main tests, and explicitly authorized their repair. This
+supersedes the previous stop without changing on-main characterization: the
+original root default-off suite and PostgreSQL preparation/locking suite stay
+byte-unchanged, and the qualified proof retains its pre-existing assertions.
+The integrated main/base remains `38f60565d54fb7ec061f8e506b3c98a3c653a8bd`;
+merge `eb1143b821a2a42651716ffd3919c1be87874709` stands.
+
+The package factory now returns services, version/schema inputs, the nullable
+dispatch binding and preparation/edit methods, with no runtime contribution.
+The host facade constructs the existing contribution and preserves the original
+root result's keys and method identities. This deliberate public-shape repair
+supersedes constructor identity between root and package; package/public-built
+implementation identity remains required. No SQL, gateway encoding, managed
+behavior or native commerce read refusal changes. The merge and eventual repair
+will be reviewed together as cycle one; no repair commit precedes the API read.
+
+
+### Repaired witnesses and focused evidence
+
+The root witness's prior cross-constructor `toBe` assertion is deliberately
+replaced: a host facade is now required to be a wrapper, so that equality is no
+longer the contract. For both bound and unbound inputs it now asserts one
+delegation call with the exact input, identity of returned services, `prepare`
+and `editAuthoritative`, the exact independently constructed contribution and
+the exact legacy root result keys (including routes/triggers). It also checks
+nullable dispatch gating and absence of a package contribution. The package-local
+public-entry/direct-built constructor identity assertion remains unchanged.
+
+The package preparation witness retains all original default-off refusals and
+zero-callback assertions. Its schedule assertion now inspects the host-created
+`createFulfillmentContribution` result using the package's returned version,
+schema and dispatch; an added negative assertion rejects a contribution in the
+package result. No old safety assertion was removed without this explicit
+public-shape reason. An initial lint failure rejected a duplicate private-build
+import in the root test; it was removed, leaving that identity check in its
+existing package-local owner. No boundary rule or suppression was changed.
+
+The nested `fulfillment/native` graph row is removed. The measured parent row is
+`fulfillment: { contracts: true, values: [], types: ["data"] }`. The TypeScript
+edge audit resolves both the parent index and fulfillment contracts inside the
+same fulfillment owner, so `fulfillment/contracts` is not a cross-module edge.
+The native data lane is the only new cross-module type edge. No fulfillment
+composition value permission exists. The original import-map suite passed all
+123 tests without changing any expectation or case.
+
+All focused runs used the supplied Node 24.21.0/npm 11.19.0 toolchain and an
+individual focused admission. Docker reaping was disabled; existing helpers
+closed only their owned test containers. Executed files and passing counts:
+
+| Test file | Passed |
+| --- | ---: |
+| `tests/postgres/g10FulfillmentIdentity.test.ts` | 2 |
+| `packages/platform/test/fulfillment/nativePreparation.test.ts` | 2 |
+| `scripts/packages/eslint-import-map.test.ts` | 123 |
+| `packages/platform/test/packageBoundary.test.ts` | 2870 |
+| `scripts/generate-outcome-projection.test.ts` | 7 |
+| `server/runtime/public-reference/m08FulfillmentBinding.test.ts` | 1 |
+| `tests/postgres/fulfillmentPreparationBinding.test.ts` | 2 |
+| `tests/postgres/m14QualifiedComposition.test.ts` | 4 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 108 |
+| `scripts/packages/reference-delegation-consumer.test.ts` | 1 |
+| `scripts/packages/package-size-policy.test.ts` | 49 |
+| `tests/platform/catalog/m05Composition.test.ts` | 1 |
+| `tests/platform/channels/channelConsumer.test.ts` | 2 |
+| `tests/platform/inventory/inventoryConsumer.test.ts` | 2 |
+| `tests/postgres/nativeAccountReads.test.ts` | 8 |
+| `tests/postgres/partnerAcquisition.test.ts` | 10 |
+| `packages/platform/test/fulfillment/capturedAdapter.test.ts` | 3 |
+
+The two original root/preparation suites are byte-identical to main. The
+qualified proof file is byte-identical to the integrated version: its existing
+assertions and root import remain, with only the previously accepted captured
+proof additions relative to main. A TypeScript AST import scan also found the
+other direct on-main helper/config importers above; all were run unchanged.
+The new captured adapter suite passed again, including all three result classes
+and replay. Detailed logs and the importer inventory are in ignored task scratch.
+
+Strict published-tree checking passed all five projects with zero unresolved
+edges and zero additional consumer errors. Final lint passed with zero errors
+and the same 33 existing warnings. Ast-grep and the regenerated API snapshot
+check passed. Neutrality reported zero increases; no baseline change or environment reader was added. The API snapshot changes only the native binding
+return: services/methods remain, contribution/port/route/trigger fields leave,
+and version, required schema and nullable dispatch are returned for the host.
+
+Fresh real packs on the official toolchain use archived main
+`38f60565d54fb7ec061f8e506b3c98a3c653a8bd` as the baseline. Baseline:
+2,346,064 packed bytes, 1,882,746 code-class gzip bytes,
+60,612 docs-class gzip bytes, 11,081,441 unpacked bytes and
+2,940 files. Candidate: 2,352,755 packed bytes,
+1,888,536 code-class gzip bytes, 60,744 docs-class gzip bytes,
+11,107,747 unpacked bytes and 2,946 files. Delta:
+**+6,691 packed bytes, +5,790 code gzip, +132 docs gzip,
++26,306 unpacked bytes and +6 files**. No cap or dependency was changed.
+These fresh baseline numbers supersede older main measurements; they are raw
+real-pack evidence, not a completed clean committed package gate.
+
+The isolated runtime proof passed without optional peers. Its npm cache was
+created empty; offline mode was set and every install argument was a local
+tarball, including all locked dependency inputs. After local peer tarballs were
+installed, strict NodeNext and Bundler consumers passed, including a negative
+type assertion for the removed package contribution. The consumer had no
+checkout/ancestor node_modules, inherited module-path environment or package
+symlinks. Its temporary directory was removed; durable pack and measurement
+evidence remains in task scratch. This replaces the earlier warm-cache proof
+method and makes no provider or hosted qualification claim.
+
+The array-to-jsonb audit remains valid. Only composition metadata/method
+placement changed; every SQL query, JSON serialization, transaction/locking and
+authoritative edit body matches the previous implementation. Captures and schema
+arrays remain in memory, never raw jsonb parameters. The restricted-role suite
+still does not claim top-level-array/jsonb or transcript-array coverage.
+
+Current boundary: stage the repaired API, recompute documentation trailers and
+obtain the coordinator read before DCO. Zero repair commits; the existing merge
+and forthcoming repair enter one native cycle together after approval, using
+two new full reviewers and preserving the prior history. No canonical verify,
+PR, push, landing or G10-reads work is authorized here.
+
+Self-retro: keep implementation identity inside the package boundary and prove
+host delegation at the root. A small facade and explicit metadata remove the
+reverse composition edge without an abstraction, new package, rule relaxation
+or duplicated domain logic. Focused admissions dominated elapsed time; all
+behavioral checks passed without further source repairs.
+
+
+The final staged publication check passes inventory and structural policy. It
+reports seven documentation obligations: the existing portability trailer still
+answers its unchanged delta, and four refreshed reference/repository/tests/tooling
+trailers await the API read and repair commit. The proposed exact digests/reasons
+are in the private read packet. No empty trailer commit, bypass, new control,
+DCO sign-off or claim of fully passing committed policy was introduced.
+
+The final staged neutrality scan caught environment-access syntax quoted in
+this execution note. The note now states the result without that syntax; no
+reader, baseline entry, scanner or test was changed. The failed scan is retained
+in ignored proof history, and the final staged scan is repeated.

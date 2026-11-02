@@ -1463,6 +1463,24 @@ export declare function createNativeFulfillmentBinding(input: {
     version: string;
     requiredSchema: RequiredSchema;
 }): {
+    services: import("../contracts/bindings.js").FulfillmentServices;
+    version: string;
+    requiredSchema: RequiredSchema;
+    dispatch: (() => Promise<import("../contracts/nativeUnsupported.js").FulfillmentNativeUnsupported | {
+        kind: "refused";
+        refusal: import("../contracts/dispatch.js").FulfillmentRefusal;
+    } | {
+        ok: boolean;
+        skipped: boolean;
+        checked: number;
+        updated: number;
+        failures: number;
+        mode: import("../contracts/store.js").DispatchRecord["mode"];
+        replayed: number;
+        providerCalls: number;
+        readBacks: number;
+        reason: string | undefined;
+    }>) | null;
     /** No scheduler is registered. Preparation itself is also off until explicitly selected. */
     prepare(ref: string): Promise<import("../contracts/nativeUnsupported.js").FulfillmentNativeUnsupported | {
         disposition: "ready" | "withheld";
@@ -1479,17 +1497,6 @@ export declare function createNativeFulfillmentBinding(input: {
         kind: "refused";
         refusal: import("../contracts/dispatch.js").FulfillmentRefusal;
     }>;
-    contributions: import("@openlup/core/readiness").Contribution[];
-    ports: {
-        [k: string]: ((...args: never[]) => unknown) | null;
-    };
-    routes: {
-        [k: string]: (...args: never[]) => unknown;
-    };
-    triggers: {
-        [k: string]: (...args: never[]) => unknown;
-    };
-    services: import("../contracts/bindings.js").FulfillmentServices;
 };
 export {};
 ```
