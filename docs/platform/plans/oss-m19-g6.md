@@ -652,3 +652,18 @@ owner guidance, keeping the existing checker and publication boundary intact.
 Self-retro: the full-tree neutrality ratchet caught adapter names in unchanged-suite
 evidence that focused runtime checks did not cover. Neutral suite path patterns
 retain all file references and pass counts without adding vocabulary debt.
+
+## Stacked native review preparation
+
+The supervisor authorized one merge of predecessor control
+`cd0f0980cb92692106ba00563925e7fb2650dbb0`, with
+`OPENLUP_STACK_BASE=cd0f0980cb92692106ba00563925e7fb2650dbb0`.
+Merge `8f51a321` united only disjoint publication-catalog additions manually;
+all other merge results were mechanical. Before binding the feature pin, G6's
+stable patch ID excluding this task record and the conflicted catalog is
+`9475f405488c6e0c56968ae23a4891561447bb3b` both before (against main09cd599b)
+and after (against the predecessor). No source or SQL changed during the merge.
+The first `nativeStoreForwards` binding is explicitly authorized: the checker's
+exported identity/hash readers compute all nine after-hashes and the whole-file
+hash. Class data and admission machinery stay unchanged. Native review is now
+authorized; canonical verify and external delivery remain outside this run.
