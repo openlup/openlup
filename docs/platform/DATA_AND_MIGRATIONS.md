@@ -793,7 +793,9 @@ native admission, invoked from trusted main, validates co-located data with its
 own checker and refuses simultaneous machinery changes or machinery drift since
 the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
 `scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
-release entry points and preparation; test-only coverage changes remain allowed.
+release entry points and preparation; test-only coverage changes remain allowed,
+except the catalog test of the [closed native store forwards](#closed-native-store-forwards)
+and the named files that select and run it, which that section lists.
 The checker and its direct dependency closure, root manifests/lockfile and
 `.github/` files also stay unchanged. Admission reads candidate Git objects
 without running candidate code.
@@ -1391,7 +1393,29 @@ the quote after it, so one statement for the splitter would be several for the
 database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
 Adding a nullable column or a new CHECK on an existing table already follows the
-existing expand-only rules; this class adds no DROP NOT NULL permission.
+existing expand-only rules. The purchase-reservation slot alone adds an
+`existingTableStatements` list: three exact whole ALTER TABLE statements, in
+order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
+from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
+foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The reader
+accepts that list, and only that list, on this slot. Trusted main parses a changed
+registry before anything else, so the registry carries the list in a separate
+pin-only change after the reader has landed; until then the slot holds no list and
+a feature file has none to consume. Afterwards feature SQL must include each
+statement once, in that order. Its existing-table ALTERs cannot fall through to
+generic ADD admission.
+The checker pins the complete three-entry list; changing it requires a control
+change. Its target table must exist in the preceding native prefix.
+Comparison uses the existing statement splitter: leading comments/space are
+removed, internal statement bytes remain exact. Missing, duplicate, changed,
+extra or reordered companions refuse. No other slot gains this exception.
+
+The destination slot registers four created function signatures and pinned
+search paths. Its two new tables, revokes and RLS use the existing same-file
+narrowing rules below. Class data does not pin table columns, constraint/index
+names, function security mode, language, defaults or return type; feature SQL's
+whole-file/after-hashes and feature review retain those inventory and behavior
+duties. Synthetic shape acceptance establishes no implemented destination API.
 
 Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned
@@ -1421,7 +1445,7 @@ The static checks above are a first gate for ordinary mistakes, not the boundary
 against deliberately evasive SQL. For function identity, security attribute,
 `search_path` and privileges, the truth is the required real-PostgreSQL
 [catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). It replays
-one chain, the legacy selection's manifest units in order with earlier bound forwards
+one chain, the legacy selection's manifest units in path order with earlier bound forwards
 applied cumulatively, and does not replay the `qualified-v2`, `qualified-admin` or
 operator-provisioned histories. With no bound forward it replays that chain once, so
 the replay itself is proved. For every bound native forward it applies the forward
@@ -1434,15 +1458,22 @@ operator a forward creates for another operand type cannot hide what it adds:
 - Nothing PostgreSQL ships changes: no system function, relation privilege or column
   privilege.
 - The new functions, in any schema, equal the created list; changed functions lie in
-  the replaced and grant-only lists.
+  the replaced and grant-only lists. A replaced function keeps every attribute and
+  its ACL, so only its body may change. A grant-only function keeps its attributes and
+  body, may gain only EXECUTE for its listed grant roles and may lose privileges only
+  from its listed roles.
 - A created function is owned by the migration role, keeps no PUBLIC execute and
   grants execute only to `authenticated` and `service_role`, never with a grant
   option. A definer carries its pinned `search_path`; a function whose slot pins none
-  carries no `SET` at all.
+  carries no `SET` at all. Its language and leakproof flag are not compared: like
+  its body, they stay with the whole-file hash and the feature review.
 - Existing relations of every kind, indexes and TOAST tables included, keep their
   owner, privileges, row security, options and column privileges. A new relation of
   any kind is owned by the migration role and carries only its owner's table
-  privileges and no column privilege.
+  privileges and no column privilege. Relations are matched by OID, so a forward
+  that rewrites an existing table, for example by adding a column with a volatile
+  default, replaces its TOAST relation and is refused: a known fail-closed limit,
+  with a follow-up to compare TOAST relations without OID identity.
 - No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
   excepted. The purpose CHECK keeps every value it holds and may gain more, in the one list form PostgreSQL deparses
   for `IN`, and its slot lists the values it holds before the forward.
@@ -1458,6 +1489,11 @@ operator a forward creates for another operand type cannot hide what it adds:
   its enabled state included, stays as it was; the only addition allowed is the
   enforcement trigger PostgreSQL creates internally for a constraint the forward
   itself adds.
+
+The privileges it reads are those on functions, relations and their columns, schemas,
+databases, default privileges and server parameters, with role membership through the
+guard catalogs. The ACLs on types, languages, foreign data wrappers and servers, large
+objects and tablespaces, and the operator catalog, are not read.
 
 It runs with and without `service_role`, and its refusal cases include a function
 header that hides its attribute list inside a quoted default and a file whose

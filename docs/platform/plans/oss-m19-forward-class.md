@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: accepted repair and main merge committed; supervisor changed (see Actors); two new independent reviews pending.
+Status: landed in openlup/openlup#501 (merge `5f9c45e6c5b77b5861b486593b51af2babdd6e25`, 2026-11-02). The final state, including six native review cycles, the mechanical integration with main and the two integration reviews, is recorded in "Final state" at the end of this record. Earlier sections are the history of the work as it stood when each was written.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -649,7 +649,7 @@ Final verification and all external delivery remain reserved to the supervisor.
 
 Required main integration after CD-M19-72: native prepare refused merge preflight
 against main 4c7afd2590dc6998e22464153fca70a92eecfeb2. The integration-trailer control had
-landed after the accepted repair. A forced merge is pending; its only conflict
+landed after the accepted repair. A forced merge followed; its only conflict
 was the publication catalogue's adjacent plan-row insertion. The union retains
 both forward-class and integration-trailer rows, with every row and its order
 from both parents preserved. All other inherited changes are main's exact bytes.
@@ -730,3 +730,56 @@ accepted repair → preserve both data rows and refresh only affected shared pro
 No new static parser work, canonical verify, push, PR, queue or other worktree
 mutation was performed. Stop NEEDS_READ for the nonmechanical union; the next
 static parse bypass, if reviewers find one, still requires NEEDS_OWNER.
+
+## Final state (2026-11-02)
+
+Review history. Native review ran six cycles on the class and its catalog test.
+Cycles one to five each ended with findings that were repaired or ruled. Cycle six
+ended with two independent fresh reviews
+(`claude-code-subagent:opus:ab1e2e2d90feeddec` and `...:af142af124259a40d`) that
+returned PASS with no finding on tree `0ca4cc6e592546250d6cb6adb4aa7102122acaf5`
+(head `000165f8677d27134cd2f795568a0e606a29f2e5`). Its repair was limited to the three
+changes of the fifth-cycle ruling, and every open card was closed. The earliest
+counted PASS was 2026-11-02T10:53:51Z, which fixes the evidence expiry 24 hours later.
+
+Integration. Main moved after that review (a package landing). The merge `20f72f84…`
+of main `af172573385851a5ab73adbb1fda71804ea4bb26` was clean and had no hand edit:
+the merge of the reviewed head with main equals its tree
+`845dfe72d9ec6941eea2e87cd65a9b769c9098aa`, so the review session recorded the
+integration as mechanical and charged no repair cycle. Two further fresh reviewers
+(`claude-code-subagent:opus:ae65e25576ffa062b` and `...:a299c65730d21a51d`) reviewed
+the full integration delta, 16 files and none of them a class, caller, manifest,
+migration or protected file, together with its interactions, and returned PASS with
+no finding; no earlier card was reopened.
+
+Verification and delivery. Canonical local verification passed on the integration
+head (2,242 test files and 23,674 tests passed; one file and four tests skipped).
+Pull request #501 merged into main as `5f9c45e6c5b77b5861b486593b51af2babdd6e25`
+at 2026-11-02T11:50:52Z, with hosted checks and the native source receipt. The
+change has no package input, so package bytes are unchanged by construction.
+
+Corrections to earlier text. The note under the fifth cycle that adding a
+rewriting forward would mean changing the protected slot manifest is imprecise: a
+slot's own feature file could add a rewrite, for example a column with a volatile
+default, under the expand-only grammar, and the catalog test would refuse it. The
+refusal is fail-closed, none of the seven forwards rewrites a table, and the
+follow-up to compare TOAST relations without OID identity stands. The trailer of
+the fifth-cycle repair commit says relations are read "without an OID floor", while
+the relations PostgreSQL ships are compared as one digest of selected columns.
+
+Advice from the six cycles and the integration reviews, all non-blocking, is now in
+the data owner section: the freeze of replaced functions, the grant-only ACL rule,
+that a created function's language and leakproof flag are not compared, the path
+order of replayed units, the set of privileges read, the table-rewrite refusal, and
+that the catalog test and its named files are also refused in co-located changes of
+other classes. Two items stay open because they sit in protected control files: the
+ACL helper compares the grantee `0` with a bare integer (it can relabel an ACL item
+but not hide one), and a comment in the vitest configuration says the PostgreSQL
+tests self-skip without a daemon, which the catalog test does not (it throws).
+
+Self-retro: the cycles were spent on parser divergences until the review bar
+returned to a demonstrated effect on a stated boundary. The one material late
+finding combined a parser divergence with a catalog read that an operator created by
+the forward could capture, and was closed by refusing the character and typing the
+floor. Each frozen tree was proved by the full line rule, a rule-removal mutation
+set and a run of the real forwards before review.
