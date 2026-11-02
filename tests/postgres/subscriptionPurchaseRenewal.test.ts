@@ -1,7 +1,7 @@
+import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsumer.js";
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -38,15 +38,7 @@ async function rpc<T = Record<string, unknown>>(name: string, values: unknown[] 
   return (await executor.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS result`, values)).rows[0].result as T;
 }
 beforeAll(async () => {
-  mkdirSync(scratch, { recursive: true });
-  const packs: string[] = [];
-  for (const dir of ["core", "platform"]) {
-    const { stdout } = await exec("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], { cwd: resolve(`packages/${dir}`) });
-    packs.push(resolve(scratch, JSON.parse(stdout)[0].filename));
-  }
-  writeFileSync(resolve(scratch, "package.json"), JSON.stringify({ private: true, type: "module" }));
-  await exec("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...packs, "pg@8.22.0"], { cwd: scratch, timeout: 120_000 });
-  const require = createRequire(resolve(scratch, "package.json"));
+  const require = await installSubscriptionConsumer(scratch);
   const load = (key: string) => import(pathToFileURL(require.resolve(key)).href);
   api = await load("@openlup/platform/subscriptions"); payments = await load("@openlup/platform/payments");
   identity = await load("@openlup/platform/identity"); fulfillment = await load("@openlup/platform/fulfillment");

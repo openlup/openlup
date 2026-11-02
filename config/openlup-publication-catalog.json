@@ -26762,6 +26762,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/installSubscriptionConsumer.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/invoicingNativeHarness.ts",
       "class": "public-output"
     },
