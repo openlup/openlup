@@ -9,8 +9,8 @@ export function acquisitionPage(context: PageContext): HTMLElement {
     actionForm(context, {
       operation: 'acquisition.submit', submit: 'apply',
       fields: [
-        { name: 'firstName', label: 'firstName', value: 'Demo' },
-        { name: 'lastName', label: 'lastName', value: 'Applicant' },
+        { name: 'firstName', label: 'firstName', value: context.t('demoFirstName') },
+        { name: 'lastName', label: 'lastName', value: context.t('demoApplicant') },
         { name: 'email', label: 'email', type: 'email', value: 'applicant@example.test' },
         { name: 'consent', label: 'consent', type: 'checkbox' },
       ],
@@ -44,9 +44,9 @@ export function partnersPage(context: PageContext): HTMLElement {
     actionForm(context, {
       operation: 'partners.submit', submit: 'sendInquiry',
       fields: [
-        { name: 'company', label: 'company', value: 'Example Workshop' },
-        { name: 'firstName', label: 'firstName', value: 'Demo' },
-        { name: 'lastName', label: 'lastName', value: 'Partner' },
+        { name: 'company', label: 'company', value: context.t('demoCompany') },
+        { name: 'firstName', label: 'firstName', value: context.t('demoFirstName') },
+        { name: 'lastName', label: 'lastName', value: context.t('demoPartner') },
         { name: 'email', label: 'email', type: 'email', value: 'partner@example.test' },
         { name: 'phone', label: 'phone', type: 'tel', required: false },
         { name: 'notes', label: 'partnerNotes', type: 'textarea', required: false },

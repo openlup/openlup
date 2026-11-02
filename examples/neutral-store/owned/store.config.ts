@@ -27,7 +27,7 @@ export const configurations: Record<string, StoreConfig> = {
       hero: '/media/collection.svg',
       heroAlt: { en: 'Three illustrated fictional containers', pl: 'Trzy ilustracje fikcyjnych opakowań' },
     },
-    market: { country: 'PL', currency: 'PLN', timezone: 'Europe/Warsaw', locales: ['en', 'pl'] },
+    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
     offer: {
       layout: 'cards',
       minUnits: 1,
@@ -44,7 +44,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional supplement in a simple amber container.', pl: 'Fikcyjny suplement w prostym bursztynowym opakowaniu.' },
           details: { en: 'Demonstration product. The label is fictional and gives no consumption instructions.', pl: 'Produkt demonstracyjny. Etykieta jest fikcyjna i nie zawiera zaleceń spożycia.' },
           media: '/media/dawn.svg', mediaAlt: { en: 'Illustrated Dawn container', pl: 'Ilustracja opakowania Świt' },
-          contents: '60 units', unitPrice: { amountMinor: 3900, currency: 'PLN' },
+          contents: '60', unitPrice: { amountMinor: 3900, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
         {
@@ -53,7 +53,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional supplement with a pale green label.', pl: 'Fikcyjny suplement z jasnozieloną etykietą.' },
           details: { en: 'An inert catalogue example for testing product selection, prices and recurring orders.', pl: 'Przykład katalogowy do testowania wyboru produktów, cen i zamówień cyklicznych.' },
           media: '/media/noon.svg', mediaAlt: { en: 'Illustrated Noon container', pl: 'Ilustracja opakowania Południe' },
-          contents: '60 units', unitPrice: { amountMinor: 4500, currency: 'PLN' },
+          contents: '60', unitPrice: { amountMinor: 4500, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
         {
@@ -62,7 +62,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional supplement with a muted blue label.', pl: 'Fikcyjny suplement ze stonowaną niebieską etykietą.' },
           details: { en: 'No medical benefit is implied. No physical product is supplied by this application.', pl: 'Nie przypisujemy produktowi korzyści medycznych. Aplikacja nie dostarcza fizycznych produktów.' },
           media: '/media/dusk.svg', mediaAlt: { en: 'Illustrated Dusk container', pl: 'Ilustracja opakowania Zmierzch' },
-          contents: '30 units', unitPrice: { amountMinor: 2900, currency: 'PLN' },
+          contents: '30', unitPrice: { amountMinor: 2900, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
       ],
@@ -92,7 +92,7 @@ export const configurations: Record<string, StoreConfig> = {
       shippingNote: { en: 'No real roasting, charging or shipping takes place.', pl: 'Nie odbywa się rzeczywiste palenie, pobieranie płatności ani wysyłka.' },
     },
     media: { hero: '/media/coffee.svg', heroAlt: { en: 'Illustrated coffee bags', pl: 'Ilustracja torebek kawy' } },
-    market: { country: 'PL', currency: 'PLN', timezone: 'Europe/Warsaw', locales: ['en', 'pl'] },
+    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
     offer: {
       layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 1200,
       freeShippingFromMinor: 15000, subscriptionDiscountBps: 500,
@@ -104,7 +104,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional light roast in a paper bag.', pl: 'Fikcyjna jasno palona kawa w papierowej torebce.' },
           details: { en: 'Illustrative whole-bean coffee. No actual origin, certification or stock is claimed.', pl: 'Przykładowa kawa ziarnista. Bez deklaracji rzeczywistego pochodzenia, certyfikacji lub zapasu.' },
           media: '/media/light.svg', mediaAlt: { en: 'Illustrated light roast bag', pl: 'Ilustracja torebki jasnego palenia' },
-          contents: '250 g', unitPrice: { amountMinor: 4200, currency: 'PLN' },
+          contents: '250 g', unitPrice: { amountMinor: 4200, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
         {
@@ -113,7 +113,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional medium roast for your demonstration box.', pl: 'Fikcyjna średnio palona kawa do demonstracyjnego pakietu.' },
           details: { en: 'Use this product to test mixed boxes and recurring cadence. No real coffee is supplied.', pl: 'Ten produkt służy do testowania pakietów mieszanych i częstotliwości. Nie dostarczamy rzeczywistej kawy.' },
           media: '/media/medium.svg', mediaAlt: { en: 'Illustrated medium roast bag', pl: 'Ilustracja torebki średniego palenia' },
-          contents: '250 g', unitPrice: { amountMinor: 4600, currency: 'PLN' },
+          contents: '250 g', unitPrice: { amountMinor: 4600, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
         {
@@ -122,7 +122,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional dark roast with an illustrated label.', pl: 'Fikcyjna ciemno palona kawa z ilustrowaną etykietą.' },
           details: { en: 'The product, media and prices are fictional demonstration data.', pl: 'Produkt, ilustracje i ceny są fikcyjnymi danymi demonstracyjnymi.' },
           media: '/media/dark.svg', mediaAlt: { en: 'Illustrated dark roast bag', pl: 'Ilustracja torebki ciemnego palenia' },
-          contents: '250 g', unitPrice: { amountMinor: 4900, currency: 'PLN' },
+          contents: '250 g', unitPrice: { amountMinor: 4900, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
       ],

@@ -21,8 +21,6 @@ services:
   installation:
     build: .
     command: ['node', 'lifecycle.mjs', 'install']
-    environment:
-      STORE_CONFIGURATION: ${STORE_CONFIGURATION:-}
     volumes:
       - installation-socket:/var/run/postgresql
     depends_on:
@@ -30,11 +28,9 @@ services:
         condition: service_healthy
   application:
     build: .
+    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0']
     environment:
-      STORE_CONFIGURATION: ${STORE_CONFIGURATION:-}
       DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
-      PORT: '4319'
-      STARTER_CONTAINER: '1'
     depends_on:
       database:
         condition: service_healthy

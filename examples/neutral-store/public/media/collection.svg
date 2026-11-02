@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Fictional product illustration">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img">
   <rect width="320" height="320" rx="16" fill="#f0eee6"/>
   <rect x="91" y="53" width="138" height="36" rx="8" fill="#3e4842"/><rect x="80" y="84" width="160" height="186" rx="23" fill="#a47842" stroke="#51483c" stroke-width="3"/>
   <rect x="91" y="130" width="138" height="92" rx="3" fill="#b8ccb5"/>

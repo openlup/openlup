@@ -129,7 +129,7 @@ function reviewActions(context: PageContext): HTMLElement {
       operation: 'operator.reviewModerate', submit: 'save',
       fields: [{ name: 'reviewRef', label: 'actionRef' },
         { name: 'action', label: 'status', type: 'select', options: [
-          { value: 'publish', text: 'publish' }, { value: 'hide', text: 'hide' },
+          { value: 'publish', text: context.t('reviewPublish') }, { value: 'hide', text: context.t('reviewHide') },
         ] }],
     }));
 }
@@ -143,9 +143,9 @@ function partnerActions(context: PageContext): HTMLElement {
       fields: [{ name: 'id', label: 'caseRef' },
         { name: 'expectedVersion', label: 'actionRef', type: 'number', min: 1, value: '1' },
         { name: 'status', label: 'status', type: 'select', options: [
-          { value: 'contacted', text: 'contacted' }, { value: 'qualified', text: 'qualified' },
-          { value: 'disqualified', text: 'disqualified' },
-          { value: 'closed_won', text: 'closed_won' }, { value: 'closed_lost', text: 'closed_lost' },
+          { value: 'contacted', text: context.t('partnerContacted') }, { value: 'qualified', text: context.t('partnerQualified') },
+          { value: 'disqualified', text: context.t('partnerDisqualified') },
+          { value: 'closed_won', text: context.t('partnerClosedWon') }, { value: 'closed_lost', text: context.t('partnerClosedLost') },
         ] }],
     }));
 }

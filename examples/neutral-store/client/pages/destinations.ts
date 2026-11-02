@@ -94,7 +94,7 @@ const destinationLabels: Record<string, CopyKey> = {
 export function destinationsPage(context: PageContext): HTMLElement {
   const list = el('table', {}, el('thead', {}, el('tr', {},
     el('th', { scope: 'col' }, context.t('actionRef')),
-    el('th', { scope: 'col' }, 'English'), el('th', { scope: 'col' }, 'Polski'))));
+    el('th', { scope: 'col' }, context.t('languageEnglish')), el('th', { scope: 'col' }, context.t('languagePolish')))));
   const body = el('tbody');
   for (const destination of messageDestinations) {
     append(body, el('tr', {}, el('th', { scope: 'row' }, destination.id),

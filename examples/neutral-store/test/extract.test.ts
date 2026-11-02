@@ -10,8 +10,8 @@ import { setTimeout } from 'node:timers/promises';
 import { configurations } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-// A caller selects task-local scratch. No global temporary project or monorepo lookup is needed.
-const scratch = resolve(process.env.STARTER_TEST_SCRATCH ?? resolve(root, '.context'), 'extract-');
+// Source-release tests keep scratch inside this application.
+const scratch = resolve(root, '.context', 'extract-');
 
 test('extract creates an independent repository and refuses to overwrite an existing one', async () => {
   const { mkdir } = await import('node:fs/promises');
@@ -38,12 +38,30 @@ test('extract creates an independent repository and refuses to overwrite an exis
     assert.ok(ownership.pageCopyRule.includes('managed to owned'));
     for (const file of ownership.sourceOnly) await assert.rejects(access(resolve(target, file)));
     // The materialized application's default test discovery must not need archive tooling.
-    const environment = { ...process.env };
-    delete environment.NODE_TEST_CONTEXT;
     const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
-      cwd: target, encoding: 'utf8', stdio: 'pipe', env: environment,
+      cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
     });
     assert.match(tests, /fail 0/);
+    for (const [args, code] of [
+      [['--unknown', 'value'], 'starter_argument_unknown'],
+      [['--configuration'], 'starter_argument_value_required'],
+      [['--port', 'bad'], 'starter_port_invalid'],
+      [['--configuration', 'unknown-configuration'], 'starter_configuration_unknown'],
+    ] as const) {
+      assert.throws(() => execFileSync(process.execPath,
+        ['--experimental-strip-types', 'host/server.ts', ...args], { cwd: target, stdio: 'pipe' }),
+      error => String((error as { stderr?: Buffer }).stderr).includes(code));
+    }
+    for (const [args, code] of [
+      [['--unknown', 'value'], 'starter_argument_unknown'],
+      [['--configuration'], 'starter_argument_value_required'],
+      [['--configuration', 'unknown-configuration'], 'starter_configuration_unknown'],
+    ] as const) {
+      assert.throws(() => execFileSync(process.execPath, ['lifecycle.mjs', 'up', ...args],
+        { cwd: target, stdio: 'pipe' }),
+      error => String((error as { stderr?: Buffer }).stderr).includes(code));
+    }
+
     await assert.rejects(access(resolve(target, 'packages')));
     assert.ok((await stat(resolve(target, 'lifecycle'))).mode & 0o100);
     const displayed = execFileSync(process.execPath, ['lifecycle.mjs', 'ownership'], { cwd: target, encoding: 'utf8' });
@@ -63,10 +81,6 @@ test('a third owned-only registry supplies the host default and shared offer rul
   const { mkdir } = await import('node:fs/promises');
   await mkdir(dirname(scratch), { recursive: true });
   const target = await mkdtemp(scratch);
-  const environment = { ...process.env };
-  delete environment.NODE_TEST_CONTEXT;
-  delete environment.STORE_CONFIGURATION;
-  delete environment.STARTER_CONTAINER;
   let child: ReturnType<typeof spawn> | undefined;
   let exited: Promise<unknown> | undefined;
   try {
@@ -88,7 +102,7 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
 `;
     await writeFile(resolve(target, 'owned/store.config.ts'), owned);
     const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
-      cwd: target, encoding: 'utf8', stdio: 'pipe', env: environment,
+      cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
     });
     assert.match(tests, /fail 0/);
     const probe = createServer();
@@ -98,8 +112,8 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
     assert.ok(address && typeof address !== 'string');
     const port = address.port;
     await new Promise<void>((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
-    child = spawn(process.execPath, ['--experimental-strip-types', 'host/server.ts'], {
-      cwd: target, env: { ...environment, PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'],
+    child = spawn(process.execPath, ['--experimental-strip-types', 'host/server.ts', '--port', String(port), '--listen', '127.0.0.1'], {
+      cwd: target, stdio: ['ignore', 'pipe', 'pipe'],
     });
     exited = once(child, 'exit');
     let diagnostic = '';

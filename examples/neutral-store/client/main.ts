@@ -70,7 +70,7 @@ async function start(): Promise<void> {
     const context: PageContext = {
       config, locale, route, query: new URLSearchParams(location.search), fragments,
       t: key => copy[locale][key],
-      money: amount => new Intl.NumberFormat(locale === 'pl' ? 'pl-PL' : 'en-GB', {
+      money: amount => new Intl.NumberFormat(locale, {
         style: 'currency', currency: config.market.currency,
       }).format(amount / 100),
       getCart: cart.get,
@@ -125,7 +125,7 @@ function shellHeader(context: PageContext): HTMLElement {
   const alternatePath = context.route.key === 'product'
     ? productPath(context.route.slug ?? '', alternate)
     : context.route.key === 'notFound' ? routes.home[alternate] : routes[context.route.key][alternate];
-  const language = link(alternate === 'pl' ? 'Polski' : 'English', alternatePath + location.search);
+  const language = link(copy[alternate][alternate === 'pl' ? 'languagePolish' : 'languageEnglish'], alternatePath + location.search);
   language.hreflang = alternate;
   language.lang = alternate;
   return el('header', { class: 'site-header' },
@@ -145,6 +145,9 @@ function shellFooter(context: PageContext): HTMLElement {
 }
 
 void start().catch(() => {
-  root.replaceChildren(el('main', {}, el('h1', {}, 'Application unavailable / Aplikacja niedostępna'),
+  const locale = resolveRoute(location.pathname).locale;
+  document.documentElement.lang = locale;
+  document.title = copy[locale].applicationUnavailable;
+  root.replaceChildren(el('main', {}, el('h1', {}, copy[locale].applicationUnavailable),
     el('code', {}, 'starter_configuration_unavailable')));
 });

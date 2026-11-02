@@ -2,22 +2,19 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertConfig } from '../shared/config.ts';
+import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
-const config = selectConfiguration(process.env.STORE_CONFIGURATION || undefined);
+const options = parseHostArguments(process.argv.slice(2));
+const config = selectConfiguration(options.configuration);
 assertConfig(config);
-const configuredPort = Number(process.env.PORT ?? 4319);
-if (!Number.isInteger(configuredPort) || configuredPort < 1024 || configuredPort > 65535) {
-  throw new Error('starter_port_invalid');
-}
-
-// Container transport may listen on its bridge; Compose publishes to host loopback only.
-const host = process.env.STARTER_CONTAINER === '1' ? '0.0.0.0' : '127.0.0.1';
+const configuredPort = options.port;
+// Listening on the container bridge is an explicit argument; Compose publishes loopback only.
+const host = options.listen;
 const allowedAuthorities = new Set([`127.0.0.1:${configuredPort}`, `localhost:${configuredPort}`]);
 const maxBodyBytes = 64 * 1024;
 const contentTypes: Record<string, string> = {

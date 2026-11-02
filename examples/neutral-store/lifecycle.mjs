@@ -8,8 +8,22 @@ const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
 
-function run(executable, argv) {
-  execFileSync(executable, argv, { cwd: root, stdio: 'inherit', env: process.env });
+function run(executable, argv, input) {
+  execFileSync(executable, argv, { cwd: root,
+    stdio: input === undefined ? 'inherit' : ['pipe', 'inherit', 'inherit'],
+    ...(input === undefined ? {} : { input }) });
+}
+
+function configurationArgument(argv) {
+  let configuration;
+  for (let index = 0; index < argv.length; index += 2) {
+    if (argv[index] !== '--configuration') throw new Error('starter_argument_unknown');
+    if (configuration !== undefined) throw new Error('starter_argument_duplicate');
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
+    configuration = value;
+  }
+  return configuration;
 }
 
 if (command === 'candidate') {
@@ -37,12 +51,19 @@ if (command === 'candidate') {
   }, null, 2) + '\n');
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
 } else if (command === 'up') {
-  if (args.length > 0) throw new Error('starter_up_unexpected_arguments');
+  const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
+    const config = selectConfiguration(configurationArgument(args));
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
-    run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation']);
-    run('docker', ['compose', 'up', '--wait', 'application']);
+    run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
+      'node', 'lifecycle.mjs', 'install', '--configuration', config.id]);
+    // Install and runtime receive the same non-secret configuration through arguments.
+    const override = { services: { application: { command: [
+      'node', '--experimental-strip-types', 'host/server.ts',
+      '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
+    ] } } };
+    run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)
       ? error.message : 'starter_installation_failed';
@@ -54,7 +75,7 @@ if (command === 'candidate') {
   const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
   const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
-    await installDemonstration(selectConfiguration(process.env.STORE_CONFIGURATION || undefined), bootstrapDemonstration);
+    await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
   } catch (error) {
     const code = error instanceof Error ? error.message : 'starter_installation_failed';
     process.stderr.write(`${code}\n`);
@@ -81,6 +102,6 @@ if (command === 'candidate') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | down | verify | upgrade <args> | ownership\n');
   process.exitCode = 2;
 }

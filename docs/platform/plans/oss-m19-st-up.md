@@ -222,3 +222,29 @@ history rebuilding; the final follow-up is scanned again before sign-off.
 Public hygiene contains no private role labels, decision/register identifiers,
 notes paths or worker-name prose. The sole name-shaped match is the explicitly
 assigned public task-record path in its required catalogue row.
+
+## Repaired predecessor integration
+
+The current continuation authorizes a normal signed merge of repaired predecessor
+`f8314043166038663ca383d9cbcace195eea288c` into the previous follow-up
+`746ab5286311fadc47c6a01595c760b6df48f879`, with no rebase or source changes
+in the predecessor. Its argument interface, fictional test market and localized
+UI remain the base. The previously accepted real bootstrap, Unix-socket install
+capability, private passwordless runtime, named refusals, destructive local-only
+reset, no-deployment-reuse boundary, graph guard and required cold-consumer proof
+remain this follow-up's bounded behaviour.
+
+The starter reads no process environment. Lifecycle passes only the selected
+public configuration ID to the one-shot installer and supplies the host command
+through a stdin Compose override. Host listen/port are explicit non-secret flags.
+No install password exists and no install connection is placed in arguments or
+process environment. The fixed passwordless runtime URL remains confined to the
+application's private Compose-network configuration. The default up command
+needs no flags. Detailed conflict and two-parent delta evidence stays with the
+integration read packet. This continuation stops at that delta read; no native
+prepare, review, submission or canonical verification is authorized here.
+
+The earlier predecessor/pin instructions above are historical. The repaired
+predecessor includes the fetched main tip, so the next review's local follow-up
+pin is the exact repaired predecessor given here, subject to rechecking actual
+ancestry and main admission at that later scheduled turn.

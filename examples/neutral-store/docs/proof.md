@@ -108,7 +108,7 @@ portable-rail qualification. At that earlier stage the installed bootstrap bindi
 and `./lifecycle up` refused `starter_installation_binding_required`.
 
 Both configurations pass 38 browser UI specs, including the six N5 actions on
-account and limits pages in PL and EN and the visible inventory-traceability
+account and limits pages in Polish and English and the visible inventory-traceability
 boundary. Each retains the single unchanged required purchase failure with
 `host_binding_required`. No native purchase or upgrade result follows from these
 passing UI/seed witnesses. The independent extraction recipe additionally uses an exact source snapshot
@@ -132,10 +132,11 @@ were already cached; the application image was built during startup.
 | Second `./lifecycle up` | 5.771 |
 | `./lifecycle down` | 0.602 |
 | `./lifecycle up` with preserved volume | 8.227 |
-| `STORE_CONFIGURATION=coffee ./lifecycle up` | 7.109 |
+| Other configuration (earlier interface) | 7.109 |
 
-No intervention, keys, source edits or manual migrations were needed for those
-commands. All 95 qualified-v2 history units applied through the installed API;
+Those early measurements used the former configuration interface; the current
+flag interface is documented in the README. No intervention, keys, source edits
+or manual migrations were needed for those commands. All 95 qualified-v2 history units applied through the installed API;
 repeat startup applied zero. Runtime readback matched every authored seed column,
 first for supplements and then coffee: six products/SKUs/prices and two lists
 across both. Repeated startup and stop/start preserved complete table readbacks.

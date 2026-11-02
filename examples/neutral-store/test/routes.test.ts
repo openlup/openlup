@@ -49,3 +49,24 @@ test('all unavailable account preference and private-view actions retain the sam
   assert.equal(limit.code, 'starter_account_preferences_unavailable');
   assert.deepEqual(limit.actions, ['savedAddresses', 'billing', 'deliveryPreference', 'paymentPreference', 'privateProfile', 'profileViews']);
 });
+
+test('operator select choices use copy keys present in both languages', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../client/pages/operator.ts', import.meta.url), 'utf8');
+  function checkChoices(text: string): number {
+    const choices = [...text.matchAll(/\{\s*value:\s*'[^']+',\s*text:\s*([^}]+)\}/g)];
+    assert.ok(choices.length > 0, 'operator choices must be inspected');
+    for (const choice of choices) {
+      const key = /^context\.t\('([^']+)'\)\s*$/.exec(choice[1]!.trim())?.[1];
+      assert.ok(key, 'operator option labels must use owned copy keys');
+      for (const locale of ['en', 'pl'] as const) {
+        assert.ok(Object.hasOwn(copy[locale], key), `${locale}: ${key}`);
+        assert.ok(copy[locale][key as keyof typeof copy.en].trim());
+      }
+    }
+    return choices.length;
+  }
+  assert.equal(checkChoices(source), 7);
+  // Negative witness: a wire value planted as visible text must be rejected.
+  assert.throws(() => checkChoices(source.replace("context.t('reviewPublish')", "'publish'")), /owned copy keys/);
+});

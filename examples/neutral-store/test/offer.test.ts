@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
-import { assertConfig, type StoreConfig } from '../shared/config.ts';
+import { assertConfig, parseHostArguments, type StoreConfig } from '../shared/config.ts';
 import { evaluateOffer, type Cart } from '../shared/offer.ts';
 import { createBrowserCart } from '../client/cart.ts';
 
@@ -205,4 +205,39 @@ test('configuration accepts a third fictional slug without changing the shared t
   config.id = 'harbor-objects';
   assertConfig(config);
   assert.ok(evaluateOffer(config, cart(config)).ok);
+});
+
+
+test('host arguments have a non-secret loopback default and explicit configuration, port and listen', () => {
+  assert.deepEqual(parseHostArguments([]), { configuration: undefined, port: 4319, listen: '127.0.0.1' });
+  assert.deepEqual(parseHostArguments(['--configuration', 'harbor-objects', '--port', '4321', '--listen', '0.0.0.0']),
+    { configuration: 'harbor-objects', port: 4321, listen: '0.0.0.0' });
+});
+
+for (const [args, code] of [
+  [['--unknown', 'value'], 'starter_argument_unknown'],
+  [['--port'], 'starter_argument_value_required'],
+  [['--configuration', '--port', '4319'], 'starter_argument_value_required'],
+  [['--port', 'NaN'], 'starter_port_invalid'],
+  [['--port', '4e3'], 'starter_port_invalid'],
+  [['--port', '4319.5'], 'starter_port_invalid'],
+  [['--port', '80'], 'starter_port_invalid'],
+  [['--port', '65536'], 'starter_port_invalid'],
+  [['--listen', '192.0.2.1'], 'starter_listen_invalid'],
+  [['--port', '4319', '--port', '4320'], 'starter_argument_duplicate'],
+] as const) {
+  test(`host arguments refuse ${args.join(' ')}`, () => {
+    assert.throws(() => parseHostArguments(args), { message: code });
+  });
+}
+
+test('fictional market formats validate without a named deployment market', () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  config.market = { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] };
+  for (const product of config.offer.products) product.unitPrice.currency = 'XTS';
+  assertConfig(config);
+  for (const market of [{ ...config.market, currency: 'bad' }, { ...config.market, country: 'bad' },
+    { ...config.market, timezone: 'Invalid/Timezone' }]) {
+    assert.throws(() => assertConfig({ ...config, market }), { message: 'starter_market_invalid' });
+  }
 });
