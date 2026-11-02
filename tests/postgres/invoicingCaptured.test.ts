@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { env as processEnvironment } from "node:process";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "@openlup/platform/invoicing";
@@ -51,7 +52,7 @@ beforeAll(async () => {
   mkdirSync(".context/scratch", { recursive: true });
   scratch = mkdtempSync(resolve(".context/scratch/invoice-consumer-"));
   const packs = join(scratch, "packs"); mkdirSync(packs);
-  const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, encoding: "utf8", timeout: 120_000, env: { ...process.env, NODE_PATH: "" } });
+  const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, encoding: "utf8", timeout: 120_000, env: { ...processEnvironment, NODE_PATH: "" } });
   const pack = (directory: string) => {
     const [info] = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", packs], directory));
     return join(packs, info.filename);
