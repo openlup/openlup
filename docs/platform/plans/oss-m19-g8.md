@@ -1,6 +1,7 @@
 # Native lifecycle notice dispatch
 
-Status: implementation complete and maintainer read accepted for DCO sign-off
+Status: BLOCKED by the unchanged connected-handover witness preflight.
+Implementation and the earlier maintainer read remain accepted for DCO sign-off
 with scoped diagnostic/documentation corrections; forward admission and later
 integration/review remain pending. No publication or
 live-provider qualification is claimed.
@@ -235,7 +236,8 @@ is added.
 Forward-class admission still refuses the draft under the unchanged registry:
 non-expand-only forward differs from reviewed replacement path or bytes.
 No registry pin or checker edit is made. Canonical SQL packaging and migration
-projection remain with the foundation prerequisite until it lands; neither
+projection remain pending integration of the foundation predecessor, now landed
+on main at 09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a; neither
 packages/platform/sql nor src/migrations changes here. DCO-signed commit is authorized after the accepted corrections; no native
 review, canonical verify, pull request or release is authorized at this stop.
 
@@ -269,3 +271,229 @@ would miss. The accepted explicit-lock diagnostic remains as a retry witness. Th
 correction makes lost mail capture observable through one owner-documented
 read query, and states that customer-linked notice/receipt facts have no erasure
 path yet; no SQL or delivery behavior changes.
+
+
+## Existing-suite compatibility audit
+
+The signed candidate reached the existing-suite stop finding below; the audit
+is blocked and incomplete. Existing
+suite bodies remain unchanged; the sole authorized exception increments the
+current native chain literals and current inventory pins by this forward. Frozen
+issued-prefix inventory pins and unit counts remain untouched. No changelog edit
+exists, so there is no note to move to a fragment.
+
+The fresh real PostgreSQL measurement rechecked each previous digest before
+applying the byte-identical forward and observed:
+
+| Installation shape | Current measured inventory SHA-256 |
+| --- | --- |
+| Legacy | 55fda620a186c372c82d35de83888bfb133d0333734334d96a5737af3bcc5113 |
+| Qualified bootstrap | 3280c765be6ae0af73e826207c07bce0dfae98cee9604e90503f659c621d7a4d |
+| Qualified separate migrator | f230b54b465126402a2ba7a22793e70b80b0bea3da6ca5d1c10502224dffce7b |
+| Restricted installer-managed | b533e764e09628871a0d1d3709890aa5fde4bb50cb8126ec630ee7e41e839801 |
+| Restricted operator-provisioned | 85d9c6c48bb800d00d91d99869d6a1271cb47af8022f96c3cd786c1e5aa80ace |
+
+Current qualified literals change 95 to 96; restricted literals change 94 to 95,
+in their existing tests/proof companions only. No historic inventory or SQL
+bytes change. The suite list and results are recorded at the end of this audit.
+
+Rows need not come from the new draft writer: any later native paid transition
+attempts the additional mail capture, with a linked cycle selecting subscription_cycle
+and absent draft metadata falling back to one_time. Already-paid imported rows
+are not backfilled, and restore inserts do not fire the paid UPDATE trigger.
+The opt-in notice job also scans older unreceipted native lifecycle/reminder
+facts; enabling it can process a backlog. Existing sent dunning rows are not
+claimed again, and accepted matching receipt keys prevent duplicate sends.
+A missing historical receipt is not proof of a prior send. No created-after
+cutoff or alternate-rail receipt-key translation is introduced. The host must
+account for the source backlog and receipt identities when enabling this job.
+No subscription, method or renewal routine body is changed by this row, and
+no new-writer companion row is required to continue renewing an existing store.
+
+The two dunning-case/notification transfer entries will be supplied by the
+scheduled retry predecessor, which lands first. This standalone candidate keeps
+them until integration; at its merge it drops only those duplicate entries and
+retains the reminder ledger and transactional delivery receipt entries. The
+accepted read packet records the explicit ownership handoff.
+
+
+### Existing-suite stop finding
+
+The unchanged opt-in connected-handover witness failed before creating any
+source/target/cohort resources. Node v24.21.0 and the already-local immutable
+Node24.21.0 image were confirmed. The default invocation requires the old
+separate-migrator inventory at runM14EffectHandover.ts:53; the selected branch
+manifest now has the independently measured new inventory. This is a consequence
+of the candidate's added forward, not a changed test input or patched witness.
+The witness's next frozen graph guard also requires 82 tables; the added four
+transfer entries make the actual graph 86. That guard and all subsequent
+handover/recovery assertions were not reached. Neither assertion is among the
+specifically authorized literal-count exceptions, and neither was changed.
+
+Actual current inventory:
+f230b54b465126402a2ba7a22793e70b80b0bea3da6ca5d1c10502224dffce7b.
+Unchanged witness expectation:
+894164222f03e296ebdb05b18c9065ad1a53bd2ec27e53f28c46812fb5267af3.
+
+The existing-suite requirement is not satisfied. No conclusion about the
+unreached handover behavior is drawn from the new focused proof or the earlier
+maintainer read. The audit queue stopped at its admission wait after this
+failure; no active suite was interrupted and no source/SQL repair was made.
+The known count/current-inventory corrections remain the only test edits.
+A decision is needed on the fixed witness/profile boundary before further work;
+the witness must not be relabeled green by silently changing its assertions.
+
+Completed: 60 unchanged or expressly count-adjusted automated suites, 3598 passing cases; one unchanged executable witness failed; 64 automated suites were not run after the stop. Four selected proof companions are tracked with their owning suites below.
+
+| Existing suite / witness | Result |
+| --- | --- |
+| `packages/platform/test/account-support/bindings.test.ts` | PASS — Tests  5 passed (5) |
+| `packages/platform/test/account-support/operatorAuthority.test.ts` | PASS — Tests  5 passed (5) |
+| `packages/platform/test/account-support/ownerRefusals.test.ts` | PASS — Tests  27 passed (27) |
+| `packages/platform/test/account-support/paymentMethodComposition.test.ts` | PASS — Tests  16 passed (16) |
+| `packages/platform/test/account-support/portFit.test.ts` | PASS — Tests  1 passed (1) |
+| `packages/platform/test/account-support/selfService.test.ts` | PASS — Tests  8 passed (8) |
+| `packages/platform/test/commerce/effects/commerceDomainEffects.test.ts` | PASS — Tests  5 passed (5) |
+| `packages/platform/test/commerce/managedOutboxEvents.test.ts` | PASS — Tests  2 passed (2) |
+| `packages/platform/test/communications/sql.test.ts` | NOT RUN — audit stopped at failure |
+| `packages/platform/test/composition/commerceContribution.test.ts` | PASS — Tests  5 passed (5) |
+| `packages/platform/test/fulfillment/paidHandoff.test.ts` | PASS — Tests  2 passed (2) |
+| `packages/platform/test/identity/sql.test.ts` | NOT RUN — audit stopped at failure |
+| `packages/platform/test/packageBoundary.test.ts` | PASS — Tests  2819 passed (2819) |
+| `packages/platform/test/risk/orderPaidRiskPort.test.ts` | PASS — Tests  8 passed (8) |
+| `packages/platform/test/subscriptions/contracts.test.ts` | PASS — Tests  3 passed (3) |
+| `packages/platform/test/subscriptions/facades.test.ts` | PASS — Tests  43 passed (43) |
+| `packages/platform/test/subscriptions/portFit.test.ts` | PASS — Tests  12 passed (12) |
+| `packages/platform/test/subscriptions/renewalCycleMechanism.test.ts` | PASS — Tests  29 passed (29) |
+| `packages/platform/test/subscriptions/renewalKeys.test.ts` | PASS — Tests  1 passed (1) |
+| `scripts/agent-review-queue.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/check-publishable-gap-enumeration.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/checkout-recovery-lifecycle-schema.test.ts` | PASS — Tests  9 passed (9) |
+| `scripts/customer-diagnostic-history-schema.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/customer-recovery-console-managed-schema.test.ts` | PASS — Tests  9 passed (9) |
+| `scripts/customer-recovery-console-schema.test.ts` | PASS — Tests  12 passed (12) |
+| `scripts/customer-selfservice-recovery-schema.test.ts` | PASS — Tests  3 passed (3) |
+| `scripts/documentation-bundle.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/documentation-cli.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/documentation-impact.test.ts` | PASS — Tests  101 passed (101) |
+| `scripts/omnipack-e2e/lifecycleEvidence.test.ts` | PASS — Tests  28 passed (28) |
+| `scripts/oss-published-tree-check.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/packages/package-release.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/packages/platform-cold-consumer.test.ts` | PASS — Tests  108 passed (108) |
+| `scripts/packages/set-release.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/payment-truth-schema.test.ts` | PASS — Tests  3 passed (3) |
+| `scripts/platform-migration-manifest.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/public-ci-neutrality.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/qualified-migration-admission.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/reviewed-batch-forward.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/source-preview-release.test.ts` | NOT RUN — audit stopped at failure |
+| `scripts/source-release-preparation.test.ts` | NOT RUN — audit stopped at failure |
+| `server/adapters/omnipack/commerceFulfillmentPort.test.ts` | PASS — Tests  6 passed (6) |
+| `server/adapters/postgres/migrationRunner.test.ts` | NOT RUN — audit stopped at failure |
+| `server/adapters/supabase/catalogRead.test.ts` | NOT RUN — audit stopped at failure |
+| `server/adapters/supabase/commerce/oms/outboxEvents.test.ts` | PASS — Tests  2 passed (2) |
+| `server/adapters/supabase/commerce/outboxAggregateStore.test.ts` | PASS — Tests  2 passed (2) |
+| `server/adapters/supabase/customerSubscriptionFacade.test.ts` | PASS — Tests  7 passed (7) |
+| `server/adapters/supabase/paidFulfillmentRecoveryOpsPort.test.ts` | PASS — Tests  4 passed (4) |
+| `server/adapters/supabase/platform/dunningObservabilityEvidence.test.ts` | PASS — Tests  9 passed (9) |
+| `server/adapters/supabase/platform/observabilityEvidencePort.test.ts` | PASS — Tests  9 passed (9) |
+| `server/adapters/supabase/subscription/dunningStore.test.ts` | PASS — Tests  6 passed (6) |
+| `server/adapters/supabase/subscription/recoveredDunningCaseScan.test.ts` | PASS — Tests  7 passed (7) |
+| `server/domains/commerce/omsFulfillmentHealthDigest.test.ts` | PASS — Tests  3 passed (3) |
+| `server/domains/commerce/outboxDispatchRegistry.test.ts` | PASS — Tests  39 passed (39) |
+| `server/domains/commerce/outboxOrderPaidEmailHandler.test.ts` | PASS — Tests  23 passed (23) |
+| `server/domains/commerce/paidFulfillmentRecovery.test.ts` | PASS — Tests  14 passed (14) |
+| `server/domains/commerce/paidFulfillmentRecoveryOpsHandler.test.ts` | PASS — Tests  9 passed (9) |
+| `server/domains/platform/emailObservabilityEvidence.test.ts` | PASS — Tests  12 passed (12) |
+| `server/domains/platform/omnipackFulfillmentHealthObservability.test.ts` | PASS — Tests  5 passed (5) |
+| `server/domains/platform/outboxObservabilityEvidence.test.ts` | PASS — Tests  1 passed (1) |
+| `server/domains/platform/subscriptionObservabilityEvidence.test.ts` | PASS — Tests  13 passed (13) |
+| `server/domains/platform/subscriptionRenewalTriageContext.test.ts` | PASS — Tests  5 passed (5) |
+| `server/runtime/auth/identityReadiness.test.ts` | NOT RUN — audit stopped at failure |
+| `server/runtime/communications/communicationsSchema.test.ts` | PASS — Tests  1 passed (1) |
+| `server/runtime/public-reference/m11CommerceBinding.test.ts` | PASS — Tests  15 passed (15) |
+| `server/runtime/public-reference/m12AccountSupportBinding.test.ts` | PASS — Tests  17 passed (17) |
+| `server/runtime/public-reference/m12SelfServiceBinding.test.ts` | PASS — Tests  15 passed (15) |
+| `server/runtime/public-reference/m15RiskBinding.test.ts` | PASS — Tests  8 passed (8) |
+| `server/runtime/public-reference/subscriptionFacades.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/platform/channels/channelConsumer.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/platform/inventory/inventoryConsumer.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/accountSupportComposition.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/accountSupportOperatorAuthority.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/accountSupportSelfService.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/accountSupportUpgrade.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/acquisitionEvidenceParity.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/bundleNative.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/channelConnectedRestore.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/channelPurchase.conformance.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/commerceComposition.test.ts` | PASS — Tests  4 passed (4) |
+| `tests/postgres/commerceManagedRail.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/communicationsNative.test.ts` | PASS — Tests  20 passed (20) |
+| `tests/postgres/connectedManagedRetained.test.ts` | PASS — Tests  16 passed (16) |
+| `tests/postgres/connectedStoreTransfer.test.ts` | PASS — Tests  7 passed (7) |
+| `tests/postgres/customerNewsletterWithdrawal.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/dunningAttemptReplay.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/dunningLifecycleActiveRepair.test.ts` | PASS — Tests  10 passed (10) |
+| `tests/postgres/fulfillmentDeliveryAlignment.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/fulfillmentHostSeamRefusals.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/fulfillmentNativeConformance.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/fulfillmentPreparationBinding.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/fulfillmentRenewalAdmission.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/fulfillmentStockEvidenceReplay.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/inventoryNative.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/invoicingContinuity.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/invoicingDelivery.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/invoicingNativeConformance.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/invoicingStoreContract.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/m05CatalogComposition.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/m14ManagedCatchup.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/m14QualifiedAdminComposition.proof.ts` | Covered by passing parent |
+| `tests/postgres/m14QualifiedAdminComposition.test.ts` | PASS — Tests  2 passed (2) |
+| `tests/postgres/m14QualifiedComposition.proof.ts` | Covered by passing parent |
+| `tests/postgres/m14QualifiedComposition.test.ts` | PASS — Tests  4 passed (4) |
+| `tests/postgres/m14ReleasedSchemaUpgrade.proof.ts` | Parent not run after stop |
+| `tests/postgres/m14ReleasedSchemaUpgrade.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/m14RestrictedConnectedRestore.test.ts` | PASS — Tests  15 passed (15) |
+| `tests/postgres/managedStorageTransfer.proof.ts` | Parent not run after stop |
+| `tests/postgres/managedStorageTransfer.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/newPurchaseStockManaged.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/operatorIdentityUpgrade.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/operatorInvitationCatalogue.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/operatorInvitationLifecycle.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/partnerAcquisition.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/paymentsNativeConformance.test.ts` | PASS — Tests  7 passed (7) |
+| `tests/postgres/platformManifestSuffix.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/portabilityRows.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/promotionsNative.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/retainedClientSubscriptionImport.test.ts` | PASS — Tests  13 passed (13) |
+| `tests/postgres/reviewedBatchForwards.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/reviewedPortableCreation.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/runM14EffectHandover.ts` | FAIL — inventory/profile preflight; no handover assertions reached |
+| `tests/postgres/shippingNative.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/starterGraduationCadence.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/subscriptionComposition.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/subscriptionContinuityBaseline.test.ts` | PASS — Tests  4 passed (4) |
+| `tests/postgres/subscriptionManagedStock.test.ts` | NOT RUN — audit stopped at failure |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | NOT RUN — audit stopped at failure |
+
+
+Audit self-retro: the regular transfer and new notice suites did not execute the
+opt-in handover entry. Tracing direct executable importers exposed its fixed
+inventory/profile contract before broad readiness could be claimed. Keep that
+failure distinct from the specifically authorized chain-count corrections and
+from unreached provider/handover behavior; no assertion was relaxed to pass it.
+
+
+The latest grant permits a DCO commit of only the five authorized count/pin test
+updates and this task evidence. That local commit does not resolve or waive the
+failed witness or qualify this candidate for native review. No source/SQL fix,
+unchanged-witness edit, registry pin or checker change is included. The two
+dunning transfer entries are deliberately kept until the instructed merge;
+removing them early is not used to satisfy the old graph guard.
+
+Count-update author checks passed: strict typecheck has zero unresolved edges
+and zero consumer errors; lint/build and eight structural rule suites have zero
+errors and the same 33 pre-existing warnings. Whitespace, generated context and
+the staged-diff secret scan pass. These checks do not resolve the failed
+handover witness or replace the 64 unrun existing suites.
