@@ -1,15 +1,58 @@
 name: neutral-store
 services:
+  database:
+    # Same immutable PostgreSQL 16 image as the repository's test-postgres probe.
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    environment:
+      # initdb needs no password; the active HBA below rejects every privileged TCP login.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: ['postgres', '-c', 'hba_file=/etc/postgresql/demo-pg-hba.conf']
+    configs:
+      - source: database_auth
+        target: /etc/postgresql/demo-pg-hba.conf
+    volumes:
+      - database:/var/lib/postgresql/data
+      - installation-socket:/var/run/postgresql
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'starter_runtime', '-d', 'neutral_store']
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  installation:
+    build: .
+    command: ['node', 'lifecycle.mjs', 'install']
+    environment:
+      STORE_CONFIGURATION: ${STORE_CONFIGURATION:-}
+    volumes:
+      - installation-socket:/var/run/postgresql
+    depends_on:
+      database:
+        condition: service_healthy
   application:
     build: .
     environment:
       STORE_CONFIGURATION: ${STORE_CONFIGURATION:-}
+      DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
       PORT: '4319'
       STARTER_CONTAINER: '1'
+    depends_on:
+      database:
+        condition: service_healthy
     ports:
       - '127.0.0.1:4319:4319'
     healthcheck:
       test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4319/api/config').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 5s
+      interval: 1s
       timeout: 3s
-      retries: 12
+      retries: 30
+volumes:
+  database:
+  installation-socket:
+configs:
+  database_auth:
+    content: |
+      # Only the one-shot installer receives the Unix socket volume.
+      local all all trust
+      # No secrets or keys are required for this isolated fictional database.
+      host neutral_store starter_runtime all trust
+      host all all all reject

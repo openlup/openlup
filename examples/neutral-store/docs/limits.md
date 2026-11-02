@@ -29,8 +29,9 @@ the install connection after installed bootstrap. It refuses absent bootstrap
 (`starter_installation_binding_required`), a runtime login or current role
 (`starter_seed_runtime_role_forbidden`), a different install identity
 (`starter_seed_install_role_required`) and a database without the demonstration
-marker (`starter_seed_demonstration_database_required`). The current candidate
-still lacks bootstrap; this is not a qualified cold installation.
+marker (`starter_seed_demonstration_database_required`). The one-shot bootstrap
+uses the complete installed history and refuses any pre-existing unmarked database.
+Purchase and subscription qualification remain pending.
 Promotions remain seed configuration, with no runtime administration.
 Clients, stock and settings must use their native writers; never seed them. Purchase, renewal terms and
 method states are never replaced by hand-written application rows.

@@ -38,17 +38,33 @@ if (command === 'candidate') {
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
 } else if (command === 'up') {
   if (args.length > 0) throw new Error('starter_up_unexpected_arguments');
-  const { installDemonstration } = await import('./installation/install.ts');
-  const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
-    await installDemonstration(selectConfiguration(process.env.STORE_CONFIGURATION || undefined));
-    run('docker', ['compose', 'up', '--build', '--wait']);
+    run('docker', ['compose', 'build']);
+    run('docker', ['compose', 'up', '--wait', 'database']);
+    run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation']);
+    run('docker', ['compose', 'up', '--wait', 'application']);
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)
       ? error.message : 'starter_installation_failed';
     process.stderr.write(`${code}\n`);
     process.exitCode = 2;
   }
+} else if (command === 'install') {
+  // Internal one-shot Compose entry; no install connection reaches the HTTP host.
+  const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
+  const { selectConfiguration } = await import('./owned/store.config.ts');
+  try {
+    await installDemonstration(selectConfiguration(process.env.STORE_CONFIGURATION || undefined), bootstrapDemonstration);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'starter_installation_failed';
+    process.stderr.write(`${code}\n`);
+    if (code === 'starter_seed_demonstration_database_required') {
+      process.stderr.write('See README.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
+    }
+    process.exitCode = 2;
+  }
+  // The installed runner owns its pool; this one-shot process owns its lifetime.
+  process.exit(process.exitCode ?? 0);
 } else if (command === 'down') {
   // Does not discard the database volume. Destruction is an explicit separate owner action.
   run('docker', ['compose', 'down']);

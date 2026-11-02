@@ -154,6 +154,14 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The existing required platform cold consumer also runs the neutral starter's
+pure source tests, extracts an independent application, installs the complete
+local package set and locked dependency tarballs offline, then runs its pure
+tests, strict typecheck and build. It reports its added elapsed seconds. Browser
+journeys and timed Compose installation remain the starter's separate
+[execution recipe](examples/neutral-store/docs/proof.md); a missing purchase
+binding must still fail its required purchase spec.
+
 Cold installed-artifact discovery classifies `channels`, `channels/contracts`
 and `channels/server` as non-adapter entries. Their declarations and runtime
 imports must work without optional database/provider peers; the existing

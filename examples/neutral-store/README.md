@@ -1,7 +1,7 @@
 # Neutral store
 
-Status: local application draft. Base-candidate compilation and browser
-navigation are checked; full installation, sandbox purchase and upgrade
+Status: local application draft. Candidate compilation, browser navigation and
+local installed PostgreSQL bootstrap are checked. Sandbox purchase and upgrade
 qualification remain pending. This is not a stable or supported framework.
 
 This is an application, not an npm package or a monorepo workspace. It uses the
@@ -14,9 +14,10 @@ supplement and coffee catalogues use the same pages, validation and host seams.
 The installer catalogue and purchase/account stores are being delivered by
 their package owners. Until they land, the app deliberately returns
 `host_binding_required` at dependent actions. The catalogue and UI can be
-inspected without pretending an order was persisted. `./lifecycle up` currently
-refuses `starter_installation_binding_required`; it does not declare a partial
-installation ready. Final release pins and lockfile wait for the selected set.
+inspected without pretending an order was persisted. `./lifecycle up` installs
+the packaged PostgreSQL history and fictional catalogue before starting the UI.
+Final release pins and lockfile wait for the selected set.
+The single required purchase browser spec fails by design until the native purchase path lands.
 
 An accepted native limit and a missing required purchase binding are different:
 the former is documented acceptance, the latter still blocks completion.
@@ -57,11 +58,11 @@ exact release archive. The target command is:
 ./lifecycle up
 ```
 
-That path is **not qualified in this draft**: the selected installer and native
-bootstrap are still absent. It must eventually install the selected npm set,
-apply its catalogue and seed fictional data automatically, serve the app at
-`http://127.0.0.1:4319` and support a sandbox order, without keys, source edits or
-manual migration. A page-only health check does not establish that outcome.
+With the selected local candidate artifacts and generated lockfile in place,
+Compose builds the application, starts pinned PostgreSQL 16, runs the one-shot
+installed migration runner and fictional seed, then serves the application at
+`http://127.0.0.1:4319`. No keys, source edits or manual migration are needed.
+A healthy application does not establish the still-pending sandbox purchase.
 
 For authorized UI development after importing the candidate and generating its
 lockfile, use the application directory and its own toolchain:
@@ -105,8 +106,8 @@ They do not replace it with an application-owned upgrade engine. A real
 
 ## Install-only fictional catalogue
 
-`./lifecycle up` calls `installation/install.ts` before starting the host. Once
-an installed bootstrap is bound, it obtains a dedicated install connection and
+`./lifecycle up` calls `installation/install.ts` in a one-shot container before
+starting the host. The installed bootstrap obtains a dedicated install connection and
 applies **one** owned `owned/demo-seed.ts` step. The pure builder reads the same
 `StoreConfig` as the UI: deterministic product/SKU/list/price identifiers and
 parameterized upserts populate only `catalog_products`, `catalog_skus`,
@@ -121,14 +122,42 @@ transaction. It never marks an arbitrary existing database as a demo.
 `starter_installation_binding_required`, `starter_seed_runtime_role_forbidden`,
 `starter_seed_install_role_required` and
 `starter_seed_demonstration_database_required` name the refusal boundaries.
-The current base candidate has no bootstrap, so `up` still refuses before any
-connection, Docker invocation or seed write. No environment variable enables it.
+The missing-binding refusal applies only when the installed migration API is absent.
+The complete history uses explicit `qualified-v2` / `installer-managed` selection.
+Only PostgreSQL and the one-shot installer mount the Unix socket that permits
+privileged local logins. The application has only the restricted runtime TCP
+URL, no socket, install credential or privileged connection environment. The
+database has no published port; its HBA admits only the runtime login over TCP
+and rejects all other logins. This passwordless local demonstration is isolated
+by container mounts and networking; it is not a customer authentication recipe.
+No deployment recipe may reuse this Compose file or its HBA.
+An existing unmarked database fails closed before role or schema changes. Only
+a successful database creation in that invocation can set the marker. An
+interruption between creation and marking deliberately leaves a refused database.
 
 Clients, stock and settings use native writers; they are never seeded here.
 Subscription renewal terms, term lines and method states belong to the native
 purchase path and must never be hand-written by this application. After the
 catalogue seed, purchase uses zero hand-written business rows. This data step
 is not a schema installer, price editor, promotion engine or customer import.
+
+## Reset an interrupted first install
+
+An interruption after database creation but before its demonstration marker is
+written leaves an unmarked database. Startup refuses it with
+`starter_seed_demonstration_database_required`; it never adopts or marks it.
+To discard that interrupted **local demonstration**, run from its extracted
+application directory with the same Compose project selection used to start it:
+
+```sh
+./lifecycle down
+docker compose down --volumes
+./lifecycle up
+```
+
+`docker compose down --volumes` explicitly removes the named demonstration
+volumes and destroys all local demonstration data. It must never be run against
+anything else. A fresh startup creates and marks a new demonstration database.
 
 ## Data boundary
 
