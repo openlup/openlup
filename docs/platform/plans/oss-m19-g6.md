@@ -1,8 +1,8 @@
 # Native sandbox payment ingress and durable attempts
 
-Status: stopped at an existing-suite missing packaged SQL asset failure after
-the authorized additive-column assertion passed. The signed candidate is intact;
-no source/SQL repair or native review has been performed.
+Status: implementation and focused proof complete. Native review waits for the
+forward class and the supervisor. Final signed policy/pack evidence accompanies
+the immutable handoff.
 Development preview; sandbox money only.
 
 ## Outcome, scope and authority
@@ -219,7 +219,8 @@ move are authorized repairs here; source/SQL failures stop for a delta read.
 No new approval pin, checker edit or native review is permitted.
 
 The change note moves unchanged to
-`packages/platform/changes/sandbox-payment-truth.md`, with no catalogue row.
+a platform release fragment, with no per-file catalogue row, following the
+[release guidance](../DEVELOPMENT_AND_RELEASE.md).
 Current complete counts are qualified-v2 96, qualified-admin 95 and legacy 92.
 The released-schema helper is an indirect companion of the qualified-admin proof;
 its current-chain literal receives the same +1. Issued-prefix counts and historic
@@ -386,3 +387,263 @@ No pin/checker/native review; native repair cycles remain zero.
 Self-retro: the complete existing case caught a missing packaged migration after
 its older-row check was tightened; a SQL-inclusive size projection is not proof
 that the checked-in installer contains the asset. No further optimization added.
+
+## Authorized R0 integration and real package measurement
+
+The supervisor authorized a signed checkpoint, one merge of current main,
+additive conflict resolution and the existing R0 projection route. Checkpoint
+20104adad611e84a9cb8e1ea2c77080f3b7be680 contains the count/current-pin changes,
+fragment move, exact full-row nullable-marker assertion and audit history.
+Signed merge 36d44adf93b6cdb0eaadb294258d79ce65dc8eb0 has parents that checkpoint
+and main 09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a. No rebase or force-push.
+Manual additive conflicts: publication catalog entries retained from both sides;
+DATA_AND_MIGRATIONS compatibility paragraphs retained from both sides. No
+production implementation or SQL body was changed in resolution.
+
+Stable patch IDs excluding only the task record differ:
+premerge d3b4836e5c8c3f7cc5ccc816eefd5740b676ccbb;
+postmerge 76ccb8c56d9bfbcbe91bb509503ebb3b55657597.
+This is not a conflict-free mechanical/no-read claim. Excluding those two
+manually resolved paths as well gives identical IDs on both sides:
+4720749323dfef65d3249034d5fc5634242364c3. The integration is within the explicit
+supervisor grant; native review has not begun and consumes zero repair cycles.
+
+R0 task record and owner regeneration instructions were read. The documented
+checkPlatformMigrationProjection(process.cwd(),true) generator produced exactly
+packages/platform/sql/20261101222000_sandbox_payment_attempts.sql and the
+sql/manifest.json changes. The canonical forward and generated copy both hash
+7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29.
+The only additional R0-required authored delta is the new SQL asset's
+public-output catalog row. Generated catalog.ts and all prior SQL copies are
+unchanged; no manual generated-value merge, checker edit or approval pin.
+
+Fresh real PostgreSQL16 measurements on the main prefix plus exact forward
+retain current counts legacy92, qualified-v2 96, qualified-admin95 and hashes:
+legacy f86acaf1c03e228c8dddb3e01f20f4a524b36989e0ffb112e31b2966456b6685;
+bootstrapMigrator 6b54e3182cb105c95d47a27c04fa71136f712c6980c8710aa4129f628f2b63b6;
+separateMigrator e9544067ee22ba9b6ff8044c1aaead3455f64c2a016f999590f51a39b37bb769;
+installerManaged 465ced2137adce08fa2af8dfa4fb1109d2fc72e0f5005420485ddb9f8d4a089b;
+operatorProvisioned fc6b68ffbef31684ac25b9cdf25149541033612ddbeb56621bd3a24a59f253c2.
+Historic issued inventories/pins remain untouched. The scratch bundler initially
+inlined an imported CLI's main guard, printing usage and setting exit1 despite
+completing all five measurements. The corrected launcher externalizes that CLI;
+its separate log preserves the initial result. This is not a suite failure or
+production change.
+
+Real npm packs with the same compiler/dependencies compare main09cd599b with
+the integrated candidate: base2318731 bytes /10978278 unpacked /2913 files;
+candidate2330148 bytes /11034179 unpacked /2920 files; delta+11417 packed bytes,
++55901 unpacked bytes,+7 files. Candidate tarball SHA256 is
+f6f235bcde0676483a963e594d129bc61506b3707967d1d9205e6f8c8976d20f.
+Actual archive inspection confirms the packaged SQL and complete generated
+manifest equal source exactly. Root connected transfer files are absent from
+the package and add zero tarball bytes/files. This replaces the earlier SQL-only
+projection estimate; the approximately10KB target is soft, and the actual
+2330148 total stays below2485000. No cap change.
+
+The audit restarts all55 selected existing files against this integrated base,
+including the two previously passing files, so no final result silently reuses
+a pre-R0 installation proof. The only full-row assertion exception remains
+invoicingNativeConformance.test.ts:100; no other such edits have been made.
+
+## Existing-suite audit on the integrated base: PASS
+
+All55 existing files pass on main09cd599b plus G6, totaling 4334 cases. Each file
+ran unchanged through its focused admission, except the explicitly authorized
+current counts/hashes and invoicingNativeConformance.test.ts:100 full-row
+expectation. No additional additive-column comparison was edited. The original
+connectedStoreTransfer.test.ts ran with exact main09cd599b bytes (pre-G6);
+the candidate test file was restored in finally and matches its committed bytes.
+The two premerge passes were rerun, so no result below relies on the pre-R0 base.
+Recorded admissions waited 4433s in total (largest 421s); test execution totaled
+798.899s. Logs/results and the prior two stopped audits are retained separately.
+
+| Existing file | Result | Cases |
+| --- | --- | ---: |
+| `server/adapters/postgres/paymentTruth.test.ts` | PASS | 4 |
+| `tests/postgres/invoicingContinuity.test.ts` | PASS | 3 |
+| `tests/postgres/invoicingNativeConformance.test.ts` | PASS | 9 |
+| `tests/postgres/paymentsNativeConformance.test.ts` | PASS | 7 |
+| `tests/postgres/channelConnectedRestore.test.ts` | PASS | 1 |
+| `tests/postgres/connectedManagedRetained.test.ts` | PASS | 16 |
+| `tests/postgres/connectedStoreTransfer.test.ts` | PASS | 7 |
+| `tests/postgres/m14ManagedCatchup.test.ts` | PASS | 1 |
+| `tests/postgres/managedStorageTransfer.test.ts` | PASS | 1 |
+| `tests/postgres/subscriptionComposition.test.ts` | PASS | 20 |
+| `tests/postgres/m14QualifiedComposition.test.ts` | PASS | 4 |
+| `tests/postgres/m14QualifiedAdminComposition.test.ts` | PASS | 2 |
+| `tests/postgres/m14RestrictedConnectedRestore.test.ts` | PASS | 15 |
+| `tests/postgres/m14ReleasedSchemaUpgrade.test.ts` | PASS | 1 |
+| `tests/postgres/m14RecipeConformance.test.ts` | PASS | 22 |
+| `packages/platform/test/account-support/ownerRefusals.test.ts` | PASS | 27 |
+| `packages/platform/test/account-support/paymentMethodComposition.test.ts` | PASS | 16 |
+| `packages/platform/test/packageBoundary.test.ts` | PASS | 2843 |
+| `packages/platform/test/payments/adapterConformance.test.ts` | PASS | 7 |
+| `packages/platform/test/payments/bindings.test.ts` | PASS | 2 |
+| `packages/platform/test/payments/contracts.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/postgresPaymentTruth.test.ts` | PASS | 5 |
+| `packages/platform/test/payments/preparedAttempt.test.ts` | PASS | 7 |
+| `packages/platform/test/payments/reconciliation.test.ts` | PASS | 4 |
+| `packages/platform/test/payments/refundEvidence.test.ts` | PASS | 7 |
+| `packages/platform/test/payments/repairAuthority.test.ts` | PASS | 2 |
+| `packages/platform/test/payments/repairContinuity.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/stripe/conformance.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/stripe/factory.test.ts` | PASS | 16 |
+| `packages/platform/test/payments/tpay/conformance.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/tpay/factory.test.ts` | PASS | 64 |
+| `packages/platform/test/payments/truth.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/verifiedIngress.test.ts` | PASS | 8 |
+| `packages/platform/test/payments/verifyHandler.test.ts` | PASS | 3 |
+| `packages/platform/test/subscriptions/contracts.test.ts` | PASS | 3 |
+| `scripts/documentation-impact.test.ts` | PASS | 101 |
+| `scripts/packages/platform-cold-consumer.test.ts` | PASS | 108 |
+| `scripts/payment-truth-schema.test.ts` | PASS | 3 |
+| `scripts/public-ci-payment-allowance.test.ts` | PASS | 8 |
+| `scripts/reference-adapters/paymentEventPortConformance.test.ts` | PASS | 1 |
+| `scripts/source-preview-release.test.ts` | PASS | 718 |
+| `server/_lib/publicCoordinates.test.ts` | PASS | 3 |
+| `server/adapters/paymentFailureDisplay.test.ts` | PASS | 7 |
+| `server/adapters/paymentFailureEvidenceCompatibility.test.ts` | PASS | 16 |
+| `server/adapters/supabase/commerce/paymentRecoveryGuidance.test.ts` | PASS | 16 |
+| `server/adapters/supabase/payment/paymentProviderReconciliation.test.ts` | PASS | 17 |
+| `server/bff/commerce/tpay-channels.test.ts` | PASS | 4 |
+| `server/domains/payment/paymentTruth.test.ts` | PASS | 8 |
+| `server/infra/stripe/stripeApiClient.test.ts` | PASS | 15 |
+| `server/shared/preparedProviderAttempt.test.ts` | PASS | 14 |
+| `src/pages/ReferencePaymentRepairPage.test.tsx` | PASS | 9 |
+| `tests/platform/checkoutRecoveryProviderConformance.test.ts` | PASS | 8 |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS | 106 |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS | 20 |
+| `tests/stripe/stripeCriticalPathFakeGate.test.tsx` | PASS | 20 |
+
+Compatibility findings now have existing-suite evidence: retained and connected
+stores with no simulator-written companions, native late/replayed settlement,
+managed catch-up/storage, current qualified installations and issued-prefix
+upgrades pass. Fresh sandbox truth/recovery without companions is intentionally
+refused; ordinary renewal settlement bypasses that assertion, as documented in
+the shared G7 interface. Non-sandbox generic assertion skips simulator storage;
+cancelled captured truth retention also applies to native non-sandbox events.
+No automatic backfill/adoption is claimed. Supabase SQL remains unchanged, and
+its existing recovery/reconciliation suites pass. The new G6 acceptance/transfer
+fixtures and final cheap checks are still to be rerun before the packaging commit.
+
+## Final integration check stop: public typecheck TS2698
+
+Runtime proof on the integrated base is green: all55 existing files /4334 cases,
+G6's fresh15 PostgreSQL acceptance cases, and all11 candidate connected-transfer
+cases. The candidate transfer run includes the new writer/restore proof in
+addition to the separately executed exact pre-G6 seven-case file. Lint, including
+its structural rules and gated package rebuilds, passes with zero errors and the
+same33 existing warnings. No test, production-source or canonical-SQL repair was
+made after the R0 merge/projection.
+
+The next required gate, public typecheck over all five projects, FAILS with one
+consumer-side TS2698 against a zero ceiling; unresolved edges remain zero.
+The authorized expectation at invoicingNativeConformance.test.ts:100 spreads
+h.legacy.row. That property is inferred from tests/helpers/invoicingNativeHarness.ts:30,
+which declares legacyRow: unknown, and its getter returns that unknown unchanged.
+TypeScript cannot spread unknown into an object. The exact comparison passes
+all nine real-PG runtime cases, but Vitest does not validate its TypeScript type.
+The raw gate summary is retained in g6-postmerge-typecheck.log. No cast, assertion
+relaxation or helper/source type change was attempted. This is not a count/hash
+or generated projection fix, so the run stops under the supervisor's failure
+rule. API and documentation-policy checks after this gate were not run.
+
+The signed checkpoint20104ada and signed merge36d44adf remain intact. Generated
+package SQL/manifest, the required asset catalog row and this task evidence are
+staged but uncommitted; no final packaging commit was made over the red gate.
+The package measurement remains2330148 packed bytes /2920 files (+11417/+7
+against merged main09cd599b), including SQL and the complete manifest. Both
+canonical and packaged forward remain byte-identical at SHA256
+7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29.
+No approval pin, checker edit, native review or external write. Native repair
+cycles remain zero; the estimate stays0.5–1 supervised working day after the
+remaining typecheck/approval prerequisites.
+
+Self-retro: the accepted runtime full-row assertion also needs a valid static
+row type; the unchanged suite passes while the five-project compiler catches
+its unknown spread. Keep both runtime and compiler proof before readiness.
+The scratch reference launch initially bundled a CLI main guard; its first
+externalization also exposed a relative-import launch error. Externalizing the
+image-pull module corrected the launcher, and all five real-PG measurements then
+completed successfully with the same hashes. One initial pretest build started
+while admission was pending; the later gated lint rebuilt all three packages,
+and every test/pack/final-check stage waited for its own admission. Serialize
+admission completion and stage launch; no gate/control change was introduced.
+
+## Authorized test narrowing and handover continuation
+
+The supervisor classified TS2698 as a test typing detail and authorized local
+record narrowing in the one expectation. Only h.legacy.row is narrowed to
+Record<string,unknown> inside that spread; the full old-row equality and exact
+review_required_at:null requirement remain. No any comparison, harness type,
+production source or SQL change. The five-project public typecheck now passes
+with zero consumer errors and zero unresolved edges.
+
+The opt-in handover witness changes exactly its two current literals: selected
+inventory e9544067ee22ba9b6ff8044c1aaead3455f64c2a016f999590f51a39b37bb769
+(the separate-migrator/restore value measured on real PostgreSQL after R0), and
+connected table count84, measured by importing connectedNativeStoreTables.
+The two added tables moving the prior82 count are payment_simulator_attempts
+and payment_simulator_observations. The guard's message text remains unchanged.
+The default witness will use the already-local immutable Node24.21.0 image
+sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20.
+No image pull/build, new witness mode or extra data/setup step is introduced.
+Its end-to-end outcome and table population are pending actual execution; the
+separate G6 transfer suite already proved both tables populated through writers.
+All55 prior existing suites remain passing evidence; the changed invoicing file
+is being rerun with the type-only narrowing before final readiness.
+
+## Handover completion and signed-candidate preparation
+
+The authorized local Record<string,unknown> narrowing passes the nine-case
+invoicing suite and the five-project public typecheck: zero unresolved edges,
+zero consumer errors. Lint passes with zero errors and the same33 warnings;
+the platform API snapshot/export checks pass without generated API changes.
+The harness type and full-row equality remain unchanged in runtime meaning.
+
+The opt-in default handover ran to its end with exactly the two permitted
+literal edits. Its real PostgreSQL catalogue reports96 units, ending at the G6
+forward, and inventory e9544067ee22ba9b6ff8044c1aaead3455f64c2a016f999590f51a39b37bb769.
+The captured/restored graph has84 tables. payment_simulator_attempts and
+payment_simulator_observations are the two tables added to the former82-table
+profile. This witness populated neither simulator table (zero rows in each);
+it transferred their installed empty relations. The separate G6 transfer suite
+passed all11 cases with writer-created populated attempts/observations, stale
+fences, review terminality, exact replay and redelivery.
+
+The handover result is LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION:
+two accepted effects recovered, one uncertain shipment still fenced, one ordinary
+target post, graph/filesystem publication before target activation, and zero
+cleanup failures. Source writers were frozen. Selected target readiness was
+99738ms in this single finite local run; this is no whole-store RTO or hosted
+provider qualification. Evidence is retained in the owned journey report and
+handover summary under ignored task scratch. No setup, privilege, mode, message
+text or assertion logic in the handover script changed.
+
+Policy caught two authoring details: the new SQL asset catalog row was after
+manifest.json instead of in lexical order, and the task record named a release
+fragment excluded from the materialized public inventory. Only our added row
+was moved; the task now links the public release guidance instead. No checker,
+catalog exception, new fragment row or package input was added. Structural
+policy checks now pass. Current source fingerprints require two fresh scoped
+no-impact trailers (portability-capability and tests), prepared for the signed
+commit under the existing documentation process. The explanations retain the
+same fixture, command, retirement/publication and finite readiness contracts;
+existing payment/data/transfer owner updates cover the new behavior. Final
+signed-head policy binding is retained with the handoff.
+
+The last actual complete pack remains2330148 packed bytes /2920 files,
++11417 bytes/+7 versus main09cd599b. The local narrowing, witness literals,
+catalog ordering and task citation changes alter no packaged input. The
+requested post-signing real repack is reported with the immutable handoff.
+Canonical and packaged forward SHA256 remain
+7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29.
+SQL inventory, OMS table/column facts and the G7 recovery interface are unchanged;
+commerce_record_settlement and managed SQL are untouched. No native review,
+approval pin, checker edit, push or external delivery. Repair cycles remain zero.
+
+Self-retro: a complete witness run exposed no further runtime defect. Policy
+caught an incorrectly placed authored catalog row and a citation to an
+unpublished release input; correct the row placement and point at the public
+owner guidance, keeping the existing checker and publication boundary intact.

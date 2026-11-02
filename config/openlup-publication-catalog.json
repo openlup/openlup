@@ -3250,6 +3250,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261101222000_sandbox_payment_attempts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
