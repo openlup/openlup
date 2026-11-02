@@ -169,3 +169,41 @@ text caused the avoidable setup failure; distinct idempotency input is simpler
 than adding casts or retry logic. Trace native foreign keys and use real runtime
 proof before calling a source-only read ready. The direct shared predicate needs
 no fallback, compatibility relation, retry join or new abstraction.
+
+## Authorized integration and landing continuation
+
+The programme lead named this row for final verification and delivery. The
+supervisor explicitly authorized merging current main, resolving only the
+catalogue overlap as an additive union, fresh integration review, full local
+verification, push, PR, source receipt and queueing. Stop at queued or merged.
+No release, publication, credential, settings or other-row authority is added.
+
+Fresh policy revision and integration base:
+`09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a`. Applicable agent/contributor,
+AI-accountability, native-review and verifier instructions are unchanged since
+the previous policy pin. The prior candidate was
+`92e19e3e7e3caee04c42427a8e94834ce3ad7c93`, tree
+`bfaa16497ccef92337da8a9a27053b47ea47589c`.
+
+The actual merge produced exactly one conflict:
+`config/openlup-publication-catalog.json`, where both branches added task rows
+at the same insertion point. Resolution preserves every byte from main and
+adds only this task's record and PostgreSQL-test rows at their sorted positions.
+Removing those two exact row blocks reproduces main's catalogue byte for byte;
+JSON parsing also passes. No other conflict exists. Native adapter and both
+behavioral tests remain byte-equal to the prior candidate. Changes inherited
+from main include the packaged migration runner/facades and communication
+conformance; their interactions are included in the integration review.
+
+This is a manual additive union, not mechanical integration. Native history,
+reviewer exclusions, findings and earliest applicable source expiry carry on;
+ordinary prepare must charge the changed candidate, with no cycle refund.
+The earlier cycle-0 state remains historical. Focused merged-tree checks, two
+fresh integration reviews and full canonical verification are required before
+submission. Exact post-commit evidence and delivery identities remain in the
+existing ignored native/verification evidence so the reviewed tree stays frozen.
+
+Continuation self-retro: a catalogue insertion conflict needs an additive union
+and a byte-preservation check, not a rebase or a mechanical-merge exemption.
+The shared single predicate remains the smallest adequate repair; no production
+or test logic was added during integration.
