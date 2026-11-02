@@ -2,6 +2,15 @@
   "version": 2,
   "surfaces": [
     {
+      "id": "own-stack-example",
+      "when": "Application-owned routing and authentication using released public catalog ports",
+      "paths": [
+        "examples/own-stack/**"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#own-stack-integration-sample"
+    },
+    {
       "id": "repository",
       "when": "Repository entrypoints, build configuration and contributor setup",
       "paths": [

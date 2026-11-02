@@ -326,3 +326,53 @@ seven missing-export errors from old built package outputs. Lint's normal
 prerequisite builds refreshed all three packages; the focused typecheck retry
 then passed all five projects with zero unresolved edges and zero consumer
 errors. No source, baseline or budget repair was needed for those stale outputs.
+
+
+### Second forced integration
+
+Main advanced from `99a0407a9cf62d19364167e0551d36bde0a3d525` to
+`677f508e25121a22ffab2e3d1284cf7fcb47f1dc`. Prepare refused the reviewed
+head `f85fd7ed6b164eafb52a29fa0454b55b1fd6d1d6` on the publication-catalogue
+conflict. The merge has exactly that one manual conflict. The resolution is an
+exact additive row union preserving both parents' row subsequences and existing
+formatting. The shared routing and source-map additions merged without conflict;
+no other source or generated API report needed manual resolution.
+
+Stable task patch IDs, excluding this task record: before
+`b25b82c6ab228f76e2bde7084a15d3c15ae2e98a`; after
+`bbd9e9373ccb3cad21b0227eb201c03d24b28227`. This manual union uses ordinary
+integration accounting and full final verification. The preceding full local
+PASS binds head `f85fd7ed6b164eafb52a29fa0454b55b1fd6d1d6`, tree
+`9702b7f2462e97a094fd348d37da48f394334e3c`, all canonical phases, including
+23,316 passing root tests and four skipped cases. It is not copied as proof for
+this new candidate.
+
+The new-line importer comparison finds **no overlap** between main's changed
+paths and either the changed executable modules or the eight previously run
+importer suites listed above. Shared non-module paths are
+`config/doc-routing.json`, `config/openlup-publication-catalog.json` and
+`docs/platform/SOURCE_MAP.md`. Main's complete changed-file list is:
+
+- `config/doc-routing.json`
+- `config/openlup-publication-catalog.json`
+- `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`
+- `docs/platform/SOURCE_MAP.md`
+- `docs/platform/plans/oss-m19-g18.md`
+- `examples/own-stack/.gitignore`
+- `examples/own-stack/README.md`
+- `examples/own-stack/app.mjs`
+- `examples/own-stack/package.template.json`
+- `examples/own-stack/run.mjs`
+- `examples/own-stack/verify.test.mjs`
+
+The set version remains `0.36.0`. The committed projection is deliberately not
+regenerated for this base advance: its hash and counts may lag between release
+sets, while the existing set-version assertion enforces release-set preparation.
+Fresh integration review, boundary/projection tests, cheap checks, neutrality and
+canonical verification follow on the actual new tree. Delivery is limited to a
+non-force push, preserving the current PR text, a new receipt and thread-status
+report; the supervisor owns later arming and enqueueing.
+
+Self-retro: checking module/importer overlap distinguishes inherited example
+additions from changed execution code; retain the unchanged focused witnesses
+and avoid regenerating a cross-change fingerprint during landing.
