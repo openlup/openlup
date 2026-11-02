@@ -133,6 +133,10 @@ Cookies are host-only, HttpOnly, SameSite=Lax, scoped to `/api/actions`, and Sec
 exactly for a configured HTTPS origin. The local mailbox is a demonstration
 transport, not proof of access to a real mailbox.
 
+With `publicOrigin` set, a probe using the ordinary loopback Host receives
+`starter_local_host_required`. Lifecycle's internal probe connects privately and
+sends the configured Host; any external health probe must also send that Host.
+
 ## Customize and upgrade
 
 Read [customization](docs/customization.md), [ownership](docs/ownership.md) and

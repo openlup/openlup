@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { applicationHealthcheck } from './host/healthcheck.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -66,11 +67,8 @@ if (command === 'candidate') {
       '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
       '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
     ] } } };
-    if (config.publicOrigin) {
-      // Connect over the private bridge but exercise the selected public Host.
-      override.services.application.healthcheck = { test: ['CMD', 'node', '-e',
-        `fetch('http://127.0.0.1:4319/api/config',{headers:{Host:${JSON.stringify(new URL(config.publicOrigin).host)}}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))`] };
-    }
+    const healthcheck = applicationHealthcheck(config.publicOrigin);
+    if (healthcheck) override.services.application.healthcheck = healthcheck;
     run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)

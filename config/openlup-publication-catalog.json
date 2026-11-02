@@ -1806,6 +1806,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/healthcheck.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/native-composition.ts",
       "class": "public-output"
     },
@@ -1927,6 +1931,10 @@
     },
     {
       "path": "examples/neutral-store/test/extract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/healthcheck.test.ts",
       "class": "public-output"
     },
     {
