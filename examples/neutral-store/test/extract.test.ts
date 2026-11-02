@@ -56,16 +56,12 @@ test('extract creates an independent repository and refuses to overwrite an exis
       [['--unknown', 'value'], 'starter_argument_unknown'],
       [['--configuration'], 'starter_argument_value_required'],
       [['--configuration', 'unknown-configuration'], 'starter_configuration_unknown'],
-      [['--configuration', 'coffee'], 'starter_installation_binding_required'],
     ] as const) {
       assert.throws(() => execFileSync(process.execPath, ['lifecycle.mjs', 'up', ...args],
         { cwd: target, stdio: 'pipe' }),
       error => String((error as { stderr?: Buffer }).stderr).includes(code));
     }
 
-    assert.throws(() => execFileSync(process.execPath, ['lifecycle.mjs', 'up'], {
-      cwd: target, stdio: 'pipe',
-    }), error => String((error as { stderr?: Buffer }).stderr).includes('starter_installation_binding_required'));
     await assert.rejects(access(resolve(target, 'packages')));
     assert.ok((await stat(resolve(target, 'lifecycle'))).mode & 0o100);
     const displayed = execFileSync(process.execPath, ['lifecycle.mjs', 'ownership'], { cwd: target, encoding: 'utf8' });

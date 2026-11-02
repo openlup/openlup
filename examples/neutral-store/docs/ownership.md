@@ -54,8 +54,11 @@ runs extraction and refusal coverage, including the materialized test command.
 and price row sets from `StoreConfig`. `installation/install.ts` is managed and
 reachable only from lifecycle installation, never the HTTP host; it requires the
 install login/current role and a database-level demonstration marker. The
-bootstrap is pending, and the default refusal is
-`starter_installation_binding_required`. A customer environment must use its
+bootstrap runs the complete packaged history in a one-shot container. Only that
+container receives the privileged Unix socket; the host receives the runtime
+TCP URL only. The missing installed API refuses
+`starter_installation_binding_required`, and an existing unmarked database is
+never adopted or marked. A customer environment must use its
 own data onboarding, never this seed or demonstration marker. Clients, stock and
 settings use native writers; renewal terms and method states are purchase truth,
 not demo seed inputs.
