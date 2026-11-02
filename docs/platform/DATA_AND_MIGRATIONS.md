@@ -321,6 +321,18 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+The installed platform package exposes the complete existing catalogue through
+`createPlatformPostgresMigrationRunner` in `@openlup/platform/migrations`. Its
+[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema)
+selects qualified-v2 or qualified-admin explicitly with the existing role-mode
+bindings. Legacy remains the default for compatibility. The generated
+`packages/platform/sql/manifest.json` preserves canonical paths, hashes, ordering
+and inventory pins from `config/platform-migration-manifest.json`; the required installed-consumer gate
+refuses projection drift. Packaging issued units adds no migration, changes no
+SQL bytes and leaves the managed rail untouched. Module-relative asset lookup
+needs no checkout. Existing session, ledger-prefix and inventory admission still
+apply, including on status and replay.
+
 The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
 expected owner, columns, defaults, constraints and indexes, without partition
@@ -467,8 +479,9 @@ Catalog's `BUNDLE_MIGRATIONS` projects canonical bundle units 16 and 19 with exa
 catalogPath, position, SHA-256 and artifact URL. The package SQL bytes are identical
 to the canonical files; this is projection only, with no new migration, manifest
 row or baseline change. Unit 30 belongs to channel lines and is not included.
-Install the full canonical chain, not these two files alone. The moved native
-store performs reads only; existing canonical write routines remain in place.
+Install the full canonical chain, not these two files alone. The native read
+store performs reads only; the packaged native writer calls the existing
+canonical write routines without changing them.
 Five real-PostgreSQL cases characterize fresh/repeat application, complete reads,
 whole-set rollback and refusals, dry runs, close-and-append prices, sequential key
 recognition and denied versus explicitly granted invoker access. They establish
@@ -1462,6 +1475,15 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The installed complete-catalogue entry preserves this lifecycle. Its generated
+SQL assets are copies of issued units with unchanged canonical identities,
+hashes, ordering and inventory pins, rather than new forwards. Qualified and
+restricted-admin selections retain their distinct baselines and role admission;
+legacy selection remains available for existing history. The required installed-consumer gate
+compares the projection against the canonical manifest and exact source bytes.
+See [module catalogues](#module-catalogues-and-installed-histories) and the
+[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
 
 Fresh channel capture admission binds the normalized slug through the existing
 trusted scope read and the raw-source digest through its original page event.

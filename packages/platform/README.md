@@ -32,8 +32,8 @@ commerce schemas and ports use `./commerce` and `./commerce/contracts`;
 handlers, adapters and checkout engines use the Node-only `./commerce/server`.
 The commerce contribution and reference binding remain inert and default-off.
 Install the complete native chain through the M17 purchased-source forward
-(`20261030122000_channel_purchased_source.sql`). Sparse SQL projections
-are not an install chain. Native runtime
+(`20261030122000_channel_purchased_source.sql`). Use the complete packaged installer described below; individual module SQL
+projections are not an install chain. Native runtime
 roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
 the release notes.
 Managed hosts apply the complete prefix through `20261030122000`, including
@@ -84,6 +84,61 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+## Install the portable PostgreSQL schema
+
+`@openlup/platform/migrations` exports `createPlatformPostgresMigrationRunner`.
+It uses the existing executor with the complete packaged catalogue, canonical
+ledger paths, SHA-256 hashes, order and host-admission checks. No source checkout
+is required. Install the optional `pg` peer in the application. Call `status()`,
+`apply({ dryRun: true })` or `apply()` explicitly; imports install nothing.
+
+```ts
+import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
+
+const migrations = createPlatformPostgresMigrationRunner({ connectionString: directUrl }, {
+  installation: {
+    generation: "qualified-admin", roleMode: "installer-managed",
+    migrationLogin: "app_migrator", bootstrapLogin: "postgres",
+    runtimeLogin: "app_runtime", restoreLogin: "app_restore",
+  },
+});
+await migrations.apply();
+const status = await migrations.status();
+```
+
+Provision the selected PostgreSQL 16 host profile first. `qualified-v2` retains
+its privileged migration principal; `qualified-admin` uses the restricted
+principal. Both retain `installer-managed` and `operator-provisioned` role modes;
+`qualified-admin` in `operator-provisioned` mode also requires a distinct
+`operatorLogin`.
+These options observe and admit the existing profiles; they do not create host
+logins, qualify a provider or authorize access. Follow the source
+[data and migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+for the exact provisioning boundary and use the matching installed release.
+
+The package factory requires an explicit `installation`; omitting it refuses
+before catalogue or pool work. Select a qualified generation for a fresh qualified
+installation. `legacy` is a separate history; histories cannot be switched in place.
+The repository facade retains its legacy default. SQL resolves relative to
+the installed module, independent of the application's working directory.
+Missing or tampered units are refused by their canonical path before connection.
+A completed chain reports every selected unit applied; another apply is a no-op.
+`createPostgresMigrationRunner` keeps its original explicit source/options API.
+The convenience factory also retains `poolFactory`, `root` and
+`catalogProjectionPayload`, and accepts a `catalog` reader for repository-layout
+compatibility. Supplying a pool factory retains responsibility for startup
+options and pool lifetime. These are trusted host seams, not sandbox boundaries.
+
+The selection/validator in `src/migrations/catalog.ts` is an exact generated
+copy of the source tooling owner, checked by the same gate: source policy tools
+run before workspace build output exists. Do not edit the copy.
+`sql/manifest.json` is generated from the canonical source manifest and its
+issued SQL, following the outbox asset pattern. Do not edit it or its SQL copies.
+The required installed-consumer gate refuses drift. In a source checkout, run
+`node --experimental-strip-types --input-type=module -e "import { checkPlatformMigrationProjection } from './scripts/packages/platform-migration-projection.ts'; const errors = checkPlatformMigrationProjection(process.cwd(), true); if (errors.length) throw new Error(errors.join('\n'));"`
+to regenerate exact copies after an authorized canonical change.
+This packaging change adds no migration and changes no SQL bytes.
 
 ## Installed agent context
 
@@ -777,7 +832,7 @@ The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
 those existing module identities, with no environment discovery, client creation
 or registration. It imports only readiness types: composition gains no catalog
-edge, and catalog keeps its type-only data edge plus one pricing value edge for
+edge. Catalog uses data at runtime for the native bundle writer and pricing for
 the effective-window selector. Package boundary
 checks pin those imports and peer-free composition declarations. The packed
 consumer exercises both new stores and the descriptor without optional peers;
@@ -799,11 +854,16 @@ SKUs across compositions, calls the injected port once when SKUs are present and
 skips it otherwise; the host port owns its query strategy, and missing answers
 remain unknown. Named reference wrappers inject lifecycle and stock
 helpers, existing admin kit/spec/flags, validators, responder, wire versions and
-the reference-owned RPC error constructor. The read error has one package identity.
+the packaged RPC error constructor. Read and write errors retain one package identity.
 `createPostgresBundleCatalogStore` now accepts the data entry's injected
 `PgQueryExecutor`; it renders the incumbent list/detail/feed/history SELECTs
-without constructing a pool or switching roles. The writer, pooled transaction
-binding and transport adapters remain reference-owned. `BUNDLE_MIGRATIONS`
+without constructing a pool or switching roles. `createPostgresBundleAdminWriteStore`
+binds the unchanged shared writer to the data entry's pooled role-free transaction
+lane; it encodes the routines' three JSON arguments for the native driver while
+preserving SQL null/default behavior. Hosts retain authorization, response mapping
+and transport composition.
+`BundleRpcError` and its `DomainRpcError` base are exported by this entry;
+reference paths re-export those same constructors. `BUNDLE_MIGRATIONS`
 projects canonical units 16 and 19 with their original paths, positions, hashes
 and byte-identical SQL. These sparse projections are not an installation chain:
 apply the complete canonical manifest. No new migration or activation is added.
@@ -1074,6 +1134,13 @@ The opt-in reference identity shell consumes the existing identity exports with 
 See [disposable identity composition](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#disposable-identity-composition) for its boundary and reference guide.
 
 ## Communications import
+
+The Node-only communications entry includes `runCommunicationsAdapterConformance`
+for adapter-owned offline email and marketing-sync fixtures. It returns passed
+case labels or throws a sanitized finding with a fix and recheck instruction.
+This fixture proof does not qualify live providers or consent-push lifecycles.
+See the [extension-kit recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#run-an-adapter-conformance-check)
+at a source revision matching the installed export.
 
 The sparse `COMMUNICATIONS_MIGRATIONS` inventory includes the portable account
 newsletter withdrawal forward; install the complete canonical chain. Account
@@ -1499,6 +1566,50 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](https://github.com/openlup/openlup/blob/main/docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+### Native account persistence reads
+
+`@openlup/platform/account-support` supplies
+`createPostgresCustomerOrderHistoryReadStore`, `createPostgresAccountReadSources`
+and `readPostgresCustomerAccountClient`. Supply a host-authenticated principal
+and client pair plus a server-authorized query executor on the restricted runtime
+lane. Every native query rechecks that pair, including order/subscription
+companion reads. The factories create no connection, route or default binding.
+Order presentation and invoice summaries remain selected owner ports.
+
+The detail translator uses captured quote money and native promoted-line
+allocations. Historical summaries retain the recorded total and currency, and
+the store's line reader retains recorded line amounts. Detail without captured
+money refuses `native_account_order_money_unavailable`: required tax, discount
+and shipping fields cannot express absence. It invents no zero amounts, backfill
+or current prices. Native observations supply tracking links; external tracking
+IDs alone carry no invented URL. Existing replacement selection is retained.
+`readPaidActivationGaps(orderIds)` on both native reader factories returns an
+owned order companion keyed by order ID, with `orderId` and `paidAt`. Use it on
+the order view; no provisional subscription association is invented. The shared
+order-summary DTO remains unchanged.
+
+`createPostgresAccountReadSources` implements native subscriptions, accepted line
+prices, blockers, pause windows, method/stock-wait evidence, delivery alignment
+and dunning/cycle action states. Extension and next-charge policy are required
+host inputs. Saved addresses, billing profiles, payment/delivery preferences and
+account events are optional explicit sources: each missing section throws
+`host_binding_required` with its section name. The same limit applies to the
+private-profile view. These refusals do not prevent independent reads of owned
+profile identity, orders and native subscription evidence. The aggregate account
+snapshot requires every selected section; a missing section refuses that call.
+No new native profile table or empty-array success is supplied.
+
+For existing actor routines, bind `createPostgresCustomerSubscriptionSnapshotPort`
+or `createPostgresCustomerNewsletterPreferencesPort` to a verified actor gateway.
+They validate the existing snapshot/newsletter DTOs and retain SQL errors and
+null ownership results. Their DTO types are available from the isolated
+`account-support/contracts` entry. Newsletter read and withdrawal are available;
+a saved true flag exposed as granted without evaluator evidence throws
+`host_binding_required` for `newsletterConsent`. Complete purpose choices and
+grants remain named refusals until the separate consent change lands. No true
+command is advertised. No managed constructor or managed behaviour changes, and
+no release is implied.
 
 ## Operations and diagnostics
 

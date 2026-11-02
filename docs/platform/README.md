@@ -11,6 +11,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 - [Testing — run, place, add and keep tests fast](../../CONTRIBUTING.md#test-scope-and-diagnostics).
 - [Platform package reference](PLATFORM_PACKAGE_REFERENCE.md) — longer identity and communications module recipes linked from the package README.
+- [Distribution evidence](DISTRIBUTION_EVIDENCE.md) — generated partial outcome projection, package-set BOM and current neutrality limits.
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
 - [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
