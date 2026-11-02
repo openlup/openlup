@@ -797,3 +797,72 @@ No native review, main merge, forward pin, external write or production action.
 Self-retro: the ordered union exposes the precise earlier fixture boundary.
 Keep the real sandbox truth guard and stop at its first incompatible witness;
 carrying both green isolated-row reports does not prove the joined purchase path.
+
+
+## Current payment predecessor and purchase-fixture integration
+
+The supervisor authorizes merging payment predecessor
+`1df6adde65ddaf88af87ebb36845ae757e506b34` into the prior signed stack at
+`a5d012488379c5b79b5cebaf877c6974f103be53`. Signed merge `0e73aebd` retains the
+mechanical result except for the publication catalog's disjoint additions,
+which preserve every entry from both parents. No separate main merge or other
+row merge was made. The current predecessor is that payment head; at review time
+`OPENLUP_STACK_BASE` must be set to the payment row's final frozen head, after
+its final control predecessor is accepted. This run starts no native review.
+
+Three purchase fixtures now share the test-only `captureSandboxPurchase` helper:
+connected-store transfer, purchase renewal and method-health compatibility.
+It begins a simulator attempt, records a captured observation, then submits only
+the intent, attempt and observation identities to verified ingress. Uncaptured
+purchase fixtures remain uncaptured. Existing assertion and test-declaration
+line sequences are unchanged. No production code, SQL, grant, control, baseline,
+attempt storage or package input changes follow the merge. The helper's catalog
+entry is additive. Ordinary renewal still uses the existing renewal outcome
+ledger and settlement path; this does not qualify the later recovery join.
+
+The initial stop in the qualified composition witness was an environment gap:
+ignored package output predated the newly inherited fulfillment entry. On the
+supervisor's diagnosis, rebuilding core and platform with the official Node
+24.21.0 toolchain took 6.429 seconds and changed no tracked file. The previously
+failing qualified composition suite then passed all four cases unchanged.
+
+The complete 212-file importer and row regression sweep was rerun serially,
+each file through its own focused admission, with fresh external npm caches.
+All 212 files pass: 2,341 passed cases, zero failed cases and one existing
+managed-local-database opt-in case skipped. No test file changed during its run.
+Purchase renewal passes 11/11 in 23.012 seconds; method-health compatibility
+passes 3/3 in 19.581 seconds; transfer passes 13/13 in 94.031 seconds. The
+retained-store compatibility case passes, the unchanged subscription composition
+suite passes 20/20, and payment cancellation/simulator coverage passes 15/15.
+Qualified/admin composition, restricted restore, released-schema upgrade,
+renewal lifecycle and every other file in the retained 212-file inventory pass.
+The explicitly gated managed-local-database conformance case remains unverified;
+no credentials or additional profile was enabled. The separate opt-in whole
+handover witness was not rerun as part of this named importer sweep.
+
+Lint passes with zero errors and 33 existing warnings (49.870 seconds), and
+strict published-tree typecheck passes (34.855 seconds). Structural checks,
+unchanged assertion/declaration sequences and staged secret scanning pass.
+Documentation navigation regeneration changes no tracked output; scoped
+no-impact trailers bind the unchanged ownership, transfer and test guidance.
+
+The fixture/helper/catalog/task edits are DCO-signed after the focused checks.
+No public API, production code, SQL, registry pin or review mechanism changes.
+Review still waits for the final control predecessor and the supervisor's grant.
+
+The exact verify neutrality component passes against the specified predecessor,
+with zero increases. Both canonical and packaged SQL hashes remain unchanged:
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`
+and `2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34`.
+The fixture edits introduce no packed files or production/package byte changes.
+There is no new real pack measurement in this blocked run. Evidence lives in
+`.context/scratch/g2/g6-current-stack/rebuilt/`.
+
+Self-retro: the 212 test commands took 796.336 seconds; their recorded focused
+admission waits totalled 6,649 seconds. Keep admission limits intact and
+separate that queue cost from execution time. Validate that a newly merged
+public entry has built output before
+starting subprocess-based composition witnesses. A source resolver can hide a
+missing generated entry that a fresh Node process correctly refuses. The new
+helper's catalog row was initially inserted out of order; move only that new
+row to its lexical position instead of reordering shared entries.

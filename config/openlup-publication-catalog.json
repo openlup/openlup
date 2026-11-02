@@ -27214,6 +27214,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/captureSandboxPurchase.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/catalogRouteResponse.ts",
       "class": "public-output"
     },

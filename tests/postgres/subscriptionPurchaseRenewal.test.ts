@@ -1,6 +1,7 @@
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsumer.js";
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,7 +19,6 @@ const exec = promisify(execFile);
 const scratch = resolve(".context/scratch/g2/installed");
 const at = "2026-09-01T12:00:00.000Z";
 const now = "2026-09-29T12:01:00.000Z", later = "2026-09-29T12:08:00.000Z";
-const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 let api: typeof import("@openlup/platform/subscriptions");
 let payments: typeof import("@openlup/platform/payments");
 let identity: typeof import("@openlup/platform/identity");
@@ -95,10 +95,9 @@ async function purchase(captured = true, declared = true) {
   const made = await rpc<{ orderDraft: { orderId: string } }>("commerce_create_order_draft_with_outbox", [key, JSON.stringify({ quote }), JSON.stringify(draft), clientId]);
   const orderId = String(made.orderDraft.orderId).replace(/^order_/, "");
   const intent = await rpc<{ settlement: { id: string } }>("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", "{}", at]);
-  const truth = payments.createPostgresPaymentTruthPort(executor, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
-  if (captured) await truth.ingestEvent({ sourceEventId: `purchase:${key}`, idempotencyKey: `truth:${key}`, settlementIntentId: intent.settlement.id,
-    outcome: "captured", amountMinor: 200, currency: "XXX", occurredAt: at, failure: null,
-    evidence: { sourceKind: "accepted_event", sourceReference: `sandbox:${key}`, observedStatus: "captured", observedAt: at, payloadFingerprint: hash(key) } });
+  if (captured) await captureSandboxPurchase(payments.createPostgresSandboxPaymentSimulator(executor,
+    { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" }),
+  { settlementIntentId: intent.settlement.id, key, at });
   if (declared) await rpc("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, at]);
   const settled = (await runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
   return { orderId, clientId, capturedReference: settled.external_ref ?? settled.id, idempotencyKey: `activate:${key}` };

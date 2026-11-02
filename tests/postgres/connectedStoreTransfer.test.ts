@@ -1,3 +1,4 @@
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
@@ -72,11 +73,7 @@ async function renewalPurchase(complete: boolean) {
     await order.query("COMMIT");
   } catch (error) { await order.query("ROLLBACK"); throw error; } finally { order.release(); }
   const intent = await call("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", "{}", renewalAt]);
-  await createPostgresPaymentTruthPort(source.runtime, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" })
-    .ingestEvent({ sourceEventId: `transfer-purchase:${key}`, idempotencyKey: `transfer-truth:${key}`, settlementIntentId: intent.settlement.id,
-      outcome: "captured", amountMinor: 200, currency: "XXX", occurredAt: renewalAt, failure: null,
-      evidence: { sourceKind: "accepted_event", sourceReference: `sandbox:${key}`, observedStatus: "captured", observedAt: renewalAt,
-        payloadFingerprint: createHash("sha256").update(key).digest("hex") } });
+  await captureSandboxPurchase(paymentPort(source.runtime), { settlementIntentId: intent.settlement.id, key, at: renewalAt });
   await call("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, renewalAt]);
   const writer = renewal.createPostgresPurchaseRenewalWriter(source.runtime);
   await writer.register(orderId, renewalFacts);
