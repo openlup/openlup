@@ -392,5 +392,8 @@
     "access": "public",
     "provenance": true,
     "tag": "preview"
+  },
+  "bin": {
+    "openlup": "./src/lifecycle/openlup.mjs"
   }
 }

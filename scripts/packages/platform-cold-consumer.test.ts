@@ -93,7 +93,16 @@ function packageFixture(consumer: string, name: string, exports: Record<string, 
 function fixture() {
   const consumer = scratch();
   writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
-  packageFixture(consumer, "@openlup/core", { ".": "./index.js" });
+  packageFixture(consumer, "@openlup/core", { ".": "./index.js", "./readiness": { types: "./readiness.d.ts", default: "./readiness.js" } });
+  writeFileSync(join(consumer, "node_modules/@openlup/core/readiness.js"), 'export async function checkReadiness() { throw new Error("synthetic readiness is import-only"); }\n');
+  writeFileSync(join(consumer, "node_modules/@openlup/core/readiness.d.ts"), [
+    'export type ReadinessInput = unknown;',
+    'export interface ReadinessIssue { code: string }',
+    'export interface ReadinessReport { state: "unknown"; candidate: unknown; loadedPackages: readonly unknown[]; issues: readonly ReadinessIssue[] }',
+    'export type RequiredSchema = unknown;',
+    'export type SchemaObservation = unknown;',
+    'export declare function checkReadiness(input: ReadinessInput): Promise<ReadinessReport>;',
+  ].join("\n") + "\n");
   packageFixture(consumer, "@openlup/platform", Object.fromEntries([...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => [`./${name}`, { types: "./index.d.ts", default: "./index.js" }])));
   const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));

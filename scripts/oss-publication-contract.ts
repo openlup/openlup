@@ -8,6 +8,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",
   "packages/platform/test/lifecycle/appUpgrade.test.ts",
+  "packages/platform/src/lifecycle/openlup.mjs",
   "tests/postgres/nodeHostRuntimeDrain.test.ts",
   "tests/postgres/runM14EffectHandover.ts",
   "tests/postgres/fixtures/m14EffectActor.mjs",

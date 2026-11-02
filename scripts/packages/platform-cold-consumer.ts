@@ -19,6 +19,7 @@ import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
+import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./distribution-cli-proof.ts";
 
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
@@ -840,7 +841,7 @@ import {promises as fs} from "node:fs";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
 import * as lifecycle from "@openlup/platform/lifecycle";
-assert.deepEqual(Object.keys(lifecycle).sort(),["AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade"]);
+assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade","verifyApp"]);
 const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
 const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
 const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
@@ -1835,6 +1836,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
       process.exit(0);
     `,connectionString],root,isolatedConsumerEnv()));
     proveApplicationUpgradePostgres(consumer,connectionString,schemaObservation.schemaVersion);
+    proveDistributionCliPostgres(consumer,connectionString);
     proveNativeCommunicationsOperations(consumer,connectionString);
     proveOperationsPostgres(consumer,connectionString);
     provePortabilityPostgres(consumer,connectionString);
@@ -2377,6 +2379,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveOperationsConsumer(consumer);
     provePortabilityConsumer(consumer);
     proveLifecycleConsumer(consumer);
+    proveDistributionCliConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
