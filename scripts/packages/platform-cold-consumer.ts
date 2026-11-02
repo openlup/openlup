@@ -2120,6 +2120,7 @@ export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap
   const starter = join(checkout, "examples/neutral-store");
   const extracted = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-"));
   const environment = isolatedConsumerEnv();
+  environment.npm_config_cache = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-cache-"));
   delete environment.NODE_TEST_CONTEXT;
   const run = (name: string, args: string[], cwd = extracted) => process.stdout.write(command(name, args, cwd, environment));
   try {
@@ -2164,7 +2165,10 @@ export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap
     run("npm", ["run", "typecheck"]);
     run("npm", ["run", "build"]);
     console.log("Neutral starter required cold-consumer addition PASS: " + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
-  } finally { rmSync(extracted, { recursive: true, force: true }); }
+  } finally {
+    rmSync(extracted, { recursive: true, force: true });
+    rmSync(environment.npm_config_cache, { recursive: true, force: true });
+  }
 }
 
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
