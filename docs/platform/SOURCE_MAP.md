@@ -147,6 +147,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | platform-channels | Normalized external-channel ingest, retained purchased source and explicit owner bindings | [packages/platform/README.md](../../packages/platform/README.md#channels) | `packages/platform/src/channels/**`; `packages/platform/test/channels/**`; `packages/platform/api/channels.api.md`; `packages/platform/api/channels-contracts.api.md`; `packages/platform/api/channels-server.api.md` |
 | distribution-outcome-projection | Neutral generated package outcome declarations and partial-claim refusal | [docs/platform/DISTRIBUTION_EVIDENCE.md](DISTRIBUTION_EVIDENCE.md#public-outcome-projection) | `scripts/generate-outcome-projection.ts`; `scripts/generate-outcome-projection.test.ts`; `scripts/generate-outcome-projection-cli.ts` |
 | distribution-package-bom | Deterministic package-set BOM from verified exact-commit pack artifacts | [docs/platform/DISTRIBUTION_EVIDENCE.md](DISTRIBUTION_EVIDENCE.md#package-set-bom) | `scripts/packages/generate-release-bom.ts`; `scripts/packages/generate-release-bom.test.ts`; `scripts/packages/generate-release-bom-cli.ts` |
+| starter-application | Independent starter application, owned customization and local sandbox composition | [examples/neutral-store/README.md](../../examples/neutral-store/README.md) | `examples/neutral-store/**` |
 <!-- openlup-generated:end -->
 
 ## Drill down to a file
