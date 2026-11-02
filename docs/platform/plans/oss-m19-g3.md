@@ -2,7 +2,8 @@
 
 Status: owner read accepted for DCO; bounded transaction-race and public-text
 additions proved below. Ready for the ordered native review after control and
-earlier slots. SQL unchanged; submission and release remain unstarted.
+earlier slots. Latest SQL header normalization is recorded below; submission and
+release remain unstarted.
 
 ## Outcome, authority and boundaries
 
@@ -156,7 +157,7 @@ synchronous mail; no delivered-email promise is made here.
 ## SQL inventory
 
 Forward: db/platform/migrations/20261101225000_commerce_destinations.sql.
-Whole-file SHA256 3ca1a151b7ad7d7dd01ed7cf40c50d91dfac39f5d2ed1a76e81a9a3743e50413.
+Whole-file SHA256 104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6.
 Existing replacements: none; before hashes empty. Leave subscription_command_apply,
 customer_support_apply_subscription_action_v1, subscription_activation_commit and
 commerce_create_order_draft_with_outbox unchanged. The inventory is still exactly
@@ -819,3 +820,98 @@ is unchanged. The final scoped tests trailer binds the additive witness; no
 CONTRIBUTING edit. Historical no-DCO WIP messages retain their original context;
 the current accepted-read grant authorizes their later sign-off. No native
 review, canonical verify, push or external write; control/earlier slots remain.
+
+
+## Exact definer-header spelling repair
+
+The supervisor authorizes only the four definer-header attribute spellings from
+SET search_path=pg_catalog,pg_temp to SET search_path = pg_catalog, pg_temp,
+plus exact canonical/package projection hashes and any measured inventory pins.
+No other SQL byte, signature, ACL or behavior changes. Re-run native PostgreSQL,
+measure current chain inventory and handover pins, and pack on the official
+Node24.21.0 toolchain against its +7807 B measurement. Commit DCO-signed; no
+pin/checker/native review or other-worktree action. The existing accepted-read
+scope, privacy limits and G8 notice ownership remain unchanged.
+
+The refreshed existing-suite rule explicitly includes the released-schema upgrade
+witness. Its current-count guard still says94/91 although this row's already
+measured chains are95/92; correct only that literal line under the named exception
+and execute its upgrade assertions. Historic prefix pins, guard and body stay
+unchanged. This closes a missed current-chain witness from the earlier suite list;
+it is not an additional SQL or behavior change. Header spacing should preserve
+PostgreSQL's normalized stored definition; verify that on the actual chain proofs
+before deciding whether any inventory or handover pin needs changing.
+
+
+Header-only delta proof: canonical and packaged forward are identical; replacing
+exactly the four old header substrings with their requested spellings reproduces
+the complete new file byte-for-byte. No body, signature, ACL, table or other SQL
+byte changed. New whole SHA256:
+104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6.
+Exact diff: .context/scratch/g3-header-only.diff; proof:
+.context/scratch/g3-header-sql-delta-proof.json. R0 generator refreshed packaged
+SQL/manifest; only three canonical forward hashes and four projected copies of
+that hash change. No object-inventory digest moves. Updated after-statement hashes:
+public.commerce_read_destination(text,uuid)
+  98281cc8a26421dc08506cec7d6332c75d35f74f9ebe57e8a1d627a0cb5f2c4f
+public.commerce_register_order_destination(text,uuid,jsonb,timestamptz)
+  a78694eafb85cd8e43a2dbf8379ae303a7f744187cba7bd290785251514efa18
+public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)
+  4e8c26611e79cde0b1d76718fef6966d4c8bf868db4b3e2ed7d7ed7eb79b6f08
+public.customer_support_change_shipping_destination(uuid,uuid,jsonb,integer,text,timestamptz)
+  1d46c163cab94822f15af870ea98ae2dde7fd56af7a11dce5eac791a1c76a8ce
+
+Fresh real-PostgreSQL native23, qualified-chain4, qualified-admin2 and released
+legacy upgrade1 all PASS (four files/30cases). Qualified tests measure both
+binding shapes/modes; admin tests measure both role modes; legacy upgrade executes
+its backfill, interrupted-transaction and replay assertions with92 current units.
+Native verifies each definer's stored proconfig is search_path=pg_catalog, pg_temp
+and retains the transaction race/replay/refusal/restart witnesses. PostgreSQL
+normalizes the attribute spelling: all five catalogue hashes recorded above stay
+exactly unchanged. Qualified96/admin95/legacy92 and connected87 stay fixed.
+The handover's e9ede569... inventory pin and87 count therefore do not move; no
+handover pin/body edit or standalone rerun is needed for this conditional repair.
+The prior completed full handover remains historical evidence, not a fresh run.
+Suite logs and result list: .context/scratch/g3-header-*.out and
+.context/scratch/g3-header-test-results.json. One launcher attempt ran no tests
+because local vitest was missing from PATH; adding local binaries after the
+required official Node directory corrected it without any fixture/source change.
+
+Official Nodev24.21.0 from ~/.local/share/openlup-toolchain is first on PATH.
+Fresh origin/main is4c7afd2590dc6998e22464153fca70a92eecfeb2, unchanged from this
+worktree's already measured clean archive base. Real pack2328346 B/2917files
+versus base2320536 B/2913files: +7810packed B, +2614code-gzip B,
++39885unpacked B, +4files. It moves+3packed B from+7807 solely for this requested
+SQL spelling/hash projection; disclosed immediately after measurement. Total
+unpacked11018163 B, code-gzip1862324 B, docs-gzip59459 B; all class caps pass.
+The canonical SQL adds12rawbytes; no TypeScript/API/package note/doc growth.
+The actual real tarball matches every2917file in this worktree; artifacts in
+.context/scratch/g3-header-pack. G4 and all other worktrees stay untouched.
+
+Neutrality passes0increases against the actual09cd599b code base; ast-grep,
+API and whitespace pass. Fresh scoped tests no-impact binds the authorized
+released-chain literal correction, not a CONTRIBUTING edit. No pin, checker,
+new public outcome, managed SQL, OMS marker, dispatched-attempt storage or G8
+notice-binding change. Native review remains unstarted; ordered control and
+predecessor slots remain. Native repair cycles0; remaining1-2workingdays excluding
+waits. Self-retro: exact SQL substitution and actual PostgreSQL catalogue
+comparison separate source spelling from stored semantics, avoiding unnecessary
+inventory or handover repinning. The newly named existing-upgrade witness exposes
+a missed count guard; running its assertions closes that omission rather than
+relaxing the guard. Keep the official Node path first and local tools available.
+
+
+Final repair checks: fresh typecheck5projects/0unresolved edges/0consumer errors;
+full lint/ast-grep PASS0errors. Lint prints99warnings:33existing worktree warnings
+plus exactly the same33 in each of the two ignored official-measurement archive
+copies. Per-path/message comparison confirms no new source warning; proof is
+.context/scratch/g3-header-lint-warning-proof.json. No ignore/baseline/checker edit.
+Focused gates waited190s for read-only typecheck and94s for lint. All2917 actual
+tarball files byte-match this worktree after the final official-toolchain rebuild;
+no extra pack/code growth. Scoped tests no-impact covers the measured released-
+chain literal only; policy checks it on the signed commit. No CONTRIBUTING edit.
+Only six tracked files change: two exact SQL copies, canonical and projected
+manifest hashes, this task record and the released-upgrade count literal line.
+Fresh native23 plus chain/upgrade7 PASS; handover/catalogue pins remain unchanged.
+The measurement archives explain lint's repeated warnings without a source repair
+or weakened check; do not describe the99as99new source warnings.

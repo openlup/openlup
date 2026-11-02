@@ -37,7 +37,7 @@ ALTER TABLE public.commerce_destination_bindings ENABLE ROW LEVEL SECURITY;
 
 -- Bounded parent reads; shipment preparation pins its document under dispatch's lock.
 CREATE FUNCTION public.commerce_read_destination(p_scope text,p_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE d public.commerce_destinations; o public.commerce_orders; s public.subscriptions;
  v_id uuid; v_client uuid; v_order uuid; v_count integer; a public.subscription_activations;
  op public.subscription_renewal_operations; v_ref text;
@@ -99,7 +99,7 @@ BEGIN
 END; $$;
 
 CREATE FUNCTION public.commerce_register_order_destination(p_key text,p_order_id uuid,p_address jsonb,p_now timestamptz DEFAULT now())
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE d public.commerce_destinations; o public.commerce_orders; doc jsonb:='{}'; k text; value text; fp text;
 BEGIN
  IF p_key IS NULL OR p_key<>btrim(p_key) OR length(p_key) NOT BETWEEN 8 AND 200
@@ -135,7 +135,7 @@ END; $$;
 
 CREATE FUNCTION public.subscription_change_shipping_destination(
  p_actor_id uuid,p_client_id uuid,p_key text,p_subscription_id uuid,p_payload jsonb,p_expected_version integer,p_now timestamptz DEFAULT now())
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s public.subscriptions; r public.subscription_command_receipts; sh public.fulfillment_shipments;
  doc jsonb:='{}'; input jsonb; fp text; k text; value text; v_id uuid; event_id uuid;
  v_old uuid; v_operator boolean; answer jsonb; reason text; parcel_reason text; moved boolean:=false;
@@ -252,7 +252,7 @@ END; $$;
 
 CREATE FUNCTION public.customer_support_change_shipping_destination(
  p_operator_id uuid,p_subscription_id uuid,p_payload jsonb,p_expected_version integer,p_idempotency_key text,p_now timestamptz)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE r public.customer_support_subscription_commands; s public.subscriptions; c public.clients;
  receipt public.subscription_command_receipts; answer jsonb; fp text; owner_key text; before_id uuid; reason text; k text; value text;
 BEGIN
