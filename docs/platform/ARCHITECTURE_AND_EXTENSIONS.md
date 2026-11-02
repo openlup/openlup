@@ -1570,6 +1570,22 @@ conflicts. Evidence handlers retain GET/authorization/validation/read order with
 injected parsers/responders and safe product authorization/read refusal details;
 they expose no resolving mutation.
 
+The offline `createCapturedFulfillmentAdapter` factory at
+`@openlup/platform/fulfillment` selects only explicitly supplied synthetic command
+captures. It is default-off, fingerprints canonical command JSON (object keys in
+code-unit order, array order preserved), refuses an uncaptured or changed command,
+and requires exact prepared evidence before returning its configured accepted,
+refused or unknown outcome. In-memory submission cardinality does not increase on
+replay, including an unknown outcome. Captures are fixed at construction and are
+not a durable provider ledger. The factory performs no network or database I/O;
+an accepted capture proves no physical dispatch or arrival. Its receipt key is
+an acceptance identifier, not a generated parcel label. Label operations,
+observation verification, readback, stock/product sync, cancellation and pickups
+are not exposed. Hosts can separately exercise existing native shipment-spine
+label/tracking recording with synthetic evidence; this adapter adds no provider
+qualification. Native commerce list/detail and the other existing unsupported
+ports retain their `host_binding_required` refusals.
+
 The [conformance runner](../../packages/platform/src/fulfillment/adapterConformance.ts)
 accepts readonly FulfillmentAdapterConformanceSubject[] and returns sanitized
 FulfillmentAdapterConformanceEvidence containing subject/provider references and
@@ -1669,6 +1685,11 @@ has an explicit fulfillment slot with no default binder.
 Native dispatch uses host-supplied contact preparation and candidate data.
 The [reference binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 uses one transaction lane and selected store/provider/readiness observer.
+The experimental `@openlup/platform/fulfillment/native` entry also exposes
+`createNativeFulfillmentBinding` for installed hosts. Its implementation
+preserves the reference binding's transaction and refusal semantics; the host
+still owns the transaction lane, authoritative reader and authorized edit callback.
+The entry mounts no route or schedule and provisions no SQL or privileges.
 It acquires the native dispatch advisory lock, then locks the shipment row before
 reading authoritative data. Its edit callback requires actor and idempotency
 attribution; the host owns authorization and replay receipts. Source edits and
@@ -1684,6 +1705,13 @@ share a dispatch lock; direct submission supersedes only pristine, never-claimed
 queued commands, while effect-bearing history refuses it. ACK records native
 `dispatch` evidence, fencing cancellation without asserting an owned label or
 physical packing.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
 
 The native stores implement G14 mapped-attempt persistence, G15 coverage-gap
 cursors, G16 injected timed inventory-line reads with native reservation reads,
