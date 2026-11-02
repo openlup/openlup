@@ -550,8 +550,9 @@ Catalog's `BUNDLE_MIGRATIONS` projects canonical bundle units 16 and 19 with exa
 catalogPath, position, SHA-256 and artifact URL. The package SQL bytes are identical
 to the canonical files; this is projection only, with no new migration, manifest
 row or baseline change. Unit 30 belongs to channel lines and is not included.
-Install the full canonical chain, not these two files alone. The moved native
-store performs reads only; existing canonical write routines remain in place.
+Install the full canonical chain, not these two files alone. The native read
+store performs reads only; the packaged native writer calls the existing
+canonical write routines without changing them.
 Five real-PostgreSQL cases characterize fresh/repeat application, complete reads,
 whole-set rollback and refusals, dry runs, close-and-append prices, sequential key
 recognition and denied versus explicitly granted invoker access. They establish
@@ -863,7 +864,9 @@ native admission, invoked from trusted main, validates co-located data with its
 own checker and refuses simultaneous machinery changes or machinery drift since
 the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
 `scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
-release entry points and preparation; test-only coverage changes remain allowed.
+release entry points and preparation; test-only coverage changes remain allowed,
+except the catalog test of the [closed native store forwards](#closed-native-store-forwards)
+and the named files that select and run it, which that section lists.
 The checker and its direct dependency closure, root manifests/lockfile and
 `.github/` files also stay unchanged. Admission reads candidate Git objects
 without running candidate code.
@@ -1416,6 +1419,164 @@ checks installation rollback. Its observer plants include claim, sequence,
 trigger, CHECK and identity-row changes. Sequence allocation during a later
 command may leave gaps; installation rollback removes a newly created sequence.
 Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
+
+### Closed native store forwards
+
+`nativeStoreForwardClass` in the [reviewed registry](../../config/reviewed-platform-forwards.json)
+owns up to seven exact native paths, their ordered rows and three closed lists:
+replaced functions with before-hashes, created functions with pinned search
+paths, and grant-only existing functions with closed role/verb capabilities.
+Only firm rows
+are registered; an absent row authorizes nothing. Additional inventory requires
+a separate control change and maintainer read. Set `sealed: true` in the store's
+set-version preparation (S1); subsequent slot changes or unsealing refuse.
+The [admission witness](../../scripts/reviewed-native-store-forward.test.ts)
+uses an independent synthetic registry, never production placeholder approvals.
+
+Feature SQL supplies `nativeStoreForwards` with whole-file and function
+after-hashes. It cannot change class data or admission machinery in that PR.
+Every earlier row in the fixed order needs prior inventory and unchanged landed pins;
+issued native file pins must also be present unchanged.
+Reserved timestamps require approval even for expand-only SQL. Unlisted function
+signatures, drifted preimages, destructive statements, default privileges and
+role statements refuse. Tables and indexes retain the existing expand-only
+rules; data statements require exact prior slot entries. Only the account-consent
+slot may replace the named native sync-purpose CHECK, preserving every prior
+value and binding the original table statement's hash.
+
+One signature may be replaced by at most one slot. Its before-hash binds the
+latest definition in the pre-class native prefix, and replacement headers stay
+identical apart from the CREATE OR REPLACE introducer. The class-local identity
+reader normalizes scalar aliases, schema-qualified composite/table arguments and
+arrays against exact listed signatures; earlier identity readers stay unchanged.
+Token separators and case folding for closed object/type identities follow ASCII
+SQL spelling; Unicode whitespace lookalikes cannot become listed identifiers or
+roles. Unicode literal data remains allowed.
+Argument separation respects quoted defaults, dollar literals and nested
+parentheses/arrays before matching the listed types. Case-varied `OR REPLACE`
+remains replacement syntax and cannot create an entry reserved for plain CREATE.
+Native files opt into ASCII structural checking in the existing splitter;
+older splitter modes retain their behavior. Literal, comment and dollar-body
+data can contain Unicode. Conditional privilege syntax and targets use ASCII.
+A backslash inside a quoted literal or identifier of the bound file refuses: the
+splitter would read it as an escape, while PostgreSQL ends a standard literal at
+the quote after it, so one statement for the splitter would be several for the
+database. A backslash inside a dollar body is data, and the earlier files of the
+prefix keep the older reading.
+Adding a nullable column or a new CHECK on an existing table already follows the
+existing expand-only rules. The purchase-reservation slot alone adds an
+`existingTableStatements` list: three exact whole ALTER TABLE statements, in
+order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
+from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
+foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The
+registry holds their complete text; feature SQL must include each once, in that
+order. Its existing-table ALTERs cannot fall through to generic ADD admission.
+The checker pins the complete three-entry list; changing it requires a control
+change. Its target table must exist in the preceding native prefix.
+Comparison uses the existing statement splitter: leading comments/space are
+removed, internal statement bytes remain exact. Missing, duplicate, changed,
+extra or reordered companions refuse. No other slot gains this exception.
+
+The destination slot registers four created function signatures and pinned
+search paths. Its two new tables, revokes and RLS use the existing same-file
+narrowing rules below. Class data does not pin table columns, constraint/index
+names, function security mode, language, defaults or return type; feature SQL's
+whole-file/after-hashes and feature review retain those inventory and behavior
+duties. Synthetic shape acceptance establishes no implemented destination API.
+
+Each created function must revoke all PUBLIC privileges before its grants and
+conditional blocks. SECURITY DEFINER requires the slot's exact pinned
+`search_path`, such as `pg_catalog, pg_temp`. Grant-only signatures must exist in
+the pre-class native prefix and be disjoint from the replaced/created lists.
+They cannot be redefined or named by a direct privilege statement. Only their
+pinned conditional role/verb capabilities are admitted, without demanding a new
+PUBLIC revoke. A block naming created functions still requires their revokes;
+a block naming only grant-only functions does not.
+The sole DO exception is one block per role, verb and object kind (FUNCTION or
+TABLE): an exact `pg_roles` existence guard around one constant privilege
+EXECUTE, on admitted targets, for the same role. `anon` admits revokes only;
+`authenticated` and `service_role` admit revokes or EXECUTE grants. Extra
+statements, branches, dynamic strings and PUBLIC grants refuse.
+
+Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
+statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
+TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
+`ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
+another slot, an unqualified/IF NOT EXISTS creation, or any table GRANT refuses.
+The existing expand-only grammar and every other class retain their refusals.
+Each feature PR using this narrowing must provide real-PostgreSQL proof that its
+restricted runtime retains the access required by its row after the revokes/RLS;
+reviewers of that feature PR must assess the proof. This control cannot supply it.
+
+The static checks above are a first gate for ordinary mistakes, not the boundary
+against deliberately evasive SQL. For function identity, security attribute,
+`search_path` and privileges, the truth is the required real-PostgreSQL
+[catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). It replays
+one chain, the legacy selection's manifest units in path order with earlier bound forwards
+applied cumulatively, and does not replay the `qualified-v2`, `qualified-admin` or
+operator-provisioned histories. With no bound forward it replays that chain once, so
+the replay itself is proved. For every bound native forward it applies the forward
+and compares what PostgreSQL itself reports before and after with the slot's lists.
+The catalog reads run with `search_path` pinned to `pg_catalog, pg_temp`, so neither
+the forward's own `search_path` nor a temporary object named like a catalog can
+capture them, and every comparison with the first user OID is typed `oid`, so an
+operator a forward creates for another operand type cannot hide what it adds:
+
+- Nothing PostgreSQL ships changes: no system function, relation privilege or column
+  privilege.
+- The new functions, in any schema, equal the created list; changed functions lie in
+  the replaced and grant-only lists. A replaced function keeps every attribute and
+  its ACL, so only its body may change. A grant-only function keeps its attributes and
+  body, may gain only EXECUTE for its listed grant roles and may lose privileges only
+  from its listed roles.
+- A created function is owned by the migration role, keeps no PUBLIC execute and
+  grants execute only to `authenticated` and `service_role`, never with a grant
+  option. A definer carries its pinned `search_path`; a function whose slot pins none
+  carries no `SET` at all. Its language and leakproof flag are not compared: like
+  its body, they stay with the whole-file hash and the feature review.
+- Existing relations of every kind, indexes and TOAST tables included, keep their
+  owner, privileges, row security, options and column privileges. A new relation of
+  any kind is owned by the migration role and carries only its owner's table
+  privileges and no column privilege. Relations are matched by OID, so a forward
+  that rewrites an existing table, for example by adding a column with a volatile
+  default, replaces its TOAST relation and is refused: a known fail-closed limit,
+  with a follow-up to compare TOAST relations without OID identity.
+- No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
+  excepted. The purpose CHECK keeps every value it holds and may gain more, in the one list form PostgreSQL deparses
+  for `IN`, and its slot lists the values it holds before the forward.
+- The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
+  `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
+  `pg_event_trigger`, `pg_extension`, `pg_cast` and `pg_parameter_acl` (the
+  privileges on server parameters); and, for the relations that
+  existed before the forward, PostgreSQL's own included, `pg_trigger`, `pg_policy`
+  and `pg_rewrite` (a view's own rule included).
+  Left out of the comparison: each row's own OID, parser positions inside stored
+  node trees, temporary schemas and the two transaction-horizon columns of
+  `pg_database`. Every trigger that existed before the forward, an internal one and
+  its enabled state included, stays as it was; the only addition allowed is the
+  enforcement trigger PostgreSQL creates internally for a constraint the forward
+  itself adds.
+
+The privileges it reads are those on functions, relations and their columns, schemas,
+databases, default privileges and server parameters, with role membership through the
+guard catalogs. The ACLs on types, languages, foreign data wrappers and servers, large
+objects and tablespaces, and the operator catalog, are not read.
+
+It runs with and without `service_role`, and its refusal cases include a function
+header that hides its attribute list inside a quoted default and a file whose
+backslash makes the database run statements the static reader cannot see. A native-SQL change is
+refused when it also touches admission machinery, and the machinery includes the
+catalog test and these named files: `tests/postgres/nativeStoreForwardCatalog.test.ts`,
+`tests/helpers/postgresContainer.ts`, `vitest.config.ts`, `scripts/run-vitest.mjs`,
+`scripts/ci-test-scope.mjs`, `scripts/ci-image-pull.mjs`, `scripts/ci-image-mirror.mjs`,
+`scripts/disposable-docker.mjs`, `scripts/ci-vitest-duration-keys.ts`,
+`scripts/coverage-summary-protocol.ts`, `src/test/setup.ts`,
+`src/checkout/machine/commerceRequestCache.ts`, `config/ci-images.json`, `.npmrc`
+and everything under `tests/setup/`. Code those files run, and deliberately evasive
+changes, are a review duty. Function bodies, data statements, statement kinds and
+object kinds beyond functions and relations stay on the whole-file hash and the
+feature review.
+These are admission controls, not SQL behavior or hosted qualification.
 
 ### M17 channelIngestForwards
 

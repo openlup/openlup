@@ -1695,6 +1695,9 @@ The six mechanical checks on the group tree cover behavioural interaction.
 Otherwise admission rejects the group with "merge main and re-review": merge
 `main` into the source branch, commit, obtain fresh review and post a new receipt.
 There is no separate integration-review receipt route.
+The [focused integration rule](#native-review-and-accountability) permits one
+tree-identical trailer-only commit after the qualifying merge; the receipt still
+binds the actual tip and reviewers assess its documentation reasons.
 
 The supervisor follows actual admission in the same logical task; the maintainer
 does not move prompts or reports. A receipt timeout needs submission or expiry
@@ -2825,6 +2828,15 @@ with the preceding reviewed base/head/tree and its expiry. This requires a valid
 PASS in the same append-only session, unchanged intent and author, and exactly
 two merge parents: the prior head and the new review base on main. Two fresh
 reviewers still approve the complete current tree against the approved criteria.
+Exactly one single-parent commit may follow that merge when its tree equals the
+merge tree and its message contains only a subject, one or more
+`OpenLup-Doc-Impact` trailer lines and optional `Signed-off-by` lines. No body
+text, other trailer, second follow-up commit or merge-on-top qualifies. The
+underlying merge must satisfy the same parent and coverage conditions. The
+actual tip, including this trailer commit, remains `candidate.head` for review,
+verification, receipts and queue admission. Supply its trailer reasons to the
+reviewers for assessment against the current documentation; this does not make
+trailers on merge commits answer documentation obligations.
 Their inspection may focus on the complete old-head-to-new-head delta, the
 old-base-to-new-base delta, both versions of the task's own diff, conflict
 resolution and interactions with the existing implementation. Read changed
@@ -2962,6 +2974,14 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-11-02, closed native forward class: six review cycles chased divergences
+  between a hand-written SQL reader and PostgreSQL, and no written bar said what
+  counts as material → in the first review request of a control-path change, put an
+  executable truth (a real-engine test of the boundary) and a written effect bar:
+  material means a demonstrated privilege gain, a broken stated boundary, or a wrong
+  refusal of an in-scope input; inaccurate wording is advice. Pin exact small lists
+  instead of growing a grammar.
 
 - 2026-11-01, partner contribution: vertical proofs missed secondary guidance
   and synthetic compiler fixtures → follow [test scope](#test-scope-and-diagnostics)

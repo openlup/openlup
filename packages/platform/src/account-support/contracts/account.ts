@@ -304,3 +304,32 @@ export interface AccountSnapshot<Extension = unknown> {
   events: AccountEvent[];
   actionRequired: AccountActionRequired[];
 }
+
+/** Existing actor snapshot DTO; this declaration grants no actor or SQL authority. */
+export interface NativeCustomerSubscriptionSnapshot {
+  contractVersion: "customer.subscription_control.v1";
+  subscriptions: {
+    subscriptionId: string;
+    status: AccountSubscription["status"];
+    cadenceDays: number;
+    nextCycleAt: string | null;
+    editCutoffAt: string | null;
+    templateVersion: number;
+    recurringTotal: AccountSupportMoney | null;
+    lines: { variantId: string; quantity: number; isAddon: boolean; sortOrder: number }[];
+  }[];
+}
+/** Saved newsletter preference only; complete evaluator-purpose choices remain separate. */
+export interface NativeCustomerNewsletterPreferences {
+  contractVersion: "customer.communication_preferences.v1";
+  contact: { contactId: string; email: string } | null;
+  marketingNewsletter: {
+    purpose: "marketing_newsletter";
+    state: "unknown" | "granted" | "denied" | "suppressed";
+    granted: boolean;
+    source: string | null;
+    reason: string | null;
+    capturedAt: string | null;
+    updatedAt: string | null;
+  };
+}

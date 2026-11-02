@@ -48,6 +48,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 
 | Surface | Purpose | Canonical owner | Selectors |
 | --- | --- | --- | --- |
+| own-stack-example | Application-owned routing and authentication using released public catalog ports | [docs/platform/ARCHITECTURE_AND_EXTENSIONS.md](ARCHITECTURE_AND_EXTENSIONS.md#own-stack-integration-sample) | `examples/own-stack/**` |
 | repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `*` |
 | public-policy | Public contribution policy and community governance | [CONTRIBUTING.md](../../CONTRIBUTING.md#pull-requests) | `.github/**` |
 | public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `.github/workflows/**` |
@@ -144,6 +145,9 @@ use one canonical domain owner unless a narrower workflow route applies.
 | core-partners | Partner inquiry lifecycle status and update acknowledgement contracts | [packages/core/README.md](../../packages/core/README.md#partner-lifecycle-contracts) | `packages/core/src/partners/**` |
 | core-risk | Pure risk-rule matching, scoring and mode-dependent enforcement results | [packages/core/README.md](../../packages/core/README.md#risk-evaluation-contracts) | `packages/core/src/risk/**` |
 | platform-channels | Normalized external-channel ingest, retained purchased source and explicit owner bindings | [packages/platform/README.md](../../packages/platform/README.md#channels) | `packages/platform/src/channels/**`; `packages/platform/test/channels/**`; `packages/platform/api/channels.api.md`; `packages/platform/api/channels-contracts.api.md`; `packages/platform/api/channels-server.api.md` |
+| distribution-outcome-projection | Neutral generated package outcome declarations and partial-claim refusal | [docs/platform/DISTRIBUTION_EVIDENCE.md](DISTRIBUTION_EVIDENCE.md#public-outcome-projection) | `scripts/generate-outcome-projection.ts`; `scripts/generate-outcome-projection.test.ts`; `scripts/generate-outcome-projection-cli.ts` |
+| distribution-package-bom | Deterministic package-set BOM from verified exact-commit pack artifacts | [docs/platform/DISTRIBUTION_EVIDENCE.md](DISTRIBUTION_EVIDENCE.md#package-set-bom) | `scripts/packages/generate-release-bom.ts`; `scripts/packages/generate-release-bom.test.ts`; `scripts/packages/generate-release-bom-cli.ts` |
+| starter-application | Independent starter application, owned customization and local sandbox composition | [examples/neutral-store/README.md](../../examples/neutral-store/README.md) | `examples/neutral-store/**` |
 <!-- openlup-generated:end -->
 
 ## Drill down to a file

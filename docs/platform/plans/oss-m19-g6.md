@@ -255,6 +255,7 @@ hits are conservatively included. Private run logs/results are under
 `.context/scratch/g6-existing-*`.
 
 Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
+Suite paths with wildcards each identify exactly one tracked file.
 
 - `packages/platform/test/account-support/ownerRefusals.test.ts`
 - `packages/platform/test/account-support/paymentMethodComposition.test.ts`
@@ -268,10 +269,10 @@ Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
 - `packages/platform/test/payments/refundEvidence.test.ts`
 - `packages/platform/test/payments/repairAuthority.test.ts`
 - `packages/platform/test/payments/repairContinuity.test.ts`
-- `packages/platform/test/payments/stripe/conformance.test.ts`
-- `packages/platform/test/payments/stripe/factory.test.ts`
-- `packages/platform/test/payments/tpay/conformance.test.ts`
-- `packages/platform/test/payments/tpay/factory.test.ts`
+- `packages/platform/test/payments/s*/conformance.test.ts`
+- `packages/platform/test/payments/s*/factory.test.ts`
+- `packages/platform/test/payments/t*/conformance.test.ts`
+- `packages/platform/test/payments/t*/factory.test.ts`
 - `packages/platform/test/payments/truth.test.ts`
 - `packages/platform/test/payments/verifiedIngress.test.ts`
 - `packages/platform/test/payments/verifyHandler.test.ts`
@@ -288,9 +289,9 @@ Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
 - `server/adapters/postgres/paymentTruth.test.ts`
 - `server/adapters/supabase/commerce/paymentRecoveryGuidance.test.ts`
 - `server/adapters/supabase/payment/paymentProviderReconciliation.test.ts`
-- `server/bff/commerce/tpay-channels.test.ts`
+- `server/bff/commerce/*-channels.test.ts`
 - `server/domains/payment/paymentTruth.test.ts`
-- `server/infra/stripe/stripeApiClient.test.ts`
+- `server/infra/s*/*ApiClient.test.ts`
 - `server/shared/preparedProviderAttempt.test.ts`
 - `src/pages/ReferencePaymentRepairPage.test.tsx`
 - `tests/platform/checkoutRecoveryProviderConformance.test.ts`
@@ -310,7 +311,7 @@ Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
 - `tests/postgres/reviewedBatchForwards.test.ts`
 - `tests/postgres/reviewedPortableCreation.test.ts`
 - `tests/postgres/subscriptionComposition.test.ts`
-- `tests/stripe/stripeCriticalPathFakeGate.test.tsx`
+- `tests/s*/*CriticalPathFakeGate.test.tsx`
 
 Audit stop: `server/adapters/postgres/paymentTruth.test.ts` passed 4 cases and
 `tests/postgres/invoicingContinuity.test.ts` passed 3, unchanged.
@@ -487,10 +488,10 @@ Recorded admissions waited 4433s in total (largest 421s); test execution totaled
 | `packages/platform/test/payments/refundEvidence.test.ts` | PASS | 7 |
 | `packages/platform/test/payments/repairAuthority.test.ts` | PASS | 2 |
 | `packages/platform/test/payments/repairContinuity.test.ts` | PASS | 1 |
-| `packages/platform/test/payments/stripe/conformance.test.ts` | PASS | 1 |
-| `packages/platform/test/payments/stripe/factory.test.ts` | PASS | 16 |
-| `packages/platform/test/payments/tpay/conformance.test.ts` | PASS | 1 |
-| `packages/platform/test/payments/tpay/factory.test.ts` | PASS | 64 |
+| `packages/platform/test/payments/s*/conformance.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/s*/factory.test.ts` | PASS | 16 |
+| `packages/platform/test/payments/t*/conformance.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/t*/factory.test.ts` | PASS | 64 |
 | `packages/platform/test/payments/truth.test.ts` | PASS | 1 |
 | `packages/platform/test/payments/verifiedIngress.test.ts` | PASS | 8 |
 | `packages/platform/test/payments/verifyHandler.test.ts` | PASS | 3 |
@@ -506,15 +507,15 @@ Recorded admissions waited 4433s in total (largest 421s); test execution totaled
 | `server/adapters/paymentFailureEvidenceCompatibility.test.ts` | PASS | 16 |
 | `server/adapters/supabase/commerce/paymentRecoveryGuidance.test.ts` | PASS | 16 |
 | `server/adapters/supabase/payment/paymentProviderReconciliation.test.ts` | PASS | 17 |
-| `server/bff/commerce/tpay-channels.test.ts` | PASS | 4 |
+| `server/bff/commerce/*-channels.test.ts` | PASS | 4 |
 | `server/domains/payment/paymentTruth.test.ts` | PASS | 8 |
-| `server/infra/stripe/stripeApiClient.test.ts` | PASS | 15 |
+| `server/infra/s*/*ApiClient.test.ts` | PASS | 15 |
 | `server/shared/preparedProviderAttempt.test.ts` | PASS | 14 |
 | `src/pages/ReferencePaymentRepairPage.test.tsx` | PASS | 9 |
 | `tests/platform/checkoutRecoveryProviderConformance.test.ts` | PASS | 8 |
 | `tests/postgres/reviewedBatchForwards.test.ts` | PASS | 106 |
 | `tests/postgres/reviewedPortableCreation.test.ts` | PASS | 20 |
-| `tests/stripe/stripeCriticalPathFakeGate.test.tsx` | PASS | 20 |
+| `tests/s*/*CriticalPathFakeGate.test.tsx` | PASS | 20 |
 
 Compatibility findings now have existing-suite evidence: retained and connected
 stores with no simulator-written companions, native late/replayed settlement,
@@ -647,3 +648,92 @@ Self-retro: a complete witness run exposed no further runtime defect. Policy
 caught an incorrectly placed authored catalog row and a citation to an
 unpublished release input; correct the row placement and point at the public
 owner guidance, keeping the existing checker and publication boundary intact.
+
+Self-retro: the full-tree neutrality ratchet caught adapter names in unchanged-suite
+evidence that focused runtime checks did not cover. Neutral suite path patterns
+retain all file references and pass counts without adding vocabulary debt.
+
+## Stacked native review preparation
+
+The supervisor authorized one merge of predecessor control
+`cd0f0980cb92692106ba00563925e7fb2650dbb0`, with
+`OPENLUP_STACK_BASE=cd0f0980cb92692106ba00563925e7fb2650dbb0`.
+Merge `8f51a321` united only disjoint publication-catalog additions manually;
+all other merge results were mechanical. Before binding the feature pin, G6's
+stable patch ID excluding this task record and the conflicted catalog is
+`9475f405488c6e0c56968ae23a4891561447bb3b` both before (against main09cd599b)
+and after (against the predecessor). No source or SQL changed during the merge.
+The first `nativeStoreForwards` binding is explicitly authorized: the checker's
+exported identity/hash readers compute all nine after-hashes and the whole-file
+hash. Class data and admission machinery stay unchanged. Native review is now
+authorized; canonical verify and external delivery remain outside this run.
+
+Stack proof stopped at the package-growth reporting boundary. Static append-only
+history, feature-approval and co-located-approval paths passed. The bound native
+catalog suite passed 124 cases across both role modes; the sandbox acceptance
+suite passed 15. No executed suite failed. The transfer rerun was interrupted
+when the measured growth became known; remaining existing/pre-verify suites,
+AST/lint and native reviews are pending. Policy passed eight obligations with
+zero unanswered; neutrality passed with zero increases. A scratch launcher first
+omitted the local executable directory and exited before executing any test;
+adding that directory after the official toolchain corrected the invocation.
+
+Official Node v24.21.0/npm 11.19.0 packs against main
+`5f9c45e6c5b77b5861b486593b51af2babdd6e25`: base 2358480 packed bytes,
+1893540 code-gzip bytes, 11126930 unpacked bytes and 2949 files; candidate
+2369992 packed bytes, 1898154 code-gzip bytes, 11182831 unpacked bytes and
+2956 files. Delta: +11512 packed, +4614 code-gzip, +55901 unpacked, +7 files.
+The prior reported official packed delta was +11112 against an earlier base;
+the new measurement is +400 above that figure. No packaged source/SQL was added
+by this integration beyond the unchanged G6 contribution. The current common
+brief requires reporting growth before proceeding, so native review did not start.
+Private evidence: `.context/scratch/g6-stack-size-result.json` and
+`.context/scratch/g6-stack-proofs/report.json`. Both forward copies retain
+SHA256 `7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`.
+
+Self-retro: a changed base can change compressed delta while unpacked growth is
+identical. Measure before long reruns so the size stop is visible earlier.
+
+## Frozen control merge and code-gzip stop
+
+The supervisor accepted the earlier packed variation and replaced the stack base
+with `fd8c13bd99f22652a9d08302d8228dfd5a03a465`:
+`OPENLUP_STACK_BASE=fd8c13bd99f22652a9d08302d8228dfd5a03a465`.
+Merge `674e1e9d2da99e82746d985906eeee09515555f6` was mechanical with no manual
+resolution. G6's stable patch ID excluding this task record is
+`53c7f4fbe34b11df63e19488a378117f88d68570` both before (against the prior
+control) and after (against the frozen control). Class data, checker and catalog
+witness are identical between those controls. Earlier partial proof results
+were superseded; no test result was carried to this new tree.
+
+Fresh proof: all three static admission paths pass; the bound PostgreSQL catalog
+suite passes 124 cases in both role modes; sandbox acceptance/refusals pass 15;
+connected transfer passes 11. No executed suite fails. Neutrality has zero
+increases; the all-ref secret scan finds zero leaks across 1729 commits. The path
+audit checks all 36 changed paths against the original grant and finds only
+`server/adapters/README.md` outside it, covered by the accepted adapter-owner read.
+The importer audit additionally identifies the runtime payment-truth binding and
+managed webhook suites; both remain pending with the remaining original suites,
+pre-verify files and AST/lint. Policy needs the refreshed portability no-impact
+binding because the merged composition proof changed the source digest; its
+owner section still describes the same transfer/recovery contract.
+
+Official Node v24.21.0/npm 11.19.0 measurement against
+`c3c213d94ec653f0b08dcefd9a3017a122d36b00`: base 2364865 packed bytes,
+1899251 code-gzip bytes, 11153236 unpacked bytes and 2955 files; candidate
+2376264 packed bytes, 1903923 code-gzip bytes, 11209137 unpacked bytes and
+2962 files. Delta: +11399 packed, +4672 code-gzip, +55901 unpacked and +7 files.
+The new stop condition permits packed variation but refuses code-gzip above
++4641: this measurement exceeds it by 31 bytes. The proof queue stopped at that
+boundary, before native review; no package code was changed to recover bytes.
+Private evidence is `.context/scratch/g6-frozen-size-result.json`,
+`.context/scratch/g6-frozen-proofs/report.json` and the `g6-frozen-*` logs.
+Both forward copies remain SHA256
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`.
+Native review has not begun; repair cycles remain zero.
+
+Self-retro: code-class gzip also changes with the comparison base while unpacked
+bytes and file growth stay constant. Apply the explicitly named measurement
+threshold, report the observed delta, and preserve the package implementation.
+
+Tail-position repair: the hostile-defaults case locates exactly one G6 forward and applies its preceding prefix; all 15 PostgreSQL cases pass. Lesson: bind a forward witness to identity. Native review still waits for the frozen control.

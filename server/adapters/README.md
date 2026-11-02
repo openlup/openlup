@@ -86,6 +86,12 @@ census. No registration or channel business row enters the typed projection;
 empty baseline metadata keeps its original unsupported-empty disposition.
 Unknown or drifted registrations and nonempty channel relations refuse.
 
+The native bundle admin write binding now uses a factory re-export from
+`@openlup/platform/catalog`. The package preserves its per-operation pooled,
+role-free transaction and shared managed/native argument and error translation.
+The reference authorization and response mapper still own the served boundary;
+this relocation is not installation or actor-kind qualification.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
@@ -491,8 +497,10 @@ projections of existing canonical SQL, not another migration history.
 The native bundle read store and query statements are implemented by
 `@openlup/platform/catalog`. The former PostgreSQL paths retain named exports;
 runtime callers still supply the executor, with no pool or role-switch change.
-The native write store, pooled transaction/RPC binding and managed adapters remain
-here. Catalog's SQL descriptor projects canonical units 16/19 unchanged; it is not
+The native write store and shared routine marshalling now delegate through
+re-export facades to that same catalog entry. Its pooled transaction lane and
+SQLSTATE errors retain their existing behavior and constructor identity; managed
+transport binding, authorization and response mapping remain here. Catalog's SQL descriptor projects canonical units 16/19 unchanged; it is not
 an installation chain. Real PostgreSQL tests characterize incumbent reads,
 write-routine rollback/replay and grants, without mounted or actor-kind parity.
 
