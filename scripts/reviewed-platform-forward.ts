@@ -264,11 +264,13 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
 }
 
 /** Split top-level SQL only. Comments, quoted literals and dollar bodies cannot introduce statements. */
-export function sqlStatements(sql: string, dump = false, creation = false): string[] {
+// Native admission opts into ASCII structure without changing older splitter modes.
+export function sqlStatements(sql: string, dump = false, creation = false, asciiStructure = false): string[] {
   const statements: string[] = [];
   let start = -1;
   for (let index = 0; index < sql.length;) {
     if (creation && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed portable creation refuses non-ASCII outside strings, comments and dollar bodies");
+    if (asciiStructure && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed native store refuses non-ASCII outside strings, comments and dollar bodies");
     if (/\s/u.test(sql[index]!)) { index++; continue; }
     if (dump && start < 0 && sql[index] === "\\") {
       const command = /^\\(?:un)?restrict [A-Za-z0-9]+(?:\r?\n|$)/u.exec(sql.slice(index))?.[0];
@@ -296,9 +298,12 @@ export function sqlStatements(sql: string, dump = false, creation = false): stri
       index++; let closed = false;
       while (index < sql.length) {
         if (creation && quote === '"' && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed portable creation refuses non-ASCII identifiers");
+        if (asciiStructure && quote === '"' && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed native store refuses non-ASCII identifiers");
         if (creation && (sql[index] === "\n" || (quote === '"' && /[;$]/u.test(sql[index]!)))) throw new Error("reviewed portable creation refuses multiline quotes and statement or dollar delimiters in identifiers");
         if (sql[index] === "\\") {
           if (creation) throw new Error("reviewed portable creation refuses backslashes outside dollar bodies");
+          // PostgreSQL ends a standard literal at the quote after a backslash, so a candidate's escape reading would split statements differently.
+          if (asciiStructure && !dump) throw new Error("reviewed native store refuses backslashes in quoted literals and identifiers");
           index += 2; continue;
         }
         if (sql[index++] === quote) { if (sql[index] === quote) { index++; continue; } closed = true; break; }
@@ -306,7 +311,7 @@ export function sqlStatements(sql: string, dump = false, creation = false): stri
       if (!closed) throw new Error("reviewed replacement SQL has an unterminated literal");
       continue;
     }
-    const tag = sql[index] === "$" ? /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(sql.slice(index))?.[0] : undefined;
+    const tag = sql[index] === "$" && (!asciiStructure || !/[A-Za-z0-9_$\u0080-\uffff]/u.test(sql[index - 1] ?? "")) ? /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(sql.slice(index))?.[0] : undefined;
     // The pinned files open bodies only as AS $$. PostgreSQL includes an
     // identifier-adjacent dollar in that identifier, so never guess here.
     if (creation && sql[index] === "$" && (tag !== "$$" || !/(?:^|[^A-Za-z0-9_$])AS[ \t\n]+$/iu.test(sql.slice(0, index)))) throw new Error("reviewed portable creation requires dollar bodies immediately after AS and whitespace");
@@ -853,6 +858,13 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
 }
 
 /** Run from trusted main. Candidate objects are data; their validator is never loaded. */
+// The real-PostgreSQL catalog test and the named files that select, run and containerize it. A native-SQL change that
+// touches any of them, or anything under tests/setup/, is refused; code these files run is a review duty, not a control.
+export const NATIVE_CATALOG_CONTROLS = [
+  "tests/postgres/nativeStoreForwardCatalog.test.ts", "tests/helpers/postgresContainer.ts", "vitest.config.ts", "scripts/run-vitest.mjs", "scripts/ci-test-scope.mjs",
+  "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", "scripts/disposable-docker.mjs", "scripts/ci-vitest-duration-keys.ts", "scripts/coverage-summary-protocol.ts",
+  "src/test/setup.ts", "src/checkout/machine/commerceRequestCache.ts", "config/ci-images.json", ".npmrc",
+];
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string, trustedBase = base): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (before && after && !before.equals(after)) {
@@ -876,10 +888,10 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
   if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path))) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
-  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "package.json", "package-lock.json"];
+  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", ...NATIVE_CATALOG_CONTROLS, "package.json", "package-lock.json"];
   const changed = [head, trustedBase].flatMap((revision) => git(root, ["diff", "--name-only", "--no-renames", "-z", base, revision]).toString("utf8").split("\0"));
   const releaseTool = (path: string) => /^scripts\/(?:agent-review-|oss-|source-|packages\/)/u.test(path) && !/\.test\.[cm]?[jt]sx?$/u.test(path);
-  if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || path.startsWith("tests/setup/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
   assertForwardApproval(root, base, head);
   const registry = readReviewedForwardRegistry(after);
   for (const list of FORWARD_LISTS) for (const entry of registry[list] ?? []) {
@@ -1853,11 +1865,52 @@ const nativeStoreG4ExistingTableStatements = [
 // Do not erase them as JavaScript whitespace or fold them into an ASCII name.
 const nativeStoreTrim = (value: string): string => value.replace(/^[ \t\n]+|[ \t\n]+$/gu, "");
 const nativeStoreAscii = (value: string): boolean => [...value].every(character => character.charCodeAt(0) <= 0x7f);
+// Separate actual parameters; commas in defaults never create argument types.
+function nativeStoreArguments(args: string): string[] {
+  const result: string[] = [], nesting: string[] = [];
+  let start = 0;
+  for (let index = 0; index < args.length;) {
+    const quote = args[index];
+    if (quote === "'" || quote === '"') {
+      index++; let closed = false;
+      while (index < args.length) {
+        if (args[index] === "\\") throw new Error("reviewed native store unsupported argument escape");
+        if (args[index++] === quote) { if (args[index] === quote) { index++; continue; } closed = true; break; }
+      }
+      if (!closed) throw new Error("reviewed native store unterminated argument literal");
+      continue;
+    }
+    if (args.startsWith("--", index)) { const end = args.indexOf("\n", index); index = end < 0 ? args.length : end; continue; }
+    if (args.startsWith("/*", index)) {
+      let depth = 1; index += 2;
+      while (index < args.length && depth) {
+        if (args.startsWith("/*", index)) { depth++; index += 2; }
+        else if (args.startsWith("*/", index)) { depth--; index += 2; }
+        else index++;
+      }
+      if (depth) throw new Error("reviewed native store unterminated argument comment");
+      continue;
+    }
+    const tag = args[index] === "$" && !/[A-Za-z0-9_$\u0080-\uffff]/u.test(args[index - 1] ?? "") ? /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(args.slice(index))?.[0] : undefined;
+    if (tag) {
+      const end = args.indexOf(tag, index + tag.length);
+      if (end < 0) throw new Error("reviewed native store unterminated argument dollar literal");
+      index = end + tag.length; continue;
+    }
+    const token = args[index]!;
+    if (token === "(" || token === "[") nesting.push(token);
+    if ((token === ")" || token === "]") && nesting.pop() !== (token === ")" ? "(" : "[")) throw new Error("reviewed native store unbalanced argument default");
+    if (token === "," && !nesting.length) { result.push(args.slice(start, index)); start = index + 1; }
+    index++;
+  }
+  if (nesting.length) throw new Error("reviewed native store unbalanced argument default");
+  result.push(args.slice(start)); return result;
+}
 // This reader belongs only to the closed class. Earlier identity readers retain
 // their issued restrictions; a parseable type never authorizes a signature.
 function nativeStoreIdentity(name: string, args: string): string {
   if (!nativeStoreAscii(name)) throw new Error("reviewed native store non-ASCII function identity refused");
-  const types = nativeStoreTrim(args) ? args.split(",").map(argument => {
+  const types = nativeStoreTrim(args) ? nativeStoreArguments(args).map(argument => {
     if (/^(?:IN|OUT|INOUT|VARIADIC)\b/iu.test(nativeStoreTrim(argument))) throw new Error("reviewed native store unsupported argument mode");
     const match = /^(?:[a-z_][a-z0-9_]*[ \t\n]+)?((?:uuid|text|jsonb|integer|bigint|boolean|timestamptz|bool|int|int4|int8|timestamp[ \t\n]+with[ \t\n]+time[ \t\n]+zone|[a-z_][a-z0-9_]*[ \t\n]*\.[ \t\n]*[a-z_][a-z0-9_]*)(?:[ \t\n]*\[[ \t\n]*\])*)(?:[ \t\n]+DEFAULT[ \t\n]+[\s\S]+)?$/iu.exec(nativeStoreTrim(argument));
     if (!match || !nativeStoreAscii(match[1]!)) throw new Error("reviewed native store unsupported argument identity");
@@ -1879,7 +1932,7 @@ const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [
 /** Raw statement hashes, with normalized types and exact class-list membership. */
 export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readonly string[], preceding = false): Map<string, string> {
   const allowed = new Set(signatures), names = new Set(signatures.map(signature => signature.split("(")[0]!)), result = new Map<string, string>();
-  for (const statement of sqlStatements(bytes.toString("utf8"), preceding)) {
+  for (const statement of sqlStatements(bytes.toString("utf8"), preceding, false, true)) {
     const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)[ \t\n]*\(/iu.exec(statement);
     if (preceding && (!prefix || !names.has(prefix[1]!.toLowerCase()))) continue;
     if (!/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) continue;
@@ -1977,8 +2030,9 @@ function nativeStorePrivilege(statement: string, tables: Set<string>): { kind: "
   let sql = statement, roleGuard: string | undefined;
   const conditional = /^DO\b/iu.test(statement);
   if (conditional) {
-    const block = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*\(SELECT 1 FROM pg_roles WHERE rolname[ \t\n]*=[ \t\n]*'(anon|authenticated|service_role)'\) THEN[ \t\n]+EXECUTE '([^']+)';[ \t\n]*END IF;[ \t\n]*END;[ \t\n]*\$\$;$/iu.exec(statement);
+    const block = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*\(SELECT 1 FROM pg_roles WHERE rolname[ \t\n]*=[ \t\n]*'(anon|authenticated|service_role)'\) THEN[ \t\n]+EXECUTE '([^']+)';[ \t\n]*END IF;[ \t\n]*END;[ \t\n]*\$\$;$/i.exec(statement);
     if (!block || !nativeStoreRoles.includes(block[1]!)) throw new Error("reviewed native store refuses DO outside the single constant role privilege shape");
+    if (!nativeStoreAscii(block[2]!)) throw new Error("reviewed native store conditional privilege requires ASCII identifiers and verbs");
     roleGuard = block[1]!.toLowerCase(); sql = block[2]!.replace(/;?$/u, ";");
   }
   const table = nativeStoreTableNarrowing(nativeStoreTrim(sql.replace(/[ \t\n]+/gu, " ")), tables);
@@ -2022,7 +2076,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), baseStatements = new Map<string, string>();
   let checkSource: string | undefined;
   const prefixTables = new Set<string>();
-  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true, false, true)) {
     const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)[ \t\n]*\(/iu.exec(statement);
     if (table && nativeStoreAscii(table[1]!)) prefixTables.add(table[1]!.toLowerCase());
     if (source.path !== PLATFORM_BASELINE_FILE && [...names].some(name => statement.toLowerCase().includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*[ \t\n]*\(/iu.test(statement)) throw new Error("reviewed native store unsupported preceding function DDL");
@@ -2035,7 +2089,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   }
   for (const fn of functions) if ((baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
-  const statements = sqlStatements(bytes.toString("utf8")), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
+  const statements = sqlStatements(bytes.toString("utf8"), false, false, true), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
   if (definitions.size !== functions.length || functions.some(fn => definitions.get(fn.signature) !== forward.functions.find(pin => pin.signature === fn.signature)?.afterSha256)) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   const created = new Set(slot.createdFunctions.map(fn => fn.signature));
   const existingTableStatements = slot.existingTableStatements ?? [];
@@ -2046,7 +2100,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (droppedCheck && !addedCheck && !statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) throw new Error("reviewed native store requires the adjacent purpose CHECK replacement");
     if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) {
       const signature = [...nativeStoreFunctionDefinitions(Buffer.from(statement), signatures).keys()][0]!, fixed = functions.find(fn => fn.signature === signature);
-      if (!fixed || statement.startsWith("CREATE OR REPLACE FUNCTION ") !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
+      if (!fixed || /^CREATE OR REPLACE FUNCTION /iu.test(statement) !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
       const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
       if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(baseStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
       const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(header)?.[1] ?? null;

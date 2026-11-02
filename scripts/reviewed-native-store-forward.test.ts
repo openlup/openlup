@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_CATALOG_CONTROLS, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -304,6 +304,83 @@ describe("PostgreSQL identifier boundaries", () => {
     const statement = "CREATE FUNCTION public.fixture_probe(\tp_value text DEFAULT 'Żółć\u00a0')\nRETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p_value; $$;";
     expect(() => run(signature, statement, undefined, "CREATE TABLE public.fixture_literal (label text DEFAULT 'Żółć\u00a0');")).not.toThrow();
   });
+  it.each(["\u00a0", "\u2002", "\u2028", "\ufeff"])("refuses Unicode before statements with fresh pins: %s", separator => {
+    expect(() => run(probe, definition(), undefined, separator)).toThrow(/reviewed native store/u);
+    expect(() => run(probe, definition(), `${separator}REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses a Unicode spelling of the fixed guard relation", () => {
+    const privilege = block("service_role", "GRANT EXECUTE", probe).replace("pg_roles", "pg_role\u017f");
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${privilege}`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses Unicode keywords inside a conditional table privilege", () => {
+    const privilege = "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVO\u212aE ALL ON TABLE public.fixture_keep FROM anon;'; END IF; END; $$;";
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${privilege}`, "CREATE TABLE public.fixture_keep (id uuid);")).toThrow(/reviewed native store/u);
+  });
+  it.each(["create or replace FUNCTION", "Create OR Replace Function", "CREATE or REPLACE FUNCTION"])("refuses %s for a created signature", introducer => {
+    expect(() => run(probe, definition().replace("CREATE FUNCTION", introducer))).toThrow(/creation\/replacement/u);
+  });
+  it("retains plain CREATE with case-varied keywords", () => {
+    expect(() => run(probe, definition().replace("CREATE FUNCTION", "create FUNCTION"))).not.toThrow();
+  });
+  it.each([
+    "p_kind text DEFAULT 'x,uuid DEFAULT x,text DEFAULT x,jsonb DEFAULT x,timestamptz DEFAULT x'",
+    "p_key text, p_owner uuid, p_kind text DEFAULT 'x,jsonb DEFAULT x,timestamptz DEFAULT x'",
+    "p_kind text DEFAULT $value$x,uuid DEFAULT x,text DEFAULT x,jsonb DEFAULT x,timestamptz DEFAULT x$value$",
+  ])("refuses a listed argument count fabricated inside a default: %s", args => {
+    const signature = "public.fixture_probe(text,uuid,text,jsonb,timestamptz)";
+    const statement = definition(`public.fixture_probe(${args})`);
+    expect(() => run(signature, statement)).toThrow(/unlisted signature/u);
+  });
+  it.each([
+    ["text", "p_value text DEFAULT 'left,right'"],
+    ["text", "p_value text DEFAULT coalesce('left,right', 'Żółć')"],
+    ["text", "p_value text DEFAULT $value$Żółć,uuid DEFAULT x$value$"],
+    ["text[]", "p_value text[] DEFAULT ARRAY['left,right','Żółć']"],
+  ])("retains the actual %s identity with a complex default: %s", (type, args) => {
+    const signature = `public.fixture_probe(${type})`;
+    expect(() => run(signature, definition(`public.fixture_probe(${args})`))).not.toThrow();
+  });
+  it("does not treat identifier-adjacent dollars as default quote delimiters", () => {
+    const args = "p_text text DEFAULT public.fixture_x$value$one(), p_owner uuid DEFAULT public.fixture_x$value$two()";
+    const statement = definition(`public.fixture_probe(${args})`);
+    expect(() => run("public.fixture_probe(text)", statement)).toThrow(/unlisted signature/u);
+    expect(() => run("public.fixture_probe(text,uuid)", statement)).not.toThrow();
+  });
+  // PostgreSQL ends a standard literal at the quote after a backslash, so the escape reading of the splitter would see one
+  // statement where the database runs several: here a listed function, then an operator that hides a second function.
+  it("refuses a backslash in a quoted literal that hides statements from the splitter", () => {
+    const statement = String.raw`CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS 'select 1 --\';`;
+    const hidden = String.raw`CREATE FUNCTION pg_catalog.cat_ge(oid, integer) RETURNS boolean LANGUAGE sql STABLE AS $b$ SELECT $1::bigint >= $2 AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid = $1 AND proname IN ($n$cat_ge$n$, $n$cat_evil$n$)) $b$;
+CREATE OPERATOR pg_catalog.>= (LEFTARG = oid, RIGHTARG = integer, FUNCTION = pg_catalog.cat_ge);
+CREATE FUNCTION public.cat_evil(c text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $b$ BEGIN EXECUTE c; END $b$;
+SELECT ' $a$ ';
+SELECT 1 AS x$a$, 2 AS y$q$;
+REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
+    expect(() => run("public.cat_created(text)", statement, hidden)).toThrow(/backslashes in quoted literals and identifiers/u);
+  });
+  it.each([
+    ["a single-quoted literal", "SELECT 'a\\'; SELECT 1;"],
+    ["a double-quoted identifier", "SELECT 1 AS \"a\\\"; SELECT 2 AS \"b\";"],
+    ["an escape string", "SELECT E'a\\n';"],
+  ])("refuses a backslash in %s of a candidate", (_label, text) => {
+    expect(() => sqlStatements(text, false, false, true)).toThrow(/backslashes in quoted literals and identifiers/u);
+  });
+  it("keeps the older reading for preceding files and other splitter modes", () => {
+    expect(sqlStatements("SELECT E'a\\n';", true, false, true)).toHaveLength(1);
+    expect(sqlStatements("SELECT E'a\\n';")).toHaveLength(1);
+  });
+  it("retains a backslash inside a dollar body", () => {
+    expect(() => run(probe, definition().replace("'value'", "E'\\u0020'"))).not.toThrow();
+  });
+  it("hashes the complete function when a return identifier contains dollar markers", () => {
+    const statement = "CREATE FUNCTION public.fixture_probe() RETURNS public.fixture_type$value$one LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $value$ SELECT NULL; $value$;";
+    expect(nativeStoreFunctionDefinitions(Buffer.from(statement), [probe]).get(probe)).toBe(sqlSha256(statement));
+  });
+  it("retains Unicode comments and literal data around statement delimiters", () => {
+    const signature = "public.fixture_probe(text)";
+    const statement = "CREATE FUNCTION public.fixture_probe(p_value text DEFAULT 'left; Żółć') RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'right; Żółć'; $$;";
+    expect(() => run(signature, statement, undefined, "-- Żółć\u00a0\n/* Żółć /* nested */ */")).not.toThrow();
+  });
 });
 
 describe("grant-only existing functions", () => {
@@ -487,6 +564,10 @@ describe("real Git introduction, release and co-location", () => {
       await expect(waitNativeAdmission({ cwd: folder, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).rejects.toThrow(/feature binding/u);
     } finally { rmSync(folder, { recursive: true, force: true }); }
   });
+  it("names exactly the protected catalog test files in the documentation", () => {
+    const named = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("catalog test and these named files:")[1]?.split("Code those files run")[0] ?? "";
+    expect([...named.matchAll(/`([^`]+)`/gu)].map(match => match[1]).sort()).toEqual([...NATIVE_CATALOG_CONTROLS, "tests/setup/"].sort());
+  });
   it("requires prior class approval, feature pins, unchanged controls and immutable issued SQL", () => {
     mkdirSync(".context/scratch", { recursive: true });
     const folder = mkdtempSync(resolve(".context/scratch/native-store-git-"));
@@ -503,6 +584,13 @@ describe("real Git introduction, release and co-location", () => {
       put("scripts/reviewed-platform-forward.ts", "// Changed control"); const mixed = commit();
       expect(() => assertCoLocatedForwardApproval(folder, base, mixed)).toThrow(/machinery/u);
       git("reset", "--hard", feature);
+      // The real-PostgreSQL catalog test is the truth for function attributes: a feature PR cannot edit it, or the named
+      // files that select, run and containerize it, unseen. Code those files run is a review duty, not a control.
+      for (const control of [...NATIVE_CATALOG_CONTROLS, "tests/setup/disposable-docker.ts"]) {
+        put(control, "// Changed catalog test input"); const controlEdit = commit();
+        expect(() => assertCoLocatedForwardApproval(folder, base, controlEdit), control).toThrow(/machinery/u);
+        git("reset", "--hard", feature);
+      }
       const changed = structuredClone(value); changed.nativeStoreForwardClass!.slots[0]!.replacedFunctions[0]!.searchPath = null;
       put(registryPath, encode(changed)); const enlarged = commit();
       expect(() => assertCoLocatedForwardApproval(folder, base, enlarged)).toThrow(/approved separately/u);
@@ -585,7 +673,9 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
   it.each(g4g3.refusals)("refuses G4 $label even with fresh feature pins", attack => {
     const statements = [...g4g3.g4Statements];
     if (attack.replace === undefined) statements.push(attack.sql); else statements[attack.replace] = attack.sql;
-    expect(() => checkG4G3(2, `${statements.join("\n")}\n${sql(2)}`)).toThrow(/existing-table statement/u);
+    // The class splitter refuses non-ASCII structure before any companion is compared, so such a case never reaches the list check.
+    const message = /\P{ASCII}/u.test(attack.sql) ? /non-ASCII outside strings/u : /existing-table statement/u;
+    expect(() => checkG4G3(2, `${statements.join("\n")}\n${sql(2)}`)).toThrow(message);
   });
   it("refuses validate-before-add, a duplicate statement and a missing statement", () => {
     const [drop, add, validate] = g4g3.g4Statements;

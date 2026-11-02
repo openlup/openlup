@@ -69,6 +69,15 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The source-only outcome and package-set BOM generators route to
+[distribution evidence](DISTRIBUTION_EVIDENCE.md). Its projection section owns
+class grouping, exact input fingerprints and refusal of partial outcome claims;
+its BOM section owns committed inventory and verified artifact identity. The
+publication catalogue includes their helpers, wrappers, witnesses and the one
+generated outcome file. README evaluation paths and installation policy retain
+preview and sandbox-payment limits. Generated navigation grants no execution,
+installation, publication or support qualification.
+
 The hosted S3 task and storage witness are public source outputs. The runner
 owner in runtime guidance defines its explicit storage-only declaration, private
 lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
@@ -544,6 +553,17 @@ Records matching no current obligation are ignored; a malformed record in a
 change with obligations fails the check. A shallow checkout reads no trailers
 and checks a legacy comment only against the current section; fetch complete
 history. Every accepted reason is printed by `--policy` for review.
+
+When a required integration of main changes a covered source delta, record its
+fresh reason on a non-merge commit. The
+[focused integration review rule](../../CONTRIBUTING.md#native-review-and-accountability)
+also permits exactly one single-parent commit directly after the qualifying
+two-parent merge: its tree must equal the merge tree, and its message may contain
+only a subject, one or more `OpenLup-Doc-Impact` trailer lines and optional
+`Signed-off-by` lines. Reviewers receive and judge those reasons. The actual
+trailer tip remains the reviewed and receipted head; all existing coverage,
+expiry, intent, author, finding, cycle and mechanical-proof rules still apply.
+This does not change which commits answer obligations or what the digest binds.
 
 For compatibility, an in-section `openlup-doc-impact` comment accepted by the
 previous rule still answers: exactly one fresh record for the unit in its owner

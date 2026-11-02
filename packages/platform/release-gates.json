@@ -40,6 +40,7 @@
         "test/catalog/catalogMediaResolution.test.ts",
         "test/catalog/catalogLifecycleContracts.test.ts",
         "test/catalog/bundleRules.test.ts",
+        "test/catalog/bundleAdminWriteStore.test.ts",
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
@@ -563,6 +564,16 @@
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"
     },
+    "./invoicing/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/invoicing/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/postgres/index.d.ts",
+      "snapshot": "api/invoicing-postgres.api.md"
+    },
     "./invoicing/contracts": {
       "role": "capability",
       "maturity": "experimental",
@@ -580,6 +591,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "test/account-support/postgresAccountReads.test.ts",
         "test/account-support/contracts.test.ts",
         "test/account-support/accountReadFacade.test.ts",
         "test/account-support/browserSafety.test.ts",

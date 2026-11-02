@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: repaired control DCO-committed after its accepted read; focused proof below.
+Status: landed in openlup/openlup#501 (merge `5f9c45e6c5b77b5861b486593b51af2babdd6e25`, 2026-11-02). The final state, including six native review cycles, the mechanical integration with main and the two integration reviews, is recorded in "Final state" at the end of this record. Earlier sections are the history of the work as it stood when each was written.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -34,6 +34,146 @@ the stabilized read below for DCO. Native review then requires two independent f
 reviewers, and canonical verify waits for the supervisor's named slot. No native
 review, PR, merge, publishing, settings, credentials, production or budget grant
 is inferred from this implementation or its preliminary proofs.
+
+Actors and supervisor change (2026-11-02, coordinator decision). Contexts in
+this history: implementation and original supervision, Codex context
+`01a19916-f1a0-7273-8962-2370c73127fd` (author of every committed change up to
+merge commit `cfcf523c`); reviewers `/root/forward_review_a67` and
+`/root/forward_review_b67`, both FAIL, their cards retained. The Codex context
+was stopped by a model safety flag at its resume after the repair commit and was
+not resumed again. The stream supervisor, Claude Code context
+`local_488b5a69-693b-44d8-ad08-f9cb9501f02a` (never a reviewer in this history),
+is now the active delivery supervisor. Facts: no parser, registry, SQL or
+package change was made as part of the change of supervisor; the staged merge of
+`origin/main` `4c7afd2590dc6998e22464153fca70a92eecfeb2` was completed at its
+exact tree `9dcd6034a7eb0984e3219b8fd9ce93698d8b4312` and signed. Budgets,
+cards, repair cycles and expiry rules carry over unchanged; a supervisor change
+adds no cycle. The next prepare uses the existing `prepare --new` route in the
+same history; new reviewers are fresh contexts excluded from this list. Any
+material repair is decided by the coordinator first because the original writer
+is no longer available.
+
+Regroup and material bar (2026-11-02, coordinator decision). Three review rounds
+each found a new gap between the hand-written lexer and PostgreSQL; the fourth,
+a function header that hides its attribute list inside a quoted default, is
+reproduced on real PostgreSQL by the new catalog test. The parser is therefore
+not repaired further. A required real-PostgreSQL catalog test,
+`tests/postgres/nativeStoreForwardCatalog.test.ts`, is the truth for function
+identity, security attribute, `search_path` and privileges: it replays one chain,
+the legacy selection, for every bound forward, applies the forward and compares
+what PostgreSQL reports with the slot's lists, with and without `service_role`.
+The static class stays as a first gate for ordinary mistakes, and the test is a
+protected control (a feature PR cannot edit it unseen). Material bar for review: a
+static divergence whose effect the catalog test refuses is not material; a
+difference in what the test claims to compare that it misses, or an unsound
+comparison, is material; an object kind outside its lists is material only with a
+demonstrated mechanism reaching a privilege or a listed boundary; function bodies,
+data statements and statement kinds keep the existing review duty. Reviewers also
+confirm the required-path claim against `scripts/ci-test-scope.mjs` and that an
+unbound forward cannot skip the test. The writer of this change is the
+stream supervisor context listed above. The reviewers of the previous candidate
+(`claude-code-subagent:opus:a937309dd655ccb76`, PASS, and
+`claude-code-subagent:opus:a69a6a422b5ef53c7`, FAIL with one material card) are
+excluded from the next reviews, and that card (the header boundary) closes
+through the catalog test's refusal case, not through the header reader.
+Registered, not changed here: the co-location diff lacks `--no-renames`
+(F-FORWARD-COLOCATION-RENAMES); backslashes in registry data statements, empty
+today (F-FORWARD-DATA-BACKSLASH); the older legacy-class identity example
+(F-FORWARD-LEGACY-KELVIN). Duties for the S1 seal: verify the rows added by later
+small controls are present before setting `sealed`, run the catalog test with
+all bound forwards, and record one run of all of them on the `qualified-v2` chain
+as evidence, not as a new gate.
+
+Catalog test review and repair (2026-11-02). Two fresh reviewers
+(`claude-code-subagent:opus:a1a3af2b073cd45df` and `...:a7cff8b6348ef112b`) both
+returned FAIL on tree `f01b417b03adc7fd06a196c910782fd565de4614` (native cycle 2).
+The header card closed: the catalog test refuses the quoted-default statement for
+the right reason. Seven material gaps were in the new test and its protection, not
+in the static parser: the purpose CHECK rule used the slot values as additions
+instead of the preimage values and compared only the quoted literals; system
+schemas, schema owners and privileges, role memberships, trigger definitions and
+view definitions were not read; the owner of a new object was not pinned; and the
+files that select and run the test were not protected controls. The repair keeps
+the design and widens what is read, with one uniform list instead of a query per
+finding: a digest of PostgreSQL's own function and relation privileges, user
+objects read by OID, the owner pinned to the migration role, the exact deparsed
+CHECK form, one list of guard catalogs read whole through `to_jsonb` with parser
+positions normalized, a test that ties that list to the documentation, a chain
+replay that runs with no bound forward, and the controls list extended to the
+test's selection and runtime files. Every rule has a refusal case and a
+rule-removal check. The static parser is unchanged. Before the last automatic
+cycle (3 of 3) the real forwards of the dependent rows run through the final test
+locally, so a defect in the comparison is found before it costs a cycle.
+
+Third review cycle and continuation (2026-11-02). Two more fresh reviewers
+(`claude-code-subagent:opus:ac6997cec81bddc8f` and `...:a23c4d1f8f81a22a7`) returned
+FAIL on tree `e51517754391827ced8d0a8b47eb819eb6be0b37` (native cycle 3 of 3). Both
+closed the same seven cards and reported the same two gaps: the protected-control
+claim reached files the named controls import, and the documentation said the guard
+catalogs are read whole while some rows were filtered, so an internal-trigger change
+such as `DISABLE TRIGGER ALL` on an existing table passed. The coordinator authorized
+one more review cycle through `continue` with a narrowed scope: the claim names its
+files and leaves code those files run, and deliberately evasive changes, to review;
+every trigger that existed before the forward is compared as a whole row, internal
+ones included, and only the enforcement trigger of a constraint the forward adds may appear;
+the remaining row filters are removed or stated; the documentation and the code are
+tied by tests (the guard catalogs and the named protected files). The real forwards
+of the dependent rows run through the changed test before the next prepare. A
+failure of that cycle returns to the coordinator without further repair. Lesson:
+a comparison that claims to read a catalog whole must either read it whole or name
+each filter, and a claim about protection must name the files it covers.
+
+Fourth review cycle and bar correction (2026-11-02). Two more fresh reviewers
+(`claude-code-subagent:opus:a4ef2dfbcb965ea37` and `...:affd81d10d4f9d351`) returned
+FAIL on tree `d9c729a8bdf5544309c5ec330434244833b099c5` (native cycle 4). Both closed
+the same five of six cards: every protection card and the internal-trigger card.
+They reported three classes: row scopes the guard applied without stating them
+(constraints and relations at the OID floor, relations of six kinds, rows on
+relations PostgreSQL ships), an internal-trigger exception wider than the stated
+foreign-key one, and catalog reads that a temporary object could shadow. The
+coordinator then returned the review bar to the contribution guide: a finding is
+material only with a demonstrated forward that passes the static class and this
+test and gains a privilege or breaks a stated boundary (function identity, security
+attribute, `search_path`, function ACL, relation and column privileges, row
+security), or with a wrong refusal of a valid forward. Wording that is inaccurate
+without such an effect is advice, recorded here and fixed in prose by the next
+change that touches the section; it never blocks. The fifth cycle deletes the
+filters instead of stating them: an existing relation is any relation present
+before the forward, PostgreSQL's own included; constraints and relations are read
+without an OID floor or a relation-kind filter; an added internal trigger is
+admitted only for a constraint the forward adds; the catalog reads pin
+`search_path`. Advice recorded for the next documentation change: the freeze of
+replaced functions and the grant-only ACL rule are not stated in the section; the
+extended protected-file list also applies to the other reviewed classes' co-located
+changes and is not mentioned in the co-located approval section.
+
+Fifth review cycle and ruling (2026-11-02). Two more fresh reviewers
+(`claude-code-subagent:opus:a30eb2562be925e01` and `...:a054755e3617bdb71`) returned
+FAIL on tree `d890faf48dde0d5eb2ff05e16d486b1fd0177aa1` (native cycle 5). Both
+closed all seven open cards and each reported one new gap. The coordinator ruled on
+both. The gap reported against the relation snapshot did not block: an ALTER TABLE
+that rewrites an existing table replaces its TOAST relation and index with new OIDs,
+which the OID-keyed comparison refuses, but none of the seven slots rewrites a
+table and a refusal is fail-closed; here "a wrong refusal of a valid forward" means
+a forward of this programme's slots. Registered follow-up F-FORWARD-TOAST-REWRITE:
+compare TOAST relations without OID identity, for example by name, together with
+the change that first adds such a forward. The other gap was material. The native
+splitter read a backslash in a quoted literal as an escape while PostgreSQL ends a
+standard literal at the quote after it, so one admitted CREATE FUNCTION was several
+statements for the database, including an operator for `(oid, integer)` in
+`pg_catalog` that resolved the catalog test's own integer floor and hid an unlisted
+definer from it. The repair is scoped to three changes. A candidate native file
+refuses a backslash in a quoted literal or identifier (earlier files of the prefix
+keep the older reading), with a static witness using the reviewer's text; none of the
+seven forwards has one outside a dollar body. The catalog test types its floor as
+`oid`, reads the snapshot under hostile operators in one test, and refuses the
+reviewer's SQL directly. `pg_parameter_acl` joins the guard catalogs, with a refusal
+case for `GRANT SET ON PARAMETER`, because a privilege on a server parameter was not
+seen. Advice for the prose of the G4+G3 control: created functions' language and
+leakproof flag are not compared; the freeze of replaced functions and the grant-only
+ACL rule are not stated in the section; manifest units are replayed in path order;
+the earlier trailer wording about OID floors. A failure of the sixth cycle returns to
+the coordinator without repair.
 
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
@@ -362,3 +502,284 @@ Runtime pin mismatch → select the exact checkout-local toolchain without
 changing a test or policy. Per-file admission waits dominated the broad unchanged-line proof; no gate,
 fixture or budget was relaxed to reduce that delay. Stop after native review at
 READY_FOR_VERIFY; final verification and all external delivery await the lead.
+
+First native review and necessary repair (2026-11-02): two independent fresh
+whole-candidate reviewers returned FAIL on ed99d2ca/tree 453ae2c2, before any
+counted PASS. Their five material cards describe three causes: Unicode structural
+spellings (including the fixed role-catalog guard and leading whitespace),
+case-varied OR REPLACE misclassified as creation, and commas in quoted DEFAULT
+text manufacturing a listed argument identity. Both reports remain recorded in
+the existing native session. The author identity card is not considered closed:
+one reviewer reopened its broader family, and fresh review must validate all
+five cards. Cycle is still zero of three; the first repaired prepare will consume
+cycle one after its required read and DCO. There is no earliest PASS or expiry.
+
+The repair opts only native callers into ASCII structural validation before
+splitter whitespace skipping, uses ASCII matching for the constant privilege
+shape, recognizes creation kind consistently, and separates actual arguments
+through quotes, comments, dollar literals and nesting. Identifier-adjacent dollar
+markers remain identifier content. Older splitter modes, identity readers and
+expand-only grammar retain their behavior. Registry data, caller edits, active
+SQL, package inputs and budgets are unchanged. The canonical data owner section
+now describes these exact boundaries. No general parser or dependency was added.
+
+Independent raw-definition/file pins show all four concrete mutations admitted
+before repair and refused after it, while the unmutated G6 control admits. An
+owned network-isolated pinned PostgreSQL 16 probe confirms the default creates
+one actual argument instead of five, the long-s guard names another relation,
+mixed-case OR REPLACE replaces the object, and leading NBSP causes SQLSTATE
+42601. Its container was removed. Twenty appended native cases distinguish the
+failures, legitimate complex defaults, Unicode data and identifier-adjacent
+dollars; earlier assertions were not edited.
+
+The complete unchanged line rule was recomputed and repeated on frozen repaired
+source: 26 existing files match main byte-for-byte, the new native file passes
+167 cases, and an exact raw copy of its accepted 147-case ed99d2ca version also
+passes unchanged. Every execution used focused admission. Results:
+
+| File | Result |
+| --- | --- |
+| `scripts/reviewed-native-store-forward.test.ts` | PASS: 167 passed (167) |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS: 2 passed (2) |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/expandOnlyExpressions.test.ts` | PASS: 19 passed (19) |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS: 106 passed (106) |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS: 14 passed (14) |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS: 12 passed (12) |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS: 66 passed (66) |
+| `scripts/agent-review-gate.test.ts` | PASS: 22 passed (22) |
+| `scripts/agent-review-queue.test.ts` | PASS: 189 passed (189) |
+| `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) |
+| `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) |
+| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) |
+| `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) |
+| `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) |
+| `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) |
+| `scripts/packages/set-release.test.ts` | PASS: 68 passed (68) |
+| `scripts/public-ci-neutrality.test.ts` | PASS: 60 passed (60) |
+| `scripts/qualified-migration-admission.test.ts` | PASS: 24 passed (24) |
+| `scripts/reviewed-batch-forward.test.ts` | PASS: 691 passed (691) |
+| `scripts/source-preview-release.test.ts` | PASS: 718 passed (718) |
+| `scripts/source-release-preparation.test.ts` | PASS: 7 passed (7) |
+| `scripts/verify-local.test.ts` | PASS: 14 passed (14) |
+| `base-native-ed99d2ca` | PASS: 147 passed (147) |
+
+All 28 executions / 2,694 cases pass. Focused test admission waited
+3617 s and test execution took 860 s; logs, module selection and every
+file hash remain in ignored repair1-line-rule evidence. No existing test was
+changed to pass. The previous npm-pin failure remains recorded; this rerun uses
+the checkout-local pinned Node/npm, with the Docker CLI available to the ten
+owned-container PostgreSQL suites.
+
+Ast-grep, lint and public typecheck pass. Lint has zero errors and 99 warnings:
+33 existing warnings in the checkout plus the same warnings in two full baseline
+pack archives under ignored scratch. No lint rule or ignore was changed. Real
+paired Core/Outbox/Platform npm packs against main 09cd599b are byte-identical:
+0 B packed/unpacked delta, no changed entries. The normal policy check currently
+reports two obligations and one unanswered tooling digest because repaired
+control code is not DCO-signed before its new read. Its exact proposed trailer
+is in the stable packet; after accepted read it must be committed and policy
+must show zero unanswered. No policy PASS is inferred for this unsigned tree.
+
+F-FORWARD-LEGACY-KELVIN is registered as a follow-up by CD-M19-72, not fixed
+here. The older legacy-class Kelvin-sign example is unreachable with today's
+registry bytes, and any relocation of that legacy path needs its own control.
+The reviewers' prerequisite relocation scenario does not establish a current
+admission. Issued SQL is not repinned. Default expand-only admission already
+rejects such structural Unicode. No older class is changed.
+
+CD-M19-72 confirms the predecessor interpretation: landing stays in slot order;
+every earlier non-empty row needs its landed binding before a later slot,
+including G4/G3 before G7/G8/G11-c. The conservative refusal is unchanged and
+no unregistered predecessor is skipped. This question is answered.
+
+Regroup/self-retro: the author evaluation accepted at CD-M19-67 proved the suffix
+repair; the first native candidate evaluation at ed99d2ca then left a material
+obstacle to the same closed-identity outcome. The remaining gap belongs to this
+class control, not the unchanged older classes. The first fix did not cover every
+structural boundary or quoted defaults. The review evidence led to
+one bounded repair using the existing lexical seam, consistent kind detection
+and a small argument separator. Fully repinned counterexamples and real database
+observations discriminate the causes: the next check required all four fully
+repinned mutants to refuse while the unchanged control admitted, and those
+observations now hold. Repeated lexical identity gaps → reuse the smallest
+existing token boundary and prove it against database interpretation. Preserve
+both FAIL reports and the same
+three-cycle budget. Rules-common step 4 requires a fresh stabilized control read
+before repaired DCO; stop NEEDS_READ, then obtain two new independent reviews.
+No canonical verify, push, PR, queue, release or other worktree mutation ran.
+
+Accepted repair continuation (CD-M19-72, 2026-11-02): the coordinator accepted
+HEAD ed99d2ca and staged tree c4b85788a9a2ebeb80b31fb06fb38a2990a5c70d,
+with cached-diff SHA e5cc00d13e25c1fcdbacf31689c83c57ba78ec9402537d4cf9e02d73eb91370f
+and four paths. DCO commit 793930e5 retains that exact tree. ASCII structure
+remains opt-in for native calls only. This is repair cycle one of three; both
+prior FAIL reports and all five material cards remain in the same native
+history. Fresh prepare must preserve them. No counted PASS or expiry exists at
+this pre-review snapshot.
+
+The coordinator's regroup line is binding for the next two independent reviews:
+if either finds another static parse bypass, stop adding parser rules and report
+NEEDS_OWNER with the facts. Do not spend the remaining cycles on another parser
+repair. The proposed regroup is real PostgreSQL catalog proof as primary truth:
+compare pg_proc identity, security attributes, search_path and ACL before and
+after each forward against the slot lists in the required path, keeping static
+checks simple as early refusal. That catalog mechanism is not implemented or
+authorized by this record. Ask each reviewer, as advice only: "has the current
+candidate reached the point where that catalog proof is cheaper than the
+remaining parser risk?" Report both answers without treating advice as a blocker.
+
+The final executable source and tests are byte-identical to the frozen repair
+proof: 26 unchanged existing files, the native 167-case suite and the exact raw
+147-case version all pass (28 executions, 2,694 cases). Only this task-record
+prose changes after that proof; no test, fixture, package or parser is changed.
+Policy/navigation and ast-grep are refreshed for this prose and the source-bound
+tooling trailer is recomputed on the final tree. The previously measured real
+pack remains applicable: all three tarballs and entries match main, delta 0 B.
+No redundant test rerun or new repair cycle is inferred from the record update.
+
+Self-retro: repeated static-reader bypasses → stop extending the parser if the
+next review finds another, and return the catalog-proof tradeoff to the owner.
+This line changes the allowed recovery route, not the admitted SQL or test floor.
+Final verification and all external delivery remain reserved to the supervisor.
+
+Required main integration after CD-M19-72: native prepare refused merge preflight
+against main 4c7afd2590dc6998e22464153fca70a92eecfeb2. The integration-trailer control had
+landed after the accepted repair. A forced merge followed; its only conflict
+was the publication catalogue's adjacent plan-row insertion. The union retains
+both forward-class and integration-trailer rows, with every row and its order
+from both parents preserved. All other inherited changes are main's exact bytes.
+Native parser, registry, fixtures, caller changes and data-owner section remain
+identical to the accepted repair. No parser rule or new static parse bypass was
+introduced or discovered. The next-two-reviewer regroup line remains binding.
+
+The CD-M19-72 repair was DCO-committed as 793930e5 at its exact accepted tree;
+record/trailer commit 8f295e4b followed, with policy two obligations and zero
+unanswered, clean status and passing gitleaks. That committed repair is cycle
+one of three. Prepare stopped before appending its event, so the stored native
+counter still says zero; the next successful prepare must record cycle one and
+retain both FAIL reports and five material cards. No new reviewer has started,
+no counted PASS/expiry exists, and the catalog-proof advice question is not yet
+asked because the required clean committed candidate is blocked by this merge.
+
+Main's session helper and gate test changed implementation/test bytes, and the
+catalogue union changed a policy input. Both direct/shared and catalogue consumers
+were recomputed; seventeen current files plus raw native147 were rerun through
+focused admission. The gate file is main's
+unchanged 45-case version; no existing test was edited. The ten PostgreSQL
+existing-file results remain applicable because their source/dependencies and
+SQL/package inputs are unchanged. Final selection evidence:
+
+| File | Result | Evidence |
+| --- | --- | --- |
+| `scripts/reviewed-native-store-forward.test.ts` | PASS: 167 passed (167) | fresh: current merged tree |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS: 2 passed (2) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS: 26 passed (26) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS: 20 passed (20) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/expandOnlyExpressions.test.ts` | PASS: 19 passed (19) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS: 26 passed (26) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS: 106 passed (106) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS: 20 passed (20) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS: 14 passed (14) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS: 12 passed (12) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS: 66 passed (66) | reused: accepted repair proof, unaffected source/dependencies |
+| `scripts/agent-review-gate.test.ts` | PASS: 45 passed (45) | fresh: current merged tree |
+| `scripts/agent-review-queue.test.ts` | PASS: 189 passed (189) | fresh: current merged tree |
+| `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) | fresh: current merged tree |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) | fresh: current merged tree |
+| `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) | fresh: current merged tree |
+| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) | fresh: current merged tree |
+| `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) | fresh: current merged tree |
+| `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) | fresh: current merged tree |
+| `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) | fresh: current merged tree |
+| `scripts/packages/set-release.test.ts` | PASS: 68 passed (68) | fresh: current merged tree |
+| `scripts/public-ci-neutrality.test.ts` | PASS: 60 passed (60) | fresh: current merged tree |
+| `scripts/qualified-migration-admission.test.ts` | PASS: 24 passed (24) | fresh: current merged tree |
+| `scripts/reviewed-batch-forward.test.ts` | PASS: 691 passed (691) | fresh: current merged tree |
+| `scripts/source-preview-release.test.ts` | PASS: 718 passed (718) | fresh: current merged tree |
+| `scripts/source-release-preparation.test.ts` | PASS: 7 passed (7) | fresh: current merged tree |
+| `scripts/verify-local.test.ts` | PASS: 14 passed (14) | fresh: current merged tree |
+| `base-native-ed99d2ca` | PASS: 147 passed (147) | fresh: current merged tree |
+
+The final line selection is 26 unchanged existing files plus native167 and raw147:
+28 selections / 2,717 passing cases. The refresh ran eighteen executions / 2,406
+cases; summed focused admission wait was 1506 s and summed execution time
+was 774 s. Frozen
+file hashes pass. Ast-grep, public typecheck and lint pass (zero errors, 132
+warnings: the existing 33 repeated in three ignored baseline archives plus the
+checkout). No lint rule or ignore changed. Normal policy on the pending tree
+passes two obligations / zero unanswered. Diagnostic comparison against the
+future main base also confirms both existing source-bound trailers still match.
+Actual Core/Outbox/Platform pack evidence remains 0 B and byte-identical; main
+changed no package, SQL or pack-build inputs. No fresh-pack claim is inferred.
+
+The manual catalogue conflict means rules-common step 4's conflict-free/no-manual
+integration exception does not apply. Source patch identity excluding task and
+catalogue is preserved; full patch IDs differ with catalogue context. A refreshed
+read packet presents this exact staged merge before its DCO. This asks only for
+the necessary catalogue union, not for new parser behavior or recovery authority.
+After acceptance, finish the merge DCO, recheck policy/clean status and prepare
+the same native history before two new independent whole-candidate reviews.
+
+Self-retro: an advanced control on main required catalogue integration after the
+accepted repair → preserve both data rows and refresh only affected shared proof.
+No new static parser work, canonical verify, push, PR, queue or other worktree
+mutation was performed. Stop NEEDS_READ for the nonmechanical union; the next
+static parse bypass, if reviewers find one, still requires NEEDS_OWNER.
+
+## Final state (2026-11-02)
+
+Review history. Native review ran six cycles on the class and its catalog test.
+Cycles one to five each ended with findings that were repaired or ruled. Cycle six
+ended with two independent fresh reviews
+(`claude-code-subagent:opus:ab1e2e2d90feeddec` and `...:af142af124259a40d`) that
+returned PASS with no finding on tree `0ca4cc6e592546250d6cb6adb4aa7102122acaf5`
+(head `000165f8677d27134cd2f795568a0e606a29f2e5`). Its repair was limited to the three
+changes of the fifth-cycle ruling, and every open card was closed. The earliest
+counted PASS was 2026-11-02T10:53:51Z, which fixes the evidence expiry 24 hours later.
+
+Integration. Main moved after that review (a package landing). The merge `20f72f84…`
+of main `af172573385851a5ab73adbb1fda71804ea4bb26` was clean and had no hand edit:
+the merge of the reviewed head with main equals its tree
+`845dfe72d9ec6941eea2e87cd65a9b769c9098aa`, so the review session recorded the
+integration as mechanical and charged no repair cycle. Two further fresh reviewers
+(`claude-code-subagent:opus:ae65e25576ffa062b` and `...:a299c65730d21a51d`) reviewed
+the full integration delta, 16 files and none of them a class, caller, manifest,
+migration or protected file, together with its interactions, and returned PASS with
+no finding; no earlier card was reopened.
+
+Verification and delivery. Canonical local verification passed on the integration
+head (2,242 test files and 23,674 tests passed; one file and four tests skipped).
+Pull request #501 merged into main as `5f9c45e6c5b77b5861b486593b51af2babdd6e25`
+at 2026-11-02T11:50:52Z, with hosted checks and the native source receipt. The
+change has no package input, so package bytes are unchanged by construction.
+
+Corrections to earlier text. The note under the fifth cycle that adding a
+rewriting forward would mean changing the protected slot manifest is imprecise: a
+slot's own feature file could add a rewrite, for example a column with a volatile
+default, under the expand-only grammar, and the catalog test would refuse it. The
+refusal is fail-closed, none of the seven forwards rewrites a table, and the
+follow-up to compare TOAST relations without OID identity stands. The trailer of
+the fifth-cycle repair commit says relations are read "without an OID floor", while
+the relations PostgreSQL ships are compared as one digest of selected columns.
+
+Advice from the six cycles and the integration reviews, all non-blocking, is now in
+the data owner section: the freeze of replaced functions, the grant-only ACL rule,
+that a created function's language and leakproof flag are not compared, the path
+order of replayed units, the set of privileges read, the table-rewrite refusal, and
+that the catalog test and its named files are also refused in co-located changes of
+other classes. Two items stay open because they sit in protected control files: the
+ACL helper compares the grantee `0` with a bare integer (it can relabel an ACL item
+but not hide one), and a comment in the vitest configuration says the PostgreSQL
+tests self-skip without a daemon, which the catalog test does not (it throws).
+
+Self-retro: the cycles were spent on parser divergences until the review bar
+returned to a demonstrated effect on a stated boundary. The one material late
+finding combined a parser divergence with a catalog read that an operator created by
+the forward could capture, and was closed by refusing the character and typing the
+floor. Each frozen tree was proved by the full line rule, a rule-removal mutation
+set and a run of the real forwards before review.

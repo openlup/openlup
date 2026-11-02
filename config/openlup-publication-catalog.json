@@ -1286,6 +1286,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/DOCUMENTATION.md",
       "class": "platform-documentation"
     },
@@ -1296,6 +1300,10 @@
     {
       "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/OUTCOME_PROJECTION.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
@@ -1582,7 +1590,35 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g11.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g12p.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g14x.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g16.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g18.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g4g3-control.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g9.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-integration-trailer.md",
       "class": "public-output"
     },
     {
@@ -1591,6 +1627,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-r0.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-starter.md",
       "class": "public-output"
     },
     {
@@ -1619,6 +1659,286 @@
     },
     {
       "path": "eslint.config.js",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/.dockerignore",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/.gitignore",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/.npmrc",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/AGENTS.template.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/Dockerfile",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/artifacts/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/journey.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/api.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/cart.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/context.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/dom.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/env.d.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/forms.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/main.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/account.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/checkout.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/destinations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/operator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/participation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/storefront.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/style.css",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/compose.yaml",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/docs/customization.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "examples/neutral-store/docs/destinations.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "examples/neutral-store/docs/limits.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "examples/neutral-store/docs/ownership.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "examples/neutral-store/docs/proof.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "examples/neutral-store/extract.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/server.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/index.html",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/installation/install.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/lifecycle",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/lifecycle.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/demo-seed.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/store.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/ownership.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/playwright.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/coffee.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/collection.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/dark.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/dawn.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/dusk.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/light.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/medium.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/public/media/noon.svg",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/api.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/limits.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/routes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/starter-release.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/extract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/import-boundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/installation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/offer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/routes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/tsconfig.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/.gitignore",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/app.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/package.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/run.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/verify.test.mjs",
       "class": "public-output"
     },
     {
@@ -2742,6 +3062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/invoicing-postgres.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/invoicing.api.md",
       "class": "public-output"
     },
@@ -3382,7 +3706,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/postgresAccountReadScope.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresAccountSources.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresCustomerActorReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/postgresOperatorAuthority.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresOrderHistory.ts",
       "class": "public-output"
     },
     {
@@ -3470,6 +3810,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleAvailability.ts",
       "class": "public-output"
     },
@@ -3495,6 +3839,10 @@
     },
     {
       "path": "packages/platform/src/catalog/bundlePriceSelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleRpcError.ts",
       "class": "public-output"
     },
     {
@@ -3558,6 +3906,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/rpcErrors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/sellable.ts",
       "class": "public-output"
     },
@@ -3598,6 +3950,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/productTypeSchemas.ts",
       "class": "public-output"
     },
@@ -3615,6 +3971,10 @@
     },
     {
       "path": "packages/platform/src/catalog/resolvedSkuProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/rpcErrors.ts",
       "class": "public-output"
     },
     {
@@ -5778,6 +6138,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/postgres/accountHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/captured.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/postgresInvoiceStore.ts",
       "class": "public-output"
     },
@@ -7090,6 +7462,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/postgresAccountReads.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/postgresOperatorAuthority.test.ts",
       "class": "public-output"
     },
@@ -7155,6 +7531,10 @@
     },
     {
       "path": "packages/platform/test/blob/vercel.transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleAdminWriteStore.test.ts",
       "class": "public-output"
     },
     {
@@ -8307,6 +8687,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/issue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/nativePostgres.test.ts",
       "class": "public-output"
     },
     {
@@ -9762,6 +10146,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/generate-outcome-projection-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/git-review-scope.ts",
       "class": "public-output"
     },
@@ -9943,6 +10339,18 @@
     },
     {
       "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.ts",
       "class": "public-output"
     },
     {
@@ -27126,6 +27534,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/invoicingCaptured.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/invoicingContinuity.test.ts",
       "class": "public-output"
     },
@@ -27250,6 +27662,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m19BundleWriteExport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19BundleWriteIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m19MigrationFacade.test.ts",
       "class": "public-output"
     },
@@ -27267,6 +27687,14 @@
     },
     {
       "path": "tests/postgres/marketDirectoryPreservation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeAccountReads.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
       "class": "public-output"
     },
     {
@@ -27291,6 +27719,10 @@
     },
     {
       "path": "tests/postgres/oidcReferenceRp.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsControlPlaneNative.test.ts",
       "class": "public-output"
     },
     {
@@ -27693,6 +28125,10 @@
     }
   ],
   "packageExecutionSurfaces": [
+    {
+      "path": "examples/neutral-store/package.json",
+      "digest": "sha256-102a8a5009d38d041fdafc886eb4a8f1fc041a2cd410540a2905ad19da3f76e8"
+    },
     {
       "path": "package.json",
       "digest": "sha256-603435d758079376c31fba3b643e3c24c22b587309d461d7e7bbb4de483d99e1"

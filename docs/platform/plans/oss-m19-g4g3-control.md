@@ -389,3 +389,16 @@ R2 self-retro: a fixed reviewed three-statement inventory did not need a second
 SQL parser. The literal pin removes the disputed string semantics and closes the
 allowed-prefix suffix mechanism by construction. Existing caller proof stays
 unchanged; the two cards remain open until the required fresh native reviews.
+
+Rebuild on the landed class (2026-11-02). The class control landed in
+openlup/openlup#501 (merge `5f9c45e6c5b77b5861b486593b51af2babdd6e25`), so this
+control's stack predecessor is landed and the earlier snapshots above are history.
+The branch merged main with two textual conflicts and no other change to this
+control: the publication catalogue, resolved as a sorted union of adjacent plan
+rows, and the preceding-prefix loop of the native checker, where this control's
+collection of prefix tables was combined with main's ASCII-structure splitter mode.
+The seven real forwards, each read as an immutable Git blob and bound as feature
+pull requests will bind them, pass the real class in slot order on the merged tree,
+including the three existing-table statements of the purchase-reservation slot. The
+catalog test and the class suite pass on the merged tree. The data owner section and
+the class record now state the advice from the class reviews.
