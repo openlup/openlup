@@ -205,3 +205,172 @@ child deadlines address registry/load noise without replacing immutable inputs
 or weakening refusal. The first review exposed a missing failure class:
 constructor-based error classification → explicit input/operation boundary.
 The task carries that lesson; no out-of-scope guidance edit or successor is added.
+
+## Landing preflight stopped on unchanged importer tests
+
+At 2026-11-02T18:01:22Z, the existing-test-first landing preflight stopped before any fetch,
+merge, read packet or new native review. Committed source remains head
+`f19a5e1991f44ff9831d1f7c083291ef205080a6`, tree
+`b98d82dc572d79efabc57509c119d70ea9dfa023`. The previous native source review
+is closed at cycle 1 of 3 and expires at 2026-11-02T22:00:43.357Z; it does not
+waive this failing mandatory preflight. No existing test was changed.
+
+Pinned Node 24.21.0/npm 11.19.0 and the focused admission gate were used.
+Package boundary plus the complete lifecycle directory passed: 4 files, 2,863
+tests. The broader source-scan-pattern selection passed: 26 files, 443 tests.
+The existing importer/package-surface run was serial. Its first completed file
+reported this exact failure summary:
+
+```text
+scripts/source-preview-release.test.ts (718 tests | 46 failed)
+× builds its synthetic workspace manifests with the pinned public execution surfaces
+```
+
+That test's assertion at line 1726 compares every synthetic package execution
+surface with its pinned digest. The platform fixture at line 325 has scripts but
+no bin, whereas the accepted execution surface includes the one new `openlup`
+bin. This is a concrete fixture/input mismatch; no assertion or control is
+relaxed here, and the remaining failure causes are not claimed independently
+diagnosed. The existing tests remain byte-identical to the reviewed source.
+
+After the red file was observed, the owned Vitest process received graceful
+SIGINT (exit 130). The remaining selected files have no completed result; no
+PASS is claimed for them. No fetch, merge, canonical verify, push, PR, receipt
+or queue action followed. The supervisor receives the failure rather than an
+existing-test edit.
+
+Completed unchanged files with passing results:
+
+- `packages/platform/test/channels/channelPackageBoundary.test.ts`
+- `packages/platform/test/commerce/browserSafety.test.ts`
+- `packages/platform/test/commerce/commerceOrderDraft.test.ts`
+- `packages/platform/test/commerce/effects/commerceSalesChannelSeam.test.ts`
+- `packages/platform/test/commerce/omsOrderSubscriptionContinuityCharacterization.test.ts`
+- `packages/platform/test/communications/contentDefaults.test.ts`
+- `packages/platform/test/communications/klaviyo/permissions.test.ts`
+- `packages/platform/test/communications/marketingSyncCompatibility.test.ts`
+- `packages/platform/test/composition/httpBinding.test.ts`
+- `packages/platform/test/composition/nodeHost.test.ts`
+- `packages/platform/test/data/binding.test.ts`
+- `packages/platform/test/data/supabaseClientFactory.test.ts`
+- `packages/platform/test/data/supabaseGateway.test.ts`
+- `packages/platform/test/fulfillment/omnipack/factory.test.ts`
+- `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts`
+- `packages/platform/test/http/runtime.test.ts`
+- `packages/platform/test/http/security.test.ts`
+- `packages/platform/test/identity/emailTrustPolicy.test.ts`
+- `packages/platform/test/lifecycle/appUpgrade.test.ts`
+- `packages/platform/test/lifecycle/appVerification.test.ts`
+- `packages/platform/test/lifecycle/postgresInstallQualification.test.ts`
+- `packages/platform/test/marketing/consentEvidence.test.ts`
+- `packages/platform/test/packageBoundary.test.ts`
+- `packages/platform/test/payments/tpay/tpayHttpClient.test.ts`
+- `packages/platform/test/promotions/acquisitionOrchestrationParity.test.ts`
+- `packages/platform/test/promotions/promoDataPort.test.ts`
+- `packages/platform/test/promotions/promotionClaims.test.ts`
+- `packages/platform/test/promotions/promotionQuoteBinding.test.ts`
+- `packages/platform/test/promotions/quotePromotionV2.test.ts`
+- `packages/platform/test/promotions/thresholdShippingParity.test.ts`
+
+Completed unchanged failing file:
+
+- `scripts/source-preview-release.test.ts`
+
+Other files selected in the interrupted root invocation, without a completed
+result (these still need their required execution after the blocker is resolved):
+
+- `scripts/check-publishable-gap-enumeration.test.ts`
+- `scripts/documentation-cli.test.ts`
+- `scripts/oss-published-tree-check.test.ts`
+- `scripts/packages/changelog-fragments.test.ts`
+- `scripts/packages/eslint-import-map.test.ts`
+- `scripts/packages/package-manifest-policy.test.ts`
+- `scripts/packages/package-size-policy.test.ts`
+- `scripts/packages/package-tarball-gate.test.ts`
+- `scripts/packages/packages-check.test.ts`
+- `scripts/packages/platform-cold-consumer.test.ts`
+- `scripts/packages/reference-delegation-consumer.test.ts`
+- `scripts/packages/release-gate.test.ts`
+- `scripts/packages/release-workflow-authenticity.test.ts`
+- `scripts/packages/set-release.test.ts`
+- `scripts/public-ci-neutrality.test.ts`
+- `scripts/public-ci-payment-allowance.test.ts`
+- `scripts/reviewed-batch-forward.test.ts`
+- `scripts/source-release-preparation.test.ts`
+- `server/adapters/postgres/dataGateway.test.ts`
+- `tests/platform/catalog/m05Composition.test.ts`
+- `tests/platform/channels/channelConsumer.test.ts`
+- `tests/platform/inventory/inventoryConsumer.test.ts`
+- `tests/postgres/m14InstallQualification.test.ts`
+- `tests/postgres/partnerAcquisition.test.ts`
+
+Logs and discovery inventory remain under `.context/scratch/g15-landing-*`.
+An initial direct wrapper launch lacked npm's local-bin PATH and failed before
+any test; the actual run used the pinned toolchain and local-bin PATH.
+
+Self-retro: the importer search exposed a synthetic-manifest assumption omitted
+by the earlier focused proof. Keep the existing assertion and resolve its input
+through the supervisor's scope decision; do not narrow proof to obtain green.
+
+## Forced integration and authorized fixture follow-up
+
+The maintainer identified the existing synthetic-manifest input as stale after
+the deliberate, accepted execution-surface change. The one authorized test
+fixture line now copies the real platform bin exactly:
+
+```diff
+-  "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS }),
++  "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS, bin: { "openlup": "./src/openlup.mjs" } }),
+```
+
+No other line in that test, no assertion, pin, control or other existing test
+changes. The fixture now describes the same scripts/bin surface as the accepted
+real manifest, following the existing core fixture's form. This is a test-only
+follow-up, not a product or public-contract repair. Complete rerun results follow
+in this same record; a different failure cause stops further edits.
+
+Fresh main `ef157a2da88b799e8040ecd21c9727e25858a2b3` and reviewed head `f19a5e1991f44ff9831d1f7c083291ef205080a6` had exactly
+one conflicted file. The signed pure merge is `876e9431f52ac6ead90714e620454635f65f43f9`, tree
+`56aec622ef76f01fff823a1295c92ebc221473e3`, with exactly those two parents. The earlier
+execution notes remained unstaged and were excluded from that merge. All other
+shared-file merges were automatic. One inherited whitespace warning in an
+upstream migration was left unchanged; the own delta passes whitespace checks.
+
+The sole catalog conflict consisted of these three disjoint-addition hunks:
+
+1. G15: `docs/platform/plans/oss-m19-g15.md`; main: `docs/platform/plans/oss-m19-forward-class.md`, `docs/platform/plans/oss-m19-g10.md`, `docs/platform/plans/oss-m19-g11.md`, `docs/platform/plans/oss-m19-g12p.md`, `docs/platform/plans/oss-m19-g14x.md`, `docs/platform/plans/oss-m19-g16.md`, `docs/platform/plans/oss-m19-g18.md`, `docs/platform/plans/oss-m19-g4g3-control.md`, `docs/platform/plans/oss-m19-g9.md`, `docs/platform/plans/oss-m19-integration-trailer.md`, `docs/platform/plans/oss-m19-kit.md`, `docs/platform/plans/oss-m19-r0.md`, `docs/platform/plans/oss-m19-starter.md`.
+2. G15: `packages/platform/src/openlup.mjs`; main: `packages/platform/src/migrations/qualifiedInstall.ts`, `packages/platform/src/migrations/rdsControlRoles.ts`, `packages/platform/src/migrations/selectedCatalogProjection.ts`.
+3. G15: `scripts/packages/distribution-cli-proof.ts`; main: `scripts/packages/consumer-evidence.mjs`, `scripts/packages/consumer-evidence.test.ts`.
+
+Resolution retained each original row literal and class, inserted their sorted
+additive union and preserved all automatic bytes outside the conflict markers.
+No row was reformatted or reordered. The exact five added G15 path entries before
+and after are equal, with no removed path:
+
+- `docs/platform/plans/oss-m19-g15.md`
+- `packages/platform/src/lifecycle/appVerification.ts`
+- `packages/platform/src/openlup.mjs`
+- `packages/platform/test/lifecycle/appVerification.test.ts`
+- `scripts/packages/distribution-cli-proof.ts`
+
+With `LC_ALL=C`, the old and pure-merge sorted plus/minus content hashes match:
+all files `47b03b7ccd34fe77b102de8bca7508c463d02afdd7ded71add491070e25c68ae`; excluding the catalog
+`649ff3459f3fe6c18fb1d0b29c8fe03711d0b4380fafabea1d7926246f341298`. Stable patch-id changes
+from `9ec18ac49ae0c994812f67b21bb257a3561eab04` to
+`3e5aa8bb1d717d264b3e8bb9d5e87237e66ba59e` as catalog hunk context
+moves among upstream additions. The equality of content-line hashes and path
+sets demonstrates that the own source delta is unchanged. The later one-line
+fixture and execution-record prose are explicit exceptions, outside this pure
+merge comparison. No additional semantic integration delta exists.
+
+Exact proof commands (old and merge bases pinned, headers excluded):
+
+```sh
+export LC_ALL=C
+git diff bb0008481a11267ec6dbe3e7e531299777cddc19..f19a5e1991f44ff9831d1f7c083291ef205080a6 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..876e9431f52ac6ead90714e620454635f65f43f9 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff bb0008481a11267ec6dbe3e7e531299777cddc19..f19a5e1991f44ff9831d1f7c083291ef205080a6 -- . ':(exclude)config/openlup-publication-catalog.json' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..876e9431f52ac6ead90714e620454635f65f43f9 -- . ':(exclude)config/openlup-publication-catalog.json' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff bb0008481a11267ec6dbe3e7e531299777cddc19..f19a5e1991f44ff9831d1f7c083291ef205080a6 | git patch-id --stable
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..876e9431f52ac6ead90714e620454635f65f43f9 | git patch-id --stable
+```
