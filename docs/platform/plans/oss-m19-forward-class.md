@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: first native review FAIL; bounded control repair awaiting a fresh read before DCO.
+Status: bounded repair accepted and DCO-committed; two new whole-candidate reviews pending.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -445,18 +445,17 @@ control code is not DCO-signed before its new read. Its exact proposed trailer
 is in the stable packet; after accepted read it must be committed and policy
 must show zero unanswered. No policy PASS is inferred for this unsigned tree.
 
-Reporting-only older-class assessment: both reviewers find a reachable legacy
-Kelvin-sign identifier mismatch only after a separately approved control moves
-an unissued binding to a later appendable path with latest before-hashes and
-fresh file/after pins. The unchanged current legacy path is chronology-blocked;
-issued SQL is not repinned. Default expand-only admission already rejects such
-structural Unicode. No older class is repaired here; the concrete input and
-prerequisite admission path go to the coordinator in the packet.
+F-FORWARD-LEGACY-KELVIN is registered as a follow-up by CD-M19-72, not fixed
+here. The older legacy-class Kelvin-sign example is unreachable with today's
+registry bytes, and any relocation of that legacy path needs its own control.
+The reviewers' prerequisite relocation scenario does not establish a current
+admission. Issued SQL is not repinned. Default expand-only admission already
+rejects such structural Unicode. No older class is changed.
 
-Nonblocking owner question: the existing predecessor loop requires every known
-historical row, including G4/G3 despite their absence from this control, before
-G7/G8/G11-c. This conservative refusal is unchanged. The packet asks whether
-that dependency is intended; no unregistered predecessor is silently skipped.
+CD-M19-72 confirms the predecessor interpretation: landing stays in slot order;
+every earlier non-empty row needs its landed binding before a later slot,
+including G4/G3 before G7/G8/G11-c. The conservative refusal is unchanged and
+no unregistered predecessor is skipped. This question is answered.
 
 Regroup/self-retro: the author evaluation accepted at CD-M19-67 proved the suffix
 repair; the first native candidate evaluation at ed99d2ca then left a material
@@ -473,3 +472,37 @@ both FAIL reports and the same
 three-cycle budget. Rules-common step 4 requires a fresh stabilized control read
 before repaired DCO; stop NEEDS_READ, then obtain two new independent reviews.
 No canonical verify, push, PR, queue, release or other worktree mutation ran.
+
+Accepted repair continuation (CD-M19-72, 2026-11-02): the coordinator accepted
+HEAD ed99d2ca and staged tree c4b85788a9a2ebeb80b31fb06fb38a2990a5c70d,
+with cached-diff SHA e5cc00d13e25c1fcdbacf31689c83c57ba78ec9402537d4cf9e02d73eb91370f
+and four paths. DCO commit 793930e5 retains that exact tree. ASCII structure
+remains opt-in for native calls only. This is repair cycle one of three; both
+prior FAIL reports and all five material cards remain in the same native
+history. Fresh prepare must preserve them. No counted PASS or expiry exists at
+this pre-review snapshot.
+
+The coordinator's regroup line is binding for the next two independent reviews:
+if either finds another static parse bypass, stop adding parser rules and report
+NEEDS_OWNER with the facts. Do not spend the remaining cycles on another parser
+repair. The proposed regroup is real PostgreSQL catalog proof as primary truth:
+compare pg_proc identity, security attributes, search_path and ACL before and
+after each forward against the slot lists in the required path, keeping static
+checks simple as early refusal. That catalog mechanism is not implemented or
+authorized by this record. Ask each reviewer, as advice only: "has the current
+candidate reached the point where that catalog proof is cheaper than the
+remaining parser risk?" Report both answers without treating advice as a blocker.
+
+The final executable source and tests are byte-identical to the frozen repair
+proof: 26 unchanged existing files, the native 167-case suite and the exact raw
+147-case version all pass (28 executions, 2,694 cases). Only this task-record
+prose changes after that proof; no test, fixture, package or parser is changed.
+Policy/navigation and ast-grep are refreshed for this prose and the source-bound
+tooling trailer is recomputed on the final tree. The previously measured real
+pack remains applicable: all three tarballs and entries match main, delta 0 B.
+No redundant test rerun or new repair cycle is inferred from the record update.
+
+Self-retro: repeated static-reader bypasses → stop extending the parser if the
+next review finds another, and return the catalog-proof tradeoff to the owner.
+This line changes the allowed recovery route, not the admitted SQL or test floor.
+Final verification and all external delivery remain reserved to the supervisor.
