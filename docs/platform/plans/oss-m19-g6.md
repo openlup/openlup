@@ -667,3 +667,29 @@ The first `nativeStoreForwards` binding is explicitly authorized: the checker's
 exported identity/hash readers compute all nine after-hashes and the whole-file
 hash. Class data and admission machinery stay unchanged. Native review is now
 authorized; canonical verify and external delivery remain outside this run.
+
+Stack proof stopped at the package-growth reporting boundary. Static append-only
+history, feature-approval and co-located-approval paths passed. The bound native
+catalog suite passed 124 cases across both role modes; the sandbox acceptance
+suite passed 15. No executed suite failed. The transfer rerun was interrupted
+when the measured growth became known; remaining existing/pre-verify suites,
+AST/lint and native reviews are pending. Policy passed eight obligations with
+zero unanswered; neutrality passed with zero increases. A scratch launcher first
+omitted the local executable directory and exited before executing any test;
+adding that directory after the official toolchain corrected the invocation.
+
+Official Node v24.21.0/npm 11.19.0 packs against main
+`5f9c45e6c5b77b5861b486593b51af2babdd6e25`: base 2358480 packed bytes,
+1893540 code-gzip bytes, 11126930 unpacked bytes and 2949 files; candidate
+2369992 packed bytes, 1898154 code-gzip bytes, 11182831 unpacked bytes and
+2956 files. Delta: +11512 packed, +4614 code-gzip, +55901 unpacked, +7 files.
+The prior reported official packed delta was +11112 against an earlier base;
+the new measurement is +400 above that figure. No packaged source/SQL was added
+by this integration beyond the unchanged G6 contribution. The current common
+brief requires reporting growth before proceeding, so native review did not start.
+Private evidence: `.context/scratch/g6-stack-size-result.json` and
+`.context/scratch/g6-stack-proofs/report.json`. Both forward copies retain
+SHA256 `7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`.
+
+Self-retro: a changed base can change compressed delta while unpacked growth is
+identical. Measure before long reruns so the size stop is visible earlier.
