@@ -564,3 +564,36 @@ Local artifacts plus the existing locked driver and type inputs remove the
 unnecessary consumer dependency graph while preserving the exact platform
 bytes and all behavior assertions. No new setup privilege or production repair
 was needed.
+
+## Package-local evidence declarations
+
+The continuation was extended to cover one further edit: remove the three
+outside-package witness paths from the catalog and catalog/contracts
+`packageSmokeEvidence` arrays. That list cites proofs inside the package;
+the outcome-projection generator correctly refuses a path containing `..`.
+The entries retain their existing in-package evidence, including the catalog
+shared-writer smoke test. No budget, entry, order of retained evidence, runtime
+code or test assertion changes.
+
+Both `tests/postgres/m19BundleWriteExport.test.ts` and
+`tests/postgres/m19BundleWriteIdentity.test.ts` remain in the repository, remain
+cited throughout this record and still run in the required root test path.
+Removing their outside-package declarations is not dropped proof. The installed
+restricted-runtime and constructor-identity obligations remain unchanged.
+
+The preceding canonical run passed policy, inventory, DCO, history scanning,
+locked install, lint, public typecheck, both builds and required package gates,
+then failed the real-inventory outcome-projection test on those evidence paths.
+It recorded 23,334 passing cases and one failure. No repair or blind retry was
+performed before the maintainer chose this bounded correction.
+
+Rethink: the prior hosted failure concerned a warm-cache fixture assumption;
+the next canonical failure concerned package evidence scope after main's new
+projection reader landed. Narrow row tests and package checks did not exercise
+that real-inventory reader. The smallest correction removes the three invalid
+citations while retaining both executable witnesses and all in-package proof;
+it adds no wrapper or generator exception. First run the exact projection test,
+then clean-tree package validation to distinguish a declaration correction from
+dropped proof. Retained code and assertions remain unchanged.
+Lesson: metadata consumed by a new reader → run that reader's real-inventory
+case before the broad gate.
