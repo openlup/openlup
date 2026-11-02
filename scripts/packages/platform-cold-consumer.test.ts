@@ -7,6 +7,7 @@ import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
   platformConsumerInstallArgs,
+  starterDependencyMatchesPlatform,
   proveRiskConsumer,
   RISK_WORKFLOW_PROOFS,
   proveRiskWorkflowConsumer,
@@ -51,6 +52,27 @@ import { ACCOUNT_SUPPORT_COMPOSITION_PROOFS, proveAccountSupportCompositionConsu
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
+it.each([
+  { name: "musl refuses glibc", manifest: { libc: ["musl"] }, os: "linux", cpu: "x64", libc: "glibc", matches: false },
+  { name: "glibc refuses musl", manifest: { libc: ["glibc"] }, os: "linux", cpu: "arm64", libc: "musl", matches: false },
+  { name: "matching native platform", manifest: { os: ["linux"], cpu: ["x64"], libc: ["glibc"] }, os: "linux", cpu: "x64", libc: "glibc", matches: true },
+  { name: "Linux refuses Darwin", manifest: { os: ["linux"] }, os: "darwin", cpu: "arm64", matches: false },
+  { name: "CPU mismatch", manifest: { cpu: ["x64"] }, os: "linux", cpu: "arm64", libc: "glibc", matches: false },
+  { name: "negated OS refuses", manifest: { os: ["!win32"] }, os: "win32", cpu: "x64", matches: false },
+  { name: "negated OS permits another", manifest: { os: ["!win32"] }, os: "darwin", cpu: "arm64", matches: true },
+  { name: "negative overrides positive", manifest: { os: ["linux", "!linux"] }, os: "linux", cpu: "x64", matches: false },
+  { name: "positive choice still required", manifest: { cpu: ["x64", "!ia32"] }, os: "linux", cpu: "arm64", matches: false },
+  { name: "negated libc refuses", manifest: { libc: ["!glibc"] }, os: "linux", cpu: "x64", libc: "glibc", matches: false },
+  { name: "non-Linux ignores libc", manifest: { libc: ["musl"] }, os: "darwin", cpu: "arm64", matches: true },
+  { name: "absent constraints", manifest: {}, os: "linux", cpu: "x64", libc: "glibc", matches: true },
+  { name: "any constraint", manifest: { cpu: ["any"] }, os: "linux", cpu: "arm64", matches: true },
+  { name: "normalized string constraint", manifest: { os: "linux" }, os: "darwin", cpu: "arm64", matches: false },
+])("filters only optional installed manifests: $name", ({ manifest, os, cpu, libc, matches }) => {
+  const target = { os, cpu, libc };
+  expect(starterDependencyMatchesPlatform(manifest, true, target)).toBe(matches);
+  expect(starterDependencyMatchesPlatform(manifest, false, target)).toBe(true);
+});
+
 it("applies the three-day release age only to the network install", () => {
   const packages = ["/packs/platform.tgz", "pg@8.21.0"];
   const common = ["--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];

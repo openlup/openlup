@@ -64,8 +64,10 @@ for (const config of Object.values(configurations)) {
   });
 }
 
-test('missing installed bootstrap refuses before any connection is opened', async () => {
-  await assert.rejects(installDemonstration(Object.values(configurations)[0]!), { message: 'starter_installation_binding_required' });
+test('bootstrap connection failure is preserved instead of claiming the installed API is absent', async () => {
+  const failure = new Error('bootstrap_connection_failed');
+  await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => { throw failure; }),
+    error => error === failure);
 });
 
 for (const [name, identity, code] of [

@@ -45,7 +45,8 @@ function imports(source: string): string[] {
 function assertRuntimeBoundary(files: ReadonlyMap<string, string>, entries: readonly string[]): void {
   const visited = new Set<string>();
   function visit(path: string): void {
-    if (path === resolve(root, 'installation') || path.startsWith(resolve(root, 'installation') + sep)
+    if (path === resolve(root, 'lifecycle.mjs')
+      || path === resolve(root, 'installation') || path.startsWith(resolve(root, 'installation') + sep)
       || path === resolve(root, 'owned/demo-seed.ts')) throw new Error(`starter_runtime_install_import_forbidden: ${path}`);
     if (visited.has(path)) return;
     visited.add(path);
@@ -64,7 +65,7 @@ function assertRuntimeBoundary(files: ReadonlyMap<string, string>, entries: read
   for (const entry of entries) visit(entry);
 }
 
-test('host and client transitive imports never reach installation or the owned demo seed', async () => {
+test('host and client transitive imports never reach lifecycle, installation or the owned demo seed', async () => {
   const files = new Map<string, string>();
   async function collect(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -74,22 +75,28 @@ test('host and client transitive imports never reach installation or the owned d
     }
   }
   for (const directory of ['host', 'client', 'owned', 'shared', 'installation']) await collect(resolve(root, directory));
+  files.set(resolve(root, 'lifecycle.mjs'), await readFile(resolve(root, 'lifecycle.mjs'), 'utf8'));
   const entries = [...files.keys()].filter(path => path.startsWith(resolve(root, 'host') + sep)
     || path.startsWith(resolve(root, 'client') + sep));
   assertRuntimeBoundary(files, entries);
 });
 
 for (const planted of [
+  "import '../lifecycle.mjs';",
+  "const load = () => import('../lifecycle.mjs');",
+  "export * from '../lifecycle.mjs';",
   "import '../installation/install.ts';",
   "const load = () => import('../installation/install.ts');",
   "export { installDemonstration } from '../installation/install.ts';",
   "export * from '../owned/demo-seed.ts';",
 ]) {
   test(`negative witness: transitive planted forbidden import is detected: ${planted}`, () => {
-    const entry = resolve(root, 'host/entry.ts');
     const bridge = resolve(root, 'shared/bridge.ts');
-    const files = new Map([[entry, "export * from '../shared/bridge.ts';"], [bridge, planted]]);
-    assert.throws(() => assertRuntimeBoundary(files, [entry]), /starter_runtime_install_import_forbidden/);
+    for (const runtime of ['host/server.ts', 'client/main.ts']) {
+      const entry = resolve(root, runtime);
+      const files = new Map([[entry, "export * from '../shared/bridge.ts';"], [bridge, planted]]);
+      assert.throws(() => assertRuntimeBoundary(files, [entry]), /starter_runtime_install_import_forbidden/);
+    }
   });
 }
 

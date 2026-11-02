@@ -1468,13 +1468,12 @@ existing expand-only rules. The purchase-reservation slot alone adds an
 `existingTableStatements` list: three exact whole ALTER TABLE statements, in
 order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
 from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
-foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The reader
-accepts that list, and only that list, on this slot. Trusted main parses a changed
-registry before anything else, so the registry carries the list in a separate
-pin-only change after the reader has landed; until then the slot holds no list and
-a feature file has none to consume. Afterwards feature SQL must include each
-statement once, in that order. Its existing-table ALTERs cannot fall through to
-generic ADD admission.
+foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The registry
+holds their complete text, and the reader accepts that list, and only that list, on
+this slot. Trusted main parses a changed registry before anything else, so the list
+reached the registry in a separate pin-only change after the reader had landed.
+Feature SQL must include each statement once, in that order. Its existing-table
+ALTERs cannot fall through to generic ADD admission.
 The checker pins the complete three-entry list; changing it requires a control
 change. Its target table must exist in the preceding native prefix.
 Comparison uses the existing statement splitter: leading comments/space are
