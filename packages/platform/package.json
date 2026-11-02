@@ -356,6 +356,21 @@
       "types": "./dist/channels/server/index.d.ts",
       "import": "./dist/channels/server/index.js",
       "default": "./dist/channels/server/index.js"
+    },
+    "./commerce/server/postgres": {
+      "types": "./dist/commerce/server/postgres/index.d.ts",
+      "import": "./dist/commerce/server/postgres/index.js",
+      "default": "./dist/commerce/server/postgres/index.js"
+    },
+    "./account-support/postgres": {
+      "types": "./dist/account-support/postgres/index.d.ts",
+      "import": "./dist/account-support/postgres/index.js",
+      "default": "./dist/account-support/postgres/index.js"
+    },
+    "./account-support/read-contracts": {
+      "types": "./dist/account-support/read-contracts/index.d.ts",
+      "import": "./dist/account-support/read-contracts/index.js",
+      "default": "./dist/account-support/read-contracts/index.js"
     }
   },
   "repository": {
