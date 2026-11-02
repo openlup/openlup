@@ -865,8 +865,9 @@ Inventory remains a non-adapter entry with no catalog import; its bundle-stock s
 Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its data/http/bff inputs remain type-only: the native read
-store takes the data entry's executor without constructing a driver or pool.
+entry. Its http/bff inputs remain type-only. The native read store takes the data
+entry's executor without constructing a driver or pool; the native writer uses
+data's role-free pooled transaction lane at runtime.
 The physical-table availability projection also lives at commerce/server over a
 structural query client and a required host provider predicate. Its pure ladder
 is browser-safe commerce; SDK narrowing stays in the reference adapter. The
@@ -876,15 +877,17 @@ composition passes its selected port through unchanged; PostgreSQL binds the
 native ATP reader when the host supplies `stockSourceKey`. Private preview
 transport remains host-owned.
 
-Effective bundle selection alone adds the pricing value edge described above;
+Effective bundle selection adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose
 plain bundle DTO types. Catalog server is now an adapter because its declarations
 reach optional pg types; runtime import and executor reads still work without
-peers. Contracts remains a non-adapter. The native writer, pooled transaction
-binding and transport remain reference-owned; sparse SQL projections add no
+peers. Contracts remains a non-adapter. Catalog owns the native writer, pooled
+transaction binding, shared RPC marshalling and error constructors. Host
+authorization, response mapping and managed transport remain reference-owned;
+sparse SQL projections add no
 installation chain or migration.
 
 The experimental promotions module has value edges to pricing through
@@ -1960,6 +1963,16 @@ covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 ## Invoicing contracts
 
+The optional `@openlup/platform/invoicing/postgres` composition supplies a captured
+sandbox provider and native owned invoice history/tickets. Its append-only
+artifact observations retain repeat-safe full-identity receipts and explicitly
+non-fiscal PDF bytes; no real fiscal provider or clearance is supplied. History
+uses the authenticated principal/order join and preserves signed correction
+lineage and stored currency. The host retains authentication, seller/money
+selection, scheduling and routes; managed adapters are unchanged. See
+[captured native invoices](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for the exact selection and refusal boundaries.
+
 `createInvoiceServices` and `createInvoiceContribution` are exported through
 `@openlup/platform/invoicing`. Explicit provider selection and host readiness
 precede factory construction or claim. Factories bind the existing issue,
@@ -2689,3 +2702,20 @@ commercial decisions and outbound publication remain excluded. Portable source
 capture/read/CAS and named physical refusal are distinct from managed full
 normalized ingest. No installed export implies a mounted handler or an enabled
 job, simulator or provider.
+
+## Own-stack integration sample
+
+The [own-stack catalog example](../../examples/own-stack/README.md) adds draft
+authoring to a small application with its own Node HTTP routes and local
+operator-session verifier. It composes the released catalog handler/store and
+PostgreSQL data gateway through public exports; no starter is involved. The
+application supplies its verified operator ID without email inference. Copy the
+private, non-workspace example outside the monorepo and install its pinned
+registry packages. Its HTTP/real-PostgreSQL witness checks a durable write,
+conflict refusal and receipt replay. Runtime credentials and the local token stay
+in a gitignored JSON configuration file outside the platform checkout, without
+being passed as command-line values. The runner consumes that file on standard
+input; the witness reads it from the application directory. A complete portable
+catalogue and restricted
+runtime login are explicit prerequisites; the local session and witness establish
+no hosted-authentication or production qualification.

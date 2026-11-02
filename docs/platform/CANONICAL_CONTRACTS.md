@@ -897,16 +897,17 @@ separately reviewed dunning forward.
 
 Bundle application/admin now has package ownership in the existing catalog server
 entry with named reference compatibility bindings. Read-error identity is shared
-through its shim; the RPC subclass stays reference-owned and is injected into
+through its shim; the packaged RPC subclass is re-exported and injected into
 handlers. Validators, their defaults/strictness and operation/MCP/flag authority
 remain at the reference boundary. Catalog contracts publish plain DTO types only.
 Existing composition order, stock unknowns, allocation and preview selection are
 preserved. No database gate, actor-history parity, mount or stronger replay claim
 follows from this move; the bundle pending ledger owns those outcomes. The native
 read store now has package ownership with unchanged queries and an injected data
-executor. Sparse SQL 16/19 projections preserve canonical identity and bytes;
-existing writer/transaction/transport ownership and native handler-only actor-kind
-protection are unchanged. Sequential key recognition is characterized, without a
+executor. Catalog also owns the native pooled writer and shared RPC marshalling.
+Sparse SQL 16/19 projections preserve canonical identity and bytes; host
+authorization, response mapping, managed transport and native handler-only actor-kind
+protection retain their existing boundaries. Sequential key recognition is characterized, without a
 payload-bound or concurrency guarantee.
 
 Promotion admin DTOs and server schemas now have package ownership with named

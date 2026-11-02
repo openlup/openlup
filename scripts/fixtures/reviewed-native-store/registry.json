@@ -1,0 +1,113 @@
+{
+  "sealed": false,
+  "slots": [
+    {
+      "row": "G6",
+      "path": "db/platform/migrations/20261101222000_fixture_1.sql",
+      "dataStatements": [],
+      "replacedFunctions": [
+        {
+          "signature": "public.fixture_existing(uuid)",
+          "beforeSha256": "df60aa490d7cc980b6948a6ac5fa8bf8bae95ce5dc3bce630a7ee0ad430e7beb",
+          "searchPath": "pg_catalog"
+        }
+      ],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_created_1()",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    },
+    {
+      "row": "G2",
+      "path": "db/platform/migrations/20261101223000_fixture_2.sql",
+      "dataStatements": [],
+      "replacedFunctions": [],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_created_2()",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    },
+    {
+      "row": "G4",
+      "path": "db/platform/migrations/20261101224000_fixture_3.sql",
+      "dataStatements": [],
+      "replacedFunctions": [],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_created_3()",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    },
+    {
+      "row": "G3",
+      "path": "db/platform/migrations/20261101225000_fixture_4.sql",
+      "dataStatements": [],
+      "replacedFunctions": [],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_created_4()",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    },
+    {
+      "row": "G7",
+      "path": "db/platform/migrations/20261101230000_fixture_5.sql",
+      "dataStatements": [],
+      "replacedFunctions": [],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_created_5()",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    },
+    {
+      "row": "G8",
+      "path": "db/platform/migrations/20261101231000_fixture_6.sql",
+      "dataStatements": [],
+      "replacedFunctions": [],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_created_6()",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    },
+    {
+      "row": "G11-c",
+      "path": "db/platform/migrations/20261101232000_fixture_7.sql",
+      "dataStatements": [],
+      "purposeCheck": {
+        "beforeSha256": "09e98c751e0d8904fc4f530f8428f4301e5c62fb58a14f4370beb45f626f625d",
+        "values": [
+          "marketing_launch_offer",
+          "marketing_newsletter"
+        ]
+      },
+      "replacedFunctions": [],
+      "createdFunctions": [
+        {
+          "signature": "public.fixture_account_choices(uuid)",
+          "searchPath": "pg_catalog, pg_temp"
+        },
+        {
+          "signature": "public.fixture_account_choice_set(uuid,text,boolean,text)",
+          "searchPath": "pg_catalog, pg_temp"
+        }
+      ],
+      "grantOnlyFunctions": []
+    }
+  ]
+}

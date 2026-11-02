@@ -2,6 +2,15 @@
   "version": 2,
   "surfaces": [
     {
+      "id": "own-stack-example",
+      "when": "Application-owned routing and authentication using released public catalog ports",
+      "paths": [
+        "examples/own-stack/**"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#own-stack-integration-sample"
+    },
+    {
       "id": "repository",
       "when": "Repository entrypoints, build configuration and contributor setup",
       "paths": [
@@ -1294,6 +1303,37 @@
       ],
       "doc": "packages/platform/README.md",
       "anchor": "#channels"
+    },
+    {
+      "id": "distribution-outcome-projection",
+      "when": "Neutral generated package outcome declarations and partial-claim refusal",
+      "paths": [
+        "scripts/generate-outcome-projection.ts",
+        "scripts/generate-outcome-projection.test.ts",
+        "scripts/generate-outcome-projection-cli.ts"
+      ],
+      "doc": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "anchor": "#public-outcome-projection"
+    },
+    {
+      "id": "distribution-package-bom",
+      "when": "Deterministic package-set BOM from verified exact-commit pack artifacts",
+      "paths": [
+        "scripts/packages/generate-release-bom.ts",
+        "scripts/packages/generate-release-bom.test.ts",
+        "scripts/packages/generate-release-bom-cli.ts"
+      ],
+      "doc": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "anchor": "#package-set-bom"
+    },
+    {
+      "id": "starter-application",
+      "when": "Independent starter application, owned customization and local sandbox composition",
+      "paths": [
+        "examples/neutral-store/**"
+      ],
+      "doc": "examples/neutral-store/README.md",
+      "anchor": ""
     }
   ]
 }
