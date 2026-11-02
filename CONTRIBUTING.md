@@ -2983,6 +2983,14 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-11-02, closed native forward class: six review cycles chased divergences
+  between a hand-written SQL reader and PostgreSQL, and no written bar said what
+  counts as material → in the first review request of a control-path change, put an
+  executable truth (a real-engine test of the boundary) and a written effect bar:
+  material means a demonstrated privilege gain, a broken stated boundary, or a wrong
+  refusal of an in-scope input; inaccurate wording is advice. Pin exact small lists
+  instead of growing a grammar.
+
 - 2026-11-01, partner contribution: vertical proofs missed secondary guidance
   and synthetic compiler fixtures → follow [test scope](#test-scope-and-diagnostics)
   through changed helpers' callers and fixtures, and check related guidance under

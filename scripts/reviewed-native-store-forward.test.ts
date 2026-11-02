@@ -208,7 +208,7 @@ describe("native store SQL shapes and pins", () => {
   });
   it("pins only firm production rows and finds every replacement/grant-only signature in the immutable base prefix", () => {
     const slots = production.nativeStoreForwardClass!.slots;
-    expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G7", "G8", "G11-c"]);
+    expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(slots.find(slot => slot.row === "G6")!.replacedFunctions).toHaveLength(5);
     expect(slots.find(slot => slot.row === "G6")!.createdFunctions).toHaveLength(4);
     expect(slots.find(slot => slot.row === "G2")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)"]);
@@ -619,5 +619,136 @@ describe("real Git introduction, release and co-location", () => {
       const base = commit(old), head = commit(production);
       expect(() => assertUnchangedForwardApproval(folder, base, head, old.replacementForwards[0]!.path)).not.toThrow();
     } finally { rmSync(folder, { recursive: true, force: true }); }
+  });
+});
+
+// Separate inert companions keep the production writer's bodies out of this control.
+const g4g3 = JSON.parse(fixture("g4g3-statements.json").toString()) as {
+  prefix: string;
+  g4Statements: string[];
+  refusals: { label: string; replace?: number; sql: string }[];
+  listRefusals: { label: string; replace?: number; sql?: string; order?: number[] }[];
+  writerDoTerminatorRefusal: string;
+};
+function checkG4G3(index: number, text: string) {
+  const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(`\n${g4g3.prefix}`)]) }];
+  value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
+  if (index === 3) value.nativeStoreForwardClass!.slots[3]!.createdFunctions = structuredClone(production.nativeStoreForwardClass!.slots.find(slot => slot.row === "G3")!.createdFunctions);
+  for (let earlier = 0; earlier < index; earlier++) {
+    const source = earlier === 2 ? `${g4g3.g4Statements.join("\n")}\n${sql(earlier)}` : sql(earlier);
+    const pin = bind(value, earlier, source);
+    assertNativeStoreForward(value, pin.path, Buffer.from(source), preceding);
+    preceding.push({ path: pin.path, bytes: Buffer.from(source) });
+  }
+  const pin = bind(value, index, text);
+  assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding);
+}
+
+describe("G4 exact existing-table companions and G3 inventory", () => {
+  const g4 = () => `${g4g3.g4Statements.join("\n")}\n${sql(2)}`;
+  const g3 = () => fixture("g3-shape.sql").toString();
+  it("adds only two slots in order, without feature bindings, sealing or whole-file class pins", () => {
+    const slots = production.nativeStoreForwardClass!.slots;
+    expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
+    expect(production.nativeStoreForwardClass!.sealed).toBe(false);
+    expect(production.nativeStoreForwards).toEqual([]);
+    // Trusted main reads a changed registry first, so the list reaches the registry in a pin-only change after this reader.
+    expect(slots[2]!.existingTableStatements).toBeUndefined();
+    for (const index of [2, 3]) {
+      expect(slots[index]!.replacedFunctions).toEqual([]);
+      expect(slots[index]!.grantOnlyFunctions).toEqual([]);
+      expect(slots[index]!.createdFunctions).toHaveLength(4);
+      expect(slots[index]!.createdFunctions.every(fn => fn.searchPath === "pg_catalog, pg_temp")).toBe(true);
+      expect(slots[index]).not.toHaveProperty("sha256");
+    }
+  });
+  it("reads both registries: the production one without the list and a seven-slot one carrying the pinned list", () => {
+    expect(() => readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"))).not.toThrow();
+    const value = registry();
+    expect(value.nativeStoreForwardClass!.slots).toHaveLength(7);
+    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
+    expect(readReviewedForwardRegistry(encode(value)).nativeStoreForwardClass!.slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
+  });
+  it("accepts G4's exact three whole statements once in order, without generic admission", () => {
+    expect(() => checkG4G3(2, g4())).not.toThrow();
+    for (const statement of g4g3.g4Statements) expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+  });
+  it("compares after the existing splitter only, preserving internal statement bytes", () => {
+    const text = `${g4g3.g4Statements.map(statement => `\n-- leading fixture comment\n${statement}\n`).join("\n")}\n${sql(2)}`;
+    expect(() => checkG4G3(2, text)).not.toThrow();
+    expect(() => checkG4G3(2, g4().replace("  ALTER COLUMN", " ALTER COLUMN"))).toThrow(/existing-table statement/u);
+  });
+  it.each(g4g3.refusals)("refuses G4 $label even with fresh feature pins", attack => {
+    const statements = [...g4g3.g4Statements];
+    if (attack.replace === undefined) statements.push(attack.sql); else statements[attack.replace] = attack.sql;
+    // The class splitter refuses non-ASCII structure before any companion is compared, so such a case never reaches the list check.
+    const message = /\P{ASCII}/u.test(attack.sql) ? /non-ASCII outside strings/u : /existing-table statement/u;
+    expect(() => checkG4G3(2, `${statements.join("\n")}\n${sql(2)}`)).toThrow(message);
+  });
+  it("refuses validate-before-add, a duplicate statement and a missing statement", () => {
+    const [drop, add, validate] = g4g3.g4Statements;
+    for (const statements of [[drop, validate, add], [drop, add, add, validate], [drop, add]]) {
+      expect(() => checkG4G3(2, `${statements.join("\n")}\n${sql(2)}`)).toThrow(/existing-table statement/u);
+    }
+  });
+  it.each(g4g3.g4Statements)("refuses a listed G4 statement in another slot: %s", statement => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/closed shapes/u);
+    expect(() => checkG4G3(3, `${g3()}\n${statement}`)).toThrow(/closed shapes/u);
+  });
+  it.each(g4g3.listRefusals)("refuses $label in the pinned class list before SQL exists", attack => {
+    const value = registry(), statements = attack.order?.map(index => g4g3.g4Statements[index]!) ?? [...g4g3.g4Statements];
+    if (attack.replace !== undefined) statements[attack.replace] = attack.sql!;
+    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = statements;
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/existing-table list is pinned/u);
+  });
+  it("refuses the pinned list on another slot during class validation", () => {
+    const value = registry(); value.nativeStoreForwardClass!.slots[0]!.existingTableStatements = [...g4g3.g4Statements];
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/G4-only/u);
+  });
+  it("requires a list target in the prefix, not a new table created by this file", () => {
+    const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
+    for (let index = 0; index < 2; index++) {
+      const source = sql(index), pin = bind(value, index, source);
+      preceding.push({ path: pin.path, bytes: Buffer.from(source) });
+    }
+    const text = `${g4g3.prefix}\n${g4()}`, pin = bind(value, 2, text);
+    expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding)).toThrow(/target absent from prefix/u);
+  });
+  it("keeps exact-statement inventory changes separate from feature approval changes", () => {
+    const prior = registry(), next = registry();
+    next.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/approved separately/u);
+    prior.nativeStoreForwardClass!.sealed = true; next.nativeStoreForwardClass!.sealed = true;
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/after S1/u);
+  });
+  it("preserves the inherited final END semicolon requirement for conditional DO", () => {
+    expect(() => checkG4G3(2, `${g4()}\n${g4g3.writerDoTerminatorRefusal}`)).toThrow(/single constant role privilege shape/u);
+  });
+  it("accepts the synthetic G3-shaped tables, four headers, RLS and exact six ACL blocks", () => {
+    expect(() => checkG4G3(3, g3())).not.toThrow();
+    const slot = production.nativeStoreForwardClass!.slots.find(slot => slot.row === "G3")!;
+    expect([...nativeStoreFunctionDefinitions(Buffer.from(g3()), slot.createdFunctions.map(fn => fn.signature)).keys()]).toEqual(slot.createdFunctions.map(fn => fn.signature));
+    expect(sqlStatements(g3()).filter(statement => statement.startsWith("DO "))).toHaveLength(6);
+  });
+  it.each([2, 3])("refuses a function outside slot %s's closed list", index => {
+    const text = `${index === 2 ? g4() : g3()}\nCREATE FUNCTION public.fixture_unlisted_destination(uuid) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb; $$;`;
+    expect(() => checkG4G3(index, text)).toThrow(/unlisted signature/u);
+  });
+  it.each([2, 3])("refuses wrong search_path on slot %s creations", index => {
+    const text = (index === 2 ? g4() : g3()).replace("SET search_path = pg_catalog, pg_temp", "SET search_path = public");
+    expect(() => checkG4G3(index, text)).toThrow(/unpinned SECURITY DEFINER or search_path/u);
+  });
+  it.each([
+    [2, "public.fulfillment_purchase_reservation_receipts"],
+    [3, "public.commerce_destinations"],
+    [3, "public.commerce_destination_bindings"],
+  ] as const)("refuses slot %s narrowing on %s without its own CREATE", (index, table) => {
+    const tableBlock = block("service_role").replace(`ON FUNCTION ${created}`, `ON TABLE ${table}`);
+    const baseText = index === 2 ? g4() : sqlStatements(g3()).filter(statement => !statement.startsWith(`CREATE TABLE ${table} (`)
+      && !(/^(?:ALTER TABLE |REVOKE ALL ON TABLE |DO )/u.test(statement) && statement.includes(table))).join("\n");
+    for (const statement of [`REVOKE ALL ON TABLE ${table} FROM PUBLIC;`, tableBlock, `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`]) {
+      expect(() => checkG4G3(index, `${baseText}\n${statement}`)).toThrow(/same slot file/u);
+    }
   });
 });
