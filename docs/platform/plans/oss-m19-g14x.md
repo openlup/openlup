@@ -376,3 +376,114 @@ Final verification and landing remain held for the lead's slot.
 Second-repair self-retro: narrow symbol searches must include the canonical
 section selected by each no-impact reason. Existing current prose, rather than
 an added correct paragraph or a passing fingerprint, establishes aligned guidance.
+
+
+## Forced integration and test-only neutrality repair
+
+The resumed tree was clean at `a2bb97e04246f6ff18604c1bdf9917e1ba5fcb70`.
+Policy was re-read at freshly fetched main
+`99a0407a9cf62d19364167e0551d36bde0a3d525`, independently of the original
+code base. Native prepare refused with a merge-preflight conflict. The resulting
+DCO-signed merge is `a2faca240d4c1d39df288c877a95ee3e54f4f67b`.
+The publication catalogue resolution was a manual additive union: all main rows
+and their order are preserved, plus this row's nine additions. Other conflicts
+were absent; shared documentation and release gates merged automatically.
+The cold-consumer script is inherited unchanged from main, with no local delta.
+
+Excluding this task record, stable patch IDs are `dabce985b1338c50463e1711e6ad111313d71468` before integration
+and `154f2a1b2afda77a8f72f8d60130d25a8d088b3d` against merged main, before the test repair.
+Only the catalogue has a different per-file patch ID; every other file retains
+its original patch ID. Manual union is ordinary repair accounting, never a
+mechanical-integration claim. The merged main SQL file already contains an EOF
+blank line; it was left untouched, and the candidate delta against main passes
+whitespace checking.
+
+The ambient environment-object spread in `tests/postgres/m19BundleWriteExport.test.ts` is replaced by the existing `node:process` import convention; test-only, no baseline entry, behavior unchanged.
+
+This is the final automatic repair cycle, three of three, combining the forced
+merge, that test repair and required evidence only. The single-parent fix changes
+the merge tree, so the tree-identical trailer exception does not apply. Two fresh
+full reviews must assess the whole candidate; a material finding stops for the
+owner without another repair. Earlier counted PASS began
+`2026-11-01T21:49:47.477Z`; this full-review candidate receives its own clock,
+with the earlier history and consumed cycles retained. No final verification,
+push or pull request is authorized before the lead names the slot.
+
+### Changed-module and importer proof
+
+Net changed/added executable, entry, facade, fixture and witness modules against
+merged main (the configuration file is included for completeness):
+
+- `eslint.config.js`
+- `packages/platform/src/catalog/bundleAdminWriteStore.ts`
+- `packages/platform/src/catalog/bundleRpcError.ts`
+- `packages/platform/src/catalog/contracts/index.ts`
+- `packages/platform/src/catalog/contracts/rpcErrors.ts`
+- `packages/platform/src/catalog/index.ts`
+- `packages/platform/src/catalog/postgresBundleAdminWriteStore.ts`
+- `packages/platform/src/catalog/rpcErrors.ts`
+- `packages/platform/test/catalog/bundleAdminWriteStore.test.ts`
+- `server/_lib/admin-domain/rpcErrors.ts`
+- `server/adapters/bundleAdminWritePortContract.testFixtures.ts`
+- `server/adapters/bundleAdminWriteStore.ts`
+- `server/adapters/postgres/bundleAdminWriteStore.ts`
+- `server/domains/bundle/adminBundleWritePort.ts`
+- `src/lib/agent-domain/lifecycleRules.ts`
+- `tests/postgres/m19BundleWriteExport.test.ts`
+- `tests/postgres/m19BundleWriteIdentity.test.ts`
+
+Scoped rg searches cover module paths, basenames and both catalog package
+subpaths across packages, server, src and tests. Static import/export, dynamic
+import, import-type, require and mock-specifier resolution identifies 26 existing
+direct-importer test files; each is byte-unchanged against merged main. Package
+boundary and the three new witnesses are also included. Each file ran separately
+after focused admission, and PostgreSQL cases used their owned disposable
+containers. No fixture privilege, setup seam, assertion or test expectation changed.
+
+| Test file | Result | Cases |
+| --- | --- | --- |
+| `packages/platform/test/packageBoundary.test.ts` | PASS (unchanged existing) | 2852 |
+| `packages/platform/test/catalog/bundleAdminWriteStore.test.ts` | PASS (new witness) | 1 |
+| `packages/platform/test/catalog/bundlePriceSelectionParity.test.ts` | PASS (unchanged existing) | 5 |
+| `packages/platform/test/catalog/catalogLifecycleContracts.test.ts` | PASS (unchanged existing) | 1 |
+| `packages/platform/test/catalog/referenceCatalogHandler.test.ts` | PASS (unchanged existing) | 3 |
+| `packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts` | PASS (unchanged existing) | 4 |
+| `packages/platform/test/inventory/newPurchaseStockBoundary.test.ts` | PASS (unchanged existing) | 3 |
+| `packages/platform/test/inventory/newPurchaseStockConformance.test.ts` | PASS (unchanged existing) | 2 |
+| `server/_lib/admin-domain/rpcErrors.test.ts` | PASS (unchanged existing) | 6 |
+| `server/adapters/bundleAdminWritePortContract.test.ts` | PASS (unchanged existing) | 72 |
+| `server/adapters/supabase/adminCatalogDocument.test.ts` | PASS (unchanged existing) | 8 |
+| `server/adapters/supabase/adminPromotionCodes.test.ts` | PASS (unchanged existing) | 4 |
+| `server/adapters/supabase/adminPromotions.test.ts` | PASS (unchanged existing) | 8 |
+| `server/domains/commerce/adminCatalogDocumentHandler.test.ts` | PASS (unchanged existing) | 25 |
+| `src/components/admin/BundleStockCard.test.tsx` | PASS (unchanged existing) | 1 |
+| `src/lib/agent-domain/lifecycleRules.test.ts` | PASS (unchanged existing) | 4 |
+| `src/pages/ReferenceCatalogUi.test.tsx` | PASS (unchanged existing) | 2 |
+| `tests/platform/catalog/adminBundleHandler.test.ts` | PASS (unchanged existing) | 6 |
+| `tests/platform/catalog/bundleBindings.test.ts` | PASS (unchanged existing) | 1 |
+| `tests/platform/catalog/bundleCompositionConformance.test.ts` | PASS (unchanged existing) | 4 |
+| `tests/platform/catalog/bundlePreviewParity.test.ts` | PASS (unchanged existing) | 5 |
+| `tests/platform/catalog/m05Composition.test.ts` | PASS (unchanged existing) | 1 |
+| `tests/platform/inventory/inventoryConsumer.test.ts` | PASS (unchanged existing) | 2 |
+| `tests/platform/promotions/adminPromotionCodesHandler.test.ts` | PASS (unchanged existing) | 12 |
+| `tests/platform/promotions/adminPromotionsHandler.test.ts` | PASS (unchanged existing) | 7 |
+| `tests/postgres/bundleEffectiveParity.test.ts` | PASS (unchanged existing) | 6 |
+| `tests/postgres/bundleNative.test.ts` | PASS (unchanged existing) | 5 |
+| `tests/postgres/m05CatalogComposition.test.ts` | PASS (unchanged existing) | 3 |
+| `tests/postgres/m19BundleWriteIdentity.test.ts` | PASS (new witness) | 2 |
+| `tests/postgres/m19BundleWriteExport.test.ts` | PASS (new witness) | 1 |
+
+All 30 files pass, 3,056 cases; combined test process time is 59.72 seconds.
+The repository neutrality command reports zero increases; no baseline is edited.
+The installed witness passes with the real restricted runtime and all nine mutations.
+
+Self-retro: importer enumeration catches retained consumers outside the row-specific
+suites. Serial focused admissions dominate elapsed time; the tests themselves
+remain bounded, and no additional mechanism or source repair was needed.
+
+The round also passes ast-grep, public typecheck (zero unresolved edges and
+consumer-side errors) and full lint (zero errors; 66 warnings including the
+archived main snapshot). The tests documentation fingerprint is refreshed in
+the separate fix commit; its reason preserves commands, discovery, coverage,
+setup and role boundaries. Clean committed policy, neutrality and package checks
+and official-toolchain pack measurements follow in ignored round evidence.

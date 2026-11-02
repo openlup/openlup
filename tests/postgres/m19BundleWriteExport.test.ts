@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync, writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { Pool } from "pg";
 import { expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -13,7 +14,7 @@ it("uses installed bundle writes on qualified-v2 through the restricted runtime 
   mkdirSync(".context/scratch/g14x", { recursive: true });
   const scratch = mkdtempSync(resolve(".context/scratch/g14x/installed-"));
   const consumer = join(scratch, "consumer"); mkdirSync(consumer);
-  const environment = { ...process.env }; delete environment.NODE_PATH; delete environment.NODE_OPTIONS;
+  const environment = { ...processEnvironment }; delete environment.NODE_PATH; delete environment.NODE_OPTIONS;
   const command = (name: string, args: string[], cwd = root) => execFileSync(name, args, { cwd, env: environment, encoding: "utf8", timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
   const packs = ["core", "outbox", "platform"].map(name => {
     const [packed] = JSON.parse(command("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], join(root, "packages", name)));
