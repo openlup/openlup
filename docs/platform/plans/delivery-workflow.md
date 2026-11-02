@@ -1,7 +1,8 @@
 # Public delivery workflow
 
-Status: approved programme intent; S1–S2 implementation in progress, with final
-review, verification and draft submission pending. S3–S10 remain unimplemented.
+Status: S1–S2 submitted in [draft PR #507](https://github.com/openlup/openlup/pull/507).
+The S3 qualification checkpoint below rejects the tested cache techniques;
+useful stage recovery and S4–S10 remain undelivered. Public workflow v1 is partial.
 Audience: contributors and supervisors improving the development-preview
 delivery workflow. This record owns the outcome, sequence and current task;
 [CONTRIBUTING](../../../CONTRIBUTING.md#deliver-a-change) owns the procedure.
@@ -26,7 +27,7 @@ observed value, cost and KEEP / ADJUST / DROP decision in existing task evidence
 A dropped technique does not satisfy its undelivered outcome. A changed goal,
 weaker gate, new risk or external authority boundary needs its owning decision.
 
-## Current task: S1–S2
+## S1–S2 delivery scope
 
 S1 supplies one local obligation catalogue and read-only explanation. S2 makes
 the runner consume that catalogue and moves both neutrality checks before
@@ -155,3 +156,133 @@ Self-retro: the first explanation is also the runner's source of obligations;
 keeping selection and package discovery with their existing owners avoids a
 second catalogue. S1–S2 can provide value while the later reuse experiment
 remains pending.
+
+## Current task: S3 qualification
+
+Intent: avoid repeating a costly complete stage after an independent later
+failure, while keeping defect detection close to the code and proving the current
+candidate. The approved fallback permits dropping an unhelpful pilot and joining
+the minimal enabler to the first useful repair case. A rejected experiment does
+not deliver recovery, and passing prototype tests cannot substitute for its value.
+
+Bart Roszkowski authorized implementation, parallel workers, deliberate local
+faults, dogfooding and a draft submission; he explicitly prohibited merging.
+This task uses branch `codex/delivery-workflow-s3`, stacked on the exact #507 head
+`59560a429db85a271597baa0e5151fde997b88b6`. The supervisor owns integration,
+commits, push and draft submission. Workers assessed package recovery and built
+separate input-profile and runner prototypes; independent fresh-context agents
+challenged package qualification and the integrated pilot's value. Those
+challenges are qualification advice, not counted native approval.
+
+The effective task boundary remains local investigation, implementation and
+proof followed by a draft PR targeting `codex/delivery-workflow-s1-s2`.
+#507 remains a draft with `do-not-merge`, without auto-merge or queue entry.
+No merge, settings, release, publication, provider fault or external spending is
+authorized. Current instruction policy was checked at main
+`420e68ef843092a174b84461a2bcb4882bca3c03`; applicable guide and contribution
+rules had not changed since the S1–S2 policy revision above.
+
+Acceptance for the qualification checkpoint: inspect retained real runs before
+choosing a donor; identify the later failure and actual assumptions it preserves;
+measure the proposed stage and validation cost; exercise invalidation boundaries
+with controlled local inputs; retain or drop the technique using that evidence.
+Activation additionally requires a real useful recovery with observed complete
+stage execution and a measured full repair loop. That activation acceptance has
+not been met. The final deliverable records the decision and leaves the fresh
+runner, mandatory phases, native guards and coverage unchanged.
+
+### Package recovery observation
+
+The retained local sample contains 40 result records: 26 overall PASS and 14 FAIL;
+34 package executions, 32 package PASS, and four root failures after package PASS.
+It contains no confirmed root broker-admission timeout. This convenience sample
+is not a failure-rate estimate or a measurement of cache savings.
+
+One M19 starter/upgrade pair repeats the same head, tree, base and recorded main:
+head `4d72bfdf407bb23f93ea7b4c022eebd45418826d`, tree
+`8815283dd690b55eac7674ab17137926bfaa5cb8`, base
+`a7ce403cef3b790c28418d786f153e50ac595084`. The first root run timed out at
+10,000 ms in the source-preview same-feature pin fixture; the retry passed.
+The timeout's cause remains unknown. It was not a broker refusal.
+Packages took 147.775 s then 148.566 s; root tests took 812.441 s then
+793.391 s. Retry wall time was 1,133.094 s; the two-run loop was 2,342.843 s.
+All three retained package manifests and tarballs were byte-identical and their
+hashes matched. Reusing the second package execution would hypothetically remove
+148.566 s before validation overhead, or 13.1% of the retry and 6.3% of the loop.
+No such reuse was performed.
+
+ADJUST: identical artifacts do not close package-proof inputs. The actual
+consumers retain ambient environment and npm configuration; installed dependency
+bytes, transitive resolution and mutable database-image inputs also matter.
+The manifest precedes API and required consumer completion. It cannot certify
+those obligations by itself. Keep packages fresh; do not implement a cache on
+the strength of the historical timeout or an exit status alone.
+
+### Whole-typecheck experiment and controlled faults
+
+A bounded local prototype tested the next candidate: the complete public
+typecheck, with all other phases fresh and current native guards still required.
+It fingerprinted source, ignored typed inputs, actual dependencies and package
+declarations, pinned the checker runtime and tools, and required an owner-emitted
+file inventory from every configured compiler project. The only proposed
+cross-candidate exception was content of this existing task record; path, mode,
+base and all other inputs remained bound.
+
+On the pinned Node 24.21.0/npm 11.19.0 toolchain, a supporting probe of the five
+actual compiler projects observed 7,434 files, zero positioned or unpositioned
+diagnostics, 27.160 s compiler time and 4.890 s closure validation. Two full
+input snapshots over 67,325 files took 11.413 s then 2.857 s and produced the
+same key. These are component observations, not canonical native verification,
+an executed cache hit or a measured recovery-loop saving. Even two warm
+snapshots would consume roughly 5.7 s per hit before native/history validation;
+capturing a reusable donor also pays closure and snapshot costs.
+
+The profile's 41 focused tests passed. Deliberate local falsifiers covered
+changed ignored declarations and generated package declarations, escaping links,
+an actual FIFO special file, outside compiler reads/configuration, dependency
+type redirection, missing completion and unsupported runtime/environment inputs.
+The runner's 33 focused tests passed, including synthetic missing helper output,
+concurrency and candidate drift. Runner subprocess stubs test control flow;
+they do not establish actual compiler reuse, later-failure independence or value.
+No live provider or shared daemon was faulted.
+
+DROP: no observed real repair fits the fixed-document exception. A synthetic
+record edit cannot establish that acceptance. The two production helpers alone
+added 438 lines before runner and compiler-owner changes, for a stage costing
+about 27 s. Cold refusals on unrelated bytes, main movement or runtime changes
+would narrow useful hits further. An independent value checkpoint reached the
+same decision. The prototype was archived locally and removed from the submitted
+tree; no resume option, cache, new receipt, lock or compiler change is shipped.
+
+### Coordination, retro and deferred observations
+
+[PR #509](https://github.com/openlup/openlup/pull/509), inspected at head
+`bbd246f842642c3e2f38e7e788097cab15c138e9`, concerns S6: mechanical review
+carry-over, ordinary repair review and evidence renewal. It does not add verify
+stage reuse. Assume that work is part of the intended integration environment;
+use its actual landed rules when applicable, without copying or self-activating
+them here. This record neither reviews #509 for delivery nor makes it an S3
+activation dependency.
+
+Self-retro — ADJUST/DROP: testing the actual closure exposed both the validation
+cost and the absence of a useful repair class. The original package-first choice
+was worth investigating, but its inputs were not qualified. Stop the prototype
+instead of growing the mechanism to rescue it. Keep the S1–S2 early checks and
+the existing fresh runner. S3 recovery, S4 repair reuse and public v1 remain
+partial until a real case meets their approved acceptance.
+
+Regroup: package qualification left shared proof inputs unknown; the subsequent
+typecheck pilot left the real repair class unproved. The remaining acceptance
+gap belongs to verification, not to review policy. The smaller adequate route is
+fresh verification. A future discriminating check is an actual retained failure
+and repair whose unchanged stage inputs can be demonstrated before adding code;
+the expected result is either measured net recovery value or another cold case.
+Lesson: theoretical stage savings without a real recovery class → qualify the
+case first and keep the existing runner until then.
+
+Deferred observations, not new tasks or acceptance obligations: compare actual
+slow-fixture failures with resource admission delays; use measured repeat costs
+to choose a natural proof unit before building its input mechanism; account for
+donor creation, invalidation frequency and the whole repair loop, not just a
+theoretical hit. Revisit these after the main programme work or within an
+already-authorized nearby change only when doing so preserves its goal and scope.
