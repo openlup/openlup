@@ -262,6 +262,50 @@ describe("class-local normalized argument identities", () => {
   });
 });
 
+describe("PostgreSQL identifier boundaries", () => {
+  const probe = "public.fixture_probe()";
+  const definition = (name = probe) => `CREATE FUNCTION ${name} RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'value'; $$;`;
+  const run = (signature: string, statement: string, tail = `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`, prefix = "") => {
+    const value = registry(), slot = value.nativeStoreForwardClass!.slots[0]!;
+    slot.replacedFunctions = []; slot.createdFunctions = [{ signature, searchPath: "pg_catalog, pg_temp" }];
+    const text = `${prefix}\n${statement}\n${tail}`;
+    // Independent raw hashes keep attacks fully repinned even if the identity reader refuses them.
+    value.nativeStoreForwards = [{ path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: null, afterSha256: sqlSha256(statement) }] }];
+    assertNativeStoreForward(value, slot.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+  };
+  it.each(["\u00a0", "\u2002", "\u2028", "\ufeff"])("refuses a non-ASCII identifier suffix U+%s", separator => {
+    const target = probe.replace("(", `${separator}(`);
+    expect(() => run(probe, definition(target), `REVOKE ALL ON FUNCTION ${target} FROM PUBLIC;`)).toThrow(/reviewed native store/u);
+  });
+  it.each([
+    ["public.fixture_probe(uuid)", "public.fixture_probe(p_value uuid\u00a0)"],
+    ["public.fixture_probe(public.fixture_row)", "public.fixture_probe(p_value public.\u00a0fixture_row)"],
+    ["public.fixture_probe(public.fixture_key)", "public.fixture_probe(p_value public.fixture_\u212aey)"],
+  ])("refuses a different SQL argument identity disguised as %s", (signature, target) => {
+    expect(() => run(signature, definition(target))).toThrow(/reviewed native store/u);
+  });
+  it("refuses a function name that Unicode case-folds into the listed ASCII name", () => {
+    expect(() => run("public.fixture_keep()", definition("public.fixture_\u212aeep()"))).toThrow(/reviewed native store/u);
+  });
+  it.each([
+    `GRANT EXECUTE ON FUNCTION ${probe} TO \u017fervice_role;`,
+    block("\u017fervice_role", "GRANT EXECUTE", probe),
+  ])("refuses a Unicode lookalike outside the closed role list: %s", privilege => {
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${privilege}`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses a different function in a privilege target with a Unicode suffix", () => {
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${block("service_role", "GRANT EXECUTE", probe.replace("(", "\u00a0("))}`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses Unicode case-folding in a same-file table narrowing target", () => {
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\nALTER TABLE public.fixture_\u212aeep ENABLE ROW LEVEL SECURITY;`, "CREATE TABLE public.fixture_keep (id uuid);")).toThrow(/reviewed native store/u);
+  });
+  it("retains ASCII token whitespace and Unicode literal data", () => {
+    const signature = "public.fixture_probe(text)";
+    const statement = "CREATE FUNCTION public.fixture_probe(\tp_value text DEFAULT 'Żółć\u00a0')\nRETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p_value; $$;";
+    expect(() => run(signature, statement, undefined, "CREATE TABLE public.fixture_literal (label text DEFAULT 'Żółć\u00a0');")).not.toThrow();
+  });
+});
+
 describe("grant-only existing functions", () => {
   const signature = "public.fixture_grant(text[])";
   const setup = () => {
