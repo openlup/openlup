@@ -1286,3 +1286,47 @@ The source witness `tests/postgres/m19BundleWriteExport.test.ts` exercises the
 installed tarball on qualified-v2 through a restricted runtime login. Its local
 result is recorded in the task record, not a hosted or provider qualification.
 The identity witness is `tests/postgres/m19BundleWriteIdentity.test.ts`.
+
+## Native fulfillment preparation and captured dispatch
+
+The experimental `@openlup/platform/fulfillment/native` entry exports
+`createNativeFulfillmentBinding`. Supply the existing capability-local
+transaction lane, selected fulfillment services and an authoritative reader.
+Preparation acquires the dispatch advisory lock before the shipment row lock,
+reads authoritative contact/selection/withholding facts inside that transaction,
+and synchronizes only redacted dispatch context. All authoritative edits must
+use `editAuthoritative` with host authorization and replay receipts. Actor/key
+presence is not authorization. The host owns closing its lane. Construction is
+inert and the default is disabled; no route or schedule is registered.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
+
+`createCapturedFulfillmentAdapter` from `@openlup/platform/fulfillment` accepts
+`{ providerRef, selected, captures }`. Each synthetic capture contains a complete
+`FulfillmentDispatchRequest` and an outcome: `{ kind: "accepted", externalRef }`,
+`{ kind: "not_dispatched" }` or `{ kind: "unknown" }`. Explicitly set
+`selected: true`, then call `dispatch.prepare(request)` before
+`dispatch.dispatch(request, evidence)`. Canonical JSON fingerprints include all
+command fields, sorting object keys by code unit and preserving array order.
+Unknown/modified commands and mismatched evidence refuse before submission.
+Provider references must be lowercase opaque IDs; accepted external references
+use the existing opaque-ID grammar. Duplicate capture request keys are rejected
+at construction. Returned results
+are copied; mutating them cannot alter replay. `readSubmissionCount()` reports
+distinct captured submissions, including refused/unknown captures, and stays
+unchanged on replay. It measures synthetic execution, not provider network I/O.
+
+Use only synthetic data in captures. This factory has no transport, provider
+credentials or durable ledger. Its accepted outcome asserts no physical packing,
+label creation, handoff or arrival. It exposes dispatch only; label operations,
+observation verification, readback, stock/product synchronization, cancellation
+and pickup operations remain unavailable. The existing conformance runner checks
+these declared capabilities using host-owned offline fixtures. Restricted-role
+PostgreSQL evidence is separate from offline conformance and installed-tarball
+proof. Native list/detail reads still return `host_binding_required`; they wait
+for destination and reservation facts in a separate change.
