@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: accepted repair committed; required main catalogue union awaits read before merge DCO.
+Status: accepted repair and main merge committed; supervisor changed (see Actors); two new independent reviews pending.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -34,6 +34,24 @@ the stabilized read below for DCO. Native review then requires two independent f
 reviewers, and canonical verify waits for the supervisor's named slot. No native
 review, PR, merge, publishing, settings, credentials, production or budget grant
 is inferred from this implementation or its preliminary proofs.
+
+Actors and supervisor change (2026-11-02, coordinator decision). Contexts in
+this history: implementation and original supervision, Codex context
+`01a19916-f1a0-7273-8962-2370c73127fd` (author of every committed change up to
+merge commit `cfcf523c`); reviewers `/root/forward_review_a67` and
+`/root/forward_review_b67`, both FAIL, their cards retained. The Codex context
+was stopped by a model safety flag at its resume after the repair commit and was
+not resumed again. The stream supervisor, Claude Code context
+`local_488b5a69-693b-44d8-ad08-f9cb9501f02a` (never a reviewer in this history),
+is now the active delivery supervisor. Facts: no parser, registry, SQL or
+package change was made as part of the change of supervisor; the staged merge of
+`origin/main` `4c7afd2590dc6998e22464153fca70a92eecfeb2` was completed at its
+exact tree `9dcd6034a7eb0984e3219b8fd9ce93698d8b4312` and signed. Budgets,
+cards, repair cycles and expiry rules carry over unchanged; a supervisor change
+adds no cycle. The next prepare uses the existing `prepare --new` route in the
+same history; new reviewers are fresh contexts excluded from this list. Any
+material repair is decided by the coordinator first because the original writer
+is no longer available.
 
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
