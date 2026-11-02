@@ -2116,6 +2116,18 @@ export function platformConsumerInstallArgs(packages: string[], sdkPresent = fal
   return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
 }
 
+/** Required dependencies remain explicit inputs even when npm will refuse their platform. */
+export function starterDependencyMatchesPlatform(manifest: { os?: string | string[]; cpu?: string | string[]; libc?: string | string[] }, optional: boolean, target: { os: string; cpu: string; libc?: string }): boolean {
+  return !optional || (["os", "cpu", "libc"] as const).every(key => {
+    if (key === "libc" && target.os !== "linux") return true;
+    const constraint = manifest[key];
+    if (constraint === undefined) return true;
+    const values = typeof constraint === "string" ? [constraint] : constraint;
+    return (values.length === 1 && values[0] === "any") || (!values.includes("!" + target[key]) &&
+      (values.every(value => value.startsWith("!")) || values.includes(target[key] ?? "")));
+  });
+}
+
 /** Starter source/extraction witness in the existing required cold consumer. No browser download. */
 export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap<string, { path: string; sha256: string }>, packInstalled: (name: string) => string): void {
   const started = performance.now();
@@ -2148,15 +2160,18 @@ export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap
     // Every selected dependency comes from the root's already locked ordinary install.
     // Supplying its complete installed closure as tarballs avoids registry metadata resolution.
     const dependencies = new Set<string>();
-    const collect = (name: string): void => {
+    const platform = { os: process.platform, cpu: process.arch, libc: process.platform === "linux"
+      ? ((process.report.getReport() as { header: { glibcVersionRuntime?: string } }).header.glibcVersionRuntime ? "glibc" : "musl") : undefined };
+    const collect = (name: string, optional = false): void => {
       if (dependencies.has(name) || name.startsWith("@openlup/")) return;
       const directory = join(checkout, "node_modules", name);
       assert(lstatSync(directory, { throwIfNoEntry: false })?.isDirectory(), "Missing locked starter dependency: " + name);
-      dependencies.add(name);
       const dependency = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+      if (!starterDependencyMatchesPlatform(dependency, optional, platform)) return;
+      dependencies.add(name);
       for (const child of Object.keys(dependency.dependencies ?? {})) collect(child);
       for (const child of Object.keys(dependency.optionalDependencies ?? {})) {
-        if (lstatSync(join(checkout, "node_modules", child), { throwIfNoEntry: false })) collect(child);
+        if (lstatSync(join(checkout, "node_modules", child), { throwIfNoEntry: false })) collect(child, true);
       }
     };
     for (const name of [...Object.keys(metadata.dependencies), ...Object.keys(metadata.devDependencies), "zod"]) collect(name);

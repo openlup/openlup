@@ -248,3 +248,30 @@ The earlier predecessor/pin instructions above are historical. The repaired
 predecessor includes the fetched main tip, so the next review's local follow-up
 pin is the exact repaired predecessor given here, subject to rechecking actual
 ancestry and main admission at that later scheduled turn.
+
+## Linux optional-tarball compatibility repair
+
+The first hosted Linux required consumer failed because its root install
+contained both lightningcss libc variants. Their lockfile entries omit libc,
+but the installed musl manifest declares it; naming that tarball explicitly on
+glibc caused npm's EBADPLATFORM refusal. Local macOS proof did not expose this.
+
+The repair filters only optional children using their installed manifests'
+os, cpu and Linux libc constraints, including npm's negative constraints.
+Required dependencies remain explicit inputs. Install flags, local tarballs,
+fresh empty cache, package manifests, lockfile and other consumers stay fixed.
+
+The existing unit file passes 122 cases, including 14 new platform cases; the
+new cases fail against the predecessor module. In an isolated Linux x64 glibc
+container with Node 24.21.0/npm 11.19.0, the actual predecessor starter consumer
+reproduced EBADPLATFORM in 65.410 seconds. The repaired flow passed source and
+extracted tests, strict typecheck and build in 75.827 seconds including cleanup.
+Only the musl lightningcss tarball left that installed closure. Matching glibc
+binaries remained. The macOS arm64 flow passed in 21.278 seconds and selected
+the same 38 dependencies as before. The application and Docker recipe did not
+change. Hosted CI on the repaired tree, committed review and final verification
+remain pending; this repair stops for the required maintainer read.
+
+Self-retro: a cold cache does not expose a native-package mismatch when the
+root install has only one platform's candidates. Installed optional manifests
+and a Linux glibc replay distinguish that failure without relaxing npm checks.
