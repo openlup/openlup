@@ -693,3 +693,45 @@ SHA256 `7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`.
 
 Self-retro: a changed base can change compressed delta while unpacked growth is
 identical. Measure before long reruns so the size stop is visible earlier.
+
+## Frozen control merge and code-gzip stop
+
+The supervisor accepted the earlier packed variation and replaced the stack base
+with `fd8c13bd99f22652a9d08302d8228dfd5a03a465`:
+`OPENLUP_STACK_BASE=fd8c13bd99f22652a9d08302d8228dfd5a03a465`.
+Merge `674e1e9d2da99e82746d985906eeee09515555f6` was mechanical with no manual
+resolution. G6's stable patch ID excluding this task record is
+`53c7f4fbe34b11df63e19488a378117f88d68570` both before (against the prior
+control) and after (against the frozen control). Class data, checker and catalog
+witness are identical between those controls. Earlier partial proof results
+were superseded; no test result was carried to this new tree.
+
+Fresh proof: all three static admission paths pass; the bound PostgreSQL catalog
+suite passes 124 cases in both role modes; sandbox acceptance/refusals pass 15;
+connected transfer passes 11. No executed suite fails. Neutrality has zero
+increases; the all-ref secret scan finds zero leaks across 1729 commits. The path
+audit checks all 36 changed paths against the original grant and finds only
+`server/adapters/README.md` outside it, covered by the accepted adapter-owner read.
+The importer audit additionally identifies the runtime payment-truth binding and
+managed webhook suites; both remain pending with the remaining original suites,
+pre-verify files and AST/lint. Policy needs the refreshed portability no-impact
+binding because the merged composition proof changed the source digest; its
+owner section still describes the same transfer/recovery contract.
+
+Official Node v24.21.0/npm 11.19.0 measurement against
+`c3c213d94ec653f0b08dcefd9a3017a122d36b00`: base 2364865 packed bytes,
+1899251 code-gzip bytes, 11153236 unpacked bytes and 2955 files; candidate
+2376264 packed bytes, 1903923 code-gzip bytes, 11209137 unpacked bytes and
+2962 files. Delta: +11399 packed, +4672 code-gzip, +55901 unpacked and +7 files.
+The new stop condition permits packed variation but refuses code-gzip above
++4641: this measurement exceeds it by 31 bytes. The proof queue stopped at that
+boundary, before native review; no package code was changed to recover bytes.
+Private evidence is `.context/scratch/g6-frozen-size-result.json`,
+`.context/scratch/g6-frozen-proofs/report.json` and the `g6-frozen-*` logs.
+Both forward copies remain SHA256
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`.
+Native review has not begun; repair cycles remain zero.
+
+Self-retro: code-class gzip also changes with the comparison base while unpacked
+bytes and file growth stay constant. Apply the explicitly named measurement
+threshold, report the observed delta, and preserve the package implementation.
