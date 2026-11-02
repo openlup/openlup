@@ -590,7 +590,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] });
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
     expect(graph.commerce.values).toEqual(["pricing/contracts", "shipping"]);
     for (const depth of [0, 1]) {
@@ -665,7 +665,9 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       }
       for (const specifier of [`../${up}fulfillment/paidHandoff.js`, `../${up}data/index.js`]) {
         for (const source of loadSources(specifier, extension)) {
-          expect(await moduleMessages(config, source, server)).toContainEqual(expect.stringContaining('module "commerce/server"'));
+          const messages = await moduleMessages(config, source, server);
+          if (specifier.endsWith("/data/index.js") && typeOnlyForm.test(source)) expect(messages).toEqual([]);
+          else expect(messages).toContainEqual(expect.stringContaining('module "commerce/server"'));
         }
       }
     }
@@ -681,7 +683,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       ["commerce/server/usesModule", "../../http/index.js", "type", "commerce/server"],
       ["commerce/server/usesModule", "../../pricing/quotePorts.js", "refused", "commerce/server"],
       ["commerce/server/nested/usesModule", "../../../shipping/index.js", "value", "commerce/server"],
-      ["commerce/server/nested/usesModule", "../../../data/index.js", "refused", "commerce/server"],
+      ["commerce/server/nested/usesModule", "../../../data/index.js", "type", "commerce/server"],
     ]) {
       for (const source of loadSources(target!, extension)) {
         const messages = await moduleMessages(config, source, `packages/platform/src/${file}.${extension}`);
@@ -775,7 +777,7 @@ describe("account-support module graph addition", () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
     expect(graph["account-support"]).toEqual({
       contracts: true,
-      values: ["commerce", "invoicing", "shipping"],
+      values: ["commerce", "invoicing", "shipping", "data"],
       types: ["commerce/contracts", "invoicing/contracts"]
     });
     const file = "packages/platform/src/account-support/contracts/fit.ts";

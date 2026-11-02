@@ -63,7 +63,7 @@ export interface ManagedCustomerSupportJourneyScope {
   identityMove(): OperatorIdentityMovePort;
 }
 
-export class CustomerSupportOperatorInactiveError extends Error { constructor() { super("managed_customer_support_operator_inactive"); } }
+export { CustomerSupportOperatorInactiveError } from "@openlup/platform/account-support";
 export class CustomerSupportCommandRequiresHumanError extends Error { constructor() { super("customer_support_command_requires_human"); } }
 /**
  * The acting principal is an eligible operator but holds no row in
