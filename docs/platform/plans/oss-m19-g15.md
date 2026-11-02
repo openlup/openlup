@@ -253,8 +253,7 @@ Completed unchanged files with passing results:
 - `packages/platform/test/data/binding.test.ts`
 - `packages/platform/test/data/supabaseClientFactory.test.ts`
 - `packages/platform/test/data/supabaseGateway.test.ts`
-- `packages/platform/test/fulfillment/omnipack/factory.test.ts`
-- `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts`
+- Fulfillment adapter tests: 2 files.
 - `packages/platform/test/http/runtime.test.ts`
 - `packages/platform/test/http/security.test.ts`
 - `packages/platform/test/identity/emailTrustPolicy.test.ts`
@@ -263,7 +262,7 @@ Completed unchanged files with passing results:
 - `packages/platform/test/lifecycle/postgresInstallQualification.test.ts`
 - `packages/platform/test/marketing/consentEvidence.test.ts`
 - `packages/platform/test/packageBoundary.test.ts`
-- `packages/platform/test/payments/tpay/tpayHttpClient.test.ts`
+- Payment adapter tests: 1 file.
 - `packages/platform/test/promotions/acquisitionOrchestrationParity.test.ts`
 - `packages/platform/test/promotions/promoDataPort.test.ts`
 - `packages/platform/test/promotions/promotionClaims.test.ts`
@@ -454,3 +453,21 @@ before each of its two existing dynamic public-entry imports:
 ```
 
 A complete final-tree selection and package measurements are still pending.
+
+## Neutral test inventory evidence
+
+The public inventory groups three adapter-specific test paths neutrally:
+fulfillment adapter tests (2 files) and payment adapter tests (1 file). The
+complete exact inventory stays in the private scratch JSON supplied with the
+local proof. No scanner, ratchet, baseline or executable changes. The preceding
+complete run passed all 55 selected files and 5,581 tests with no failures or
+pending cases.
+
+Inventory: 55 unique relative paths, sorted in byte order. Its canonical bytes
+are compact JSON (an array of strings, no spaces) encoded as UTF-8 followed by
+one LF. SHA-256: `19a086278234a5b58d1c95401b2e2c7fb3218ae5316b762e21f67753c32f2840`.
+Reproduce from the private proof artifact:
+
+```sh
+shasum -a 256 .context/scratch/g15-landing-exact-test-inventory.json
+```
