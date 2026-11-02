@@ -52,8 +52,10 @@ if (command === 'candidate') {
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
 } else if (command === 'up') {
   const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { assertConfig } = await import('./shared/config.ts');
   try {
     const config = selectConfiguration(configurationArgument(args));
+    assertConfig(config);
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
     run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
@@ -62,7 +64,13 @@ if (command === 'candidate') {
     const override = { services: { application: { command: [
       'node', '--experimental-strip-types', 'host/server.ts',
       '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
+      '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
     ] } } };
+    if (config.publicOrigin) {
+      // Connect over the private bridge but exercise the selected public Host.
+      override.services.application.healthcheck = { test: ['CMD', 'node', '-e',
+        `fetch('http://127.0.0.1:4319/api/config',{headers:{Host:${JSON.stringify(new URL(config.publicOrigin).host)}}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))`] };
+    }
     run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)

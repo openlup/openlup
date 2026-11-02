@@ -62,14 +62,32 @@ Partner inquiry does not grant marketing consent, convert a customer or provide
 partner privacy export/erasure. Risk is off. Market inputs are not tax-compliance
 certification. Normalized ingest has no real marketplace connector.
 
-Required purchase, account, invoice, fulfillment, signed-unsubscribe and identity
-bindings are still pending. They return `host_binding_required` or the relevant
-authority refusal. Those are implementation blockers, not additional accepted
-native limits. In particular, an invalid-grant example does not prove that a
-valid grant works. Completion requires the real positive and refusal journeys.
+Demonstration sessions run in a single process, expire after one hour, have
+capacity 1000 and are lost on restart. This is not a production session store.
+The captured demonstration mailbox is not a real mailbox; its private file
+contains sign-in tokens and requires runtime filesystem access.
+
+With the runtime URL supplied by lifecycle, native customer challenges and
+opaque host sessions bind reduced profile/subscription-control reads, selected
+owned order headers/detail, newsletter read/withdraw and reduced OMS order
+list/detail. Full account projection sources remain unavailable
+(`starter_account_projection_binding_required`); newsletter grants and other
+purposes wait for the consent lifecycle and refuse `host_binding_required`.
+The account order response does not claim a rich customer-order projection.
+Native detail preserves `native_account_order_money_unavailable` when a historical
+order lacks captured money; it never reconstructs purchase truth.
+
+Purchase, invoice history/artifacts, shipment list/detail and dependent label,
+handoff, delivery and tracking bindings, signed unsubscribe and other unmounted
+workflows remain pending. Shipment reads follow destination/reservation facts;
+dispatch preparation alone does not provide them. Unbound operations return
+`host_binding_required` after customer/operator admission. These are implementation
+blockers, not additional accepted native limits. An invalid-grant example does
+not prove a valid grant works. Completion still requires the real purchase,
+account and operator browser journey in both configurations.
 
 Both example catalogues price in `XTS` test units for fictional market `ZZ` at
 `UTC`. These choices make no real tax, shipping or compliance claim. The selected
 configuration is a non-secret `--configuration` argument. The one-command
-installation target still defaults from the owned registry and refuses while
-its bootstrap is absent; CLI transport does not supply an installation capability.
+installation target defaults from the owned registry. CLI transport does not
+supply an installation capability.

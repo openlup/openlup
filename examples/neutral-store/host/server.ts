@@ -7,6 +7,7 @@ import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
+import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const options = parseHostArguments(process.argv.slice(2));
@@ -15,7 +16,7 @@ assertConfig(config);
 const configuredPort = options.port;
 // Listening on the container bridge is an explicit argument; Compose publishes loopback only.
 const host = options.listen;
-const allowedAuthorities = new Set([`127.0.0.1:${configuredPort}`, `localhost:${configuredPort}`]);
+const originPolicy = createOriginPolicy(config, configuredPort);
 const maxBodyBytes = 64 * 1024;
 const contentTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -38,11 +39,12 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
   response.setHeader('Referrer-Policy', 'no-referrer');
   response.setHeader('X-Frame-Options', 'DENY');
   response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-  if (!allowedAuthorities.has(request.headers.host ?? '')) {
-    sendJson(response, 403, { ok: false, code: 'starter_local_host_required' });
+  const admission = admitRequest(originPolicy, request.method ?? '', request.rawHeaders);
+  if (!admission.ok) {
+    sendJson(response, 403, { ok: false, code: admission.code });
     return;
   }
-  const origin = `http://${request.headers.host}`;
+  const origin = admission.origin;
   const url = new URL(request.url ?? '/', origin);
   if (url.origin !== origin) { sendJson(response, 400, { ok: false, code: 'starter_request_invalid' }); return; }
   if (url.pathname === '/api/config' && request.method === 'GET') {
@@ -51,10 +53,6 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
   }
   if (url.pathname.startsWith('/api/actions/')) {
     if (request.method !== 'POST') { sendJson(response, 405, { ok: false, code: 'method_not_allowed' }); return; }
-    if (request.headers.origin !== origin || request.headers['x-starter-request'] !== '1'
-      || request.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') {
-      sendJson(response, 403, { ok: false, code: 'starter_same_origin_required' }); return;
-    }
     const operation = url.pathname.slice('/api/actions/'.length);
     if (!isOperation(operation)) { sendJson(response, 404, { ok: false, code: 'starter_operation_unknown' }); return; }
     const commandKey = request.headers['idempotency-key'];
@@ -72,8 +70,10 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
       return;
     }
     const actor = await bindings.authenticate(request);
-    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config });
-    sendJson(response, result.ok ? 200 : 409, result);
+    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config,
+      setCookie: cookie => response.setHeader('Set-Cookie', cookie),
+      accept: async () => { sendJson(response, 200, { ok: true, value: { accepted: true } }); } });
+    if (!response.writableEnded) sendJson(response, result.ok ? 200 : 409, result);
     return;
   }
   if (url.pathname.startsWith('/api/')) { sendJson(response, 404, { ok: false, code: 'starter_route_unknown' }); return; }
@@ -119,7 +119,9 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const bindings = pendingBindings();
+  const bindings = options.databaseUrl
+    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy)
+    : pendingBindings();
   const server = createApplication(bindings);
   server.requestTimeout = 25000;
   server.headersTimeout = 10000;

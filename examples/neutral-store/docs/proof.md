@@ -181,3 +181,50 @@ The stabilized source reran the same required cold-consumer addition in 13.930
 seconds: 70 source and 68 extracted tests passed, strict typecheck and build
 passed, and installation used only locally packed inputs offline. The initial
 13.994-second measurement is retained above. No gate budget or command changed.
+
+## Origin and native read composition follow-up (2026-11-02)
+
+The source and extracted-copy test layout pass 168 source tests, zero skips,
+with strict app typecheck and build. Exact candidate identities accompany the
+stabilized read packet. The local three-package 0.36.0 development candidates
+were packed from main `420e68ef843092a174b84461a2bcb4882bca3c03`; no package
+implementation changed. They are not published pins.
+
+Each example configuration ran against the complete installed PostgreSQL history
+using its own local proof resources. Supplement startup took 25.669 seconds and
+its HTTP proof 1.570 seconds. Coffee startup in a fresh database took 10.724
+seconds and its proof 1.567 seconds. Images/layers were cached. The first attempt
+to reuse the same operator immediately across configurations hit the native
+one-challenge-per-minute limit; the isolated coffee witness preserves that
+refusal and changes no limiter or authentication behavior.
+
+The proof used native account writers for two demonstration contacts and native
+operator bootstrap/invitation activation, then native challenge delivery and
+redemption through the HTTP host. It checked profile ownership despite supplied
+browser identifiers, separate customer sessions, reduced subscription-control
+and order lists, newsletter read/withdraw and grant refusal, reduced OMS list,
+no-session/wrong-actor/customer-as-operator refusal, invalid or replayed challenge
+refusal and sign-out revocation. The captured mailbox file was mode 0600 and
+session cookies had the required local HTTP attributes. All database work used
+the runtime login; no install credential entered the host.
+
+Both databases contained zero orders and subscriptions. Native missing-order
+refusals passed, but positive order/detail, historical captured-money behavior,
+other-customer order ownership and the purchase/account/operator browser journey
+remain unverified. No order, payment, subscription terms or method-state rows
+were inserted to manufacture evidence. Shipment reads and invoice artifacts
+remain unbound. All proof-owned containers, volumes and application image tags
+were removed. These results do not qualify deployment, publication or a release.
+
+Pure origin tables and spawned raw HTTP witnesses cover exact Host/Origin,
+lookalike/unknown/duplicate headers, missing/null/wrong-scheme/wrong-port Origin,
+HTTP opt-in and pre-Docker startup validation. Bounded scratch mutations detect
+each removed guard, including lifecycle validation separately. The positive
+pinned baseline passes. Root typecheck has zero unresolved edges and consumer
+errors; the three existing focused boundary/import/projection files pass 3,051
+cases. No package control or dependency changed.
+
+The unchanged required purchase browser assertion ran once in each configuration.
+Both failed at the missing completion path with `host_binding_required` visible
+in the saved page context, zero skips, in 62.227 seconds total. No browser
+assertion changed; these failures retain the pending purchase acceptance.
