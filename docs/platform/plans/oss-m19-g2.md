@@ -760,3 +760,40 @@ Self-retro: a qualified manifest is an issued ordered prefix, not a globally
 sorted set. An initial scratch measurement rejected that ordering error; insert
 the new payment slot immediately before the renewal slot and measure the actual
 combined catalog instead of carrying either row's independent digest.
+
+
+### Integration result: blocked on unchanged witness setup
+
+The ordered union is DCO-signed at `b98cc9eb`. Lint passes with zero errors and
+33 existing warnings; structural checks and staged secret scanning pass. All
+five real PostgreSQL inventory measurements completed with the values above.
+The transfer-test assertion multiset equals both parents minus their shared
+base: no assertion was dropped or relaxed when preserving the two case sets.
+
+The first unchanged regression suite,
+`tests/postgres/connectedStoreTransfer.test.ts`, fails in beforeAll at
+`renewalPurchase` line 75 with `wrong_attempt` (SQLSTATE 22023), before any test
+body. Its sandbox captured-truth fixture has no simulator attempt/observation,
+so the predecessor's unchanged `payment_simulator_assert_truth` guard refuses
+it. Result: one failed suite, zero passed cases, thirteen skipped cases; command
+time 7.786 seconds. The test file hash stayed unchanged during execution.
+No fixture bypass, alternative settlement channel, fabricated attempt row or
+payment logic change is made. A joined fixture using actual attempt/observation
+writers needs a separate supervisor disposition; this union run stops here.
+
+The remaining 211 inventoried suites, including the other conflicted composition
+suites and each row's own money suites, were not run after that first failure.
+The opt-in handover's current literals were united, but its effect assertions
+were not executed in this blocked run. No combined qualification is claimed.
+
+Verify's exact neutrality component, using the predecessor as comparison base,
+also fails: the predecessor task record has ui-13 count 8 and ui-14 count 6
+against the pinned zero allowances. That task record is byte-identical to the
+predecessor. It and the baseline/scanner are left unchanged; this is an additional
+inherited blocker, not a reason to widen a control. Documentation no-impact
+trailers are refreshed only for the mechanical union's current source digests.
+No native review, main merge, forward pin, external write or production action.
+
+Self-retro: the ordered union exposes the precise earlier fixture boundary.
+Keep the real sandbox truth guard and stop at its first incompatible witness;
+carrying both green isolated-row reports does not prove the joined purchase path.
