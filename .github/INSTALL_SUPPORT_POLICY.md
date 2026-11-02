@@ -47,6 +47,27 @@ required to certify reproduction on a full install that does not exist. The
 stable support obligation activates only for a release that names a supported
 BOM and artifacts; until then no install is supported.
 
+The portable rail takes sandbox payments only. Real money currently runs only
+on the managed rail. A portable real-money store without vendor lock-in is not
+yet available; payment contracts and optional adapter source do not close that
+gap. The portable [payment schema descriptor](../packages/platform/src/payments/schemaCapabilities.ts)
+still refuses the durable prepared store, payment-method setup and other named
+operations.
+
+The [public outcome projection](../docs/platform/OUTCOME_PROJECTION.md) is
+generated from existing public package instruments. It is partial: witness
+source is not an executed result, and the package instruments do not enumerate
+every composed-store outcome. Partial, missing or unresolved evidence blocks
+the affected claim. A generated package-set BOM binds artifact identities; it
+does not establish installation, publication, provenance or support evidence.
+See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md).
+
+The neutral-store Node/OCI rollback and portable-Postgres Vercel recipes remain
+pending their application-owned entry and exercised local evidence. No hosting
+account or resource is supplied. Root `ui-*` counts remain shrink-only
+reference-source debt. New neutral presentation is constrained to system fonts;
+the root reference's font choices are not an inherited starter requirement.
+
 ## What is refused, in writing
 
 The following are outside the bounded preview reference today and outside the
