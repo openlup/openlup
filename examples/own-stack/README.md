@@ -40,13 +40,25 @@ in your own application. Do not replace dependencies with workspace links,
 source directories or private `dist` imports. This directory is not a platform
 workspace or published package.
 
-Set `DATABASE_URL` externally to that disposable database's runtime connection
-string. Keep it out of Git and logs. Generate the application's local operator
-token and start its loopback listener:
+Create `app.local.json` in the separate application directory with owner-only
+read/write permissions. This filename is gitignored. Replace these placeholders
+with the disposable database's restricted runtime connection string and a locally
+generated token of 32 random bytes encoded as 64 lowercase hexadecimal characters:
+
+```json
+{
+  "databaseUrl": "<restricted runtime connection string>",
+  "operatorToken": "<64 lowercase hexadecimal characters>",
+  "port": 3000
+}
+```
+
+`port` is optional and defaults to 3000. Keep this external configuration file
+out of Git and logs; runtime credentials and the token are not command-line
+arguments. Feed the configuration file to the loopback runner on standard input:
 
 ```sh
-export OPERATOR_TOKEN="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
-node run.mjs
+node run.mjs < app.local.json
 ```
 
 The sole command route is `POST /drafts` with `Content-Type: application/json`
@@ -80,8 +92,9 @@ return HTTP 401 before database access. Request bodies are limited to 64 KiB.
 
 ## Verify the boundary
 
-With the same disposable runtime `DATABASE_URL`, run `node --test verify.test.mjs` from the separate
-application directory. The witness generates its own short-lived local token and
+With `databaseUrl` in that same `app.local.json`, run `node --test verify.test.mjs`
+from the separate application directory. The witness reads this fixed relative
+path and generates its own short-lived local token, independently of `operatorToken`, and
 fresh UUIDs, exercises the actual HTTP route and inspects PostgreSQL rows through
 the restricted service lane. It proves success, conflict refusal, replay after
 recreating the application, and exactly one retained revision/receipt. It also

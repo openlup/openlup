@@ -1,3 +1,4 @@
 node_modules/
 .env
 .env.*
+app.local.json

@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { Pool } from "pg";
 import { createPostgresDataGateway } from "@openlup/platform/data";
 import { createApplication } from "./app.mjs";
 
 test("own routes/auth with PostgreSQL success, refusal and durable replay", { timeout: 30_000 }, async () => {
-  assert.ok(process.env.DATABASE_URL, "Set DATABASE_URL to a disposable qualified-v2 runtime login");
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+  let config;
+  try { config = JSON.parse(readFileSync("./app.local.json", "utf8")); }
+  catch { throw new Error("test_configuration_required"); }
+  assert.ok(typeof config?.databaseUrl === "string" && config.databaseUrl.trim(),
+    "Set databaseUrl in app.local.json to a disposable qualified-v2 runtime login");
+  const pool = new Pool({ connectionString: config.databaseUrl, max: 2 });
   const data = createPostgresDataGateway({ connectionString: "" }, { poolFactory: () => pool });
   const token = randomBytes(32).toString("hex");
   const draftId = randomUUID();

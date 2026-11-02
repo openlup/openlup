@@ -1,7 +1,9 @@
 # Own-stack integration sample
 
-Status: maintainer read accepted; signed source review next, complete-chain
-PostgreSQL proof pending the supervisor's committed installer head.
+Status: configuration repair in progress, pending a delta maintainer read before
+commit. The preceding integrated candidate passed source review and PostgreSQL
+proof, then failed the canonical repository neutrality gate on ambient
+configuration reads. The existing gate and baseline remain unchanged.
 
 Outcome and scope: a small independently routed/authenticated application outside
 the platform checkout uses released public factories and ports on portable
@@ -23,8 +25,10 @@ Authority: the accountable maintainer assigned local implementation and supervis
 under the foundation stream and programme lead. The programme permits local
 proofs, DCO commits and native review as Bart Roszkowski <dev@openlup.com>.
 Programme delivery remains delegated within the lead's landing line and the
-VERIFIED prerequisite release line. This run ends after source review while
-waiting for the installer head; it performs no push, PR or slot request.
+VERIFIED prerequisite release line. The lead authorized replacing ambient reads
+with an external gitignored JSON file, with a standard-input fallback if a
+configuration-path argument conflicts with publication policy. This repair run
+ends at the delta read, before any commit, push, PR, receipt or queue.
 No publication, tag, release dispatch, hosted resource, cost, production or
 credential/settings operation. The prerequisite release line is VERIFIED.
 Focused stages use the host gate without intermediate stops; canonical verify
@@ -35,9 +39,10 @@ Publication-control files remain unchanged. The template pins remain on 0.36.0,
 whose registry tarball lacks the complete qualified chain; they move to the
 programme release at S1.
 
-Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`. Current policy pin:
-`bb0008481a11267ec6dbe3e7e531299777cddc19` (fresh origin/main on resume,
-2026-11-01; applicable instructions unchanged). Worktree `oss-m19-g18`, branch
+Initial code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`. Repair base:
+`97ec7274aed606862171d656a72c90c636f56471`. Current policy pin:
+`4c7afd2590dc6998e22464153fca70a92eecfeb2` (fresh origin/main on resume,
+2026-11-02). Worktree `oss-m19-g18`, branch
 `codex/oss-m19-g18`. Follow the [agent guide](../../../AGENTS.md),
 [contribution rules](../../../CONTRIBUTING.md) and
 [architecture owner](../ARCHITECTURE_AND_EXTENSIONS.md#own-stack-integration-sample).
@@ -52,9 +57,9 @@ one revision/receipt with unchanged tuple versions on refusal/replay. Request
 identity and email inference are never authority. The witness must use a
 nonowner, non-superuser, NOBYPASSRLS runtime login and its existing service lane.
 No hand-written grants or installer-login bypass substitutes for the final chain.
-Schema setup waits for a committed installer head supplied by the supervisor;
-archive that object into this task's scratch, never edit its worktree/files or
-import its private helpers into the application. Any sparse-schema run is provisional.
+Schema setup uses the documented public migration factory from a real tarball
+built from the merged installer source. Never edit another worktree or import
+private helpers into the application. A sparse-schema run cannot establish acceptance.
 
 Risk and proof plan: one application factory, a tiny runner, one host-owned product
 type and one HTTP/SQL witness. Authentication precedes store access, tokens stay
@@ -63,7 +68,7 @@ catalog reads; draft commands additionally distinguish retained replay from a
 repeated read with little setup. Complete structural scan, policy/typecheck/lint,
 stable maintainer read, two fresh native reviews and final verify before delivery.
 
-Evidence (2026-11-01): registry installation in the independent
+Initial source checkpoint evidence (2026-11-01): registry installation in the independent
 `m19-own-stack-g18-consumer` directory outside all platform checkouts succeeded (16 packages).
 Core/platform 0.36.0 and pg 8.22.0 resolve to registry tarballs with integrity values
 and no symlinked package directory. The imported public catalog/data factories
@@ -88,7 +93,7 @@ The runtime-capability unit references the broader graph: these direct dependenc
 are not an independently installable sparse chain. No later qualified unit changes
 draft privileges. Complete-chain proof therefore remains mandatory.
 
-Policy: the post-commit `npm run oss:published-tree -- --policy` exited zero
+Original source checkpoint policy: the post-commit `npm run oss:published-tree -- --policy` exited zero
 with both documentation obligations answered and the scoped ownership trailer
 accepted. Navigation and publication checks pass completely. No publication-
 control row was changed. The signed contribution includes the proposed
@@ -104,19 +109,53 @@ record; the exact accepted and corrected full-diff hashes are retained in the
 commit's read-comparison trailers and ignored evidence. Every other accepted
 file stays byte-identical. This is the prose-repair no-read carve-out.
 
-Current sequence: DCO commit, complete policy PASS and two fresh native source
-reviews now; then wait for the supervisor to name the committed installer head.
+Original source sequence (2026-11-01): DCO commit, complete policy PASS and two
+fresh native source reviews, then wait for the committed installer head.
 The complete-chain PostgreSQL proof must pass before any verify slot. A failing
 proof that requires code changes returns for a new maintainer read and delta
 review. No hand-written grants, owner-login bypass or invented chain is allowed.
-Full acceptance and canonical verification remain pending that proof.
+At that checkpoint, full acceptance and canonical verification remained pending that proof.
 
 Closure cleanup remains: remove the owned independent consumer directory
-`/Users/bartroszkowski/development/m19-own-stack-g18-consumer` after its final
-proof evidence is retained. Keep it available while the PostgreSQL proof waits.
+`/Users/bartroszkowski/development/m19-own-stack-g18-consumer` only when its PR closes. Keep it available through
+repair review and delivery; proof logs and actual outcomes stay in ignored scratch.
 
 Self-retro: the requested record corrections preserve the read-bound code.
 Earlier shared resource waits included 541-second and 547-second focused-gate
 timeouts followed by the required retries. Appending the
 architecture section preserved installed context excerpt spans. A private manifest
 template and separate runner keep the example small within existing controls.
+
+Configuration repair (2026-11-02): use a gitignored app.local.json containing
+databaseUrl, operatorToken and optional port. The runner consumes JSON on
+standard input; the existing witness reads that filename relative to its working
+directory and still creates its own token. Credentials stay in the external file,
+never in command-line values. An argument-based version was actually checked and
+refused as an unregistered direct entrypoint; the authorized standard-input
+fallback needs no new entrypoint or policy row. Document the JSON shape in the
+README rather than add another public file. Parse errors are replaced with
+fixed messages so malformed configuration does not expose credential contents.
+
+Repair proof plan: execute repository-wide neutrality before the delta read,
+then policy/navigation, types, lint, structural and secret checks. The only
+existing test that references the sample module is its own HTTP/SQL witness;
+repeat it and exercise the standalone runner using a fresh PostgreSQL 16
+installation from the current merged platform tarball. Preserve all prior auth,
+conflict and immutable replay assertions. No control or baseline change. The
+previous integration is cycle 1 of 3; this staged repair is not prepared or
+committed. After approval, fresh review of the repaired delta receives its own
+24-hour evidence clock. Stop at the delta maintainer read.
+
+Rethink: ambient startup reads were refused by neutrality, and the replacement
+file-path argument was refused by direct-entrypoint admission. Both concern the
+startup input boundary. Standard input already carries the complete external
+file without a new admission row or an alias for an ambient reader. The
+discriminating checks are both unchanged gates against this version, followed
+by real runner and witness execution. Lesson: incompatible input boundaries →
+use the existing input channel, without a control exception.
+
+Repair self-retro: the external configuration shape fits in the README; a
+separate published example file adds no necessary behavior. Configuration
+parse refusals use fixed messages, preserving credential secrecy. Runtime proof
+results and the exact staged identity belong in the ignored evidence and delta
+read packet, not in a post-review outcome edit here.
