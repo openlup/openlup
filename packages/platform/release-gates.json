@@ -40,6 +40,7 @@
         "test/catalog/catalogMediaResolution.test.ts",
         "test/catalog/catalogLifecycleContracts.test.ts",
         "test/catalog/bundleRules.test.ts",
+        "test/catalog/bundleAdminWriteStore.test.ts",
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
