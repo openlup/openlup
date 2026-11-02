@@ -1,0 +1,11 @@
+node_modules/
+package-lock.json
+dist/
+artifacts/*.tgz
+artifacts/identity.json
+.context/
+test-results/
+playwright-report/
+*.log
+.env
+.env.*
