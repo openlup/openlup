@@ -1009,6 +1009,20 @@ The facade adds no query, authorization, pagination, retry or diagnostic policy.
 The reference `createM12AccountReadBinding` specializes it to the existing customer
 ports; it registers no route or default selection.
 
+The existing `@openlup/platform/account-support` entry also provides
+owned native order-store/account-source factories, an owned account identity
+lookup, and actor-bound subscription snapshot/newsletter read-withdrawal ports.
+The [native persistence boundary](../../packages/platform/README.md#native-account-persistence-reads)
+describes host inputs and named section refusals. Detail uses captured money
+and promoted allocations; historical summaries keep recorded total/currency.
+Missing captured detail money refuses explicitly. The native
+`readPaidActivationGaps` order companion identifies paid provisional activations
+by owned order ID, before any subscription exists. Missing saved profile or
+event sections refuse `host_binding_required`, including the private-profile
+view. Complete consent grants/choices await their separate change; a saved flag
+is not effective consent. See the [bounded task record](plans/oss-m19-g11.md)
+for proof and the remaining delivery boundary.
+
 Import types from `@openlup/platform/account-support/contracts`. The five envelopes
 are `AccountReadPort`, `Customer360ReadPort`, `SelfServiceCommandFacade`,
 `OperatorRecoveryCommandEnvelope` and `InvoiceAccessPort`.

@@ -581,6 +581,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "test/account-support/postgresAccountReads.test.ts",
         "test/account-support/contracts.test.ts",
         "test/account-support/accountReadFacade.test.ts",
         "test/account-support/browserSafety.test.ts",
