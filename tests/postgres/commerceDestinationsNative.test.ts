@@ -5,8 +5,9 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
-import { fixture as shipmentFixture, openCase, replacement } from "../helpers/fulfillmentNative.js";
+import { fixture as shipmentFixture, openCase, replacement, executor } from "../helpers/fulfillmentNative.js";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
+import { createPostgresDeliveryAlignmentPort } from "@openlup/platform/fulfillment";
 import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
 import { AT, later, call, alignmentInvariant } from "./subscriptionNativeFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -34,8 +35,8 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await closePostgres(container, [owner, runtime]); }, postgresTeardownTimeoutMs);
 const address = (name = "Old synthetic recipient") => ({ recipientName: name, line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "zz" });
-async function fixture() {
- const f = await shipmentFixture(owner, null), principal = randomUUID(), operator = randomUUID();
+async function fixture(activation = false) {
+ const f = await shipmentFixture(owner, null, activation, activation), principal = randomUUID(), operator = randomUUID();
  await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2),($3,$4)", [principal, `${principal}@example.invalid`, operator, `${operator}@example.invalid`]);
  await owner.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
  await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',$2)", [operator, AT]);
@@ -227,7 +228,26 @@ it("serializes concurrent matching commands to one event, receipt, address and n
  expect(new Set(results.map(r => r.futureDestinationId)).size).toBe(1);
  expect(await counts(f)).toMatchObject({ destinations: 2, events: 1, notices: 1, commands: 1, audits: 1 });
 });
-it("preserves the existing late-delivery clamp and never confirms an undelivered replacement", async () => { await alignmentInvariant(owner); });
+it("preserves the late-delivery clamp through restricted runtime and never moves a cycle with an address change", async () => {
+ await alignmentInvariant(owner);
+ const mode = (await owner.query("SELECT public.subscription_delivery_alignment_get_mode() mode")).rows[0].mode;
+ try {
+  const f = await fixture(true);
+  expect(await openCase(owner, f, "auto_align")).toMatchObject({ state: "protected", predecessor_cycle_number: 0 });
+  const schedule = async () => (await owner.query("SELECT status,cadence_days,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0];
+  const before = await schedule(), key = `late-address-${randomUUID()}`;
+  expect(await change(f, key)).toMatchObject({ outcome: "applied" }); expect(await schedule()).toEqual(before);
+  const arrival = { requestKey: `late-arrival-${randomUUID()}`, parcelRef: f.shipment,
+   deliveredAt: "2026-09-08T12:00:00Z", evidenceRef: `evidence:${f.shipment}` as const };
+  const alignment = createPostgresDeliveryAlignmentPort(executor(runtime));
+  await alignment.recordArrival(arrival);
+  const after = await schedule();
+  expect(after.status).toBe("active");
+  expect(after.next_cycle_at.getTime()).toBe(Math.max(before.next_cycle_at.getTime(), Date.parse(arrival.deliveredAt) + before.cadence_days * 86400000));
+  await alignment.recordArrival(arrival); await change(f, key);
+  expect(await schedule()).toEqual(after);
+ } finally { await owner.query("SELECT public.subscription_delivery_alignment_set_mode($1)", [mode]); }
+});
 
 it("keeps a sequentially frozen parcel old and submits with its confirmation notice still pending", async () => {
  const f = await fixture(), frozen = await frozenCommand(f);
@@ -292,7 +312,7 @@ it("leaves an undelivered replacement and its alignment case unconfirmed", async
  const f = await fixture(); await openCase(owner, f, "auto_align"); const parcel = await replacement(owner, f);
  const before = (await owner.query("SELECT to_jsonb(t) value FROM public.subscription_delivery_alignment_cases t WHERE subscription_id=$1", [f.subscription])).rows;
  const next = (await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows;
- await change(f, `undelivered-${randomUUID()}`);
+ expect(await change(f, `undelivered-${randomUUID()}`)).toMatchObject({ outcome: "applied" });
  expect((await owner.query("SELECT to_jsonb(t) value FROM public.subscription_delivery_alignment_cases t WHERE subscription_id=$1", [f.subscription])).rows).toEqual(before);
  expect((await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual(next);
  expect((await owner.query("SELECT status,delivered_at FROM public.fulfillment_shipments WHERE id=$1", [parcel])).rows).toEqual([{ status: "created", delivered_at: null }]);

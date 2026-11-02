@@ -1,8 +1,8 @@
 # Native order, subscription and parcel destinations
 
-Status: local implementation and PostgreSQL proof complete for the bounded SQL
-path; caller acceptance is blocked on the additional recovery classification
-permission described below. No DCO, native review, submission or release.
+Status: BLOCKED on the unchanged standalone M14 finite-profile preflight below.
+The granted recovery classification, bounded PostgreSQL proof and all66 focused
+Vitest suites pass. No DCO, native review, submission or release.
 
 ## Outcome, authority and boundaries
 
@@ -354,7 +354,7 @@ The first operator run passed12 and failed that one old expectation; the new tes
 preserves bounded query/partial outcome semantics instead of claiming availability
 without SQL. Remaining compatibility and cheap-check results are recorded below.
 
-## Remaining caller decision and delivery boundary
+## Historical caller stop, superseded by the recovery resume
 
 linkThenApply at packages/platform/src/account-support/operatorRecovery.ts:90
 currently reports completed for every result without refusalCode. That mislabels
@@ -455,3 +455,212 @@ and R0's complete-catalogue installation guidance, with no SQL/source resolution
 Run existing imported-module suites unchanged except authorized literal current
 chain-count/catalogue updates, including native communications event paths. The
 four signatures/two tables remain fixed. G4 and all other worktrees stay untouched.
+
+
+Caller audit after the granted one-line recovery repair: seven refusalCode-in
+checks across packages/platform/src and server. operatorRecovery.ts:90 now
+returns partial for applied_from_next_parcel while retaining the named nested
+result; original and replay regressions are additive. operatorAuthority.ts:284
+is a decoder rejection check and reconstructs the named result explicitly.
+m12AccountSupportBinding.ts:35 preserves result.outcome; its older browser DTO
+refuses the new outcome, proved by an additive route/decoder test. This reference
+route is not a fully bound native address-change UI: hosts use the public native
+result/binding and must present next-parcel scope. No browser success is coerced.
+customerRecoveryCommand.ts:221 uses the separate managed subscription result;
+:269 and:293 are email/phone results. leadAbsorption.ts:159 uses its separate
+lead result. None of those four receive the native destination outcome.
+Other result callers are pass-throughs: createOperatorRecovery.execute:117,
+postgresOperatorAuthority.ts:48/56, managed operatorAuthority.ts:338,
+customerJourneyBinding.ts:192; the old Postgres customerSupportJourney.ts:168
+explicitly throws authority-unavailable. Type/barrel exports classify nothing.
+No second unsafe success classifier found; no additional production-file repair.
+
+The import/helper caller closure plus transfer/qualification/communications and
+packaging witnesses selects66 files after following the managed-storage child-process proof
+(machine inventory in scratch). Include
+communicationsNative and subscriptions/facades: subscription.address_changed
+has a template mapping in lifecycleMessages.ts and an explicitly host-composed
+reference facade, but no automatically registered native consumer. An unbound
+pending notice is not claimed by unrelated outbox handlers and does not gate
+money or parcel dispatch. Confirmation enqueue, not delivered mail, is the donor
+effect being ported. The current native routines and packaged projection both
+hash3ca1a151b7ad7d7dd01ed7cf40c50d91dfac39f5d2ed1a76e81a9a3743e50413;
+SQL bytes, four signatures and two tables did not change in this resume.
+
+
+The separate full-OCI M14 handover entry tests/postgres/runM14EffectHandover.ts:54
+imports the changed finite transfer profile but asserts82tables; the accepted
+five-relation G3 addition makes87. It is outside Vitest discovery, requires a
+separate image/module profile and has not been run or weakened. Clarification
+was requested because the unchanged-existing-suite exception names migration
+chain counts, not this table count. No full handover/qualification claim is made.
+The focused closure additionally follows the managedStorageTransfer child proof:
+that unchanged existing suite passes, bringing the selected list to66 files.
+The reference recovery factory m12OperatorRecoveryBinding.ts:20/27 is another
+construction-only pass-through; it makes no outcome classification.
+
+
+Final role-evidence tightening retains the old owner-based alignment helper and
+adds an actual public delivery-alignment port arrival/replay through the restricted
+runtime, after an admitted address change. Assert the exact outer maximum of
+prior next-cycle and arrival+cadence, no address/replay cycle movement, and active
+status. The separate undelivered-replacement case now also asserts admitted
+address effect before checking its unchanged case/date and no arrival. No
+replacement confirmation call is introduced. This is test-only, zero pack growth.
+The compiler caught two errors in the new arrival object's evidence reference;
+using the declared evidence: prefix and literal type fixes test construction,
+without production/SQL change or diagnostic waiver. Native and typecheck reruns
+replace their earlier source observations before the final read.
+
+
+The stronger late-arrival case first failed because the generic purchase fixture
+has neither renewal correlation nor active activation anchor. The unchanged
+20261022090000_fulfillment_delivery_alignment.sql view:104 and recorder:227
+correctly classify that world as manual_review/missing_renewal_correlation,
+so it cannot auto-align. Do not change that SQL or waive the cycle assertion.
+Use the supplied fixture's existing withActivation/activationOnly path instead,
+which exercises subscription_activation_commit and gives a real cycle0 anchor.
+Assert protected/cycle0 before restricted arrival, then the exact monotonic clamp.
+Other fixture callers keep their original default behavior. No new fixture
+privilege, SQL/signature/table change, grant or package byte is introduced.
+
+
+The activation-anchored runtime arrival/replay assertions pass. Its first rerun
+then exposed test isolation: the added case left global auto_align enabled,
+so a later pre-existing destination fixture's planned-cycle insertion correctly
+failed subscription_delivery_alignment_stale_schedule. Capture and restore the
+prior mode in the added case's finally; do not edit the later case or SQL guard.
+This restores the same off setting left by the original helper and adds no fixture
+privilege. The final native rerun must pass all22 cases before any read claim.
+
+
+## Post-R0 focused existing-suite results
+
+All 66 selected Vitest files pass, 3769 test cases. The list follows direct
+and transitive changed-module imports and the managed-storage child-process
+proof, plus native communications/lifecycle, retained-store, catalogue/qualification
+and new destination witnesses. Every pre-resume assertion remains unchanged;
+this resume adds only the granted recovery original/replay regression and the
+route/old-browser refusal test. Prior current-chain counts/measured current
+catalogue changes remain; issued prefix pins and refusal/privilege assertions
+stay untouched. No production/SQL repair was needed after the one granted line.
+No full-OCI handover result is included or implied by this focused list.
+
+| Test file | Result |
+| --- | --- |
+| `packages/platform/test/account-support/accountReadFacade.test.ts` | 6 passed (6) |
+| `packages/platform/test/account-support/accountReadModels.test.ts` | 58 passed (58) |
+| `packages/platform/test/account-support/bindings.test.ts` | 5 passed (5) |
+| `packages/platform/test/account-support/browserSafety.test.ts` | 1 passed (1) |
+| `packages/platform/test/account-support/contracts.test.ts` | 1 passed (1) |
+| `packages/platform/test/account-support/customer360.test.ts` | 60 passed (60) |
+| `packages/platform/test/account-support/invoiceAccess.test.ts` | 38 passed (38) |
+| `packages/platform/test/account-support/operatorAuthority.test.ts` | 6 passed (6) |
+| `packages/platform/test/account-support/operatorRecovery.test.ts` | 16 passed (16) |
+| `packages/platform/test/account-support/orderHistory.test.ts` | 34 passed (34) |
+| `packages/platform/test/account-support/ownerRefusals.test.ts` | 27 passed (27) |
+| `packages/platform/test/account-support/paymentMethodComposition.test.ts` | 16 passed (16) |
+| `packages/platform/test/account-support/portFit.test.ts` | 1 passed (1) |
+| `packages/platform/test/account-support/postgresOperatorAuthority.test.ts` | 13 passed (13) |
+| `packages/platform/test/account-support/selfService.test.ts` | 8 passed (8) |
+| `packages/platform/test/account-support/subscriptionCommandCodec.test.ts` | 5 passed (5) |
+| `packages/platform/test/packageBoundary.test.ts` | 2840 passed (2840) |
+| `packages/platform/test/subscriptions/facades.test.ts` | 43 passed (43) |
+| `scripts/packages/platform-cold-consumer.test.ts` | 108 passed (108) |
+| `scripts/packages/platform-migration-projection.test.ts` | 1 passed (1) |
+| `scripts/packages/reference-delegation-consumer.test.ts` | 1 passed (1) |
+| `server/bff/customers/account.test.ts` | 2 passed (2) |
+| `server/domains/customers/customerAccountHandler.test.ts` | 6 passed (6) |
+| `server/domains/customers/customerAccountReadDiagnostics.test.ts` | 4 passed (4) |
+| `server/runtime/auth/emailTrustBinding.test.ts` | 16 passed (16) |
+| `server/runtime/auth/identityReadiness.test.ts` | 40 passed (40) |
+| `server/runtime/auth/referenceIdentity.test.ts` | 93 passed (93) |
+| `server/runtime/outbox/candidateAdmission.test.ts` | 9 passed (9) |
+| `server/runtime/public-reference/browserIdentity.test.ts` | 3 passed (3) |
+| `server/runtime/public-reference/communications.test.ts` | 2 passed (2) |
+| `server/runtime/public-reference/m12AccountReadBinding.test.ts` | 2 passed (2) |
+| `server/runtime/public-reference/m12AccountSupportBinding.test.ts` | 18 passed (18) |
+| `server/runtime/public-reference/m12OperatorRecoveryBinding.test.ts` | 6 passed (6) |
+| `server/runtime/public-reference/m12SelfServiceBinding.test.ts` | 15 passed (15) |
+| `server/runtime/public-reference/m12SupportReadBinding.test.ts` | 45 passed (45) |
+| `server/runtime/public-reference/m14OperationsBinding.test.ts` | 10 passed (10) |
+| `server/runtime/public-reference/serve.test.ts` | 11 passed (11) |
+| `server/runtime/public-reference/subscriptionAccount.test.ts` | 10 passed (10) |
+| `server/runtime/public-reference/subscriptionOperator.test.ts` | 4 passed (4) |
+| `server/runtime/public-reference/subscriptionProfile.test.ts` | 24 passed (24) |
+| `server/runtime/public-reference/subscriptionSelfServiceGuardrails.test.ts` | 5 passed (5) |
+| `src/public-reference/accountSupportReads.test.tsx` | 1 passed (1) |
+| `src/public-reference/accountSupportRecovery.test.tsx` | 2 passed (2) |
+| `src/public-reference/accountSupportRoutes.test.tsx` | 5 passed (5) |
+| `tests/platform/catalog/m05Composition.test.ts` | 1 passed (1) |
+| `tests/platform/channels/channelConsumer.test.ts` | 2 passed (2) |
+| `tests/platform/inventory/inventoryConsumer.test.ts` | 2 passed (2) |
+| `tests/postgres/accountSupportComposition.test.ts` | 2 passed (2) |
+| `tests/postgres/accountSupportOperatorAuthority.test.ts` | 23 passed (23) |
+| `tests/postgres/accountSupportReads.test.ts` | 5 passed (5) |
+| `tests/postgres/accountSupportSelfService.test.ts` | 3 passed (3) |
+| `tests/postgres/accountSupportUpgrade.test.ts` | 2 passed (2) |
+| `tests/postgres/channelConnectedRestore.test.ts` | 1 passed (1) |
+| `tests/postgres/channelManagedRetainedInstallation.test.ts` | 1 passed (1) |
+| `tests/postgres/commerceDestinationsDonor.test.ts` | 3 passed (3) |
+| `tests/postgres/commerceDestinationsNative.test.ts` | 22 passed (22) |
+| `tests/postgres/communicationsNative.test.ts` | 20 passed (20) |
+| `tests/postgres/connectedManagedRetained.test.ts` | 16 passed (16) |
+| `tests/postgres/connectedStoreTransfer.test.ts` | 9 passed (9) |
+| `tests/postgres/m14ManagedCatchup.test.ts` | 1 passed (1) |
+| `tests/postgres/m14QualifiedAdminComposition.test.ts` | 2 passed (2) |
+| `tests/postgres/m14QualifiedComposition.test.ts` | 4 passed (4) |
+| `tests/postgres/m14RestrictedConnectedRestore.test.ts` | 15 passed (15) |
+| `tests/postgres/m19MigrationFacade.test.ts` | 3 passed (3) |
+| `tests/postgres/managedStorageTransfer.test.ts` | 1 passed (1) |
+| `tests/postgres/partnerAcquisition.test.ts` | 10 passed (10) |
+
+
+## Existing standalone witness stop
+
+Unchanged tests/postgres/runM14EffectHandover.ts, run through the focused gate
+with Node24.21.0 and the supplied already-local immutable image
+sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20,
+exits1 at:55: Keep the 8A-extended finite graph unchanged, actual87 != expected82.
+Its current-inventory preflight passes; full handover and later profile admission
+are not reached. This is an actual unchanged-witness failure, not a waived run.
+
+Cause is exactly G3's five additive capture/restore entries: commerce_destinations,
+commerce_destination_bindings, subscription_command_receipts,
+customer_support_subscription_commands, customer_support_subscription_audit_events.
+All82 original names and their relative order remain. Dropping those entries
+would lose required address/replay/history transfer and is not a valid repair.
+The smallest candidate repair is one expected table-count literal82->87 followed
+by the full unchanged witness. It is NOT applied: the supervisor's exception
+names migration-chain counts, not this finite profile guard. No new source/SQL
+fix, weakened assertion, ignored case, cap change or bypass. The pending scope
+question is now backed by an actual preflight result. This blocks a read-ready
+claim until the supervisor disposes of the existing-suite requirement.
+
+The four signatures/two tables and final canonical/projected forward SHA remain
+3ca1a151b7ad7d7dd01ed7cf40c50d91dfac39f5d2ed1a76e81a9a3743e50413.
+All66 focused files pass3769cases, including the final restricted-runtime late
+arrival/replay clamp and undelivered replacement assertion. Current actual pack
+remains+7999 B/+4files including SQL/manifest. No DCO/native review/pin/checker or
+other worktree change. Ordinary review repair cycles remain0.
+
+
+Final cheap checks pass on the frozen test/source candidate: five-project public
+typecheck has0 unresolved edges and0 consumer errors; API check passes after the
+R0 build; ast-grep passes; full lint has0errors and33existingwarnings. All2917
+packaged files still byte-match the actual2,326,730 B tarball after lint's rebuild.
+The package delta is+7,999 B/+4files,19 B above the previous+7,980; archive diff
+shows only src/account-support/operatorRecovery.ts and its emitted JavaScript
+changed,55unpacked B each. All SQL/manifest bytes match the earlier R0 projection.
+The after-hash utility for simple replacement headers rejects DEFAULT now();
+using the existing default-aware batchedFunctionDefinitions reader correctly
+extracts all four fixed signatures. Neither SQL nor a checker was edited.
+
+Self-retro: the complete caller search closed the default-success gap, and the
+child-process search added the managed-storage proof. Strengthening the role
+witness caught an incomplete fixture anchor and leaked test mode; using the
+supplied activation path and finally-restoring prior mode preserved the actual
+alignment guard and all later assertions. The remaining standalone profile
+failure is reported, not normalized away. No useful additional abstraction is
+needed; scope now stops at the existing-witness ruling. Gate examples:240s build,
+241s pack,151s first typecheck,331s native strengthening; no gate bypass.

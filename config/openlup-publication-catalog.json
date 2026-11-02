@@ -3254,6 +3254,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261101225000_commerce_destinations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },

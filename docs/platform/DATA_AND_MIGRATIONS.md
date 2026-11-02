@@ -1489,7 +1489,10 @@ in the existing authoritative preparation transaction before freezing requests.
 A human operator can correct an unowned created/packed/label_pending current
 parcel. Once a dispatch ref, command or attempt exists, the order and parcel keep
 their destination and the subscription future changes with the named
-applied_from_next_parcel result, including replay. It is not a fully applied
+applied_from_next_parcel result, including replay. The account-link orchestration
+returns partial and retains that named nested result. The reference HTTP route
+preserves the outcome; its older donor browser schema refuses it, so hosts must
+compose the native result explicitly and show next-parcel applicability. It is not a fully applied
 current-parcel result. Native customer changes future only. Open dunning does not
 blanket-block address; the donor next-cycle payment lock still applies, including
 a native snapshot owned before its cycle row exists. Subscription reads lock the
