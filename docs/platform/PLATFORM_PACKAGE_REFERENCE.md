@@ -953,6 +953,54 @@ differ from legacy host counts. An item-capable recorder/resolver produces disti
 store/job results and durable state against the pinned SQL, including retry and
 terminal outcomes; it makes no live transport or inbox-delivery claim.
 
+### Captured native invoices
+
+`@openlup/platform/invoicing/postgres` adds explicit sandbox composition over the
+existing native accounting/invoicing tables on the qualified-v2 chain:
+
+```ts
+import { createInvoiceAccess } from "@openlup/platform/account-support";
+import { createCapturedPostgresInvoiceProvider,
+  createPostgresInvoiceAccountHistory } from "@openlup/platform/invoicing/postgres";
+
+const captured = createCapturedPostgresInvoiceProvider(runtimeExecutor, {
+  enabled: true, providerRef: "captured-sandbox",
+});
+const historyPort = createPostgresInvoiceAccountHistory(runtimeExecutor);
+const invoices = createInvoiceAccess({ accountHistory: historyPort, artifacts: captured.artifacts });
+// accountRef comes from host authentication and is a principal UUID, not a client ID.
+const history = await invoices.history({ accountRef: authenticatedPrincipalId, orderId });
+const pdf = await invoices.download({ accountRef: authenticatedPrincipalId, orderId, documentRef });
+```
+
+Pass `captured.provider` to the existing `runNativeInvoiceIssueJob` with the
+explicit seller and payment evidence required by the native store. The provider
+stores one full-identity receipt and non-fiscal PDF in an append-only artifact
+observation before returning success; replay and a new provider instance reuse
+that receipt. Conflicting facts/identity refuse, failed reads stay unknown,
+unprepared claims cannot create receipts, and remote void stays unsupported.
+Clearance-required facts refuse: the captured provider supplies no real fiscal
+invoice, external provider, submission, email or jurisdictional qualification.
+Its PDFs visibly state that they are non-fiscal test documents. Disabled or
+foreign provider selections refuse without SQL. Artifact persistence through the
+returned host port is unsupported; provider receipt creation owns those bytes.
+
+History joins the authenticated principal to the stored order owner in the same
+query as document selection. It includes pending and voided documents and keeps
+stored currency, signed correction amounts and parent document identity.
+Missing artifacts remain unavailable, with no fabricated URL or bytes.
+Compose the history port with the existing `createInvoiceAccess` to retain its
+independent history-membership check before resolving a ticket. The lower-level history port
+also enforces ownership and document membership. Artifact-only reads require
+prior host authorization and do not themselves authenticate a customer.
+
+No managed adapter behaviour, database object or grant is changed. The existing
+qualified runtime table permissions suffice; the host owns the driver,
+authentication, route for the email's account-documents URL and schedules.
+The [installed/native witness](../../tests/postgres/invoicingCaptured.test.ts)
+exercises the packed entry through a restricted login; it is local sandbox proof,
+not live-provider or hosted qualification.
+
 ## OMS composition
 
 Use browser-safe commerce for OMS schemas and pure read builders. Use the

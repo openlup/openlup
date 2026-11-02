@@ -1468,6 +1468,16 @@ legacy fallback and forward-only migration limits are owned by the
 
 OMS read projections are optional. Omitting the host health classifier preserves the original unprojected empty health snapshot (`ok`, no reasons or evidence IDs); it does not evaluate provider health. The reference composition injects its existing classifier and evidence readers.
 
+### Captured native invoice composition
+
+Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabled
+captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
+owned invoice-history/ticket reader. The host passes a restricted runtime
+executor and authenticated principal UUID. See the
+[invoicing reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for composition, refusal and sandbox limits. Construction installs no route,
+schedule or provider connection.
+
 ## Account and support contracts
 
 Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
