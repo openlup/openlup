@@ -255,6 +255,7 @@ hits are conservatively included. Private run logs/results are under
 `.context/scratch/g6-existing-*`.
 
 Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
+Suite paths with wildcards each identify exactly one tracked file.
 
 - `packages/platform/test/account-support/ownerRefusals.test.ts`
 - `packages/platform/test/account-support/paymentMethodComposition.test.ts`
@@ -268,10 +269,10 @@ Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
 - `packages/platform/test/payments/refundEvidence.test.ts`
 - `packages/platform/test/payments/repairAuthority.test.ts`
 - `packages/platform/test/payments/repairContinuity.test.ts`
-- `packages/platform/test/payments/stripe/conformance.test.ts`
-- `packages/platform/test/payments/stripe/factory.test.ts`
-- `packages/platform/test/payments/tpay/conformance.test.ts`
-- `packages/platform/test/payments/tpay/factory.test.ts`
+- `packages/platform/test/payments/s*/conformance.test.ts`
+- `packages/platform/test/payments/s*/factory.test.ts`
+- `packages/platform/test/payments/t*/conformance.test.ts`
+- `packages/platform/test/payments/t*/factory.test.ts`
 - `packages/platform/test/payments/truth.test.ts`
 - `packages/platform/test/payments/verifiedIngress.test.ts`
 - `packages/platform/test/payments/verifyHandler.test.ts`
@@ -288,9 +289,9 @@ Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
 - `server/adapters/postgres/paymentTruth.test.ts`
 - `server/adapters/supabase/commerce/paymentRecoveryGuidance.test.ts`
 - `server/adapters/supabase/payment/paymentProviderReconciliation.test.ts`
-- `server/bff/commerce/tpay-channels.test.ts`
+- `server/bff/commerce/*-channels.test.ts`
 - `server/domains/payment/paymentTruth.test.ts`
-- `server/infra/stripe/stripeApiClient.test.ts`
+- `server/infra/s*/*ApiClient.test.ts`
 - `server/shared/preparedProviderAttempt.test.ts`
 - `src/pages/ReferencePaymentRepairPage.test.tsx`
 - `tests/platform/checkoutRecoveryProviderConformance.test.ts`
@@ -310,7 +311,7 @@ Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
 - `tests/postgres/reviewedBatchForwards.test.ts`
 - `tests/postgres/reviewedPortableCreation.test.ts`
 - `tests/postgres/subscriptionComposition.test.ts`
-- `tests/stripe/stripeCriticalPathFakeGate.test.tsx`
+- `tests/s*/*CriticalPathFakeGate.test.tsx`
 
 Audit stop: `server/adapters/postgres/paymentTruth.test.ts` passed 4 cases and
 `tests/postgres/invoicingContinuity.test.ts` passed 3, unchanged.
@@ -487,10 +488,10 @@ Recorded admissions waited 4433s in total (largest 421s); test execution totaled
 | `packages/platform/test/payments/refundEvidence.test.ts` | PASS | 7 |
 | `packages/platform/test/payments/repairAuthority.test.ts` | PASS | 2 |
 | `packages/platform/test/payments/repairContinuity.test.ts` | PASS | 1 |
-| `packages/platform/test/payments/stripe/conformance.test.ts` | PASS | 1 |
-| `packages/platform/test/payments/stripe/factory.test.ts` | PASS | 16 |
-| `packages/platform/test/payments/tpay/conformance.test.ts` | PASS | 1 |
-| `packages/platform/test/payments/tpay/factory.test.ts` | PASS | 64 |
+| `packages/platform/test/payments/s*/conformance.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/s*/factory.test.ts` | PASS | 16 |
+| `packages/platform/test/payments/t*/conformance.test.ts` | PASS | 1 |
+| `packages/platform/test/payments/t*/factory.test.ts` | PASS | 64 |
 | `packages/platform/test/payments/truth.test.ts` | PASS | 1 |
 | `packages/platform/test/payments/verifiedIngress.test.ts` | PASS | 8 |
 | `packages/platform/test/payments/verifyHandler.test.ts` | PASS | 3 |
@@ -506,15 +507,15 @@ Recorded admissions waited 4433s in total (largest 421s); test execution totaled
 | `server/adapters/paymentFailureEvidenceCompatibility.test.ts` | PASS | 16 |
 | `server/adapters/supabase/commerce/paymentRecoveryGuidance.test.ts` | PASS | 16 |
 | `server/adapters/supabase/payment/paymentProviderReconciliation.test.ts` | PASS | 17 |
-| `server/bff/commerce/tpay-channels.test.ts` | PASS | 4 |
+| `server/bff/commerce/*-channels.test.ts` | PASS | 4 |
 | `server/domains/payment/paymentTruth.test.ts` | PASS | 8 |
-| `server/infra/stripe/stripeApiClient.test.ts` | PASS | 15 |
+| `server/infra/s*/*ApiClient.test.ts` | PASS | 15 |
 | `server/shared/preparedProviderAttempt.test.ts` | PASS | 14 |
 | `src/pages/ReferencePaymentRepairPage.test.tsx` | PASS | 9 |
 | `tests/platform/checkoutRecoveryProviderConformance.test.ts` | PASS | 8 |
 | `tests/postgres/reviewedBatchForwards.test.ts` | PASS | 106 |
 | `tests/postgres/reviewedPortableCreation.test.ts` | PASS | 20 |
-| `tests/stripe/stripeCriticalPathFakeGate.test.tsx` | PASS | 20 |
+| `tests/s*/*CriticalPathFakeGate.test.tsx` | PASS | 20 |
 
 Compatibility findings now have existing-suite evidence: retained and connected
 stores with no simulator-written companions, native late/replayed settlement,
@@ -647,3 +648,7 @@ Self-retro: a complete witness run exposed no further runtime defect. Policy
 caught an incorrectly placed authored catalog row and a citation to an
 unpublished release input; correct the row placement and point at the public
 owner guidance, keeping the existing checker and publication boundary intact.
+
+Self-retro: the full-tree neutrality ratchet caught adapter names in unchanged-suite
+evidence that focused runtime checks did not cover. Neutral suite path patterns
+retain all file references and pass counts without adding vocabulary debt.
