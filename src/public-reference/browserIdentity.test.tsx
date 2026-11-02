@@ -129,6 +129,10 @@ describe('browser customer identity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify code' }));
     expect(await screen.findByRole('heading', { name: 'Your recurring orders' })).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent('/account');
+    await waitFor(() => {
+      expect(fetcher.mock.calls.find(([path]) => path === '/api/bff/customers/account')?.[1].headers.get('authorization')).toBe('Bearer synthetic-bearer');
+      expect(appQueryClient.getQueryData(['reference-account', principal, clientId])).toBeDefined();
+    });
     expect(fetcher.mock.calls.find(([path]) => path === '/api/bff/customers/account')?.[1].headers.get('authorization')).toBe('Bearer synthetic-bearer');
     expect(appQueryClient.getQueryData(['reference-account', principal, clientId])).toBeDefined();
     expect(window.sessionStorage.getItem('openlup.reference.customerToken')).toBeNull();
