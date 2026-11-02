@@ -1250,6 +1250,18 @@
       "class": "public-output"
     },
     {
+      "path": "deploy/neutral-store/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "deploy/neutral-store/prove.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "deploy/neutral-store/prove.test.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -1639,6 +1651,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-r0.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-recipes.md",
       "class": "public-output"
     },
     {
