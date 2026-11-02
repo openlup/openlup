@@ -3,7 +3,7 @@
   "kind": "local-candidate",
   "setVersion": null,
   "sourceRevision": null,
-  "codeBaseRevision": "bb0008481a11267ec6dbe3e7e531299777cddc19",
-  "installationBound": false,
+  "codeBaseRevision": "d1aab33e2e4d7448ee9e638c3ed8a08828f67953",
+  "installationBound": true,
   "qualification": "not-run"
 }
