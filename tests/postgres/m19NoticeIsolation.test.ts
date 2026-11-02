@@ -458,6 +458,48 @@ it("dispatches real activation, lifecycle, renewal and pause-reminder sources th
   } finally { await store.close(); }
 });
 
+it("sends one future-only address-change notice to the existing customer, never the destination, and none on replay", async () => {
+  const f = await fixture(), actor = randomUUID(), event = randomUUID(), destination = randomUUID();
+  const destinationEmail = `${destination}@example.invalid`;
+  // Labelled destination-writer event fixture: 20261101225000_commerce_destinations.sql is not installed here.
+  // Its destination UUID deliberately matches another client's ID to catch recipient lookup confusion.
+  // The real destination-writer join runs after that writer lands, at integration.
+  await admin.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [destination, destinationEmail]);
+  const payload = { action: "change_shipping_address", payload: { shippingAddressId: destination },
+    actorKind: "operator", actorId: actor, outcome: "applied_from_next_parcel", appliesFrom: "next_parcel",
+    futureDestinationId: destination,
+    priceAgreementPolicy: { kind: "lock_until_edit", proration: "none", cycleEffect: "future_unlocked_cycles_only" } };
+  await admin.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload,occurred_at)
+    VALUES($1,$2,'subscription.customer_self_service.change_shipping_address',$3,$4::jsonb,$5::timestamptz)`,
+  [event, f.subscription, `command:${createHash("sha256").update(`${actor}:g8-address:${event}`).digest("hex")}`, payload, at]);
+  const recipient = (await runtime.query("SELECT public.dunning_lifecycle_recipient($1::uuid) AS recipient", [f.client])).rows[0].recipient;
+  expect(recipient.email).not.toBe(destinationEmail);
+  const key = `subscription-notice:event:${event}`, notices: NativeLifecycleNotice[] = [];
+  const captures: { idempotencyKey: string; recipientReference: string }[] = [];
+  const store = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+  const captured = createCapturedTransactionalDelivery({ outcome: command => {
+    if (command.idempotencyKey === key) captures.push({ idempotencyKey: command.idempotencyKey, recipientReference: command.recipientReference });
+    return { state: "accepted" };
+  } });
+  const delivery = createTransactionalDelivery({ store, delivery: captured });
+  try {
+    const binding = createPostgresLifecycleMessages({ delivery: { send: delivery.send, readReceipt: store.readReceipt },
+      async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
+      async bind(notice, contact) {
+        if (notice.id === event) { expect(contact).toEqual(recipient); notices.push(notice); }
+        return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug };
+      },
+    });
+    expect((await binding.run(100)).failed).toBe(0);
+    expect(notices).toEqual([expect.objectContaining({ id: event, clientId: f.client, kind: "subscription.address_changed",
+      templateSlug: "subscription-address-changed", payload })]);
+    expect(captures).toEqual([{ idempotencyKey: key, recipientReference: `client:${f.client}` }]);
+    await binding.run(100);
+    expect(notices).toHaveLength(1);
+    expect(captures).toEqual([{ idempotencyKey: key, recipientReference: `client:${f.client}` }]);
+  } finally { await store.close(); }
+});
+
 it("serializes competing public-binding sends using a real PostgreSQL session lease", async () => {
   const f = await fixture();
   await runtime.query("SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'cancel')", [f.client, `cancel:${f.subscription}`, f.subscription]);

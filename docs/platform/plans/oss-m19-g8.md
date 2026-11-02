@@ -1,10 +1,9 @@
 # Native lifecycle notice dispatch
 
-Status: BLOCKED by the unchanged connected-handover witness preflight.
-Implementation and the earlier maintainer read remain accepted for DCO sign-off
-with scoped diagnostic/documentation corrections; forward admission and later
-integration/review remain pending. No publication or
-live-provider qualification is claimed.
+Status: READY_FOR_REVIEW. Local implementation, accepted maintainer read and
+focused proof are complete. Forward admission, the authorized real destination-
+writer join at main integration, native review and lead-selected verification
+remain pending. No publication or live-provider qualification is claimed.
 
 ## Outcome, scope and authority
 
@@ -355,10 +354,10 @@ At the first audit stop, 60 suites passed (3598 cases), the unchanged handover p
 | `packages/platform/test/account-support/selfService.test.ts` | PASS before R0 merge — Tests  8 passed (8) |
 | `packages/platform/test/commerce/effects/commerceDomainEffects.test.ts` | PASS before R0 merge — Tests  5 passed (5) |
 | `packages/platform/test/commerce/managedOutboxEvents.test.ts` | PASS before R0 merge — Tests  2 passed (2) |
-| `packages/platform/test/communications/sql.test.ts` | PASS on R0 base — Tests  1 passed (1) |
+| `packages/platform/test/communications/sql.test.ts` | PASS on R0 base before address repair — Tests  1 passed (1) |
 | `packages/platform/test/composition/commerceContribution.test.ts` | PASS before R0 merge — Tests  5 passed (5) |
 | `packages/platform/test/fulfillment/paidHandoff.test.ts` | PASS before R0 merge — Tests  2 passed (2) |
-| `packages/platform/test/identity/sql.test.ts` | PASS on R0 base — Tests  1 passed (1) |
+| `packages/platform/test/identity/sql.test.ts` | PASS on R0 base before address repair — Tests  1 passed (1) |
 | `packages/platform/test/packageBoundary.test.ts` | PASS before R0 merge — Tests  2819 passed (2819) |
 | `packages/platform/test/risk/orderPaidRiskPort.test.ts` | PASS before R0 merge — Tests  8 passed (8) |
 | `packages/platform/test/subscriptions/contracts.test.ts` | PASS before R0 merge — Tests  3 passed (3) |
@@ -366,31 +365,31 @@ At the first audit stop, 60 suites passed (3598 cases), the unchanged handover p
 | `packages/platform/test/subscriptions/portFit.test.ts` | PASS before R0 merge — Tests  12 passed (12) |
 | `packages/platform/test/subscriptions/renewalCycleMechanism.test.ts` | PASS before R0 merge — Tests  29 passed (29) |
 | `packages/platform/test/subscriptions/renewalKeys.test.ts` | PASS before R0 merge — Tests  1 passed (1) |
-| `scripts/agent-review-queue.test.ts` | PASS on R0 base — Tests  189 passed (189) |
-| `scripts/check-publishable-gap-enumeration.test.ts` | PASS on R0 base — Tests  5 passed (5) |
+| `scripts/agent-review-queue.test.ts` | PASS on R0 base before address repair — Tests  189 passed (189) |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS on R0 base before address repair — Tests  5 passed (5) |
 | `scripts/checkout-recovery-lifecycle-schema.test.ts` | PASS before R0 merge — Tests  9 passed (9) |
-| `scripts/customer-diagnostic-history-schema.test.ts` | PASS on R0 base — Tests  16 passed (16) |
+| `scripts/customer-diagnostic-history-schema.test.ts` | PASS on R0 base before address repair — Tests  16 passed (16) |
 | `scripts/customer-recovery-console-managed-schema.test.ts` | PASS before R0 merge — Tests  9 passed (9) |
 | `scripts/customer-recovery-console-schema.test.ts` | PASS before R0 merge — Tests  12 passed (12) |
 | `scripts/customer-selfservice-recovery-schema.test.ts` | PASS before R0 merge — Tests  3 passed (3) |
-| `scripts/documentation-bundle.test.ts` | PASS on R0 base — Tests  20 passed (20) |
-| `scripts/documentation-cli.test.ts` | PASS on R0 base — Tests  3 passed (3) |
+| `scripts/documentation-bundle.test.ts` | PASS on R0 base before address repair — Tests  20 passed (20) |
+| `scripts/documentation-cli.test.ts` | PASS on R0 base before address repair — Tests  3 passed (3) |
 | `scripts/documentation-impact.test.ts` | PASS before R0 merge — Tests  101 passed (101) |
-| `scripts/omnipack-e2e/lifecycleEvidence.test.ts` | PASS before R0 merge — Tests  28 passed (28) |
-| `scripts/oss-published-tree-check.test.ts` | PASS on R0 base — Tests  74 passed (74) |
-| `scripts/packages/package-release.test.ts` | PASS on R0 base — Tests  18 passed (18) |
+| Fulfillment provider lifecycle-evidence suite | PASS before R0 merge — Tests  28 passed (28) |
+| `scripts/oss-published-tree-check.test.ts` | PASS on R0 base before address repair — Tests  74 passed (74) |
+| `scripts/packages/package-release.test.ts` | PASS on R0 base before address repair — Tests  18 passed (18) |
 | `scripts/packages/platform-cold-consumer.test.ts` | PASS before R0 merge — Tests  108 passed (108) |
-| `scripts/packages/set-release.test.ts` | PASS on R0 base — Tests  68 passed (68) |
+| `scripts/packages/set-release.test.ts` | PASS on R0 base before address repair — Tests  68 passed (68) |
 | `scripts/payment-truth-schema.test.ts` | PASS before R0 merge — Tests  3 passed (3) |
-| `scripts/platform-migration-manifest.test.ts` | PASS on R0 base — Tests  19 passed (19) |
-| `scripts/public-ci-neutrality.test.ts` | PASS on R0 base — Tests  60 passed (60) |
-| `scripts/qualified-migration-admission.test.ts` | PASS on R0 base — Tests  24 passed (24) |
-| `scripts/reviewed-batch-forward.test.ts` | PASS on R0 base — Tests  691 passed (691) |
-| `scripts/source-preview-release.test.ts` | PASS on R0 base — Tests  718 passed (718) |
-| `scripts/source-release-preparation.test.ts` | PASS on R0 base — Tests  7 passed (7) |
-| `server/adapters/omnipack/commerceFulfillmentPort.test.ts` | PASS before R0 merge — Tests  6 passed (6) |
-| `server/adapters/postgres/migrationRunner.test.ts` | PASS on R0 base — Tests  10 passed (10) |
-| `server/adapters/supabase/catalogRead.test.ts` | PASS on R0 base — Tests  21 passed (21) |
+| `scripts/platform-migration-manifest.test.ts` | PASS on R0 base before address repair — Tests  19 passed (19) |
+| `scripts/public-ci-neutrality.test.ts` | PASS on R0 base before address repair — Tests  60 passed (60) |
+| `scripts/qualified-migration-admission.test.ts` | PASS on R0 base before address repair — Tests  24 passed (24) |
+| `scripts/reviewed-batch-forward.test.ts` | PASS on R0 base before address repair — Tests  691 passed (691) |
+| `scripts/source-preview-release.test.ts` | PASS on R0 base before address repair — Tests  718 passed (718) |
+| `scripts/source-release-preparation.test.ts` | PASS on R0 base before address repair — Tests  7 passed (7) |
+| Fulfillment provider commerce-port suite | PASS before R0 merge — Tests  6 passed (6) |
+| `server/adapters/postgres/migrationRunner.test.ts` | PASS on R0 base before address repair — Tests  10 passed (10) |
+| `server/adapters/supabase/catalogRead.test.ts` | PASS on R0 base before address repair — Tests  21 passed (21) |
 | `server/adapters/supabase/commerce/oms/outboxEvents.test.ts` | PASS before R0 merge — Tests  2 passed (2) |
 | `server/adapters/supabase/commerce/outboxAggregateStore.test.ts` | PASS before R0 merge — Tests  2 passed (2) |
 | `server/adapters/supabase/customerSubscriptionFacade.test.ts` | PASS before R0 merge — Tests  7 passed (7) |
@@ -409,73 +408,73 @@ At the first audit stop, 60 suites passed (3598 cases), the unchanged handover p
 | `server/domains/platform/outboxObservabilityEvidence.test.ts` | PASS before R0 merge — Tests  1 passed (1) |
 | `server/domains/platform/subscriptionObservabilityEvidence.test.ts` | PASS before R0 merge — Tests  13 passed (13) |
 | `server/domains/platform/subscriptionRenewalTriageContext.test.ts` | PASS before R0 merge — Tests  5 passed (5) |
-| `server/runtime/auth/identityReadiness.test.ts` | PASS on R0 base — Tests  40 passed (40) |
+| `server/runtime/auth/identityReadiness.test.ts` | PASS on R0 base before address repair — Tests  40 passed (40) |
 | `server/runtime/communications/communicationsSchema.test.ts` | PASS before R0 merge — Tests  1 passed (1) |
 | `server/runtime/public-reference/m11CommerceBinding.test.ts` | PASS before R0 merge — Tests  15 passed (15) |
 | `server/runtime/public-reference/m12AccountSupportBinding.test.ts` | PASS before R0 merge — Tests  17 passed (17) |
 | `server/runtime/public-reference/m12SelfServiceBinding.test.ts` | PASS before R0 merge — Tests  15 passed (15) |
 | `server/runtime/public-reference/m15RiskBinding.test.ts` | PASS before R0 merge — Tests  8 passed (8) |
-| `server/runtime/public-reference/subscriptionFacades.test.ts` | PASS on R0 base — Tests  2 passed (2) |
-| `tests/platform/channels/channelConsumer.test.ts` | PASS on R0 base — Tests  2 passed (2) |
-| `tests/platform/inventory/inventoryConsumer.test.ts` | PASS on R0 base — Tests  2 passed (2) |
-| `tests/postgres/accountSupportComposition.test.ts` | PASS on R0 base — Tests  2 passed (2) |
-| `tests/postgres/accountSupportOperatorAuthority.test.ts` | PASS on R0 base — Tests  23 passed (23) |
-| `tests/postgres/accountSupportSelfService.test.ts` | PASS on R0 base — Tests  3 passed (3) |
-| `tests/postgres/accountSupportUpgrade.test.ts` | PASS on R0 base — Tests  2 passed (2) |
-| `tests/postgres/acquisitionEvidenceParity.test.ts` | PASS on R0 base — Tests  11 passed (11) |
-| `tests/postgres/bundleNative.test.ts` | PASS on R0 base — Tests  5 passed (5) |
-| `tests/postgres/channelConnectedRestore.test.ts` | PASS on R0 base — Tests  1 passed (1) |
-| `tests/postgres/channelPurchase.conformance.test.ts` | PASS on R0 base — Tests  30 passed (30) |
+| `server/runtime/public-reference/subscriptionFacades.test.ts` | PASS on R0 base before address repair — Tests  2 passed (2) |
+| `tests/platform/channels/channelConsumer.test.ts` | PASS on R0 base before address repair — Tests  2 passed (2) |
+| `tests/platform/inventory/inventoryConsumer.test.ts` | PASS on R0 base before address repair — Tests  2 passed (2) |
+| `tests/postgres/accountSupportComposition.test.ts` | PASS on R0 base before address repair — Tests  2 passed (2) |
+| `tests/postgres/accountSupportOperatorAuthority.test.ts` | PASS on R0 base before address repair — Tests  23 passed (23) |
+| `tests/postgres/accountSupportSelfService.test.ts` | PASS on R0 base before address repair — Tests  3 passed (3) |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS on R0 base before address repair — Tests  2 passed (2) |
+| `tests/postgres/acquisitionEvidenceParity.test.ts` | PASS on R0 base before address repair — Tests  11 passed (11) |
+| `tests/postgres/bundleNative.test.ts` | PASS on R0 base before address repair — Tests  5 passed (5) |
+| `tests/postgres/channelConnectedRestore.test.ts` | PASS on R0 base before address repair — Tests  1 passed (1) |
+| `tests/postgres/channelPurchase.conformance.test.ts` | PASS on R0 base before address repair — Tests  30 passed (30) |
 | `tests/postgres/commerceComposition.test.ts` | PASS before R0 merge — Tests  4 passed (4) |
-| `tests/postgres/commerceManagedRail.test.ts` | PASS on R0 base — Tests  26 passed (26) |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS on R0 base before address repair — Tests  26 passed (26) |
 | `tests/postgres/communicationsNative.test.ts` | PASS before R0 merge — Tests  20 passed (20) |
 | `tests/postgres/connectedManagedRetained.test.ts` | PASS before R0 merge — Tests  16 passed (16) |
 | `tests/postgres/connectedStoreTransfer.test.ts` | PASS before R0 merge — Tests  7 passed (7) |
-| `tests/postgres/customerNewsletterWithdrawal.test.ts` | PASS on R0 base — Tests  8 passed (8) |
-| `tests/postgres/dunningAttemptReplay.test.ts` | PASS on R0 base — Tests  20 passed (20) |
+| `tests/postgres/customerNewsletterWithdrawal.test.ts` | PASS on R0 base before address repair — Tests  8 passed (8) |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS on R0 base before address repair — Tests  20 passed (20) |
 | `tests/postgres/dunningLifecycleActiveRepair.test.ts` | PASS before R0 merge — Tests  10 passed (10) |
-| `tests/postgres/fulfillmentDeliveryAlignment.test.ts` | PASS on R0 base — Tests  29 passed (29) |
-| `tests/postgres/fulfillmentHostSeamRefusals.test.ts` | PASS on R0 base — Tests  1 passed (1) |
-| `tests/postgres/fulfillmentNativeConformance.test.ts` | PASS on R0 base — Tests  4 passed (4) |
-| `tests/postgres/fulfillmentPreparationBinding.test.ts` | PASS on R0 base — Tests  2 passed (2) |
-| `tests/postgres/fulfillmentRenewalAdmission.test.ts` | PASS on R0 base — Tests  9 passed (9) |
-| `tests/postgres/fulfillmentStockEvidenceReplay.test.ts` | PASS on R0 base — Tests  6 passed (6) |
-| `tests/postgres/inventoryNative.test.ts` | PASS on R0 base — Tests  8 passed (8) |
-| `tests/postgres/invoicingContinuity.test.ts` | PASS on R0 base — Tests  3 passed (3) |
-| `tests/postgres/invoicingDelivery.test.ts` | PASS on R0 base — Tests  18 passed (18) |
-| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS on R0 base — Tests  26 passed (26) |
-| `tests/postgres/invoicingNativeConformance.test.ts` | PASS on R0 base — Tests  9 passed (9) |
-| `tests/postgres/invoicingStoreContract.test.ts` | PASS on R0 base — Tests  87 passed (87) |
-| `tests/postgres/m05CatalogComposition.test.ts` | PASS on R0 base — Tests  3 passed (3) |
-| `tests/postgres/m14ManagedCatchup.test.ts` | PASS on R0 base — Tests  1 passed (1) |
+| `tests/postgres/fulfillmentDeliveryAlignment.test.ts` | PASS on R0 base before address repair — Tests  29 passed (29) |
+| `tests/postgres/fulfillmentHostSeamRefusals.test.ts` | PASS on R0 base before address repair — Tests  1 passed (1) |
+| `tests/postgres/fulfillmentNativeConformance.test.ts` | PASS on R0 base before address repair — Tests  4 passed (4) |
+| `tests/postgres/fulfillmentPreparationBinding.test.ts` | PASS on R0 base before address repair — Tests  2 passed (2) |
+| `tests/postgres/fulfillmentRenewalAdmission.test.ts` | PASS on R0 base before address repair — Tests  9 passed (9) |
+| `tests/postgres/fulfillmentStockEvidenceReplay.test.ts` | PASS on R0 base before address repair — Tests  6 passed (6) |
+| `tests/postgres/inventoryNative.test.ts` | PASS on R0 base before address repair — Tests  8 passed (8) |
+| `tests/postgres/invoicingContinuity.test.ts` | PASS on R0 base before address repair — Tests  3 passed (3) |
+| `tests/postgres/invoicingDelivery.test.ts` | PASS on R0 base before address repair — Tests  18 passed (18) |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS on R0 base before address repair — Tests  26 passed (26) |
+| `tests/postgres/invoicingNativeConformance.test.ts` | PASS on R0 base before address repair — Tests  9 passed (9) |
+| `tests/postgres/invoicingStoreContract.test.ts` | PASS on R0 base before address repair — Tests  87 passed (87) |
+| `tests/postgres/m05CatalogComposition.test.ts` | PASS on R0 base before address repair — Tests  3 passed (3) |
+| `tests/postgres/m14ManagedCatchup.test.ts` | PASS on R0 base before address repair — Tests  1 passed (1) |
 | `tests/postgres/m14QualifiedAdminComposition.proof.ts` | Covered by passing parent |
 | `tests/postgres/m14QualifiedAdminComposition.test.ts` | PASS before R0 merge — Tests  2 passed (2) |
 | `tests/postgres/m14QualifiedComposition.proof.ts` | Covered by passing parent |
 | `tests/postgres/m14QualifiedComposition.test.ts` | PASS before R0 merge — Tests  4 passed (4) |
 | `tests/postgres/m14ReleasedSchemaUpgrade.proof.ts` | Parent not run after stop |
-| `tests/postgres/m14ReleasedSchemaUpgrade.test.ts` | FAIL on R0 base — fixed legacy unit-count preflight: 92 != 91; before PostgreSQL setup |
+| `tests/postgres/m14ReleasedSchemaUpgrade.test.ts` | PASS on R0 base after address repair — Tests  1 passed (1) |
 | `tests/postgres/m14RestrictedConnectedRestore.test.ts` | PASS before R0 merge — Tests  15 passed (15) |
 | `tests/postgres/managedStorageTransfer.proof.ts` | Parent not run after stop |
-| `tests/postgres/managedStorageTransfer.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/newPurchaseStockManaged.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/operatorIdentityUpgrade.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/operatorInvitationCatalogue.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/operatorInvitationLifecycle.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/partnerAcquisition.test.ts` | NOT RUN — stopped at released-upgrade failure |
+| `tests/postgres/managedStorageTransfer.test.ts` | PASS on R0 base after address repair — Tests  1 passed (1) |
+| `tests/postgres/newPurchaseStockManaged.test.ts` | PASS on R0 base after address repair — Tests  10 passed (10) |
+| `tests/postgres/operatorIdentityUpgrade.test.ts` | PASS on R0 base after address repair — Tests  17 passed (17) |
+| `tests/postgres/operatorInvitationCatalogue.test.ts` | PASS on R0 base after address repair — Tests  3 passed (3) |
+| `tests/postgres/operatorInvitationLifecycle.test.ts` | PASS on R0 base after address repair — Tests  3 passed (3) |
+| `tests/postgres/partnerAcquisition.test.ts` | PASS on R0 base after address repair — Tests  10 passed (10) |
 | `tests/postgres/paymentsNativeConformance.test.ts` | PASS before R0 merge — Tests  7 passed (7) |
-| `tests/postgres/platformManifestSuffix.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/portabilityRows.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/promotionsNative.test.ts` | NOT RUN — stopped at released-upgrade failure |
+| `tests/postgres/platformManifestSuffix.test.ts` | PASS on R0 base after address repair — Tests  4 passed (4) |
+| `tests/postgres/portabilityRows.test.ts` | PASS on R0 base after address repair — Tests  2 passed (2) |
+| `tests/postgres/promotionsNative.test.ts` | PASS on R0 base after address repair — Tests  5 passed (5) |
 | `tests/postgres/retainedClientSubscriptionImport.test.ts` | PASS before R0 merge — Tests  13 passed (13) |
-| `tests/postgres/reviewedBatchForwards.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/reviewedPortableCreation.test.ts` | NOT RUN — stopped at released-upgrade failure |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS on R0 base after address repair — Tests  106 passed (106) |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS on R0 base after address repair — Tests  20 passed (20) |
 | `tests/postgres/runM14EffectHandover.ts` | PASS on R0 base — actual handover completed; measured pins, original guard message |
-| `tests/postgres/shippingNative.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/starterGraduationCadence.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/subscriptionComposition.test.ts` | NOT RUN — stopped at released-upgrade failure |
+| `tests/postgres/shippingNative.test.ts` | PASS on R0 base after address repair — Tests  6 passed (6) |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS on R0 base after address repair — Tests  14 passed (14) |
+| `tests/postgres/subscriptionComposition.test.ts` | PASS on R0 base after address repair — Tests  20 passed (20) |
 | `tests/postgres/subscriptionContinuityBaseline.test.ts` | PASS before R0 merge — Tests  4 passed (4) |
-| `tests/postgres/subscriptionManagedStock.test.ts` | NOT RUN — stopped at released-upgrade failure |
-| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | NOT RUN — stopped at released-upgrade failure |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS on R0 base after address repair — Tests  12 passed (12) |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS on R0 base after address repair — Tests  66 passed (66) |
 
 
 Audit self-retro: the regular transfer and new notice suites did not execute the
@@ -721,3 +720,128 @@ source-preview cases). A new passing notice witness cannot substitute for the
 unexecuted released-store upgrade path. The simpler response is to report the
 exact guard and keep its assertion intact pending the scoped owner decision,
 without adding a compatibility bypass or changing SQL.
+
+
+## Address-change notice repair and released-upgrade continuation
+
+The supervisor extended the approved current-chain literal exception to
+m14ReleasedSchemaUpgrade.proof.ts:60. Only its fixed current counts change to
+95 / 92; all released-prefix hashes and behavior assertions remain unchanged.
+The released upgrade must now execute to its end, followed by the 16 pending
+suites. No source or SQL workaround is authorized for an existing-suite failure.
+
+The same resume authorizes one address-change alias in the native binding,
+one real-PostgreSQL binding/replay/recipient test, and the owner sentence warning
+against composing this binding and the outbox handler for the same event. No new
+SQL signature or template edit. This is recorded as one G8 repair per the
+supervisor's ruling; no native review command/session is started. The scoped
+repair needs no renewed read. A real joined proof with the earlier destination
+writer is required at the later main integration, not claimed by this fixture.
+
+Read-only source check: the destination writer's forward
+20261101225000_commerce_destinations.sql has SHA-256
+3ca1a151b7ad7d7dd01ed7cf40c50d91dfac39f5d2ed1a76e81a9a3743e50413 at inspection.
+Its subscription event carries action, payload.shippingAddressId, actor kind/ID,
+outcome, appliesFrom, futureDestinationId and priceAgreementPolicy. The labelled
+fixture mirrors that shape for applied_from_next_parcel / next_parcel, with a
+destination UUID deliberately equal to a different fixture client's ID. This
+makes an incorrect destination-as-client lookup produce the wrong contact,
+while the correct path obtains the existing customer's contact through
+public.dunning_lifecycle_recipient. The captured delivery and accepted receipt
+must produce one notice, with none on replay. The payload has destination IDs,
+not recipient contact data; the binding passes the scope fields unchanged to
+the trusted host renderer.
+
+The existing address template takes host-selected copy, first name and optional
+CTA; it does not read destination or parcel state. The public example copy in
+both languages explicitly says future deliveries use the new address and never
+claims the current parcel moved. It is truthful for the future-only outcome;
+hosts retain rendering responsibility, including preserving that distinction.
+No template change is made. The new owner sentence requires choosing one notice
+path because its event receipt key differs from the outbox handler's key.
+
+A fresh real pre-repair pack reproduces 2,323,962 bytes / 2,917 files and the
+previous integrity exactly. The repair has an additional 500-byte maximum;
+measure the real post-repair pack before continuing beyond that limit. The SQL
+forward remains byte-identical and the eight-grant inventory stays fixed.
+
+
+Real after-repair npm pack: 2,323,989 bytes / 2,917 files; before-repair pack:
+2,323,962 bytes / 2,917 files. The address alias costs +27 packed bytes / no files,
+within its 500-byte allowance. The complete G8 delta over R0 is now +5,258 bytes /
++4 files, including the exact SQL copy and generated manifest. Measurements and
+both actual tarballs are retained under .context/scratch/g8-address-before,
+g8-address-after and g8-address-measurement.json. No SQL or entry-layout change.
+
+
+## Completed compatibility audit after the address repair
+
+All 64 continuation suites now pass, 2,628 cases in total. Of these, 47 suites /
+2,328 cases ran on the R0-integrated candidate before the address alias; the
+17 resumed suites / 300 cases ran after the alias and approved count correction.
+The earlier 60 suites / 3,598 cases remain pre-R0 evidence. The cumulative table
+therefore records 124 passing suites / 6,226 cases across those explicit source
+snapshots, not a claim that every suite was rerun on the last tree. Every one of
+the 64 continuation test bodies remains byte-identical to integrated main.
+The approved released-upgrade helper differs only in its two current counts;
+all historic hashes and upgrade assertions remain unchanged. The released
+upgrade now executes its backfill, transaction-kill, continuity and replay
+assertions to completion. The default handover remains passing as recorded.
+
+The full native notice suite passes 15 cases on the repaired binding, including
+one future-only address-change notice, existing-customer contact read through
+the native recipient function, actual captured dispatch and no send on replay.
+G3's writer is absent from this base; that one event is the explicitly labelled
+shape fixture described above. The real destination-writer join remains a
+required proof at later main integration. The owner warning requires one event
+consumer path because the binding and outbox handler use different receipt keys.
+
+The new test's first attempt incorrectly used raw contact text as the delivery
+recipient reference, violating the existing opaque-identifier contract. It was
+corrected to the existing client reference; its strict recipient equality and
+capture/replay assertions were retained. All 14 existing notice cases passed
+on that attempt and all 15 pass after the fixture-only correction. No production
+change beyond the authorized alias was needed.
+
+The exact verify neutrality command initially found two provider tokens in the
+public table's existing test-path labels. The complete exact paths and results
+are retained in the local JSON and maintainer packet; the public table uses
+neutral labels for those two provider suites. This changes neither test execution
+nor scope. No neutrality checker or baseline entry is changed. The command is
+rerun on the complete candidate before sign-off.
+
+
+Final repaired-candidate checks pass: full notice suite 15/15; all 64 continuation
+suites 2,628/2,628 cases; build and unchanged API report; strict typecheck with
+zero unresolved edges and zero consumer errors; lint with zero errors, the same
+33 existing warnings and eight passing structural-rule suites; focused AST and
+whitespace checks. The exact verify neutrality command against the full R0 base
+reports zero increases, without a baseline or checker change. Documentation uses
+a refreshed scoped tests trailer rather than CONTRIBUTING prose. All 2,917 files
+in the after-repair tarball remain byte-identical after the final build/lint.
+The real +27-byte repair / +5,258-byte complete feature measurement is unchanged.
+
+Local implementation, approved owner read and focused proof are ready for the
+supervisor's review slot. The existing admission-class dependency still governs
+landing; no registry pin, checker edit, native review, canonical verify, external
+write or release action is performed. At main integration, drive the actual
+destination writer through this binding, remeasure rather than add chain/graph
+counts, and remove only the two duplicate dunning transfer entries supplied by
+the earlier retry change. The current labelled event fixture does not replace
+that joined proof. No further package entry wiring or SQL signature is needed.
+
+Remaining estimate stays 1–2 active working days for that integration, native
+review and lead-selected verification with ordinary bounded repairs; resource
+and queue waiting are external elapsed time. The supervisor records the address
+alias as one G8 repair; no native review session or counter is created or reset
+here. OMS: no supersededByStableJourneyKey, checkoutAbandoned or new location for
+a dispatched payment attempt.
+
+Self-retro: the additional literal-count exception allowed the released upgrade
+assertions to execute rather than bypassing them. The address test caught an
+author fixture mistake against the existing opaque-reference contract; using
+the existing client reference kept recipient assertions strict and avoided any
+new production seam. The complete pack measured the bounded repair at 27 bytes.
+Running the exact neutrality command also caught provider names in public audit
+labels; neutral prose plus the exact private inventory preserved both the
+publication boundary and complete execution evidence without a ratchet change.

@@ -27,6 +27,7 @@ const aliases: Record<string, string> = {
   "subscription.customer_self_service.cancel": "subscription.cancelled",
   "subscription.customer_self_service.skip_next_cycle": "subscription.cycle_skipped",
   "subscription.customer_self_service.slide_next_cycle": "subscription.delivery_rescheduled",
+  "subscription.customer_self_service.change_shipping_address": "subscription.address_changed",
   "subscription.customer_self_service.update_bundle": "subscription.package_changed",
   "subscription.customer_self_service.edit_future_terms": "subscription.package_changed",
   "subscription.customer_self_service.resize_bundle": "subscription.package_changed",

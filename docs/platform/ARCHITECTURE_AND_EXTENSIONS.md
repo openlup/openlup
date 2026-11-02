@@ -1963,6 +1963,7 @@ existing dunning queue, reminder ledger and subscription events. It maps native
 activation and customer pause/resume/cancel/skip/slide/bundle-edit facts to the
 existing lifecycle templates; it does not invent a parcel arrival or service
 pause. Both reminder producers run explicitly in this scheduled operation.
+For address-change events, a host uses either this binding or an outbox handler, not both, because their idempotency keys differ and the customer would receive two mails.
 `run(limit)` accepts 1–100 and mounts no HTTP route or scheduler. Supply one
 exclusive autocommit connection per `withSession` callback, host-composed transactional delivery
 send/read-receipt ports, and a trusted recipient/rendering/access-link binder.
