@@ -414,3 +414,43 @@ The existing source-preview fixture copies the new bin path exactly; its scripts
 and assertions are unchanged. No other execution-surface pin or control changes.
 The two cold-consumer failures remain pending exact compiler diagnosis and a
 separate minimal synthetic-core fixture repair; no assertion is relaxed.
+
+The exact declaration failure was captured before repairing the existing fixture:
+`appVerification.d.ts(1,80): error TS2307: Cannot find module
+'@openlup/core/readiness' or its corresponding type declarations.`
+The same fixture also failed with `ERR_PACKAGE_PATH_NOT_EXPORTED: Package
+subpath './readiness' is not defined by "exports"`.
+
+- `scripts/packages/platform-cold-consumer.test.ts`: add only the missing synthetic core readiness export, import-only runtime stub and the six requested declaration exports to repair those two diagnostics; preserve every assertion and strict declaration check. This is one additional existing test file.
+- `scripts/source-preview-release.test.ts`: its synthetic platform manifest copies the real bin key/path after the execution-surface pin; the earlier 718-case rerun passed, and the relocation changes only that path value.
+
+The synthetic readiness function deliberately throws if invoked; these fixture
+cases prove importability and declarations, not readiness evaluation. Real
+readiness remains covered by the existing evaluator and application diagnosis
+proofs. The real cold-consumer path reads the verified pack manifest, rechecks
+both core/platform archive hashes and installs both actual tarballs. Real core
+already exports `./readiness`, so it has no synthetic-export omission. Its
+real-packed lifecycle cases passed in the complete preceding run; canonical
+verification is still pending.
+
+`runPlatformColdConsumer` imports lifecycle in its runtime export loop;
+`proveLifecycleConsumer` emits a namespace import; `compileConsumer` emits
+value/type imports checked in NodeNext and Bundler modes. The distribution CLI
+proof invokes the installed executable and writes a published-version snapshot
+application that resolves/imports lifecycle. The CLI itself imports the public
+lifecycle entry for upgrade and verification. Neither repair changes those paths.
+
+The repaired cold-consumer file passes all 108 tests (60.65 seconds), including
+both previously failing runtime/declaration cases. The moved executable passes
+file-level ESLint and full repository lint: zero errors, 33 existing warnings;
+its two directives are used and reasoned. The original and directive-stripped
+executable SHA-256 are both
+`f8de509d077426ae76b66928f2266dea7d47bb8cd455c048ab69317ffb41bd5c`.
+The only executable-file diff after the rename adds this directive immediately
+before each of its two existing dynamic public-entry imports:
+
+```diff
++    // eslint-disable-next-line no-restricted-syntax -- tool entry, not a platform module: it loads the installed package's published entry by name, exactly as an adopter's process would; the module graph forbids this for modules, and the file lives in lifecycle only because src holds module directories only
+```
+
+A complete final-tree selection and package measurements are still pending.
