@@ -302,6 +302,8 @@ export function sqlStatements(sql: string, dump = false, creation = false, ascii
         if (creation && (sql[index] === "\n" || (quote === '"' && /[;$]/u.test(sql[index]!)))) throw new Error("reviewed portable creation refuses multiline quotes and statement or dollar delimiters in identifiers");
         if (sql[index] === "\\") {
           if (creation) throw new Error("reviewed portable creation refuses backslashes outside dollar bodies");
+          // PostgreSQL ends a standard literal at the quote after a backslash, so a candidate's escape reading would split statements differently.
+          if (asciiStructure && !dump) throw new Error("reviewed native store refuses backslashes in quoted literals and identifiers");
           index += 2; continue;
         }
         if (sql[index++] === quote) { if (sql[index] === quote) { index++; continue; } closed = true; break; }

@@ -147,6 +147,34 @@ replaced functions and the grant-only ACL rule are not stated in the section; th
 extended protected-file list also applies to the other reviewed classes' co-located
 changes and is not mentioned in the co-located approval section.
 
+Fifth review cycle and ruling (2026-11-02). Two more fresh reviewers
+(`claude-code-subagent:opus:a30eb2562be925e01` and `...:a054755e3617bdb71`) returned
+FAIL on tree `d890faf48dde0d5eb2ff05e16d486b1fd0177aa1` (native cycle 5). Both
+closed all seven open cards and each reported one new gap. The coordinator ruled on
+both. The gap reported against the relation snapshot did not block: an ALTER TABLE
+that rewrites an existing table replaces its TOAST relation and index with new OIDs,
+which the OID-keyed comparison refuses, but none of the seven slots rewrites a
+table and a refusal is fail-closed; here "a wrong refusal of a valid forward" means
+a forward of this programme's slots. Registered follow-up F-FORWARD-TOAST-REWRITE:
+compare TOAST relations without OID identity, for example by name, together with
+the change that first adds such a forward. The other gap was material. The native
+splitter read a backslash in a quoted literal as an escape while PostgreSQL ends a
+standard literal at the quote after it, so one admitted CREATE FUNCTION was several
+statements for the database, including an operator for `(oid, integer)` in
+`pg_catalog` that resolved the catalog test's own integer floor and hid an unlisted
+definer from it. The repair is scoped to three changes. A candidate native file
+refuses a backslash in a quoted literal or identifier (earlier files of the prefix
+keep the older reading), with a static witness using the reviewer's text; none of the
+seven forwards has one outside a dollar body. The catalog test types its floor as
+`oid`, reads the snapshot under hostile operators in one test, and refuses the
+reviewer's SQL directly. `pg_parameter_acl` joins the guard catalogs, with a refusal
+case for `GRANT SET ON PARAMETER`, because a privilege on a server parameter was not
+seen. Advice for the prose of the G4+G3 control: created functions' language and
+leakproof flag are not compared; the freeze of replaced functions and the grant-only
+ACL rule are not stated in the section; manifest units are replayed in path order;
+the earlier trailer wording about OID floors. A failure of the sixth cycle returns to
+the coordinator without repair.
+
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
 `3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d`; applicable instruction paths are

@@ -13,6 +13,9 @@ type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions
 const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
+// The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
+// would resolve to an operator for (oid, integer), which a forward can create in pg_catalog to hide the objects it adds.
+const OID_FLOOR = `${FIRST_USER_OID}::pg_catalog.oid`;
 const GRANT_OPTION = " WITH GRANT OPTION";
 // Node trees (default arguments, rules, policies, trigger conditions) store where the parser read them in the file, which
 // moves when the same statement sits at another offset. That is compared as nothing; everything else in a tree is compared.
@@ -34,7 +37,7 @@ const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; re
   { id: "roles", catalog: "pg_authid" }, { id: "memberships", catalog: "pg_auth_members" }, { id: "dbSettings", catalog: "pg_db_role_setting" },
   { id: "databases", catalog: "pg_database", drop: ["datfrozenxid", "datminmxid"] }, { id: "defaultAcls", catalog: "pg_default_acl" },
   { id: "eventTriggers", catalog: "pg_event_trigger" }, { id: "extensions", catalog: "pg_extension" },
-  { id: "casts", catalog: "pg_cast" },
+  { id: "casts", catalog: "pg_cast" }, { id: "parameterAcls", catalog: "pg_parameter_acl" },
   { id: "triggers", catalog: "pg_trigger", relation: "tgrelid", added: (row, newConstraints) => row.tgisinternal === true && newConstraints.has(Number(row.tgconstraint)) }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
   { id: "rules", catalog: "pg_rewrite", relation: "ev_class" },
 ];
@@ -46,18 +49,18 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
   const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner,
     (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
     ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, p.prosrc AS src
-    FROM pg_proc p WHERE p.oid >= ${FIRST_USER_OID} ORDER BY p.oid`)).rows;
+    FROM pg_proc p WHERE p.oid >= ${OID_FLOOR} ORDER BY p.oid`)).rows;
   const relations = (await db.query(`SELECT c.oid::int AS oid, c.oid::regclass::text AS name, c.relkind::text AS kind, c.relowner::regrole::text AS owner,
     c.relrowsecurity AS rls, c.relforcerowsecurity AS "forceRls", c.reloptions::text AS options,
     ${aclOf("c.relacl", "(CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::\"char\"", "c.relowner")} AS acl,
     (SELECT jsonb_agg(jsonb_build_array(a.attname,a.attacl::text) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) AS "columnAcls"
-    FROM pg_class c WHERE c.oid >= ${FIRST_USER_OID} ORDER BY c.oid`)).rows;
+    FROM pg_class c WHERE c.oid >= ${OID_FLOOR} ORDER BY c.oid`)).rows;
   // Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
   // because autovacuum changes them between two snapshots.
   const system = (await db.query(`SELECT
-    md5(COALESCE((SELECT string_agg(to_jsonb(p)::text, E'\\n' ORDER BY p.oid) FROM pg_proc p WHERE p.oid < ${FIRST_USER_OID}),'')) AS functions,
-    md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${FIRST_USER_OID}),'')
-      || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${FIRST_USER_OID} AND a.attacl IS NOT NULL),'')) AS relations`)).rows[0];
+    md5(COALESCE((SELECT string_agg(to_jsonb(p)::text, E'\\n' ORDER BY p.oid) FROM pg_proc p WHERE p.oid < ${OID_FLOOR}),'')) AS functions,
+    md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${OID_FLOOR}),'')
+      || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS relations`)).rows[0];
   // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
   const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -232,6 +235,16 @@ const CONFORMING = forward(CREATED_OK);
 // The statement reported as FC-R1B-001, unchanged: a quoted default hides an `AS $q$` so a static
 // header reader takes a fake search_path attribute list for the real one.
 const HIDDEN_HEADER = "CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS text LANGUAGE sql SECURITY DEFINER AS 'select p' SET application_name = x$q$;";
+// The statement reported as FC-R5B-001, unchanged and run here without the static class: a backslash ends a standard literal
+// early in PostgreSQL, so after the listed function the database also creates an operator for (oid, integer) in pg_catalog
+// and a second definer. Read with a bare integer floor, the operator hid that definer from this comparison.
+const OPERATOR_CAPTURE = String.raw`CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS 'select 1 --\';
+CREATE FUNCTION pg_catalog.cat_ge(oid, integer) RETURNS boolean LANGUAGE sql STABLE AS $b$ SELECT $1::bigint >= $2 AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid = $1 AND proname IN ($n$cat_ge$n$, $n$cat_evil$n$)) $b$;
+CREATE OPERATOR pg_catalog.>= (LEFTARG = oid, RIGHTARG = integer, FUNCTION = pg_catalog.cat_ge);
+CREATE FUNCTION public.cat_evil(c text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $b$ BEGIN EXECUTE c; END $b$;
+SELECT ' $a$ ';
+SELECT 1 AS x$a$, 2 AS y$q$;
+REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 const UNLISTED = "CREATE FUNCTION public.cat_unlisted(p text) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p $$;\nREVOKE ALL ON FUNCTION public.cat_unlisted(text) FROM PUBLIC;";
 const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["the FC-R1B-001 header under a listed signature", forward(`${HIDDEN_HEADER}\n${REVOKE_CREATED}`), /pinned search_path/u, false, SYNTHETIC_SLOT],
@@ -263,7 +276,9 @@ const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["a constraint PostgreSQL ships dropped", forward(CREATED_OK, "ALTER DOMAIN information_schema.cardinal_number DROP CONSTRAINT cardinal_number_domain_check;"), /dropped or rewritten/u, false, SYNTHETIC_SLOT],
   ["options of an existing index", forward(CREATED_OK, "ALTER INDEX public.cat_existing_table_pkey SET (fillfactor = 70);"), /existing relation/u, false, SYNTHETIC_SLOT],
   ["a temporary view that hides a catalog", forward(CREATED_OK, "CREATE TEMP VIEW pg_proc AS SELECT * FROM pg_catalog.pg_proc WHERE proname <> 'cat_evil';\nCREATE FUNCTION public.cat_evil() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;"), /created functions differ/u, false, SYNTHETIC_SLOT],
-  ["a policy on an existing table", forward(CREATED_OK, "CREATE POLICY cat_policy ON public.cat_existing_table USING (true);"), /policies on existing relations/u, false, SYNTHETIC_SLOT],
+  ["an operator that hides what the statement after a backslash creates", OPERATOR_CAPTURE, /created functions differ/u, false, SYNTHETIC_SLOT],
+  ["a privilege on a server parameter", forward(CREATED_OK, "GRANT SET ON PARAMETER session_replication_role TO anon;"), /parameterAcls changed/u, false, SYNTHETIC_SLOT],
+  ["a policy on an existing table",forward(CREATED_OK, "CREATE POLICY cat_policy ON public.cat_existing_table USING (true);"), /policies on existing relations/u, false, SYNTHETIC_SLOT],
   ["a rewrite rule on an existing table", forward(CREATED_OK, "CREATE RULE cat_rule AS ON INSERT TO public.cat_existing_table DO INSTEAD NOTHING;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
   ["a redefined view", forward(CREATED_OK, "CREATE OR REPLACE VIEW public.cat_view AS SELECT id, owner_ref FROM public.cat_existing_table;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
   ["a purpose CHECK that drops a value", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('b','c'))")), /purpose CHECK/u, false, PURPOSE_SLOT],
@@ -342,6 +357,25 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits an invoker function that carries no SET", async () => { await checkForward(pool, INVOKER_SLOT, forward(invoker(""))); });
   it.each(REFUSALS.filter(([, , , needsServiceRole]) => serviceRole || !needsServiceRole))("refuses %s", async (_name, sql, message, _needsServiceRole, slot) => {
     await expect(checkForward(pool, slot, sql)).rejects.toThrow(message);
+  });
+  // Every read that compares an OID with the floor, the three system digests included, must resolve to pg_catalog's own
+  // operators: operators a forward creates for (oid, integer) in pg_catalog hide nothing from the snapshot.
+  it("reads the OID floor through pg_catalog's own operators", async () => {
+    const db = await pool.connect();
+    try {
+      const before = await pinned(db, () => snapshot(db));
+      await db.query("BEGIN");
+      try {
+        await db.query(`CREATE FUNCTION pg_catalog.cat_hide_ge(oid, integer) RETURNS boolean LANGUAGE sql AS 'select false';
+          CREATE FUNCTION pg_catalog.cat_hide_lt(oid, integer) RETURNS boolean LANGUAGE sql AS 'select false';
+          CREATE OPERATOR pg_catalog.>= (LEFTARG = oid, RIGHTARG = integer, FUNCTION = pg_catalog.cat_hide_ge);
+          CREATE OPERATOR pg_catalog.< (LEFTARG = oid, RIGHTARG = integer, FUNCTION = pg_catalog.cat_hide_lt);`);
+        const after = await pinned(db, () => snapshot(db));
+        expect(after.functions.length).toBe(before.functions.length + 2);
+        expect(after.relations).toEqual(before.relations);
+        expect(after.system).toEqual(before.system);
+      } finally { await db.query("ROLLBACK"); }
+    } finally { db.release(); }
   });
   it("names exactly the guard catalogs in the documentation", () => {
     const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("- The guard catalogs")[1]?.split(/\n(?:- |\n)/u)[0] ?? "";

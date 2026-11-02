@@ -346,6 +346,32 @@ describe("PostgreSQL identifier boundaries", () => {
     expect(() => run("public.fixture_probe(text)", statement)).toThrow(/unlisted signature/u);
     expect(() => run("public.fixture_probe(text,uuid)", statement)).not.toThrow();
   });
+  // PostgreSQL ends a standard literal at the quote after a backslash, so the escape reading of the splitter would see one
+  // statement where the database runs several: here a listed function, then an operator that hides a second function.
+  it("refuses a backslash in a quoted literal that hides statements from the splitter", () => {
+    const statement = String.raw`CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS 'select 1 --\';`;
+    const hidden = String.raw`CREATE FUNCTION pg_catalog.cat_ge(oid, integer) RETURNS boolean LANGUAGE sql STABLE AS $b$ SELECT $1::bigint >= $2 AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid = $1 AND proname IN ($n$cat_ge$n$, $n$cat_evil$n$)) $b$;
+CREATE OPERATOR pg_catalog.>= (LEFTARG = oid, RIGHTARG = integer, FUNCTION = pg_catalog.cat_ge);
+CREATE FUNCTION public.cat_evil(c text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $b$ BEGIN EXECUTE c; END $b$;
+SELECT ' $a$ ';
+SELECT 1 AS x$a$, 2 AS y$q$;
+REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
+    expect(() => run("public.cat_created(text)", statement, hidden)).toThrow(/backslashes in quoted literals and identifiers/u);
+  });
+  it.each([
+    ["a single-quoted literal", "SELECT 'a\\'; SELECT 1;"],
+    ["a double-quoted identifier", "SELECT 1 AS \"a\\\"; SELECT 2 AS \"b\";"],
+    ["an escape string", "SELECT E'a\\n';"],
+  ])("refuses a backslash in %s of a candidate", (_label, text) => {
+    expect(() => sqlStatements(text, false, false, true)).toThrow(/backslashes in quoted literals and identifiers/u);
+  });
+  it("keeps the older reading for preceding files and other splitter modes", () => {
+    expect(sqlStatements("SELECT E'a\\n';", true, false, true)).toHaveLength(1);
+    expect(sqlStatements("SELECT E'a\\n';")).toHaveLength(1);
+  });
+  it("retains a backslash inside a dollar body", () => {
+    expect(() => run(probe, definition().replace("'value'", "E'\\u0020'"))).not.toThrow();
+  });
   it("hashes the complete function when a return identifier contains dollar markers", () => {
     const statement = "CREATE FUNCTION public.fixture_probe() RETURNS public.fixture_type$value$one LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $value$ SELECT NULL; $value$;";
     expect(nativeStoreFunctionDefinitions(Buffer.from(statement), [probe]).get(probe)).toBe(sqlSha256(statement));
