@@ -57,6 +57,8 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "tests/identity/runAcceptance.mjs", "tests/identity/acceptance.conformance.ts", "server/runtime/auth/capturedIdentityMailbox.test.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
+  "scripts/generate-outcome-projection-cli.ts",
+  "scripts/packages/generate-release-bom-cli.ts",
   "vitest.config.ts",
 ] as const;
 

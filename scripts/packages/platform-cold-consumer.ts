@@ -46,6 +46,7 @@ export const NON_ADAPTER_ENTRIES = [
   "commerce/server",
   "invoicing",
   "invoicing/contracts",
+  "invoicing/postgres",
   "subscriptions",
   "subscriptions/contracts",
   "fulfillment",

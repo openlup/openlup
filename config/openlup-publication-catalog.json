@@ -1286,6 +1286,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/DOCUMENTATION.md",
       "class": "platform-documentation"
     },
@@ -1296,6 +1300,10 @@
     {
       "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/OUTCOME_PROJECTION.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
@@ -1578,7 +1586,31 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-forward-class.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g11.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g12p.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g14x.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g16.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g18.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g9.md",
       "class": "public-output"
     },
     {
@@ -1883,6 +1915,30 @@
     },
     {
       "path": "examples/neutral-store/tsconfig.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/.gitignore",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/app.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/package.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/run.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/verify.test.mjs",
       "class": "public-output"
     },
     {
@@ -3006,6 +3062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/invoicing-postgres.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/invoicing.api.md",
       "class": "public-output"
     },
@@ -3646,7 +3706,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/postgresAccountReadScope.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresAccountSources.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresCustomerActorReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/postgresOperatorAuthority.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresOrderHistory.ts",
       "class": "public-output"
     },
     {
@@ -3734,6 +3810,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleAvailability.ts",
       "class": "public-output"
     },
@@ -3759,6 +3839,10 @@
     },
     {
       "path": "packages/platform/src/catalog/bundlePriceSelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleRpcError.ts",
       "class": "public-output"
     },
     {
@@ -3822,6 +3906,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/rpcErrors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/sellable.ts",
       "class": "public-output"
     },
@@ -3862,6 +3950,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/productTypeSchemas.ts",
       "class": "public-output"
     },
@@ -3879,6 +3971,10 @@
     },
     {
       "path": "packages/platform/src/catalog/resolvedSkuProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/rpcErrors.ts",
       "class": "public-output"
     },
     {
@@ -6042,6 +6138,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/postgres/accountHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/captured.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/postgresInvoiceStore.ts",
       "class": "public-output"
     },
@@ -7354,6 +7462,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/postgresAccountReads.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/postgresOperatorAuthority.test.ts",
       "class": "public-output"
     },
@@ -7419,6 +7531,10 @@
     },
     {
       "path": "packages/platform/test/blob/vercel.transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleAdminWriteStore.test.ts",
       "class": "public-output"
     },
     {
@@ -8571,6 +8687,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/issue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/nativePostgres.test.ts",
       "class": "public-output"
     },
     {
@@ -9994,6 +10114,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-native-store/before.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-native-store/registry.json",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -10007,6 +10135,18 @@
     },
     {
       "path": "scripts/generate-fulfillment-status-map.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.ts",
       "class": "public-output"
     },
     {
@@ -10191,6 +10331,18 @@
     },
     {
       "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.ts",
       "class": "public-output"
     },
     {
@@ -10459,6 +10611,10 @@
     },
     {
       "path": "scripts/reviewed-batch-rail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-native-store-forward.test.ts",
       "class": "public-output"
     },
     {
@@ -27370,6 +27526,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/invoicingCaptured.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/invoicingContinuity.test.ts",
       "class": "public-output"
     },
@@ -27494,6 +27654,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m19BundleWriteExport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19BundleWriteIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m19MigrationFacade.test.ts",
       "class": "public-output"
     },
@@ -27511,6 +27679,14 @@
     },
     {
       "path": "tests/postgres/marketDirectoryPreservation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeAccountReads.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
       "class": "public-output"
     },
     {
