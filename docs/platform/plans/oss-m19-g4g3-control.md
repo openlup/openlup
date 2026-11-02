@@ -402,3 +402,17 @@ pull requests will bind them, pass the real class in slot order on the merged tr
 including the three existing-table statements of the purchase-reservation slot. The
 catalog test and the class suite pass on the merged tree. The data owner section and
 the class record now state the advice from the class reviews.
+
+Delivery in two changes (2026-11-02). The first pull request failed its hosted native
+review although the content had passed review: admission runs the reader of trusted
+main on the candidate's registry, and that reader rejected the new
+`existingTableStatements` key on the purchase-reservation slot ("slot path, row or order
+drifted"). The same registry without that key is accepted, so the two slots themselves
+are admissible. This is the delivery order the data owner section already prescribes
+for an expanded reader: this change lands the reader with the literal pin, the fixtures,
+the tests and the prose, and the registry keeps both slots but not the list; a separate
+pin-only change after it adds the three statements to the slot and flips the one test
+that now expects them absent. Preflight for both changes: run the admission path of
+trusted main on the candidate head in scratch before pushing. Evidence for this
+change: the reader accepts the production registry, which has seven slots and no list,
+and a seven-slot registry carrying the pinned list, in one committed test.
