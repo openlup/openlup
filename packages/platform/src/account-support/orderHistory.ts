@@ -185,7 +185,9 @@ function summary(
   row: Row,
   maps: Awaited<ReturnType<typeof companions>>,
   projection: CustomerOrderHistoryProjectionPort,
-  money: CanonicalOrderMoney = deriveOrderMoney(toOrderMoneyHeader(row))
+  money: Pick<CanonicalOrderMoney, "total" | "currency"> = row.native_money_summary === true
+    ? { total: Number(row.total_cents), currency: text(row.currency) }
+    : deriveOrderMoney(toOrderMoneyHeader(row))
 ): AccountOrderSummary {
   const id = text(row.id),
     parcel = maps.fulfillment.get(id),

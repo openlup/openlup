@@ -1,6 +1,7 @@
 # Native invoice provider and owned history
 
-Status: stabilized source candidate awaiting the public API read, 2026-11-01.
+Status: integrated development-preview candidate; delivery remains gated by
+current native evidence and final verification, 2026-11-02.
 Development preview; no publication, hosted or fiscal qualification is claimed.
 
 ## Outcome, scope and authority
@@ -186,3 +187,110 @@ commit supplies the refreshed tests digest and unchanged tooling digest.
 Self-retro for this continuation: the focused admission wait was 150 s. Reusing
 the existing foreign-order fixture with clearance-required facts distinguished
 the blocked path without new setup or permissions; no production repair was needed.
+
+## Integration and focused proof round
+
+The supervisor authorized a forced integration of current main
+`38f60565d54fb7ec061f8e506b3c98a3c653a8bd` into the prior candidate
+`1fdae5677a3aed6d7213253f816ce0055d11e8a0`. Current policy is read at that
+main pin, separately from the original code base `bb0008481a11267ec6dbe3e7e531299777cddc19`.
+Native prepare refused the pre-merge candidate because of conflicts. The
+catalogue resolution inserts only this task's seven rows into main's exact
+ordered catalogue. Main's package changelog is taken byte for byte; the captured
+invoice note moves to the m19-g9-captured-invoices.md fragment
+under the existing fragment convention, without a catalogue row. Automatic
+cold-consumer and package-boundary merges preserve main plus exactly this task's
+single entry, without reordering. This is manual integration, ordinary accounting.
+
+A separate test-only commit replaces the installed-consumer witness's literal
+environment access with the existing `node:process` environment import convention;
+its environment values and runtime behaviour stay unchanged. No ratchet baseline,
+control, SQL, grant, production behaviour or public API changes are authorized.
+The artifact remains non-fiscal test output only; SQL needs remain NONE.
+
+Required focused proof now includes neutrality, outcome projection, import-map,
+package boundary, unchanged existing module-importing tests, cold-empty-cache and
+normal-cache installed PostgreSQL witnesses, lint, strict typecheck, policy and a
+fresh official-toolchain package measurement. Two fresh full reviews follow on
+repair cycle 2 of 3. No canonical verification, push or pull request is authorized
+in this round; the supervisor resumes delivery after the preceding landing.
+
+Patch-ID evidence, excluding this task record: old-base-to-prior-candidate
+`9bc4c6bcc1e5821314e911167dc830c00518adf4`; current-main-to-resolved-merge
+`d61f81111daff391904ed10e845bf3ee65b5ae31`. They differ because the note moves
+from the shared changelog into a fragment; no equal-patch or mechanical-integration
+exemption is claimed. The inherited main migration has an end-of-file whitespace
+warning against the old head; this task does not edit it, and its own delta is
+checked against the new main instead.
+
+Final current-main-to-candidate patch ID with the test-only environment fix,
+excluding this task record: `bf20114cb1dbea41aebfc0b340c934d3ca571ae8`. The old-base patch ID above is
+retained as historical evidence; the note move and environment import explain
+the difference. Native source, API and constructor bytes remain unchanged from
+the accepted implementation.
+
+Focused results for this integration, on the official Node 24.21.0 / npm 11.19.0
+toolchain: neutrality zero increases; projection/import-map 130/130; package
+boundary 2,873/2,873; native provider unit 4/4; structural scan, lint and strict
+published-tree typecheck PASS (zero errors/unresolved edges; 33 existing lint
+warnings). The actual current-main assertion count is 130 rather than the older
+123-case estimate. The installed consumer still packs only core, platform and
+locked zod local tarballs. Empty offline cache and normal cache each pass the
+full restricted-runtime PostgreSQL witness (15.33 s and 17.37 s total), with no
+fixture grant or assertion change.
+
+The following 34 existing import/caller test files ran unchanged from the merged
+main, each separately, with PASS; PostgreSQL files use their own disposable
+containers:
+
+- `packages/platform/test/account-support/accountReadModels.test.ts`
+- `packages/platform/test/account-support/invoiceAccess.test.ts`
+- `packages/platform/test/account-support/portFit.test.ts`
+- `packages/platform/test/invoicing/adapterConformance.test.ts`
+- `packages/platform/test/invoicing/artifacts.test.ts`
+- `packages/platform/test/invoicing/bindings.test.ts`
+- `packages/platform/test/invoicing/canonicalLines.test.ts`
+- `packages/platform/test/invoicing/continuity.test.ts`
+- `packages/platform/test/invoicing/contracts.test.ts`
+- `packages/platform/test/invoicing/delivery.test.ts`
+- `packages/platform/test/invoicing/handoff.test.ts`
+- `packages/platform/test/invoicing/issue.test.ts`
+- `packages/platform/test/invoicing/paymentReadback.test.ts`
+- `packages/platform/test/invoicing/portFit.test.ts`
+- `packages/platform/test/invoicing/postgresStore.test.ts`
+- `packages/platform/test/invoicing/readModel.test.ts`
+- `packages/platform/test/invoicing/readback.test.ts`
+- `packages/platform/test/invoicing/sellerRevision.test.ts`
+- `packages/platform/test/invoicing/settlementSync.test.ts`
+- `scripts/documentation-impact.test.ts`
+- `scripts/packages/platform-cold-consumer.test.ts`
+- `scripts/packages/reference-delegation-consumer.test.ts`
+- `server/domains/accounting/stripePayoutSettlementSync.test.ts`
+- `server/runtime/public-reference/m09InvoicingBinding.test.ts`
+- `tests/platform/catalog/m05Composition.test.ts`
+- `tests/platform/channels/channelConsumer.test.ts`
+- `tests/platform/inventory/inventoryConsumer.test.ts`
+- `tests/postgres/invoicingContinuity.test.ts`
+- `tests/postgres/invoicingDelivery.test.ts`
+- `tests/postgres/invoicingManagedCorrection.test.ts`
+- `tests/postgres/invoicingNativeConformance.test.ts`
+- `tests/postgres/invoicingStoreContract.test.ts`
+- `tests/postgres/nativeAccountReads.test.ts`
+- `tests/postgres/partnerAcquisition.test.ts`
+
+Fresh real platform pack: 2,358,480 packed bytes; 11,126,930 unpacked bytes;
+2,949 files. Code class: 1,893,540 gzip bytes / 2,838 files. Docs class: 60,783
+gzip bytes / 6 files. All current size budgets pass, without a budget change.
+Tarball SHA-256: `aacacc63c863d0e768f3203ffc54d2cb30c91e636d76bc35e1ab2b0832ce7abc`.
+This supersedes the old provisional pre-integration measurement above; final
+clean-commit package proof and canonical verification retain their own gates.
+Policy computes fresh tests/tooling no-impact trailers against the new base;
+these belong on the single-parent test fix, not the merge commit. Review history
+and repair counts remain append-only: cycle 1 contains the boundary-list repair;
+this manual integration and test fix require fresh full review on cycle 2 of 3.
+
+Self-retro: direct boundary, neutrality and empty-cache proof close the late
+failure classes before another canonical run. Policy caught an inline reference
+to the source-only fragment in this record; naming the fragment without a
+catalogue-target path keeps the record accurate without adding a catalogue row.
+No control, cap, SQL or production change was used to obtain passing proof.

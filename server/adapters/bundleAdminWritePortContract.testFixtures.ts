@@ -115,7 +115,18 @@ export function describeBundleWritePortContract(subject: BundleWritePortSubject)
         await scenario.invoke(port);
         expect(calls).toHaveLength(1);
         expect(calls[0].name).toBe(scenario.routine);
-        expect(calls[0].args).toEqual(scenario.args);
+        const received = { ...calls[0].args };
+        if (subject.name === "direct-Postgres adapter") {
+          // The SQL boundary receives decoded jsonb, while pg parameters carry JSON text.
+          // Require that native wire representation before comparing the same logical values.
+          for (const key of ["p_components", "p_composition_constraint", "p_metadata"]) {
+            if (received[key] !== null && received[key] !== undefined) {
+              expect(typeof received[key]).toBe("string");
+              received[key] = JSON.parse(received[key] as string);
+            }
+          }
+        }
+        expect(received).toEqual(scenario.args);
       });
     }
 
