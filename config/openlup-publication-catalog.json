@@ -1594,6 +1594,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g10.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g11.md",
       "class": "public-output"
     },
@@ -3035,6 +3039,10 @@
     },
     {
       "path": "packages/platform/api/fulfillment-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/fulfillment-native.api.md",
       "class": "public-output"
     },
     {
@@ -5298,6 +5306,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/capturedAdapter.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
       "class": "public-output"
     },
@@ -5411,6 +5423,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/index.ts",
       "class": "public-output"
     },
     {
@@ -8326,6 +8342,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/capturedAdapter.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/contracts.test.ts",
       "class": "public-output"
     },
@@ -8347,6 +8367,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/nativePreparation.test.ts",
       "class": "public-output"
     },
     {
@@ -27527,6 +27551,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentStockEvidenceReplay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/g10FulfillmentIdentity.test.ts",
       "class": "public-output"
     },
     {
