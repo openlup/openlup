@@ -1562,6 +1562,7 @@ export * from "./postgresCommunicationSync.js";
 export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
+export * from "./testing/adapterConformance.js";
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
@@ -2208,6 +2209,56 @@ export declare function decideEmailSend(input: {
     existingNonFailedMessageId: string | null;
     templateAvailable: boolean;
 }): EmailSendDecision;
+```
+## dist/communications/testing/adapterConformance.d.ts
+
+```ts
+import type { EmailMessage, EmailSendResult, EmailTransport } from "../emailTransport.js";
+import type { MarketingSyncProvider, SyncRequest, SyncResult } from "../contracts/marketingSync.js";
+type Fixture<Input, Result> = {
+    readonly input: Input;
+    readonly expected: Result;
+    /** Total external mutations performed by this one invocation. */
+    readonly expectedEffects: number;
+};
+type OfflineAdapter<Adapter> = {
+    readonly adapter: Adapter;
+    readonly readEffectCount: () => number;
+};
+type EmailSubject = {
+    readonly kind: "email";
+    readonly subjectId: string;
+    /** Fresh offline adapter and counter for each fixture; never use live credentials. */
+    readonly create: (input: EmailMessage) => OfflineAdapter<EmailTransport> | Promise<OfflineAdapter<EmailTransport>>;
+    readonly fixtures: readonly Fixture<EmailMessage, EmailSendResult>[];
+};
+type SyncFixture = {
+    [O in SyncRequest["operation"]]: Fixture<SyncRequest<O>, SyncResult<O>> & {
+        /** Reinvoke this exact mutation and prove no second external effect. */
+        readonly replay?: boolean;
+    };
+}[SyncRequest["operation"]];
+type MarketingSubject = {
+    readonly kind: "marketing-sync";
+    readonly subjectId: string;
+    readonly create: (input: SyncRequest) => OfflineAdapter<MarketingSyncProvider> | Promise<OfflineAdapter<MarketingSyncProvider>>;
+    readonly fixtures: readonly SyncFixture[];
+};
+export type CommunicationsAdapterConformanceSubject = EmailSubject | MarketingSubject;
+export interface CommunicationsAdapterConformanceEvidence {
+    readonly subjects: readonly {
+        readonly subjectId: string;
+        readonly kind: CommunicationsAdapterConformanceSubject["kind"];
+        readonly cases: readonly string[];
+    }[];
+}
+/** Offline fixture proof, following the payment/invoice/fulfillment runners.
+ * No provider access, fixture discovery or test framework is supplied here.
+ * Only subject labels and passed case labels leave the runner; raw results and
+ * adapter exceptions are never included in findings. Not full provider qualification.
+ */
+export declare function runCommunicationsAdapterConformance(subjects: readonly CommunicationsAdapterConformanceSubject[]): Promise<CommunicationsAdapterConformanceEvidence>;
+export {};
 ```
 ## dist/communications/transactionalDelivery.d.ts
 

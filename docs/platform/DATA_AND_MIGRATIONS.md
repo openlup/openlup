@@ -321,6 +321,18 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+The installed platform package exposes the complete existing catalogue through
+`createPlatformPostgresMigrationRunner` in `@openlup/platform/migrations`. Its
+[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema)
+selects qualified-v2 or qualified-admin explicitly with the existing role-mode
+bindings. Legacy remains the default for compatibility. The generated
+`packages/platform/sql/manifest.json` preserves canonical paths, hashes, ordering
+and inventory pins from `config/platform-migration-manifest.json`; the required installed-consumer gate
+refuses projection drift. Packaging issued units adds no migration, changes no
+SQL bytes and leaves the managed rail untouched. Module-relative asset lookup
+needs no checkout. Existing session, ledger-prefix and inventory admission still
+apply, including on status and replay.
+
 The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
 expected owner, columns, defaults, constraints and indexes, without partition
@@ -1462,6 +1474,15 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The installed complete-catalogue entry preserves this lifecycle. Its generated
+SQL assets are copies of issued units with unchanged canonical identities,
+hashes, ordering and inventory pins, rather than new forwards. Qualified and
+restricted-admin selections retain their distinct baselines and role admission;
+legacy selection remains available for existing history. The required installed-consumer gate
+compares the projection against the canonical manifest and exact source bytes.
+See [module catalogues](#module-catalogues-and-installed-histories) and the
+[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
 
 Fresh channel capture admission binds the normalized slug through the existing
 trusted scope read and the raw-source digest through its original page event.

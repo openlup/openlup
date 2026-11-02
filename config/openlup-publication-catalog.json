@@ -1286,6 +1286,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/DOCUMENTATION.md",
       "class": "platform-documentation"
     },
@@ -1296,6 +1300,10 @@
     {
       "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/OUTCOME_PROJECTION.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
@@ -1344,6 +1352,10 @@
     {
       "path": "docs/platform/assets/velipet-storefront-en.png",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/communications-conformance.mjs",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -1578,6 +1590,30 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g12p.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g16.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g18.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-integration-trailer.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-kit.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-r0.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -1603,6 +1639,30 @@
     },
     {
       "path": "eslint.config.js",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/.gitignore",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/app.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/package.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/run.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/verify.test.mjs",
       "class": "public-output"
     },
     {
@@ -2866,11 +2926,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260807140000_read_parity_catalog.sql",
       "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260807190000_comms_outbox_rail.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260808120000_subscription_lifecycle_rail.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260808180000_oms_order_hold_rail.sql",
       "class": "public-output"
     },
     {
@@ -2914,6 +2986,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260812100000_customer_subscription_pause_actor.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260812130000_accounting_document_lifecycle_rail.sql",
       "class": "public-output"
     },
@@ -2922,11 +2998,39 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260812150000_sales_channel_registry.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812160000_commerce_order_source_axis.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql",
       "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260813120000_communications_control_plane.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813150000_channel_order_ingest.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813200000_customer_subscription_control.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813201000_customer_subscription_control_validate.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813210000_channel_order_pull_job_control.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813220000_merchandising_order_draft.sql",
       "class": "public-output"
     },
     {
@@ -2946,11 +3050,71 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260814130000_channel_bundle_lines.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260814150000_subscription_activation_spine.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260815090000_dunning_lifecycle_state.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260815120000_automatic_subscription_renewal.sql",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260815130000_customer_recovery_console.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260815150000_payment_truth_reconciliation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260815180000_subscriber_retention_messaging.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260816100000_order_review_capability.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817100000_oms_control_plane_operator_bridge.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817110000_partner_acquisition_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817110100_partner_acquisition_lifecycle_validate.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817111000_partner_acquisition_locale_constraint.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817111100_partner_acquisition_locale_constraint_validate.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817120000_prelaunch_acquisition_projection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817130000_acquisition_survey_newsletter_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817130000_customer_support_journey_recovery_status.sql",
       "class": "public-output"
     },
     {
@@ -2962,11 +3126,39 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260818120000_checkout_recovery_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260818150000_operator_lead_absorption.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260819150000_fulfillment_shipment_sequence.sql",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260820170000_channel_delivery_selection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260824090000_checkout_recovery_operator_email_authorize.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260824130000_closed_order_hold_closure.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260826063555_customer_support_search_v3.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260826100000_late_payment_shifts_the_subscription_cycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260826170001_subscriber_retention_timing_windows.sql",
       "class": "public-output"
     },
     {
@@ -2986,6 +3178,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260912190000_customer_diagnostic_history.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260913120000_customer_diagnostic_coverage_v2.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260913125000_customer_diagnostic_overview_v2.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260914120000_customer_diagnostic_ingress_identity.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260914130000_customer_diagnostic_prune_job.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261018120000_identity_operator_invitations.sql",
       "class": "public-output"
     },
@@ -2999,6 +3211,10 @@
     },
     {
       "path": "packages/platform/sql/20261019200000_communications_native_operations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261021120000_dunning_lifecycle_active_repair.sql",
       "class": "public-output"
     },
     {
@@ -3075,6 +3291,58 @@
     },
     {
       "path": "packages/platform/sql/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/manifest.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20261028100000_runtime_capability_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20261029100000_owner_path_name_resolution.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/qa_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/qb_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/qb_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/qb_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/qb_20261026140000_retained_client_subscription_import.sql",
       "class": "public-output"
     },
     {
@@ -4582,6 +4850,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/testing/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/transactionalDelivery.ts",
       "class": "public-output"
     },
@@ -5822,11 +6094,35 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/migrations/catalog.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/migrations/index.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/migrations/packagedCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/platformRunner.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/migrations/postgresRunner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/qualifiedInstall.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/rdsControlRoles.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/selectedCatalogProjection.ts",
       "class": "public-output"
     },
     {
@@ -7499,6 +7795,10 @@
     },
     {
       "path": "packages/platform/test/commerce/supabaseCommerceReturnsPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/adapterConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -9510,6 +9810,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/generate-outcome-projection-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/generate-outcome-projection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/git-review-scope.ts",
       "class": "public-output"
     },
@@ -9682,7 +9994,27 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/consumer-evidence.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/consumer-evidence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/generate-release-bom.ts",
       "class": "public-output"
     },
     {
@@ -9763,6 +10095,14 @@
     },
     {
       "path": "scripts/packages/platform-cold-consumer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-migration-projection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-migration-projection.ts",
       "class": "public-output"
     },
     {
@@ -26978,6 +27318,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m19MigrationFacade.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/managed-compat/supabase.sql",
       "class": "public-output"
     },
@@ -27019,6 +27363,10 @@
     },
     {
       "path": "tests/postgres/oidcReferenceRp.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsControlPlaneNative.test.ts",
       "class": "public-output"
     },
     {
