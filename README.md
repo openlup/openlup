@@ -116,11 +116,17 @@ OpenLup makes those boundaries explicit:
 See the [subscription workflows](docs/platform/SUBSCRIPTION_WORKFLOWS.md) for
 implementation paths, invariants and the tests that challenge them.
 
+The portable rail takes sandbox payments only. Real money currently runs only
+on the managed rail, so a portable real-money store without vendor lock-in is
+not yet available. Provider-neutral contracts describe an integration boundary;
+they do not establish that every payment rail is implemented.
+
 ## Choose an evaluation path
 
 | Path | What you can evaluate | Boundary |
 | --- | --- | --- |
 | npm packages | Compose selected engines and platform entries in your application | Exact version pins; experimental surfaces; your own adapters and host composition. |
+| Portable PostgreSQL primitives | Inspect selected database ports, migration and recovery witnesses | Explicit application composition; sandbox payments only; no complete neutral-store installation or deployment recipe is claimed. |
 | Default source reference | Static catalog/item pages and health route | GET/HEAD only; checkout, subscriptions, admin, API/BFF, cron and mutations are refused. |
 | Opt-in subscription reference | One recurring product, captured payment, confirmed email sign-in, own order/subscription and renewal-date change | Disposable local Supabase + Node; synthetic data, captured mailbox and no external provider calls. |
 
@@ -128,6 +134,12 @@ Automatic renewals, fulfillment, failed-renewal recovery and a complete
 late-delivery journey are outside the opt-in profile's current acceptance scope,
 even where their services exist in source. A renewal date is a planned charge
 date, not a delivery promise.
+
+The [public outcome projection](docs/platform/OUTCOME_PROJECTION.md) links the
+existing package export declarations to executable proof sources. Its `partial`
+state blocks a complete-outcome claim. The
+[distribution evidence guide](docs/platform/DISTRIBUTION_EVIDENCE.md) explains
+that boundary and the package-set BOM generator; neither is a release receipt.
 
 ### Use OpenLup in your application
 
@@ -276,6 +288,11 @@ Stable-framework readiness is a separate gate (`P1-SF`): a versioned release and
 bill of materials, a thin adopter application, public extension/conformance
 contracts, upgrade tools and passing installation, compatibility, provenance
 and independent-adopter evidence. An npm `latest` tag does not close that gate.
+
+Root `ui-*` neutrality counts remain shrink-only reference-source debt; copying
+root pages takes on that debt. The new neutral starter and deployment examples
+are constrained to system fonts only. Their recipes, complete-store evidence
+and broader neutrality qualification remain pending at this source revision.
 
 Self-hosting and provider integrations need their own composition and evidence.
 The repository includes adapters for payment, carrier/3PL, email, accounting,

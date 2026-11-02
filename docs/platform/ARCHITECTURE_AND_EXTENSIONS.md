@@ -535,6 +535,78 @@ dependency. Likewise, do not remove a platform capability merely because one
 adopter customizes it: the platform remains responsible for a complete useful
 module at its own boundary.
 
+## Run an adapter conformance check
+
+The Node-only `@openlup/platform/communications` entry exports
+`runCommunicationsAdapterConformance`, following the existing payment, invoice
+and fulfillment runner naming. Its subject union accepts email transports or
+marketing-sync providers, adapter-owned fixtures and a fresh offline factory
+with an external mutation counter for each fixture. The factory receives the
+fixture input and may asynchronously seed its offline state before measurement.
+Fixtures supply exact
+expected results and effect counts. Email requires accepted, failed and
+suppressed cases; suppression must perform no external mutation. Marketing sync
+requires all four operations, an explicit refusal and successful replay for each
+supported mutation. Refusals and read operations must perform no mutation.
+Each supported read operation also requires a completed fixture.
+Result identity, declared scope/capability, negative feedback and evidence-bound
+erasure completion are checked independently of fixture expectations. Raw
+adapter exceptions are replaced with a bounded finding and recheck instruction.
+Use opaque, non-sensitive subject labels: evidence returns those labels and
+passed case names, never provider payloads.
+
+Copy the complete [red-to-green Node example](communications-conformance.mjs)
+into a consumer with a version of `@openlup/platform` exporting the helper, then
+run `node communications-conformance.mjs`. It first constructs a deliberately
+bad offline adapter that reports a failed send as accepted. The runner refuses
+it with `COMMUNICATIONS_CONFORMANCE:email_fixture`, asks the implementer to match
+the expected outcome and provider response, and names the recheck function.
+The corrected adapter retains the failure and passes all three email fixtures.
+The same executable file runs inside the isolated packed consumer; the
+[focused witness](../../packages/platform/test/communications/adapterConformance.test.ts)
+also applies defects from the existing marketing-sync conformance helper.
+
+This is supplied-fixture proof, not exhaustive conformance, consent-push
+qualification, durable-store atomicity, host wiring, provider-account readiness
+or permission to send real messages. Keep the existing owner suites for those
+boundaries. The runner itself adds no network client, provider, registry, CLI
+command or automatic fixture discovery. Adapter factories must inject offline
+transports; the helper cannot sandbox an arbitrary factory's I/O.
+
+## Find consumer evidence for an export
+
+Every export's existing `packageSurface[export].packageSmokeEvidence` in its
+installed `release-gates.json` remains the evidence source. The
+[documentation contract](../../packages/core/scripts/documentation-contract.ts)
+already binds source witness paths to the package's surface table. The
+[consumer evidence projection](../../scripts/packages/consumer-evidence.mjs)
+reads that same metadata and the selected manifest without storing another
+catalogue. Copy that pure helper locally as `consumer-evidence.mjs`, then save
+the following consumer-owned script as `show-evidence.mjs` and run
+`node show-evidence.mjs` from the application root:
+
+```js
+import { readFileSync } from "node:fs";
+import { consumerEvidence } from "./consumer-evidence.mjs";
+const directory = "./node_modules/@openlup/platform";
+const read = name => JSON.parse(readFileSync(`${directory}/${name}`, "utf8"));
+console.log(JSON.stringify(consumerEvidence(read("package.json"), read("release-gates.json")), null, 2));
+```
+
+The JSON contains one row for each actual export, its original source witness
+paths, maturity and a `consumerCheck` executable/argument array. Run that array
+from the consumer directory to import that installed entry with its selected
+peers. An import failure identifies an unavailable artifact, dependency or entry;
+fix that installation and rerun the same check. Passing proves resolution and
+evaluation only. It does not execute source tests or prove declarations, browser
+safety or behaviour. Each `sourceCheck` maps the original witness paths directly
+to a Vitest invocation in that package's matching source directory, after its
+stated install/build prerequisites. Tests are not assumed to ship in the tarball.
+Use the conformance
+runner above with your own fixtures for adapter behaviour. The projection's
+[deterministic tests](../../scripts/packages/consumer-evidence.test.ts) cover all
+current core, outbox and platform exports and refuse missing evidence.
+
 ## Source ejection
 
 An adopter can copy a component or page into its own source. This is source
@@ -793,8 +865,9 @@ Inventory remains a non-adapter entry with no catalog import; its bundle-stock s
 Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its data/http/bff inputs remain type-only: the native read
-store takes the data entry's executor without constructing a driver or pool.
+entry. Its http/bff inputs remain type-only. The native read store takes the data
+entry's executor without constructing a driver or pool; the native writer uses
+data's role-free pooled transaction lane at runtime.
 The physical-table availability projection also lives at commerce/server over a
 structural query client and a required host provider predicate. Its pure ladder
 is browser-safe commerce; SDK narrowing stays in the reference adapter. The
@@ -804,15 +877,17 @@ composition passes its selected port through unchanged; PostgreSQL binds the
 native ATP reader when the host supplies `stockSourceKey`. Private preview
 transport remains host-owned.
 
-Effective bundle selection alone adds the pricing value edge described above;
+Effective bundle selection adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose
 plain bundle DTO types. Catalog server is now an adapter because its declarations
 reach optional pg types; runtime import and executor reads still work without
-peers. Contracts remains a non-adapter. The native writer, pooled transaction
-binding and transport remain reference-owned; sparse SQL projections add no
+peers. Contracts remains a non-adapter. Catalog owns the native writer, pooled
+transaction binding, shared RPC marshalling and error constructors. Host
+authorization, response mapping and managed transport remain reference-owned;
+sparse SQL projections add no
 installation chain or migration.
 
 The experimental promotions module has value edges to pricing through
@@ -1495,6 +1570,22 @@ conflicts. Evidence handlers retain GET/authorization/validation/read order with
 injected parsers/responders and safe product authorization/read refusal details;
 they expose no resolving mutation.
 
+The offline `createCapturedFulfillmentAdapter` factory at
+`@openlup/platform/fulfillment` selects only explicitly supplied synthetic command
+captures. It is default-off, fingerprints canonical command JSON (object keys in
+code-unit order, array order preserved), refuses an uncaptured or changed command,
+and requires exact prepared evidence before returning its configured accepted,
+refused or unknown outcome. In-memory submission cardinality does not increase on
+replay, including an unknown outcome. Captures are fixed at construction and are
+not a durable provider ledger. The factory performs no network or database I/O;
+an accepted capture proves no physical dispatch or arrival. Its receipt key is
+an acceptance identifier, not a generated parcel label. Label operations,
+observation verification, readback, stock/product sync, cancellation and pickups
+are not exposed. Hosts can separately exercise existing native shipment-spine
+label/tracking recording with synthetic evidence; this adapter adds no provider
+qualification. Native commerce list/detail and the other existing unsupported
+ports retain their `host_binding_required` refusals.
+
 The [conformance runner](../../packages/platform/src/fulfillment/adapterConformance.ts)
 accepts readonly FulfillmentAdapterConformanceSubject[] and returns sanitized
 FulfillmentAdapterConformanceEvidence containing subject/provider references and
@@ -1594,6 +1685,11 @@ has an explicit fulfillment slot with no default binder.
 Native dispatch uses host-supplied contact preparation and candidate data.
 The [reference binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 uses one transaction lane and selected store/provider/readiness observer.
+The experimental `@openlup/platform/fulfillment/native` entry also exposes
+`createNativeFulfillmentBinding` for installed hosts. Its implementation
+preserves the reference binding's transaction and refusal semantics; the host
+still owns the transaction lane, authoritative reader and authorized edit callback.
+The entry mounts no route or schedule and provisions no SQL or privileges.
 It acquires the native dispatch advisory lock, then locks the shipment row before
 reading authoritative data. Its edit callback requires actor and idempotency
 attribution; the host owns authorization and replay receipts. Source edits and
@@ -1609,6 +1705,13 @@ share a dispatch lock; direct submission supersedes only pristine, never-claimed
 queued commands, while effect-bearing history refuses it. ACK records native
 `dispatch` evidence, fencing cancellation without asserting an owned label or
 physical packing.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
 
 The native stores implement G14 mapped-attempt persistence, G15 coverage-gap
 cursors, G16 injected timed inventory-line reads with native reservation reads,
@@ -1887,6 +1990,16 @@ precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 ## Invoicing contracts
+
+The optional `@openlup/platform/invoicing/postgres` composition supplies a captured
+sandbox provider and native owned invoice history/tickets. Its append-only
+artifact observations retain repeat-safe full-identity receipts and explicitly
+non-fiscal PDF bytes; no real fiscal provider or clearance is supplied. History
+uses the authenticated principal/order join and preserves signed correction
+lineage and stored currency. The host retains authentication, seller/money
+selection, scheduling and routes; managed adapters are unchanged. See
+[captured native invoices](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for the exact selection and refusal boundaries.
 
 `createInvoiceServices` and `createInvoiceContribution` are exported through
 `@openlup/platform/invoicing`. Explicit provider selection and host readiness
@@ -2712,3 +2825,20 @@ commercial decisions and outbound publication remain excluded. Portable source
 capture/read/CAS and named physical refusal are distinct from managed full
 normalized ingest. No installed export implies a mounted handler or an enabled
 job, simulator or provider.
+
+## Own-stack integration sample
+
+The [own-stack catalog example](../../examples/own-stack/README.md) adds draft
+authoring to a small application with its own Node HTTP routes and local
+operator-session verifier. It composes the released catalog handler/store and
+PostgreSQL data gateway through public exports; no starter is involved. The
+application supplies its verified operator ID without email inference. Copy the
+private, non-workspace example outside the monorepo and install its pinned
+registry packages. Its HTTP/real-PostgreSQL witness checks a durable write,
+conflict refusal and receipt replay. Runtime credentials and the local token stay
+in a gitignored JSON configuration file outside the platform checkout, without
+being passed as command-line values. The runner consumes that file on standard
+input; the witness reads it from the application directory. A complete portable
+catalogue and restricted
+runtime login are explicit prerequisites; the local session and witness establish
+no hosted-authentication or production qualification.

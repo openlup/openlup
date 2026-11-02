@@ -163,16 +163,16 @@ export const PLATFORM_MODULE_GRAPH = {
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
   "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] },
   invoicing: { contracts: true, values: [], types: [] },
-  fulfillment: { contracts: true, values: [], types: [] },
+  fulfillment: { contracts: true, values: [], types: ["data"] },
   subscriptions: { contracts: true, values: [], types: [] },
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
   pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
-  // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
+  // Bundle factories bind host schemas/admin kit; native reads use the data executor type, writes its transaction lane.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
-  catalog: { contracts: true, values: ["pricing"], types: ["data", "bff", "http"] },
+  catalog: { contracts: true, values: ["pricing", "data"], types: ["bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },

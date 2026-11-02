@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-candidate",
+  "setVersion": null,
+  "sourceRevision": null,
+  "codeBaseRevision": "bb0008481a11267ec6dbe3e7e531299777cddc19",
+  "installationBound": false,
+  "qualification": "not-run"
+}
