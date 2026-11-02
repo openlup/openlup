@@ -39,13 +39,12 @@ lifecycle export-assertion update. No numeric release budget changes.
 
 ## Stabilized proposal and smallest adequate scope
 
-Proposed bin: `openlup` → `packages/platform/src/openlup.mjs`. The tool-only source
-root mirrors the existing installed-command placement pattern: it already ships
-under the package's source glob and tarball allowlist, and imports the public
-lifecycle entry. The lifecycle module itself cannot self-import by npm name; a
-relative source JavaScript entry is not the installed compiled entry. A separate
-launcher/implementation or a new tarball exception would add unnecessary surface.
-One exact-file owner row routes this bin to the canonical CLI contract.
+Bin: `openlup` → `packages/platform/src/lifecycle/openlup.mjs`. The tool-only
+executable lives in the existing lifecycle module so the platform source root
+continues to contain only module directories. It imports the compiled public
+lifecycle entry by package name; no launcher, new module, graph exception or
+additional tarball allowance is introduced. One exact-file owner row routes
+this bin to the canonical CLI contract.
 
 The existing lifecycle entry adds `verifyApp`, `APP_VERIFICATION_BOUNDARY` and
 its report/finding types. Diagnosis delegates to the existing `checkReadiness`
@@ -320,7 +319,7 @@ fixture line now copies the real platform bin exactly:
 
 ```diff
 -  "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS }),
-+  "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS, bin: { "openlup": "./src/openlup.mjs" } }),
++  "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS, bin: { "openlup": "./src/lifecycle/openlup.mjs" } }),
 ```
 
 No other line in that test, no assertion, pin, control or other existing test
@@ -336,10 +335,14 @@ execution notes remained unstaged and were excluded from that merge. All other
 shared-file merges were automatic. One inherited whitespace warning in an
 upstream migration was left unchanged; the own delta passes whitespace checks.
 
+The following historical proof describes the pure merge before the later bin
+relocation. Its original path literals are retained only to reproduce the pinned
+hashes and equal catalog sets; the current bin path is the lifecycle path above.
+
 The sole catalog conflict consisted of these three disjoint-addition hunks:
 
 1. G15: `docs/platform/plans/oss-m19-g15.md`; main: `docs/platform/plans/oss-m19-forward-class.md`, `docs/platform/plans/oss-m19-g10.md`, `docs/platform/plans/oss-m19-g11.md`, `docs/platform/plans/oss-m19-g12p.md`, `docs/platform/plans/oss-m19-g14x.md`, `docs/platform/plans/oss-m19-g16.md`, `docs/platform/plans/oss-m19-g18.md`, `docs/platform/plans/oss-m19-g4g3-control.md`, `docs/platform/plans/oss-m19-g9.md`, `docs/platform/plans/oss-m19-integration-trailer.md`, `docs/platform/plans/oss-m19-kit.md`, `docs/platform/plans/oss-m19-r0.md`, `docs/platform/plans/oss-m19-starter.md`.
-2. G15: `packages/platform/src/openlup.mjs`; main: `packages/platform/src/migrations/qualifiedInstall.ts`, `packages/platform/src/migrations/rdsControlRoles.ts`, `packages/platform/src/migrations/selectedCatalogProjection.ts`.
+2. G15: packages/platform/src/openlup.mjs (historical merge path); main: `packages/platform/src/migrations/qualifiedInstall.ts`, `packages/platform/src/migrations/rdsControlRoles.ts`, `packages/platform/src/migrations/selectedCatalogProjection.ts`.
 3. G15: `scripts/packages/distribution-cli-proof.ts`; main: `scripts/packages/consumer-evidence.mjs`, `scripts/packages/consumer-evidence.test.ts`.
 
 Resolution retained each original row literal and class, inserted their sorted
@@ -349,7 +352,7 @@ and after are equal, with no removed path:
 
 - `docs/platform/plans/oss-m19-g15.md`
 - `packages/platform/src/lifecycle/appVerification.ts`
-- `packages/platform/src/openlup.mjs`
+- packages/platform/src/openlup.mjs (historical merge path)
 - `packages/platform/test/lifecycle/appVerification.test.ts`
 - `scripts/packages/distribution-cli-proof.ts`
 
@@ -374,3 +377,40 @@ git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..876e9431f52ac6ead90714e620454
 git diff bb0008481a11267ec6dbe3e7e531299777cddc19..f19a5e1991f44ff9831d1f7c083291ef205080a6 | git patch-id --stable
 git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..876e9431f52ac6ead90714e620454635f65f43f9 | git patch-id --stable
 ```
+
+## Executable placement and bounded fixture recovery
+
+The complete importer/source-scan selection completed: 55 files, 5,578 tests
+passed and three failed. The source-preview manifest fixture now passes all
+718 cases. The source-root inventory assertion failed with `expected
+[ 'openlup.mjs' ] to deeply equal []` in `eslint-import-map.test.ts:485`.
+It requires the platform source root to contain module directories only.
+The executable therefore moves into the existing lifecycle directory; no test,
+module graph or lint configuration changes. All active package/lock/bin,
+publication, owner-route and documentation references follow that move.
+Historical merge-proof path literals above describe their pinned merge only.
+
+The moved executable needs exactly two reasoned line-level lint directives on
+its existing dynamic imports. This tool loads the installed package's public
+compiled lifecycle entry by npm name, just as an adopter process does. A relative
+source `index.js` is not shipped there. The module graph continues to forbid
+platform module self-imports; the tool lives in lifecycle to preserve the
+directory-only source-root inventory. No indirect loader or blanket disable is
+introduced. Removing only those two added directive lines produces bytes exactly
+equal to the original executable (`cmp` against the original Git blob). The bin
+name, options, output, exits and executable statements are unchanged.
+
+The execution-surface digest changes only because the manifest bin value changes:
+old `sha256-b741019609f4df89ea2083e5956461c9ecda23b8ed8142e993b8f8c75905acc1`;
+new `sha256-996ffd9d83a8604e189709a43367a3a31b1a89efbc0bd92444e4b8c47ed78ffe`.
+The catalog digest and matching publication-policy pin change together. Recompute
+with the repository function on the real manifest:
+
+```sh
+node --experimental-strip-types --input-type=module -e 'import {readFileSync} from "node:fs"; import {packageExecutionDigest} from "./scripts/oss-publication-policy.ts"; console.log(packageExecutionDigest(JSON.parse(readFileSync("packages/platform/package.json","utf8"))))'
+```
+
+The existing source-preview fixture copies the new bin path exactly; its scripts
+and assertions are unchanged. No other execution-surface pin or control changes.
+The two cold-consumer failures remain pending exact compiler diagnosis and a
+separate minimal synthetic-core fixture repair; no assertion is relaxed.

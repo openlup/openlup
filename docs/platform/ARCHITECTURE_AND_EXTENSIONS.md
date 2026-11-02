@@ -2489,7 +2489,7 @@ defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 ### Application command-line tooling
 
 The tool-only Node executable
-[`openlup`](../../packages/platform/src/openlup.mjs) ships inside
+[`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside
 `@openlup/platform`. It is separate from imported engine entries and adds no
 package, host bundle or dependency installer. Use the executable from your exact
 installed package set; a source candidate does not establish availability in an

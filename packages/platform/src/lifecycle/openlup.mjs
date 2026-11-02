@@ -52,6 +52,7 @@ try {
       schemaVersion: Number(values["schema-version"]),
     };
     validatingInput = false;
+    // eslint-disable-next-line no-restricted-syntax -- tool entry, not a platform module: it loads the installed package's published entry by name, exactly as an adopter's process would; the module graph forbids this for modules, and the file lives in lifecycle only because src holds module directories only
     const { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError } = await import("@openlup/platform/lifecycle");
     const boundary = "Only explicit snapshot paths are upgrade-managed. All unlisted files are application-owned. Upstream-unchanged paths preserve local edits. No SQL, installs, deployment, version marker or hooks run. Apply needs exclusive access; a complete upgrade is not atomic.";
     const describe = plan => plan.files.map(file => ({ ...file, ownership: file.action === "preserved" || file.action === "unchanged" ? "locally-customizable" : "upgrade-managed" }));
@@ -66,6 +67,7 @@ try {
   } else if (positionals.length === 1 && positionals[0] === "verify" && ![values.root, values.from, values.to, values["schema-version"]].some(value => value !== undefined)) {
     if (values.app === "") throw new TypeError("empty_app_path");
     validatingInput = false;
+    // eslint-disable-next-line no-restricted-syntax -- tool entry, not a platform module: it loads the installed package's published entry by name, exactly as an adopter's process would; the module graph forbids this for modules, and the file lives in lifecycle only because src holds module directories only
     const { verifyApp, APP_VERIFICATION_BOUNDARY } = await import("@openlup/platform/lifecycle");
     const boundary = `${APP_VERIFICATION_BOUNDARY} Explicit --app imports trusted application code, which must not boot a host or execute effects; this is not a sandbox.`;
     if (values.app === undefined) {

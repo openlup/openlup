@@ -844,7 +844,7 @@
       "id": "platform-command-line-tooling",
       "when": "Tool-only application-file upgrade and composed-app diagnosis executable",
       "paths": [
-        "packages/platform/src/openlup.mjs"
+        "packages/platform/src/lifecycle/openlup.mjs"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#application-command-line-tooling"
