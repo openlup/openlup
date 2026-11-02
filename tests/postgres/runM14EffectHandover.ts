@@ -52,7 +52,7 @@ const expectedTail = expectedUnits.at(-1);
 assert(expectedTail, "Selected canonical manifest must contain its baseline");
 if (!catchup) assert.equal(selected.objectInventorySha256, "e9ede569e52d11196f437ccd059ebc8914010eb0087fdea3c503e08b4460f5ac");
 const connectedTableCount = connectedNativeStoreTables.length;
-assert.equal(connectedTableCount, 82, "Keep the 8A-extended finite graph unchanged");
+assert.equal(connectedTableCount, 87, "Keep the 8A-extended finite graph unchanged");
 if (!image || !/^sha256:[0-9a-f]{64}$/.test(image)) throw new Error("Supply one already-local immutable Node24.21.0 image ID; this witness never pulls/builds images");
 if (process.version !== "v24.21.0") throw new Error("M14 witness requires Node24.21.0");
 const modules = join(root, "node_modules");

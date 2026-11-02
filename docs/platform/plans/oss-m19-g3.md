@@ -1,8 +1,8 @@
 # Native order, subscription and parcel destinations
 
-Status: BLOCKED on the unchanged standalone M14 finite-profile preflight below.
-The granted recovery classification, bounded PostgreSQL proof and all66 focused
-Vitest suites pass. No DCO, native review, submission or release.
+Status: local implementation and proof complete for the sensitive owner read.
+All66 focused files and the full standalone M14 witness pass after the explicitly
+authorized measured-count update. No DCO, native review, submission or release.
 
 ## Outcome, authority and boundaries
 
@@ -664,3 +664,66 @@ alignment guard and all later assertions. The remaining standalone profile
 failure is reported, not normalized away. No useful additional abstraction is
 needed; scope now stops at the existing-witness ruling. Gate examples:240s build,
 241s pack,151s first typecheck,331s native strengthening; no gate bypass.
+
+
+## Refreshed handoff ruling, same run
+
+Final freshness read of writers-common adds an explicit extension to the count
+exception: runM14EffectHandover.ts:53-55 pins current inventory and connected-table
+count; update both to measured values, leave its message text and everything else
+unchanged, and execute all handover assertions to the end. That supersedes the
+pending scope question/blocked counter stop above. Current e9ede569... inventory
+already matches measured qualified separate96; only literal82->87 changes now.
+The five table names and preserved old82 names/order are recorded above. No
+source/SQL/function/table inventory or package-byte change. No new permission
+question is needed; continue the existing supplied local Node/profile witness.
+
+
+## Full standalone handover completion after the extended ruling
+
+The witness executes to its end and exits0 under Node24.21.0 plus the supplied
+immutable local image. Outcome:
+LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION.
+Actual selected catalogue96 ends at G3's3ca1a151... forward and observes measured
+separate inventorye9ede569...; current finite graph87 is explicit and asserted.
+All source-writer retirement, graph/private-media publication, recovery and target
+activation assertions execute. Two independent accepted effects are recovered;
+one uncertain operation remains fenced. One ordinary duty dispatches through
+actual restricted R; replay makes0provider calls after the initial1. The worker's
+expected uncertain refusal is preserved, not suppressed. Cleanup failures empty.
+No full-store RPO/SLO, real-provider or hosted acceptance claim.
+
+Evidence report: .context/scratch/oss-m14-connected-catchup/journey-nomMFW/report.json;
+summary+digest: .context/scratch/g3-resume-handover-proof.json. The previous87/82
+preflight failure remains historical and is now closed under the refreshed count
+rule, not waived. Witness delta from the prior WIP is exactly82->87, message and
+all other body statements unchanged. Both literals relative to R0 are measured:
+current inventorye9ede569... and count87. Five names that moved the count are above.
+
+Current source code base stays09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a; no second
+main merge. Fresh policy fetch is4c7afd2590dc6998e22464153fca70a92eecfeb2. Only
+changed AGENTS/CONTRIBUTING clauses permit a tree-identical trailer tip after a
+qualifying reviewed integration merge; no native review is started here, so that
+route is not claimed. The user-provided guide and no-DCO boundary still apply.
+Full result is66 focused files/3769cases PLUS the full standalone witness.
+
+
+Final read preparation: refreshed typecheck passes5projects/0unresolved edges/
+0consumer errors after the authorized count update. Full lint passes0errors/
+33existingwarnings; ast-grep passes. Package/API source bytes are unchanged from
+the actual7999 B real pack; SQL canonical/generated3ca1a151... remains exact.
+All66 focused files/3769cases plus the full standalone handover now pass. Fresh
+scoped portability/tests no-impact trailers bind the measured count and executed
+full witness; no CONTRIBUTING or architecture-guidance change is needed. The
+initial counter block is closed only by the explicit refreshed instruction and
+complete run, not by treating a preflight as handover proof. Unsigned WIP/read
+only; no DCO/native review/pin/checker, no second main merge or G4 change.
+
+Closing self-retro: refreshing instructions at the actual handoff caught the
+newly authorized counter rule and prevented an obsolete blocked stop. Measured
+87 preserves the82 old names/order plus exactly the five declared additions.
+Keeping the literal and full assertions retains the guard; running to the end
+proves its finite scope while preserving one intentionally fenced uncertain duty.
+No further optional changes or new mechanism are warranted. Remaining owner
+read/control/ordered integration is1-2workingdays excluding waits; native review
+repair cycles0. OMS marker/attempt-storage exclusions remain unchanged.
