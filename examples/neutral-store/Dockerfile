@@ -5,8 +5,6 @@ COPY artifacts/ ./artifacts/
 RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
-ENV STARTER_CONTAINER=1
-ENV PORT=4319
 USER node
 EXPOSE 4319
-CMD ["node", "--experimental-strip-types", "host/server.ts"]
+CMD ["node", "--experimental-strip-types", "host/server.ts", "--port", "4319", "--listen", "0.0.0.0"]

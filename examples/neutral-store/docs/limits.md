@@ -40,7 +40,7 @@ Readers of the supplement and coffee configurations may expect these features;
 the examples provide none of them and make no health or compliance claim.
 The same statement is visible in both locales on the limits page.
 
-Every N5 action is visible on both account and limits pages in PL and EN and
+Every N5 action is visible on both account and limits pages in Polish and English and
 refuses with `starter_account_preferences_unavailable`, including private-profile
 views and the combined profile/address/billing/private-profile views action.
 
@@ -66,3 +66,9 @@ bindings are still pending. They return `host_binding_required` or the relevant
 authority refusal. Those are implementation blockers, not additional accepted
 native limits. In particular, an invalid-grant example does not prove that a
 valid grant works. Completion requires the real positive and refusal journeys.
+
+Both example catalogues price in `XTS` test units for fictional market `ZZ` at
+`UTC`. These choices make no real tax, shipping or compliance claim. The selected
+configuration is a non-secret `--configuration` argument. The one-command
+installation target still defaults from the owned registry and refuses while
+its bootstrap is absent; CLI transport does not supply an installation capability.

@@ -15,8 +15,8 @@ The application owns `configurations`, `defaultConfigurationId` and
 `selectConfiguration` in `owned/store.config.ts`. Add another typed configuration
 there and select its ID as the default; no managed file needs a vertical name.
 IDs are lowercase alphanumeric slugs with single hyphens, at most 80 characters.
-The host and lifecycle use that owned default when `STORE_CONFIGURATION` is absent
-or empty. Set the variable to select another registered ID. Unknown IDs refuse.
+The host and lifecycle use that owned default when `--configuration` is absent.
+Pass `--configuration <id>` to select another registered ID. Unknown IDs refuse.
 The registry and default are owned upgrade inputs; the slug validator and shared
 offer rules remain managed. This bounded preview contract promises no wider API
 stability or automatic upgrade preservation.

@@ -29,11 +29,9 @@ local implementation, later DCO contribution, submission and merge after the
 applicable reads, independent reviews and required checks. It grants no
 publishing, release dispatch, credentials, settings, cost, numeric budget change
 or general control edit. Final verification and landing retain their existing
-scheduling and authorization boundaries. The current local authority covers the
-accepted configuration/default and import-boundary repairs, signed contribution
-commits and independent native review. This run stops with review evidence and
-a final-verification slot request; it does not push, open a PR, post a receipt
-or run canonical verification.
+scheduling and authorization boundaries. The current run repairs source neutrality
+and stops for a delta design read before any new contribution commit or review.
+It does not push, open a PR, post a receipt or run canonical verification.
 
 Source base and current instruction revision:
 `bb0008481a11267ec6dbe3e7e531299777cddc19` (2026-11-01).
@@ -137,7 +135,7 @@ all localized destination routes.
 Playwright 1.62.0 uses existing Chromium revision 1234; no browser installation
 was needed. Supplements: 34 UI specs pass and one required purchase spec fails.
 Coffee: the same 34 pass and the same purchase spec fails. Each run follows all
-15 message destinations in PL and EN, checks cart persistence across reload and
+15 message destinations in Polish and English, checks cart persistence across reload and
 checks a visible named refusal. Both failed purchase snapshots display
 `host_binding_required`; the purchase expectation remains unchanged, with no
 skip or expected-failure marker. Thus UI execution is proved, durable purchase
@@ -174,13 +172,13 @@ Payment-method setup and saved account draft resume were named in the accepted
 limits but had no visible action. Both now use the existing bilingual action
 inventory and their existing refusal codes. The inventory regression fails on
 the old source; browser regressions check both actions on account and limits
-pages in PL and EN. No native action or new extension mechanism is introduced.
+pages in Polish and English. No native action or new extension mechanism is introduced.
 
 The protected extraction, lifecycle, ownership and customization sources remain
 unchanged, as do manifest scripts and all closed-inventory inputs. No new source
 file or catalog row is required. Application tests now pass 39 cases, and strict
 typecheck and build pass. Both configurations pass 36 browser UI specs, including
-the new PL/EN refusal-action checks on account and limits pages; each still fails
+the new Polish/English refusal-action checks on account and limits pages; each still fails
 the unchanged required purchase spec with `host_binding_required`. Root lint,
 ast-grep and published-tree typecheck pass. No browser spec is skipped.
 
@@ -290,3 +288,35 @@ No local source review or signed commit establishes those missing outcomes.
 Self-retro: the owned registry is the smallest adequate location for a default;
 a second managed list of allowed brand IDs created upgrade work without a
 commerce constraint. The import boundary needs no runtime loader or new command.
+
+## Source neutrality repair
+
+Local host inputs are explicit non-secret command-line arguments: configuration,
+port and listen address. The owned registry still supplies the default. Lifecycle
+accepts an optional configuration ID, applies the same selection at installation
+and passes it to the child host through Compose command arguments. Its no-flag
+`up` invocation remains the one-command target, with a named refusal while the
+installed bootstrap is absent. Container ports are published on host loopback.
+The source-release extraction test isolates its nested test runner with an empty
+environment; it reads no parent settings and adds no variable.
+
+Both catalogues use ISO test currency `XTS`, fictional country `ZZ` and `UTC`.
+Amounts remain unchanged, and no real price conversion, jurisdiction, tax or
+shipping service is implied. Installed checkout/quote/payment-execution/shipping
+contracts admit these formats. The real four-table seed proof is repeated for
+the selected test market. No currency-specific real provider is selected.
+Polish and English copy and routes remain intact, and money formatting receives
+the active configured locale ID directly.
+
+The platform neutrality ratchet is a mandatory check before source review. A
+second local copy of its forbidden-token list would duplicate a control, so no
+pattern-copy test is added. CLI defaults/refusals and market-format tests remain
+inside the existing test files. Inventory, manifest scripts, admitted executables
+and control logic do not change. The existing native PASS reports bind only to
+the earlier committed tree; this source repair needs its delta read and fresh
+reviews after a later signed commit. A source read or passing UI journey still
+does not qualify installation, a durable order/subscription or real upgrade.
+
+Self-retro: run the canonical neutrality ratchet during implementation, before
+review. Passing generic lint/type checks does not detect deployment assumptions
+that the existing ratchet explicitly refuses.

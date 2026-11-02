@@ -8,8 +8,10 @@ const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
 
-function run(executable, argv) {
-  execFileSync(executable, argv, { cwd: root, stdio: 'inherit', env: process.env });
+function run(executable, argv, input) {
+  execFileSync(executable, argv, { cwd: root,
+    stdio: input === undefined ? 'inherit' : ['pipe', 'inherit', 'inherit'],
+    ...(input === undefined ? {} : { input }) });
 }
 
 if (command === 'candidate') {
@@ -37,12 +39,25 @@ if (command === 'candidate') {
   }, null, 2) + '\n');
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
 } else if (command === 'up') {
-  if (args.length > 0) throw new Error('starter_up_unexpected_arguments');
   const { installDemonstration } = await import('./installation/install.ts');
   const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
-    await installDemonstration(selectConfiguration(process.env.STORE_CONFIGURATION || undefined));
-    run('docker', ['compose', 'up', '--build', '--wait']);
+    let configuration;
+    for (let index = 0; index < args.length; index += 2) {
+      if (args[index] !== '--configuration') throw new Error('starter_argument_unknown');
+      if (configuration !== undefined) throw new Error('starter_argument_duplicate');
+      const value = args[index + 1];
+      if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
+      configuration = value;
+    }
+    const config = selectConfiguration(configuration);
+    await installDemonstration(config);
+    // The same selected configuration reaches the installer and the container host.
+    const override = { services: { application: { command: [
+      'node', '--experimental-strip-types', 'host/server.ts',
+      '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
+    ] } } };
+    run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--build', '--wait'], JSON.stringify(override));
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)
       ? error.message : 'starter_installation_failed';
@@ -65,6 +80,6 @@ if (command === 'candidate') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | down | verify | upgrade <args> | ownership\n');
   process.exitCode = 2;
 }

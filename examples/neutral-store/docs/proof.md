@@ -108,7 +108,7 @@ portable-rail qualification. The installed bootstrap binding is still absent,
 and `./lifecycle up` refuses `starter_installation_binding_required`.
 
 Both configurations pass 38 browser UI specs, including the six N5 actions on
-account and limits pages in PL and EN and the visible inventory-traceability
+account and limits pages in Polish and English and the visible inventory-traceability
 boundary. Each retains the single unchanged required purchase failure with
 `host_binding_required`. No native purchase or upgrade result follows from these
 passing UI/seed witnesses. The independent extraction recipe additionally uses an exact source snapshot

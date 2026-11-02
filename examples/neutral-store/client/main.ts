@@ -70,7 +70,7 @@ async function start(): Promise<void> {
     const context: PageContext = {
       config, locale, route, query: new URLSearchParams(location.search), fragments,
       t: key => copy[locale][key],
-      money: amount => new Intl.NumberFormat(locale === 'pl' ? 'pl-PL' : 'en-GB', {
+      money: amount => new Intl.NumberFormat(locale, {
         style: 'currency', currency: config.market.currency,
       }).format(amount / 100),
       getCart: cart.get,

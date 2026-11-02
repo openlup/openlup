@@ -2,10 +2,7 @@ name: neutral-store
 services:
   application:
     build: .
-    environment:
-      STORE_CONFIGURATION: ${STORE_CONFIGURATION:-}
-      PORT: '4319'
-      STARTER_CONTAINER: '1'
+    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0']
     ports:
       - '127.0.0.1:4319:4319'
     healthcheck:

@@ -80,11 +80,12 @@ No external email provider, payment provider or marketplace connector is active.
 To run the other configuration through the same code:
 
 ```sh
-STORE_CONFIGURATION=coffee npm start
+npm start -- --configuration coffee
 ```
 
 Stop the running process before restarting on the same port. For the eventual
-Compose path, select `STORE_CONFIGURATION=coffee` when invoking `./lifecycle up`.
+Compose path, use `./lifecycle up --configuration coffee`. With no flags,
+`./lifecycle up` uses the owned default.
 `./lifecycle down` stops this Compose project without deleting persistent data.
 
 ## Customize and upgrade
@@ -149,3 +150,27 @@ Sample grant links deliberately use invalid values, which must refuse instead of
 accessing another account. Local captured messages must supply real scoped
 grants once their bindings exist. Follow [destination mapping](docs/destinations.md)
 for the mounted paths and [proof](docs/proof.md) for required execution evidence.
+
+## Neutral inputs and local transport
+
+Both fictional catalogues use the ISO test currency `XTS`, fictional country
+`ZZ` and timezone `UTC`. Amounts are illustrative test units, with no exchange,
+pricing, tax or jurisdiction claim. Polish and English remain UI content; money
+formatting uses the selected locale ID directly.
+
+The starter reads no environment configuration. For direct host use, pass
+`--configuration <id>`, `--port <number>` and `--listen <address>` after `npm start --`.
+The port defaults to 4319 and listen address to 127.0.0.1. The only other supported
+listen address is 0.0.0.0 for explicit container transport. Unknown/duplicate flags,
+missing values, invalid ports/addresses and unknown configurations refuse by name.
+Compose passes the container listen/port flags and publishes only host loopback.
+Lifecycle accepts the optional configuration flag for `up`; the same selected ID
+reaches the install step and child host through a stdin Compose command override.
+The documented no-flag `./lifecycle up` remains the one-command target.
+
+These arguments contain only a public configuration ID, port and listen address.
+There are no credential arguments, URLs, keys or passwords. The current installer
+capability and runtime login are unbound; no password or socket capability is
+silently manufactured. A later bootstrap needs its own qualified capability and
+security review. This preview still refuses before installation when that binding
+is absent. No customer environment is selected by a demonstration flag.

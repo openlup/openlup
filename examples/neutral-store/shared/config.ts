@@ -41,9 +41,9 @@ export interface StoreConfig {
     heroAlt: Localized;
   };
   market: {
-    country: 'PL';
-    currency: 'PLN';
-    timezone: 'Europe/Warsaw';
+    country: string;
+    currency: string;
+    timezone: string;
     locales: readonly Locale[];
   };
   offer: {
@@ -74,6 +74,13 @@ export interface StoreConfig {
 
 export function assertConfig(config: StoreConfig): void {
   const offer = config.offer;
+  if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
+    || typeof config.market.currency !== 'string' || !/^[A-Z]{3}$/.test(config.market.currency)
+    || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
+    throw new Error('starter_market_invalid');
+  }
+  try { new Intl.DateTimeFormat('en', { timeZone: config.market.timezone }); }
+  catch { throw new Error('starter_market_invalid'); }
   if (typeof config.id !== 'string' || config.id.length > 80
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');
   if (!config.brand.name.trim() || !config.legal.demoOnly || config.features.risk !== false) {
@@ -110,4 +117,33 @@ export function assertConfig(config: StoreConfig): void {
     seen.add(product.sku);
     slugs.add(product.slug);
   }
+}
+
+
+/** Non-secret host arguments; the owned registry supplies the absent configuration. */
+export function parseHostArguments(args: readonly string[]): {
+  configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0';
+} {
+  let configuration: string | undefined;
+  let port = 4319;
+  let listen: '127.0.0.1' | '0.0.0.0' = '127.0.0.1';
+  const seen = new Set<string>();
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index]!;
+    if (!['--configuration', '--port', '--listen'].includes(flag)) throw new Error('starter_argument_unknown');
+    if (seen.has(flag)) throw new Error('starter_argument_duplicate');
+    seen.add(flag);
+    const value = args[index + 1];
+    if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
+    if (flag === '--configuration') configuration = value;
+    else if (flag === '--port') {
+      if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))
+        || Number(value) < 1024 || Number(value) > 65535) throw new Error('starter_port_invalid');
+      port = Number(value);
+    } else {
+      if (value !== '127.0.0.1' && value !== '0.0.0.0') throw new Error('starter_listen_invalid');
+      listen = value;
+    }
+  }
+  return { configuration, port, listen };
 }
