@@ -865,8 +865,9 @@ Inventory remains a non-adapter entry with no catalog import; its bundle-stock s
 Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its data/http/bff inputs remain type-only: the native read
-store takes the data entry's executor without constructing a driver or pool.
+entry. Its http/bff inputs remain type-only. The native read store takes the data
+entry's executor without constructing a driver or pool; the native writer uses
+data's role-free pooled transaction lane at runtime.
 The physical-table availability projection also lives at commerce/server over a
 structural query client and a required host provider predicate. Its pure ladder
 is browser-safe commerce; SDK narrowing stays in the reference adapter. The
@@ -876,15 +877,17 @@ composition passes its selected port through unchanged; PostgreSQL binds the
 native ATP reader when the host supplies `stockSourceKey`. Private preview
 transport remains host-owned.
 
-Effective bundle selection alone adds the pricing value edge described above;
+Effective bundle selection adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose
 plain bundle DTO types. Catalog server is now an adapter because its declarations
 reach optional pg types; runtime import and executor reads still work without
-peers. Contracts remains a non-adapter. The native writer, pooled transaction
-binding and transport remain reference-owned; sparse SQL projections add no
+peers. Contracts remains a non-adapter. Catalog owns the native writer, pooled
+transaction binding, shared RPC marshalling and error constructors. Host
+authorization, response mapping and managed transport remain reference-owned;
+sparse SQL projections add no
 installation chain or migration.
 
 The experimental promotions module has value edges to pricing through

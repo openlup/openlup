@@ -831,7 +831,7 @@ The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
 those existing module identities, with no environment discovery, client creation
 or registration. It imports only readiness types: composition gains no catalog
-edge, and catalog keeps its type-only data edge plus one pricing value edge for
+edge. Catalog uses data at runtime for the native bundle writer and pricing for
 the effective-window selector. Package boundary
 checks pin those imports and peer-free composition declarations. The packed
 consumer exercises both new stores and the descriptor without optional peers;
@@ -853,11 +853,16 @@ SKUs across compositions, calls the injected port once when SKUs are present and
 skips it otherwise; the host port owns its query strategy, and missing answers
 remain unknown. Named reference wrappers inject lifecycle and stock
 helpers, existing admin kit/spec/flags, validators, responder, wire versions and
-the reference-owned RPC error constructor. The read error has one package identity.
+the packaged RPC error constructor. Read and write errors retain one package identity.
 `createPostgresBundleCatalogStore` now accepts the data entry's injected
 `PgQueryExecutor`; it renders the incumbent list/detail/feed/history SELECTs
-without constructing a pool or switching roles. The writer, pooled transaction
-binding and transport adapters remain reference-owned. `BUNDLE_MIGRATIONS`
+without constructing a pool or switching roles. `createPostgresBundleAdminWriteStore`
+binds the unchanged shared writer to the data entry's pooled role-free transaction
+lane; it encodes the routines' three JSON arguments for the native driver while
+preserving SQL null/default behavior. Hosts retain authorization, response mapping
+and transport composition.
+`BundleRpcError` and its `DomainRpcError` base are exported by this entry;
+reference paths re-export those same constructors. `BUNDLE_MIGRATIONS`
 projects canonical units 16 and 19 with their original paths, positions, hashes
 and byte-identical SQL. These sparse projections are not an installation chain:
 apply the complete canonical manifest. No new migration or activation is added.
