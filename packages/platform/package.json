@@ -252,6 +252,11 @@
       "import": "./dist/invoicing/index.js",
       "default": "./dist/invoicing/index.js"
     },
+    "./invoicing/postgres": {
+      "types": "./dist/invoicing/postgres/index.d.ts",
+      "import": "./dist/invoicing/postgres/index.js",
+      "default": "./dist/invoicing/postgres/index.js"
+    },
     "./invoicing/contracts": {
       "types": "./dist/invoicing/contracts/index.d.ts",
       "import": "./dist/invoicing/contracts/index.js",

@@ -1991,6 +1991,16 @@ covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 ## Invoicing contracts
 
+The optional `@openlup/platform/invoicing/postgres` composition supplies a captured
+sandbox provider and native owned invoice history/tickets. Its append-only
+artifact observations retain repeat-safe full-identity receipts and explicitly
+non-fiscal PDF bytes; no real fiscal provider or clearance is supplied. History
+uses the authenticated principal/order join and preserves signed correction
+lineage and stored currency. The host retains authentication, seller/money
+selection, scheduling and routes; managed adapters are unchanged. See
+[captured native invoices](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for the exact selection and refusal boundaries.
+
 `createInvoiceServices` and `createInvoiceContribution` are exported through
 `@openlup/platform/invoicing`. Explicit provider selection and host readiness
 precede factory construction or claim. Factories bind the existing issue,

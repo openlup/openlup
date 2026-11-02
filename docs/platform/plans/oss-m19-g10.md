@@ -619,3 +619,41 @@ The final staged neutrality scan caught environment-access syntax quoted in
 this execution note. The note now states the result without that syntax; no
 reader, baseline entry, scanner or test was changed. The failed scan is retained
 in ignored proof history, and the final staged scan is repeated.
+
+
+### Integration before final verification
+
+The delivery grant now covers final local verification, pushing the reviewed
+branch, a ready pull request and queue admission in the named landing slot,
+provided main remains the exact integrated commit. Releases, publication,
+credentials/settings and the deferred fulfillment reads remain excluded.
+
+Main advanced from `e2461449849d3c6b0586a3c9043f550aa7ebabea` to
+`af172573385851a5ab73adbb1fda71804ea4bb26`, adding captured native
+invoices and owned account history. Native preparation and the verification
+merge preflight both refused the conflict. The forced merge resolved only the
+single expected-entry line in `packages/platform/test/packageBoundary.test.ts`:
+retain main's `invoicing/postgres` entry in place and append this task's
+`fulfillment/native` entry in its existing position. No line splitting,
+reformatting or reordering; the catalog, cold consumer and all other files
+merged automatically. This manual integration consumes native cycle 2 of 3;
+there is no mechanical-merge exemption. A further cycle needs supervisor notice.
+
+Stable patch IDs excluding this task record are
+`7b80ad9d640586d17f303ed340765adf4cc670df` before integration and
+`7d7b029070732ee812a6a43b3f97e3c2a6de22a3` against the new main.
+They differ only because the boundary witness's retained one-line context now
+includes the invoice entry. Per-file ordered added/deleted lines match for
+every other task path. Exact diffs and the comparison are retained in ignored
+task scratch. No new API, production behavior, control or budget was added.
+
+Self-retro: one closed export inventory line is a predictable parallel merge
+point; preserve both ordered entries and rerun its real structural audit rather
+than changing its grammar or weakening the witness.
+
+The landing order changed during this integration: the prerequisite forward
+class takes the next verification slot. This run finishes only integration,
+focused checks and native review, then stops ready for verification. It starts
+no canonical verification or waiter, push, pull request or queue operation.
+A later resume must revalidate current main and give notice before a third
+repair cycle.

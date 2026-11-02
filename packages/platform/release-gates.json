@@ -575,6 +575,16 @@
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"
     },
+    "./invoicing/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/invoicing/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/postgres/index.d.ts",
+      "snapshot": "api/invoicing-postgres.api.md"
+    },
     "./invoicing/contracts": {
       "role": "capability",
       "maturity": "experimental",
