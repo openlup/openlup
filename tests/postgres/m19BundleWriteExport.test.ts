@@ -16,12 +16,13 @@ it("uses installed bundle writes on qualified-v2 through the restricted runtime 
   const consumer = join(scratch, "consumer"); mkdirSync(consumer);
   const environment = { ...processEnvironment }; delete environment.NODE_PATH; delete environment.NODE_OPTIONS;
   const command = (name: string, args: string[], cwd = root) => execFileSync(name, args, { cwd, env: environment, encoding: "utf8", timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
-  const packs = ["core", "outbox", "platform"].map(name => {
-    const [packed] = JSON.parse(command("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], join(root, "packages", name)));
+  // The locked root supplies driver/type peers; installed platform bytes come from local tarballs.
+  const packs = ["packages/core", "packages/outbox", "packages/platform", "node_modules/zod"].map(directory => {
+    const [packed] = JSON.parse(command("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], join(root, directory)));
     return join(scratch, packed.filename);
   });
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
-  command("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...packs, "pg@8.22.0", "@types/pg@8.20.0", "@types/node@24.13.3"], consumer);
+  command("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...packs], consumer);
   for (const name of ["core", "outbox", "platform"]) expect(realpathSync(join(consumer, "node_modules/@openlup", name))).toBe(join(consumer, "node_modules/@openlup", name));
   writeFileSync(join(consumer, "consumer.ts"), `
 import { createPostgresBundleAdminWriteStore, createBundleAdminWriteStore, BundleRpcError, DomainRpcError, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, type BundleWriteRoutineClient, type PostgresBundleAdminWriteStore } from '@openlup/platform/catalog';
@@ -35,7 +36,7 @@ void [store.close, bound.cloneDraft, error.sqlstate, reason, BUNDLE_RELATION, BU
 `);
   for (const mode of ["NodeNext", "Bundler"]) {
     const configuration = join(consumer, `${mode}.json`);
-    writeFileSync(configuration, JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: "ES2022", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")] }, files: ["consumer.ts"] }));
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: "ES2022", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode, types: ["node"], typeRoots: [join(root, "node_modules/@types")] }, files: ["consumer.ts"] }));
     command(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "-p", configuration], consumer);
   }
   let container: PostgresContainer | undefined;
