@@ -1485,6 +1485,8 @@ through an active purchase; renewal orders resolve their own frozen operation
 reference, never the subscription's later future address. Shipment preparation
 pins its first document under the native dispatch lock. Hosts compose this reader
 in the existing authoritative preparation transaction before freezing requests.
+The shipment destination read and command enqueue must share one transaction
+on one connection; otherwise the host owns the intervening window.
 
 A human operator can correct an unowned created/packed/label_pending current
 parcel. Once a dispatch ref, command or attempt exists, the order and parcel keep
@@ -1510,10 +1512,11 @@ The existing template mapper and explicitly composed subscription message facade
 do not automatically consume the native outbox. Host mail dispatch remains
 unbound; no delivered-email claim follows from enqueue.
 
-These are customer names, street addresses, phone and delivery instructions,
+These documents carry full postal addresses and contact phone numbers, customer names
+and delivery instructions,
 plus identifying parent, actor and reference strings. Hosts should use opaque
-references and avoid personal data in keys/reasons. There is no destination
-export/erasure path; existing identity erasure does not erase these documents.
+references and avoid personal data in keys/reasons. There is no destination privacy
+export or erasure path; existing identity erasure does not erase these documents.
 Do not claim complete privacy coverage. Privileged connected-store transfer
 retains exact documents, bindings and the existing command/support ledgers under
 whole-packet row/byte bounds and filtered-login refusal; it is not a subject

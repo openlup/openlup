@@ -1,8 +1,8 @@
 # Native order, subscription and parcel destinations
 
-Status: local implementation and proof complete for the sensitive owner read.
-All66 focused files and the full standalone M14 witness pass after the explicitly
-authorized measured-count update. No DCO, native review, submission or release.
+Status: owner read accepted for DCO; bounded transaction-race and public-text
+additions proved below. Ready for the ordered native review after control and
+earlier slots. SQL unchanged; submission and release remain unstarted.
 
 ## Outcome, authority and boundaries
 
@@ -13,8 +13,8 @@ base and recovered policy revision 3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d.
 G4 and every other worktree stay untouched. The supervisor authorized local SQL,
 manifest selection, public bindings, own API snapshots, transfer additions,
 characterization/refusal tests and unsigned WIP commits. No approval-class pin,
-checker edit, DCO or native review is authorized. Landing waits for separate
-control, owner read and ordered predecessors. No hosted qualification is claimed.
+checker edit or native review is authorized. The later accepted-read grant below
+authorizes DCO; landing still waits for separate control and ordered predecessors. No hosted qualification is claimed.
 
 The lead accepted newAddress only (saved book is a named refusal), a separate
 address routine, and future-only application once dispatch owns the parcel.
@@ -727,3 +727,95 @@ proves its finite scope while preserving one intentionally fenced uncertain duty
 No further optional changes or new mechanism are warranted. Remaining owner
 read/control/ordered integration is1-2workingdays excluding waits; native review
 repair cycles0. OMS marker/attempt-storage exclusions remain unchanged.
+
+
+## Accepted-read additions and DCO preparation
+
+The supervisor records the accepted head3d2b167d/treec097681f/forward3ca1a151/
+diff00e9a131 read. Only an additive real-PostgreSQL same-transaction read/enqueue
+race and public transaction/privacy wording are authorized before DCO as
+Bart Roszkowski <dev@openlup.com>. No renewed read for exactly that delta. No SQL
+change is authorized: if the test shows the lock fails to span that transaction,
+stop and report the SQL question. No pin/checker or native review action.
+
+The earlier frozen-command tests cover a command committed before address change.
+Their helper's autocommit read/enqueue pair is not a safe general host recipe.
+The new test must hold one restricted-role connection/transaction from read to
+enqueue, observe the concurrent editor actually waiting on its advisory lock,
+then commit the command before permitting the edit. It must fail if that lock
+is absent, and assert the named next-parcel result, dispatch_owned reason, old
+parcel/order reader and old frozen command fingerprint. No migration byte changes.
+
+Public owner wording must explicitly carry full postal addresses and contact
+phones, state no erasure path, and require read/enqueue in one transaction and
+connection; otherwise the host owns the window. Use root owner docs outside the
+tarball to retain the measured7999 B package within8200, not a cap raise.
+The address-change notice binding is owned by G8, with no G3 mail change.
+Remaining native review waits on the small control and earlier slots. No G4 or
+other worktree changes, no reserved OMS marker/attempt-storage change.
+
+
+## Accepted-read race proof and final local checks
+
+CD-M19-74 same-transaction witness PASS on actual PostgreSQL through the public
+port and restricted g3_runtime/session service_role. The preparation connection
+begins a transaction, reads the old immutable shipment document and retains its
+native-dispatch advisory lock. A second runtime connection starts the address
+change before enqueue. Owner observation asserts that the editor has an ungranted
+advisory lock matching the preparer's granted lock AND pg_blocking_pids identifies
+the preparer; an early editor completion or absent lock fails the test. Preparation
+then enqueues the old fingerprint on that same connection/transaction while the
+editor is still waiting. Commit releases it; the change returns
+applied_from_next_parcel, currentParcel.reason=dispatch_owned, on original/replay.
+Order/shipment readers still return the old document, the command retains its old
+fingerprint, status stays created, and the subscription reader exposes the new
+future destination. No SQL correction was needed or made. The existing earlier
+freeze/submit race remains a distinct witness, not proof of the read/enqueue gap.
+
+Fresh targeted suites: native23, donor3, transfer9, operatorRecovery16,
+operatorAuthority6, postgresOperatorAuthority13, reference m12AccountSupportBinding18,
+packageBoundary2840: eight files/2928cases PASS. These reruns strengthen the
+accepted66-file/3769-case evidence, not a claim that all66 were rerun for this
+additive test/docs delta. Full standalone handover evidence above remains intact.
+Logs are .context/scratch/g3-dco-native.out and g3-dco-<suite>.out. Fresh typecheck
+passes5projects/0unresolved edges/0consumer errors. All original existing tests
+stay unchanged in this delta. No production source, SQL, package or config change.
+
+The public owner sections explicitly say full postal addresses and contact phone
+numbers, opaque identifying references, and no erasure path. DATA_AND_MIGRATIONS
+requires one transaction/connection for shipment read and enqueue; otherwise the
+host owns the intervening window. These root docs add zero tarball bytes. G8 owns
+the address-change notice binding; G3's durable transactional notice is unchanged.
+Real npm pack including SQL/manifest remains2326730 B/2917files versus R0's
+2318731 B/2913files: +7999 B/+4files,201 B under8200. Canonical and packaged
+forward remain3ca1a151b7ad7d7dd01ed7cf40c50d91dfac39f5d2ed1a76e81a9a3743e50413.
+
+For the granted DCO preparation, certify the four own unpublished WIP commits
+including the actual R0 merge, preserving every tree and the parent topology;
+only DCO metadata and mapped parent identities change. Retain the accepted read
+object under an own backup ref and record a before/after tree map in scratch.
+The final accepted additions commit carries the new scoped tests no-impact
+trailer rather than changing CONTRIBUTING. No code rebase, second main merge,
+SQL edit, pin/checker, native review or external write is authorized or performed.
+
+Self-retro: separating the read/enqueue gap from the earlier frozen-command race
+made the missing transaction condition observable. Checking the actual waiting
+advisory lock prevents a coincidental row-lock wait from giving false confidence.
+The smallest adequate correction is the added witness and public composition
+requirement; no SQL or package growth is needed. Remaining control/ordered
+integration/native review is1-2workingdays excluding waits; repair cycles0.
+
+
+Final working-tree checks: focused gate admitted lint after93s; npm run lint
+passes with0errors/33existingwarnings, including package rebuild and ast-grep
+structural cases. API check passes; typecheck results above remain green. Fresh
+lint/API used supported Node24.22.2/npm11.19.1; the prior selected proof/pack used
+Node24.21.0/npm11.19.0. All2917 files in the actual current pack byte-match after
+the final lint rebuild. Package SHA256 is
+3d0e460a8d34d7d10a4cf62acf0dc9a30939ea0d0b1ac0f251a8f314895ea310.
+Redacted WIP scan includes merge diffs and all four own commits, with no leaks.
+The change note is packages/platform/changes/native-destinations.md; CHANGELOG
+is unchanged. The final scoped tests trailer binds the additive witness; no
+CONTRIBUTING edit. Historical no-DCO WIP messages retain their original context;
+the current accepted-read grant authorizes their later sign-off. No native
+review, canonical verify, push or external write; control/earlier slots remain.

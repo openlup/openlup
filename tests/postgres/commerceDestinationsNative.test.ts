@@ -171,6 +171,50 @@ async function frozenCommand(f: Fixture) {
  const claim = (await runtime.query("SELECT public.commerce_fulfillment_claim_provider_commands($1,'dispatch_create',1,$2,120) result", [provider, "e".repeat(64)])).rows[0].result;
  return { frozen, fingerprint, command, claim };
 }
+it("holds the destination read lock through enqueue on one transaction while a concurrent change waits", async () => {
+ const f = await fixture(), prep = await runtime.connect(), edit = await runtime.connect(), key = `prepare-race-${randomUUID()}`;
+ let pending: ReturnType<typeof change> | undefined;
+ try {
+  await prep.query("BEGIN; SET LOCAL statement_timeout='3s'");
+  const prepPid = (await prep.query("SELECT pg_backend_pid() pid,current_user,session_user")).rows[0];
+  const editPid = (await edit.query("SELECT pg_backend_pid() pid,current_user,session_user")).rows[0];
+  for (const row of [prepPid, editPid]) expect(row).toMatchObject({ current_user: "service_role", session_user: "g3_runtime" });
+  const frozen = await port(prep).read("shipment", f.shipment);
+  expect(frozen).toEqual(f.original);
+  const fingerprint = createHash("sha256").update(JSON.stringify(frozen.address)).digest("hex");
+  let done = false;
+  pending = change(f, key, "Future after atomic preparation", 1, edit);
+  void pending.then(() => { done = true; }, () => { done = true; });
+  const deadline = Date.now() + 5000;
+  while (!(await owner.query(`SELECT EXISTS (
+   SELECT 1 FROM pg_catalog.pg_locks w JOIN pg_catalog.pg_locks h
+    ON w.locktype=h.locktype AND w.database IS NOT DISTINCT FROM h.database
+    AND w.classid=h.classid AND w.objid=h.objid AND w.objsubid=h.objsubid
+   WHERE w.pid=$1 AND h.pid=$2 AND w.locktype='advisory' AND NOT w.granted AND h.granted
+  ) AND $2=ANY(pg_catalog.pg_blocking_pids($1)) blocked`, [editPid.pid, prepPid.pid])).rows[0].blocked) {
+   if (done) { await pending; throw new Error("Address change did not wait for the reader transaction"); }
+   if (Date.now() > deadline) throw new Error("Address change did not block on the reader's advisory lock");
+   await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  expect(done).toBe(false);
+  const command = await call(prep, "commerce_fulfillment_enqueue_provider_command", [f.shipment, `provider-${randomUUID()}`,
+   "dispatch_create", "1", randomUUID(), "a".repeat(64), fingerprint, null, "b".repeat(64), "c".repeat(64), "d".repeat(64), 2]);
+  expect(done).toBe(false);
+  await prep.query("COMMIT");
+  const changed = await pending;
+  expect(changed).toMatchObject({ outcome: "applied_from_next_parcel", appliesFrom: "next_parcel",
+   currentParcel: { reason: "dispatch_owned", destinationId: frozen.destinationId } });
+  expect(await change(f, key, "Future after atomic preparation")).toEqual({ ...changed, replayed: true });
+  expect(await port().read("order", f.order)).toEqual(frozen);
+  expect(await port().read("shipment", f.shipment)).toEqual(frozen);
+  expect((await port().read("subscription", f.subscription)).destinationId).toBe(changed.futureDestinationId);
+  expect((await runtime.query("SELECT command_payload_fingerprint FROM public.commerce_fulfillment_provider_commands WHERE id=$1", [command.commandId])).rows)
+   .toEqual([{ command_payload_fingerprint: fingerprint }]);
+  expect((await owner.query("SELECT status FROM public.fulfillment_shipments WHERE id=$1", [f.shipment])).rows).toEqual([{ status: "created" }]);
+ } finally {
+  await prep.query("ROLLBACK"); await pending?.catch(() => undefined); prep.release(); edit.release();
+ }
+});
 it("submits a frozen old recipient concurrently while address SQL holds the created shipment lock", async () => {
  const f = await fixture(), frozen = await frozenCommand(f), key = `race-${randomUUID()}`;
  const barrier = await owner.connect(), edit = await runtime.connect();
