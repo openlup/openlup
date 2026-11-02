@@ -1354,6 +1354,15 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+The subscriptions entry also exports `createNativeSubscriptionBinding`,
+`createNativeRetryDriver`, `withNativeDeliveryAlignmentRenewalAdmission`,
+`createPostgresRenewalSettlementPort` and `nativeSubscriptionSchema`. These are
+opt-in native composition and persistence boundaries; hosts supply readiness,
+transactions, a shared population lease and exact payment-attempt readback.
+See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
+for the pending destination seam and qualification limits.
+
+
 The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
 committed `activateNativePurchaseWithRenewal` convenience call. A completion

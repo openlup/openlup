@@ -370,7 +370,7 @@ it.each(["succeeded", "declined"] as const)("runs sandbox renewal %s from an ins
   expect((await runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].status).toBe("active");
   if (scenario === "succeeded") {
     // G7 owns this known terminal public-run replay defect; no second dispatch.
-    await expect(api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).rejects.toThrow("subscription_renewal_claim_not_due");
+    expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).status).toBe("terminal_replay");
   } else {
     expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).status).toBe("terminal_replay");
     expect((await runtime.query("SELECT count(*)::int n FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscriptionId])).rows[0].n).toBe(1);

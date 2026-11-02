@@ -5,6 +5,11 @@ it does not certify a migration path or an upgrade service.
 
 ## Data ownership
 
+Native terminal replay replaces only `subscription_claim_due_renewal` while
+retaining its header, ACL, frozen-input comparison and subscription-first lock
+order. Terminal history precedes due eligibility; cancelled new work refuses.
+The subscription owner below defines the public behavior and proof.
+
 The native `20261101223000_subscription_purchase_renewal.sql` forward records
 purchase facts and renewal-attachment duties beside the existing activation
 spine. Activation commits service plus the duty; renewal header/lines/method
@@ -1498,6 +1503,15 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The native terminal-renewal replay forward preserves the claim routine's
+signature, defaults, invoker rights, search path, ownership and ACL. It moves a
+matching stored succeeded/refused answer before current due eligibility, under
+the same subscription-then-operation locks and full frozen-input comparison.
+Changed replay input remains 23505. Cancellation permits historical terminal
+readback but never new or nonterminal claims. Apply this ordered forward before
+selecting that public replay behavior; the managed chain and separate adopter
+native copies require their own adoption rather than changing implicitly.
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
 SQL assets are copies of issued units with unchanged canonical identities,

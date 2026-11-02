@@ -1768,10 +1768,12 @@ evidence, then authorize recovery; service stays active throughout.
 The [installed PostgreSQL witness](../../tests/postgres/subscriptionPurchaseRenewal.test.ts)
 uses restricted runtime connections, real tarballs, writer failure/rollback,
 database restart and fresh processes. Purchase composition inputs remain fixtures
-until the joined checkout/payment proof. Successful public-run terminal replay
-still encounters `subscription_renewal_claim_not_due`; direct frozen readback is
-durable, but that runner repair is separate. This witness does not
-qualify whole-day lateness extension.
+until the joined checkout/payment proof. Matching succeeded or refused terminal
+history now replays before due eligibility, including after cancellation; changed
+identity, fingerprint or frozen input still refuses. Cancellation never admits
+new or nonterminal work. The [public renewal witness](../../tests/postgres/subscriptionPublicRenewal.test.ts)
+checks zero-write terminal replay, actual unhealthy-method repair, exhaustion,
+stock wait and whole-day payment lateness using genuinely past schedules.
 
 The hosted failure port now carries applied-transition attribution end to end:
 `applyFailedResult` returns optional nullable `paymentAttemptId` and
@@ -1975,10 +1977,31 @@ bound to that same callable. Neither factory installs a timer or selects a
 population. Disabled composition supplies no job; a selected module still needs
 its run port and complete catalogue schema observation.
 
-The [native reference binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
-composes the existing renewal runner, mandatory G23, N1 dunning and N3 stock wait
-inside one host-owned durable population lease. Both normal-due and stock-recovery
-rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
+`createNativeSubscriptionBinding` from `@openlup/platform/subscriptions` composes
+renewal, delivery admission, retry and stock wait inside one host-owned durable
+population lease. The [reference binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
+joins that pipeline to the existing public `createSubscriptionContribution`
+from `@openlup/platform/composition`, retaining the same job and trigger.
+The pipeline itself returns services, schema and realization admission without
+importing the composition module. Hosts compose those two public factories.
+Public `createNativeRetryDriver`,
+`withNativeDeliveryAlignmentRenewalAdmission`, `createPostgresRenewalSettlementPort`
+and `nativeSubscriptionSchema` also allow explicit host composition. No additional
+package entry or automatic executor is installed. Supply the complete installed
+catalogue identity, readiness observer, transaction lane, original frozen mandate
+and payment-owner ports. The payment readback must identify the exact prepared
+retry attempt; a sandbox host reuses its payment simulator's persisted attempt
+and observation, never the purchase ingress to settle the renewal. The retry
+readback's optional `sourceEvidence` carries the payment owner's source kind,
+observation reference/status/time/fingerprint and exact attempt reference into
+the existing recovery truth transaction. Sandbox recovery requires all six,
+with `verifiedEvidenceRef` equal to `sandbox:<observation ID>` and the exact
+observation instant as `occurredAt`. Ordinary renewal completion does not qualify
+this recovery path. Preserve the original saved method authorization time;
+a prepared ambiguous attempt is reconciled without another dispatch. Destination
+composition remains at the frozen order snapshot's `shippingAddressRef` seam;
+its durable reader/revision is pending, so no destination or quote is fabricated.
+Both normal-due and stock-recovery rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
 `error` result with `renewal_processing_failed` and later rows still execute.
 Static admission precedes G23;
 existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
@@ -2512,6 +2535,17 @@ readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstr
 defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
 ## Existing-store transfer and recovery
+
+The finite connected profile includes subscription retry obligations and receipts,
+recovery authorizations and token hashes, stock-wait cases, and their dunning
+case/notification parents. It preserves frozen identity, retry state, expiry,
+revocation, consumed authority and notification leases rather than restarting
+those duties. These customer-linked payloads share the aggregate transfer limits
+and existing erasure-coverage limit. Token hashes retain the authority of valid
+bearers on the destination, so source retirement and exclusive target activation
+remain mandatory host steps. Populated renewal transfer also needs the stock
+profile's inventory/reservation entries; capture refuses absent profile entries
+instead of filtering writer-created facts.
 
 The [local handover witness](../../tests/postgres/runM14EffectHandover.ts)
 combines the existing canonical graph/private-media transfer with three dispatch

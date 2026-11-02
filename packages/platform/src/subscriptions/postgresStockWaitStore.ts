@@ -1,6 +1,6 @@
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding, StockWaitStorePort } from "./contracts/stockWait.js";
 import type { RenewalSchedule } from "./contracts/renewal.js";
-import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { subscriptionCorrelationSql, subscriptionCorrelationJoin, subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 export interface NativeStockWaitBinding {
   executor: SubscriptionQueryExecutor;
@@ -143,7 +143,15 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       });
     },
     async listNormalDue(input: { limit: number; asOf: string }) {
-      return array(await invoke(executor, "subscription_stock_wait_normal_due", [input.limit, input.asOf])).map(value => codec.due(subscriptionRecord(value)));
+      // Stock wait owns eligibility; the purchase codec also needs durable paid lineage.
+      const result = await executor.query(`SELECT due.*,${subscriptionCorrelationSql}
+        FROM jsonb_to_recordset(public.subscription_stock_wait_normal_due($1::integer,$2::timestamptz))
+        AS due(subscription_id uuid,client_id uuid,scheduled_at text,cadence_days integer,cycle_number integer,
+          currency_code text,stock_source_key text,settlement_channel_key text,authorization_ref text,
+          payer_account_ref text,unattended_charge_authorized_at text,delivery_admission text,delivery_block_reason text)
+        JOIN public.subscriptions s ON s.id=due.subscription_id ${subscriptionCorrelationJoin}
+        ORDER BY due.scheduled_at,due.subscription_id`, [input.limit, input.asOf]);
+      return result.rows.map(row => codec.due(row));
     },
     async deficits(input: { snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; operationId: string; now: string }) {
       return options.withTransaction(async db => deficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now])));

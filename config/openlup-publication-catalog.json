@@ -1206,6 +1206,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1583,6 +1587,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g2.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7.md",
       "class": "public-output"
     },
     {
@@ -3251,6 +3259,10 @@
     },
     {
       "path": "packages/platform/sql/20261101223000_subscription_purchase_renewal.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101230000_subscription_renewal_terminal_replay.sql",
       "class": "public-output"
     },
     {
@@ -7010,11 +7022,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativeRetryDriver.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeSubscriptionBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeSubscriptionSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/subscriptions/postgresCommandStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresDeliveryAlignmentStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresRenewalSettlement.ts",
       "class": "public-output"
     },
     {
@@ -27419,6 +27451,14 @@
     },
     {
       "path": "tests/postgres/subscriptionNativeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPublicRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPublicRenewalFixture.ts",
       "class": "public-output"
     },
     {
