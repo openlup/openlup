@@ -321,6 +321,18 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+The installed platform package exposes the complete existing catalogue through
+`createPlatformPostgresMigrationRunner` in `@openlup/platform/migrations`. Its
+[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema)
+selects qualified-v2 or qualified-admin explicitly with the existing role-mode
+bindings. Legacy remains the default for compatibility. The generated
+`packages/platform/sql/manifest.json` preserves canonical paths, hashes, ordering
+and inventory pins from `config/platform-migration-manifest.json`; the required installed-consumer gate
+refuses projection drift. Packaging issued units adds no migration, changes no
+SQL bytes and leaves the managed rail untouched. Module-relative asset lookup
+needs no checkout. Existing session, ledger-prefix and inventory admission still
+apply, including on status and replay.
+
 The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
 expected owner, columns, defaults, constraints and indexes, without partition
@@ -1363,6 +1375,9 @@ latest definition in the pre-class native prefix, and replacement headers stay
 identical apart from the CREATE OR REPLACE introducer. The class-local identity
 reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.
+Token separators and case folding for closed object/type identities follow ASCII
+SQL spelling; Unicode whitespace lookalikes cannot become listed identifiers or
+roles. Unicode literal data remains allowed.
 Adding a nullable column or a new CHECK on an existing table already follows the
 existing expand-only rules. The purchase-reservation slot alone adds an
 `existingTableStatements` list: three exact whole ALTER TABLE statements, in
@@ -1371,9 +1386,8 @@ from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
 foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The
 registry holds their complete text; feature SQL must include each once, in that
 order. Its existing-table ALTERs cannot fall through to generic ADD admission.
-List validation permits only qualified ALTER TABLE with DROP NOT NULL, ADD COLUMN,
-ADD CONSTRAINT NOT VALID (CHECK or foreign key, including ON DELETE RESTRICT),
-or VALIDATE CONSTRAINT actions. Targets must exist in the preceding native prefix.
+The checker pins the complete three-entry list; changing it requires a control
+change. Its target table must exist in the preceding native prefix.
 Comparison uses the existing statement splitter: leading comments/space are
 removed, internal statement bytes remain exact. Missing, duplicate, changed,
 extra or reordered companions refuse. No other slot gains this exception.
@@ -1538,6 +1552,15 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The installed complete-catalogue entry preserves this lifecycle. Its generated
+SQL assets are copies of issued units with unchanged canonical identities,
+hashes, ordering and inventory pins, rather than new forwards. Qualified and
+restricted-admin selections retain their distinct baselines and role admission;
+legacy selection remains available for existing history. The required installed-consumer gate
+compares the projection against the canonical manifest and exact source bytes.
+See [module catalogues](#module-catalogues-and-installed-histories) and the
+[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
 
 Fresh channel capture admission binds the normalized slug through the existing
 trusted scope read and the raw-source digest through its original page event.

@@ -262,6 +262,50 @@ describe("class-local normalized argument identities", () => {
   });
 });
 
+describe("PostgreSQL identifier boundaries", () => {
+  const probe = "public.fixture_probe()";
+  const definition = (name = probe) => `CREATE FUNCTION ${name} RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'value'; $$;`;
+  const run = (signature: string, statement: string, tail = `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`, prefix = "") => {
+    const value = registry(), slot = value.nativeStoreForwardClass!.slots[0]!;
+    slot.replacedFunctions = []; slot.createdFunctions = [{ signature, searchPath: "pg_catalog, pg_temp" }];
+    const text = `${prefix}\n${statement}\n${tail}`;
+    // Independent raw hashes keep attacks fully repinned even if the identity reader refuses them.
+    value.nativeStoreForwards = [{ path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: null, afterSha256: sqlSha256(statement) }] }];
+    assertNativeStoreForward(value, slot.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+  };
+  it.each(["\u00a0", "\u2002", "\u2028", "\ufeff"])("refuses a non-ASCII identifier suffix U+%s", separator => {
+    const target = probe.replace("(", `${separator}(`);
+    expect(() => run(probe, definition(target), `REVOKE ALL ON FUNCTION ${target} FROM PUBLIC;`)).toThrow(/reviewed native store/u);
+  });
+  it.each([
+    ["public.fixture_probe(uuid)", "public.fixture_probe(p_value uuid\u00a0)"],
+    ["public.fixture_probe(public.fixture_row)", "public.fixture_probe(p_value public.\u00a0fixture_row)"],
+    ["public.fixture_probe(public.fixture_key)", "public.fixture_probe(p_value public.fixture_\u212aey)"],
+  ])("refuses a different SQL argument identity disguised as %s", (signature, target) => {
+    expect(() => run(signature, definition(target))).toThrow(/reviewed native store/u);
+  });
+  it("refuses a function name that Unicode case-folds into the listed ASCII name", () => {
+    expect(() => run("public.fixture_keep()", definition("public.fixture_\u212aeep()"))).toThrow(/reviewed native store/u);
+  });
+  it.each([
+    `GRANT EXECUTE ON FUNCTION ${probe} TO \u017fervice_role;`,
+    block("\u017fervice_role", "GRANT EXECUTE", probe),
+  ])("refuses a Unicode lookalike outside the closed role list: %s", privilege => {
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${privilege}`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses a different function in a privilege target with a Unicode suffix", () => {
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\n${block("service_role", "GRANT EXECUTE", probe.replace("(", "\u00a0("))}`)).toThrow(/reviewed native store/u);
+  });
+  it("refuses Unicode case-folding in a same-file table narrowing target", () => {
+    expect(() => run(probe, definition(), `REVOKE ALL ON FUNCTION ${probe} FROM PUBLIC;\nALTER TABLE public.fixture_\u212aeep ENABLE ROW LEVEL SECURITY;`, "CREATE TABLE public.fixture_keep (id uuid);")).toThrow(/reviewed native store/u);
+  });
+  it("retains ASCII token whitespace and Unicode literal data", () => {
+    const signature = "public.fixture_probe(text)";
+    const statement = "CREATE FUNCTION public.fixture_probe(\tp_value text DEFAULT 'Żółć\u00a0')\nRETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p_value; $$;";
+    expect(() => run(signature, statement, undefined, "CREATE TABLE public.fixture_literal (label text DEFAULT 'Żółć\u00a0');")).not.toThrow();
+  });
+});
+
 describe("grant-only existing functions", () => {
   const signature = "public.fixture_grant(text[])";
   const setup = () => {
@@ -495,10 +539,10 @@ const g4g3 = JSON.parse(fixture("g4g3-statements.json").toString()) as {
   prefix: string;
   g4Statements: string[];
   refusals: { label: string; replace?: number; sql: string }[];
-  invalidListEntries: string[];
+  listRefusals: { label: string; replace?: number; sql?: string; order?: number[] }[];
   writerDoTerminatorRefusal: string;
 };
-function checkG4G3(index: number, text: string, mutate?: (value: ReviewedForwardRegistry) => void) {
+function checkG4G3(index: number, text: string) {
   const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(`\n${g4g3.prefix}`)]) }];
   value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
   if (index === 3) value.nativeStoreForwardClass!.slots[3]!.createdFunctions = structuredClone(production.nativeStoreForwardClass!.slots.find(slot => slot.row === "G3")!.createdFunctions);
@@ -508,7 +552,7 @@ function checkG4G3(index: number, text: string, mutate?: (value: ReviewedForward
     assertNativeStoreForward(value, pin.path, Buffer.from(source), preceding);
     preceding.push({ path: pin.path, bytes: Buffer.from(source) });
   }
-  const pin = bind(value, index, text); mutate?.(value);
+  const pin = bind(value, index, text);
   assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding);
 }
 
@@ -534,9 +578,8 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     for (const statement of g4g3.g4Statements) expect(isExpandOnlyPlatformForward(statement)).toBe(false);
   });
   it("compares after the existing splitter only, preserving internal statement bytes", () => {
-    expect(() => checkG4G3(2, g4(), value => {
-      value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = g4g3.g4Statements.map(statement => `\n-- leading fixture comment\n${statement}\n`);
-    })).not.toThrow();
+    const text = `${g4g3.g4Statements.map(statement => `\n-- leading fixture comment\n${statement}\n`).join("\n")}\n${sql(2)}`;
+    expect(() => checkG4G3(2, text)).not.toThrow();
     expect(() => checkG4G3(2, g4().replace("  ALTER COLUMN", " ALTER COLUMN"))).toThrow(/existing-table statement/u);
   });
   it.each(g4g3.refusals)("refuses G4 $label even with fresh feature pins", attack => {
@@ -554,21 +597,25 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     expect(() => check(`${sql()}\n${statement}`)).toThrow(/closed shapes/u);
     expect(() => checkG4G3(3, `${g3()}\n${statement}`)).toThrow(/closed shapes/u);
   });
-  it.each(g4g3.invalidListEntries)("refuses invalid class-list shape before SQL exists: %s", entry => {
-    const value = registry(); value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [entry];
-    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/existing-table/u);
+  it.each(g4g3.listRefusals)("refuses $label in the pinned class list before SQL exists", attack => {
+    const value = registry(), statements = attack.order?.map(index => g4g3.g4Statements[index]!) ?? [...g4g3.g4Statements];
+    if (attack.replace !== undefined) statements[attack.replace] = attack.sql!;
+    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = statements;
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/existing-table list is pinned/u);
   });
-  it("refuses a list on another slot and normalized duplicates during class validation", () => {
+  it("refuses the pinned list on another slot during class validation", () => {
     const value = registry(); value.nativeStoreForwardClass!.slots[0]!.existingTableStatements = [...g4g3.g4Statements];
     expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/G4-only/u);
-    delete value.nativeStoreForwardClass!.slots[0]!.existingTableStatements;
-    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [g4g3.g4Statements[0]!, `\n${g4g3.g4Statements[0]}\n`];
-    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/unique after splitting/u);
   });
   it("requires a list target in the prefix, not a new table created by this file", () => {
-    expect(() => checkG4G3(2, `CREATE TABLE public.fixture_absent (id uuid, renewal_operation_id uuid);\n${g4().replaceAll("public.fulfillment_inventory_reservations", "public.fixture_absent")}`, value => {
-      value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = g4g3.g4Statements.map(statement => statement.replaceAll("public.fulfillment_inventory_reservations", "public.fixture_absent"));
-    })).toThrow(/target absent from prefix/u);
+    const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
+    for (let index = 0; index < 2; index++) {
+      const source = sql(index), pin = bind(value, index, source);
+      preceding.push({ path: pin.path, bytes: Buffer.from(source) });
+    }
+    const text = `${g4g3.prefix}\n${g4()}`, pin = bind(value, 2, text);
+    expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding)).toThrow(/target absent from prefix/u);
   });
   it("keeps exact-statement inventory changes separate from feature approval changes", () => {
     const prior = registry(), next = registry();

@@ -1833,14 +1833,35 @@ export function assertChannelIngestForward(registry: ReviewedForwardRegistry, pa
 const nativeStoreRows = ["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"];
 const nativeStoreTimes = ["20261101222000", "20261101223000", "20261101224000", "20261101225000", "20261101230000", "20261101231000", "20261101232000"];
 const nativeStoreRoles = ["anon", "authenticated", "service_role"];
+const nativeStoreG4ExistingTable = "public.fulfillment_inventory_reservations";
+// Closed control text, not an ALTER-action grammar. Changing this list needs a
+// control change; the registry must contain exactly these three strings in order.
+const nativeStoreG4ExistingTableStatements = [
+  `ALTER TABLE public.fulfillment_inventory_reservations
+  ALTER COLUMN renewal_operation_id DROP NOT NULL,
+  ADD COLUMN purchase_order_id uuid;`,
+  `ALTER TABLE public.fulfillment_inventory_reservations
+  ADD CONSTRAINT fulfillment_inventory_reservations_purchase_order_fkey
+    FOREIGN KEY (purchase_order_id) REFERENCES public.commerce_orders(id) ON DELETE RESTRICT NOT VALID,
+  ADD CONSTRAINT fulfillment_inventory_reservations_owner_check
+    CHECK ((renewal_operation_id IS NULL) = (purchase_order_id IS NOT NULL)) NOT VALID;`,
+  `ALTER TABLE public.fulfillment_inventory_reservations
+  VALIDATE CONSTRAINT fulfillment_inventory_reservations_purchase_order_fkey,
+  VALIDATE CONSTRAINT fulfillment_inventory_reservations_owner_check;`,
+];
+// PostgreSQL treats non-ASCII separator lookalikes as identifier characters.
+// Do not erase them as JavaScript whitespace or fold them into an ASCII name.
+const nativeStoreTrim = (value: string): string => value.replace(/^[ \t\n]+|[ \t\n]+$/gu, "");
+const nativeStoreAscii = (value: string): boolean => [...value].every(character => character.charCodeAt(0) <= 0x7f);
 // This reader belongs only to the closed class. Earlier identity readers retain
 // their issued restrictions; a parseable type never authorizes a signature.
 function nativeStoreIdentity(name: string, args: string): string {
-  const types = args.trim() ? args.split(",").map(argument => {
-    if (/^(?:IN|OUT|INOUT|VARIADIC)\b/iu.test(argument.trim())) throw new Error("reviewed native store unsupported argument mode");
-    const match = /^(?:[a-z_][a-z0-9_]*\s+)?((?:uuid|text|jsonb|integer|bigint|boolean|timestamptz|bool|int|int4|int8|timestamp\s+with\s+time\s+zone|[a-z_][a-z0-9_]*\s*\.\s*[a-z_][a-z0-9_]*)(?:\s*\[\s*\])*)(?:\s+DEFAULT\s+[\s\S]+)?$/iu.exec(argument.trim());
-    if (!match) throw new Error("reviewed native store unsupported argument identity");
-    const type = match[1]!.toLowerCase().replace(/\s+/gu, " ").replace(/\s*\.\s*/gu, ".").replace(/(?:\s*\[\s*\])+$/u, "[]");
+  if (!nativeStoreAscii(name)) throw new Error("reviewed native store non-ASCII function identity refused");
+  const types = nativeStoreTrim(args) ? args.split(",").map(argument => {
+    if (/^(?:IN|OUT|INOUT|VARIADIC)\b/iu.test(nativeStoreTrim(argument))) throw new Error("reviewed native store unsupported argument mode");
+    const match = /^(?:[a-z_][a-z0-9_]*[ \t\n]+)?((?:uuid|text|jsonb|integer|bigint|boolean|timestamptz|bool|int|int4|int8|timestamp[ \t\n]+with[ \t\n]+time[ \t\n]+zone|[a-z_][a-z0-9_]*[ \t\n]*\.[ \t\n]*[a-z_][a-z0-9_]*)(?:[ \t\n]*\[[ \t\n]*\])*)(?:[ \t\n]+DEFAULT[ \t\n]+[\s\S]+)?$/iu.exec(nativeStoreTrim(argument));
+    if (!match || !nativeStoreAscii(match[1]!)) throw new Error("reviewed native store unsupported argument identity");
+    const type = match[1]!.toLowerCase().replace(/[ \t\n]+/gu, " ").replace(/[ \t\n]*\.[ \t\n]*/gu, ".").replace(/(?:[ \t\n]*\[[ \t\n]*\])+$/u, "[]");
     const array = type.endsWith("[]") ? "[]" : "", scalar = array ? type.slice(0, -2) : type;
     const aliases: Record<string, string> = { bool: "boolean", int: "integer", int4: "integer", int8: "bigint", "timestamp with time zone": "timestamptz" };
     const builtin = scalar.replace(/^pg_catalog\./u, "");
@@ -1849,7 +1870,7 @@ function nativeStoreIdentity(name: string, args: string): string {
   return `${name.toLowerCase()}(${types.join(",")})`;
 }
 const nativeStoreSignature = (signature: string): string | null => {
-  const match = /^(public\.[a-z_][a-z0-9_]*)\s*\((.*)\)$/iu.exec(signature);
+  const match = /^(public\.[a-z_][a-z0-9_]*)[ \t\n]*\((.*)\)$/iu.exec(signature);
   if (!match) return null;
   try { return nativeStoreIdentity(match[1]!, match[2]!); } catch { return null; }
 };
@@ -1859,10 +1880,10 @@ const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [
 export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readonly string[], preceding = false): Map<string, string> {
   const allowed = new Set(signatures), names = new Set(signatures.map(signature => signature.split("(")[0]!)), result = new Map<string, string>();
   for (const statement of sqlStatements(bytes.toString("utf8"), preceding)) {
-    const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+    const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)[ \t\n]*\(/iu.exec(statement);
     if (preceding && (!prefix || !names.has(prefix[1]!.toLowerCase()))) continue;
     if (!/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) continue;
-    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\s*\(([\s\S]*?)\)\s*RETURNS\s/iu.exec(statement);
+    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)[ \t\n]*\(([\s\S]*?)\)[ \t\n]*RETURNS[ \t\n]/iu.exec(statement);
     if (!header) throw new Error("reviewed native store unsupported function header");
     const signature = nativeStoreIdentity(header[1]!, header[2]!);
     if (!allowed.has(signature)) {
@@ -1878,23 +1899,6 @@ const purposeTable = "public.communication_native_sync_state";
 const purposeConstraint = "communication_native_sync_state_purpose_check";
 const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(",") === keys;
 export const isNativeStoreMigrationPath = (path: string): boolean => nativeStoreTimes.some(time => path.startsWith(`db/platform/migrations/${time}_`));
-
-// G4's exact companions, not a new expand-only ALTER permission. Use the same
-// splitter as dataStatements: leading comments/space disappear; internal bytes stay.
-function nativeStoreExistingTableStatement(sql: string): { statement: string; table: string } {
-  const statements = sqlStatements(sql), statement = statements[0]!;
-  const match = statements.length === 1 && /^ALTER TABLE (public\.[a-z_][a-z0-9_]*)\s+([\s\S]+);$/u.exec(statement);
-  if (!match) throw new Error("reviewed native store existing-table entry must be one qualified ALTER TABLE");
-  const actions = match[2]!.trim().replace(/\s+/gu, " ").split(/,\s*(?=(?:ALTER COLUMN|ADD COLUMN|ADD CONSTRAINT|VALIDATE CONSTRAINT)\b)/u);
-  for (const action of actions) {
-    if (/^(?:ALTER COLUMN [a-z_][a-z0-9_]* DROP NOT NULL|VALIDATE CONSTRAINT [a-z_][a-z0-9_]*)$/u.test(action)) continue;
-    const additive = action.replace(/ ON DELETE RESTRICT(?= NOT VALID$)/u, "");
-    if ((/^ADD COLUMN [a-z_][a-z0-9_]* /u.test(action) || /^ADD CONSTRAINT [a-z_][a-z0-9_]* (?:CHECK \(.+\)|FOREIGN KEY \([a-z_][a-z0-9_]*(?:,\s*[a-z_][a-z0-9_]*)*\) REFERENCES public\.[a-z_][a-z0-9_]*\([a-z_][a-z0-9_]*(?:,\s*[a-z_][a-z0-9_]*)*\)(?: ON DELETE RESTRICT)?) NOT VALID$/u.test(action))
-      && isExpandOnlyPlatformForward(`ALTER TABLE ${match[1]} ${additive};`)) continue;
-    throw new Error("reviewed native store existing-table action outside DROP NOT NULL, ADD COLUMN, ADD CONSTRAINT NOT VALID or VALIDATE CONSTRAINT");
-  }
-  return { statement, table: match[1]! };
-}
 
 function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
   const control = registry.nativeStoreForwardClass;
@@ -1925,9 +1929,8 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     if (new Set(signatures).size !== signatures.length) throw new Error("reviewed native store function lists must be disjoint and unique");
     if (!Array.isArray(slot.dataStatements) || slot.dataStatements.some(sql => typeof sql !== "string" || !/^(?:INSERT|UPDATE|DELETE) /u.test(sql) || sqlStatements(sql).length !== 1) || new Set(slot.dataStatements).size !== slot.dataStatements.length) throw new Error("reviewed native store data statements must be exact named statements");
     if (slot.existingTableStatements !== undefined) {
-      if (slot.row !== "G4" || !Array.isArray(slot.existingTableStatements) || slot.existingTableStatements.length === 0 || slot.existingTableStatements.some(sql => typeof sql !== "string")) throw new Error("reviewed native store existing-table list is G4-only");
-      const statements = slot.existingTableStatements.map(sql => nativeStoreExistingTableStatement(sql).statement);
-      if (new Set(statements).size !== statements.length) throw new Error("reviewed native store existing-table entries must be unique after splitting");
+      if (slot.row !== "G4") throw new Error("reviewed native store existing-table list is G4-only");
+      if (JSON.stringify(slot.existingTableStatements) !== JSON.stringify(nativeStoreG4ExistingTableStatements)) throw new Error("reviewed native store existing-table list is pinned by the checker");
     }
     if (slot.purposeCheck && (slot.row !== "G11-c" || !keysAre(slot.purposeCheck, "beforeSha256,values") || !hash(slot.purposeCheck.beforeSha256) || !Array.isArray(slot.purposeCheck.values) || slot.purposeCheck.values.length === 0 || slot.purposeCheck.values.some(value => !/^[a-z][a-z0-9_]*$/u.test(value)) || new Set(slot.purposeCheck.values).size !== slot.purposeCheck.values.length)) throw new Error("reviewed native store permits only the account-consent purpose CHECK");
   }
@@ -1960,9 +1963,10 @@ function assertNativeStoreClassTransition(before: ReviewedForwardRegistry, after
 // Keep this beside the DO rule; neither exception changes expand-only admission.
 function nativeStoreTableNarrowing(statement: string, tables: Set<string>): { kind: "RLS" } | { kind: "TABLE"; targets: string[]; role: string; grant: false } | null {
   const rls = /^ALTER TABLE (public\.[a-z_][a-z0-9_]*) ENABLE ROW LEVEL SECURITY;$/iu.exec(statement);
-  const revoke = /^REVOKE ALL ON TABLE (public\.[a-z_][a-z0-9_]*(?:\s*,\s*public\.[a-z_][a-z0-9_]*)*) FROM (PUBLIC|anon|authenticated|service_role);$/iu.exec(statement);
+  const revoke = /^REVOKE ALL ON TABLE (public\.[a-z_][a-z0-9_]*(?:[ \t\n]*,[ \t\n]*public\.[a-z_][a-z0-9_]*)*) FROM (PUBLIC|anon|authenticated|service_role);$/iu.exec(statement);
   if (!rls && !revoke) return null;
-  const targets = rls ? [rls[1]!.toLowerCase()] : revoke![1]!.split(",").map(table => table.trim().toLowerCase());
+  if ((rls && !nativeStoreAscii(rls[1]!)) || (revoke && !nativeStoreAscii(revoke[1]!))) throw new Error("reviewed native store non-ASCII table identity refused");
+  const targets = rls ? [rls[1]!.toLowerCase()] : revoke![1]!.split(",").map(table => nativeStoreTrim(table).toLowerCase());
   if (targets.some(table => !tables.has(table)) || new Set(targets).size !== targets.length) throw new Error("reviewed native store table narrowing requires tables created earlier in the same slot file");
   return rls ? { kind: "RLS" } : { kind: "TABLE", targets, role: revoke![2]!.toLowerCase(), grant: false };
 }
@@ -1973,11 +1977,11 @@ function nativeStorePrivilege(statement: string, tables: Set<string>): { kind: "
   let sql = statement, roleGuard: string | undefined;
   const conditional = /^DO\b/iu.test(statement);
   if (conditional) {
-    const block = /^DO \$\$\s*BEGIN\s+IF EXISTS\s*\(SELECT 1 FROM pg_roles WHERE rolname\s*=\s*'(anon|authenticated|service_role)'\) THEN\s+EXECUTE '([^']+)';\s*END IF;\s*END;\s*\$\$;$/iu.exec(statement);
-    if (!block || block[1] !== block[1]!.toLowerCase()) throw new Error("reviewed native store refuses DO outside the single constant role privilege shape");
+    const block = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*\(SELECT 1 FROM pg_roles WHERE rolname[ \t\n]*=[ \t\n]*'(anon|authenticated|service_role)'\) THEN[ \t\n]+EXECUTE '([^']+)';[ \t\n]*END IF;[ \t\n]*END;[ \t\n]*\$\$;$/iu.exec(statement);
+    if (!block || !nativeStoreRoles.includes(block[1]!)) throw new Error("reviewed native store refuses DO outside the single constant role privilege shape");
     roleGuard = block[1]!.toLowerCase(); sql = block[2]!.replace(/;?$/u, ";");
   }
-  const table = nativeStoreTableNarrowing(sql.replace(/\s+/gu, " ").trim(), tables);
+  const table = nativeStoreTableNarrowing(nativeStoreTrim(sql.replace(/[ \t\n]+/gu, " ")), tables);
   if (table) {
     if (table.kind === "RLS") {
       if (conditional) throw new Error("reviewed native store conditional RLS refused");
@@ -1986,14 +1990,14 @@ function nativeStorePrivilege(statement: string, tables: Set<string>): { kind: "
     if (conditional ? table.role !== roleGuard : table.role !== "public" || table.targets.length !== 1) throw new Error("reviewed native store table revoke requires PUBLIC or the same conditional role");
     return { ...table, conditional };
   }
-  const match = /^(GRANT EXECUTE|REVOKE (?:ALL(?: PRIVILEGES)?|EXECUTE)) ON FUNCTION (.+) (TO|FROM) (PUBLIC|anon|authenticated|service_role);$/iu.exec(sql.replace(/\s+/gu, " ").trim());
+  const match = /^(GRANT EXECUTE|REVOKE (?:ALL(?: PRIVILEGES)?|EXECUTE)) ON FUNCTION (.+) (TO|FROM) (PUBLIC|anon|authenticated|service_role);$/iu.exec(nativeStoreTrim(sql.replace(/[ \t\n]+/gu, " ")));
   if (!match) {
     if (conditional) throw new Error("reviewed native store conditional privilege target or role refused");
     return null;
   }
   const grant = match[1]!.toUpperCase() === "GRANT EXECUTE", role = match[4]!.toLowerCase();
-  const signatures = match[2]!.split(/\)\s*,\s*/u).map((part, index, parts) => nativeStoreSignature(`${part.trim()}${index < parts.length - 1 ? ")" : ""}`));
-  if (signatures.some(signature => signature === null) || new Set(signatures).size !== signatures.length || (grant ? match[3]!.toUpperCase() !== "TO" || role === "public" || role === "anon" : match[3]!.toUpperCase() !== "FROM") || (role === "public" && !/^REVOKE ALL(?: PRIVILEGES)? /iu.test(match[1]! + " ")) || (conditional && role !== roleGuard)) throw new Error("reviewed native store privilege role, verb or function shape refused");
+  const signatures = match[2]!.split(/\)[ \t\n]*,[ \t\n]*/u).map((part, index, parts) => nativeStoreSignature(`${nativeStoreTrim(part)}${index < parts.length - 1 ? ")" : ""}`));
+  if (!nativeStoreAscii(match[1]!) || ![...nativeStoreRoles, "public"].includes(role) || signatures.some(signature => signature === null) || new Set(signatures).size !== signatures.length || (grant ? match[3]!.toUpperCase() !== "TO" || role === "public" || role === "anon" : match[3]!.toUpperCase() !== "FROM") || (role === "public" && !/^REVOKE ALL(?: PRIVILEGES)? /iu.test(match[1]! + " ")) || (conditional && role !== roleGuard)) throw new Error("reviewed native store privilege role, verb or function shape refused");
   return { kind: "FUNCTION", targets: signatures as string[], role, grant, conditional };
 }
 
@@ -2019,9 +2023,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   let checkSource: string | undefined;
   const prefixTables = new Set<string>();
   for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
-    const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
-    if (table) prefixTables.add(table[1]!.toLowerCase());
-    if (source.path !== PLATFORM_BASELINE_FILE && [...names].some(name => statement.toLowerCase().includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed native store unsupported preceding function DDL");
+    const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)[ \t\n]*\(/iu.exec(statement);
+    if (table && nativeStoreAscii(table[1]!)) prefixTables.add(table[1]!.toLowerCase());
+    if (source.path !== PLATFORM_BASELINE_FILE && [...names].some(name => statement.toLowerCase().includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*[ \t\n]*\(/iu.test(statement)) throw new Error("reviewed native store unsupported preceding function DDL");
     for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), signatures, true)) {
       prior.set(signature, digest);
       if (source.path < `db/platform/migrations/${nativeStoreTimes[0]}_`) { baseDefinitions.set(signature, digest); baseStatements.set(signature, statement); }
@@ -2034,8 +2038,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const statements = sqlStatements(bytes.toString("utf8")), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
   if (definitions.size !== functions.length || functions.some(fn => definitions.get(fn.signature) !== forward.functions.find(pin => pin.signature === fn.signature)?.afterSha256)) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   const created = new Set(slot.createdFunctions.map(fn => fn.signature));
-  const existingTableStatements = (slot.existingTableStatements ?? []).map(nativeStoreExistingTableStatement);
-  if (existingTableStatements.some(entry => !prefixTables.has(entry.table))) throw new Error("reviewed native store existing-table target absent from prefix");
+  const existingTableStatements = slot.existingTableStatements ?? [];
+  if (existingTableStatements.length && !prefixTables.has(nativeStoreG4ExistingTable)) throw new Error("reviewed native store existing-table target absent from prefix");
   const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0;
   for (const statement of statements) {
@@ -2043,9 +2047,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) {
       const signature = [...nativeStoreFunctionDefinitions(Buffer.from(statement), signatures).keys()][0]!, fixed = functions.find(fn => fn.signature === signature);
       if (!fixed || statement.startsWith("CREATE OR REPLACE FUNCTION ") !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
-      const header = headerAttributes(statement).replace(/\s+/gu, " ").trim();
-      if (fixed.beforeSha256 !== null && headerAttributes(statement).trim() !== headerAttributes(baseStatements.get(signature)!).trim()) throw new Error("reviewed native store replacement header drifted");
-      const searchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(header)?.[1]?.toLowerCase() ?? null;
+      const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
+      if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(baseStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
+      const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(header)?.[1] ?? null;
+      if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");
+      const searchPath = rawSearchPath?.toLowerCase() ?? null;
       if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       defined.add(signature); continue;
     }
@@ -2076,20 +2082,21 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       droppedCheck = true; continue;
     }
     if (statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) {
-      const values = /^ALTER TABLE public\.communication_native_sync_state ADD CONSTRAINT communication_native_sync_state_purpose_check CHECK \(purpose IN \(('[a-z][a-z0-9_]*'(?:,\s*'[a-z][a-z0-9_]*')*)\)\);$/u.exec(statement)?.[1]?.match(/'[a-z][a-z0-9_]*'/gu)?.map(value => value.slice(1, -1));
+      const values = /^ALTER TABLE public\.communication_native_sync_state ADD CONSTRAINT communication_native_sync_state_purpose_check CHECK \(purpose IN \(('[a-z][a-z0-9_]*'(?:,[ \t\n]*'[a-z][a-z0-9_]*')*)\)\);$/u.exec(statement)?.[1]?.match(/'[a-z][a-z0-9_]*'/gu)?.map(value => value.slice(1, -1));
       if (!slot.purposeCheck || !droppedCheck || addedCheck || !values || slot.purposeCheck.values.some(value => !values.includes(value))) throw new Error("reviewed native store purpose CHECK must only widen");
       addedCheck = true; continue;
     }
     // Intercept existing-table ALTERs before generic ADD admission: otherwise a
     // changed or extra additive companion could bypass the exact ordered list.
-    const alteredTable = /^ALTER TABLE (public\.[a-z_][a-z0-9_]*)\s/iu.exec(statement)?.[1]?.toLowerCase();
+    const altered = /^ALTER TABLE (public\.[a-z_][a-z0-9_]*)[ \t\n]/iu.exec(statement)?.[1];
+    const alteredTable = altered && nativeStoreAscii(altered) ? altered.toLowerCase() : undefined;
     if (existingTableStatements.length && /^ALTER TABLE\b/iu.test(statement) && !tables.has(alteredTable ?? "")) {
-      if (statement !== existingTableStatements[existingTablePosition]?.statement) throw new Error("reviewed native store existing-table statement unlisted, duplicate or out of order");
+      if (statement !== existingTableStatements[existingTablePosition]) throw new Error("reviewed native store existing-table statement unlisted, duplicate or out of order");
       existingTablePosition++; continue;
     }
     if (slot.dataStatements.includes(statement)) { data.add(statement); continue; }
     if (/^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX) |ALTER TABLE )/u.test(statement) && isExpandOnlyPlatformForward(statement)) {
-      const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+      const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)[ \t\n]*\(/iu.exec(statement);
       if (table) tables.add(table[1]!.toLowerCase());
       continue;
     }

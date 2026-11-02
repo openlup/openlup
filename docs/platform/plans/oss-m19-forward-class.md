@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: development-preview control; CD-M19-63 accepted for DCO, native review next.
+Status: repaired control DCO-committed after its accepted read; focused proof below.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -39,8 +39,9 @@ Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
 `3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d`; applicable instruction paths are
 unchanged from the base. No main merge solely for freshness was performed.
-Branch: `codex/oss-m19-forward-class`. No task commit, real native review session,
-admission receipt, expiry or canonical verification exists. Repair cycles: zero.
+Branch: `codex/oss-m19-forward-class`. At the original read no task commit, native
+review session, admission receipt, expiry or canonical verification existed. The
+CD-M19-63 DCO commit and subsequent repair state are recorded below. Repair cycles: zero.
 Earlier read packets were unreviewed and are superseded, not accepted evidence.
 
 Current firm inventory, in timestamp order (exact signatures remain registry data):
@@ -119,7 +120,7 @@ were byte-identical. Initial missing declaration builds, the historical unchange
 registry fast-path regression and fixture-string/diagnostic expectation mistakes
 were corrected; failed attempts are not passing proof. No actual native cycle,
 receipt or expiry was created or reset. Prior patches/logs remain in scratch.
-Current evidence: 134 native, 691 existing-forward, 24 qualified, 189 queue and
+Original read evidence: 134 native, 691 existing-forward, 24 qualified, 189 queue and
 19 manifest cases pass (1,057 total). Ast-grep/whitespace pass, public typecheck
 has zero unresolved edges/consumer diagnostics and lint has zero errors/same 33
 warnings. Fresh paired npm packs, including both prepack builds, are byte-identical
@@ -192,3 +193,172 @@ sensitive native reviews. Stop READY_FOR_VERIFY forward-class afterwards; do not
 run canonical verify, push, open a PR or queue. This is a no-read prose repair.
 Self-retro for this handoff: record the accepted S1 and hash duties once in the
 existing task state and keep the executable tree fixed; no new process is needed.
+
+Native preparation continuation: CD-M19-63 was DCO-committed as 8da8774 with
+passing policy (zero unanswered), clean status and a clean gitleaks contribution
+scan. No task WIP refs exist. Native prepare then refused a conflict with current
+main. A single publication-catalog insertion conflict was resolved as the union
+of both exact rows; every other task blob and every main row/order was preserved.
+The automatic no-read integration exception is not satisfied because resolution
+was manual and context-bound patch IDs differ. Read coverage for the staged
+catalog union was requested; no answer has been inferred from elapsed time.
+
+Author boundary validation found material FC-IDENTITY-001 before counted review:
+JavaScript Unicode whitespace/case folding can reinterpret PostgreSQL identifier
+characters as an approved ASCII name. The full G6 forward, changed only to append
+NBSP to a created function and its ACL references, was admitted. An owned pinned
+PostgreSQL 16 probe confirmed the suffixed function exists while the listed ASCII
+name does not. The probe container was removed. The local class-only repair uses
+ASCII separators/trim, guards identifier/type case folding and exact closed-role
+membership. Fully repinned refusals cover NBSP/other whitespace, Unicode case
+folding, types, privilege targets and roles; Unicode literals remain accepted.
+147 focused native cases and ast-grep pass. Shared readers/expand-only grammar,
+registry data and the accepted S1/file-hash duties remain unchanged.
+
+This executable repair is a material delta from the accepted read; it is not the
+prose-only exception. Refresh the sensitive read before signing the repaired
+merge, then prepare and two fresh reviewers with the finding card. No real native
+session/report or repair cycle exists yet: prepare stopped at preflight before
+creating one. Keep all evidence; no authority, findings or budgets were reset.
+This material repair stops at the applicable read gate if it remains unanswered,
+not READY_FOR_VERIFY. Self-retro: a real PostgreSQL lexical witness exposed a
+normalization gap that green parser fixtures missed; use SQL identifier semantics
+at the class boundary while preserving Unicode data and the shared grammar.
+
+Repair-read evidence: 147 native, 691 existing-forward, 24 qualified, 189 queue
+and 19 manifest cases pass (1,070 total). Lint has zero errors/same 33 warnings,
+public typecheck has zero unresolved edges/consumer diagnostics, and ast-grep,
+whitespace and staged gitleaks pass. Legitimate G6/G2/final G11-c files still pass;
+the independently repinned mutated G6 now refuses. Fresh paired packs against
+current main, including prepack builds, have byte-identical tarballs and zero
+packed/unpacked delta for all three packages. Before R0 integration, normal policy reflected
+uncommitted main plus the repair against the old fork: five obligations, two
+unanswered; the original DCO policy PASS is not reused as a repair PASS. The
+prospective-base impact proposal in the refreshed packet is diagnostic only.
+After accepted DCO integration, normal policy must pass with any appropriate
+non-merge impact-trailer commit before counted review. This changes no gate.
+The repaired merge is staged and unsigned. No counted reviewers, PASS timestamp,
+expiry, native repair cycle, canonical verify, push, PR or queue exists. The
+remaining bounded action is acceptance of the exact repair-read identity, then
+DCO integration and two fresh native reviews under the existing attack criteria.
+
+Main advanced again during the read wait: R0 landed as 09cd599b. The unsigned
+3887ee74 integration was preserved as a patch and rebuilt against that actual
+R0 main. Only the publication-catalog insertion conflicted again; the resolution
+preserves all main rows/order and all four control rows. R0's owner-page additions
+were retained, then the class-local repair was reapplied unchanged. No other
+worktree or branch was modified. The read must bind this latest staged merge,
+not the superseded 9cc5cd6b catalog-only snapshot. Full-index whitespace against
+old HEAD sees an inherited R0 SQL blank EOF; the net control diff against R0 is
+clean and that generated main file is not changed by this task.
+
+Current policy revision and pending integration base (2026-11-02):
+`09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a`. Applicable instructions are unchanged
+from 3887ee74; R0's data-owner additions were read and preserved. The native SQL
+prefix and reviewed registry on those main revisions are identical. Fresh lint,
+public typecheck and 147 native tests pass on the R0 integration; paired real
+packs remain byte-identical (Core 182,855 B, Outbox 41,350 B, Platform 2,318,731 B).
+Normal policy against the still-unmerged old fork reports nine obligations/five
+unanswered; prospective R0-base analysis has only the unchanged configuration
+answer and the new tooling answer to bind after accepted DCO. This diagnostic is
+not a policy PASS. No publication, SQL or package-source change is introduced by
+the ten-path net control delta. The manual catalog union and identity fix are
+nonmechanical; no new admission or merge authority is inferred. The original
+three-cycle native allowance remains unused, with no counted PASS or expiry.
+
+Final R0 repair-read proof: 147 native, 691 existing-forward, 24 qualified,
+189 queue and 19 manifest cases pass (1,070 total); the legacy suite took 217 s.
+Ast-grep, lint/typecheck and net whitespace checks pass, and the staged scan has
+no leaks. The legitimate G6/G2/final G11-c probes still admit their exact bytes.
+Focused admission waited zero seconds. No counted native session or reviewer
+was created, so earliest counted PASS/expiry are absent. Stop NEEDS_READ with
+the computed staged identity and retain the unsigned merge; the new security
+control read is mandatory before repaired DCO and the two fresh native reviews.
+
+Accepted repair continuation (CD-M19-67, 2026-11-02): the coordinator accepted
+HEAD 8da87741, MERGE_HEAD 09cd599b and staged tree
+8e4e08c99cc349623128270dfa43e0ffb34bec83, including the material identity repair
+and exact catalog union. DCO merge b4fb886e retained that tree. Non-merge empty
+commit 9199d70c recomputed both source-bound documentation digests and recorded
+fresh configuration/tooling trailers. Normal policy has two obligations, zero
+unanswered; the worktree and contribution gitleaks scan are clean. No other
+worktree, feature SQL, package source, control shape or budget was changed.
+
+The lead's line rule was recomputed from direct changed-code and JSON references,
+plus its required shared session/decision suites. There are 26 unchanged existing
+files, ten using their own PostgreSQL containers, and one new native-class file.
+No existing test differs from review base 09cd599b. An additional raw git-show
+copy of the accepted pre-repair native test (8da87741) also passes unchanged
+against the repaired code. Each execution had its own focused admission; no
+canonical verify was run. The complete file results are:
+
+| File | Result |
+| --- | --- |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS: 2 passed (2) |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/expandOnlyExpressions.test.ts` | PASS: 19 passed (19) |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS: 106 passed (106) |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS: 14 passed (14) |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS: 12 passed (12) |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS: 66 passed (66) |
+| `scripts/agent-review-gate.test.ts` | PASS: 22 passed (22) |
+| `scripts/agent-review-queue.test.ts` | PASS: 189 passed (189) |
+| `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) |
+| `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) |
+| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) |
+| `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) |
+| `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) |
+| `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) |
+| `scripts/packages/set-release.test.ts` | PASS: 68 passed (68) |
+| `scripts/public-ci-neutrality.test.ts` | PASS: 60 passed (60) |
+| `scripts/qualified-migration-admission.test.ts` | PASS: 24 passed (24) |
+| `scripts/reviewed-batch-forward.test.ts` | PASS: 691 passed (691) |
+| `scripts/reviewed-native-store-forward.test.ts` | PASS: 147 passed (147) |
+| `scripts/source-preview-release.test.ts` | PASS: 718 passed (718) |
+| `scripts/source-release-preparation.test.ts` | PASS: 7 passed (7) |
+| `scripts/verify-local.test.ts` | PASS: 14 passed (14) |
+| `base-native-8da87741` | PASS: 134 passed (134) |
+
+Net control paths (separate control authority, outside the general CD-M19-10 control exclusion):
+
+- `config/openlup-publication-catalog.json`
+- `config/reviewed-platform-forwards.json`
+- `docs/platform/DATA_AND_MIGRATIONS.md`
+- `docs/platform/plans/oss-m19-forward-class.md`
+- `scripts/agent-review-queue.mjs`
+- `scripts/fixtures/reviewed-native-store/before.sql`
+- `scripts/fixtures/reviewed-native-store/registry.json`
+- `scripts/oss-source-release-contract.ts`
+- `scripts/reviewed-native-store-forward.test.ts`
+- `scripts/reviewed-platform-forward.ts`
+
+The first verification-harness run had four npm-pin failures before commands:
+Homebrew supplied npm 11.19.1 while the unchanged fixture requires 11.19.0.
+The test and runtime-pin module both match base. A checkout-local copy of the
+same Node 24.22.2 binary, its existing relative library link, and npm 11.19.0
+resolved the environment mismatch: the unchanged file then passed all 14 cases.
+The initial failed attempt and raw log remain retained; no source, test, policy
+or global toolchain was changed.
+
+No test was edited to pass; all recorded test-file SHA-256 checks match after
+execution. Detailed commands, per-module selection, raw-base identity and logs
+remain in ignored task evidence under `.context/scratch/line-rule/`. Focused
+admission wait totaled 1657 s; test execution totaled 844 s.
+The actual paired Core/Outbox/Platform packs under pinned npm 11.19.0 are byte-identical against R0,
+with zero packed/unpacked delta and zero changed entries; all package inputs
+remain unchanged. Native prepare/review follows this frozen proof: two fresh
+whole-candidate reviewers, the complete attack list, independent assessment of
+FC-IDENTITY-001, and a reporting-only reachable-example check of older classes
+and the shared expand-only parser. Older pre-existing behavior is not repaired
+here. The three-cycle native allowance is unused at this pre-review snapshot.
+
+Self-retro: JavaScript identifier matching can differ from database lexing →
+prove the mismatch on real PostgreSQL and constrain the local identity boundary.
+Runtime pin mismatch → select the exact checkout-local toolchain without
+changing a test or policy. Per-file admission waits dominated the broad unchanged-line proof; no gate,
+fixture or budget was relaxed to reduce that delay. Stop after native review at
+READY_FOR_VERIFY; final verification and all external delivery await the lead.
