@@ -10,13 +10,6 @@ in the source repository.
 
 ## [Unreleased]
 
-- Add the sandbox-only PostgreSQL payment simulator with durable active-attempt
-  fencing and server-observation verification. Browser returns cannot pay an
-  order. Captures after cancellation remain terminal operator-review truth;
-  no order reopen, refund, real provider store or schedule-rule change is added.
-  Requires the complete native chain through the sandbox-attempt forward.
-
-
 ## [0.36.0]
 
 - Publishable on the npm `latest` dist-tag as `0.36.0`, from tag

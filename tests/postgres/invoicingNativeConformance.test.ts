@@ -97,7 +97,7 @@ it("fresh complete install and exact pre-M09 prefix upgrade preserve rows/histor
   expect(prefixLength).toBeGreaterThan(0);
   expect(h.freshDigest).toBe(manifest.objectInventorySha256);
   expect(await money().ingestEvent(h.legacy.input)).toMatchObject({event:{replayed:true,state:"settled"},effects:{accountingRequested:true}});
-  expect((await h.pool.query("SELECT * FROM public.payment_truth_events WHERE id=$1",[h.legacy.eventId])).rows).toEqual([h.legacy.row]);
+  expect((await h.pool.query("SELECT * FROM public.payment_truth_events WHERE id=$1",[h.legacy.eventId])).rows).toEqual([{...h.legacy.row, review_required_at: null}]);
   expect(h.upgradeFiles).toEqual(units.slice(prefixLength).map(unit=>unit.file));
   expect((await h.pool.query("SELECT * FROM public.platform_schema_migrations WHERE position<$1 ORDER BY position",[prefixLength])).rows).toEqual(h.prefixHistory);
   expect((await h.pool.query("SELECT * FROM public.commerce_orders WHERE id=$1",[h.witness.order])).rows).toEqual(h.prefixRows);

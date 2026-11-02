@@ -1,7 +1,8 @@
 # Native sandbox payment ingress and durable attempts
 
-Status: operator-discovery edit and maintainer read complete; local DCO candidate
-awaits native admission control and scheduled review.
+Status: stopped at an existing-suite missing packaged SQL asset failure after
+the authorized additive-column assertion passed. The signed candidate is intact;
+no source/SQL repair or native review has been performed.
 Development preview; sandbox money only.
 
 ## Outcome, scope and authority
@@ -209,3 +210,179 @@ discovery. The owner now supplies a listing query, and the PostgreSQL witness
 executes that exact documentation block against positive and negative facts.
 The export uses existing payments/index.ts and payments/contracts/index.ts
 entries in the closed package inventory; no new subpath or source move is needed.
+
+## Existing-suite compatibility audit
+
+The supervisor requested unchanged existing-suite coverage before native review.
+Only the one-forward literal counts/current inventory pins and the change-note
+move are authorized repairs here; source/SQL failures stop for a delta read.
+No new approval pin, checker edit or native review is permitted.
+
+The change note moves unchanged to
+`packages/platform/changes/sandbox-payment-truth.md`, with no catalogue row.
+Current complete counts are qualified-v2 96, qualified-admin 95 and legacy 92.
+The released-schema helper is an indirect companion of the qualified-admin proof;
+its current-chain literal receives the same +1. Issued-prefix counts and historic
+`inventory`/`sha256` values remain untouched. Fresh independent PG16 measurements
+on the byte-identical forward agree with the prior reference runs:
+
+- legacy: `f86acaf1c03e228c8dddb3e01f20f4a524b36989e0ffb112e31b2966456b6685`.
+- bootstrapMigrator: `6b54e3182cb105c95d47a27c04fa71136f712c6980c8710aa4129f628f2b63b6`.
+- separateMigrator: `e9544067ee22ba9b6ff8044c1aaead3455f64c2a016f999590f51a39b37bb769`.
+- installerManaged: `465ced2137adce08fa2af8dfa4fb1109d2fc72e0f5005420485ddb9f8d4a089b`.
+- operatorProvisioned: `fc6b68ffbef31684ac25b9cdf25149541033612ddbeb56621bd3a24a59f253c2`.
+
+Compatibility findings from the owning code, to be checked against the suites:
+non-sandbox truth does not consult simulator tables; ordinary settlement and
+renewal retain their existing writers. Native readback adds optional application
+status/review fields, while the port accepts old responses that lack them.
+Cancelled captured truth now becomes a review fact on the native truth path,
+including non-sandbox channels, instead of rolling back. Exact recorded event
+replay returns before new-attempt validation. Fresh sandbox ingestion or
+terminal reconciliation without a simulator companion are refused with wrong_attempt;
+there is no backfill or implicit adoption of a legacy sandbox attempt. Complete
+selected-schema installation remains a precondition for connected capture; old
+cohorts with empty new companion tables must still capture/restore.
+
+The exact pre-G6 connected-transfer test bytes will run against current production
+modules, then the accepted candidate file will be restored unchanged. This
+separately checks the old cohort rather than relying on its added G6 fixture.
+Other suites keep their test bytes, apart from the authorized literal/pin edits.
+The inventory includes direct module/table/routine references, proof wrappers,
+and the retained subscription-composition discriminator; fixture-only lexical
+hits are conservatively included. Private run logs/results are under
+`.context/scratch/g6-existing-*`.
+
+Existing suite inventory (55 files; two passed, one failed, 52 not run at stop):
+
+- `packages/platform/test/account-support/ownerRefusals.test.ts`
+- `packages/platform/test/account-support/paymentMethodComposition.test.ts`
+- `packages/platform/test/packageBoundary.test.ts`
+- `packages/platform/test/payments/adapterConformance.test.ts`
+- `packages/platform/test/payments/bindings.test.ts`
+- `packages/platform/test/payments/contracts.test.ts`
+- `packages/platform/test/payments/postgresPaymentTruth.test.ts`
+- `packages/platform/test/payments/preparedAttempt.test.ts`
+- `packages/platform/test/payments/reconciliation.test.ts`
+- `packages/platform/test/payments/refundEvidence.test.ts`
+- `packages/platform/test/payments/repairAuthority.test.ts`
+- `packages/platform/test/payments/repairContinuity.test.ts`
+- `packages/platform/test/payments/stripe/conformance.test.ts`
+- `packages/platform/test/payments/stripe/factory.test.ts`
+- `packages/platform/test/payments/tpay/conformance.test.ts`
+- `packages/platform/test/payments/tpay/factory.test.ts`
+- `packages/platform/test/payments/truth.test.ts`
+- `packages/platform/test/payments/verifiedIngress.test.ts`
+- `packages/platform/test/payments/verifyHandler.test.ts`
+- `packages/platform/test/subscriptions/contracts.test.ts`
+- `scripts/documentation-impact.test.ts`
+- `scripts/packages/platform-cold-consumer.test.ts`
+- `scripts/payment-truth-schema.test.ts`
+- `scripts/public-ci-payment-allowance.test.ts`
+- `scripts/reference-adapters/paymentEventPortConformance.test.ts`
+- `scripts/source-preview-release.test.ts`
+- `server/_lib/publicCoordinates.test.ts`
+- `server/adapters/paymentFailureDisplay.test.ts`
+- `server/adapters/paymentFailureEvidenceCompatibility.test.ts`
+- `server/adapters/postgres/paymentTruth.test.ts`
+- `server/adapters/supabase/commerce/paymentRecoveryGuidance.test.ts`
+- `server/adapters/supabase/payment/paymentProviderReconciliation.test.ts`
+- `server/bff/commerce/tpay-channels.test.ts`
+- `server/domains/payment/paymentTruth.test.ts`
+- `server/infra/stripe/stripeApiClient.test.ts`
+- `server/shared/preparedProviderAttempt.test.ts`
+- `src/pages/ReferencePaymentRepairPage.test.tsx`
+- `tests/platform/checkoutRecoveryProviderConformance.test.ts`
+- `tests/postgres/channelConnectedRestore.test.ts`
+- `tests/postgres/connectedManagedRetained.test.ts`
+- `tests/postgres/connectedStoreTransfer.test.ts`
+- `tests/postgres/invoicingContinuity.test.ts`
+- `tests/postgres/invoicingNativeConformance.test.ts`
+- `tests/postgres/m14ManagedCatchup.test.ts`
+- `tests/postgres/m14QualifiedAdminComposition.test.ts`
+- `tests/postgres/m14QualifiedComposition.test.ts`
+- `tests/postgres/m14RecipeConformance.test.ts`
+- `tests/postgres/m14ReleasedSchemaUpgrade.test.ts`
+- `tests/postgres/m14RestrictedConnectedRestore.test.ts`
+- `tests/postgres/managedStorageTransfer.test.ts`
+- `tests/postgres/paymentsNativeConformance.test.ts`
+- `tests/postgres/reviewedBatchForwards.test.ts`
+- `tests/postgres/reviewedPortableCreation.test.ts`
+- `tests/postgres/subscriptionComposition.test.ts`
+- `tests/stripe/stripeCriticalPathFakeGate.test.tsx`
+
+Audit stop: `server/adapters/postgres/paymentTruth.test.ts` passed 4 cases and
+`tests/postgres/invoicingContinuity.test.ts` passed 3, unchanged.
+`tests/postgres/invoicingNativeConformance.test.ts:100` failed the first case,
+"fresh complete install and exact pre-M09 prefix upgrade preserve rows/history
+and bind both native forwards and three sparse rails". The prior event replays
+successfully at line 99, but SELECT * after upgrade returns an added
+`review_required_at: null` field (21 columns versus the captured pre-forward 20).
+The comparison reports only that added field. This is an observed G6 schema
+compatibility failure of the unchanged preservation witness, not an authorized
+chain-count edit. No assertion or production/SQL fix was attempted. Resolving it
+requires the supervisor's decision on a bounded preservation-test exception or
+a source/SQL delta read; the current audit cannot be called green. The runner
+stopped immediately, leaving 52 suites pending, including connected/retained and
+renewal continuation proofs. Unexecuted cases may expose additional failures.
+
+The permitted count/current-pin changes and fragment move remain uncommitted
+on top of the intact signed candidate; no new DCO commit was made over a red
+mandatory check. The forward's SHA-256 is unchanged:
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`.
+Fresh inventory measurements and the full suite list/results are retained in
+private scratch; no pin, checker, native review or external mutation occurred.
+
+Audit self-retro: the first scratch runner invocation lacked npm's executable
+PATH and never started Vitest. That launch is retained separately, PATH was
+corrected without changing a test, and the actual run then exposed the preserved
+row-shape failure. Focused new witnesses had not covered this older complete-row
+upgrade contract; unchanged existing suites must precede a read.
+
+## Resumed existing-suite audit: additive assertion accepted, new asset failure
+
+The supervisor authorized exactly the full-row additive-column expectation:
+`tests/postgres/invoicingNativeConformance.test.ts:100` now requires
+`[{...h.legacy.row, review_required_at: null}]`. Every prior field still matches,
+and the new field must be null. This is the only such expectation edited; no
+field subset, second additive exception, fixture privilege or source/SQL edit.
+
+Reran that suite through the focused gate. The nullable-column assertion and
+legacy replay now pass; the same first case fails at line107 with ENOENT for
+`packages/platform/sql/20261101222000_sandbox_payment_attempts.sql`. The complete
+installation manifest includes the forward, but the packaged SQL mirror is
+absent on this pre-R0-merge candidate. This is a new actual failure, not the
+prior row-shape failure. Under the explicit "any other failure: stop" instruction,
+no SQL asset, manifest, source or assertion repair was attempted and no merge was
+performed. A byte-identical SQL asset/manifest projection was already planned
+for the later authorized merge, but that does not make this existing suite green.
+
+Results remain two existing files PASS (paymentTruth4, invoicingContinuity3),
+invoicingNativeConformance FAIL at line107 (first case; other8 unexecuted), and
+52 listed suites pending. No later suite was executed. Previous failure retained
+in `.context/scratch/g6-existing-first-stop-results.json`; resume output in
+`.context/scratch/g6-existing-logs/resume-01.log`; gate admission in its adjacent
+resume-01-gate.log. All test containers/pools cleaned by the harness.
+
+Sandbox retry compatibility answer: G2's renewal operation/ACK fence alone is
+insufficient for subscription_retry_record_recovery on sandbox. It must have
+an active simulator attempt on that exact renewal intent and latest captured
+observation, and pass its six exact evidence fields plus evidenceKey
+sandbox:<observation UUID>. Otherwise wrong_attempt/evidence-mismatch refuses
+and rolls the recovery back. A purchase attempt cannot satisfy a renewal intent;
+a retry with no purchase attempt can create its first simulator attempt on its
+pending-payment order and failed/unsettled intent, using saved authorized method
+facts, before simulated dispatch. Existing NativeRetryPositive fields alone do
+not supply this evidence. Ordinary renewal completion calls settlement directly
+and bypasses the assertion, so its success does not prove retry compatibility.
+Full call conditions, replay, ordering and limitations are recorded under G7 in
+the shared purchase-interface; this is code tracing, not joined recovery proof.
+
+The count/hash edits and changelog fragment remain intact and uncommitted, as
+does the authorized exact assertion. No signed follow-up commit was made over
+the newly red mandatory check; signed HEAD remains bff1fb3935ea8f7ee8be4cd79d1231453b79c772.
+Forward SHA remains 7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29.
+No pin/checker/native review; native repair cycles remain zero.
+Self-retro: the complete existing case caught a missing packaged migration after
+its older-row check was tightened; a SQL-inclusive size projection is not proof
+that the checked-in installer contains the asset. No further optimization added.
