@@ -11,52 +11,72 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 // database and compares what PostgreSQL itself reports with the slot's lists.
 type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck">;
 const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
-const SYSTEM_SCHEMAS = "(SELECT oid FROM pg_namespace WHERE nspname IN ('pg_catalog','information_schema') OR nspname LIKE 'pg_toast%' OR nspname LIKE 'pg_temp_%')";
+// PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
+const FIRST_USER_OID = 16384;
+const GRANT_OPTION = " WITH GRANT OPTION";
+// Node trees (default arguments, rules, policies, trigger conditions) store where the parser read them in the file, which
+// moves when the same statement sits at another offset. That is compared as nothing; everything else in a tree is compared.
+const POSITIONS = String.raw`':(?:stmt_)?location -?[0-9]+|:stmt_len [0-9]+', ':position'`;
 
-type FunctionRow = { oid: number; name: string; attrs: Record<string, unknown>; acl: string[]; src: string };
+type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<string, unknown>; acl: string[]; src: string };
 type RelationRow = { oid: number; name: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
-  functions: FunctionRow[]; relations: RelationRow[]; constraints: { rel: string; name: string; def: string }[];
-  guards: { schemas: string[]; roles: unknown; defaultAcls: unknown; eventTriggers: unknown; extensions: string[]; casts: unknown; triggers: [number, ...unknown[]][]; policies: [number, ...unknown[]][]; rules: [number, ...unknown[]][] };
+  functions: FunctionRow[]; relations: RelationRow[]; system: { functions: string; relations: string };
+  constraints: { rel: string; name: string; def: string }[]; guards: Record<string, Record<string, unknown>[]>;
 };
-const GRANT_OPTION = " WITH GRANT OPTION";
+// Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
+// node trees normalized, so a new guard is one entry here. `relation` names the column that ties a row to a relation:
+// those rows are compared for existing relations only. The documentation lists exactly these catalogs.
+const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; relation?: string }[] = [
+  { id: "schemas", catalog: "pg_namespace", where: "t.nspname !~ '^pg_(toast_)?temp_'" },
+  { id: "roles", catalog: "pg_roles" }, { id: "memberships", catalog: "pg_auth_members" }, { id: "dbSettings", catalog: "pg_db_role_setting" },
+  { id: "databases", catalog: "pg_database", drop: ["datfrozenxid", "datminmxid"] }, { id: "defaultAcls", catalog: "pg_default_acl" },
+  { id: "eventTriggers", catalog: "pg_event_trigger" }, { id: "extensions", catalog: "pg_extension" },
+  { id: "casts", catalog: "pg_cast", where: `t.oid >= ${FIRST_USER_OID}` },
+  { id: "triggers", catalog: "pg_trigger", where: "NOT t.tgisinternal", relation: "tgrelid" }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
+  { id: "rules", catalog: "pg_rewrite", where: `t.ev_class >= ${FIRST_USER_OID}`, relation: "ev_class" },
+];
 const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)||':'||a.privilege_type||(CASE WHEN a.is_grantable THEN '${GRANT_OPTION}' ELSE '' END)
-  FROM aclexplode(COALESCE(${expr}, acldefault('${kind}', ${owner}))) a ORDER BY 1)`;
+  FROM aclexplode(COALESCE(${expr}, acldefault(${kind}, ${owner}))) a ORDER BY 1)`;
 
-// Preserve every structural attribute; normalize only parse locations, which PostgreSQL records
-// from file offsets rather than from function semantics.
+// Preserve every structural attribute; normalize only parse positions.
 async function snapshot(db: PoolClient): Promise<Snapshot> {
-  const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name,
-    (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),':location -?[0-9]+',':location -1','g')) AS attrs,
-    ${aclOf("p.proacl", "f", "p.proowner")} AS acl, p.prosrc AS src
-    FROM pg_proc p WHERE p.pronamespace NOT IN ${SYSTEM_SCHEMAS} ORDER BY p.oid`)).rows;
+  const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner,
+    (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
+    ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, p.prosrc AS src
+    FROM pg_proc p WHERE p.oid >= ${FIRST_USER_OID} ORDER BY p.oid`)).rows;
   const relations = (await db.query(`SELECT c.oid::int AS oid, c.oid::regclass::text AS name, c.relkind::text AS kind, c.relowner::regrole::text AS owner,
     c.relrowsecurity AS rls, c.relforcerowsecurity AS "forceRls", c.reloptions::text AS options,
-    ${aclOf("c.relacl", "r", "c.relowner")} AS acl,
+    ${aclOf("c.relacl", "(CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::\"char\"", "c.relowner")} AS acl,
     (SELECT jsonb_agg(jsonb_build_array(a.attname,a.attacl::text) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) AS "columnAcls"
-    FROM pg_class c WHERE c.relnamespace NOT IN ${SYSTEM_SCHEMAS} AND c.relkind IN ('r','p','v','m','S','f') ORDER BY c.oid`)).rows;
+    FROM pg_class c WHERE c.oid >= ${FIRST_USER_OID} AND c.relkind IN ('r','p','v','m','S','f') ORDER BY c.oid`)).rows;
+  // Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
+  // because autovacuum changes them between two snapshots.
+  const system = (await db.query(`SELECT
+    md5(COALESCE((SELECT string_agg(to_jsonb(p)::text, E'\\n' ORDER BY p.oid) FROM pg_proc p WHERE p.oid < ${FIRST_USER_OID}),'')) AS functions,
+    md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${FIRST_USER_OID}),'')
+      || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${FIRST_USER_OID} AND a.attacl IS NOT NULL),'')) AS relations`)).rows[0];
   // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
-  const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname,'-') AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def
+  const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE con.connamespace NOT IN ${SYSTEM_SCHEMAS} ORDER BY 1,2`)).rows;
-  const guards = (await db.query(`SELECT ARRAY(SELECT nspname::text FROM pg_namespace ORDER BY 1) AS schemas,
-    (SELECT jsonb_agg(to_jsonb(r)-'oid' ORDER BY r.rolname) FROM pg_roles r) AS roles,
-    (SELECT jsonb_agg(to_jsonb(d)-'oid' ORDER BY d.defaclrole,d.defaclnamespace,d.defaclobjtype) FROM pg_default_acl d) AS "defaultAcls",
-    (SELECT jsonb_agg(to_jsonb(e)-'oid' ORDER BY e.evtname) FROM pg_event_trigger e) AS "eventTriggers",
-    ARRAY(SELECT extname||'@'||extversion FROM pg_extension ORDER BY 1) AS extensions,
-    (SELECT jsonb_agg(to_jsonb(k)-'oid' ORDER BY k.castsource,k.casttarget) FROM pg_cast k WHERE k.oid>=16384) AS casts,
-    (SELECT COALESCE(jsonb_agg(jsonb_build_array(t.tgrelid::int,t.tgname,t.tgfoid::int,t.tgenabled::text) ORDER BY t.tgrelid,t.tgname),'[]'::jsonb) FROM pg_trigger t WHERE NOT t.tgisinternal) AS triggers,
-    (SELECT COALESCE(jsonb_agg(jsonb_build_array(p.polrelid::int,p.polname,p.polcmd::text,p.polpermissive,p.polroles::text,pg_get_expr(p.polqual,p.polrelid),pg_get_expr(p.polwithcheck,p.polrelid)) ORDER BY p.polrelid,p.polname),'[]'::jsonb) FROM pg_policy p) AS policies,
-    (SELECT COALESCE(jsonb_agg(jsonb_build_array(r.ev_class::int,r.rulename,pg_get_ruledef(r.oid)) ORDER BY r.ev_class,r.rulename),'[]'::jsonb) FROM pg_rewrite r WHERE r.rulename<>'_RETURN') AS rules`)).rows[0];
-  return { functions, relations, constraints, guards };
+    WHERE con.oid >= ${FIRST_USER_OID} AND con.contype <> 'n' ORDER BY 1,2`)).rows;
+  const guards: Snapshot["guards"] = {};
+  for (const guard of GUARDS) guards[guard.id] = (await db.query(`SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) AS rows FROM (
+    SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
+    FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s`)).rows[0].rows;
+  return { functions, relations, system, constraints, guards };
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
-const quotedValues = (def: string) => (def.match(/'((?:[^']|'')*)'/gu) ?? []).map(value => value.slice(1, -1).replaceAll("''", "'"));
+const quotedValues = (list: string) => (list.match(/'((?:[^']|'')*)'/gu) ?? []).map(value => value.slice(1, -1).replaceAll("''", "'"));
+// The only shape the purpose CHECK may take, as PostgreSQL deparses it. A NOT IN, an OR, NOT VALID or NO INHERIT
+// spelling does not match and so never reads as a list of allowed values.
+const PURPOSE_SHAPE = /^CHECK \(\(purpose = ANY \(ARRAY\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\]\)\)\)$/u;
+const purposeValues = (def: string) => { const match = PURPOSE_SHAPE.exec(def); return match ? quotedValues(match[1]!) : null; };
 const fail = (message: string): never => { throw new Error(`catalog: ${message}`); };
 
 /** Compare PostgreSQL's own before/after catalogs with one slot's closed lists. Throws on any difference. */
-async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snapshot, after: Snapshot) {
+async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snapshot, after: Snapshot, migrationRole: string) {
   const resolve = async (signature: string) => Number((await db.query("SELECT $1::regprocedure::oid::int AS oid", [signature])).rows[0].oid);
   const created = new Map<number, CatalogSlot["createdFunctions"][number]>();
   for (const fn of slot.createdFunctions) created.set(await resolve(fn.signature), fn);
@@ -64,11 +84,14 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const grantOnly = new Map<number, CatalogSlot["grantOnlyFunctions"][number]>();
   for (const fn of slot.grantOnlyFunctions) grantOnly.set(await resolve(fn.signature), fn);
 
-  // 1. New functions are exactly the created list.
+  // 0. Nothing PostgreSQL ships changes: not a function, a relation privilege or a column privilege.
+  if (JSON.stringify(before.system) !== JSON.stringify(after.system)) fail("a system catalog function, relation or column privilege changed");
+
+  // 1. New functions are exactly the created list, wherever they were created.
   const knownFunctions = new Set(before.functions.map(row => row.oid));
   const added = after.functions.filter(row => !knownFunctions.has(row.oid));
-  const addedNames = added.map(row => row.name).sort(); const wantedNames = after.functions.filter(row => created.has(row.oid)).map(row => row.name).sort();
-  if (JSON.stringify(addedNames) !== JSON.stringify(wantedNames) || created.size !== wantedNames.length) fail(`created functions differ from the slot list: ${addedNames.join(", ")} versus ${wantedNames.join(", ")}`);
+  const byOid = (x: number, y: number) => x - y;
+  if (JSON.stringify(added.map(row => row.oid).sort(byOid)) !== JSON.stringify([...created.keys()].sort(byOid))) fail(`created functions differ from the slot list: ${added.map(row => row.name).join(", ")}`);
 
   // 2. Existing functions change only inside the replaced and grant-only lists.
   const current = new Map(after.functions.map(row => [row.oid, row]));
@@ -87,10 +110,10 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } else if (JSON.stringify(now) !== JSON.stringify(old)) fail(`function ${old.name} changed but is on no slot list`);
   }
 
-  // 3. Created functions: pinned search_path for every definer, no PUBLIC or anon execute, closed grantees only.
+  // 3. Created functions: owned by the migration role, pinned search_path for every definer, no PUBLIC or anon execute, closed grantees only.
   for (const row of added) {
     const entry = created.get(row.oid)!;
-    const owner = String((await db.query("SELECT proowner::regrole::text AS owner FROM pg_proc WHERE oid=$1", [row.oid])).rows[0].owner);
+    if (row.owner !== migrationRole) fail(`created function ${row.name} is owned by ${row.owner}, not the migration role`);
     const config = row.attrs.proconfig as string[] | null;
     if (entry.searchPath !== null) { if (JSON.stringify(config) !== JSON.stringify([norm(entry.searchPath)])) fail(`created function ${row.name} has proconfig ${JSON.stringify(config)}, not the pinned search_path`); }
     else if (row.attrs.prosecdef) fail(`created definer ${row.name} has no pinned search_path in its slot`);
@@ -98,39 +121,39 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (row.acl.some(item => item.startsWith("PUBLIC:"))) fail(`created function ${row.name} keeps PUBLIC execute`);
     for (const item of row.acl) {
       const grantee = item.slice(0, item.indexOf(":"));
-      if (grantee !== owner && !["authenticated", "service_role"].includes(grantee)) fail(`created function ${row.name} grants ${item}`);
-      if (grantee !== owner && item.endsWith(GRANT_OPTION)) fail(`created function ${row.name} grants ${item}, which can pass the privilege on`);
+      if (grantee !== migrationRole && !["authenticated", "service_role"].includes(grantee)) fail(`created function ${row.name} grants ${item}`);
+      if (grantee !== migrationRole && item.endsWith(GRANT_OPTION)) fail(`created function ${row.name} grants ${item}, which can pass the privilege on`);
     }
   }
 
-  // 4. Relations: no privilege or row-security change on an existing one; a new one carries only its owner's privileges.
+  // 4. Relations: no privilege or row-security change on an existing one; a new one is owned by the migration role and carries only its privileges.
   const oldRelations = new Map(before.relations.map(row => [row.oid, row]));
   const currentRelations = new Map(after.relations.map(row => [row.oid, row]));
-  for (const old of before.relations) if (JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its ACL, row security, options or column ACLs`);
+  for (const old of before.relations) if (JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
+    if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
     for (const item of row.acl) if (!item.startsWith(`${row.owner}:`)) fail(`new relation ${row.name} grants ${item}`);
     if (row.columnAcls !== null) fail(`new relation ${row.name} has column privileges ${JSON.stringify(row.columnAcls)}`);
   }
 
-  // 5. Constraints: none dropped or rewritten; the purpose CHECK only widens, and only when the slot lists it.
+  // 5. Constraints: none dropped or rewritten. The purpose CHECK may only gain values: the slot lists its preimage
+  // values, the catalog must show the same list before, and the new list must keep every one of them.
   const constraintKey = (row: { rel: string; name: string }) => `${row.rel}.${row.name}`;
   const nowConstraints = new Map(after.constraints.map(row => [constraintKey(row), row.def]));
   for (const old of before.constraints) {
     const def = nowConstraints.get(constraintKey(old));
     if (constraintKey(old) === PURPOSE_CONSTRAINT && def !== undefined && def !== old.def) {
-      const oldValues = quotedValues(old.def), newValues = quotedValues(def);
-      const wanted = slot.purposeCheck ? [...new Set([...oldValues, ...slot.purposeCheck.values])].sort() : null;
-      if (!wanted || JSON.stringify([...new Set(newValues)].sort()) !== JSON.stringify(wanted)) fail(`purpose CHECK changed beyond the slot's widening: ${def}`);
+      const oldValues = purposeValues(old.def), newValues = purposeValues(def);
+      const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
+      if (!slot.purposeCheck || !oldValues || !newValues || sorted(slot.purposeCheck.values) !== sorted(oldValues) || oldValues.some(value => !newValues.includes(value))) fail(`purpose CHECK changed beyond a widening of its listed values: ${def}`);
     } else if (def !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
-  // 6. Cheap global guards: nothing outside the slot lists changes.
-  const a = before.guards, b = after.guards;
-  for (const key of ["schemas", "roles", "defaultAcls", "eventTriggers", "extensions", "casts"] as const) if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) fail(`${key} changed`);
-  // A trigger, policy or rewrite rule attaches behaviour to an existing relation without touching its row.
-  for (const key of ["triggers", "policies", "rules"] as const) {
-    const onExisting = (rows: [number, ...unknown[]][]) => rows.filter(([rel]) => oldRelations.has(rel));
-    if (JSON.stringify(onExisting(b[key])) !== JSON.stringify(onExisting(a[key]))) fail(`${key} on existing relations changed`);
+  // 6. Guard catalogs: nothing outside the slot lists changes, and nothing attaches behaviour (a trigger, a policy, a
+  // rewrite rule, a view's own included) to an existing relation without touching its row.
+  for (const guard of GUARDS) {
+    const rows = (snap: Snapshot) => snap.guards[guard.id]!.filter(row => !guard.relation || oldRelations.has(Number(row[guard.relation])));
+    if (JSON.stringify(rows(before)) !== JSON.stringify(rows(after))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
   }
 }
 
@@ -140,11 +163,12 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
   const db = await pool.connect();
   let passed = false;
   try {
+    const migrationRole = String((await db.query("SELECT current_user::text::regrole::text AS role")).rows[0].role);
     const before = await snapshot(db);
     await db.query("BEGIN");
     try {
       await db.query(forward);
-      await assertSlotCatalog(db, slot, before, await snapshot(db));
+      await assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole);
       passed = true;
     } finally { await db.query(keep && passed ? "COMMIT" : "ROLLBACK"); }
   } finally { db.release(); }
@@ -158,19 +182,22 @@ CREATE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS tex
 REVOKE ALL ON FUNCTION public.cat_replaced(text,boolean) FROM PUBLIC;
 CREATE FUNCTION public.cat_grant_only(p text) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'x' $$;
 REVOKE ALL ON FUNCTION public.cat_grant_only(text) FROM PUBLIC;
-CREATE FUNCTION public.cat_trigger_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;`;
+CREATE FUNCTION public.cat_trigger_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+CREATE TRIGGER cat_base_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();
+CREATE VIEW public.cat_view AS SELECT id FROM public.cat_existing_table;`;
 // A default argument stores parser locations, which move when the replacement sits at another file offset.
 const SYNTHETIC_SLOT: CatalogSlot = {
   replacedFunctions: [{ signature: "public.cat_replaced(text,boolean)", beforeSha256: null, searchPath: "pg_catalog, pg_temp" }],
   createdFunctions: [{ signature: "public.cat_created(text)", searchPath: "pg_catalog, pg_temp" }],
   grantOnlyFunctions: [{ signature: "public.cat_grant_only(text)", grantTo: ["service_role"], revokeFrom: ["anon", "authenticated"] }],
 };
-const PURPOSE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: "", values: ["c"] } };
+// The slot lists the purposes the CHECK holds before the forward, as the registry does.
+const PURPOSE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: "", values: ["a", "b"] } };
+const purposeCheck = (definition: string) => `ALTER TABLE public.communication_native_sync_state DROP CONSTRAINT communication_native_sync_state_purpose_check;
+ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT communication_native_sync_state_purpose_check ${definition};`;
 // An invoker function pins no search_path, so the slot lists none and the catalog must show none.
 const INVOKER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, createdFunctions: [{ signature: "public.cat_created(text)", searchPath: null }] };
 const invoker = (attributes: string) => `CREATE FUNCTION public.cat_created(p text) RETURNS text LANGUAGE sql${attributes} AS $$ SELECT p $$;\nREVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
-const purposeCheck = (values: string) => `ALTER TABLE public.communication_native_sync_state DROP CONSTRAINT communication_native_sync_state_purpose_check;
-ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT communication_native_sync_state_purpose_check CHECK (purpose IN (${values}));`;
 const guarded = (role: string, privilege: string, target: string) => `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN EXECUTE '${privilege} ${target}'; END IF; END; $$;`;
 const REPLACE_PART = "-- the replacement sits later in the file than the original\nCREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'after' $$;";
 const GRANT_PART = guarded("service_role", "GRANT EXECUTE ON FUNCTION", "public.cat_grant_only(text) TO service_role;");
@@ -193,21 +220,36 @@ const UNLISTED = "CREATE FUNCTION public.cat_unlisted(p text) RETURNS text LANGU
 const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["the FC-R1B-001 header under a listed signature", forward(`${HIDDEN_HEADER}\n${REVOKE_CREATED}`), /pinned search_path/u, false, SYNTHETIC_SLOT],
   ["an unlisted function", forward(CREATED_OK, UNLISTED), /created functions differ/u, false, SYNTHETIC_SLOT],
+  ["a function created in pg_catalog", forward(CREATED_OK, "CREATE FUNCTION pg_catalog.cat_shadow(p text) RETURNS text LANGUAGE sql AS $$ SELECT p $$;"), /created functions differ/u, false, SYNTHETIC_SLOT],
   ["a definer without the pinned search_path", forward(`${CREATE_PINNED.replace(" SET search_path = pg_catalog, pg_temp", "")}\n${REVOKE_CREATED}`), /pinned search_path/u, false, SYNTHETIC_SLOT],
+  ["an invoker function that carries a SET its slot does not pin", forward(invoker(" SET application_name = x")), /slot pins none/u, false, INVOKER_SLOT],
+  ["a created function owned by another role", forward(CREATED_OK, "ALTER FUNCTION public.cat_created(text) OWNER TO anon;"), /not the migration role/u, false, SYNTHETIC_SLOT],
   ["retained PUBLIC execute", forward(CREATE_PINNED), /PUBLIC execute/u, false, SYNTHETIC_SLOT],
   ["a grant to PUBLIC on a created function", forward(CREATED_OK, "GRANT EXECUTE ON FUNCTION public.cat_created(text) TO PUBLIC;"), /PUBLIC execute/u, false, SYNTHETIC_SLOT],
-  ["a grant on an existing table", forward(CREATED_OK, "GRANT SELECT ON public.cat_existing_table TO service_role;"), /existing relation/u, true, SYNTHETIC_SLOT],
-  ["an invoker function that carries a SET its slot does not pin", forward(invoker(" SET application_name = x")), /slot pins none/u, false, INVOKER_SLOT],
   ["a grant option on a created function", forward(CREATED_OK, "GRANT EXECUTE ON FUNCTION public.cat_created(text) TO authenticated WITH GRANT OPTION;"), /pass the privilege on/u, false, SYNTHETIC_SLOT],
   ["a grant option on a grant-only function", forward(CREATED_OK, "GRANT EXECUTE ON FUNCTION public.cat_grant_only(text) TO service_role WITH GRANT OPTION;"), /outside its grant list/u, true, SYNTHETIC_SLOT],
+  ["a grant on an existing table", forward(CREATED_OK, "GRANT SELECT ON public.cat_existing_table TO service_role;"), /existing relation/u, true, SYNTHETIC_SLOT],
   ["a grant on a new table", forward(CREATED_OK, "GRANT SELECT ON public.cat_created_table TO authenticated;"), /new relation .* grants/u, false, SYNTHETIC_SLOT],
   ["a column privilege on a new table", forward(CREATED_OK, "GRANT SELECT (id) ON public.cat_created_table TO authenticated;"), /column privileges/u, false, SYNTHETIC_SLOT],
-  ["a trigger on an existing table", forward(CREATED_OK, "CREATE TRIGGER cat_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
+  ["a new table owned by another role", forward(CREATED_OK, "ALTER TABLE public.cat_created_table OWNER TO authenticated;"), /not the migration role/u, false, SYNTHETIC_SLOT],
+  ["a grant on a system function", forward(CREATED_OK, "GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) TO authenticated;"), /system catalog/u, false, SYNTHETIC_SLOT],
+  ["a grant on a system table", forward(CREATED_OK, "GRANT SELECT ON pg_catalog.pg_authid TO authenticated;"), /system catalog/u, false, SYNTHETIC_SLOT],
+  ["a column privilege on a system table", forward(CREATED_OK, "GRANT SELECT (rolpassword) ON pg_catalog.pg_authid TO authenticated;"), /system catalog/u, false, SYNTHETIC_SLOT],
+  ["a role membership",forward(CREATED_OK, "GRANT authenticated TO anon;"), /memberships changed/u, false, SYNTHETIC_SLOT],
+  ["a schema privilege", forward(CREATED_OK, "GRANT CREATE ON SCHEMA public TO authenticated;"), /schemas changed/u, false, SYNTHETIC_SLOT],
+  ["a database privilege", forward(CREATED_OK, "GRANT CONNECT ON DATABASE synthetic TO anon;"), /databases changed/u, false, SYNTHETIC_SLOT],
+  ["a per-database role setting", forward(CREATED_OK, "ALTER ROLE authenticated IN DATABASE synthetic SET search_path = public;"), /dbSettings changed/u, false, SYNTHETIC_SLOT],
+  ["a new trigger on an existing table", forward(CREATED_OK, "CREATE TRIGGER cat_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
+  ["a trigger redefined with other events", forward(CREATED_OK, "CREATE OR REPLACE TRIGGER cat_base_trigger BEFORE INSERT OR UPDATE ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
   ["a policy on an existing table", forward(CREATED_OK, "CREATE POLICY cat_policy ON public.cat_existing_table USING (true);"), /policies on existing relations/u, false, SYNTHETIC_SLOT],
   ["a rewrite rule on an existing table", forward(CREATED_OK, "CREATE RULE cat_rule AS ON INSERT TO public.cat_existing_table DO INSTEAD NOTHING;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
-  ["a purpose CHECK that drops a value", forward(CREATED_OK, purposeCheck("'b','c'")), /purpose CHECK/u, false, PURPOSE_SLOT],
-  ["a purpose CHECK widened beyond its slot", forward(CREATED_OK, purposeCheck("'a','b','c','z'")), /purpose CHECK/u, false, PURPOSE_SLOT],
-  ["a purpose CHECK rewritten by a slot that lists none", forward(CREATED_OK, purposeCheck("'a','b','c'")), /purpose CHECK/u, false, SYNTHETIC_SLOT],
+  ["a redefined view", forward(CREATED_OK, "CREATE OR REPLACE VIEW public.cat_view AS SELECT id, owner_ref FROM public.cat_existing_table;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
+  ["a purpose CHECK that drops a value", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('b','c'))")), /purpose CHECK/u, false, PURPOSE_SLOT],
+  ["a purpose CHECK inverted by NOT IN", forward(CREATED_OK, purposeCheck("CHECK (purpose NOT IN ('a','b'))")), /purpose CHECK/u, false, PURPOSE_SLOT],
+  ["a purpose CHECK voided by OR true", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c') OR true)")), /purpose CHECK/u, false, PURPOSE_SLOT],
+  ["a purpose CHECK added NOT VALID", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c')) NOT VALID")), /purpose CHECK/u, false, PURPOSE_SLOT],
+  ["a purpose CHECK whose slot lists other preimage values", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: "", values: ["a"] } }],
+  ["a purpose CHECK rewritten by a slot that lists none", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, SYNTHETIC_SLOT],
 ];
 
 // ---- Real forwards: every bound native slot, replayed on the cumulative native chain -----------
@@ -224,26 +266,29 @@ const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPath
   return { path: unit.file, sql: bytes.toString("utf8") };
 });
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
-// the one role these two modes toggle for the whole run.
-async function replayBound(connectionString: string) {
+// the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
+// the chain, so the replay is proved before the first feature change relies on it.
+async function replayChain(connectionString: string) {
   const outcomes = new Map<string, Error | null>();
+  let applied = 0;
   const chainDb = new Pool({ connectionString });
-  const applied = new Set<string>();
+  const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
   try {
-    for (const { pin, slot } of bound) {
-      for (const unit of chain.filter(unit => unit.path < pin.path && !applied.has(unit.path))) { await chainDb.query(unit.sql); applied.add(unit.path); }
+    for (const step of steps) {
+      if ("unit" in step) { await chainDb.query(step.unit.sql); applied += 1; continue; }
+      const { pin, slot } = step.entry;
       const bytes = readFileSync(pin.path);
       if (sha(bytes) !== pin.sha256) throw new Error(`bound forward differs from its pin: ${pin.path}`);
       outcomes.set(pin.path, await checkForward(chainDb, slot, bytes.toString("utf8"), true).then(() => null, (error: Error) => error));
     }
   } finally { await chainDb.end(); }
-  return outcomes;
+  return { outcomes, applied };
 }
 
 describe.each([{ serviceRole: true }, { serviceRole: false }])("native store forward catalog, service_role present: $serviceRole", ({ serviceRole }) => {
   let container: PostgresContainer | undefined;
   let pool: Pool;
-  let outcomes = new Map<string, Error | null>();
+  let replay = { outcomes: new Map<string, Error | null>(), applied: 0 };
   beforeAll(async () => {
     if (!await dockerAvailable()) throw new Error("The native store catalog proof requires real PostgreSQL");
     container = await runPostgresContainer({ name: `native-catalog-${serviceRole ? "role" : "bare"}-${process.pid}`, password: "synthetic-conformance" });
@@ -253,7 +298,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
       if (serviceRole) await admin.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
       await admin.query("CREATE DATABASE native_chain");
       await admin.query("CREATE DATABASE synthetic");
-      if (bound.length) outcomes = await replayBound(container.connectionStringFor("native_chain"));
+      replay = await replayChain(container.connectionStringFor("native_chain"));
       // The closed roles exist after the chain; the synthetic database needs them either way.
       for (const role of ["anon", "authenticated"]) await admin.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END; $$`);
     } finally { await admin.end(); }
@@ -263,13 +308,30 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   }, postgresSetupTimeoutMs);
   afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
+  it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
-  it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("'a','b','c'"))); });
+  it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
+  // A view recreated byte-for-byte but for spacing differs only in stored parser positions.
+  it("admits a view redefinition that changes only parser positions", async () => { await checkForward(pool, SYNTHETIC_SLOT, [REPLACE_PART, CREATED_OK, GRANT_PART, TABLE_PART, "CREATE OR REPLACE VIEW public.cat_view AS SELECT    id   FROM   public.cat_existing_table;"].join("\n")); });
   it("admits an invoker function that carries no SET", async () => { await checkForward(pool, INVOKER_SLOT, forward(invoker(""))); });
   it.each(REFUSALS.filter(([, , , needsServiceRole]) => serviceRole || !needsServiceRole))("refuses %s", async (_name, sql, message, _needsServiceRole, slot) => {
     await expect(checkForward(pool, slot, sql)).rejects.toThrow(message);
   });
+  it("names exactly the guard catalogs in the documentation", () => {
+    const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("- The guard catalogs")[1]?.split(/\n(?:- |\n)/u)[0] ?? "";
+    expect([...section.matchAll(/`(pg_[a-z_]+)`/gu)].map(match => match[1]).sort()).toEqual(GUARDS.map(guard => guard.catalog).sort());
+  });
+  // Each guard catalog is wired into the comparison: one extra row in the after snapshot is a change.
+  it.each(GUARDS)("compares every row of the guard catalog $catalog", async ({ id, relation }) => {
+    const db = await pool.connect();
+    try {
+      const before = await snapshot(db);
+      const after = structuredClone(before);
+      after.guards[id]!.push({ probe: "extra row", ...relation ? { [relation]: before.relations[0]!.oid } : {} });
+      await expect(assertSlotCatalog(db, { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] }, before, after, "postgres")).rejects.toThrow(`catalog: ${id} `);
+    } finally { db.release(); }
+  });
   it.each(bound)("holds the catalog boundary of $pin.path", ({ pin }) => {
-    expect(outcomes.get(pin.path), pin.path).toBeNull();
+    expect(replay.outcomes.get(pin.path), pin.path).toBeNull();
   });
 });

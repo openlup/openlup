@@ -1414,23 +1414,38 @@ reviewers of that feature PR must assess the proof. This control cannot supply i
 The static checks above are a first gate for ordinary mistakes, not the boundary
 against deliberately evasive SQL. For function identity, security attribute,
 `search_path` and privileges, the truth is the required real-PostgreSQL
-[catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). For every
-bound native forward it replays one chain, the legacy selection's manifest units in
-order, applies the forward and compares what PostgreSQL itself reports with the
-slot's lists. It does not replay the `qualified-v2`, `qualified-admin` or
-operator-provisioned histories. The new functions equal the created list; changed
-functions lie in the replaced and grant-only lists; each definer carries its pinned
-`search_path`, and a function whose slot pins none carries no `SET` at all; no
-created function keeps PUBLIC execute or grants it onward with a grant option;
-existing relations keep their privileges and row security; a new relation carries
-only its owner's table and column privileges; schemas, roles, default privileges,
-event triggers, extensions, casts, and triggers, policies and rewrite rules on
-existing relations do not change; and the purpose CHECK only widens when its slot
-lists it. It runs with and without `service_role`, and its refusal cases include a
-function header that hides its attribute list inside a quoted default. The test is
-a protected control, so a feature PR cannot edit it unseen. Function bodies, data
-statements, statement kinds and object kinds beyond functions and relations stay on
-the whole-file hash and the feature review.
+[catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). It replays
+one chain, the legacy selection's manifest units in order with earlier bound forwards
+applied cumulatively, and does not replay the `qualified-v2`, `qualified-admin` or
+operator-provisioned histories. With no bound forward it replays that chain once, so
+the replay itself is proved. For every bound native forward it applies the forward
+and compares what PostgreSQL itself reports before and after with the slot's lists:
+
+- Nothing PostgreSQL ships changes: no system function, relation privilege or column
+  privilege.
+- The new functions, in any schema, equal the created list; changed functions lie in
+  the replaced and grant-only lists.
+- A created function is owned by the migration role, keeps no PUBLIC execute and
+  grants execute only to `authenticated` and `service_role`, never with a grant
+  option. A definer carries its pinned `search_path`; a function whose slot pins none
+  carries no `SET` at all.
+- Existing relations keep their owner, privileges, row security, options and column
+  privileges. A new relation is owned by the migration role and carries only its
+  owner's table privileges and no column privilege.
+- No constraint is dropped or rewritten, a NOT NULL excepted. The purpose CHECK keeps
+  every value it holds and may gain more, in the one list form PostgreSQL deparses
+  for `IN`, and its slot lists the values it holds before the forward.
+- The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_roles`,
+  `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
+  `pg_event_trigger`, `pg_extension` and `pg_cast`; and, for existing relations
+  only, `pg_trigger`, `pg_policy` and `pg_rewrite` (a view's own rule included).
+
+It runs with and without `service_role`, and its refusal cases include a function
+header that hides its attribute list inside a quoted default. The test and the files
+that select, run and containerize it are protected controls, so a feature PR cannot
+change them unseen. Function bodies, data statements, statement kinds and object
+kinds beyond functions and relations stay on the whole-file hash and the feature
+review.
 These are admission controls, not SQL behavior or hosted qualification.
 
 ### M17 channelIngestForwards

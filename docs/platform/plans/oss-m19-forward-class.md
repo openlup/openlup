@@ -84,6 +84,27 @@ small controls are present before setting `sealed`, run the catalog test with
 all bound forwards, and record one run of all of them on the `qualified-v2` chain
 as evidence, not as a new gate.
 
+Catalog test review and repair (2026-11-02). Two fresh reviewers
+(`claude-code-subagent:opus:a1a3af2b073cd45df` and `...:a7cff8b6348ef112b`) both
+returned FAIL on tree `f01b417b03adc7fd06a196c910782fd565de4614` (native cycle 2).
+The header card closed: the catalog test refuses the quoted-default statement for
+the right reason. Seven material gaps were in the new test and its protection, not
+in the static parser: the purpose CHECK rule used the slot values as additions
+instead of the preimage values and compared only the quoted literals; system
+schemas, schema owners and privileges, role memberships, trigger definitions and
+view definitions were not read; the owner of a new object was not pinned; and the
+files that select and run the test were not protected controls. The repair keeps
+the design and widens what is read, with one uniform list instead of a query per
+finding: a digest of PostgreSQL's own function and relation privileges, user
+objects read by OID, the owner pinned to the migration role, the exact deparsed
+CHECK form, one list of guard catalogs read whole through `to_jsonb` with parser
+positions normalized, a test that ties that list to the documentation, a chain
+replay that runs with no bound forward, and the controls list extended to the
+test's selection and runtime files. Every rule has a refusal case and a
+rule-removal check. The static parser is unchanged. Before the last automatic
+cycle (3 of 3) the real forwards of the dependent rows run through the final test
+locally, so a defect in the comparison is found before it costs a cycle.
+
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
 `3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d`; applicable instruction paths are
