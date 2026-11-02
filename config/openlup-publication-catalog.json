@@ -1598,6 +1598,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g12.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g12p.md",
       "class": "public-output"
     },
@@ -2958,6 +2962,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/account-support-postgres.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/account-support-read-contracts.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/account-support.api.md",
       "class": "public-output"
     },
@@ -2991,6 +3003,10 @@
     },
     {
       "path": "packages/platform/api/commerce-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce-server-postgres.api.md",
       "class": "public-output"
     },
     {
@@ -3722,6 +3738,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/postgres/commandPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgres/customerSupportJourney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/postgresAccountReadScope.ts",
       "class": "public-output"
     },
@@ -3739,6 +3767,26 @@
     },
     {
       "path": "packages/platform/src/account-support/postgresOrderHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/read-contracts/customer360Contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/read-contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/read-contracts/portableContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/read-contracts/portablePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/read-contracts/validation.ts",
       "class": "public-output"
     },
     {
@@ -4771,6 +4819,26 @@
     },
     {
       "path": "packages/platform/src/commerce/server/outboxShipmentExceptionEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/omsControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/omsControlPlane.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/providerExceptionHoldTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/returnsControl.ts",
       "class": "public-output"
     },
     {
@@ -7470,6 +7538,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/nativePostgres.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/operatorAuthority.test.ts",
       "class": "public-output"
     },
@@ -7499,6 +7571,14 @@
     },
     {
       "path": "packages/platform/test/account-support/postgresOperatorAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/readContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/readContractsBrowserSafety.test.ts",
       "class": "public-output"
     },
     {
@@ -7967,6 +8047,10 @@
     },
     {
       "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/nativePostgres.test.ts",
       "class": "public-output"
     },
     {
@@ -27723,6 +27807,14 @@
     },
     {
       "path": "tests/postgres/m19MigrationFacade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19StorePromotion.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19StorePromotionIdentity.test.ts",
       "class": "public-output"
     },
     {

@@ -1012,6 +1012,68 @@ host schema through the final response validation. A structural RPC client and
 separate query capability preserve one executor per order operation. Replacement
 creation delegates to fulfillment and leaves alignment pending actual arrival.
 
+### Native OMS and support stores
+
+The development-preview PostgreSQL stores are available at
+`@openlup/platform/commerce/server/postgres` and
+`@openlup/platform/account-support/postgres`. The host supplies a connection using
+the selected installation's restricted runtime role, authenticates the principal
+and authorizes the requested action. A store factory does not create authority.
+Install the package's optional `pg` peer when selecting a connection-owning store.
+
+```ts
+import { createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane,
+  createPostgresCommerceReturnsPort, createPostgresProviderExceptionHealPort,
+} from "@openlup/platform/commerce/server/postgres";
+import { createPostgresCustomerSupportJourneyPort } from "@openlup/platform/account-support/postgres";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+
+declare const executor: PgQueryExecutor; // host-owned restricted runtime session
+const commands = createPostgresCommerceOmsPort(executor);
+const reads = createPostgresCommerceOmsControlPlane(executor);
+const returns = createPostgresCommerceReturnsPort(executor);
+const heal = createPostgresProviderExceptionHealPort(executor);
+// operatorId comes from the host's admitted operator context, never request input.
+declare const connectionString: string, operatorId: string;
+const journey = createPostgresCustomerSupportJourneyPort({ connectionString, operatorId });
+// Host scope teardown: await journey.close(). The executor remains host-owned.
+```
+
+OMS commands preserve existing SQL, idempotency keys and error mapping. The
+control-plane factory supplies operator resolution and reduced `control_plane_v1`
+list/detail reads; it supplies neither rich OMS projections nor customer/payment
+history. The command port retains its existing rich-read, note, address and
+replacement refusals. Return request/approve/reject record lifecycle intent;
+there is no receive, restock or refund execution. Hosts can select their reason
+vocabulary through `createPostgresCommerceReturnsPort<Reason>`; the existing SQL
+still owns which reasons it accepts.
+
+System-hold recovery reads only actually delivered shipments with earlier
+exception evidence, excludes human holds and terminal orders, and reuses the
+existing deterministic release key. Call `releaseDelivered` only on a row from
+that selection; it is not a delivery evidence validator for arbitrary caller
+objects and never confirms a subscription replacement.
+
+Support journey reads, recovery issue and lead absorption preserve their current
+SQL and refusal boundaries. The journey store still throws
+`operator_subscription_authority_unavailable` for subscription actions and
+contact corrections. Its `close()` owns the connection lane; custom lanes retain
+the existing `createLane` option. Error constructors are shared with the package's
+account/support entry, including through the source reference facades.
+
+`@openlup/platform/account-support/read-contracts` exposes the unchanged
+portable-client and Customer 360 schemas and inferred read types. It is
+browser-safe and initializes Zod's CSP-safe mode; the existing type-only
+`account-support/contracts` boundary is preserved. Diagnostic history remains an
+independently injected port of `createCustomer360ReadFacade`, with host-owned
+admission and governance. This promotion adds no diagnostic store or route.
+
+The [installed-store witness](../../tests/postgres/m19StorePromotion.test.ts)
+selects compiled tarball exports and the complete `qualified-v2` chain with a
+restricted runtime login; [identity assertions](../../tests/postgres/m19StorePromotionIdentity.test.ts)
+cover reference facades and refusal constructors. Their presence is not a passing
+qualification result; the [task record](plans/oss-m19-g12.md) carries executed proof.
+
 ## Account and support contracts
 
 For inert composition, `createAccountSupportBindings({ graph, capabilities,

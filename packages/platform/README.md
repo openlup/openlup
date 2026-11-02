@@ -218,6 +218,9 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
+| `./commerce/server/postgres` | Existing native OMS control, reduced control-plane, delivered system-hold recovery and return lifecycle stores; host executor |
+| `./account-support/postgres` | Existing native support journey factory; host runtime connection and operator context |
+| `./account-support/read-contracts` | Browser-safe portable-client and Customer 360 read schemas, preserving validation and defaults |
 | `./marketing/server/postgres` | Tester acquisition, partner inquiry and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe tester history, partner inquiry lifecycle, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and tester/partner/research ports |
@@ -431,6 +434,17 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 `pg` or `@types/pg`. Select `./marketing/server/postgres` explicitly for those ports.
 
 ## Commerce contracts
+
+`./commerce/server/postgres` exposes the existing native
+`createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
+`createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
+Supply an executor using the installation's restricted runtime login. These are
+unchanged store bindings: holds, exact release, unpaid cancellation, completed
+external-refund marking and return request/approve/reject. Control-plane reads
+remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
+correction and replacement requests retain their existing refusal. Returns record
+intent; they do not receive, restock or execute a refund. The host authenticates
+and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
 
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;
@@ -1482,6 +1496,18 @@ for composition, refusal and sandbox limits. Construction installs no route,
 schedule or provider connection.
 
 ## Account and support contracts
+
+`./account-support/postgres` exposes the existing
+`createPostgresCustomerSupportJourneyPort`. Supply a restricted runtime connection
+and a trusted operator ID; close the port when its host scope ends. The native
+search, summary, detail and snapshot reads preserve their existing codecs and
+refusals. The existing recovery and lead-absorption commands keep their limits;
+subscription actions and contact correction still refuse by name. The separate
+`./account-support/read-contracts` entry exposes the existing portable-client and
+Customer 360 read schemas with CSP-safe initialization; it selects no Node driver.
+`./account-support/contracts` remains type-only. Authentication, machine-read
+governance and optional diagnostic ports remain host composition. No diagnostic
+store or HTTP route is installed by these entries.
 
 Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner

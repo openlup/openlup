@@ -24,6 +24,7 @@ import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./di
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
 export const NON_ADAPTER_ENTRIES = [
+  "account-support/read-contracts",
   "channels",
   "channels/contracts",
   "channels/server",
@@ -74,6 +75,8 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "account-support/postgres",
+  "commerce/server/postgres",
   "fulfillment/native",
   "operations/server",
   "risk/server",
