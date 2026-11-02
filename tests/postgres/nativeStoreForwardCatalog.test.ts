@@ -22,19 +22,20 @@ type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<str
 type RelationRow = { oid: number; name: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
   functions: FunctionRow[]; relations: RelationRow[]; system: { functions: string; relations: string };
-  constraints: { rel: string; name: string; def: string }[]; guards: Record<string, Record<string, unknown>[]>;
+  relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string }[]; guards: Record<string, Record<string, unknown>[]>;
 };
 // Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
 // node trees normalized, so a new guard is one entry here. `relation` names the column that ties a row to a relation:
 // those rows are compared for existing relations only. The documentation lists exactly these catalogs.
-// `added` admits a row that appears after the forward and was not there before: only a trigger PostgreSQL creates for a foreign key.
-const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; relation?: string; added?: (row: Record<string, unknown>) => boolean }[] = [
+// `added` admits a row that appears after the forward and was not there before: only the enforcement trigger PostgreSQL creates
+// for a constraint the forward itself adds. A relation is existing when any relation of that OID was there before, PostgreSQL's own included.
+const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; relation?: string; added?: (row: Record<string, unknown>, newConstraints: Set<number>) => boolean }[] = [
   { id: "schemas", catalog: "pg_namespace", where: "t.nspname !~ '^pg_(toast_)?temp_'" },
   { id: "roles", catalog: "pg_authid" }, { id: "memberships", catalog: "pg_auth_members" }, { id: "dbSettings", catalog: "pg_db_role_setting" },
   { id: "databases", catalog: "pg_database", drop: ["datfrozenxid", "datminmxid"] }, { id: "defaultAcls", catalog: "pg_default_acl" },
   { id: "eventTriggers", catalog: "pg_event_trigger" }, { id: "extensions", catalog: "pg_extension" },
   { id: "casts", catalog: "pg_cast" },
-  { id: "triggers", catalog: "pg_trigger", relation: "tgrelid", added: row => row.tgisinternal === true }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
+  { id: "triggers", catalog: "pg_trigger", relation: "tgrelid", added: (row, newConstraints) => row.tgisinternal === true && newConstraints.has(Number(row.tgconstraint)) }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
   { id: "rules", catalog: "pg_rewrite", relation: "ev_class" },
 ];
 const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)||':'||a.privilege_type||(CASE WHEN a.is_grantable THEN '${GRANT_OPTION}' ELSE '' END)
@@ -50,7 +51,7 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     c.relrowsecurity AS rls, c.relforcerowsecurity AS "forceRls", c.reloptions::text AS options,
     ${aclOf("c.relacl", "(CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::\"char\"", "c.relowner")} AS acl,
     (SELECT jsonb_agg(jsonb_build_array(a.attname,a.attacl::text) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) AS "columnAcls"
-    FROM pg_class c WHERE c.oid >= ${FIRST_USER_OID} AND c.relkind IN ('r','p','v','m','S','f') ORDER BY c.oid`)).rows;
+    FROM pg_class c WHERE c.oid >= ${FIRST_USER_OID} ORDER BY c.oid`)).rows;
   // Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
   // because autovacuum changes them between two snapshots.
   const system = (await db.query(`SELECT
@@ -60,12 +61,14 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
   // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
   const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE con.oid >= ${FIRST_USER_OID} AND con.contype <> 'n' ORDER BY 1,2`)).rows;
+    WHERE con.contype <> 'n' ORDER BY 1,2`)).rows;
+  const relationOids = (await db.query("SELECT oid::int AS oid FROM pg_class ORDER BY oid")).rows.map(row => row.oid as number);
+  const constraintOids = (await db.query("SELECT oid::int AS oid FROM pg_constraint ORDER BY oid")).rows.map(row => row.oid as number);
   const guards: Snapshot["guards"] = {};
   for (const guard of GUARDS) guards[guard.id] = (await db.query(`SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) AS rows FROM (
     SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
     FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s`)).rows[0].rows;
-  return { functions, relations, system, constraints, guards };
+  return { functions, relations, system, relationOids, constraintOids, constraints, guards };
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
@@ -152,12 +155,21 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
 
   // 6. Guard catalogs: every row that existed stays as it was, and nothing attaches behaviour (a trigger, a policy, a
   // rewrite rule, a view's own included) to an existing relation. A new row is a change unless the guard admits it.
+  const existing = new Set(before.relationOids), knownConstraints = new Set(before.constraintOids);
+  const newConstraints = new Set(after.constraintOids.filter(oid => !knownConstraints.has(oid)));
   for (const guard of GUARDS) {
-    const rows = (snap: Snapshot) => snap.guards[guard.id]!.filter(row => !guard.relation || oldRelations.has(Number(row[guard.relation])));
+    const rows = (snap: Snapshot) => snap.guards[guard.id]!.filter(row => !guard.relation || existing.has(Number(row[guard.relation])));
     const was = new Set(rows(before).map(row => JSON.stringify(row))), now = rows(after);
     const kept = new Set(now.map(row => JSON.stringify(row)));
-    if ([...was].some(row => !kept.has(row)) || now.some(row => !was.has(JSON.stringify(row)) && !guard.added?.(row))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
+    if ([...was].some(row => !kept.has(row)) || now.some(row => !was.has(JSON.stringify(row)) && !guard.added?.(row, newConstraints))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
   }
+}
+
+// Names in the catalog reads and the signature lookup resolve through the catalog first, so neither the forward's own
+// search_path nor a temporary object named like a catalog can capture them.
+async function pinned<T>(db: PoolClient, run: () => Promise<T>): Promise<T> {
+  await db.query("SET search_path = pg_catalog, pg_temp");
+  try { return await run(); } finally { await db.query("RESET search_path").catch(() => undefined); }
 }
 
 // Run a forward in a transaction on a real database and check it against the slot. It is rolled
@@ -167,11 +179,11 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
   let passed = false;
   try {
     const migrationRole = String((await db.query("SELECT current_user::text::regrole::text AS role")).rows[0].role);
-    const before = await snapshot(db);
+    const before = await pinned(db, () => snapshot(db));
     await db.query("BEGIN");
     try {
       await db.query(forward);
-      await assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole);
+      await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole));
       passed = true;
     } finally { await db.query(keep && passed ? "COMMIT" : "ROLLBACK"); }
   } finally { db.release(); }
@@ -244,8 +256,13 @@ const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["a database privilege", forward(CREATED_OK, "GRANT CONNECT ON DATABASE synthetic TO anon;"), /databases changed/u, false, SYNTHETIC_SLOT],
   ["a per-database role setting", forward(CREATED_OK, "ALTER ROLE authenticated IN DATABASE synthetic SET search_path = public;"), /dbSettings changed/u, false, SYNTHETIC_SLOT],
   ["a new trigger on an existing table", forward(CREATED_OK, "CREATE TRIGGER cat_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
+  ["a trigger dropped from an existing table", forward(CREATED_OK, "DROP TRIGGER cat_base_trigger ON public.cat_existing_table;"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
   ["a trigger redefined with other events", forward(CREATED_OK, "CREATE OR REPLACE TRIGGER cat_base_trigger BEFORE INSERT OR UPDATE ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
   ["the internal foreign-key triggers of an existing table disabled", forward(CREATED_OK, "ALTER TABLE public.cat_child DISABLE TRIGGER ALL;"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
+  ["a rule on a view PostgreSQL ships", forward(CREATED_OK, "CREATE OR REPLACE VIEW information_schema.enabled_roles AS SELECT a.rolname::information_schema.sql_identifier AS role_name, a.rolpassword AS leaked FROM pg_catalog.pg_authid a;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
+  ["a constraint PostgreSQL ships dropped", forward(CREATED_OK, "ALTER DOMAIN information_schema.cardinal_number DROP CONSTRAINT cardinal_number_domain_check;"), /dropped or rewritten/u, false, SYNTHETIC_SLOT],
+  ["options of an existing index", forward(CREATED_OK, "ALTER INDEX public.cat_existing_table_pkey SET (fillfactor = 70);"), /existing relation/u, false, SYNTHETIC_SLOT],
+  ["a temporary view that hides a catalog", forward(CREATED_OK, "CREATE TEMP VIEW pg_proc AS SELECT * FROM pg_catalog.pg_proc WHERE proname <> 'cat_evil';\nCREATE FUNCTION public.cat_evil() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;"), /created functions differ/u, false, SYNTHETIC_SLOT],
   ["a policy on an existing table", forward(CREATED_OK, "CREATE POLICY cat_policy ON public.cat_existing_table USING (true);"), /policies on existing relations/u, false, SYNTHETIC_SLOT],
   ["a rewrite rule on an existing table", forward(CREATED_OK, "CREATE RULE cat_rule AS ON INSERT TO public.cat_existing_table DO INSTEAD NOTHING;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
   ["a redefined view", forward(CREATED_OK, "CREATE OR REPLACE VIEW public.cat_view AS SELECT id, owner_ref FROM public.cat_existing_table;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
@@ -320,6 +337,8 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits a view redefinition that changes only parser positions", async () => { await checkForward(pool, SYNTHETIC_SLOT, [REPLACE_PART, CREATED_OK, GRANT_PART, TABLE_PART, "CREATE OR REPLACE VIEW public.cat_view AS SELECT    id   FROM   public.cat_existing_table;"].join("\n")); });
   // The new table's foreign key adds internal triggers to the existing table it references; PostgreSQL creates them, not the forward.
   it("admits a new table with a foreign key to an existing table", async () => { await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "CREATE TABLE public.cat_created_child (parent_id int REFERENCES public.cat_existing_table(id));")); });
+  // The deferrable unique constraint brings its own internal recheck trigger to the existing table; the forward added the constraint.
+  it("admits a deferrable unique constraint on an existing table", async () => { await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "ALTER TABLE public.cat_existing_table ADD CONSTRAINT cat_unique UNIQUE (owner_ref) DEFERRABLE;")); });
   it("admits an invoker function that carries no SET", async () => { await checkForward(pool, INVOKER_SLOT, forward(invoker(""))); });
   it.each(REFUSALS.filter(([, , , needsServiceRole]) => serviceRole || !needsServiceRole))("refuses %s", async (_name, sql, message, _needsServiceRole, slot) => {
     await expect(checkForward(pool, slot, sql)).rejects.toThrow(message);
@@ -334,7 +353,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     try {
       const before = await snapshot(db);
       const after = structuredClone(before);
-      after.guards[id]!.push({ probe: "extra row", ...relation ? { [relation]: before.relations[0]!.oid } : {} });
+      after.guards[id]!.push({ probe: "extra row", tgisinternal: true, tgconstraint: 0, ...relation ? { [relation]: before.relations[0]!.oid } : {} });
       await expect(assertSlotCatalog(db, { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] }, before, after, "postgres")).rejects.toThrow(`catalog: ${id} `);
     } finally { db.release(); }
   });

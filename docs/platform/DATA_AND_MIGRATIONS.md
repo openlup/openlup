@@ -1420,7 +1420,10 @@ one chain, the legacy selection's manifest units in order with earlier bound for
 applied cumulatively, and does not replay the `qualified-v2`, `qualified-admin` or
 operator-provisioned histories. With no bound forward it replays that chain once, so
 the replay itself is proved. For every bound native forward it applies the forward
-and compares what PostgreSQL itself reports before and after with the slot's lists:
+and compares what PostgreSQL itself reports before and after with the slot's lists.
+The catalog reads run with `search_path` pinned to `pg_catalog, pg_temp`, so neither
+the forward's own `search_path` nor a temporary object named like a catalog can
+capture them:
 
 - Nothing PostgreSQL ships changes: no system function, relation privilege or column
   privilege.
@@ -1430,21 +1433,24 @@ and compares what PostgreSQL itself reports before and after with the slot's lis
   grants execute only to `authenticated` and `service_role`, never with a grant
   option. A definer carries its pinned `search_path`; a function whose slot pins none
   carries no `SET` at all.
-- Existing relations keep their owner, privileges, row security, options and column
-  privileges. A new relation is owned by the migration role and carries only its
-  owner's table privileges and no column privilege.
-- No constraint is dropped or rewritten, a NOT NULL excepted. The purpose CHECK keeps
-  every value it holds and may gain more, in the one list form PostgreSQL deparses
+- Existing relations of every kind, indexes and TOAST tables included, keep their
+  owner, privileges, row security, options and column privileges. A new relation of
+  any kind is owned by the migration role and carries only its owner's table
+  privileges and no column privilege.
+- No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
+  excepted. The purpose CHECK keeps every value it holds and may gain more, in the one list form PostgreSQL deparses
   for `IN`, and its slot lists the values it holds before the forward.
 - The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
   `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
-  `pg_event_trigger`, `pg_extension` and `pg_cast`; and, for existing relations
-  only, `pg_trigger`, `pg_policy` and `pg_rewrite` (a view's own rule included).
+  `pg_event_trigger`, `pg_extension` and `pg_cast`; and, for the relations that
+  existed before the forward, PostgreSQL's own included, `pg_trigger`, `pg_policy`
+  and `pg_rewrite` (a view's own rule included).
   Left out of the comparison: each row's own OID, parser positions inside stored
   node trees, temporary schemas and the two transaction-horizon columns of
   `pg_database`. Every trigger that existed before the forward, an internal one and
-  its enabled state included, stays as it was; the only addition allowed is a
-  trigger PostgreSQL creates internally for a foreign key.
+  its enabled state included, stays as it was; the only addition allowed is the
+  enforcement trigger PostgreSQL creates internally for a constraint the forward
+  itself adds.
 
 It runs with and without `service_role`, and its refusal cases include a function
 header that hides its attribute list inside a quoted default. A native-SQL change is

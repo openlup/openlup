@@ -115,13 +115,37 @@ such as `DISABLE TRIGGER ALL` on an existing table passed. The coordinator autho
 one more review cycle through `continue` with a narrowed scope: the claim names its
 files and leaves code those files run, and deliberately evasive changes, to review;
 every trigger that existed before the forward is compared as a whole row, internal
-ones included, and only a trigger PostgreSQL creates for a foreign key may appear;
+ones included, and only the enforcement trigger of a constraint the forward adds may appear;
 the remaining row filters are removed or stated; the documentation and the code are
 tied by tests (the guard catalogs and the named protected files). The real forwards
 of the dependent rows run through the changed test before the next prepare. A
 failure of that cycle returns to the coordinator without further repair. Lesson:
 a comparison that claims to read a catalog whole must either read it whole or name
 each filter, and a claim about protection must name the files it covers.
+
+Fourth review cycle and bar correction (2026-11-02). Two more fresh reviewers
+(`claude-code-subagent:opus:a4ef2dfbcb965ea37` and `...:affd81d10d4f9d351`) returned
+FAIL on tree `d9c729a8bdf5544309c5ec330434244833b099c5` (native cycle 4). Both closed
+the same five of six cards: every protection card and the internal-trigger card.
+They reported three classes: row scopes the guard applied without stating them
+(constraints and relations at the OID floor, relations of six kinds, rows on
+relations PostgreSQL ships), an internal-trigger exception wider than the stated
+foreign-key one, and catalog reads that a temporary object could shadow. The
+coordinator then returned the review bar to the contribution guide: a finding is
+material only with a demonstrated forward that passes the static class and this
+test and gains a privilege or breaks a stated boundary (function identity, security
+attribute, `search_path`, function ACL, relation and column privileges, row
+security), or with a wrong refusal of a valid forward. Wording that is inaccurate
+without such an effect is advice, recorded here and fixed in prose by the next
+change that touches the section; it never blocks. The fifth cycle deletes the
+filters instead of stating them: an existing relation is any relation present
+before the forward, PostgreSQL's own included; constraints and relations are read
+without an OID floor or a relation-kind filter; an added internal trigger is
+admitted only for a constraint the forward adds; the catalog reads pin
+`search_path`. Advice recorded for the next documentation change: the freeze of
+replaced functions and the grant-only ACL rule are not stated in the section; the
+extended protected-file list also applies to the other reviewed classes' co-located
+changes and is not mentioned in the co-located approval section.
 
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
