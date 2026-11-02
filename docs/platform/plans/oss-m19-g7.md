@@ -14,11 +14,12 @@ No new price writer, payment-attempt store, SQL routine or managed behavior.
 ## Scope and authority
 
 Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Signed predecessor:
-`4ac768f368503d9230c208032ef8c2a95626acd7`, including main `09cd599b` and the
-retained-method compatibility fix. The staged work was preserved in unsigned WIP
-`b8445ddb` before the earlier predecessor merge `07221c2b`; the subsequent
-neutrality-only signed update was merged with `154d87a3`, without rebase. Later native
-review uses that exact predecessor as `OPENLUP_STACK_BASE`.
+`9ac0992776bbe5f295c3698fe28e732202b36fa3`, including main `09cd599b`, the
+retained-method compatibility fix and the offline installed-consumer correction.
+Earlier unsigned work was consolidated as signed `63f9d783`; that signed commit
+is preserved. The new test-only predecessor is merged with signed `87ed500f`,
+without rebase or rewriting any signed commit. Later native review uses the
+new exact predecessor as `OPENLUP_STACK_BASE`.
 
 The supervisor authorizes local implementation, explicit stack merges, focused
 checks and DCO-signed consolidation of the accepted candidate onto that signed
@@ -334,3 +335,28 @@ inputs remain byte-identical to the accepted candidate. The duplicate-lineage
 claim check is an explicit criterion for the later native reviewers.
 Self-retro: enumerate existing-store query changes alongside promoted exports;
 otherwise an unchanged SQL routine can hide a material application-query delta.
+
+
+## Offline installed-consumer follow-up
+
+The public renewal fixture reuses the signed predecessor's
+`tests/helpers/installSubscriptionConsumer.ts`. The only consuming test file is
+`tests/postgres/subscriptionPublicRenewal.test.ts`; repository search finds no
+other fixture consumers. With a new empty cache supplied outside the test, it
+passes 10/10 in 19.662 seconds (whole command excluding the resource gate).
+Its scratch pg resolves inside that consumer and its lock contains exactly the
+sixteen supplied local tarballs. No additional registry package was needed.
+The fixture's six expect calls and public test body are unchanged; the predecessor
+merge also preserves all existing purchase and method-health assertions.
+
+Lint, structural checks and zero-increase neutrality pass. The new real official
+platform pack is byte-identical to the earlier artifact: 2,353,549 B / 2,939 files,
+so the row remains +14,836 B / +16 files including SQL. Both raw and packaged
+forwards retain their recorded hashes. No production, API, SQL, package-input,
+assertion, baseline or checker change. All earlier destination, populated-transfer,
+real-simulator, delta-read, review, adoption-pin and size conditions still stand.
+
+Self-retro: reuse one explicit local runtime closure for all installed witnesses;
+removing old consumer modules and using distinct empty caches makes registry or
+checkout fallback visible without changing money assertions.
+Evidence: `.context/scratch/g7/offline-consumer/`.
