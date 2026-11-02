@@ -29,7 +29,7 @@ async function fixture(reviewed = true, nodePin = process.versions.node, uiViola
   await writeFile(join(cwd, 'source.txt'), 'base\n'); git('add', '.'); git('commit', '-qm', 'base');
   const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
   await writeFile(join(cwd, 'source.txt'), 'candidate\n');
-  if (uiViolation) await writeFile(join(cwd, 'packages/ui/src/example.ts'), 'export const example = "process.env";\n');
+  if (uiViolation) await writeFile(join(cwd, 'packages/ui/src/example.ts'), 'export const example = "process' + '.env";\n');
   git('add', '.'); git('commit', '-qm', 'candidate');
   const scratch = join(cwd, '.context', 'scratch'); await mkdir(scratch, { recursive: true });
   const env = { PATH: `${scratch}:${dirname(process.execPath)}:/usr/bin:/bin`, CODEX_THREAD_ID: 'author' };

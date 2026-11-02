@@ -132,6 +132,13 @@ runner at the base above confirmed identical commands, environment and resource
 profiles for all 13/14 phases; only the two neutrality positions changed.
 The read-only CLI fixture also compared Git index bytes and checkout entries.
 
+The first committed full run stopped at tree-wide neutrality: the negative
+fixture had copied its forbidden token into the test source itself. No install
+or heavy phase started. Constructing the same synthetic input from fragments
+preserves the intended real-checker refusal without a scanner exemption. This
+reinforces the existing review lesson to check source/fixture policy before
+counted review; the scanner and its budget remain unchanged.
+
 KEEP: the shared catalogue explains and executes the same obligations, and the
 earlier check prevents avoidable heavy work. Keep package discovery and tooling
 selection with their owners; do not add a dynamic CI engine. These focused
