@@ -2945,6 +2945,56 @@
         "dataStatements": []
       },
       {
+        "row": "G4",
+        "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_expire_purchase_reservations(timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "G3",
+        "path": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_register_order_destination(text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_destination(text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_change_shipping_destination(uuid,uuid,jsonb,integer,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "G7",
         "path": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
         "replacedFunctions": [

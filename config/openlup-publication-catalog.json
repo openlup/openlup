@@ -1614,6 +1614,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g4g3-control.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g9.md",
       "class": "public-output"
     },
@@ -10147,6 +10151,14 @@
     },
     {
       "path": "scripts/fixtures/reviewed-native-store/before.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-native-store/g3-shape.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-native-store/g4g3-statements.json",
       "class": "public-output"
     },
     {
