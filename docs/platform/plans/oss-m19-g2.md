@@ -711,3 +711,52 @@ Self-retro: an empty cache alone does not prove a cold consumer if its old modul
 remain. Remove those artifacts and check local driver resolution. A launcher-only
 PATH omission was corrected outside the tests before either suite executed.
 Evidence: `.context/scratch/g2/offline-consumer/`.
+
+
+## Ordered predecessor integration
+
+The supervisor authorizes one merge of the signed sandbox-payment predecessor
+`e334a1ca79d6dc993a4adb0e45c380a55dec94a5` onto signed `9ac09927`, followed by
+focused unchanged-test proof and a signed evidence update. Native review remains
+unstarted; repair cycles stay zero. The exact stack base is now
+`OPENLUP_STACK_BASE=e334a1ca79d6dc993a4adb0e45c380a55dec94a5`.
+No main merge, other-row merge, pin/control/baseline/budget edit, source rewrite,
+external write, credentials or production action is authorized in this run.
+
+Manual conflict unions preserve both rows in the publication catalog, canonical
+migration manifest, generated SQL manifest, adapter README, capture table list,
+transfer fixture, and qualified/admin composition expectations. The payment
+forward precedes the purchase-renewal forward without reordering any historical
+prefix. Capture has 88 unique tables, retaining both payment companions and
+all four purchase-renewal/method/activation tables. Restore auto-merges both
+rows, including the unchanged simulator cyclic-reference restoration sequence.
+The transfer test retains both payment and renewal setup calls, cases and
+assertions; one duplicate createPostgresPaymentTruthPort import is removed.
+
+Necessary union maintenance changes only current count/hash literals in the
+restricted restore test, qualified/admin tests and proof companions, released
+schema proof, and the opt-in handover's inventory/table-count pair. All issued
+pins, witness messages, assertions beyond those current literals, SQL bodies and
+payment logic stay unchanged. The generator projects the merged canonical
+manifest and byte-identical SQL assets into the package. No generated hash is
+invented: all five current inventories were measured on fresh PostgreSQL.
+
+| Profile | Units | Measured current inventory SHA-256 |
+| --- | ---: | --- |
+| legacy | 93 | bc2f2d8dd9d90e40e497b97c062c43d9fd9f467c211f5918c3cffd154b58fef4 |
+| bootstrap | 97 | 70a6cf41fd0c24ecb642ef36b457411f9ab46b3d721982032bd77d8a8d05afca |
+| separate | 97 | 7c51eda0ec825e993283ba7d73463cea8e84e097d28543755a2e6bb2b8044dc3 |
+| admin-managed | 96 | a4644feaaeabd7f0629aa2000ac5f587141b15f0ca7fd88a01991ca113469b7b |
+| admin-operator | 96 | 0ab6e7ae6125e765a757a9808ef93df81456ab032226e92222fd02e2b63f4899 |
+
+Canonical and packaged forward hashes remain
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`
+and `2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34`.
+Every other canonical, packaged and managed SQL file matches its parent bytes.
+Focused test results and any integration blocker are recorded after execution.
+Evidence: `.context/scratch/g2/g6-stack/`.
+
+Self-retro: a qualified manifest is an issued ordered prefix, not a globally
+sorted set. An initial scratch measurement rejected that ordering error; insert
+the new payment slot immediately before the renewal slot and measure the actual
+combined catalog instead of carrying either row's independent digest.

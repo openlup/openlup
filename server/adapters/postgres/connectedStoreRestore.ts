@@ -242,6 +242,7 @@ const order = [
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
   "commerce_settlement_intents", "commerce_settlement_transitions",
+  "payment_simulator_attempts", "payment_simulator_observations",
   "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts",
@@ -356,6 +357,14 @@ export async function restoreConnectedNativeStore(input: {
           else if (table === "subscription_cycles") await client.query(`SELECT public.subscription_cycle_import_retained_row(p.id,p.subscription_id,
             p.scheduled_at,p.status,p.created_at,p.updated_at,p.renewal_operation_id,p.renewal_operation_fingerprint)
             FROM pg_catalog.jsonb_populate_record(NULL::public.subscription_cycles,$1::jsonb) p`, [row]);
+          else if (table === "payment_simulator_attempts") {
+            // Immediate cyclic FKs and the state/pointer CHECK require staging
+            // both fields together. No writer can observe this locked transaction.
+            const staged = (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set(
+              pg_catalog.jsonb_set($1::jsonb,'{last_observation_id}','null'::jsonb),
+              '{state}','"dispatched"'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
+            await insert(client, rows, staged);
+          }
           else if (table === "catalog_products") {
             const value = JSON.parse(row) as { primary_sku_id: string | null; current_document_revision_id: string | null };
             if (value.current_document_revision_id !== null) fail("unsupported_table", "catalog_product_document_revisions");
@@ -374,6 +383,15 @@ export async function restoreConnectedNativeStore(input: {
               .includes(String((JSON.parse(row) as Record<string, unknown>).event_type))) fail("unsupported_table", table);
             await insert(client, rows, row);
           }
+        }
+        if (table === "payment_simulator_observations") for (const attempt of source.get("payment_simulator_attempts")!.rows) {
+          const updated = await client.query(`UPDATE public.payment_simulator_attempts a
+            SET state=x.state,last_observation_id=x.last_observation_id
+            FROM pg_catalog.jsonb_populate_record(NULL::public.payment_simulator_attempts,$1::jsonb) x
+            WHERE a.id=x.id AND a.state='dispatched' AND a.last_observation_id IS NULL
+              AND (pg_catalog.to_jsonb(a)-'state'-'last_observation_id')=(pg_catalog.to_jsonb(x)-'state'-'last_observation_id')
+            RETURNING a.id`, [attempt]);
+          if (updated.rows.length !== 1) fail("target_conflict", "payment_simulator_attempts");
         }
         if (table === "catalog_skus") for (const product of source.get("catalog_products")!.rows) {
           const value = JSON.parse(product) as { id: string; primary_sku_id: string | null };

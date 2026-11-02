@@ -1202,6 +1202,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101222000_sandbox_payment_attempts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
       "class": "public-output"
     },
@@ -1583,6 +1587,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g2.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g6.md",
       "class": "public-output"
     },
     {
@@ -3247,6 +3255,10 @@
     },
     {
       "path": "packages/platform/sql/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101222000_sandbox_payment_attempts.sql",
       "class": "public-output"
     },
     {
@@ -6226,6 +6238,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/sandbox.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/truth.ts",
       "class": "public-output"
     },
@@ -6275,6 +6291,10 @@
     },
     {
       "path": "packages/platform/src/payments/postgresPaymentTruth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresSandboxPaymentSimulator.ts",
       "class": "public-output"
     },
     {
@@ -27251,6 +27271,14 @@
     },
     {
       "path": "tests/postgres/m19MigrationFacade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19PaymentCancellation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19PaymentSimulatorChild.ts",
       "class": "public-output"
     },
     {

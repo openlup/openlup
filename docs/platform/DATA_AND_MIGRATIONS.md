@@ -474,12 +474,59 @@ Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonic
 positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
 Each retains its canonical path, SHA-256 and package asset URL. These three assets
 are not an install chain: install the complete catalogue and preserve its exact
-ledger prefix. No migration or manifest row is added. `paymentSchemaDescriptor`
+ledger prefix. Those three projections alone add no migration or manifest row. `paymentSchemaDescriptor`
 declares direct truth, settlement and later-only alignment supported; durable
 prepared attempts, method setup, absence reopen and cumulative refund unsupported.
 Refunds are purely financial and do not cancel subscriptions. The direct truth
 store retains its invoker SQL and requires the host's existing executor and
 privileges; descriptor presence alone does not prove installed schema readiness.
+
+The source preview's additive sandbox-attempt forward
+`20261101222000_sandbox_payment_attempts.sql` adds two private tables and four
+bounded runtime routines. `payment_simulator_attempts` owns active dispatch,
+replay/fingerprint and synthetic method facts; `payment_simulator_observations`
+owns immutable simulated outcomes. The runtime has function execution only,
+with no direct access to either table. The forward explicitly revokes all table
+privileges from PUBLIC, anon, authenticated and service_role, removing
+creation-time default grants to those recipients; it does not enable RLS. This is a sandbox-specific store; generic
+prepared durable storage and real PSP support remain unavailable. Install the
+complete selected chain, including its exact inventory; this forward alone is
+not an installer. Earlier migration bytes and approvals stay unchanged.
+
+The same forward adds `payment_truth_events.review_required_at` and a new
+consistency CHECK, preserving every existing CHECK and the `open|settled` state
+vocabulary. Cancelled capture has outcome `captured`, state `open`, a review
+marker and no settlement transition. Its application disposition is terminal
+`review_required`: sweep excludes it, reconciliation retains it without applying
+settlement, and readback exposes its marker/status. Existing OMS captured-truth
+visibility is preserved. Neither an order reopen nor a refund/fiscal writer is
+introduced; `commerce_record_settlement` and its later-only schedule rule remain
+unchanged. Ordinary recovery-notice contention still rolls capture back; same-event
+redelivery converges after contention clears. This forward does not isolate that
+existing coupling or add a retry dispatcher.
+
+List payments awaiting operator review:
+
+```sql
+SELECT e.id AS payment_truth_event_id,
+       i.order_id,
+       o.status AS order_status,
+       e.amount_minor,
+       e.currency_code,
+       e.source_event_id,
+       e.review_required_at
+FROM public.payment_truth_events AS e
+JOIN public.commerce_settlement_intents AS i ON i.id = e.settlement_intent_id
+JOIN public.commerce_orders AS o ON o.id = i.order_id
+WHERE e.review_required_at IS NOT NULL
+ORDER BY e.review_required_at, e.id;
+```
+
+Run this read-only query through the host's authorized native PostgreSQL session;
+amounts are in minor currency units. It discovers review-marked events without
+already knowing their IDs and excludes ordinary open events. Use the returned
+`payment_truth_event_id` with the truth port's `readEvent` for effect details.
+The query records no decision and creates no refund or order transition.
 
 `CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
 1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
@@ -1498,6 +1545,15 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The source preview's sandbox-attempt suffix adds nullable review metadata without
+rewriting existing truth rows or changing the open/settled checks. Existing
+non-sandbox truth does not read or require simulator storage. New sandbox truth
+requires an exact durable server observation and active-attempt match; accepted
+event replay retains its first fingerprint and instant after restart. Cancelled
+capture is terminal operator-review evidence, excluded from reconciliation work
+and the open sweep, while the order remains cancelled. See the sandbox forward
+in [Module catalogues and installed histories](#module-catalogues-and-installed-histories).
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
 SQL assets are copies of issued units with unchanged canonical identities,

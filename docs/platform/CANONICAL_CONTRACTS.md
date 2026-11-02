@@ -585,6 +585,17 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The sandbox-attempt source suffix follows the M17 prefix described below. Its
+one additive native unit extends those prefix counts to legacy 92, qualified 96
+and restricted 95, with separate reference digests for all five installation
+shapes. It preserves every earlier migration identity and existing state CHECK;
+its additive review marker distinguishes terminal cancelled capture from work
+awaiting reconciliation. The new attempt/readback factory is sandbox-only;
+generic prepared-provider storage and real PSP qualification remain unavailable.
+The separate closed-class admission prerequisite and feature pins must precede
+submission; a local manifest entry alone grants no delivery or release authority.
+
+
 The M17 channel suffix appends two native units to each existing selected plan:
 legacy now has 91 units, qualified selections 95, and restricted selections 94.
 Each installation shape retains its separately measured catalogue digest. Four
