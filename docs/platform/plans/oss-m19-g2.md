@@ -1269,3 +1269,24 @@ reviewers remain before READY_FOR_VERIFY. No native session has started, 0/3.
 Self-retro: the complete sweep took substantial admission wait time; no suite
 was weakened to shorten it. Separate executable-source proof from scheduling
 and from a later main integration rather than silently carrying results over.
+
+
+### Required pre-review native-store integration
+
+The full repaired-source proof anchor is DCO-signed at
+bd07308db5d579f7df5c7a8539d40d3a04df697d, tree
+5fc12f0406933b7ed5394d5a0a08d20a6c20cfe9, on main 21c05703.
+The required fresh fetch found main at
+2d5547dcccb5d9e3c40bece5016382fbf9f6a670 (native store promotion).
+The dry and actual merges conflict only in disjoint publication-catalog
+additions: preserve the two simulator test paths before both native-store
+promotion test paths in lexical order. Every base entry and both disjoint
+addition sets are byte-for-value preserved, with no duplicates or key changes.
+Architecture and package README merge automatically. No own production, SQL,
+class-data or pin change is introduced by this union. The only manual edits
+beyond the catalog resolution are this integration bookkeeping in both records.
+This is the authorized registry union, not a claim of a conflict-free merge.
+No prior native session exists; the first full review still starts at 0/3.
+The merged tree requires its updated build, integration proof, real pack,
+policy and trusted-main admission before review. The earlier anchor's tests
+are retained as source proof and are not relabelled as this integration's run.
