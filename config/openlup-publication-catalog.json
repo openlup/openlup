@@ -1386,6 +1386,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/delivery-workflow.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/disposable-docker-test-resources.md",
       "class": "public-output"
     },
@@ -1615,6 +1619,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g14x.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g15.md",
       "class": "public-output"
     },
     {
@@ -6322,7 +6330,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/appVerification.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/lifecycle/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/openlup.mjs",
       "class": "public-output"
     },
     {
@@ -8906,6 +8922,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/lifecycle/appVerification.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
       "class": "public-output"
     },
@@ -10494,6 +10514,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/distribution-cli-proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },
@@ -10859,6 +10883,14 @@
     },
     {
       "path": "scripts/vercel-function-tsconfig-contract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/verification-plan.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/verification-plan.test.ts",
       "class": "public-output"
     },
     {
@@ -28339,7 +28371,7 @@
     },
     {
       "path": "packages/platform/package.json",
-      "digest": "sha256-bfaffff4f0b6c74137b213fa6ea8e726528b762a22910cda32895857287c75b9"
+      "digest": "sha256-996ffd9d83a8604e189709a43367a3a31b1a89efbc0bd92444e4b8c47ed78ffe"
     },
     {
       "path": "packages/ui/package.json",

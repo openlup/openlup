@@ -17,3 +17,9 @@ export {
   type LegacyPostgresInstallBlocker,
   type LegacyPostgresInstallRoleReport,
 } from "./postgresInstallQualification.js";
+export {
+  verifyApp,
+  APP_VERIFICATION_BOUNDARY,
+  type AppVerificationFinding,
+  type AppVerificationReport,
+} from "./appVerification.js";

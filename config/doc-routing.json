@@ -843,6 +843,15 @@
       "anchor": "#existing-store-transfer-and-recovery"
     },
     {
+      "id": "platform-command-line-tooling",
+      "when": "Tool-only application-file upgrade and composed-app diagnosis executable",
+      "paths": [
+        "packages/platform/src/lifecycle/openlup.mjs"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#application-command-line-tooling"
+    },
+    {
       "id": "application-lifecycle",
       "when": "Conservative application-owned file upgrade planning, conflict refusal and interruption recovery",
       "paths": [
