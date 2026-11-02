@@ -1,6 +1,6 @@
 # Neutral starter r1a: origin, sessions and native reads
 
-Status: G13-r1a trust-boundary read accepted for sign-off, with explicit demonstration-session and mailbox documentation. The configured-origin health probe needs a separate repair and proof before review. G13-r1b and the full purchase journey remain pending.
+Status: G13-r1a trust-boundary read accepted for sign-off, with explicit demonstration-session and mailbox documentation. The configured-origin health probe has a separate committed repair and executed proof; this continuation records the remaining operation dispositions before review. G13-r1b and the full purchase journey remain pending.
 
 ## Outcome and boundary
 
@@ -19,25 +19,26 @@ operations and missing host sources are distinguished below; neither becomes a
 fabricated success or an implicit new acceptance limit.
 
 The assigned application worker operates only in this dedicated worktree and
-branch. The accepted origin/session/account/OMS code remains unchanged. The
-current continuation permits the demonstration-session and mailbox wording,
-then a separate repair of the lifecycle health probe, its discriminating test
-and configured-origin Docker proof. The repair must send the configured Host
-through `node:http` while connecting to the private loopback address; it adds no
-policy exemption. Session capacity is 1000 in one process with one-hour expiry,
-lost on restart, and is not a production session store.
+branch. The accepted origin/session/account/OMS code and the separate committed
+health-probe repair remain byte-identical. Session capacity is 1000 in one
+process with one-hour expiry, lost on restart, and is not a production session
+store. The demonstrated private mailbox is not a real mailbox.
 
-After focused checks, two DCO commits are permitted: accepted code with the
-prose conditions, followed by the health-probe repair and its test/documentation.
-The shared catalogue landing precedes integration and native review. No reviewer,
-canonical verification, push, pull request, receipt, publication, deployment,
-credentials or settings change is authorized in this continuation. Purchase
-landings are prerequisites of r1b, not of r1a. Computed commit identities,
-accepted-code hashes, patch IDs and execution evidence are recorded outside the
-tracked tree so they do not invalidate a later review.
+This continuation permits only the operation-disposition prose below and the
+returns-reader sentence in the public limits, followed by a third DCO commit.
+The shared catalogue change has landed and was mechanically integrated. Prepare
+must preserve the existing repair counter for this prose-only update; a charged
+cycle is reported and stops this run. Otherwise two fresh independent reviewers
+inspect the exact candidate, including documentation and a simpler alternative
+preserving every control. A change to the accepted host policy, session or native
+composition requires a new read before repair. No push, pull request, receipt,
+canonical verification, publication, deployment, credentials or settings change
+is authorized. Computed hashes, identities and review evidence stay outside the
+tracked tree. Purchase landings remain prerequisites of r1b, not of r1a.
 
-Code base and freshly fetched policy revision:
-`420e68ef843092a174b84461a2bcb4882bca3c03` (2026-11-02).
+Original code base: `420e68ef843092a174b84461a2bcb4882bca3c03`.
+Integrated main and policy revision: `31423ca5b3e44698eb9a1ce342addad3e58b5d71`
+(2026-11-02).
 No other worker's unmerged source is an input.
 
 ## Smallest complete scope and exclusions
@@ -257,15 +258,23 @@ required host policy/authority inputs is an unmounted composition, not a missing
 native. A content renderer, a type-only delivery contract or an explicitly
 unavailable portable rail does not establish a complete native submission path.
 All unmounted operations still return `host_binding_required` after the existing
-customer/operator admission checks. No new limit or cut is proposed.
+customer/operator admission checks. The declared generic inquiry operation is
+marked for removal in the later destination change; r1a leaves its code intact.
+No new limit or cut is proposed by this clarification.
 
 | Classification | Count | Disposition |
 | --- | ---: | --- |
 | Bound in r1a | 12 | Ten new handlers and the two existing built-ins, with the recorded reduced-read/proof limits |
-| Waiting on a named landing | 14 | Existing landing dependencies below; unchanged refusals |
+| Waiting on a named landing | 15 | Existing dependencies plus the returns reader; unchanged refusals |
 | Native on main, host composition not mounted in r1a | 24 | Separate E composition contribution or r2; supervisor selects the delivery grouping |
-| No complete native operation on the selected main | 3 | Basic return list, inquiry/support submission and complete normalized-ingest rails remain KEEP follow-ups below |
-| Total | 53 | No operation is removed from programme acceptance |
+| No complete remaining native operation on the selected main | 1 | Complete normalized-ingest rails remain KEEP in G14 |
+| To be removed in a later destination change | 1 | Generic `inquiry.submit` has no donor journey; the durable partner inquiry stays KEEP |
+| Total currently declared | 53 | 52 retained operations and one generic operation marked for future removal |
+
+The retained-operation four-way split is **12 bound / 15 waiting / 24 native but
+unmounted / 1 without a complete native**, total 52. Adding `inquiry.submit`
+marked for future removal accounts for all 53 declarations; no declaration is
+removed in r1a.
 
 Bound: `account.read`, `account.orders`, `account.consent`, `auth.request`, `auth.verify`, `auth.callback`, `auth.signOut`, `auth.operator`, `operator.orders`, `operator.order`, `application.status`, `offer.validate`.
 
@@ -280,6 +289,7 @@ Waiting matrix:
 | `subscription.command` | G2/G7 |
 | `subscription.address` | G3 |
 | `operator.recovery` | G7/G8 |
+| `operator.returns` | waits on returns reader: package work in G10-reads after [G4+G3] |
 | `operator.shipments` | G10-reads after [G4+G3] |
 | `operator.shipment` | G10-reads after [G4+G3] |
 | `operator.label` | G10-reads after [G4+G3] |
@@ -344,31 +354,66 @@ See the [read-model ordering](../../../packages/platform/src/invoicing/readModel
 and [G9 source check](oss-m19-g9.md#source-check-and-implementation). Neither invoice
 route is mounted or newly qualified in r1a.
 
-## Operations without a native composition
+## Remaining operation dispositions
 
-These are KEEP dispositions for the existing accepted rows, not new PRs opened
-by this run, a promise that r1a implements them, or proposed cuts. N9 retains
-rich-OMS limits; it does not remove a basic return list or owned invoice access.
-The existing [starter limits](../../../examples/neutral-store/docs/limits.md)
-already distinguish pending invoice bindings from native limits, so that page
-needs no wording change. Evidence for the lines below is the
-[G12 outcome](oss-m19-g12.md#approved-outcome-and-authority),
-[returns store](../../../packages/platform/src/commerce/server/postgres/returnsControl.ts),
-[inquiry/support page](../../../examples/neutral-store/client/pages/destinations.ts),
-[intake delivery contract](../../../packages/platform/src/communications/contracts/publicIntake.ts),
-[portable ingest rails](../../../packages/platform/src/channels/server/channelIngestRails.ts),
-[starter E acceptance](oss-m19-starter.md#acceptance-and-sufficient-evidence)
-and [research composition](../../../examples/neutral-store/host/e-composition.ts),
-plus the invoice sources linked above.
+Host-only work belongs to a separate E composition contribution, not r1a.
+The following line numbers were checked against the integrated main source:
 
-- `operator.returns` — KEEP, G12/G13 return-read follow-up before S1: `returnsControl.ts` has request/approve/reject only; G12 retains returns and N9 limits rich OMS.
-- `inquiry.submit` — KEEP, G13 inquiry/support follow-up before S1: `destinations.ts` declares the action; `publicIntake.ts` supplies only a delivery contract.
-- `ingest.submit` — KEEP, G14 E composition follow-up before S1: `channelIngestRails.ts` refuses portable reservation/payment; the existing no-real-connector limit stays.
-- `research.submit` — KEEP, G14 E composition follow-up before S1: the native evidence port exists; `e-composition.ts` requires `authorizeResearchCase`, as the research-case limit states.
-- `account.invoice` — KEEP, G9/G13 invoice-route follow-up before S1: native G9 history/artifacts exist; `createInvoiceAccess` needs verified-principal history/tickets and artifact download.
-- `operator.invoice` — KEEP, G9/G13 invoice-route follow-up before S1: native G9 history/artifacts exist; `readModel.ts` requires host authorization before operator reads.
+- `account.invoice` — KEEP, E invoice-route composition using `packages/platform/src/invoicing/postgres/accountHistory.ts:18` (`read` at 65, `resolveDownload` at 71), feeding `createInvoiceAccess` at `packages/platform/src/account-support/invoiceAccess.ts:13` with its history/artifact options at 8–10.
+- `operator.invoice` — KEEP, E invoice-route composition using `packages/platform/src/invoicing/postgres/accountHistory.ts:18` (read at 65, ticket resolution at 71) and the history/artifact inputs of `packages/platform/src/account-support/invoiceAccess.ts:8–13`, with the native operator read model's host authorization and selected provider/duty inputs; no new package reader is required.
+- `return.request` — KEEP, E host composition of `createRequest` at `packages/platform/src/commerce/commerceReturnsPort.ts:64` through `createPostgresCommerceReturnsPort` at `packages/platform/src/commerce/server/postgres/returnsControl.ts:7`.
+- `operator.returnApprove` — KEEP, E host composition of `approve` at `packages/platform/src/commerce/commerceReturnsPort.ts:65` through the same PostgreSQL port at `returnsControl.ts:7`.
+- `operator.returnReject` — KEEP, E host composition of `reject` at `packages/platform/src/commerce/commerceReturnsPort.ts:66` through the same PostgreSQL port at `returnsControl.ts:7`.
+- `operator.customerSearch` — KEEP, E host customer-support composition over `createPostgresCustomerSupportJourneyPort` at `packages/platform/src/account-support/postgres/customerSupportJourney.ts:59`.
+- `operator.customer` — KEEP, E host customer-support composition over that same native port at `customerSupportJourney.ts:59`.
 
-## Prose-only r1a continuation
+`operator.returns` needs package code: **waits on returns reader**. The native
+`CommerceReturnsPort` at `commerceReturnsPort.ts:63–67` has create/approve/reject
+only, with no list or detail reader. The control plane in
+`packages/platform/src/commerce/adapters/managed/commerceOmsControlPlane.ts:16`
+and `:32` reads orders only. Return list/detail joins the stores stream's
+G10-reads contribution after [G4+G3]; it is not starter package work. r1a retains
+`host_binding_required`, not a fabricated list. N9 limits rich OMS and does not
+remove this basic returns reader or owned invoice access.
+
+`ingest.submit` stays KEEP in G14 E composition: the portable rails in
+[the native adapter](../../../packages/platform/src/channels/server/channelIngestRails.ts)
+refuse reservation/payment capability. The existing no-real-marketplace-connector
+limit stays. `research.submit` stays KEEP in G14 E composition: its native
+evidence port exists, while [the host composition](../../../examples/neutral-store/host/e-composition.ts)
+requires `authorizeResearchCase`; an account session is not case authority.
+
+### Durable partner inquiry and future destination change
+
+The retained inquiry journey is the durable B2B/partner inquiry, including its
+receipt and administrator notice, through `partners.submit` and
+`operator.partners` over the native `partner_inquiry` lifecycle. Its source path
+is constrained at `packages/platform/sql/20260817110000_partner_acquisition_lifecycle.sql:37`
+and `:186`; the submission function's inputs and checks are at 148–186.
+The PostgreSQL adapter is
+`packages/platform/src/marketing/server/postgres/partnerAcquisitionRoutines.ts:29`,
+with submit at 45 and list at 68. These remain KEEP for durable binding in the
+separate E composition contribution, with the T07-12 destination pointing there.
+
+The generic `/inquiry` and `/support` form in
+`examples/neutral-store/client/pages/destinations.ts:63–74` has no donor journey.
+`inquiry.submit` and its page entry will be removed in the first starter
+contribution that touches those destinations, outside r1a. This removes an
+invented generic path, not an accepted journey; no cut-register entry is needed.
+`/support` will become a static page using the operator-configured contact, plus
+signed-in account support where a native exists. A captured-mailbox-only form is
+not an accepted replacement for durable intake.
+
+Future public sentence, to be published only when that change makes it true:
+**“No generic contact form; the partner inquiry is the durable intake.”**
+It is deliberately absent from r1a's public limits because the generic form is
+still declared. The r1a diff does not touch `client/pages/destinations.ts`,
+`shared/api.ts` or `shared/routes.ts`.
+
+Every operation previously marked KEEP that has not landed by S1 becomes an
+entry in the owner's cut register at S1.
+
+## Historical prose-only r1a continuation
 
 The unsigned delta is based on the submitted WIP; only this task record changes.
 The existing read remains pending. Code, tests, configuration, ownership,
@@ -403,3 +448,15 @@ with the exact documented container command. Proof resources are removed.
 Self-retro: the default configuration did not exercise the public-origin probe;
 test the generated command against the configured host and repeat that boundary
 in the extracted Docker application.
+
+## Review continuation
+
+The accepted origin/session code and the healthcheck repair are frozen; this
+continuation changes only the task record and returns-reader limit sentence.
+Focused checks precede DCO and native review. Acceptance and exclusions above
+remain binding; the future destination change is not implemented or claimed in
+r1a. The package delta is measured against exact main before qualification.
+
+Self-retro: distinguish native-but-unmounted routes, missing package readers
+and a generic destination without a donor journey before assigning follow-ups;
+verified owner code and an explicit future sentence prevent an accidental cut.

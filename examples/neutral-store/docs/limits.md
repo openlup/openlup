@@ -80,7 +80,10 @@ order lacks captured money; it never reconstructs purchase truth.
 Purchase, invoice history/artifacts, shipment list/detail and dependent label,
 handoff, delivery and tracking bindings, signed unsubscribe and other unmounted
 workflows remain pending. Shipment reads follow destination/reservation facts;
-dispatch preparation alone does not provide them. Unbound operations return
+dispatch preparation alone does not provide them.
+`operator.returns` waits on returns reader; r1a continues to refuse it with
+`host_binding_required`.
+Unbound operations return
 `host_binding_required` after customer/operator admission. These are implementation
 blockers, not additional accepted native limits. An invalid-grant example does
 not prove a valid grant works. Completion still requires the real purchase,
