@@ -562,7 +562,7 @@ worktree. Current measurement:
 | Root-document packed bytes | 60,916 | 61,008 | +92 |
 
 All existing package caps and tarball content checks passed. The extracted
-manifest names the bin at `./src/lifecycle/openlup.mjs`; the actual artifact
+manifest points its bin map to the lifecycle executable; the actual artifact
 contains that executable and no obsolete source-root copy. These measurements
 replace the earlier pre-integration package delta.
 
@@ -571,9 +571,10 @@ the installed CLI proof: public report repairs, actual integrity-pinned
 published-version interruption/resume and local-edit preservation, plus actual
 disposable PostgreSQL stale-schema/absent-table, missing-binder and unwired-job
 findings repaired to ready from report instructions. The owned database used
-tmpfs and was removed on completion. The CLI performed no installation, SQL,
-route, job or handler execution. Fixture setup/repair belongs to the harness;
-there is no model in these assertions.
+tmpfs and was removed on completion. Upgrade performed no installation or SQL,
+and diagnosis invoked only the supplied read-only schema observer. No route,
+job or handler ran. Fixture setup/repair belongs to the harness; there is no
+model in these assertions.
 
 This completion note changes only prose after the executed source checks.
 The package and executable inputs remain identical. At this checkpoint fresh
