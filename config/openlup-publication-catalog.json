@@ -3250,6 +3250,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261101231000_native_paid_email.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },

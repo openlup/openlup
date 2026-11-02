@@ -497,3 +497,155 @@ and zero consumer errors; lint/build and eight structural rule suites have zero
 errors and the same 33 pre-existing warnings. Whitespace, generated context and
 the staged-diff secret scan pass. These checks do not resolve the failed
 handover witness or replace the 64 unrun existing suites.
+
+
+## R0 integration and handover-pin continuation
+
+The supervisor authorized the two handover preflight literals as an extension
+of the chain-count exception: preserve fixed expectations, measure them on real
+PostgreSQL, and run the witness through its actual handover assertions. Only its
+inventory literal, connected-table-count literal and explanatory guard message
+may change. An existing-suite failure requiring source or SQL repair remains a
+stop for a delta read.
+
+The expressly requested merge of origin/main at
+09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a is merge commit
+0c7090a36def3fcd415d4f6dc120363e5a5f55be. The publication catalogue and migration
+owner document required additive resolutions; both sides' entries and text are
+preserved. This is a manual integration, not a claimed mechanical carry-over.
+No native review has started; its repair-cycle count remains zero. The policy
+revision is the same fetched main commit, separately from the earlier bb000848
+feature review base.
+
+The canonical package-projection generator now copies the forward into
+packages/platform/sql and incorporates its canonical selections, inventories and
+SHA in sql/manifest.json. The new packaged SQL has the same full SHA-256 as the
+issued source: 92eca6c6d7cc9024bdd4260fca3059a2a47e05f3b4296e561dbd16f642cc5971.
+This supersedes the earlier packaging-pending status, without changing SQL bytes
+or the closed SQL-object inventory. The merged build and API report check pass.
+The 64 remaining suites are byte-identical to this merged main; their pending
+results are kept separate from the 60 passes measured before integration.
+
+Fresh real-PostgreSQL installations after the R0 merge reproduced all five
+current inventory fingerprints below, checking each issued pre-forward pin
+before applying the byte-identical forward. The regenerated canonical manifest
+is byte-identical to the existing feature manifest, so no inventory change is
+needed in it or the authorized current-chain tests. Historic pins stay intact.
+
+| Selected installation | Measured current inventory SHA-256 |
+| --- | --- |
+| legacy | 55fda620a186c372c82d35de83888bfb133d0333734334d96a5737af3bcc5113 |
+| qualified-bootstrap | 3280c765be6ae0af73e826207c07bce0dfae98cee9604e90503f659c621d7a4d |
+| qualified-separate | f230b54b465126402a2ba7a22793e70b80b0bea3da6ca5d1c10502224dffce7b |
+| admin-installer | b533e764e09628871a0d1d3709890aa5fde4bb50cb8126ec630ee7e41e839801 |
+| admin-operator | 85d9c6c48bb800d00d91d99869d6a1271cb47af8022f96c3cd786c1e5aa80ace |
+
+The handover expectation is the qualified-separate fingerprint above and the
+literal 86-table connected graph. The four additions to the previous 82 are
+subscription_dunning_cases, subscription_dunning_notifications,
+subscription_reminder_ledger and transactional_delivery_receipts. These are
+measured expectations, not arithmetic used for conflict resolution. The two
+dunning transfer entries still move to the earlier subscription-retry change
+and will be dropped from this delta only at merge, as already recorded in the
+maintainer packet. The handover changes exactly two source lines: the inventory
+literal and the count plus its notice-extended guard message.
+
+The default opt-in handover ran to completion under the focused gate using the
+already-local immutable Node24.21.0 image. Its outcome is
+LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION. The report
+measures 96 selected units with the exact new forward as tail and the
+qualified-separate inventory above. It identifies the owned 86-table graph and
+private media root; retires the four-process/coordinator source cohort, recovers
+two accepted effects, fences one uncertain operation, and dispatches/replays one
+ordinary duty through the actual restricted runtime. Its cleanupFailures list
+is empty. This closes the earlier preflight-only witness failure; it does not
+claim a larger hosted or whole-store qualification. Raw evidence is retained
+locally in .context/scratch/g8-r0-handover.log and
+.context/scratch/oss-m14-connected-catchup/journey-rkhLa1/report.json.
+
+### R0 pack growth stop
+
+The real npm packs on the integrated R0 base include the exact packaged SQL and
+all generated manifest lines:
+
+| Artifact | Packed bytes | Files |
+| --- | ---: | ---: |
+| Reconstructed unchanged R0 package | 2,318,731 | 2,913 |
+| Integrated notice candidate | 2,323,962 | 2,917 |
+| Measured feature delta | +5,231 | +4 |
+
+The baseline reproduces main's reported packed size exactly. Reconstruction
+removes only the binding's three source/JS/declaration files and this SQL file,
+restores the base index exports and context, and restores R0's SQL manifest.
+The candidate tarball's SQL and manifest were checked byte-for-byte against the
+worktree. The canonical and packaged SQL retain SHA-256
+92eca6c6d7cc9024bdd4260fca3059a2a47e05f3b4296e561dbd16f642cc5971.
+No source or SQL behavior changed during this continuation.
+
+This is 159 bytes above the previously reported +5,072-byte SQL-only projection,
+which explicitly excluded the eventual generated migration metadata. The new
+measurement includes that metadata and the actual R0 packaging context; there
+is no added TypeScript. Both real tarballs and measurement.json are retained
+under .context/scratch/g8-pack-r0. The about-3-KB target remains exceeded; the
+stream cap is unchanged.
+
+The binding no-growth rule requires a stop and report before proceeding beyond
+the last reported figure. Result: BLOCKED G8 on this measured growth. The
+supervisor was told immediately. All 64 remaining suites are still unrun, with
+the exact list retained in the preceding audit table and
+.context/scratch/g8-r0-existing-suites.json. There is no new failing test: the
+handover passed and its earlier pin failure is closed. The merged build, API
+report and five real-PostgreSQL inventory measurements passed. Fresh broad
+cheap checks and the requested follow-up DCO commit have not been attempted
+after the mandatory size stop; the expressly requested merge commit is already
+DCO-signed. Projection, literal-witness and task evidence changes remain local
+and uncommitted. No registry pin, checker edit or native review was made.
+
+The working-day estimate remains 1–2 active days for the existing-suite audit,
+remaining integration proof, native review and lead-selected verification,
+excluding the size decision, resource admission and landing waits. The existing
+subscriptions entry covers this export; no new package entry is required. No
+CHANGELOG change is present relative to the integrated main, so no note needs
+moving to a fragment. The two dunning transfer names remain until their earlier
+owner lands; they are dropped only from this delta at merge. OMS exclusions and
+native repair-cycle count (zero) remain unchanged.
+
+Self-retro: the build, catalog proof, handover and pack admissions waited 300,
+181, 30 and 210 seconds respectively (721 seconds total). The default handover
+reached selected-target readiness at 99,164 ms and cleaned up without failures.
+A SQL-only projection understated the final R0 delta by 159 bytes; measuring the
+complete generated manifest on its real package base before more suites exposes
+the budget decision promptly. No optional source simplification is attempted
+against this accepted candidate at the size stop.
+
+
+## Complete-package baseline accepted; existing-suite continuation
+
+The supervisor accepted the complete R0-based +5,231-byte / +4-file measurement
+as the package baseline and authorized continuation. Further growth beyond that
+figure requires another stop. There is no package-content change in this resume.
+The coordinator corrected the earlier message instruction: the handover guard
+retains its original “Keep the 8A-extended finite graph unchanged” text. Only the
+two fixed, measured literals differ from the issued witness: qualified-separate
+inventory f230b54b465126402a2ba7a22793e70b80b0bea3da6ca5d1c10502224dffce7b and
+86 connected tables. The four table names are recorded above. The completed
+handover proof remains applicable: this correction changes only the diagnostic
+message on an assertion whose condition passed, with no new setup or behavior.
+
+The authorized next steps are a DCO-signed projection/pin/evidence commit and the
+64 remaining existing suites on this already-merged base. Their test bodies
+remain byte-identical to main, except the specifically approved measured pins.
+No additional main merge, source/SQL repair, registry pin, checker edit or native
+review is authorized. A failing existing suite remains a stop before any repair
+that changes source or SQL. The earlier size stop is closed by this decision;
+readiness still depends on the remaining suite results.
+
+Pre-commit checks on the merged candidate pass: documentation policy reports
+seven obligations and zero unanswered; typecheck reports zero unresolved edges
+and zero consumer errors; lint reports zero errors and the same 33 existing
+warnings, including eight passing structural-rule test suites. The staged diff
+passes gitleaks and whitespace checks. All 2,917 files in the measured candidate
+tarball are byte-identical to the current package, so its +5,231-byte / +4-file
+figure is unchanged. Both SQL copies and the original signed forward have the
+same full SHA-256. The new commit records a refreshed scoped documentation
+explanation; no CONTRIBUTING prose or verification policy changes.
