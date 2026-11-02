@@ -1364,7 +1364,26 @@ identical apart from the CREATE OR REPLACE introducer. The class-local identity
 reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.
 Adding a nullable column or a new CHECK on an existing table already follows the
-existing expand-only rules; this class adds no DROP NOT NULL permission.
+existing expand-only rules. The purchase-reservation slot alone adds an
+`existingTableStatements` list: three exact whole ALTER TABLE statements, in
+order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
+from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
+foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The
+registry holds their complete text; feature SQL must include each once, in that
+order. Its existing-table ALTERs cannot fall through to generic ADD admission.
+List validation permits only qualified ALTER TABLE with DROP NOT NULL, ADD COLUMN,
+ADD CONSTRAINT NOT VALID (CHECK or foreign key, including ON DELETE RESTRICT),
+or VALIDATE CONSTRAINT actions. Targets must exist in the preceding native prefix.
+Comparison uses the existing statement splitter: leading comments/space are
+removed, internal statement bytes remain exact. Missing, duplicate, changed,
+extra or reordered companions refuse. No other slot gains this exception.
+
+The destination slot registers four created function signatures and pinned
+search paths. Its two new tables, revokes and RLS use the existing same-file
+narrowing rules below. Class data does not pin table columns, constraint/index
+names, function security mode, language, defaults or return type; feature SQL's
+whole-file/after-hashes and feature review retain those inventory and behavior
+duties. Synthetic shape acceptance establishes no implemented destination API.
 
 Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned

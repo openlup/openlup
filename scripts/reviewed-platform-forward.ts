@@ -64,7 +64,7 @@ export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraint
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
 type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null };
 type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; existingTableStatements?: string[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 export type ReviewedForwardRegistry = { nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
@@ -1879,6 +1879,23 @@ const purposeConstraint = "communication_native_sync_state_purpose_check";
 const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(",") === keys;
 export const isNativeStoreMigrationPath = (path: string): boolean => nativeStoreTimes.some(time => path.startsWith(`db/platform/migrations/${time}_`));
 
+// G4's exact companions, not a new expand-only ALTER permission. Use the same
+// splitter as dataStatements: leading comments/space disappear; internal bytes stay.
+function nativeStoreExistingTableStatement(sql: string): { statement: string; table: string } {
+  const statements = sqlStatements(sql), statement = statements[0]!;
+  const match = statements.length === 1 && /^ALTER TABLE (public\.[a-z_][a-z0-9_]*)\s+([\s\S]+);$/u.exec(statement);
+  if (!match) throw new Error("reviewed native store existing-table entry must be one qualified ALTER TABLE");
+  const actions = match[2]!.trim().replace(/\s+/gu, " ").split(/,\s*(?=(?:ALTER COLUMN|ADD COLUMN|ADD CONSTRAINT|VALIDATE CONSTRAINT)\b)/u);
+  for (const action of actions) {
+    if (/^(?:ALTER COLUMN [a-z_][a-z0-9_]* DROP NOT NULL|VALIDATE CONSTRAINT [a-z_][a-z0-9_]*)$/u.test(action)) continue;
+    const additive = action.replace(/ ON DELETE RESTRICT(?= NOT VALID$)/u, "");
+    if ((/^ADD COLUMN [a-z_][a-z0-9_]* /u.test(action) || /^ADD CONSTRAINT [a-z_][a-z0-9_]* (?:CHECK \(.+\)|FOREIGN KEY \([a-z_][a-z0-9_]*(?:,\s*[a-z_][a-z0-9_]*)*\) REFERENCES public\.[a-z_][a-z0-9_]*\([a-z_][a-z0-9_]*(?:,\s*[a-z_][a-z0-9_]*)*\)(?: ON DELETE RESTRICT)?) NOT VALID$/u.test(action))
+      && isExpandOnlyPlatformForward(`ALTER TABLE ${match[1]} ${additive};`)) continue;
+    throw new Error("reviewed native store existing-table action outside DROP NOT NULL, ADD COLUMN, ADD CONSTRAINT NOT VALID or VALIDATE CONSTRAINT");
+  }
+  return { statement, table: match[1]! };
+}
+
 function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
   const control = registry.nativeStoreForwardClass;
   if (control === undefined) {
@@ -1890,7 +1907,8 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   const replacements = new Set<string>();
   for (const slot of control.slots) {
     const index = nativeStoreRows.indexOf(slot.row);
-    if (!keysAre(slot, slot.purposeCheck ? "createdFunctions,dataStatements,grantOnlyFunctions,path,purposeCheck,replacedFunctions,row" : "createdFunctions,dataStatements,grantOnlyFunctions,path,replacedFunctions,row") || index <= previous || index < 0 || !new RegExp(`^db/platform/migrations/${nativeStoreTimes[index]}_[a-z][a-z0-9_]*\\.sql$`, "u").test(slot.path) || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
+    const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...(slot.purposeCheck ? ["purposeCheck"] : []), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : [])].sort().join(",");
+    if (!keysAre(slot, keys) || index <= previous || index < 0 || !new RegExp(`^db/platform/migrations/${nativeStoreTimes[index]}_[a-z][a-z0-9_]*\\.sql$`, "u").test(slot.path) || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
     previous = index;
     paths.add(slot.path);
     if (!Array.isArray(slot.replacedFunctions) || !Array.isArray(slot.createdFunctions) || !Array.isArray(slot.grantOnlyFunctions)) throw new Error("reviewed native store requires three closed function lists");
@@ -1906,6 +1924,11 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     const signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
     if (new Set(signatures).size !== signatures.length) throw new Error("reviewed native store function lists must be disjoint and unique");
     if (!Array.isArray(slot.dataStatements) || slot.dataStatements.some(sql => typeof sql !== "string" || !/^(?:INSERT|UPDATE|DELETE) /u.test(sql) || sqlStatements(sql).length !== 1) || new Set(slot.dataStatements).size !== slot.dataStatements.length) throw new Error("reviewed native store data statements must be exact named statements");
+    if (slot.existingTableStatements !== undefined) {
+      if (slot.row !== "G4" || !Array.isArray(slot.existingTableStatements) || slot.existingTableStatements.length === 0 || slot.existingTableStatements.some(sql => typeof sql !== "string")) throw new Error("reviewed native store existing-table list is G4-only");
+      const statements = slot.existingTableStatements.map(sql => nativeStoreExistingTableStatement(sql).statement);
+      if (new Set(statements).size !== statements.length) throw new Error("reviewed native store existing-table entries must be unique after splitting");
+    }
     if (slot.purposeCheck && (slot.row !== "G11-c" || !keysAre(slot.purposeCheck, "beforeSha256,values") || !hash(slot.purposeCheck.beforeSha256) || !Array.isArray(slot.purposeCheck.values) || slot.purposeCheck.values.length === 0 || slot.purposeCheck.values.some(value => !/^[a-z][a-z0-9_]*$/u.test(value)) || new Set(slot.purposeCheck.values).size !== slot.purposeCheck.values.length)) throw new Error("reviewed native store permits only the account-consent purpose CHECK");
   }
   const forwards = registry.nativeStoreForwards;
@@ -1994,7 +2017,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
   const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), baseStatements = new Map<string, string>();
   let checkSource: string | undefined;
+  const prefixTables = new Set<string>();
   for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+    const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+    if (table) prefixTables.add(table[1]!.toLowerCase());
     if (source.path !== PLATFORM_BASELINE_FILE && [...names].some(name => statement.toLowerCase().includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed native store unsupported preceding function DDL");
     for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), signatures, true)) {
       prior.set(signature, digest);
@@ -2008,8 +2034,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const statements = sqlStatements(bytes.toString("utf8")), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
   if (definitions.size !== functions.length || functions.some(fn => definitions.get(fn.signature) !== forward.functions.find(pin => pin.signature === fn.signature)?.afterSha256)) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   const created = new Set(slot.createdFunctions.map(fn => fn.signature));
+  const existingTableStatements = (slot.existingTableStatements ?? []).map(nativeStoreExistingTableStatement);
+  if (existingTableStatements.some(entry => !prefixTables.has(entry.table))) throw new Error("reviewed native store existing-table target absent from prefix");
   const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
-  let droppedCheck = false, addedCheck = false;
+  let droppedCheck = false, addedCheck = false, existingTablePosition = 0;
   for (const statement of statements) {
     if (droppedCheck && !addedCheck && !statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) throw new Error("reviewed native store requires the adjacent purpose CHECK replacement");
     if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) {
@@ -2052,6 +2080,13 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (!slot.purposeCheck || !droppedCheck || addedCheck || !values || slot.purposeCheck.values.some(value => !values.includes(value))) throw new Error("reviewed native store purpose CHECK must only widen");
       addedCheck = true; continue;
     }
+    // Intercept existing-table ALTERs before generic ADD admission: otherwise a
+    // changed or extra additive companion could bypass the exact ordered list.
+    const alteredTable = /^ALTER TABLE (public\.[a-z_][a-z0-9_]*)\s/iu.exec(statement)?.[1]?.toLowerCase();
+    if (existingTableStatements.length && /^ALTER TABLE\b/iu.test(statement) && !tables.has(alteredTable ?? "")) {
+      if (statement !== existingTableStatements[existingTablePosition]?.statement) throw new Error("reviewed native store existing-table statement unlisted, duplicate or out of order");
+      existingTablePosition++; continue;
+    }
     if (slot.dataStatements.includes(statement)) { data.add(statement); continue; }
     if (/^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX) |ALTER TABLE )/u.test(statement) && isExpandOnlyPlatformForward(statement)) {
       const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
@@ -2063,4 +2098,5 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if ([...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store created function missing PUBLIC revoke");
   if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");
   if (data.size !== slot.dataStatements.length) throw new Error("reviewed native store named data statement missing");
+  if (existingTablePosition !== existingTableStatements.length) throw new Error("reviewed native store existing-table statement missing");
 }
