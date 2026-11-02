@@ -1,7 +1,10 @@
 # Purchase reservation and destination forward slots
 
-Status: development-preview control; literal list pin staged for a second delta
-read. The earlier pending integration remains unchanged. No DCO before acceptance.
+Status: landed in two changes. The reader, the literal list pin, the fixtures, the tests
+and the prose landed in openlup/openlup#503 (merge
+`a7ce403cef3b790c28418d786f153e50ac595084`); the list itself reaches the registry in the
+pin-only change that follows it. The sections below are the history of the work as it
+stood when each was written; the closing sections are current.
 
 Current revision: replace the rejected ALTER-action validator with a literal
 three-statement checker constant and exact whole-list equality. Literal text is
@@ -416,3 +419,15 @@ that now expects them absent. Preflight for both changes: run the admission path
 trusted main on the candidate head in scratch before pushing. Evidence for this
 change: the reader accepts the production registry, which has seven slots and no list,
 and a seven-slot registry carrying the pinned list, in one committed test.
+
+Pin-only change (2026-11-02). After the reader landed in #503, one change adds the three
+statements to the purchase-reservation slot of the registry and turns the one production
+expectation that held the list absent back into an equality with the pinned text; nothing
+else in the checker, fixtures or tests changes. Preflight for both changes, run in scratch
+before each push: `node scripts/agent-review-queue.mjs wait` from a checkout of the main
+commit under test, with the candidate objects in a mirror, a fake `gh` that answers the
+four GitHub reads of that path from canned JSON, and the real receipt. For the reader
+change it ended with exit code 1 on the first head ("slot path, row or order drifted"),
+the failure it reproduces, and exit code 0 on the repaired head. This change's own command
+and exit code are in its pull request description, because a record committed after
+review would change the reviewed tree.
