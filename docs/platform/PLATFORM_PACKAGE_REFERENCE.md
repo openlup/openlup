@@ -1200,3 +1200,27 @@ last-updated text. Processor disclosures are types only. The package supplies
 no document wording or processor inventory and does not validate content or
 imply any legal outcome. The cold installed consumer exercises the runtime
 entry and compiles its content types.
+
+
+## Native bundle admin writes
+
+The experimental `@openlup/platform/catalog` entry exports
+`createPostgresBundleAdminWriteStore`, the existing shared
+`createBundleAdminWriteStore`, `BundleRpcError` and its `DomainRpcError` base.
+The constructor takes the existing data connection/options and exposes `close()`;
+it retains one role-free pooled transaction per operation. Bind only after the
+host's verified human authorization and existing mutation/activation gates.
+An actor identifier is routine input, not authorization. Importing this entry
+installs no routes, credentials, SQL or grant.
+
+Apply the complete selected canonical chain, not the sparse bundle SQL list.
+The existing native routines retain their invoker privilege requirements and
+sequential idempotency recognition; this export adds no concurrency guarantee.
+The browser entry remains `catalog/contracts`. Reference error paths re-export
+the same constructors, preserving instanceof and the existing SQLSTATE mapper;
+managed transport composition and response mapping remain host-owned.
+
+The source witness `tests/postgres/m19BundleWriteExport.test.ts` exercises the
+installed tarball on qualified-v2 through a restricted runtime login. Its local
+result is recorded in the task record, not a hosted or provider qualification.
+The identity witness is `tests/postgres/m19BundleWriteIdentity.test.ts`.

@@ -479,8 +479,9 @@ Catalog's `BUNDLE_MIGRATIONS` projects canonical bundle units 16 and 19 with exa
 catalogPath, position, SHA-256 and artifact URL. The package SQL bytes are identical
 to the canonical files; this is projection only, with no new migration, manifest
 row or baseline change. Unit 30 belongs to channel lines and is not included.
-Install the full canonical chain, not these two files alone. The moved native
-store performs reads only; existing canonical write routines remain in place.
+Install the full canonical chain, not these two files alone. The native read
+store performs reads only; the packaged native writer calls the existing
+canonical write routines without changing them.
 Five real-PostgreSQL cases characterize fresh/repeat application, complete reads,
 whole-set rollback and refusals, dry runs, close-and-append prices, sequential key
 recognition and denied versus explicitly granted invoker access. They establish

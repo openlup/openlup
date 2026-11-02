@@ -1,6 +1,6 @@
 import type { VercelResponse } from "../types/vercel.js";
 import { sendBffError } from "../bff/response.js";
-import type { AgentReason } from "../../../src/lib/agent-domain/lifecycleRules.js";
+import { DomainRpcError } from "@openlup/platform/catalog";
 
 /**
  * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`server/_lib/admin-domain/`).
@@ -19,17 +19,7 @@ import type { AgentReason } from "../../../src/lib/agent-domain/lifecycleRules.j
  * CONFLICT/rule, P0002 → NOT_FOUND, 23505 → already-exists). A domain's
  * `CatalogRpcError`-style class extends this so the map handles it uniformly.
  */
-export class DomainRpcError extends Error {
-  constructor(
-    readonly sqlstate: string | undefined,
-    readonly pgMessage: string,
-    /** Optional named token a RAISE carries (e.g. `publish_requires_human`). */
-    readonly raiseToken?: AgentReason,
-  ) {
-    super(pgMessage);
-    this.name = "DomainRpcError";
-  }
-}
+export { DomainRpcError } from "@openlup/platform/catalog";
 
 /**
  * Translate a thrown write-RPC error into the BFF envelope. Behaviour-identical
