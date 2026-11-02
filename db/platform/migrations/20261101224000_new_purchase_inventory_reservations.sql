@@ -250,29 +250,29 @@ DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
     EXECUTE 'REVOKE ALL ON TABLE public.fulfillment_purchase_reservation_receipts FROM anon';
   END IF;
-END $$;
+END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
     EXECUTE 'REVOKE ALL ON TABLE public.fulfillment_purchase_reservation_receipts FROM authenticated';
   END IF;
-END $$;
+END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
     EXECUTE 'REVOKE ALL ON TABLE public.fulfillment_purchase_reservation_receipts FROM service_role';
   END IF;
-END $$;
+END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
     EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM anon';
   END IF;
-END $$;
+END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
     EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM authenticated';
   END IF;
-END $$;
+END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) TO service_role';
   END IF;
-END $$;
+END; $$;

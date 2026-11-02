@@ -367,7 +367,7 @@
     },
     {
       "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-      "sha256": "fc49ac715d08a8da12f0bb7ac3ae085743c82c628356345fb6e1acfb72196b41"
+      "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323"
     }
   ],
   "objectInventorySha256": "a7f554093bb9c597d4625134b9f11476563e92f2005cc4f00abb4580dda7fe6c",
@@ -755,7 +755,7 @@
       },
       {
         "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-        "sha256": "fc49ac715d08a8da12f0bb7ac3ae085743c82c628356345fb6e1acfb72196b41"
+        "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323"
       }
     ],
     "objectInventorySha256": {
@@ -1147,7 +1147,7 @@
       },
       {
         "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-        "sha256": "fc49ac715d08a8da12f0bb7ac3ae085743c82c628356345fb6e1acfb72196b41"
+        "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323"
       }
     ],
     "objectInventorySha256": {

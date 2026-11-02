@@ -129,7 +129,8 @@ admin reservation listing remains renewal-only; purchase listing is not claimed.
 
 The upgrade fixture seeds five renewal-owned rows before the forward: held,
 committed, consumed, released and expired. It asserts the old NOT NULL refusal,
-then exact unchanged row JSON, unchanged reservation relacl and validated old/new
+then unchanged original-column row JSON (excluding the added NULL purchase column),
+unchanged reservation relacl and validated old/new
 constraints after install, including convalidated=true for the new FK and CHECK.
 The receipt CREATE TABLE passes the unchanged expand-only grammar in both modes.
 The exact table narrowing is tested against fixture-only effective grants in a
@@ -366,3 +367,175 @@ waits total 93 seconds in this resume. All preparatory checks are complete;
 no native review or canonical verification is claimed. The SQL inventory and
 accepted read packet retain the prior read identity plus the final candidate's
 computed identities outside tracked source. G3 remains untouched.
+
+
+## DO-ending compatibility resume
+
+The supervisor authorizes exactly six END-to-END-semicolon edits in the forward,
+DCO-signed on top of71539d088390817ef27a0ff35617ff02f71a4af6, with no new owner read
+for this exact delta. New whole forward SHA256:
+0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323.
+The diff is six replacements of END $$; by END; $$;, exactly+6 bytes. Every byte
+outside those replacements is unchanged, including the added column, DROP NOT
+NULL, FK/CHECK NOT VALID and VALIDATE statements, their whitespace/order/names.
+The three manifest hashes follow the new file identity; no function-body/catalogue
+change is intended. The one remaining restricted-chain literal is advanced94->95
+under the explicit count-bump exception; historical identities remain unchanged.
+No source repair or other SQL byte edit is authorized. If an existing suite needs
+such a repair, stop and identify suite, case and mechanism before any fix.
+
+Compatibility question: does G4 change valid rows/stores that never used its new
+writer? Test the existing inventory exports and native reservation/ATP/renewal/
+stock-wait/retry/preparation/outcome readers, and retained/connected restore paths.
+The unchanged old writers supply a renewal owner; old NOT NULL rows satisfy the
+new CHECK, keep UNIQUE/FK and ACL, and must remain untouched by purchase release/
+expiry. A legacy direct insert with NO owner still refuses (now CHECK rather than
+NOT NULL); it was never a valid old row. Existing full suites, not only new-writer
+fixtures, are required. Complete scoped suite inventory and results follow below.
+Native review, merge/verify/submission and the G3 worktree remain out of scope.
+
+The full byte comparison to71539d08 passes: exactly the six replacements and
+nothing else. All four function after-hashes are identical; the complete leading
+ownership-DDL prefix SHA256 remains
+980448ed2fd5a123d3b88a7e65b58d472465ed78a5adc50dda7f6f324349a803.
+The earlier static comparison utility used JavaScript replacement dollars as
+substitution syntax; using a literal-returning callback corrected that utility,
+without any SQL repair. The scoped search followed SQL helper imports to57 test
+files; every file is run unchanged at71539d08 except the permitted count bump.
+
+Selected current catalogue values are unchanged by DO punctuation; fresh canonical
+runner observations are recorded in the suite results below:
+- legacy: "a7f554093bb9c597d4625134b9f11476563e92f2005cc4f00abb4580dda7fe6c"
+- qualified: {"bootstrapMigrator":{"withRestore":"ff02a3c158b3d71347c2621e27f10891cab564eacfaff84a1bfcc7754dc0a68c"},"separateMigrator":{"withRestore":"6a7b1e4060a65ca39276ceb6ea9a17da61f80d95230815d2abd2692451091ae4"}}
+- qualifiedAdmin: {"installerManaged":"9dba97d582e8adfb21ada0e88b2d531376124016f17bae52a4fa5d99953fe805","operatorProvisioned":"b5f2b4eb29de190fcdb2777ed9a297f13aebe97675213dcbe168912e01cd45ff"}
+
+Real isolated R0-based pack, including this forward AND its full packaged manifest:
+baseline09cd599b2,318,731 B/2,913files; G4 candidate2,324,762 B/2,917files.
+Delta +6,031 packed B/+30,408 unpacked B/+4 files. This supersedes the older
+own-SQL-only5,958 B projection. The packed G4 source diff is applied additively to
+isolated R0 copies; no branch merge or other worktree mutation. It remains within
+the accepted4.7KB+3KB compensation envelope; no numeric budget/version changes.
+Root transfer/test/fragment changes add no package assets. Predecessor integration
+still requires its final real pack and joined capture-after-cancel proof.
+
+
+Specific non-writer answer: valid legacy headers keep their renewal owner and
+all original values; raw row JSON acquires purchase_order_id:null because a
+column was added. The upgrade witness compares original columns explicitly,
+not byte-identical pre/post full-row JSON. Old operation-specific predicates and
+joins exclude NULL purchase owners, while aggregate stock accounting includes
+all live holds. Purchase release/expiry cannot consume legacy renewal rows.
+The invalid raw insert with neither owner still refuses, now under the exclusive
+owner CHECK rather than the old NOT NULL property.
+
+Retained-store behavior DOES intentionally expand: the accepted finite capture/
+restore profile now includes ALL rows in the five existing stock/reservation/
+activation/compensation relations, not only rows written by G4; the sixth table
+is the new receipt relation. A nonempty legacy relation formerly outside that
+finite profile can now transfer rather than cause unknown-table refusal. This
+is the six-table addition already named in the accepted transfer owner read,
+not a new narrowing or hidden row filter. Current-catalogue transfer still checks
+actual schema, parents, limits, exact encoding and pristine targets; no arbitrary
+cross-catalogue old-packet compatibility is claimed. Existing suite results below
+separate these intentional schema/profile changes from old reader/writer outcomes.
+
+
+Resume self-retro: following SQL helper imports found additional old consumers
+beyond direct barrel imports. Keeping the full byte comparison separate from
+compatibility proof prevents a punctuation-only diff from being mistaken for a
+proof about old stores. R0-based measurement includes manifest cost instead of
+reporting only a copied SQL asset. No production source, helper behavior, checker,
+privilege or data repair is introduced; existing-suite failures requiring such
+a repair remain a mandatory stop. Native review repair cycles remain zero.
+
+
+### Existing-suite compatibility results
+
+All 57 selected files pass through the focused gate. The inventory follows changed
+inventory/capture/restore imports, reservation/ATP reader-writer routines and SQL
+helper callers, then retained-installation and qualification witnesses. Every
+behavioral assertion and historical inventory pin stays unchanged from71539d08;
+the only existing-test delta is the permitted literal chain count94->95. No
+production-source or SQL repair was needed. No test case failed. The Core smoke
+file initially went to the root runner, which found no files; its unchanged test
+then passed with packages/core/vitest.config.ts. This was a runner correction,
+not a fixture or behavior change. The conservative Core graph witness is included
+even though its inventory path is Core's own barrel.
+
+| Test file | Result |
+| --- | --- |
+| `packages/core/smoke/standaloneGraph.test.ts` | 3 passed (3) |
+| `packages/platform/test/commerce/checkoutCompensation.test.ts` | 3 passed (3) |
+| `packages/platform/test/commerce/commerceAtpConsumptionConformance.test.ts` | 6 passed (6) |
+| `packages/platform/test/commerce/commerceCheckoutCompensation.test.ts` | 5 passed (5) |
+| `packages/platform/test/commerce/commerceFinalizeOutcomeConformance.test.ts` | 5 passed (5) |
+| `packages/platform/test/inventory/adminInventoryConformance.test.ts` | 3 passed (3) |
+| `packages/platform/test/inventory/contracts.test.ts` | 2 passed (2) |
+| `packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts` | 4 passed (4) |
+| `packages/platform/test/inventory/managedStockAvailability.test.ts` | 17 passed (17) |
+| `packages/platform/test/inventory/newPurchaseStockBoundary.test.ts` | 3 passed (3) |
+| `packages/platform/test/inventory/newPurchaseStockConformance.test.ts` | 2 passed (2) |
+| `packages/platform/test/inventory/reservationPolicyConformance.test.ts` | 4 passed (4) |
+| `packages/platform/test/inventory/subscriptionForecastCalculation.test.ts` | 4 passed (4) |
+| `packages/platform/test/packageBoundary.test.ts` | 2819 passed (2819) |
+| `packages/platform/test/promotions/promotionClaims.test.ts` | 2 passed (2) |
+| `packages/platform/test/subscriptions/renewalCycleMechanism.test.ts` | 29 passed (29) |
+| `scripts/packages/platform-cold-consumer.test.ts` | 108 passed (108) |
+| `scripts/reviewed-batch-forward.test.ts` | 691 passed (691) |
+| `server/adapters/postgres/subscriptionActivation.test.ts` | 5 passed (5) |
+| `server/adapters/supabase/promotionClaims.test.ts` | 4 passed (4) |
+| `server/runtime/public-reference/m12AccountSupportBinding.test.ts` | 17 passed (17) |
+| `tests/platform/channels/channelCompositionBinding.test.ts` | 5 passed (5) |
+| `tests/platform/channels/channelConsumer.test.ts` | 2 passed (2) |
+| `tests/platform/inventory/inventoryBindings.test.ts` | 10 passed (10) |
+| `tests/platform/inventory/inventoryConsumer.test.ts` | 2 passed (2) |
+| `tests/postgres/accountSupportComposition.test.ts` | 2 passed (2) |
+| `tests/postgres/accountSupportOperatorAuthority.test.ts` | 23 passed (23) |
+| `tests/postgres/accountSupportSelfService.test.ts` | 3 passed (3) |
+| `tests/postgres/accountSupportUpgrade.test.ts` | 2 passed (2) |
+| `tests/postgres/channelConnectedRestore.test.ts` | 1 passed (1) |
+| `tests/postgres/channelManagedRetainedInstallation.test.ts` | 1 passed (1) |
+| `tests/postgres/channelPurchase.conformance.test.ts` | 30 passed (30) |
+| `tests/postgres/commerceComposition.test.ts` | 4 passed (4) |
+| `tests/postgres/commerceManagedRail.test.ts` | 26 passed (26) |
+| `tests/postgres/connectedManagedRetained.test.ts` | 16 passed (16) |
+| `tests/postgres/connectedStoreTransfer.test.ts` | 8 passed (8) |
+| `tests/postgres/fulfillmentDeliveryAlignment.test.ts` | 29 passed (29) |
+| `tests/postgres/fulfillmentRenewalAdmission.test.ts` | 9 passed (9) |
+| `tests/postgres/fulfillmentStockEvidenceReplay.test.ts` | 6 passed (6) |
+| `tests/postgres/inventoryNative.test.ts` | 8 passed (8) |
+| `tests/postgres/m05CatalogComposition.test.ts` | 3 passed (3) |
+| `tests/postgres/m14ManagedCatchup.test.ts` | 1 passed (1) |
+| `tests/postgres/m14QualifiedAdminComposition.test.ts` | 2 passed (2) |
+| `tests/postgres/m14QualifiedComposition.test.ts` | 4 passed (4) |
+| `tests/postgres/m14RestrictedConnectedRestore.test.ts` | 15 passed (15) |
+| `tests/postgres/m17ChannelReference.test.ts` | 6 passed (6) |
+| `tests/postgres/managedStorageTransfer.test.ts` | 1 passed (1) |
+| `tests/postgres/newPurchaseStockManaged.test.ts` | 10 passed (10) |
+| `tests/postgres/newPurchaseStockNative.test.ts` | 11 passed (11) |
+| `tests/postgres/purchaseReservationDonor.test.ts` | 3 passed (3) |
+| `tests/postgres/purchaseReservationNative.test.ts` | 27 passed (27) |
+| `tests/postgres/retainedClientSubscriptionImport.test.ts` | 13 passed (13) |
+| `tests/postgres/reviewedBatchForwards.test.ts` | 106 passed (106) |
+| `tests/postgres/subscriptionComposition.test.ts` | 20 passed (20) |
+| `tests/postgres/subscriptionContinuityBaseline.test.ts` | 4 passed (4) |
+| `tests/postgres/subscriptionManagedStock.test.ts` | 12 passed (12) |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | 66 passed (66) |
+
+
+Final resume checks: 4,227 tests pass across the 57 files above. Public five-project
+typecheck passes with zero unresolved edges and zero consumer-side errors; API
+snapshot and ast-grep checks pass. Full lint passes with zero errors and the same
+33 existing warnings. The SQL byte proof confirms exactly six inserted semicolons,
+unchanged extra ownership statements and unchanged function after-hashes. Current
+manifest forward identities change in three selections, with no historical
+inventory edits. The scoped tests no-impact trailer accompanies this follow-up;
+the documentation policy check is repeated after committing it. Prior signed
+candidate and all three old WIP commits pass redacted gitleaks; staged and new
+signed range scans are recorded in the final handoff. No source/SQL repair,
+checker/pin/native-review change or other worktree change. Gate wait examples:
+331 seconds for typecheck and 120 seconds for lint admission. The Core runner
+correction is the only invocation recovery; no behavioral test needed relaxing.
+The real pack above is stable because no packed source, SQL or manifest changed
+after measurement. Remaining joined G6 acceptance, ordered integration and native
+review are still open; estimate1-2workingdays excluding waits, repair cycles0.
