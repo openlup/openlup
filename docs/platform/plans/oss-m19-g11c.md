@@ -1,6 +1,6 @@
 # Native account consent choices
 
-Status: maintainer public-boundary delta read accepted; ready for scheduled native review.
+Status: blocked by two failures in the unchanged existing native communications suite.
 Admission remains blocked on the separately owned prior control. The supervisor
 assigned the additive native bounce/complaint fan-out fix to this row so that the
 new purpose and its suppression regression land together. DCO sign-off is now
@@ -485,3 +485,91 @@ Remaining estimate: one working day plus external scheduling.
 Self-retro: no additional implementation change was needed after the accepted
 read. Keep acceptance attribution with the coordinator and scheduling with the
 stream supervisor; retain the exact accepted SQL identity across history cleanup.
+
+## Existing-suite compatibility check
+
+The unchanged existing native communications suite is a delivery blocker:
+`tests/postgres/communicationsNative.test.ts` ran all 20 cases, with 18 passing
+and two failing. The poll/callback convergence and suppression case at line 109
+expects three recipient-consent rows; the added gifts fan-out persists four.
+This affects a send created through the existing delivery port without the new
+account writer or an account permission event. The adverse-reinstall case at
+line 270 drops/recreates the native tables using the older communications DDL.
+That reconstructs the two-purpose sync CHECK after this forward widened it;
+the current migration ledger prevents reapplying the forward and the catalogue
+hash check refuses the resulting schema. Treat both as change regressions for
+coordination; no source/SQL repair or assertion relaxation has been attempted.
+The test batch stopped at this first failing existing file. No other existing
+suite is claimed green from this run.
+
+The account suite itself passed all five real-PostgreSQL profiles again in
+19.81 s. Its actual catalogue projectors reproduced these current hashes:
+
+- qualified-v2 bootstrap/restore (96 units):
+  `ee0b5c7943dd2a29dc6d3acaec0cee3b95ee1c44366825bfc67fa63f6822c642`
+- qualified-v2 separate migrator/restore (96 units):
+  `b6bf509ec21985044d3fff75e2427d92a39d54d7e113e9951a578358fa4399bf`
+- qualified-admin installer-managed (95 units):
+  `bc0b06202c8c6cd2d9e1390814a26c7aab7f205800681f8e3b33637f0a26622c`
+- qualified-admin operator-provisioned (95 units):
+  `9239ca156012f142a7c98e3f44ba985110e9a1133c575df814277ed4e3d477fc`
+
+Only the authorized current chain literals and four current hashes are updated
+in the three qualification/restore test files and two proof companions. Historic
+issued-prefix counts and inventory hashes remain untouched. Those three suites
+have not yet run with the bump because the compatibility batch stopped. All
+other selected test files are byte-identical to the signed candidate. The
+forward remains SHA-256
+`01acd691f9918af6025c975028e31028df02105d36b123dde41c29dc02bcecf6`.
+
+The full selection (including proof children through their parent tests) is:
+
+- `packages/platform/test/communications/nativeDelivery.test.ts` — not run; stopped at blocker.
+- `scripts/customer-selfservice-recovery-schema.test.ts` — not run; stopped at blocker.
+- `scripts/documentation-impact.test.ts` — not run; stopped at blocker.
+- `scripts/packages/platform-cold-consumer.test.ts` — not run; stopped at blocker.
+- `scripts/reviewed-batch-forward.test.ts` — not run; stopped at blocker.
+- `server/adapters/postgres/communicationsLifecycle.test.ts` — not run; stopped at blocker.
+- `server/adapters/postgres/customerCommunicationPreferences.test.ts` — not run; stopped at blocker.
+- `server/adapters/supabase/communications/customerCommunicationPreferences.test.ts` — not run; stopped at blocker.
+- `server/domains/communications/customerCommunicationPreferencesHandler.test.ts` — not run; stopped at blocker.
+- `server/runtime/communications/a1ReferenceBinding.test.ts` — not run; stopped at blocker.
+- `server/runtime/communications/communicationsLifecycleBinding.test.ts` — not run; stopped at blocker.
+- `server/runtime/communications/communicationsSchema.test.ts` — not run; stopped at blocker.
+- `tests/postgres/acquisitionEvidenceParity.test.ts` — not run; stopped at blocker.
+- `tests/postgres/channelConnectedRestore.test.ts` — not run; stopped at blocker.
+- `tests/postgres/commerceComposition.test.ts` — not run; stopped at blocker.
+- `tests/postgres/communicationsNative.test.ts` — FAIL, 18/20 passed.
+- `tests/postgres/connectedManagedRetained.test.ts` — not run; stopped at blocker.
+- `tests/postgres/connectedStoreTransfer.test.ts` — not run; stopped at blocker.
+- `tests/postgres/customerAccountConsents.test.ts` — PASS, five profiles.
+- `tests/postgres/customerNewsletterWithdrawal.test.ts` — not run; stopped at blocker.
+- `tests/postgres/m14ManagedCatchup.test.ts` — not run; stopped at blocker.
+- `tests/postgres/m14QualifiedAdminComposition.test.ts` — not run; stopped at blocker.
+- `tests/postgres/m14QualifiedComposition.test.ts` — not run; stopped at blocker.
+- `tests/postgres/m14RestrictedConnectedRestore.test.ts` — not run; stopped at blocker.
+- `tests/postgres/managedStorageTransfer.test.ts` — not run; stopped at blocker.
+
+Selection used repository-wide module/export, table and routine references plus
+adjacent composition bindings, and included script/schema checks conservatively.
+The managed Storage proof is reached through managedStorageTransfer.test.ts;
+the two qualified composition proofs run through their corresponding parents.
+
+For older/retained stores, this change replaces no existing routine, migrates no
+facts, requires no new companion row for the old preference or evaluator APIs,
+and leaves normal address changes scoped per recipient. Capture/restore carries
+empty or populated new tables once the current native schema is installed.
+However, the bounce/complaint path deliberately also changes old sends that did
+not use the new writer by adding gifts suppression; the unchanged suite exposes
+that expansion. Recreating an earlier schema table is also affected by the new
+CHECK. Remaining retained/managed/connected suites are pending, so no broad
+compatibility conclusion is asserted. SQL/source, CHANGELOG and controls remain
+unchanged; the existing package change fragment remains the note location.
+
+Self-retro: running the existing suite caught two interactions missed by the
+new focused proof. The first direct wrapper invocation lacked npm's executable
+path and failed before collection; the corrected npm test invocation produced
+the real failures above. Keep the failing assertions intact and obtain the
+required decision/delta read before any source or SQL repair. No native review
+or repair cycle started. Remaining estimate: one working day plus blocker and
+external scheduling; the earlier real SQL-inclusive pack remains applicable.
