@@ -52,6 +52,11 @@
     "zod": "^4.6.6"
   },
   "exports": {
+    "./fulfillment/native": {
+      "types": "./dist/fulfillment/native/index.d.ts",
+      "import": "./dist/fulfillment/native/index.js",
+      "default": "./dist/fulfillment/native/index.js"
+    },
     "./http": {
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js",
@@ -246,6 +251,11 @@
       "types": "./dist/invoicing/index.d.ts",
       "import": "./dist/invoicing/index.js",
       "default": "./dist/invoicing/index.js"
+    },
+    "./invoicing/postgres": {
+      "types": "./dist/invoicing/postgres/index.d.ts",
+      "import": "./dist/invoicing/postgres/index.js",
+      "default": "./dist/invoicing/postgres/index.js"
     },
     "./invoicing/contracts": {
       "types": "./dist/invoicing/contracts/index.d.ts",

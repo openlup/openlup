@@ -5,6 +5,16 @@
     "internal-candidate": "Development-preview API; no stable compatibility claim."
   },
   "packageSurface": {
+    "./fulfillment/native": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/fulfillment/nativePreparation.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/native/index.d.ts",
+      "snapshot": "api/fulfillment-native.api.md"
+    },
     "./bff": {
       "role": "rail",
       "maturity": "experimental",
@@ -476,6 +486,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "test/fulfillment/capturedAdapter.test.ts",
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
         "test/fulfillment/portFit.test.ts",
@@ -563,6 +574,16 @@
       ],
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"
+    },
+    "./invoicing/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/invoicing/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/postgres/index.d.ts",
+      "snapshot": "api/invoicing-postgres.api.md"
     },
     "./invoicing/contracts": {
       "role": "capability",

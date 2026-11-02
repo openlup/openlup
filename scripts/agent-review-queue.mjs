@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { admit, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, carryOverSourceReview, git } from './agent-review-session.mjs';
-import { assertCoLocatedForwardApproval, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+import { assertCoLocatedForwardApproval, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
@@ -71,7 +71,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
-      const needsForwardApproval = candidate.changedPaths.includes(REVIEWED_FORWARD_PATH) || candidate.changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path));
+      const needsForwardApproval = candidate.changedPaths.includes(REVIEWED_FORWARD_PATH) || candidate.changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path));
       if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();

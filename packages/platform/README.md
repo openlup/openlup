@@ -209,6 +209,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
@@ -1481,6 +1482,16 @@ legacy fallback and forward-only migration limits are owned by the
 [M09 migration section](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 
 OMS read projections are optional. Omitting the host health classifier preserves the original unprojected empty health snapshot (`ok`, no reasons or evidence IDs); it does not evaluate provider health. The reference composition injects its existing classifier and evidence readers.
+
+### Captured native invoice composition
+
+Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabled
+captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
+owned invoice-history/ticket reader. The host passes a restricted runtime
+executor and authenticated principal UUID. See the
+[invoicing reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for composition, refusal and sandbox limits. Construction installs no route,
+schedule or provider connection.
 
 ## Account and support contracts
 

@@ -1586,6 +1586,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-forward-class.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g10.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g11.md",
       "class": "public-output"
     },
@@ -1607,6 +1615,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g18.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g9.md",
       "class": "public-output"
     },
     {
@@ -3034,6 +3046,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/fulfillment-native.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/fulfillment-omnipack.api.md",
       "class": "public-output"
     },
@@ -3063,6 +3079,10 @@
     },
     {
       "path": "packages/platform/api/invoicing-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/invoicing-postgres.api.md",
       "class": "public-output"
     },
     {
@@ -5338,6 +5358,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/capturedAdapter.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
       "class": "public-output"
     },
@@ -5451,6 +5475,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/index.ts",
       "class": "public-output"
     },
     {
@@ -6187,6 +6215,18 @@
     },
     {
       "path": "packages/platform/src/invoicing/paymentReadback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/accountHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/captured.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgres/index.ts",
       "class": "public-output"
     },
     {
@@ -8362,6 +8402,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/capturedAdapter.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/contracts.test.ts",
       "class": "public-output"
     },
@@ -8383,6 +8427,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/nativePreparation.test.ts",
       "class": "public-output"
     },
     {
@@ -8743,6 +8791,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/issue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/nativePostgres.test.ts",
       "class": "public-output"
     },
     {
@@ -10166,6 +10218,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-native-store/before.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-native-store/registry.json",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -10655,6 +10715,10 @@
     },
     {
       "path": "scripts/reviewed-batch-rail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-native-store-forward.test.ts",
       "class": "public-output"
     },
     {
@@ -27542,6 +27606,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/g10FulfillmentIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/identityEnvelope.conformance.ts",
       "class": "public-output"
     },
@@ -27563,6 +27631,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingCaptured.test.ts",
       "class": "public-output"
     },
     {
@@ -27727,6 +27799,10 @@
     },
     {
       "path": "tests/postgres/nativeAccountReads.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
       "class": "public-output"
     },
     {
