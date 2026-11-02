@@ -1,6 +1,6 @@
 # Native account consent choices
 
-Status: existing-suite batch green after the authorized test-only correction; ready for scheduled native review.
+Status: R0 handover and selected suites are green; final cheap checks and DCO merge handoff.
 Admission remains blocked on the separately owned prior control. The supervisor
 assigned the additive native bounce/complaint fan-out fix to this row so that the
 new purpose and its suppression regression land together. DCO sign-off is now
@@ -660,3 +660,142 @@ Self-retro: existing-suite execution distinguished the required fourth-purpose
 suppression from a historical-DDL reconstruction assumption. Reading the two
 CHECK statements from the forward preserves the poison and snapshot witnesses
 without a second drifting SQL copy, production replay or weakened assertions.
+
+## R0 integration and real package measurement
+
+The resumed instruction authorizes one fetch and merge of main, a DCO merge
+commit, generated SQL projection, real inventory measurements, the two handover
+literals and its complete witness, and selected-suite reruns. No rebase, control
+pin/checker edit, native review or production/SQL repair is authorized.
+Fetched and merged main 09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a into prior
+6616dab5e147c94dae20d48d81fe6f33cd1ce8f2 with --no-ff --no-commit.
+Manual additive conflict resolutions were required only in:
+
+- config/openlup-publication-catalog.json: preserve the consent, conformance-kit
+  and R0 task rows, then add the generated consent SQL carrier's own row.
+- docs/platform/DATA_AND_MIGRATIONS.md: retain both the account-consent
+  compatibility paragraph and main's complete-catalogue projection paragraph.
+
+The README merged automatically. No generated value was hand-merged. Used the
+README's checkPlatformMigrationProjection(process.cwd(), true) route to generate
+packages/platform/sql/manifest.json and the new SQL carrier. Both canonical
+and packaged consent SQL remain SHA-256
+`01acd691f9918af6025c975028e31028df02105d36b123dde41c29dc02bcecf6`.
+No canonical SQL, function/table list, runtime source or existing historic pin
+was changed to resolve integration.
+
+The account suite passed all five profiles on R0 (19.76 s), remeasuring the same
+legacy, bootstrap, separate, admin-managed and admin-operator current inventories
+recorded above. Current complete counts remain 96 qualified-v2 and 95
+qualified-admin. The connectedNativeStoreTables export measures 84 entries.
+The count is moved by customer_account_consent_events and
+customer_account_consent_sync_targets. Only the handover witness's current
+inventory literal (b6bf509ec21985044d3fff75e2427d92a39d54d7e113e9951a578358fa4399bf)
+and table-count literal (84) changed; its guard message and all other code stay
+unchanged. Historic chain inventories remain untouched.
+
+The default handover witness completed its final assertions, exit zero, using
+host Node24.21.0/npm11.19.0 and the already-local immutable Node24.21.0 image
+sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20.
+Outcome: LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION.
+It published the 84-table canonical graph and private objects/tmp after source
+retirement, recovered two accepted effects, retained one uncertain operation
+fenced, and exercised ordinary target dispatch and replay. Cleanup failures: [].
+The target's dispatch_not_safe_to_submit:uncertain result is the expected fenced
+operation, not an assertion failure or redispatch. This is the finite local
+fixture, not whole-store, hosted-provider or zero-RPO qualification. Evidence:
+.context/scratch/oss-m14-connected-catchup/journey-nL1kKY/report.json and
+.context/scratch/g11c/handover-r0.log.
+
+Real paired packs use a pristine build from Git main 09cd599b and the actual
+integrated workspace package, with Node24.21.0/npm11.19.0. Base: 2,318,731 B /
+2,913 files; candidate: 2,322,353 B / 2,914 files. Row delta +3,622 B / +1 file,
+192 B below the previous +3,814 B projection measurement. The actual packaged
+consent SQL and generated manifest bytes were read back and matched. No growth
+beyond the last reported row figure occurs. Reproduction and raw measurements:
+.context/scratch/g11c/measure-r0-pack.py and pack-r0-measurements.json.
+The selected-suite rerun and focused R0 projection/facade witnesses follow;
+current results and eventual signed merge identity will be recorded below.
+
+### Completed R0 suite rerun
+
+All selected files passed on the integrated R0 tree, together with the two
+focused projection/facade witnesses: 27 files, 1,022 tests, zero skipped.
+Checksums confirm all original 25 selected files are unchanged from 6616dab5;
+the handover source differs from main only in the two authorized literals.
+The current measurements, unchanged from the earlier isolated run, are:
+
+| Profile | Complete units | Current inventory SHA-256 |
+| --- | ---: | --- |
+| legacy | 92 | `8e2396953fbcae7a4c702d19df3121bfe4b64efed8078137d6aa3c379b830422` |
+| qualified-v2 bootstrap/restore | 96 | `ee0b5c7943dd2a29dc6d3acaec0cee3b95ee1c44366825bfc67fa63f6822c642` |
+| qualified-v2 separate/restore | 96 | `b6bf509ec21985044d3fff75e2427d92a39d54d7e113e9951a578358fa4399bf` |
+| qualified-admin installer-managed | 95 | `bc0b06202c8c6cd2d9e1390814a26c7aab7f205800681f8e3b33637f0a26622c` |
+| qualified-admin operator-provisioned | 95 | `9239ca156012f142a7c98e3f44ba985110e9a1133c575df814277ed4e3d477fc` |
+
+| Suite | Passed | Skipped |
+| --- | ---: | ---: |
+| `packages/platform/test/communications/nativeDelivery.test.ts` | 2 | 0 |
+| `scripts/customer-selfservice-recovery-schema.test.ts` | 3 | 0 |
+| `scripts/documentation-impact.test.ts` | 101 | 0 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 108 | 0 |
+| `scripts/packages/platform-migration-projection.test.ts` | 1 | 0 |
+| `scripts/reviewed-batch-forward.test.ts` | 691 | 0 |
+| `server/adapters/postgres/communicationsLifecycle.test.ts` | 1 | 0 |
+| `server/adapters/postgres/customerCommunicationPreferences.test.ts` | 1 | 0 |
+| `server/adapters/supabase/communications/customerCommunicationPreferences.test.ts` | 2 | 0 |
+| `server/domains/communications/customerCommunicationPreferencesHandler.test.ts` | 4 | 0 |
+| `server/runtime/communications/a1ReferenceBinding.test.ts` | 5 | 0 |
+| `server/runtime/communications/communicationsLifecycleBinding.test.ts` | 2 | 0 |
+| `server/runtime/communications/communicationsSchema.test.ts` | 1 | 0 |
+| `tests/postgres/acquisitionEvidenceParity.test.ts` | 11 | 0 |
+| `tests/postgres/channelConnectedRestore.test.ts` | 1 | 0 |
+| `tests/postgres/commerceComposition.test.ts` | 4 | 0 |
+| `tests/postgres/communicationsNative.test.ts` | 20 | 0 |
+| `tests/postgres/connectedManagedRetained.test.ts` | 16 | 0 |
+| `tests/postgres/connectedStoreTransfer.test.ts` | 9 | 0 |
+| `tests/postgres/customerAccountConsents.test.ts` | 5 | 0 |
+| `tests/postgres/customerNewsletterWithdrawal.test.ts` | 8 | 0 |
+| `tests/postgres/m14ManagedCatchup.test.ts` | 1 | 0 |
+| `tests/postgres/m14QualifiedAdminComposition.test.ts` | 2 | 0 |
+| `tests/postgres/m14QualifiedComposition.test.ts` | 4 | 0 |
+| `tests/postgres/m14RestrictedConnectedRestore.test.ts` | 15 | 0 |
+| `tests/postgres/m19MigrationFacade.test.ts` | 3 | 0 |
+| `tests/postgres/managedStorageTransfer.test.ts` | 1 | 0 |
+
+The restricted connected restore suite passed all 15 cases; qualified-admin
+passed both modes and qualified-v2 passed four shapes against the measured
+current inventories. No historic inventory or prefix count was changed. No
+source/SQL repair was needed. The canonical and packaged forward remain
+byte-identical at 01acd691f9918af6025c975028e31028df02105d36b123dde41c29dc02bcecf6.
+The package result remains +3,622 B versus exact main 09cd599b, including its
+actual generated manifest and SQL carrier; root witness/test/record changes
+add no package inputs. The main baseline pack was reproduced byte-for-byte in
+size and file count, rather than borrowing the pre-R0 projection estimate.
+
+Ast-grep passes. The row's diff against the incoming R0 base passes whitespace
+checks; a comparison of the entire staged merge against the old parent reports
+an existing blank EOF in R0's immutable q2 actor-auth SQL carrier. That asset is
+unchanged from main and was not edited. All conflicts remain confined to the
+two additive resolutions recorded above. Documentation policy refuses the
+explicit incoming base until it becomes an ancestor of HEAD; scoped trailers
+are refreshed immediately after the tested merge commit, without checker edits.
+Final type/lint, DCO, policy/inventory and secret-scan results and signed identities
+are kept in the external handoff packet/report. No native review, canonical
+verify, push, PR or admission pin is introduced. Native repair cycles remain
+zero. Remaining estimate: one working day plus class/earlier-slot scheduling.
+
+Self-retro: generate package assets from their canonical owners and measure
+against a pristine R0 build before spending time on the broad rerun. The real
+row delta is 192 B below the prior projection estimate. Running the handover to
+its final report proves the assertions beyond the two literal admission guards;
+its one intentionally fenced uncertain operation is preserved, not redispatched.
+
+During the long focused run, the shared origin/main ref advanced to
+4c7afd2590dc6998e22464153fca70a92eecfeb2. Its current policy delta was inspected
+read-only: the integration trailer route uses one tree-identical non-merge
+commit with only a subject, documentation-impact trailers and DCO sign-off.
+The merge stays pinned to the actually fetched 09cd599b R0 base; no second merge
+or control-file edit is made. Comparisons and package measurements use that exact
+pin, not the moving remote ref. No focused/mechanical native-review exemption
+is claimed: no native review exists yet and both manual resolutions are recorded.
