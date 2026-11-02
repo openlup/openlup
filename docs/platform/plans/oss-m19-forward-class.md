@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: bounded repair accepted and DCO-committed; two new whole-candidate reviews pending.
+Status: accepted repair committed; required main catalogue union awaits read before merge DCO.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -506,3 +506,87 @@ Self-retro: repeated static-reader bypasses → stop extending the parser if the
 next review finds another, and return the catalog-proof tradeoff to the owner.
 This line changes the allowed recovery route, not the admitted SQL or test floor.
 Final verification and all external delivery remain reserved to the supervisor.
+
+Required main integration after CD-M19-72: native prepare refused merge preflight
+against main 4c7afd2590dc6998e22464153fca70a92eecfeb2. The integration-trailer control had
+landed after the accepted repair. A forced merge is pending; its only conflict
+was the publication catalogue's adjacent plan-row insertion. The union retains
+both forward-class and integration-trailer rows, with every row and its order
+from both parents preserved. All other inherited changes are main's exact bytes.
+Native parser, registry, fixtures, caller changes and data-owner section remain
+identical to the accepted repair. No parser rule or new static parse bypass was
+introduced or discovered. The next-two-reviewer regroup line remains binding.
+
+The CD-M19-72 repair was DCO-committed as 793930e5 at its exact accepted tree;
+record/trailer commit 8f295e4b followed, with policy two obligations and zero
+unanswered, clean status and passing gitleaks. That committed repair is cycle
+one of three. Prepare stopped before appending its event, so the stored native
+counter still says zero; the next successful prepare must record cycle one and
+retain both FAIL reports and five material cards. No new reviewer has started,
+no counted PASS/expiry exists, and the catalog-proof advice question is not yet
+asked because the required clean committed candidate is blocked by this merge.
+
+Main's session helper and gate test changed implementation/test bytes, and the
+catalogue union changed a policy input. Both direct/shared and catalogue consumers
+were recomputed; seventeen current files plus raw native147 were rerun through
+focused admission. The gate file is main's
+unchanged 45-case version; no existing test was edited. The ten PostgreSQL
+existing-file results remain applicable because their source/dependencies and
+SQL/package inputs are unchanged. Final selection evidence:
+
+| File | Result | Evidence |
+| --- | --- | --- |
+| `scripts/reviewed-native-store-forward.test.ts` | PASS: 167 passed (167) | fresh: current merged tree |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS: 2 passed (2) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS: 26 passed (26) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS: 20 passed (20) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/expandOnlyExpressions.test.ts` | PASS: 19 passed (19) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS: 26 passed (26) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS: 106 passed (106) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS: 20 passed (20) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS: 14 passed (14) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS: 12 passed (12) | reused: accepted repair proof, unaffected source/dependencies |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS: 66 passed (66) | reused: accepted repair proof, unaffected source/dependencies |
+| `scripts/agent-review-gate.test.ts` | PASS: 45 passed (45) | fresh: current merged tree |
+| `scripts/agent-review-queue.test.ts` | PASS: 189 passed (189) | fresh: current merged tree |
+| `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) | fresh: current merged tree |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) | fresh: current merged tree |
+| `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) | fresh: current merged tree |
+| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) | fresh: current merged tree |
+| `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) | fresh: current merged tree |
+| `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) | fresh: current merged tree |
+| `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) | fresh: current merged tree |
+| `scripts/packages/set-release.test.ts` | PASS: 68 passed (68) | fresh: current merged tree |
+| `scripts/public-ci-neutrality.test.ts` | PASS: 60 passed (60) | fresh: current merged tree |
+| `scripts/qualified-migration-admission.test.ts` | PASS: 24 passed (24) | fresh: current merged tree |
+| `scripts/reviewed-batch-forward.test.ts` | PASS: 691 passed (691) | fresh: current merged tree |
+| `scripts/source-preview-release.test.ts` | PASS: 718 passed (718) | fresh: current merged tree |
+| `scripts/source-release-preparation.test.ts` | PASS: 7 passed (7) | fresh: current merged tree |
+| `scripts/verify-local.test.ts` | PASS: 14 passed (14) | fresh: current merged tree |
+| `base-native-ed99d2ca` | PASS: 147 passed (147) | fresh: current merged tree |
+
+The final line selection is 26 unchanged existing files plus native167 and raw147:
+28 selections / 2,717 passing cases. The refresh ran eighteen executions / 2,406
+cases; summed focused admission wait was 1506 s and summed execution time
+was 774 s. Frozen
+file hashes pass. Ast-grep, public typecheck and lint pass (zero errors, 132
+warnings: the existing 33 repeated in three ignored baseline archives plus the
+checkout). No lint rule or ignore changed. Normal policy on the pending tree
+passes two obligations / zero unanswered. Diagnostic comparison against the
+future main base also confirms both existing source-bound trailers still match.
+Actual Core/Outbox/Platform pack evidence remains 0 B and byte-identical; main
+changed no package, SQL or pack-build inputs. No fresh-pack claim is inferred.
+
+The manual catalogue conflict means rules-common step 4's conflict-free/no-manual
+integration exception does not apply. Source patch identity excluding task and
+catalogue is preserved; full patch IDs differ with catalogue context. A refreshed
+read packet presents this exact staged merge before its DCO. This asks only for
+the necessary catalogue union, not for new parser behavior or recovery authority.
+After acceptance, finish the merge DCO, recheck policy/clean status and prepare
+the same native history before two new independent whole-candidate reviews.
+
+Self-retro: an advanced control on main required catalogue integration after the
+accepted repair → preserve both data rows and refresh only affected shared proof.
+No new static parser work, canonical verify, push, PR, queue or other worktree
+mutation was performed. Stop NEEDS_READ for the nonmechanical union; the next
+static parse bypass, if reviewers find one, still requires NEEDS_OWNER.

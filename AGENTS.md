@@ -208,6 +208,13 @@ For a conflict or failed carry-over, merge `main` and re-review.
 When `prepare` proves valid prior coverage and exact merge lineage in the same
 session, two fresh reviewers may focus on the full integration delta and its
 interactions, following [review after integration](CONTRIBUTING.md#native-review-and-accountability).
+Exactly one single-parent commit may follow that qualifying two-parent merge
+when its tree equals the merge tree and its message contains only a subject,
+one or more `OpenLup-Doc-Impact` trailer lines and optional `Signed-off-by` lines.
+The actual trailer tip remains `candidate.head` for review, verification,
+receipts and queue admission. Supply its reasons to the two fresh reviewers;
+merge commits still cannot answer documentation obligations. Other body text,
+trailers, a second follow-up or merge-on-top do not qualify.
 Inherited source expiry and findings remain binding. A successful exact
 `merge-tree` result additionally marks `candidate.integration.mechanical`: only
 this proved case avoids a repair-cycle charge. Extra edits or manual resolution
