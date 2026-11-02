@@ -523,3 +523,61 @@ The equal own added catalog set for this second merge is:
 - `packages/platform/src/lifecycle/openlup.mjs`
 - `packages/platform/test/lifecycle/appVerification.test.ts`
 - `scripts/packages/distribution-cli-proof.ts`
+
+## Post-integration executed evidence
+
+The repeated complete selection passed on source head
+`09a5d4378b9a55ae61a38cca090409769e80a492`, tree
+`4522e58d4a034cfb9ac31756d95ab528169ffebe`, against main
+`21c057038b25db6bdf490496a341df5b2f1fdbcc`:
+30 platform files / 3,369 tests and 25 root files / 2,226 tests, total
+55 files / 5,595 tests, zero failures, pending or todo cases. The shared consumer
+file includes all 122 cases after main's 14 additions. Both result-file path sets
+were compared with the exact selected arrays; no file was omitted. The private
+55-path inventory/hash above is unchanged. The runner used the pinned toolchain,
+normal root wrapper, one worker, no bail and no exclusion. Builds of core,
+outbox and platform passed first. Platform tests took 29.51 seconds and the
+root selection 1,410.03 seconds.
+
+Post-merge policy with documentation update passed all seven obligations with
+none unanswered. Structural scan, all five typecheck projects, lint and
+whitespace passed. Typecheck has zero unresolved edges and consumer errors;
+lint has zero errors and 33 existing warnings. The two tool-entry directives
+are reasoned and used. Both neutrality checks pass: the actual repository
+comparison against the pinned main reports zero increases, and the UI smoke
+passes. No baseline, allowance, scanner, gate or numeric budget changed.
+
+Real candidate and baseline packs were built and measured with asserted
+Node 24.21.0 and npm 11.19.0 using the existing package-size/content helpers.
+The baseline package comes from the pinned main's Git archive, not another
+worktree. Current measurement:
+
+| Measure | Main baseline | Candidate | Own delta |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 2,364,865 | 2,373,428 | +8,563 |
+| Code-class packed bytes | 1,899,251 | 1,904,303 | +5,052 |
+| Unpacked bytes | 11,153,236 | 11,181,502 | +28,266 |
+| Files | 2,955 | 2,959 | +4 |
+| Code-class files | 2,844 | 2,847 | +3 |
+| Root-document packed bytes | 60,916 | 61,008 | +92 |
+
+All existing package caps and tarball content checks passed. The extracted
+manifest names the bin at `./src/lifecycle/openlup.mjs`; the actual artifact
+contains that executable and no obsolete source-root copy. These measurements
+replace the earlier pre-integration package delta.
+
+Within the same focused admission, fresh core/platform/dependency packs passed
+the installed CLI proof: public report repairs, actual integrity-pinned
+published-version interruption/resume and local-edit preservation, plus actual
+disposable PostgreSQL stale-schema/absent-table, missing-binder and unwired-job
+findings repaired to ready from report instructions. The owned database used
+tmpfs and was removed on completion. The CLI performed no installation, SQL,
+route, job or handler execution. Fixture setup/repair belongs to the harness;
+there is no model in these assertions.
+
+This completion note changes only prose after the executed source checks.
+The package and executable inputs remain identical. At this checkpoint fresh
+committed-source review and canonical verification still remain. The moved npm
+entry and its two tool directives retain a maintainer read before push; local
+DCO and source review are authorized. No push, PR, comment, queue, release or
+publication has occurred.
