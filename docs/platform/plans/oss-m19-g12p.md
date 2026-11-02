@@ -1,7 +1,7 @@
 # Native OMS list predicate repair
 
-Status: focused proof passed; frozen candidate preparing independent review;
-development preview.
+Status: bounded queue-failure continuation; focused checks and fresh full
+review precede READY_FOR_VERIFY; development preview.
 
 ## Outcome, scope and authority
 
@@ -157,10 +157,10 @@ failures, remain in this worktree's ignored `.context/scratch/`.
 The fixture seeds persisted money facts via the owner; it does not qualify
 payment ingest or repair the known post-cancellation ingest gap.
 
-Native review starts at cycle 0, with two fresh independent reviewers required.
-The frozen committed candidate and subsequent actual reports, finding closure,
-cycle and expiry live in `.context/scratch/agent-review/`. No canonical final
-verification, PR, merge or release is claimed. The lead names the verification
+The initial native review started at cycle 0, with two fresh independent
+reviewers required. The frozen candidate and subsequent actual reports, finding
+closure, cycle and expiry live in `.context/scratch/agent-review/`. At that initial
+review stage, no canonical final verification, PR, merge or release was claimed. The lead names the verification
 and landing slot after review; the same G6 dependency applies to G12's record.
 
 Self-retro: focused admission waits (30–213 seconds observed per stage)
@@ -172,8 +172,8 @@ no fallback, compatibility relation, retry join or new abstraction.
 
 ## Authorized integration and landing continuation
 
-The programme lead named this row for final verification and delivery. The
-supervisor explicitly authorized merging current main, resolving only the
+In the prior landing round, the programme lead named this row for final
+verification and delivery. The supervisor explicitly authorized merging current main, resolving only the
 catalogue overlap as an additive union, fresh integration review, full local
 verification, push, PR, source receipt and queueing. Stop at queued or merged.
 No release, publication, credential, settings or other-row authority is added.
@@ -207,3 +207,130 @@ Continuation self-retro: a catalogue insertion conflict needs an additive union
 and a byte-preservation check, not a rebase or a mechanical-merge exemption.
 The shared single predicate remains the smallest adequate repair; no production
 or test logic was added during integration.
+
+## Queue failure and bounded synchronization continuation
+
+Current policy and merged main: `4c7afd2590dc6998e22464153fca70a92eecfeb2`.
+The approved continuation adds only a synchronization wait in
+`src/public-reference/browserIdentity.test.tsx` and this record, with two fresh
+full reviews against the new base. Stop at READY_FOR_VERIFY: canonical verify,
+push, PR-description update, receipt and queueing wait for the next named slot.
+This is ordinary repair accounting, cycle 2 of 3. No integration-delta shortcut,
+mechanical exemption or inherited PASS is used. The prior integration reports
+were recorded at 2026-11-02T00:06:27.904Z and :28.042Z; their inherited source
+expiry was 2026-11-02T21:28:01.056Z. The new full-review candidate gets its own
+24-hour clock from its earliest counted PASS, recorded in the existing native
+session evidence after review. Historical reports are retained, not copied.
+
+The merge preflight refused the old head. The actual merge had one textual
+conflict, `config/openlup-publication-catalog.json`: adjacent additions for this
+record and the integration-trailer plan. Manual additive union kept both plan
+rows in sorted order and every other main byte; removing this task's existing
+two row blocks reproduces main byte for byte. No other conflict existed.
+Merge commit: `ff76a33c` (first parent `a65c902b`, second parent `4c7afd25`).
+The native adapter and both OMS test files are byte-equal to `a65c902b`.
+
+Stable patch-id evidence, excluding this task record, before the browser fix:
+`git diff 09cd599b a65c902b -- . ':!docs/platform/plans/oss-m19-g12p.md'`
+piped to `git patch-id --stable` gives
+`09bff96174caf525622a0da4f06aff70eb211d3d`; the corresponding diff of
+`4c7afd25` to `ff76a33c` gives `4b0ad8f16475069314ec1ae60a1ef46ea4e35360`.
+These context-bearing IDs differ because the adjacent catalogue context changed;
+this is not mechanical proof. With `git diff --unified=0` on each same range,
+both stable patch IDs are `0aa42eb4e6a1645347eedcf9d55b70b59a6dd754`.
+The additive-union byte check and unchanged adapter/test blobs establish the
+actual merge content independently. The subsequent browser test edit is an
+intentional additional delta, not claimed patch-equal to the old candidate.
+
+Merge-queue run `41367542443` failed one test in
+`src/public-reference/browserIdentity.test.tsx`, at old line 132: the account
+bearer assertion received undefined. Dependent aggregate jobs also failed.
+The synchronization cause is a CANDIDATE and was NOT reproduced: source PR run
+`41366544248` passed and the failed group run had the identical tree
+`37ba29b31da2bcf6d5dde0d3965768e68bf7eb12`; 20 of 20 gated isolated runs and
+one full shard 2/4 run passed on main
+`09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a`. The full shard passed 553 files
+and 5301 tests with two declared skips. One earlier ungated isolated pass was
+disclosed and excluded from those 20 runs. The old assertion is unchanged since
+2026-10-18 (`02118d53`). In the latest 100 Published Tree CI runs inspected
+(68 successful, 3 failed, 27 skipped, 2 cancelled), no other failure of this test
+was found in the failed-run logs; all 23 main-push runs succeeded, although those
+can reuse exact merge-group evidence. This does not establish a failure rate on CI.
+
+The source gap is specific: the test awaits the account heading at old line 130
+and immediately reads the fetch and query cache at old lines 132-133.
+`SubscriptionAccount.tsx:119-127,160-173` renders that heading independently of
+account-query readiness; `useAuthenticatedAccountLifecycle.ts:62-70` starts its
+read through React Query. The query subscription is effect-backed
+(`@tanstack/react-query/src/useBaseQuery.ts:107-112`,
+`@tanstack/query-core/src/queryObserver.ts:95-100`). The heading alone therefore
+does not establish fetch/cache readiness. That is source evidence of a gap,
+not an observed trace of the failed CI interleaving or proof of an OMS cause.
+
+The browser-only fix awaits `waitFor` on the exact bearer and cache conditions
+before the original assertions. Every original assertion and expected value
+remains unchanged. No production code, setup, timeout, retry setting, exclusion
+or skip changes. This is a synchronization fix and does not claim to remove a
+reproduced fault. Passing focused runs after the edit do NOT prove the fix,
+because the original failure never reproduced. No injected-delay experiment is
+claimed. If the same test fails again in a merge group, stop and report without
+retrying. The browser-identity test owner owns any further diagnosis or repair;
+queue decisions remain with the delivery supervisor.
+
+The PR description, updated only after a later authorized push, must retain the
+same candidate/not-reproduced wording, identical-tree comparison, main-run
+counts, source-gap explanation and historical limits above. It must also retain
+the native OMS repair description, no SQL/grant/migration and package +0-byte
+scope, and the existing capture-after-cancellation ingest dependency.
+
+Fix commit: `7c46bc57` changes exactly one file by adding the four-line wait.
+Removing that block reproduces every original byte of the browser test.
+After the intentional fix, the final change against `4c7afd25`, excluding this
+record, has stable patch ID `341eff71b7997b2dd022b624860f0fe75b33259c`
+(or `e7ff7dbe7593d4f9005462620e342964dae05f28` with zero context).
+This additional test delta is explicitly not asserted equal to the old patch.
+The adapter and existing OMS test content remain unchanged.
+
+Documentation policy/navigation generation passes with three accepted scoped
+no-impact answers. The two existing OMS unit digests remain current; the added
+reference-test unit has digest
+`sha256-abdac7eb1d4483996ed3f23609b4f913da533437e6274e166bd243f17642f323`
+in the fix commit. Its owner, runtime/self-hosting's disposable-reference section,
+and the linked browser-identity guidance still accurately describe the same
+bearer, cache, logout and runtime boundaries. No documentation control or public
+claim changes. Package-source delta against current main is 0 files, +0 bytes.
+
+Current focused evidence before fresh full review (Node 24.21.0, npm 11.19.0,
+Vitest 4.1.12, macOS, existing install): all seven independent invocations of
+`CI=true npm test -- --config vitest.config.ts --project dom src/public-reference/browserIdentity.test.tsx`
+passed, 24 tests each, 168/168 executions. Five used the ordinary worker
+selection; two additionally used `--maxWorkers=1`. Each invocation followed its
+own successful focused-gate admission. Vitest durations were 1.32-1.99 seconds.
+These passes do NOT prove the synchronization fix: the original fault was not
+reproduced. No injected-delay experiment, broad shard rerun, test retry or
+canonical verify was run in this continuation.
+
+`npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`:
+PASS. `npm run oss:published-tree -- --typecheck`: PASS across all five projects,
+zero unresolved edges and consumer errors. `npm run lint`: PASS, zero errors and
+33 warnings. Typecheck and lint each followed their own focused-gate admission,
+serialized after the browser runs. `npm run oss:published-tree -- --policy --docs-update`:
+PASS with all three documentation obligations answered. The initial invocation
+reported the new reference obligation; its delta-bound trailer in the fix commit
+resolved it without changing owner prose. Raw command logs and exit records
+remain under this worktree's ignored `.context/scratch/g12p-cycle2-*` paths.
+
+The committed real-PostgreSQL visibility/refusal matrix, restricted-runtime
+checks and reduced-detail witness remain in the full-review packet, unchanged
+from the actual prior qualified-v2 proof. No fresh database execution is claimed
+in this continuation; canonical verification remains a later named-slot duty.
+The new full-review source identities, actual reports and own expiry are retained
+in the append-only native session after this record is committed. No report is
+copied, no earlier expiry is renewed and no repair cycle is refunded.
+
+Continuation self-retro: focused admission dominated elapsed time (lint alone
+waited 361 seconds), while each browser execution took under two seconds.
+Check supported runner flags before scheduling optional variants. The smallest
+adequate synchronization is the direct existing `waitFor` on both values that
+the original assertions read; no helper, production seam or timeout increase is
+needed. A plausible source gap must retain its not-reproduced evidence limit.
