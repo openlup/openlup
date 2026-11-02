@@ -71,8 +71,13 @@ assigned file ownership. Required stabilized reads and native review follow the
 [AI contribution policy](../../../.github/AI_CONTRIBUTION_POLICY.md) and
 [contribution rules](../../../CONTRIBUTING.md#deliver-a-change).
 
-Comparison base and instruction revision:
+Initial implementation base and instruction revision:
 `21c057038b25db6bdf490496a341df5b2f1fdbcc`.
+At the repair boundary, main advanced to
+`2d5547dcccb5d9e3c40bece5016382fbf9f6a670`; its relevant instructions were
+unchanged. Native carry-over refused the moved package/catalogue inputs, so that
+main was integrated into this task branch. Current review and final verification
+bind the actual integrated candidate; this grants no PR merge or shortened proof.
 Branch: `codex/delivery-workflow-s1-s2`, in its assigned task worktree.
 Current instructions are read separately from candidate review evidence under
 [instruction freshness](../../../CONTRIBUTING.md#instruction-freshness-and-handoffs).

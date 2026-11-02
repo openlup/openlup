@@ -795,6 +795,16 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Native OMS and returns PostgreSQL adapters belong to the `commerce/server`
+module; it admits the public `data` entry as types and the pure
+`pricing/contracts` entry as values. The native customer-support journey adapter
+and portable read codecs belong to `account-support`, whose public `data` edge
+is a value dependency. These permissions apply to the enclosing modules, so the
+codec directory has no separate empty-edge graph row. Its browser bundle witness
+permits inputs only from `src/account-support/read-contracts/` and the `zod`
+package; a data, server or Node dependency must not enter that bundle. The
+existing type-only `account-support/contracts` boundary remains separate.
+
 Risk's browser module has no server edge. `risk/server` consumes risk contracts as types
 and the public pure commerce money projection; its data executor dependency
 is type-only through the public data entry. The type-only `risk/contracts`

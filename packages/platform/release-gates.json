@@ -901,6 +901,37 @@
       ],
       "entrypoint": "dist/channels/server/index.d.ts",
       "snapshot": "api/channels-server.api.md"
+    },
+    "./commerce/server/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/commerce/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/commerce/server/postgres/index.d.ts",
+      "snapshot": "api/commerce-server-postgres.api.md"
+    },
+    "./account-support/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/account-support/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/account-support/postgres/index.d.ts",
+      "snapshot": "api/account-support-postgres.api.md"
+    },
+    "./account-support/read-contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/account-support/readContracts.test.ts",
+        "test/account-support/readContractsBrowserSafety.test.ts"
+      ],
+      "entrypoint": "dist/account-support/read-contracts/index.d.ts",
+      "snapshot": "api/account-support-read-contracts.api.md"
     }
   },
   "pack": {
