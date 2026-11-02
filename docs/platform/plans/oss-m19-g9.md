@@ -294,3 +294,48 @@ failure classes before another canonical run. Policy caught an inline reference
 to the source-only fragment in this record; naming the fragment without a
 catalogue-target path keeps the record accurate without adding a catalogue row.
 No control, cap, SQL or production change was used to obtain passing proof.
+
+## Final integration and delivery authority
+
+The preceding preview landed during this round. Native prepare's common merge
+preflight refused clean carry-over against current main
+`e2461449849d3c6b0586a3c9043f550aa7ebabea`. A second forced merge, commit
+`f6c3e473f2506d712def7274f31d28bcb45962eb`, needed no manual resolution;
+its tree `15934e6563c32ef6ddb7e2be0401e0d4949de8ee` exactly equals Git's
+predicted automatic merge tree. The patch IDs excluding this task record are
+both `d7eeafcbed64e6673928b5b44e5f7217b2a6d825` before and after this merge.
+The first merge's catalogue union and note move remain the only manual
+resolutions. The environment import remains an isolated two-line test fix.
+
+Current code/policy base is the full main SHA above. The supervisor now grants
+canonical verification in the assigned slot, followed on success by branch push,
+pull-request submission, native receipt posting and queueing. This supersedes the
+prior round's stop-before-verification boundary. Main must still equal the merged
+SHA before canonical verification; a later move is reported before another
+manual repair cycle. Publication, release dispatch, production, settings, SQL,
+privilege changes and other tasks remain excluded. The candidate requires two
+fresh full reviews on cycle 2 of 3; the ordinary full route gives its own evidence
+clock, with no inferred integration coverage or repair-budget reset.
+
+Against the new main, neutrality again has zero increases; projection/import-map
+passes 130/130; package boundary passes 2,873/2,873; the installed restricted-role
+consumer passes once with a newly empty offline npm cache (14.03 s total).
+Ast-grep, strict typecheck and lint pass; lint retains 33 unchanged warnings.
+No platform package input or one of the 34 retained test files changed in the
+new main. Their previous passing results and the normal-cache consumer result
+stand. Documentation-impact tests were rerun because routing/catalogue inputs
+changed: 101/101 pass. Policy regeneration reports four obligations, zero
+unanswered; the existing test-fix commit's fresh tests/tooling trailers remain
+applicable without another trailer-only commit.
+
+The fresh second pack has the same SHA-256 and all measured bytes/files as the
+first integration pack above. Against the lead's official main pack of 2,346,064
+bytes (code class 1,882,746), the new totals mean +12,416 packed bytes and +10,794
+code-class gzip bytes. No package or budget change came from the preview landing.
+The early +12,077 provisional delta is historical and is superseded by this
+official-toolchain result. Final clean-tree package proof and canonical verify
+are still required; successful focused proof alone grants no hosted claim.
+
+Self-retro: performing the second forced merge before reviewer launch lets one
+fresh full review cover the entire final candidate, preserving the remaining
+repair budget and exposing no unreviewed merge after its evidence clock starts.
