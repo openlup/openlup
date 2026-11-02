@@ -317,10 +317,10 @@ it("an attachment failure leaves paid service active with restartable saved fact
   try { await expect(api.createPostgresPurchaseRenewalWriter(db).complete(p.orderId)).rejects.toMatchObject({ code: "55P03" }); }
   finally { await db.query("RESET lock_timeout"); db.release(); await locked.query("ROLLBACK"); locked.release(); }
   expect((await runtime.query("SELECT count(*)::int AS n FROM public.subscription_renewal_terms WHERE subscription_id=$1", [sub])).rows[0].n).toBe(0);
-  const child = `import {createPostgresPurchaseRenewalWriter} from '@openlup/platform/subscriptions';import pg from 'pg';
-    const p=new pg.Pool({connectionString:process.env.G2_TEST_DATABASE});
-    console.log(JSON.stringify(await createPostgresPurchaseRenewalWriter(p).complete(process.env.G2_TEST_ID)));await p.end();`;
-  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child], { cwd: scratch, env: { ...process.env, G2_TEST_DATABASE: runtimeUrl, G2_TEST_ID: p.orderId } });
+  const child = `import {argv} from 'node:process';import {createPostgresPurchaseRenewalWriter} from '@openlup/platform/subscriptions';import pg from 'pg';
+    const p=new pg.Pool({connectionString:argv[1]});
+    console.log(JSON.stringify(await createPostgresPurchaseRenewalWriter(p).complete(argv[2])));await p.end();`;
+  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child, runtimeUrl, p.orderId], { cwd: scratch });
   expect(JSON.parse(stdout)).toMatchObject({ subscriptionId: sub, replayed: false });
   const invalid = await purchase();
   const pending = await api.activateNativePurchaseWithRenewal(executor, { ...invalid, facts: { ...facts, currency: "invalid" } });
@@ -344,8 +344,8 @@ it("freezes a complete production snapshot, rejects tampering, and a fresh insta
   expect(JSON.stringify(d.codec.encode(d.codec.decode(wire)))).toBe(bytes);
   expect(() => d.codec.decode({ ...wire, currency: "EUR" })).toThrow();
   expect(() => d.codec.decode({ ...wire, _host: {} })).toThrow();
-  const child = `import {createNativeRenewalCodec} from '@openlup/platform/subscriptions';import pg from 'pg';
-    const p=new pg.Pool({connectionString:process.env.G2_TEST_DATABASE});const r=await p.query('SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1',[process.env.G2_TEST_ID]);
+  const child = `import {argv} from 'node:process';import {createNativeRenewalCodec} from '@openlup/platform/subscriptions';import pg from 'pg';
+    const p=new pg.Pool({connectionString:argv[1]});const r=await p.query('SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1',[argv[2]]);
     const c=createNativeRenewalCodec();console.log(JSON.stringify(c.encode(c.decode(r.rows[0].cycle_snapshot))));await p.end();`;
   await runtime.end(); await admin.end(); await migration.end();
   // This fixture places PGDATA in its disposable writable container layer,
@@ -357,7 +357,7 @@ it("freezes a complete production snapshot, rejects tampering, and a fresh insta
   const runtimeEndpoint = new URL(runtimeUrl); runtimeEndpoint.port = endpoint.trim(); runtimeUrl = runtimeEndpoint.toString();
   expect(await waitForPostgresTcpReady(container!.connectionString)).toBe(true);
   admin = new Pool({ connectionString: container!.connectionString }); runtime = new Pool({ connectionString: runtimeUrl });
-  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child], { cwd: scratch, env: { ...process.env, G2_TEST_DATABASE: runtimeUrl, G2_TEST_ID: claim.operationId } });
+  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child, runtimeUrl, claim.operationId], { cwd: scratch });
   expect(stdout.trim()).toBe(bytes);
   expect(await d.input.store.buildCycleSnapshots(d.due)).toEqual(snapshot);
   await expect(d.input.store.claimDue({ snapshot: { ...snapshot, frozenFingerprint: "0".repeat(64) }, workerId: "changed", now })).rejects.toThrow();
@@ -392,14 +392,14 @@ it("ambiguous dispatch survives a fresh process, never redispatches, and only ma
   const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now);
   expect(first.status).toBe("awaiting_provider"); expect(d.execute).toHaveBeenCalledTimes(1);
   const op = (await d.input.store.readRenewal(first.identityKey))!;
-  const child = `import {createNativeRenewalCodec,createPostgresRenewalStore,createPostgresSandboxRenewalRail,createSandboxRenewalPolicy,runOneAutomaticSubscriptionRenewal} from '@openlup/platform/subscriptions';import pg from 'pg';
-    const p=new pg.Pool({connectionString:process.env.G2_TEST_DATABASE});const store=createPostgresRenewalStore(p,createNativeRenewalCodec());
-    const due=(await store.listDue(500,'${later}')).find(x=>x.subscriptionId===process.env.G2_TEST_ID);const rail=createPostgresSandboxRenewalRail(p,{scenario:'succeeded'});
+  const child = `import {argv} from 'node:process';import {createNativeRenewalCodec,createPostgresRenewalStore,createPostgresSandboxRenewalRail,createSandboxRenewalPolicy,runOneAutomaticSubscriptionRenewal} from '@openlup/platform/subscriptions';import pg from 'pg';
+    const p=new pg.Pool({connectionString:argv[1]});const store=createPostgresRenewalStore(p,createNativeRenewalCodec());
+    const due=(await store.listDue(500,'${later}')).find(x=>x.subscriptionId===argv[2]);const rail=createPostgresSandboxRenewalRail(p,{scenario:'succeeded'});
     let executions=0;rail.execute=async()=>{executions++;throw Error('forbidden redispatch');};const forbidden=async()=>{throw Error('unexpected preparation');};
     const result=await runOneAutomaticSubscriptionRenewal({store,settlement:{prepareRenewal:forbidden,acknowledgeExternalAttempt:forbidden,recordTerminalOutcome:forbidden},failureHandoff:{handoffFailure:forbidden},
       inventory:{expireReservations:forbidden,reserve:forbidden},paymentRails:{resolve:()=>rail},workerId:'g2-new-process',policy:createSandboxRenewalPolicy('sandbox-method')},due,'${later}');
     console.log(JSON.stringify({result,executions}));await p.end();`;
-  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child], { cwd: scratch, env: { ...process.env, G2_TEST_DATABASE: runtimeUrl, G2_TEST_ID: f.subscriptionId } });
+  const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child, runtimeUrl, f.subscriptionId], { cwd: scratch });
   expect(JSON.parse(stdout)).toMatchObject({ result: { status: "awaiting_provider" }, executions: 0 });
   const resumed = await deps(f.subscriptionId, "ambiguous", "2026-09-29T12:15:00.000Z");
   expect(resumed.execute).not.toHaveBeenCalled();

@@ -664,3 +664,22 @@ obligations are re-evaluated against the real merged ancestry before final
 sign-off. No policy rule or comparison mechanism is changed to avoid that check.
 No subscription production source, canonical SQL, existing assertion or expected
 catalogue value changed in this integration. No native review or external write.
+
+## Test process configuration follow-up
+
+The three fresh-process witnesses now receive the disposable database URL and
+row identity as Node arguments. Child scripts import the argument vector from Node; execFile's
+normal environment inheritance replaces the redundant explicit environment copy.
+No assertion, production source, baseline entry or SQL byte changed. All 91
+expect calls are identical, and the real PostgreSQL purchase suite passes 11/11,
+including restart, ambiguity and paid-gap reconciliation. Full lint passes with
+0 errors and 33 existing warnings. The neutrality component runs exactly as verify
+does, with base `09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a`: zero increases.
+Raw and packaged purchase-forward SHA remains
+`2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34`.
+This explicitly authorized test-only correction needs no new owner read. Evidence:
+`.context/scratch/g2/neutrality/`. Package inputs remain byte-identical.
+
+Self-retro: test child configuration is still an environment boundary. Pass the
+small witness inputs explicitly and run the actual neutrality ratchet before
+signing; focused behavioral tests alone cannot detect this rule violation.
