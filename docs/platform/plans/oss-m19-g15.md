@@ -471,3 +471,55 @@ Reproduce from the private proof artifact:
 ```sh
 shasum -a 256 .context/scratch/g15-landing-exact-test-inventory.json
 ```
+
+## Second integration before source review
+
+Fresh main is `21c057038b25db6bdf490496a341df5b2f1fdbcc`. The previous head
+`1f8766d11df24bcad6fc2a47e56306a1adc67110` (base `ef157a2da88b799e8040ecd21c9727e25858a2b3`)
+merged without a textual conflict or hand edit. The pure merge is
+`480bc4dd332c2ac23f3f946c44d4c5ba861f51c0`, tree
+`c99569e303770ebc4cf0ba772c25bb964fd6fa3f`, exactly equal to the tree computed
+by `git merge-tree --write-tree --name-only --no-messages HEAD origin/main`
+before merging. The shared cold-consumer additions from main are preserved.
+
+Sorted plus/minus content lines match before and after in all three groups:
+
+- All files: SHA-256 `454ef3334f5ae6ad57b6aad67b83fb2cf74a5473669af83ecc3fb2ce8ab7dc3f`; stable patch-id before = after `51855d36f926a7d502fd3036840f8ea45de5da2f`.
+
+- Excluding the catalog: SHA-256 `f160995367271f9308f6d1b93b6ae5c5fce03e6ca70c60b222dc61f7d57ec5fe`; stable patch-id before = after `e6157eab9a1885853cdf5c59942aa2f607725450`.
+
+- Excluding the catalog and both shared cold-consumer files: SHA-256 `5f6529e8b524166e83605fb906069f157c0bb6eb429e98752db6b209b6a9051f`; stable patch-id before = after `e53e6d16821cde73c1f59cade7c15cc1fa564c0f`.
+
+There are no added or removed own content lines in any comparison, including
+the cold-consumer pair. The five own added catalog paths are equal before/after
+and no path is removed. This equality describes the pure merge; this later
+execution note is excluded. Reproduce with `LC_ALL=C` and these ranges:
+
+```sh
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..1f8766d11df24bcad6fc2a47e56306a1adc67110 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..1f8766d11df24bcad6fc2a47e56306a1adc67110 | git patch-id --stable
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..1f8766d11df24bcad6fc2a47e56306a1adc67110 -- . ':(exclude)config/openlup-publication-catalog.json' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..1f8766d11df24bcad6fc2a47e56306a1adc67110 -- . ':(exclude)config/openlup-publication-catalog.json' | git patch-id --stable
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..1f8766d11df24bcad6fc2a47e56306a1adc67110 -- . ':(exclude)config/openlup-publication-catalog.json' ':(exclude)scripts/packages/platform-cold-consumer.ts' ':(exclude)scripts/packages/platform-cold-consumer.test.ts' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff ef157a2da88b799e8040ecd21c9727e25858a2b3..1f8766d11df24bcad6fc2a47e56306a1adc67110 -- . ':(exclude)config/openlup-publication-catalog.json' ':(exclude)scripts/packages/platform-cold-consumer.ts' ':(exclude)scripts/packages/platform-cold-consumer.test.ts' | git patch-id --stable
+git diff 21c057038b25db6bdf490496a341df5b2f1fdbcc..480bc4dd332c2ac23f3f946c44d4c5ba861f51c0 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 21c057038b25db6bdf490496a341df5b2f1fdbcc..480bc4dd332c2ac23f3f946c44d4c5ba861f51c0 | git patch-id --stable
+git diff 21c057038b25db6bdf490496a341df5b2f1fdbcc..480bc4dd332c2ac23f3f946c44d4c5ba861f51c0 -- . ':(exclude)config/openlup-publication-catalog.json' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 21c057038b25db6bdf490496a341df5b2f1fdbcc..480bc4dd332c2ac23f3f946c44d4c5ba861f51c0 -- . ':(exclude)config/openlup-publication-catalog.json' | git patch-id --stable
+git diff 21c057038b25db6bdf490496a341df5b2f1fdbcc..480bc4dd332c2ac23f3f946c44d4c5ba861f51c0 -- . ':(exclude)config/openlup-publication-catalog.json' ':(exclude)scripts/packages/platform-cold-consumer.ts' ':(exclude)scripts/packages/platform-cold-consumer.test.ts' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 21c057038b25db6bdf490496a341df5b2f1fdbcc..480bc4dd332c2ac23f3f946c44d4c5ba861f51c0 -- . ':(exclude)config/openlup-publication-catalog.json' ':(exclude)scripts/packages/platform-cold-consumer.ts' ':(exclude)scripts/packages/platform-cold-consumer.test.ts' | git patch-id --stable
+```
+
+The instruction delta on main adds the starter source/extraction witness to the
+existing required cold consumer. No new test file was added on main; its new
+cases in the existing shared test file are included in the same 55-file
+selection. The exact sorted private inventory and its hash above are unchanged.
+The complete selection and all checks will be repeated on the merged tree.
+
+The equal own added catalog set for this second merge is:
+
+- `docs/platform/plans/oss-m19-g15.md`
+- `packages/platform/src/lifecycle/appVerification.ts`
+- `packages/platform/src/lifecycle/openlup.mjs`
+- `packages/platform/test/lifecycle/appVerification.test.ts`
+- `scripts/packages/distribution-cli-proof.ts`
