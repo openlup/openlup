@@ -879,7 +879,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
   if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path))) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
-  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "package.json", "package-lock.json"];
+  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "tests/postgres/nativeStoreForwardCatalog.test.ts", "package.json", "package-lock.json"];
   const changed = [head, trustedBase].flatMap((revision) => git(root, ["diff", "--name-only", "--no-renames", "-z", base, revision]).toString("utf8").split("\0"));
   const releaseTool = (path: string) => /^scripts\/(?:agent-review-|oss-|source-|packages\/)/u.test(path) && !/\.test\.[cm]?[jt]sx?$/u.test(path);
   if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");

@@ -53,6 +53,37 @@ same history; new reviewers are fresh contexts excluded from this list. Any
 material repair is decided by the coordinator first because the original writer
 is no longer available.
 
+Regroup and material bar (2026-11-02, coordinator decision). Three review rounds
+each found a new gap between the hand-written lexer and PostgreSQL; the fourth,
+a function header that hides its attribute list inside a quoted default, is
+reproduced on real PostgreSQL by the new catalog test. The parser is therefore
+not repaired further. A required real-PostgreSQL catalog test,
+`tests/postgres/nativeStoreForwardCatalog.test.ts`, is the truth for function
+identity, security attribute, `search_path` and privileges: it replays one chain,
+the legacy selection, for every bound forward, applies the forward and compares
+what PostgreSQL reports with the slot's lists, with and without `service_role`.
+The static class stays as a first gate for ordinary mistakes, and the test is a
+protected control (a feature PR cannot edit it unseen). Material bar for review: a
+static divergence whose effect the catalog test refuses is not material; a
+difference in what the test claims to compare that it misses, or an unsound
+comparison, is material; an object kind outside its lists is material only with a
+demonstrated mechanism reaching a privilege or a listed boundary; function bodies,
+data statements and statement kinds keep the existing review duty. Reviewers also
+confirm the required-path claim against `scripts/ci-test-scope.mjs` and that an
+unbound forward cannot skip the test. The writer of this change is the
+stream supervisor context listed above. The reviewers of the previous candidate
+(`claude-code-subagent:opus:a937309dd655ccb76`, PASS, and
+`claude-code-subagent:opus:a69a6a422b5ef53c7`, FAIL with one material card) are
+excluded from the next reviews, and that card (the header boundary) closes
+through the catalog test's refusal case, not through the header reader.
+Registered, not changed here: the co-location diff lacks `--no-renames`
+(F-FORWARD-COLOCATION-RENAMES); backslashes in registry data statements, empty
+today (F-FORWARD-DATA-BACKSLASH); the older legacy-class identity example
+(F-FORWARD-LEGACY-KELVIN). Duties for the S1 seal: verify the rows added by later
+small controls are present before setting `sealed`, run the catalog test with
+all bound forwards, and record one run of all of them on the `qualified-v2` chain
+as evidence, not as a new gate.
+
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
 `3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d`; applicable instruction paths are

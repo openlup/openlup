@@ -1361,7 +1361,7 @@ uses an independent synthetic registry, never production placeholder approvals.
 
 Feature SQL supplies `nativeStoreForwards` with whole-file and function
 after-hashes. It cannot change class data or admission machinery in that PR.
-Every earlier non-empty slot needs prior inventory and unchanged landed pins;
+Every earlier row in the fixed order needs prior inventory and unchanged landed pins;
 issued native file pins must also be present unchanged.
 Reserved timestamps require approval even for expand-only SQL. Unlisted function
 signatures, drifted preimages, destructive statements, default privileges and
@@ -1410,7 +1410,28 @@ The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
 restricted runtime retains the access required by its row after the revokes/RLS;
 reviewers of that feature PR must assess the proof. This control cannot supply it.
-These are lexical admission controls, not SQL behavior or hosted qualification.
+
+The static checks above are a first gate for ordinary mistakes, not the boundary
+against deliberately evasive SQL. For function identity, security attribute,
+`search_path` and privileges, the truth is the required real-PostgreSQL
+[catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). For every
+bound native forward it replays one chain, the legacy selection's manifest units in
+order, applies the forward and compares what PostgreSQL itself reports with the
+slot's lists. It does not replay the `qualified-v2`, `qualified-admin` or
+operator-provisioned histories. The new functions equal the created list; changed
+functions lie in the replaced and grant-only lists; each definer carries its pinned
+`search_path`, and a function whose slot pins none carries no `SET` at all; no
+created function keeps PUBLIC execute or grants it onward with a grant option;
+existing relations keep their privileges and row security; a new relation carries
+only its owner's table and column privileges; schemas, roles, default privileges,
+event triggers, extensions, casts, and triggers, policies and rewrite rules on
+existing relations do not change; and the purpose CHECK only widens when its slot
+lists it. It runs with and without `service_role`, and its refusal cases include a
+function header that hides its attribute list inside a quoted default. The test is
+a protected control, so a feature PR cannot edit it unseen. Function bodies, data
+statements, statement kinds and object kinds beyond functions and relations stay on
+the whole-file hash and the feature review.
+These are admission controls, not SQL behavior or hosted qualification.
 
 ### M17 channelIngestForwards
 

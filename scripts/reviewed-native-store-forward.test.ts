@@ -554,6 +554,10 @@ describe("real Git introduction, release and co-location", () => {
       put("scripts/reviewed-platform-forward.ts", "// Changed control"); const mixed = commit();
       expect(() => assertCoLocatedForwardApproval(folder, base, mixed)).toThrow(/machinery/u);
       git("reset", "--hard", feature);
+      // The real-PostgreSQL catalog test is the truth for function attributes: a feature PR cannot edit it unseen.
+      put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Changed catalog test"); const catalogEdit = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, base, catalogEdit)).toThrow(/machinery/u);
+      git("reset", "--hard", feature);
       const changed = structuredClone(value); changed.nativeStoreForwardClass!.slots[0]!.replacedFunctions[0]!.searchPath = null;
       put(registryPath, encode(changed)); const enlarged = commit();
       expect(() => assertCoLocatedForwardApproval(folder, base, enlarged)).toThrow(/approved separately/u);

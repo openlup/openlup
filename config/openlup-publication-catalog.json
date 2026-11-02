@@ -27262,6 +27262,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/newPurchaseStockManaged.test.ts",
       "class": "public-output"
     },
