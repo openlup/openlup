@@ -60,7 +60,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     },
     async readMandateEvidence(input) {
       const row = await header(input);
-      return { authorized: row.health_state === "healthy", authorizationRef: String(row.authorization_ref),
+      return { authorized: row.health_state == null || row.health_state === "healthy", authorizationRef: String(row.authorization_ref),
         authorizedAt: row.unattended_charge_authorized_at instanceof Date
           ? row.unattended_charge_authorized_at.toISOString() : String(row.unattended_charge_authorized_at) };
     },

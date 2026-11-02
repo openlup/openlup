@@ -446,3 +446,166 @@ proves that whole production call chain and the durable duty before sign-off,
 without widening a grant. Resource admission was immediate. Remaining work is
 0.5–1 working day for the ordered control integration, native review and final
 verification/delivery, excluding waits; none is claimed complete here.
+
+### Compatibility correction: legacy terms without method state
+
+The supervisor resumed this row after the renewal promotion exposed a regression
+in signed candidate 1a7660ce99de6507754e691c78c721993ec4e6df. Its existing
+subscriptionComposition PostgreSQL fixture is correct and remains unchanged.
+The purchase writer always materializes a method row with terms, but retained
+and legacy terms can exist without one; connectedManagedRetained projects terms
+without a method row. Requiring healthy on the nullable LEFT JOIN silently
+refused those subscriptions. Preserve the prior authorization behavior when the
+joined state is absent; only an explicitly stored non-healthy state refuses.
+The existing NOT NULL state constraint allows healthy, method_missing,
+mandate_not_chargeable_unattended and pending_activation. No SQL, permission,
+projection, fixture or API-signature change is required.
+
+The finite correction is one authorization predicate, a separate real-PostgreSQL
+purchase-method refusal witness and the public owner clarification. The direct
+supervisor instruction authorizes a DCO-signed correction atop the existing
+signed head, followed by a delta read naming both heads. No native review,
+control/pin change, merge, push or publication is authorized in this run. The
+forward must remain SHA-256
+2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34.
+
+Proof plan: run the unchanged 20-case composition suite, all existing direct
+importer suites for the original changed production modules, and all PostgreSQL
+subscriptions/public-reference binding importers including their case-helper
+entrypoints. Stop and report any additional existing-suite failure before
+fixing it. The new installed-tarball restricted-role witness uses the production
+purchase and method-transition writers for each explicit unhealthy state;
+assert a paired healthy purchase row first, then refusal before any provider
+execution while service stays active. No legacy test or fixture is rewritten.
+
+Cause of missed proof: the original new-writer tests covered healthy and
+unhealthy rows, but never the absence of a row on existing terms. The selected
+checks omitted the existing composition suite and importer consumers. Treating
+that suite as a fixture disposition was wrong; its unchanged legacy projection
+is required compatibility evidence. This correction expands existing-consumer
+verification instead of changing the fixture to fit the implementation.
+
+Correction proof so far: unchanged subscriptionComposition passes 20/20 with its
+legacy terms/no-method fixture (SHA-256
+96afefdf582ddc4c26e7b369f502076daf2a1cac1536dfb15bc20217a4bb67b4).
+The new installed-package method-health witness passes 3/3, covering every
+explicit non-healthy state under the restricted service_role with no superuser
+or BYPASSRLS and no new grant. Each purchase first has one paired healthy method
+and terms row; its bounded transition then causes authorization refusal, zero
+sandbox execute calls and an active subscription. Existing test sources are
+hashed before/after execution and compared to the prior signed candidate.
+
+Real correction pack: code 2,117,345 packed B / 9,865,854 unpacked B / 2,849 files
+(SHA-1 518dfca5e80e382dfd483e3cd6a9578a2db99c67); real SQL-inclusive scratch
+pack 2,121,331 packed B / 9,887,507 unpacked B / 2,850 files (SHA-1
+2d0547e9b7b330dba702a8d23cba685cc906ed61). Against the signed candidate this is
++15 packed B for code and +7 packed B including SQL, +56 unpacked B and zero
+files. Against the original programme baseline the full row is +18,560 packed
+B / +78,005 unpacked B / +10 files including SQL. Only the source and generated
+JavaScript predicate add package content; the new regression test, owner prose,
+task record, catalog row and change fragment are not packaged. The existing
+subscription entry layout and declarations remain unchanged. No SQL byte,
+manifest, control or grant changed. The correction restores legacy authorization
+behavior without affecting the separately owned managed SQL chain.
+
+Correction run stopped on the next existing-suite failure, as directed.
+Unchanged m14RestrictedConnectedRestore.test.ts reports 0/15: every case fails
+at line 79 before migration status/apply or restore, because
+`expect(1 + manifest.forward.length).toBe(94)` observes 95 with this branch's
+additional forward. This is an observed migration-count assertion, not evidence
+about the later restricted installation/restore behavior. No test, manifest,
+SQL, grant or control was changed to clear it. The remaining original purchase
+renewal and renewal-lifecycle suites were not run after this failure. The
+correction remains staged and uncommitted atop 1a7660ce; no new signed head or
+completed delta-read candidate exists.
+
+Before stopping, 23 existing suites passed unchanged (including composition
+20/20), one failed and two remain unrun; the separate new unhealthy-purchase
+witness passed 3/3. Full lint, strict typecheck, API snapshots, structural scan
+and package-boundary checks passed. Documentation checks identify only the
+pending scoped test trailers; they are not claimed fully green without the
+planned commit. Full per-file results and untouched-source hashes are retained
+in .context/scratch/g2/compatibility/existing-results.json. The real pack and
+unchanged SQL SHA above describe the current staged source.
+
+Stop self-retro: the expanded importer sweep exposed a second missed existing
+consumer gate. Preserve and report that assertion rather than editing another
+fixture or treating the focused new proof as sufficient. No further repair,
+DCO commit, native review or G7 work was started.
+
+### Resume: mechanical chain-count disposition and retained-store witness
+
+The supervisor authorized the literal selected-chain count bumps and any
+measured current-inventory expectation updates in the three qualification suites
+and their proof companions. This is the sole exception to unchanged existing
+tests: count bump only, preserving every other behavioral assertion. The
+qualified-admin chain is 95 units and qualified-v2 is 96; their issued-prefix
+counts and digests stay frozen. Current inventory expectations are checked
+against each real PostgreSQL catalog observer, not invented. Main is not merged
+in this run; the later review integration handles the shared count conflicts.
+
+The additional retained-store witness must capture/project the managed source,
+restore terms without method state, and renew under a restricted runtime role.
+Use labelled host fixtures for its incumbent legacy codec, destination admission
+and external payment result: the retained projection deliberately blocks shipping
+until a host supplies its binding, and its historical snapshots do not have the
+new-purchase codec's activation lineage. These separate seams are not destination
+or PSP qualification. No method row or replacement purchase terms may be added
+to make this proof pass. No G7 worktree or SQL is changed here.
+
+Resume proof closes the prior stop: restricted connected restore passes 15/15;
+qualified-admin composition passes 2/2; qualified-v2 composition passes 4/4.
+Count bump only: admin/restricted 94 to 95 and qualified-v2 95 to 96, including
+the matching proof literals and count comment. Current inventory pins were also
+refreshed under the explicit digest instruction; each full PostgreSQL catalog
+observer confirms the exact current inventory. Issued-prefix counts/digests and
+all other assertions are unchanged. The original purchase-renewal and renewal
+lifecycle suites, previously unrun, now pass 11/11 and 66/66 unchanged. The full
+existing-consumer set is 28 suites / 350 cases PASS, with no other existing test
+source changed. Composition remains byte-identical and 20/20 PASS.
+
+The new retained-method witness passes 1/1 on real PostgreSQL: captured managed
+source rows are projected by mapManagedRetainedBusiness and restored into a
+clean qualified-v2 target. Terms/lines come from that production projection,
+not target-row fixtures. The target has no method-state row before or after
+renewal. Its runtime is session_user=retained_runtime, current_user=service_role,
+with rolsuper=false and rolbypassrls=false. The real store reads the carried
+authorization; public renewal executes exactly one labelled external-result
+fixture, commits success and advances September 29 to October 27 while service
+stays active. The incumbent legacy codec/cycle correlation, payment evidence and
+host destination admission are explicit test fixtures. The real mapper's
+address-binding block is separately asserted and never removed from its rows.
+This is no destination wiring, production legacy provider or real-mandate
+qualification. New-purchase unhealthy-method refusal remains 3/3 through the
+installed tarball and bounded writers, with no seeded healthy state.
+
+Two initial new-fixture attempts correctly refused: its default price-list
+start date did not cover the past-due cycle, and its unrelated synthetic welcome
+email queue was outside the admitted retained cohort. Explicit source price
+validity and the existing positive retained-fixture queue isolation close those
+setup gaps; no existing fixture or transfer guard was relaxed. The final source
+remains a genuine managed capture/project/connected restore path.
+
+Closure self-retro: the consumer sweep and retained projection expose distinct
+compatibility boundaries that a purchase-only proof missed. Keep literal chain
+counts intentional and use actual PostgreSQL inventory observers for current
+pins. Build retained fixtures as explicit admitted cohorts rather than relying
+on time-sensitive defaults. No SQL, permission, production codec or attempt
+store change was needed beyond the single missing-row authorization predicate.
+
+Final working-tree checks PASS: full lint (33 existing warnings, no errors),
+strict typecheck (zero unresolved edges/consumer errors), unchanged API snapshots,
+structural scan and package-boundary witness (2,825 cases). All existing suite
+sources are byte-identical to the prior signed candidate except the five
+explicitly authorized count/current-pin files, verified by reversing only those
+literal substitutions. The source correction remains exactly line 63 in
+postgresRenewalStore. No main merge occurred; fetched origin/main is 09cd599b
+and AGENTS/CONTRIBUTING have no instruction delta. The immutable forward still
+has SHA-256 2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34.
+Scoped no-impact trailers cover test-count/current-pin maintenance and the
+unchanged transfer-capability guide; CONTRIBUTING remains untouched. Under the
+supervisor's direct instruction this correction is committed DCO-signed atop
+1a7660ce, then receives its source delta read. No native review, registry pin,
+checker edit, canonical verify, push or publication is performed. Native repair
+cycles used: zero. Code/proof work is complete; ordered review/verification still
+needs the source read and remains estimated at 0.5–1 working day excluding waits.

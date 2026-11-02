@@ -1686,6 +1686,9 @@ qualification, and real-provider method setup remains unavailable. Initial
 method health is healthy only with the registered sandbox method evidence;
 `writer.transitionMethod()` records later missing, pending, unchargeable or
 healthy states with immutable event identity and expected-state comparison.
+Legacy renewal terms without a method-state row retain their previous
+authorization behavior; only an explicit non-healthy state refuses renewal. New
+purchase completion always writes the method state atomically with its terms.
 A financial decline alone does not assert that a method disappeared. Recovery
 composition must exercise an actual unhealthy state, repair it with fresh method
 evidence, then authorize recovery; service stays active throughout.
