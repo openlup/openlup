@@ -1,6 +1,6 @@
 # Closed native forward admission class
 
-Status: original CD-M19-63 candidate DCO-committed; repaired merge NEEDS_READ.
+Status: repaired control DCO-committed after its accepted read; focused proof below.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package
@@ -274,3 +274,91 @@ Focused admission waited zero seconds. No counted native session or reviewer
 was created, so earliest counted PASS/expiry are absent. Stop NEEDS_READ with
 the computed staged identity and retain the unsigned merge; the new security
 control read is mandatory before repaired DCO and the two fresh native reviews.
+
+Accepted repair continuation (CD-M19-67, 2026-11-02): the coordinator accepted
+HEAD 8da87741, MERGE_HEAD 09cd599b and staged tree
+8e4e08c99cc349623128270dfa43e0ffb34bec83, including the material identity repair
+and exact catalog union. DCO merge b4fb886e retained that tree. Non-merge empty
+commit 9199d70c recomputed both source-bound documentation digests and recorded
+fresh configuration/tooling trailers. Normal policy has two obligations, zero
+unanswered; the worktree and contribution gitleaks scan are clean. No other
+worktree, feature SQL, package source, control shape or budget was changed.
+
+The lead's line rule was recomputed from direct changed-code and JSON references,
+plus its required shared session/decision suites. There are 26 unchanged existing
+files, ten using their own PostgreSQL containers, and one new native-class file.
+No existing test differs from review base 09cd599b. An additional raw git-show
+copy of the accepted pre-repair native test (8da87741) also passes unchanged
+against the repaired code. Each execution had its own focused admission; no
+canonical verify was run. The complete file results are:
+
+| File | Result |
+| --- | --- |
+| `tests/postgres/accountSupportUpgrade.test.ts` | PASS: 2 passed (2) |
+| `tests/postgres/commerceManagedRail.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/dunningAttemptReplay.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/expandOnlyExpressions.test.ts` | PASS: 19 passed (19) |
+| `tests/postgres/invoicingManagedCorrection.test.ts` | PASS: 26 passed (26) |
+| `tests/postgres/reviewedBatchForwards.test.ts` | PASS: 106 passed (106) |
+| `tests/postgres/reviewedPortableCreation.test.ts` | PASS: 20 passed (20) |
+| `tests/postgres/starterGraduationCadence.test.ts` | PASS: 14 passed (14) |
+| `tests/postgres/subscriptionManagedStock.test.ts` | PASS: 12 passed (12) |
+| `tests/postgres/subscriptionRenewalLifecycle.test.ts` | PASS: 66 passed (66) |
+| `scripts/agent-review-gate.test.ts` | PASS: 22 passed (22) |
+| `scripts/agent-review-queue.test.ts` | PASS: 189 passed (189) |
+| `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) |
+| `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) |
+| `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) |
+| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) |
+| `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) |
+| `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) |
+| `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) |
+| `scripts/packages/set-release.test.ts` | PASS: 68 passed (68) |
+| `scripts/public-ci-neutrality.test.ts` | PASS: 60 passed (60) |
+| `scripts/qualified-migration-admission.test.ts` | PASS: 24 passed (24) |
+| `scripts/reviewed-batch-forward.test.ts` | PASS: 691 passed (691) |
+| `scripts/reviewed-native-store-forward.test.ts` | PASS: 147 passed (147) |
+| `scripts/source-preview-release.test.ts` | PASS: 718 passed (718) |
+| `scripts/source-release-preparation.test.ts` | PASS: 7 passed (7) |
+| `scripts/verify-local.test.ts` | PASS: 14 passed (14) |
+| `base-native-8da87741` | PASS: 134 passed (134) |
+
+Net control paths (separate control authority, outside the general CD-M19-10 control exclusion):
+
+- `config/openlup-publication-catalog.json`
+- `config/reviewed-platform-forwards.json`
+- `docs/platform/DATA_AND_MIGRATIONS.md`
+- `docs/platform/plans/oss-m19-forward-class.md`
+- `scripts/agent-review-queue.mjs`
+- `scripts/fixtures/reviewed-native-store/before.sql`
+- `scripts/fixtures/reviewed-native-store/registry.json`
+- `scripts/oss-source-release-contract.ts`
+- `scripts/reviewed-native-store-forward.test.ts`
+- `scripts/reviewed-platform-forward.ts`
+
+The first verification-harness run had four npm-pin failures before commands:
+Homebrew supplied npm 11.19.1 while the unchanged fixture requires 11.19.0.
+The test and runtime-pin module both match base. A checkout-local copy of the
+same Node 24.22.2 binary, its existing relative library link, and npm 11.19.0
+resolved the environment mismatch: the unchanged file then passed all 14 cases.
+The initial failed attempt and raw log remain retained; no source, test, policy
+or global toolchain was changed.
+
+No test was edited to pass; all recorded test-file SHA-256 checks match after
+execution. Detailed commands, per-module selection, raw-base identity and logs
+remain in ignored task evidence under `.context/scratch/line-rule/`. Focused
+admission wait totaled 1657 s; test execution totaled 844 s.
+The actual paired Core/Outbox/Platform packs under pinned npm 11.19.0 are byte-identical against R0,
+with zero packed/unpacked delta and zero changed entries; all package inputs
+remain unchanged. Native prepare/review follows this frozen proof: two fresh
+whole-candidate reviewers, the complete attack list, independent assessment of
+FC-IDENTITY-001, and a reporting-only reachable-example check of older classes
+and the shared expand-only parser. Older pre-existing behavior is not repaired
+here. The three-cycle native allowance is unused at this pre-review snapshot.
+
+Self-retro: JavaScript identifier matching can differ from database lexing →
+prove the mismatch on real PostgreSQL and constrain the local identity boundary.
+Runtime pin mismatch → select the exact checkout-local toolchain without
+changing a test or policy. Per-file admission waits dominated the broad unchanged-line proof; no gate,
+fixture or budget was relaxed to reduce that delay. Stop after native review at
+READY_FOR_VERIFY; final verification and all external delivery await the lead.
