@@ -1582,6 +1582,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g12p.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-integration-trailer.md",
       "class": "public-output"
     },
@@ -27287,6 +27291,10 @@
     },
     {
       "path": "tests/postgres/oidcReferenceRp.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsControlPlaneNative.test.ts",
       "class": "public-output"
     },
     {
