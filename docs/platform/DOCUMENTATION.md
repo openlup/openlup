@@ -545,6 +545,17 @@ change with obligations fails the check. A shallow checkout reads no trailers
 and checks a legacy comment only against the current section; fetch complete
 history. Every accepted reason is printed by `--policy` for review.
 
+When a required integration of main changes a covered source delta, record its
+fresh reason on a non-merge commit. The
+[focused integration review rule](../../CONTRIBUTING.md#native-review-and-accountability)
+also permits exactly one single-parent commit directly after the qualifying
+two-parent merge: its tree must equal the merge tree, and its message may contain
+only a subject, one or more `OpenLup-Doc-Impact` trailer lines and optional
+`Signed-off-by` lines. Reviewers receive and judge those reasons. The actual
+trailer tip remains the reviewed and receipted head; all existing coverage,
+expiry, intent, author, finding, cycle and mechanical-proof rules still apply.
+This does not change which commits answer obligations or what the digest binds.
+
 For compatibility, an in-section `openlup-doc-impact` comment accepted by the
 previous rule still answers: exactly one fresh record for the unit in its owner
 section. The comment's digest is the previous rule's, which also binds the owner
