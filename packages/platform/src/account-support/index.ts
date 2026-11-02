@@ -70,3 +70,12 @@ export { createAccountSupportBindings } from "./bindings.js";
 export type { AccountSupportCallable, AccountSupportOperations, AccountSupportHostBindingRequired } from "./bindings.js";
 export { createAccountSupportServices } from "./contribution.js";
 export type { AccountSupportBindingRefusal, AccountSupportReadiness, GuardedAccountSupportOperation, GuardedAccountSupportOperations } from "./contribution.js";
+
+export { createPostgresCustomerOrderHistoryReadStore } from "./postgresOrderHistory.js";
+export type { NativeOrderHistoryOptions } from "./postgresOrderHistory.js";
+export { createPostgresAccountReadSources } from "./postgresAccountSources.js";
+export type { NativeAccountPaymentEvidence, NativeAccountAdditionalSources, NativeAccountSourcesOptions } from "./postgresAccountSources.js";
+export { readPostgresCustomerAccountClient } from "./postgresAccountReadScope.js";
+export type { NativeAccountReadScope, NativePaidActivationGap, NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
+export { createPostgresCustomerSubscriptionSnapshotPort, createPostgresCustomerNewsletterPreferencesPort } from "./postgresCustomerActorReads.js";
+export type { NativeAccountRpcExecutor } from "./postgresCustomerActorReads.js";
