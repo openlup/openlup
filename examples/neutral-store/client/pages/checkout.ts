@@ -20,13 +20,13 @@ export function checkoutPage(context: PageContext): HTMLElement {
     actionForm(context, {
       operation: 'checkout.create', submit: 'placeOrder',
       fields: [
-        { name: 'firstName', label: 'firstName', value: 'Demo' },
-        { name: 'lastName', label: 'lastName', value: 'Customer' },
+        { name: 'firstName', label: 'firstName', value: context.t('demoFirstName') },
+        { name: 'lastName', label: 'lastName', value: context.t('demoCustomer') },
         { name: 'email', label: 'email', type: 'email', value: 'customer@example.test' },
         { name: 'phone', label: 'phone', type: 'tel', value: '+48500100200' },
-        { name: 'line1', label: 'address', value: 'Example Street 1' },
+        { name: 'line1', label: 'address', value: context.t('demoStreet') },
         { name: 'line2', label: 'address2', required: false },
-        { name: 'city', label: 'city', value: 'Example City' },
+        { name: 'city', label: 'city', value: context.t('demoCity') },
         { name: 'postalCode', label: 'postalCode', value: '00-001' },
         { name: 'termsAccepted', label: 'termsAccept', type: 'checkbox' },
       ],

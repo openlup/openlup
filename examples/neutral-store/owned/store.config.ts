@@ -44,7 +44,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional supplement in a simple amber container.', pl: 'Fikcyjny suplement w prostym bursztynowym opakowaniu.' },
           details: { en: 'Demonstration product. The label is fictional and gives no consumption instructions.', pl: 'Produkt demonstracyjny. Etykieta jest fikcyjna i nie zawiera zaleceń spożycia.' },
           media: '/media/dawn.svg', mediaAlt: { en: 'Illustrated Dawn container', pl: 'Ilustracja opakowania Świt' },
-          contents: '60 units', unitPrice: { amountMinor: 3900, currency: 'XTS' },
+          contents: '60', unitPrice: { amountMinor: 3900, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
         {
@@ -53,7 +53,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional supplement with a pale green label.', pl: 'Fikcyjny suplement z jasnozieloną etykietą.' },
           details: { en: 'An inert catalogue example for testing product selection, prices and recurring orders.', pl: 'Przykład katalogowy do testowania wyboru produktów, cen i zamówień cyklicznych.' },
           media: '/media/noon.svg', mediaAlt: { en: 'Illustrated Noon container', pl: 'Ilustracja opakowania Południe' },
-          contents: '60 units', unitPrice: { amountMinor: 4500, currency: 'XTS' },
+          contents: '60', unitPrice: { amountMinor: 4500, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
         {
@@ -62,7 +62,7 @@ export const configurations: Record<string, StoreConfig> = {
           description: { en: 'A fictional supplement with a muted blue label.', pl: 'Fikcyjny suplement ze stonowaną niebieską etykietą.' },
           details: { en: 'No medical benefit is implied. No physical product is supplied by this application.', pl: 'Nie przypisujemy produktowi korzyści medycznych. Aplikacja nie dostarcza fizycznych produktów.' },
           media: '/media/dusk.svg', mediaAlt: { en: 'Illustrated Dusk container', pl: 'Ilustracja opakowania Zmierzch' },
-          contents: '30 units', unitPrice: { amountMinor: 2900, currency: 'XTS' },
+          contents: '30', unitPrice: { amountMinor: 2900, currency: 'XTS' },
           permittedPurchaseModes: ['one_time', 'subscription'],
         },
       ],

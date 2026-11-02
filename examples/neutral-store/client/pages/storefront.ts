@@ -65,7 +65,7 @@ export function productPage(context: PageContext): HTMLElement {
       el('h1', {}, product.name[context.locale]),
       el('p', {}, product.description[context.locale]),
       el('p', {}, product.details[context.locale]),
-      el('p', { class: 'muted' }, product.contents),
+      el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
       el('p', { class: 'price' }, context.money(product.unitPrice.amountMinor)),
       quantity.wrapper, add, output,
       el('p', { class: 'muted' }, context.config.copy.shippingNote[context.locale])));

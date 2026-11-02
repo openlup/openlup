@@ -14,6 +14,74 @@ for (const locale of ['en', 'pl'] as const) {
     });
   }
 
+  test(`${locale}: operator choices translate labels and preserve submitted wire values`, async ({ page }) => {
+    await page.goto(routes.admin[locale]);
+    const cases = [
+      { section: '#reviews', field: 'action', operation: 'operator.reviewModerate', reference: 'reviewRef',
+        choices: [
+          ['publish', 'Publish', 'Opublikuj'], ['hide', 'Hide', 'Ukryj'],
+        ] },
+      { section: '#partners', field: 'status', operation: 'operator.partnerTransition', reference: 'id',
+        choices: [
+          ['contacted', 'Contacted', 'Nawiązano kontakt'], ['qualified', 'Qualified', 'Zakwalifikowano'],
+          ['disqualified', 'Disqualified', 'Odrzucono'], ['closed_won', 'Closed — won', 'Zamknięto — pozyskano'],
+          ['closed_lost', 'Closed — lost', 'Zamknięto — nie pozyskano'],
+        ] },
+    ];
+    for (const item of cases) {
+      // Observe the real form payload; a refusal response never fabricates an authorized action.
+      await page.route(`**/api/actions/${item.operation}`, route => route.fulfill({
+        status: 401, contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'host_binding_required' }),
+      }));
+      const form = page.locator(`${item.section} form.action-form`);
+      const select = form.locator(`select[name="${item.field}"]`);
+      await expect(select.locator('option')).toHaveText(item.choices.map(choice => choice[locale === 'en' ? 1 : 2]!));
+      await form.locator(`input[name="${item.reference}"]`).fill('fictional-reference');
+      for (const choice of item.choices) {
+        await select.selectOption(choice[0]!);
+        await expect(select).toHaveValue(choice[0]!);
+        const request = page.waitForRequest(request => request.url().endsWith(`/api/actions/${item.operation}`));
+        await form.getByRole('button', { name: copy[locale].save, exact: true }).click();
+        expect((await request).postDataJSON()[item.field]).toBe(choice[0]);
+        await expect(form.locator('.action-result')).toContainText('host_binding_required');
+        await expect(form.getByRole('button', { name: copy[locale].save, exact: true })).toBeEnabled();
+      }
+    }
+  });
+
+  test(`${locale}: auxiliary copy, demo fields and product contents follow the active language`, async ({ page }) => {
+    const text = copy[locale];
+    await page.goto(routes.destinations[locale]);
+    await expect(page.getByRole('columnheader').nth(1)).toHaveText(text.languageEnglish);
+    await expect(page.getByRole('columnheader').nth(2)).toHaveText(text.languagePolish);
+    await page.goto(routes.acquisition[locale]);
+    await expect(page.getByLabel(text.firstName, { exact: true })).toHaveValue(text.demoFirstName);
+    await expect(page.getByLabel(text.lastName, { exact: true })).toHaveValue(text.demoApplicant);
+    await page.goto(routes.partners[locale]);
+    await expect(page.getByLabel(text.company, { exact: true })).toHaveValue(text.demoCompany);
+    await expect(page.getByLabel(text.lastName, { exact: true })).toHaveValue(text.demoPartner);
+    await page.goto(routes.catalog[locale]);
+    await page.getByRole('link', { name: text.details, exact: true }).first().click();
+    await expect(page.locator('main')).toContainText(text.packContents);
+    await expect(page.locator('main')).not.toContainText(' units');
+    await page.goto(routes.builder[locale]);
+    await page.getByRole('spinbutton').first().fill('2');
+    await page.getByRole('button', { name: text.addBox, exact: true }).click();
+    await page.getByRole('button', { name: text.checkout, exact: true }).click();
+    await expect(page.getByLabel(text.lastName, { exact: true })).toHaveValue(text.demoCustomer);
+    await expect(page.getByLabel(text.address, { exact: true })).toHaveValue(text.demoStreet);
+    await expect(page.getByLabel(text.city, { exact: true })).toHaveValue(text.demoCity);
+  });
+
+  test(`${locale}: configuration failure uses only the active language`, async ({ page }) => {
+    await page.route('**/api/config', route => route.fulfill({ status: 503, body: '{}' }));
+    await page.goto(routes.admin[locale]);
+    await expect(page.locator('html')).toHaveAttribute('lang', locale);
+    await expect(page.locator('main h1')).toHaveText(copy[locale].applicationUnavailable);
+    await expect(page).toHaveTitle(copy[locale].applicationUnavailable);
+    await expect(page.locator('main code')).toHaveText('starter_configuration_unavailable');
+  });
+
   test(`${locale}: browser cart survives navigation and reload`, async ({ page }) => {
     const text = copy[locale];
     await page.goto(routes.builder[locale]);
