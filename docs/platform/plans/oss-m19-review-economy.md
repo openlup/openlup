@@ -221,3 +221,62 @@ Policy/navigation, public typecheck, ast-grep, lint and both neutrality checks
 exit zero. All existing importer suites remain byte-identical to the corrected
 merged baseline. Package input equality again proves 1,930 unchanged files
 against the merge main-side parent, with the same inventory hash and zero bytes.
+
+
+## Bounded verification-catalogue integration repair
+
+Maintainer decision, 2026-11-02: exactly one additional bounded repair round is
+authorized for the omitted verification-catalogue owner. Its scope is the exact
+`scripts/verification-plan.mjs` protected path and its real-Git no-op secret-scan
+regression witness. No other selector or rule changes are authorized. Two fresh
+independent full integration reviews must close the material finding; another
+material finding or an unsuccessful evaluation defers delivery. This grant adds
+no native continuation, budget reset or self-application exception. Deriving
+protection from catalogue owner fields remains a follow-up outside this task.
+
+The delivery grant permits the required integration, focused proof, full local
+verification and a non-forced branch push after passing review and admission
+preflight. The existing pull request remains draft with its hold label; publishing
+the receipt, ready status and merge arming require a later supervisor instruction.
+
+Sweep inputs: catalogue and runner at
+`01509b2a5154faf9e63ab05f56d9202a10205aef`; pre-repair selector at
+`bbd246f842642c3e2f38e7e788097cab15c138e9`.
+
+Before editing, the bounded read-only sweep extracted the unique `owner` values
+from the incoming verification catalogue and checked the runner's import and
+execution of that catalogue. Every listed owner is already protected. Each
+real-Git future-enabled fixture weakens that owner, integrates disjoint catalog
+additions through a real conflict and exact union, and receives no inherited
+coverage: verification refuses with two independent PASS reports required.
+Synthetic fixture reports are test evidence, not model review of this task.
+The completed sweep is reproducible with its local runner and real Git history
+in `.context/scratch/re-pr/owner-sweep-507-evidence.tar.gz`, SHA-256
+`7e49f2a0917ed4f020fef353b30d54d82d5082cbf9c276f872d51f2ea61cfb2a`.
+Generated source files were removed only after archiving, preserving broad lint
+without changing any ignore or lint rule.
+
+| Catalogue owner | Current protecting predicate | Weakened owner inherits coverage? |
+| --- | --- | --- |
+| `config/gitleaks.toml` | Legacy sensitive: config family | No; two fresh PASS required |
+| `package-lock.json` | Legacy sensitive and trust: root manifest | No; two fresh PASS required |
+| `package.json` | Legacy sensitive and trust: root manifest | No; two fresh PASS required |
+| `packages/ui/smoke/neutrality.ts` | Guard closure: exact path | No; two fresh PASS required |
+| `scripts/ci-test-scope.mjs` | Guard closure: ci family | No; two fresh PASS required |
+| `scripts/dco-signoff-check.ts` | Legacy sensitive: dco family | No; two fresh PASS required |
+| `scripts/oss-public-typecheck.ts` | Legacy sensitive: oss family | No; two fresh PASS required |
+| `scripts/oss-published-tree-check.ts` | Legacy sensitive: oss family | No; two fresh PASS required |
+| `scripts/packages/required-package-gates.ts` | Legacy sensitive: package tooling | No; two fresh PASS required |
+| `scripts/public-ci-neutrality.mjs` | Guard closure: public-ci family | No; two fresh PASS required |
+| `scripts/public-ci-pgtap.mjs` | Guard closure: public-ci family | No; two fresh PASS required |
+
+The catalogue module itself previously fell outside these predicates. The repair
+adds only its exact path to the existing guard closure. The normal real-Git
+suite projects its actual gitleaks command-owning stanza, replaces that command
+with a no-op and proves changed policy, absent inheritance and the full fresh
+floor even after one new PASS. Existing importer tests remain unchanged.
+
+Self-retro: an extracted command catalogue moved an execution guard outside a
+prefix selector; enumerate actual owners before editing, then protect this exact
+owner and test the privilege boundary with real Git. No catalogue-derived
+selector mechanism or automatic successor is added here.

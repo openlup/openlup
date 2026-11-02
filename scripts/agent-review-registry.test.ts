@@ -11,7 +11,7 @@ const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const DAY = 86400000;
 const RECORD = 'docs/platform/plans/demo.md';
-async function fixture(enabled = true, controls: string[] = []) {
+async function fixture(enabled = true, controls: string[] = [], initialFiles: Record<string, string> = {}) {
   await mkdir('.context/scratch', { recursive: true });
   const cwd = await mkdtemp(join(process.cwd(), '.context/scratch/review-economy-')); roots.push(cwd);
   const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
@@ -20,6 +20,7 @@ async function fixture(enabled = true, controls: string[] = []) {
   if (enabled) await write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n');
   for (const path of REGISTRY_PATHS) await write(path, await readFile(join(process.cwd(), path), 'utf8'));
   for (const path of controls) await write(path, await readFile(join(process.cwd(), path), 'utf8'));
+  for (const [path, source] of Object.entries(initialFiles)) await write(path, source);
   await write('app.ts', 'export const before = 1;\n');
   const commit = () => { git('add', '-A'); git('commit', '-qm', 'fixture'); return git('rev-parse', 'HEAD'); };
   const base = commit(); git('update-ref', 'refs/remotes/origin/main', base);
@@ -129,6 +130,34 @@ describe('real Git coverage histories', () => {
     await f.write(catalog, registryUnion(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', f.git('show', `${reviewed}:${catalog}`) + '\n', f.git('show', `${main}:${catalog}`) + '\n'));
     f.commit(); await f.cli('prepare', f.request); const next = await f.state();
     if (!REGISTRY_PATHS.includes(path)) expect(next.candidate.rules.head).not.toBe(prior.candidate.rules.head);
+    expect(next.candidate.coverage).toBeUndefined();
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+  });
+  it('refuses registry-union inheritance when the verification plan replaces gitleaks with a no-op', async () => {
+    const path = 'scripts/verification-plan.mjs'; const catalog = REGISTRY_PATHS[0];
+    // The command-owning stanza from the verification catalogue; this fixture never executes it.
+    const source = `export const definitions = {
+  gitleaks: {
+    command: () => ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'], resource: null, requires: [],
+    owner: 'config/gitleaks.toml', context: 'gitleaks',
+    reason: 'Secret scanning of Git history with the pinned scanner.',
+  },
+};
+`;
+    const changed = source.replace("['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner']", "['node', '-e', '']");
+    expect(changed).not.toBe(source);
+    const f = await fixture(true, [], { [path]: source });
+    await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-a'));
+    const reviewed = f.commit(); const prior = await f.review();
+    const main = await f.mainMove(async () => {
+      await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-b'));
+      await f.write(path, changed);
+    });
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(catalog);
+    await f.write(catalog, registryUnion(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', f.git('show', `${reviewed}:${catalog}`) + '\n', f.git('show', `${main}:${catalog}`) + '\n'));
+    f.commit(); await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.candidate.rules.head).not.toBe(prior.candidate.rules.head);
     expect(next.candidate.coverage).toBeUndefined();
     await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
   });

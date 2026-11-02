@@ -58,6 +58,7 @@ const CONTROL_PATHS = new Set([
   'docs/platform/plans/oss-m19-review-economy.md',
   'docs/platform/plans/oss-m19-integration-trailer.md',
   '.gitleaksignore', 'packages/ui/smoke/neutrality.ts',
+  'scripts/verification-plan.mjs',
   'packages/platform/test/packageBoundary.test.ts',
   'docs/platform/communications-conformance.mjs',
 ]);
