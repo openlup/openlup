@@ -37,3 +37,4 @@ export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrd
 export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
+export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
