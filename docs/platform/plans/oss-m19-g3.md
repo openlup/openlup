@@ -25,7 +25,7 @@ one address branch in the existing operator adapter. Other operator capabilities
 remain unsupported in the reference projection; explicit host composition is
 required. No existing OMS/G5 files or renewal codec are edited.
 
-Hard package stop: 8,000 bytes packed including own SQL. No saved address book,
+Hard package stop: 8,200 bytes packed including own SQL and manifest. No saved address book,
 default selector, list/delete/export/erasure API, real PSP, new attempt ledger,
 cycle movement or arrival confirmation. No supersededByStableJourneyKey or
 checkoutAbandoned writes. Review repair cycles used: zero.
@@ -436,3 +436,22 @@ bypasses. Existing child proof counts must advance with the measured suffix whil
 issued identities remain fixed. Several focused admissions waited60-150seconds;
 these are actual resource waits, not a reason to bypass the gate. No unrelated
 mechanism, abstraction or process/control change is added.
+
+
+## Recovery-caller and R0 integration resume
+
+The supervisor now authorizes only operatorRecovery.ts line90 to classify the
+named future-only result as partial, with an additive regression. Audit the same
+refusalCode-in pattern and all callers of the native subscription result before
+read; another unsafe caller outside a one-line unowned-file repair is a stop.
+The hard stop is8,200 B including SQL/manifest, replacing8,000. Prior real pack
+is+7,980 B; report any growth and its required caller/projection cost. No safety
+text or tests may be cut for size. No DCO/pin/checker/native review is authorized.
+
+Merge origin/main once as expressly requested, with a merge commit, no rebase.
+Fetched main is09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a. The sole conflict is
+additive prose under Compatibility lifecycle: preserve G3's destination limits
+and R0's complete-catalogue installation guidance, with no SQL/source resolution.
+Run existing imported-module suites unchanged except authorized literal current
+chain-count/catalogue updates, including native communications event paths. The
+four signatures/two tables remain fixed. G4 and all other worktrees stay untouched.
