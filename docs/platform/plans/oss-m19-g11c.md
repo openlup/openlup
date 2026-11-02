@@ -1,6 +1,6 @@
 # Native account consent choices
 
-Status: blocked by two failures in the unchanged existing native communications suite.
+Status: existing-suite batch green after the authorized test-only correction; ready for scheduled native review.
 Admission remains blocked on the separately owned prior control. The supervisor
 assigned the additive native bounce/complaint fan-out fix to this row so that the
 new purpose and its suppression regression land together. DCO sign-off is now
@@ -486,7 +486,7 @@ Self-retro: no additional implementation change was needed after the accepted
 read. Keep acceptance attribution with the coordinator and scheduling with the
 stream supervisor; retain the exact accepted SQL identity across history cleanup.
 
-## Existing-suite compatibility check
+## Existing-suite compatibility check — initial stopped run
 
 The unchanged existing native communications suite is a delivery blocker:
 `tests/postgres/communicationsNative.test.ts` ran all 20 cases, with 18 passing
@@ -573,3 +573,90 @@ the real failures above. Keep the failing assertions intact and obtain the
 required decision/delta read before any source or SQL repair. No native review
 or repair cycle started. Remaining estimate: one working day plus blocker and
 external scheduling; the earlier real SQL-inclusive pack remains applicable.
+
+## Existing-suite correction and completed batch
+
+The resumed instruction authorized two corrections in the existing native
+communications test after verifying the mechanisms. The complaint assertion
+now checks purpose and state explicitly: gifts-and-discounts is added while
+launch-offer, newsletter and tester-program suppression remain asserted. This
+is the already accepted bounce/complaint behavior, including sends with no new
+account-consent history; no production behavior is changed by this repair.
+
+The adverse-reinstall fixture intentionally drops native tables and reads older
+communications DDL. Its final restore now also reads exactly the two named
+DROP/ADD purpose-CHECK statements from this consent forward and executes them
+in file order, asserting that both were found. It copies no SQL literal and
+runs no other part of the forward. The poison step needed no change and passed
+unchanged. All poison-ACL refusals, the final empty migration replay and the
+final snapshot-equals-before assertion remain unchanged. The full file passes
+20/20 cases. The production migration runner applies only the pending ledger
+suffix; the inspected direct historical-DDL consumer outside tests is an owned
+disposable cold-consumer proof, not a production repair path. No production
+old-DDL replay path was found in that trace.
+
+All 23 remaining suites passed without edits in this run. The three chain-count
+suites ran their previously authorized +1/current-inventory bumps, including
+their two proof companions; no historic inventory pin changed. The qualified
+admin modes both pass at 95 units; all four qualified-v2 shapes pass at 96.
+Restricted connected restore passes all 15 cases. The current hashes measured
+in the preceding section are validated by these real-PostgreSQL compositions.
+
+The complete 25-file selection is green: 1,018 passed, zero skipped. This joins
+24 resumed files (1,013 cases) with the prior five-profile account-consent run,
+whose SQL, production source and test are unchanged. Current results:
+
+| Suite | Passed | Skipped |
+| --- | ---: | ---: |
+| `packages/platform/test/communications/nativeDelivery.test.ts` | 2 | 0 |
+| `scripts/customer-selfservice-recovery-schema.test.ts` | 3 | 0 |
+| `scripts/documentation-impact.test.ts` | 101 | 0 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 108 | 0 |
+| `scripts/reviewed-batch-forward.test.ts` | 691 | 0 |
+| `server/adapters/postgres/communicationsLifecycle.test.ts` | 1 | 0 |
+| `server/adapters/postgres/customerCommunicationPreferences.test.ts` | 1 | 0 |
+| `server/adapters/supabase/communications/customerCommunicationPreferences.test.ts` | 2 | 0 |
+| `server/domains/communications/customerCommunicationPreferencesHandler.test.ts` | 4 | 0 |
+| `server/runtime/communications/a1ReferenceBinding.test.ts` | 5 | 0 |
+| `server/runtime/communications/communicationsLifecycleBinding.test.ts` | 2 | 0 |
+| `server/runtime/communications/communicationsSchema.test.ts` | 1 | 0 |
+| `tests/postgres/acquisitionEvidenceParity.test.ts` | 11 | 0 |
+| `tests/postgres/channelConnectedRestore.test.ts` | 1 | 0 |
+| `tests/postgres/commerceComposition.test.ts` | 4 | 0 |
+| `tests/postgres/communicationsNative.test.ts` | 20 | 0 |
+| `tests/postgres/connectedManagedRetained.test.ts` | 16 | 0 |
+| `tests/postgres/connectedStoreTransfer.test.ts` | 9 | 0 |
+| `tests/postgres/customerAccountConsents.test.ts` | 5 | 0 |
+| `tests/postgres/customerNewsletterWithdrawal.test.ts` | 8 | 0 |
+| `tests/postgres/m14ManagedCatchup.test.ts` | 1 | 0 |
+| `tests/postgres/m14QualifiedAdminComposition.test.ts` | 2 | 0 |
+| `tests/postgres/m14QualifiedComposition.test.ts` | 4 | 0 |
+| `tests/postgres/m14RestrictedConnectedRestore.test.ts` | 15 | 0 |
+| `tests/postgres/managedStorageTransfer.test.ts` | 1 | 0 |
+
+The resumed suites are checksum-identical to a21dd10a except for the two
+explicitly authorized edits in communicationsNative.test.ts. Real-PG evidence
+includes managed retained rows, interrupted managed catch-up, native connected
+restore, Storage transfer, old newsletter withdrawals, acquisition and commerce
+composition, and restricted qualified installations without a new account
+permission ledger/target companion requirement on the existing served APIs.
+The intentional four-purpose suppression on older sends is now explicit;
+normal usable-address changes retain per-address behavior. These are the
+finite existing fixture profiles, not all-adopter or hosted qualification.
+
+The forward, manifest and production source remain byte-identical to the signed
+candidate. No SQL object, function, privilege, RLS statement, CHECK definition,
+package entry, control or CHANGELOG change is made. The existing package fragment
+remains the change-note route. Last real paired pack including SQL is unchanged:
+2,114,540 B / 2,842 files, +3,814 B / +1 file. These root test/record edits add no
+package input. Final R0 projection/composite qualification waits for integration.
+Exact logs/results are in task scratch existing-resume-*.log and
+existing-all-results.json; current handoff identities and cheap-check results
+are retained in the external packet/report. No native review, canonical verify,
+push or PR has started. Native repair cycles used: zero. Remaining estimate:
+one working day plus the class/earlier-slot scheduling; this row lands last.
+
+Self-retro: existing-suite execution distinguished the required fourth-purpose
+suppression from a historical-DDL reconstruction assumption. Reading the two
+CHECK statements from the forward preserves the poison and snapshot witnesses
+without a second drifting SQL copy, production replay or weakened assertions.

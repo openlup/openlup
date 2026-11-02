@@ -106,7 +106,12 @@ it("converges poll/callback races, records chronology, rejects conflicting repla
  await port.applyObservation({...observed,observationKey:"old-sent",kind:"sent",occurredAt:at});
  expect(await port.readEvidence(id)).toMatchObject({observedState:"delivered",observations:[{key:"old-sent"},{key:"delivered"},{key:"precise"}]});
  await port.applyObservation({...observed,observationKey:"complaint",kind:"complained"});
- expect((await fresh.query("SELECT state FROM public.communication_recipient_consents WHERE recipient_fingerprint=$1 ORDER BY purpose",[hash(email)])).rows).toEqual([{state:"suppressed"},{state:"suppressed"},{state:"suppressed"}]);
+ expect((await fresh.query("SELECT purpose,state FROM public.communication_recipient_consents WHERE recipient_fingerprint=$1 ORDER BY purpose",[hash(email)])).rows).toEqual([
+  {purpose:"marketing_gifts_discounts",state:"suppressed"},
+  {purpose:"marketing_launch_offer",state:"suppressed"},
+  {purpose:"marketing_newsletter",state:"suppressed"},
+  {purpose:"tester_program",state:"suppressed"},
+ ]);
  expect(await port.findFrozenSends({now,graceMinutes:0,limit:10})).toEqual([]);
 });
 it("rolls all observation effects back if suppression cannot commit",async()=>{
@@ -267,6 +272,11 @@ it("refuses poisoned default ACLs on an adverse reinstall, then restores the exa
  }finally{for(const table of tables)await upgrade.query(`REVOKE SELECT ON public.${table} FROM authenticated`);await upgrade.query("ALTER DEFAULT PRIVILEGES REVOKE SELECT ON TABLES FROM authenticated");}
  for(const table of tables)await upgrade.query(`DROP TABLE public.${table}`);
  await upgrade.query(readFileSync(nativeFile,"utf8"));
+ // Reconstruct the later CHECK as well as the historical tables; the ledger never replays it.
+ const purposeCheckStatements=readFileSync("db/platform/migrations/20261101232000_customer_account_consents.sql","utf8")
+  .match(/^ALTER TABLE public\.communication_native_sync_state (?:DROP|ADD) CONSTRAINT communication_native_sync_state_purpose_check\b[^\n]*;$/gm) ?? [];
+ expect(purposeCheckStatements).toHaveLength(2);
+ for(const statement of purposeCheckStatements)await upgrade.query(statement);
  expect((await runner(upgrade).apply()).applied).toEqual([]);expect(await snapshot(upgrade)).toEqual(before);
 });
 it("C-compose reads scoped native targets and atomically suppresses permission with sole-rail work", async () => {
