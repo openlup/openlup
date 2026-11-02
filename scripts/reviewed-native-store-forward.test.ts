@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_CATALOG_CONTROLS, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -538,6 +538,10 @@ describe("real Git introduction, release and co-location", () => {
       await expect(waitNativeAdmission({ cwd: folder, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).rejects.toThrow(/feature binding/u);
     } finally { rmSync(folder, { recursive: true, force: true }); }
   });
+  it("names exactly the protected catalog test files in the documentation", () => {
+    const named = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("catalog test and these named files:")[1]?.split("Code those files run")[0] ?? "";
+    expect([...named.matchAll(/`([^`]+)`/gu)].map(match => match[1]).sort()).toEqual([...NATIVE_CATALOG_CONTROLS, "tests/setup/"].sort());
+  });
   it("requires prior class approval, feature pins, unchanged controls and immutable issued SQL", () => {
     mkdirSync(".context/scratch", { recursive: true });
     const folder = mkdtempSync(resolve(".context/scratch/native-store-git-"));
@@ -554,9 +558,9 @@ describe("real Git introduction, release and co-location", () => {
       put("scripts/reviewed-platform-forward.ts", "// Changed control"); const mixed = commit();
       expect(() => assertCoLocatedForwardApproval(folder, base, mixed)).toThrow(/machinery/u);
       git("reset", "--hard", feature);
-      // The real-PostgreSQL catalog test is the truth for function attributes: a feature PR cannot edit it, or what
-      // selects, runs and containerizes it, unseen.
-      for (const control of ["tests/postgres/nativeStoreForwardCatalog.test.ts", "tests/helpers/postgresContainer.ts", "tests/setup/disposable-docker.ts", "vitest.config.ts", "scripts/run-vitest.mjs", "scripts/ci-test-scope.mjs", "scripts/ci-image-pull.mjs", "scripts/disposable-docker.mjs", "src/test/setup.ts"]) {
+      // The real-PostgreSQL catalog test is the truth for function attributes: a feature PR cannot edit it, or the named
+      // files that select, run and containerize it, unseen. Code those files run is a review duty, not a control.
+      for (const control of [...NATIVE_CATALOG_CONTROLS, "tests/setup/disposable-docker.ts"]) {
         put(control, "// Changed catalog test input"); const controlEdit = commit();
         expect(() => assertCoLocatedForwardApproval(folder, base, controlEdit), control).toThrow(/machinery/u);
         git("reset", "--hard", feature);

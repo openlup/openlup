@@ -27,14 +27,15 @@ type Snapshot = {
 // Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
 // node trees normalized, so a new guard is one entry here. `relation` names the column that ties a row to a relation:
 // those rows are compared for existing relations only. The documentation lists exactly these catalogs.
-const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; relation?: string }[] = [
+// `added` admits a row that appears after the forward and was not there before: only a trigger PostgreSQL creates for a foreign key.
+const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; relation?: string; added?: (row: Record<string, unknown>) => boolean }[] = [
   { id: "schemas", catalog: "pg_namespace", where: "t.nspname !~ '^pg_(toast_)?temp_'" },
-  { id: "roles", catalog: "pg_roles" }, { id: "memberships", catalog: "pg_auth_members" }, { id: "dbSettings", catalog: "pg_db_role_setting" },
+  { id: "roles", catalog: "pg_authid" }, { id: "memberships", catalog: "pg_auth_members" }, { id: "dbSettings", catalog: "pg_db_role_setting" },
   { id: "databases", catalog: "pg_database", drop: ["datfrozenxid", "datminmxid"] }, { id: "defaultAcls", catalog: "pg_default_acl" },
   { id: "eventTriggers", catalog: "pg_event_trigger" }, { id: "extensions", catalog: "pg_extension" },
-  { id: "casts", catalog: "pg_cast", where: `t.oid >= ${FIRST_USER_OID}` },
-  { id: "triggers", catalog: "pg_trigger", where: "NOT t.tgisinternal", relation: "tgrelid" }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
-  { id: "rules", catalog: "pg_rewrite", where: `t.ev_class >= ${FIRST_USER_OID}`, relation: "ev_class" },
+  { id: "casts", catalog: "pg_cast" },
+  { id: "triggers", catalog: "pg_trigger", relation: "tgrelid", added: row => row.tgisinternal === true }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
+  { id: "rules", catalog: "pg_rewrite", relation: "ev_class" },
 ];
 const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)||':'||a.privilege_type||(CASE WHEN a.is_grantable THEN '${GRANT_OPTION}' ELSE '' END)
   FROM aclexplode(COALESCE(${expr}, acldefault(${kind}, ${owner}))) a ORDER BY 1)`;
@@ -149,11 +150,13 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } else if (def !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
-  // 6. Guard catalogs: nothing outside the slot lists changes, and nothing attaches behaviour (a trigger, a policy, a
-  // rewrite rule, a view's own included) to an existing relation without touching its row.
+  // 6. Guard catalogs: every row that existed stays as it was, and nothing attaches behaviour (a trigger, a policy, a
+  // rewrite rule, a view's own included) to an existing relation. A new row is a change unless the guard admits it.
   for (const guard of GUARDS) {
     const rows = (snap: Snapshot) => snap.guards[guard.id]!.filter(row => !guard.relation || oldRelations.has(Number(row[guard.relation])));
-    if (JSON.stringify(rows(before)) !== JSON.stringify(rows(after))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
+    const was = new Set(rows(before).map(row => JSON.stringify(row))), now = rows(after);
+    const kept = new Set(now.map(row => JSON.stringify(row)));
+    if ([...was].some(row => !kept.has(row)) || now.some(row => !was.has(JSON.stringify(row)) && !guard.added?.(row))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
   }
 }
 
@@ -184,7 +187,8 @@ CREATE FUNCTION public.cat_grant_only(p text) RETURNS text LANGUAGE sql SECURITY
 REVOKE ALL ON FUNCTION public.cat_grant_only(text) FROM PUBLIC;
 CREATE FUNCTION public.cat_trigger_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
 CREATE TRIGGER cat_base_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();
-CREATE VIEW public.cat_view AS SELECT id FROM public.cat_existing_table;`;
+CREATE VIEW public.cat_view AS SELECT id FROM public.cat_existing_table;
+CREATE TABLE public.cat_child (parent_id int REFERENCES public.cat_existing_table(id));`;
 // A default argument stores parser locations, which move when the replacement sits at another file offset.
 const SYNTHETIC_SLOT: CatalogSlot = {
   replacedFunctions: [{ signature: "public.cat_replaced(text,boolean)", beforeSha256: null, searchPath: "pg_catalog, pg_temp" }],
@@ -241,6 +245,7 @@ const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["a per-database role setting", forward(CREATED_OK, "ALTER ROLE authenticated IN DATABASE synthetic SET search_path = public;"), /dbSettings changed/u, false, SYNTHETIC_SLOT],
   ["a new trigger on an existing table", forward(CREATED_OK, "CREATE TRIGGER cat_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
   ["a trigger redefined with other events", forward(CREATED_OK, "CREATE OR REPLACE TRIGGER cat_base_trigger BEFORE INSERT OR UPDATE ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
+  ["the internal foreign-key triggers of an existing table disabled", forward(CREATED_OK, "ALTER TABLE public.cat_child DISABLE TRIGGER ALL;"), /triggers on existing relations/u, false, SYNTHETIC_SLOT],
   ["a policy on an existing table", forward(CREATED_OK, "CREATE POLICY cat_policy ON public.cat_existing_table USING (true);"), /policies on existing relations/u, false, SYNTHETIC_SLOT],
   ["a rewrite rule on an existing table", forward(CREATED_OK, "CREATE RULE cat_rule AS ON INSERT TO public.cat_existing_table DO INSTEAD NOTHING;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
   ["a redefined view", forward(CREATED_OK, "CREATE OR REPLACE VIEW public.cat_view AS SELECT id, owner_ref FROM public.cat_existing_table;"), /rules on existing relations/u, false, SYNTHETIC_SLOT],
@@ -313,13 +318,15 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
   // A view recreated byte-for-byte but for spacing differs only in stored parser positions.
   it("admits a view redefinition that changes only parser positions", async () => { await checkForward(pool, SYNTHETIC_SLOT, [REPLACE_PART, CREATED_OK, GRANT_PART, TABLE_PART, "CREATE OR REPLACE VIEW public.cat_view AS SELECT    id   FROM   public.cat_existing_table;"].join("\n")); });
+  // The new table's foreign key adds internal triggers to the existing table it references; PostgreSQL creates them, not the forward.
+  it("admits a new table with a foreign key to an existing table", async () => { await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "CREATE TABLE public.cat_created_child (parent_id int REFERENCES public.cat_existing_table(id));")); });
   it("admits an invoker function that carries no SET", async () => { await checkForward(pool, INVOKER_SLOT, forward(invoker(""))); });
   it.each(REFUSALS.filter(([, , , needsServiceRole]) => serviceRole || !needsServiceRole))("refuses %s", async (_name, sql, message, _needsServiceRole, slot) => {
     await expect(checkForward(pool, slot, sql)).rejects.toThrow(message);
   });
   it("names exactly the guard catalogs in the documentation", () => {
     const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("- The guard catalogs")[1]?.split(/\n(?:- |\n)/u)[0] ?? "";
-    expect([...section.matchAll(/`(pg_[a-z_]+)`/gu)].map(match => match[1]).sort()).toEqual(GUARDS.map(guard => guard.catalog).sort());
+    expect([...new Set([...section.matchAll(/`(pg_[a-z_]+)`/gu)].map(match => match[1]))].sort()).toEqual(GUARDS.map(guard => guard.catalog).sort());
   });
   // Each guard catalog is wired into the comparison: one extra row in the after snapshot is a change.
   it.each(GUARDS)("compares every row of the guard catalog $catalog", async ({ id, relation }) => {

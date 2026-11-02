@@ -856,6 +856,13 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
 }
 
 /** Run from trusted main. Candidate objects are data; their validator is never loaded. */
+// The real-PostgreSQL catalog test and the named files that select, run and containerize it. A native-SQL change that
+// touches any of them, or anything under tests/setup/, is refused; code these files run is a review duty, not a control.
+export const NATIVE_CATALOG_CONTROLS = [
+  "tests/postgres/nativeStoreForwardCatalog.test.ts", "tests/helpers/postgresContainer.ts", "vitest.config.ts", "scripts/run-vitest.mjs", "scripts/ci-test-scope.mjs",
+  "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", "scripts/disposable-docker.mjs", "scripts/ci-vitest-duration-keys.ts", "scripts/coverage-summary-protocol.ts",
+  "src/test/setup.ts", "src/checkout/machine/commerceRequestCache.ts", "config/ci-images.json", ".npmrc",
+];
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string, trustedBase = base): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (before && after && !before.equals(after)) {
@@ -879,7 +886,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
   if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path))) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
-  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "tests/postgres/nativeStoreForwardCatalog.test.ts", "tests/helpers/postgresContainer.ts", "vitest.config.ts", "scripts/run-vitest.mjs", "scripts/ci-test-scope.mjs", "scripts/ci-image-pull.mjs", "scripts/disposable-docker.mjs", "src/test/setup.ts", "package.json", "package-lock.json"];
+  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", ...NATIVE_CATALOG_CONTROLS, "package.json", "package-lock.json"];
   const changed = [head, trustedBase].flatMap((revision) => git(root, ["diff", "--name-only", "--no-renames", "-z", base, revision]).toString("utf8").split("\0"));
   const releaseTool = (path: string) => /^scripts\/(?:agent-review-|oss-|source-|packages\/)/u.test(path) && !/\.test\.[cm]?[jt]sx?$/u.test(path);
   if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || path.startsWith("tests/setup/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");

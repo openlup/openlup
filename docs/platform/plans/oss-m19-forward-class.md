@@ -105,6 +105,24 @@ rule-removal check. The static parser is unchanged. Before the last automatic
 cycle (3 of 3) the real forwards of the dependent rows run through the final test
 locally, so a defect in the comparison is found before it costs a cycle.
 
+Third review cycle and continuation (2026-11-02). Two more fresh reviewers
+(`claude-code-subagent:opus:ac6997cec81bddc8f` and `...:a23c4d1f8f81a22a7`) returned
+FAIL on tree `e51517754391827ced8d0a8b47eb819eb6be0b37` (native cycle 3 of 3). Both
+closed the same seven cards and reported the same two gaps: the protected-control
+claim reached files the named controls import, and the documentation said the guard
+catalogs are read whole while some rows were filtered, so an internal-trigger change
+such as `DISABLE TRIGGER ALL` on an existing table passed. The coordinator authorized
+one more review cycle through `continue` with a narrowed scope: the claim names its
+files and leaves code those files run, and deliberately evasive changes, to review;
+every trigger that existed before the forward is compared as a whole row, internal
+ones included, and only a trigger PostgreSQL creates for a foreign key may appear;
+the remaining row filters are removed or stated; the documentation and the code are
+tied by tests (the guard catalogs and the named protected files). The real forwards
+of the dependent rows run through the changed test before the next prepare. A
+failure of that cycle returns to the coordinator without further repair. Lesson:
+a comparison that claims to read a catalog whole must either read it whole or name
+each filter, and a claim about protection must name the files it covers.
+
 Code base: `bb0008481a11267ec6dbe3e7e531299777cddc19`.
 Separately fetched policy revision (2026-11-01):
 `3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d`; applicable instruction paths are

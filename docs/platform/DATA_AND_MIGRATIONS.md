@@ -1435,17 +1435,29 @@ and compares what PostgreSQL itself reports before and after with the slot's lis
 - No constraint is dropped or rewritten, a NOT NULL excepted. The purpose CHECK keeps
   every value it holds and may gain more, in the one list form PostgreSQL deparses
   for `IN`, and its slot lists the values it holds before the forward.
-- The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_roles`,
+- The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
   `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
   `pg_event_trigger`, `pg_extension` and `pg_cast`; and, for existing relations
   only, `pg_trigger`, `pg_policy` and `pg_rewrite` (a view's own rule included).
+  Left out of the comparison: each row's own OID, parser positions inside stored
+  node trees, temporary schemas and the two transaction-horizon columns of
+  `pg_database`. Every trigger that existed before the forward, an internal one and
+  its enabled state included, stays as it was; the only addition allowed is a
+  trigger PostgreSQL creates internally for a foreign key.
 
 It runs with and without `service_role`, and its refusal cases include a function
-header that hides its attribute list inside a quoted default. The test and the files
-that select, run and containerize it are protected controls, so a feature PR cannot
-change them unseen. Function bodies, data statements, statement kinds and object
-kinds beyond functions and relations stay on the whole-file hash and the feature
-review.
+header that hides its attribute list inside a quoted default. A native-SQL change is
+refused when it also touches admission machinery, and the machinery includes the
+catalog test and these named files: `tests/postgres/nativeStoreForwardCatalog.test.ts`,
+`tests/helpers/postgresContainer.ts`, `vitest.config.ts`, `scripts/run-vitest.mjs`,
+`scripts/ci-test-scope.mjs`, `scripts/ci-image-pull.mjs`, `scripts/ci-image-mirror.mjs`,
+`scripts/disposable-docker.mjs`, `scripts/ci-vitest-duration-keys.ts`,
+`scripts/coverage-summary-protocol.ts`, `src/test/setup.ts`,
+`src/checkout/machine/commerceRequestCache.ts`, `config/ci-images.json`, `.npmrc`
+and everything under `tests/setup/`. Code those files run, and deliberately evasive
+changes, are a review duty. Function bodies, data statements, statement kinds and
+object kinds beyond functions and relations stay on the whole-file hash and the
+feature review.
 These are admission controls, not SQL behavior or hosted qualification.
 
 ### M17 channelIngestForwards
