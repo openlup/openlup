@@ -652,7 +652,8 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
     expect(production.nativeStoreForwards).toEqual([]);
-    expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
+    // Trusted main reads a changed registry first, so the list reaches the registry in a pin-only change after this reader.
+    expect(slots[2]!.existingTableStatements).toBeUndefined();
     for (const index of [2, 3]) {
       expect(slots[index]!.replacedFunctions).toEqual([]);
       expect(slots[index]!.grantOnlyFunctions).toEqual([]);
@@ -660,6 +661,13 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
       expect(slots[index]!.createdFunctions.every(fn => fn.searchPath === "pg_catalog, pg_temp")).toBe(true);
       expect(slots[index]).not.toHaveProperty("sha256");
     }
+  });
+  it("reads both registries: the production one without the list and a seven-slot one carrying the pinned list", () => {
+    expect(() => readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"))).not.toThrow();
+    const value = registry();
+    expect(value.nativeStoreForwardClass!.slots).toHaveLength(7);
+    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
+    expect(readReviewedForwardRegistry(encode(value)).nativeStoreForwardClass!.slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
   });
   it("accepts G4's exact three whole statements once in order, without generic admission", () => {
     expect(() => checkG4G3(2, g4())).not.toThrow();
