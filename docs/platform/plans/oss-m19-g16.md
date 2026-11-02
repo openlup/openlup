@@ -247,3 +247,82 @@ The public checksum specimen removal closes the possible registry-mismatch
 confusion. A later required exclusion check extended the accepted delta, so the
 worker prepared that check and returned for the narrowly required read before
 DCO rather than treating the prior identity as approval of new executable proof.
+
+
+## Landing checks
+
+The maintainer named this candidate for final verification and submission on
+2026-11-02. Before integration, an importer search covered every changed
+executable module, including the publication contract and policy. The following
+test files ran unchanged on head `6e79c898d93079707a100fe0401ed6b9d9186492`,
+with one focused admission per file, and all passed:
+
+| Test file | Passing tests | Duration |
+| --- | ---: | ---: |
+| `scripts/oss-published-tree-check.test.ts` | 74 | 7.84 s |
+| `scripts/source-preview-release.test.ts` | 718 | 346.20 s |
+| `scripts/documentation-cli.test.ts` | 3 | 5.02 s |
+| `scripts/source-release-preparation.test.ts` | 7 | 5.88 s |
+| `scripts/check-publishable-gap-enumeration.test.ts` | 5 | 298 ms |
+| `scripts/packages/changelog-fragments.test.ts` | 14 | 1.48 s |
+| `scripts/generate-outcome-projection.test.ts` | 7 | 417 ms |
+| `scripts/packages/generate-release-bom.test.ts` | 6 | 2.62 s |
+
+No existing test changed to accommodate these additions. These focused results
+precede integration and do not claim canonical verification or hosted admission.
+
+The fetched policy/main revision is
+`99a0407a9cf62d19364167e0551d36bde0a3d525`. Prepare refused the original
+candidate with `merge_preflight: candidate conflicts with origin/main`. The
+qualifying merge had exactly one manual conflict, in the publication catalogue.
+Its resolution retains the exact union of both sides' rows, preserving each
+side's existing row order and formatting. Both source subsequences and the
+complete row set were checked; no other path needed manual resolution.
+
+Stable patch IDs of the task's change, excluding this task record, are
+`d338e2248cff40c71b21f47d9fcbc1afbf9ae95d` before integration against
+`bb0008481a11267ec6dbe3e7e531299777cddc19` and
+`6a213633474bd5affe15d6d453cbafc0c131fbdd` after integration against the
+fetched main revision. The manual union and changed surrounding source context
+require ordinary integration accounting and fresh independent integration
+review; they are not claimed as a mechanical carry-over. No API report hunk was
+manually edited. Post-review landing evidence stays in local scratch.
+
+Landing self-retro: searching the contract's policy importers exposed eight
+focused files before integration; running their unchanged cases established
+compatibility without adapting fixtures or adding new mechanisms.
+
+
+### Projection freshness at release-set preparation
+
+The maintainer approved removing two real-tree test assertions on purpose:
+byte-for-byte equality with the current rendered projection, and the real CLI
+`--check` invocation. The input hash binds every export's API snapshot and every
+smoke proof file. Checking that whole-tree equality on every change would make
+later independent changes fail verification and conflict on the generated hash
+line. This cross-change staleness trap does not establish stronger outcome proof.
+
+The replacement is one small match of the committed document's declared
+package-set version against `collectOutcomeProjection(root).setVersion`. A
+set-version change therefore fails until the release-set preparation tree
+regenerates the file. The file is regenerated and `--check`ed on each release
+set; between releases its hash and counts can lag the source tree. Fixture
+freshness/refusal tests, real rendered neutrality/class counts, `claimable ===
+false` and the real `--assert-complete` refusal remain. No generator or release
+control changes.
+
+The generator's own `--write` refreshed this integration tree. Its output
+changes only the public-input hash line, to
+`15a39123bb1bd5daf4eaf0e9fecaeaed7b67c67957b4461e31afc645341a889a`; all
+82 exports, links, class rows and partial states stay unchanged. This value
+binds public input bytes, not this task record or an executed outcome. Fresh
+reviewers must assess the intentional lowering of the two real-tree freshness
+assertions and the release-set version enforcement.
+
+The approved freshness repair passed all seven projection cases in 312 ms,
+policy/docs-update with four answered obligations, the structural scan and full
+lint (zero errors, 33 unchanged warnings). The initial post-merge typecheck saw
+seven missing-export errors from old built package outputs. Lint's normal
+prerequisite builds refreshed all three packages; the focused typecheck retry
+then passed all five projects with zero unresolved edges and zero consumer
+errors. No source, baseline or budget repair was needed for those stale outputs.

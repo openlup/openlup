@@ -27,6 +27,11 @@ declaration remains `partial`; an absent witness or API snapshot is `missing`.
 `--assert-complete` refuses both. This generator consumes no execution receipts,
 so it cannot emit complete or promote source presence into release qualification.
 
+The file is regenerated and `--check`ed on each release set. Between releases,
+its hash and counts can lag the source tree. The test compares the committed
+file's declared package-set version with the real package-set version, so a
+set-version change requires regeneration in that release-set preparation tree.
+
 The existing package instruments do not enumerate all composed-store,
 deployment, recovery and adopter outcomes. The projection therefore remains
 partial and blocks that full claim. Completing the broader outcome instrument
