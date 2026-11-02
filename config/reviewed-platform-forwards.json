@@ -3161,6 +3161,52 @@
           "afterSha256": "e5474743141a4ef46116cfc1249f341478a8022a80a0b97e4350aaec38cb8373"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
+      "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34",
+      "functions": [
+        {
+          "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+          "beforeSha256": "d378b4e190ec10ffe9d7e9e27d46a02e33ed8950f29f276220ab9d7001933d73",
+          "afterSha256": "b5e7804607aa537887f3c62ff4bee84370d9c250417a9d476c07d4de07c773b4"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "9c60953242b08b30fa5d6dad459f76b3505cd18d77c7296fdf635f20c7050a2c"
+        },
+        {
+          "signature": "public.subscription_capture_renewal_attachment(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "1d62463b385f0730b939d5a479f99da64e555a622a07fc0afdd502c22a3eef2f"
+        },
+        {
+          "signature": "public.subscription_complete_renewal_attachment(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "ee8eb04eaaf581c0ecc96faac03d16ffa7753b3f7229bc9546d4a7ac4bb609cb"
+        },
+        {
+          "signature": "public.subscription_transition_sandbox_method(uuid,text,text,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "8ff16d84adf92b79f91d37b0bced302a3977092d0fd20fe85ab6a27cf877653f"
+        },
+        {
+          "signature": "public.subscription_record_sandbox_renewal_observation(uuid,text,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "25fb5c82e81b8c1f633cd5732eb70b9b8c19e203939b3318d560f28d9b6d5ba4"
+        },
+        {
+          "signature": "public.subscription_pending_renewal_attachments(integer)",
+          "beforeSha256": null,
+          "afterSha256": "4dbed53afdd0b156cb3107156348992ab56dfec755592fdc39eb524c9200d810"
+        },
+        {
+          "signature": "public.subscription_renewal_purchase_facts(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "9555f527efe706b487a5a00ede7bc89c3111a0d878ad7bf1995c901e86c5f8c6"
+        }
+      ]
     }
   ]
 }

@@ -51,9 +51,8 @@ function integer(value: unknown, min = 0): number {
   return number;
 }
 function instant(value: unknown): string {
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (!Number.isFinite(date.getTime())) throw new Error("subscription_renewal_snapshot_time_invalid");
-  return date.toISOString();
+  // SQL projects UTC ISO text; preserve microseconds and the existing millisecond wire dialect.
+  return z.iso.datetime().parse(value).replace(/(\.\d{3})000Z$/, "$1Z");
 }
 function nullable(value: unknown): string | null { return value == null ? null : String(value); }
 function lines(value: unknown): RenewalLine[] {
@@ -152,7 +151,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
       return { ...row, cycleSnapshot: snapshot, cycle: snapshot.cycle, scheduledAt: snapshot.scheduledAt,
         scheduledInstant: snapshot.scheduledInstant } as unknown as RenewalReadback;
     },
-    identity(snapshot: RenewalSchedule) { return `subscription:${snapshot.subscriptionId}:cycle:${instant(snapshot.scheduledAt)}`; },
+    identity(snapshot: RenewalSchedule) { return `subscription:${snapshot.subscriptionId}:cycle:${instant(snapshot.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`; },
     fingerprint,
   };
   return codec;

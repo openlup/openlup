@@ -206,6 +206,34 @@ it("replays begin/observations/capture after a fresh process and commits one fin
   expect((await admin.query("SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1", [f.intent])).rows).toHaveLength(1);
 });
 
+it("preserves sub-millisecond observation times through fresh ingress and replay", async () => {
+  expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  const f = await fixture(), precise = "2026-10-30T12:00:00.123456Z";
+  const a = await simulator().beginAttempt({ ...begin(f.intent), at: precise });
+  const e = await simulator().recordObservation({ attemptId: a.id, idempotencyKey: `precise:${randomUUID()}`,
+    outcome: "captured", occurredAt: precise });
+  const request = { rawBody: new TextEncoder().encode(JSON.stringify(delivery(a, e.id))), headers: {},
+    receivedAt: "2026-10-30T12:00:01.000Z" };
+  expect(await simulator().ingress.receive(request)).toMatchObject({ status: 200, data: { replayed: false } });
+  const effects = async () => (await admin.query(`SELECT
+    (SELECT status FROM public.commerce_settlement_intents WHERE id=$1) AS status,
+    (SELECT count(*)::int FROM public.payment_truth_events WHERE settlement_intent_id=$1) AS truth,
+    (SELECT count(*)::int FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1) AS dispatches,
+    (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS captures`,
+  [f.intent])).rows[0];
+  const truthRows = async () => (await admin.query(`SELECT xmin::text AS version,event_fingerprint,source_evidence,
+    occurred_at=$2::timestamptz AND (source_evidence->>'observedAt')::timestamptz=$2::timestamptz AS precise
+    FROM public.payment_truth_events WHERE settlement_intent_id=$1`, [f.intent, precise])).rows;
+  expect(await effects()).toEqual({ status: "settled", truth: 1, dispatches: 1, captures: 1 });
+  const accepted = await truthRows(), dispatched = await simulator().readAttempt({ settlementIntentId: f.intent });
+  expect(accepted).toHaveLength(1); expect(accepted[0].precise).toBe(true);
+  expect(await simulator().ingress.receive(request)).toMatchObject({ status: 200, data: { replayed: true } });
+  expect(await effects()).toEqual({ status: "settled", truth: 1, dispatches: 1, captures: 1 });
+  expect(await truthRows()).toEqual(accepted);
+  expect(await simulator().readAttempt({ settlementIntentId: f.intent })).toEqual(dispatched);
+});
+
 for (const outcome of ["refused", "expired"] as const) it(`replays ${outcome} after restart, then accepts one late capture for the same active attempt`, async () => {
   const f = await fixture(), input = begin(f.intent), a = await simulator().beginAttempt(input), e = await observe(a, outcome);
   expect((await receive(a, e.id)).status).toBe(200); expect(await financial(f.order)).toBe("pending_payment");

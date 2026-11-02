@@ -35,7 +35,7 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
         const evidence = accepted.source_evidence as Record<string, string>;
         event = { id: String(identity.observationId), eventKey: "", fingerprint: evidence.payloadFingerprint,
           outcome: evidence.observedStatus as NonNullable<typeof event>["outcome"],
-          occurredAt: instant(accepted.occurred_at), recordedAt: instant(accepted.created_at) };
+          occurredAt: evidence.observedAt, recordedAt: instant(accepted.created_at) };
       }
       if (!attempt || !event || event.id !== identity.observationId) return { kind: "refusal", reason: "malformed" };
       // Money is read from the existing intent, not a simulator request or browser return.
@@ -46,7 +46,7 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
         providerOccurredAt: instant(event.occurredAt), providerPaymentRef: attempt.id, intentRef: attempt.settlementIntentId,
         attemptRef: attempt.id, outcome: event.outcome === "captured" ? "succeeded" : event.outcome === "indeterminate" ? "pending" : "failed",
         money: { amountMinor: Number(money.amount_minor), currency: String(money.currency_code) },
-        providerAuditPayload: { sandboxObservation: { ...event, occurredAt: instant(event.occurredAt) } },
+        providerAuditPayload: { sandboxObservation: { ...event } },
       } satisfies VerifiedPaymentEvidence;
     },
   }, paymentControlPort: {

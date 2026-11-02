@@ -866,3 +866,406 @@ starting subprocess-based composition witnesses. A source resolver can hide a
 missing generated entry that a fresh Node process correctly refuses. The new
 helper's catalog row was initially inserted out of order; move only that new
 row to its lexical position instead of reordering shared entries.
+
+
+## Payment and purchase-renewal bundle
+
+The owner decision CD-M19-112 joins G6 and G2 as one candidate and one PR,
+implemented at the existing `oss-m19-g2` stack top on `codex/oss-m19-g2`.
+Both task records remain. The supervisor authorizes merging only main,
+binding the purchase-renewal feature pin, focused proof, a signed candidate and
+one full native session with two fresh parallel reviewers and a fresh 0/3
+budget. No `OPENLUP_STACK_BASE` applies: review covers the full combined diff
+from main. Canonical verify, push, PR creation, production, credentials,
+publication and external writes remain excluded in this run.
+
+Main `a7ce403cef3b790c28418d786f153e50ac595084` merged mechanically as
+`933d688e5a7a77d0f9d3bb8762295b66731ae72c`, tree
+`809f736e99f03f6b56c7b37968b2c9b413c67704`. `git merge-tree --write-tree
+ d698609ecdb92a88ce4b289789c2acbda9103aa1 a7ce403cef3b790c28418d786f153e50ac595084`
+returned that exact tree. No hand resolution or other branch merge occurred.
+The purchase-renewal pin is computed with `nativeStoreFunctionDefinitions`
+and `sqlSha256` from `scripts/reviewed-platform-forward.ts`, after the existing
+sandbox-payment pin. No class data or issued pin changes.
+
+The accepted production/SQL deltas remain exact. Reproduce with
+`python3 .context/scratch/g2/bundle/read_identity.py`: it takes
+`git diff --no-ext-diff --unified=0 --no-renames <base> <read> -- <production paths>`,
+keys every added/removed line by exact path, sign and content, preserves its
+multiplicity and hashes sorted tuples. The original base is
+`bb0008481a11267ec6dbe3e7e531299777cddc19`; read heads are
+`eb97697cb5de2cff0047208a133024c12bc27e4e` for purchase renewal and
+`1acac911a02b326f660dfc9b6e4bdb1aeb9d6626` for sandbox payments.
+The actual combined production delta equals exactly those two accepted deltas
+plus one merge-only blank separator at connectedStoreCapture.ts:22.
+`git show b98cc9eb --cc -- server/adapters/postgres/connectedStoreCapture.ts`
+identifies that empty separator with `++`; it belongs to neither row's own
+accepted source delta. The script asserts this complete accounting before
+subtracting the other row and that one exact separator. There is no general
+whitespace normalization, ignored production path or unaccounted difference.
+
+Equal accepted/current own +/- SHA-256 values:
+- Purchase renewal: `1a2cefbf86eaea14b5775098c2436925a987a84d61877dffa8b0e2444ace65bd`.
+- Sandbox payments: `db4fb97f016f789996e96648f45873f954763427e98d9a4ec5392bcbfa0eb693`.
+
+Other post-read changes are test-only simulator purchase setup shared by three
+callers, the offline installed-consumer helper, the missing-method compatibility
+witness, mechanical current-chain counts/measured inventories, selected-chain
+lookup in the hostile-default payment test, neutral task prose and documentation
+impact trailers. The SQL package copies/manifest are the canonical projection
+introduced by the packaging prerequisite; each copy retains its read SQL bytes.
+Registry changes bind only the accepted forward/function identities. Owner
+documentation and public API semantics are unchanged by this integration.
+
+Both canonical/packaged forward SHA-256 values remain
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29` and
+`2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34`.
+Static native admission passes both slots. The real PostgreSQL catalog witness
+passes 126/126 cases across service-role present and absent modes with both pins.
+Core/platform rebuilt first with official Node 24.21.0, without tracked changes.
+
+Real official pack against the main pin above: baseline 2,364,865 B packed,
+1,899,251 B code gzip, 11,153,236 B unpacked, 2,955 files; candidate 2,394,059 B
+packed, 1,916,125 B code gzip, 11,287,990 B unpacked, 2,972 files. Delta:
++29,194 B packed, +16,874 B code gzip, +134,754 B unpacked and +17 files.
+The unpacked/file deltas exactly equal the two earlier row measures combined;
+the shared test helpers are root-only and add no package bytes/files. Combined
+compression saves 382 B against adding the two earlier packed deltas. No cap
+change is required. Real tarballs and measurePack output are in bundle scratch.
+
+Paths outside the original programme grant's list are the additive routing
+entry in config/doc-routing.json, server/adapters/README.md (accepted additive
+owner description), and the explicitly authorized test-only helpers
+captureSandboxPurchase.ts and installSubscriptionConsumer.ts under tests/helpers.
+All are retained additions with no control, budget, baseline or runtime change.
+Full bundle proof, trusted-main registry preflight and native review follow on
+this exact combined boundary; no readiness verdict is claimed before they pass.
+
+Self-retro: account for each row independently on shared transfer files and
+retain the exact merge-only separator separately. Comparing the union to either
+row alone falsely treats the other row as a new production semantic. Keep the
+byte inventory explicit; never hide a source difference with broad normalization.
+
+
+### Bundle stopped: captured-observation timestamp precision
+
+Status: BLOCKED before feature DCO and native review. Signed main merge remains
+`933d688e5a7a77d0f9d3bb8762295b66731ae72c`; G2's computed feature pin and both
+bundle records remain staged. No production, canonical/packaged SQL, class data,
+check, baseline or budget was changed. No native session or counted review began;
+review budget remains 0/3 and there is no counted PASS timestamp.
+
+A new real-PostgreSQL counterexample exposes a valid-input failure in
+`createPostgresSandboxPaymentSimulator`. Its restricted `micro_runtime` caller
+is neither superuser nor BYPASSRLS. `beginAttempt` and `recordObservation`
+accept `2026-10-30T12:00:00.123456Z`; bounded readback returns the exact stored
+`2026-10-30T12:00:00.123456+00:00` captured observation. Verified ingress returns
+503, the settlement intent remains `created`, and accepted truth rows remain
+zero. The underlying error is `payment_simulator_evidence_mismatch`, SQLSTATE
+22023. The timestamp is genuinely in the past; future-time clamping is irrelevant.
+
+Mechanism: the simulator's `instant` helper uses JavaScript Date and drops
+microseconds. The verifier applies it to `providerAuditPayload.sandboxObservation`
+at line 49, so payment control supplies rounded `occurredAt` and `observedAt` to
+`payment_truth_ingest_event`. The immutable-observation guard
+`payment_simulator_assert_truth` correctly requires exact timestamp equality
+and refuses. Repeating this ingress cannot settle that captured observation.
+The accepted-event replay branch also projects the PostgreSQL timestamp through
+Date and needs the same precision assessment. The source inspection and one
+failing restricted-role counterexample demonstrate a wrong refusal of an
+in-scope captured observation, independently of the passing catalog boundary.
+
+Reproducer: after the normal focused admission, run
+`node --import tsx .context/scratch/g2/bundle/micro-probe.ts` on official Node
+24.21.0. Evidence: `micro-result.json`, `micro.log`, and `micro-repeat.gate.log`
+in that directory. A transparent executor records the original PostgreSQL error
+and stack without changing SQL, arguments or role. Attempt and observation rows
+are produced only by their bounded production writers. Only the existing
+client/order/line fixture setup uses the owner. The initial scratch run omitted
+the fixture's order/line transaction and stopped on its deferred sum constraint;
+that setup mistake was corrected before the counterexample above (3.878 seconds).
+Both diagnostic containers and pools were cleaned.
+
+A two-line proposed source patch is retained as
+`timestamp-preservation.proposed.patch` in bundle scratch, **not applied or
+qualified**. It preserves the server observation's original timestamp in the
+raw audit evidence and the accepted replay's saved evidence timestamp. It does
+not relax the SQL guard or create browser-supplied paid truth. A production fix
+would no longer have the accepted read's +/- source identity, so this run stops
+with the mechanism and proposal before changing those production bytes.
+
+Completed unchanged regression proof: 220 files pass, 6,182 passed cases,
+zero failed cases and one existing managed-database opt-in skip. That includes
+all previous 212 files, packageBoundary 2,894 cases, documentation impact 101,
+cold consumer 108, source preview, payment truth schema/allowance, domain truth
+and managed-storage transfer. The reviewed-batch suite was deliberately
+interrupted after this independent material finding; reviewed portable creation,
+eslint-import-map and generate-outcome-projection did not start. Interrupted
+work is not counted as a product failure. Its owned test processes exited and
+an owner-PID-labelled container census found zero remaining containers.
+
+Separate executable truth: catalog 126/126 across both service-role modes and
+transfer 13/13 pass. Both static native approvals and the trusted-main reader's
+co-located/native-store preflight pass on the staged working-tree data snapshot.
+The real pack and accepted-read identity accounting above remain valid.
+The new timestamp counterexample is 0 passed / 1 failed. Joined handover, Linux
+glibc consumer, final cheap checks, final signed-head preflight and native review
+were not run after this stop. No canonical verify, push or external delivery.
+
+Self-retro: millisecond-only fixtures hid PostgreSQL's greater timestamp
+precision. Preserve authoritative evidence in its original representation;
+normalize timestamps only where the consumer contract permits that precision
+loss. Add fresh and replay precision counterexamples when the repair is authorized.
+
+
+### Pre-review precision repair and native identity blocker
+
+The supervisor authorized in-bundle TypeScript precision repairs before native
+review. The current signed head is ba5e5c2d18130e265cc5e2e30728b93038c059c4,
+a mechanical, DCO-signed merge of main 21c057038b25db6bdf490496a341df5b2f1fdbcc.
+Its tree is 650cc25b3d4270dc4b7141fbf9f17fca702030e5. The preserved feature pin
+and both task records remain staged; the authorized repairs and regression tests
+remain uncommitted. No native session began and no repair cycle was used.
+
+The simulator regression uses a restricted non-superuser, non-BYPASSRLS role
+and a captured observation at 2026-10-30T12:00:00.123456Z. Before the repair,
+the focused test fails: ingress gives 503 instead of 200 (one failed case).
+The two-line repair retains the observation string in the raw verified payload
+and uses accepted source_evidence.observedAt on replay. It passes the same case
+(one passed, zero failed; 4.406 seconds), including one settled intent, one truth
+row, one dispatch, and unchanged truth row version and dispatch state on replay.
+Only envelope metadata still uses Date; the values compared by the immutable
+SQL assertion come from the preserved evidence string. SQL and contract types
+are unchanged. This is an authorized pre-review restoration of the accepted
+contract, not a new semantic or a native repair cycle.
+
+The purchase/renewal regression goes through that repaired simulator ingress,
+activation, the attachment writer, listDue and buildCycleSnapshots. Before the
+renewal precision repair it fails with subscription_renewal_snapshot_not_found
+(one failed case; 22.920 seconds). The captured observation settled, the caller
+has neither elevated role flag, and activation produced an exact stored
+next_cycle_at of 2026-09-29T12:00:00.123456Z. No schedule row was hand-written.
+The pending TypeScript repair projects UTC ISO timestamps with microseconds,
+keeps the existing .sssZ dialect when the final three digits are zero, and
+reads renewal observation/evidence timestamps as text. The test then passes
+snapshot schema/round-trip checks, exact scheduledAt and authorization time,
+scheduledInstant consistency, and codec/policy identity equality.
+
+It stops at the subsequent real claim with
+subscription_renewal_claim_invalid_snapshot (one failed case; 19.296 seconds).
+The existing subscription_renewal_identity(uuid,timestamptz), defined in
+20260815120000_automatic_subscription_renewal.sql, formats the key timestamp
+with SS.MS. subscription_claim_due_renewal compares its input key with that
+function at line 408, so a key retaining .123456Z is refused in favor of .123Z.
+The exact schedule is now preserved; the failure is the SQL identity dialect.
+Changing that SQL is outside this TypeScript-only repair authorization, while
+truncating both TypeScript keys would contradict the explicit instruction that
+an identity-key timestamp retain the exact stored instant. Stop for a bounded
+supervisor decision on that dialect; do not weaken the test or SQL guard.
+
+Evidence is in .context/scratch/g2/bundle-repair/: fail-before.json,
+g6-pass-after.json, g2-fail-before.json, g2-pass-after.json,
+precision-repairs.patch and precision-stop.json. Commands use official Node
+24.21.0, the focused gate with exit-3 retry, and scripts/run-vitest.mjs with the
+respective sub-millisecond test filter. Core and platform rebuilt successfully
+before each production version was exercised. No existing assertion changed.
+The full repaired-tree suite sweep, real pack, signed-head registry preflight
+and native review have not run after this blocker. Earlier proofs do not claim
+coverage of this repaired tree. A complete charge/replay result is not claimed.
+
+Both canonical and packaged forward bytes remain unchanged: simulator
+7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29;
+purchase renewal
+2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34.
+Class data and forward pins were not changed by either precision repair.
+
+Self-retro: preserving a snapshot timestamp is necessary but not sufficient;
+trace the native identity formatter before assuming an exact timestamp can
+reach claim unchanged. The counterexample exposed the remaining contract
+conflict before spending time on the full sweep or starting review.
+
+### Native key dialect decision and precision continuation
+
+The supervisor resolved the identity stop: retain the existing native SQL
+millisecond identity label, using string truncation rather than Date or floating
+point. A subscription's cycles are days apart. That label's millisecond spelling
+is distinct from the exact stored instant used to locate/compare schedules.
+No SQL change is authorized or needed for this decision. The codec and sandbox
+policy now derive the same native label by cutting the UTC ISO fraction to
+three digits. The regression compares both labels with PostgreSQL's own
+subscription_renewal_identity for fractions .123456, .123999, .999999 and
+.000000; the .999999 case explicitly keeps the original second.
+
+All stored-time projections added by this repair use UTC ISO with six fraction
+digits, including sandbox observation occurred_at and created_at. Snapshot
+normalization retains the pre-existing .sssZ wire form for millisecond-aligned
+instants. Full scheduledAt and authorization/evidence timestamps retain their
+microseconds. scheduledInstant remains Date.parse(scheduledAt), as the public
+schema requires. There is no lookup using that numeric value.
+
+The repair-only production inventory is the simulator's two evidence lines,
+codec string validation and key formatting, renewal-store UTC projections and
+mandate readback, and sandbox-rail UTC evidence projections and key formatting.
+No other production or SQL difference from the accepted reads is allowed.
+Reproduce the line accounting with
+`python3 .context/scratch/g2/bundle-repair/read_identity.py`; its artifact lists
+the exact authorized +/- repair lines separately from each accepted own delta.
+It also accounts for the one previously proved merge-only separator in capture.
+The earlier blocked entries above remain historical attempts, not a current
+readiness claim. The continued proofs and official pack must pass before DCO
+and the full combined native review.
+
+
+### Precise renewal passed; package growth stop before full proof
+
+The identity decision is implemented without SQL changes. On the restricted
+non-superuser/non-BYPASSRLS runtime, the purchase-to-renewal precision regression
+now passes: the simulator capture settles, activation completes, one snapshot
+is built with exact schedule/authorization time, the claim is acquired, one
+charge succeeds, the outcome settles a paid cycle, and a second run creates no
+second charge or cycle. The known terminal public-run replay refusal remains
+for the later renewal row; this test does not claim that later repair.
+Both TypeScript keys equal PostgreSQL subscription_renewal_identity for all
+four requested fractions: .123456 -> .123Z, .123999 -> .123Z,
+.999999 -> .999Z (no carry), and .000000 -> .000Z.
+
+Focused regression results: simulator 1 failed before / 1 passed after
+(4.406 seconds after); purchase renewal 1 failed before with
+subscription_renewal_snapshot_not_found / 1 passed after (21.159 seconds).
+The intermediate exact-key attempt failed at claim before the supervisor's
+millisecond-label decision, as recorded above. Existing assertions are
+unchanged. These filtered runs are not the complete existing-suite sweep.
+Official core/platform rebuild passes. Neutrality against main 21c05703
+passes: 6,964 text files, 57 binary files, zero increases. The accepted-read
+source accounting passes after listing only the two authorized precision
+repairs separately; no other production or SQL delta is present.
+
+The real official-toolchain pack was deliberately checked before the long
+sweep, because the binding growth rule requires an immediate stop on a row's
+increase. Against main 21c057038b25db6bdf490496a341df5b2f1fdbcc:
+baseline 2,364,865 B packed, 1,899,251 B code gzip, 11,153,236 B unpacked,
+2,955 files; repaired candidate 2,394,606 B packed, 1,916,655 B code gzip,
+11,288,853 B unpacked, 2,972 files. Delta: +29,741 B packed, +17,404 B code
+gzip, +135,617 B unpacked, +17 files. This is +547 B packed, +530 B code
+gzip and +863 B unpacked above the previous combined figure, with no new file.
+The code class remains below 1,970,000 B; no cap was changed.
+
+The explicit comparison stop is nevertheless hit: +135,617 unpacked exceeds
+the earlier two-row sum of 134,754 by 863 B, which the root-only test helper
+does not explain. All 863 B are the authorized precision repairs' source and
+emitted JavaScript: simulator -98 B, codec +106 B, renewal store +516 B,
+sandbox renewal rail +339 B. No declaration, SQL, manifest, dependency or
+other package file changed. There is no unrelated package growth to remove.
+Stop for the supervisor to disposition this measured repair increment before
+DCO and the full proof/review. No budget, cap, baseline or checker is edited.
+
+Evidence: .context/scratch/g2/bundle-repair/g2-identity-pass-after.json,
+identity-pass-after-command.json, neutrality.log, read-production-identity.json,
+pack/summary.json, pack/repair-growth.json, and precision-repairs.patch.
+Real pack command: on official Node 24.21.0, after focused admission,
+`python3 .context/scratch/g2/bundle-repair/pack.py`; it builds an archived
+main source, packs both real packages and applies the official measurePack
+classifier. It exits with the explicit unpacked-growth stop above.
+
+No new commit or native session was created. The signed head/tree remain
+ba5e5c2d18130e265cc5e2e30728b93038c059c4 /
+650cc25b3d4270dc4b7141fbf9f17fca702030e5; feature edits remain pending.
+Both forward SHA-256 values and main's class data are unchanged, and both
+feature pins remain as preserved. The full repaired-tree sweep, catalog,
+transfer, handover, Linux consumer, final cheap checks, signed-head preflight
+and native review remain required; prior-tree results are not carried over.
+Native cycles used: 0/3; no counted PASS or source-review expiry.
+OMS: neither supersededByStableJourneyKey nor checkoutAbandoned is written.
+The bundle's previously disclosed new dispatch location is
+payment_simulator_attempts; the precision repair adds no dispatch location.
+
+Self-retro: a real-engine identity comparison closes the representation
+ambiguity without widening SQL. Measure an explicitly authorized repair before
+spending the long proof run when its package increment is itself a hard stop.
+
+
+### Accepted repair size and combined proof continuation
+
+The supervisor accepted the precisely itemized +863 B unpacked repair increment,
+with zero added files. It is not an owner or cap matter. The reference against
+main 21c05703 is now +29,741 B packed, +17,404 B code gzip, +135,617 B unpacked
+and +17 files; candidate code class 1,916,655 B. No cap/baseline changed.
+Subsequent growth stops only beyond this reference without an authorized
+change's own itemized bytes, or beyond the 1,970,000 B code-class cap.
+No pack is repeated while package inputs remain unchanged. The complete
+combined repaired-tree proofs now resume before DCO and native review.
+
+
+### Complete proof anchor before integrating native-store promotion
+
+The repaired tree passes the complete 224-file sweep: 6,454 cases passed,
+zero failed, and one unchanged managed-database opt-in skip. Every suite file
+kept its pre-run hash. The previous 212-file set contributes 2,343 passing
+cases, including the two new precision regressions. Additional checks include
+packageBoundary 2,894; documentation-impact 101; cold consumer 122; source
+preview 718; reviewed batch forwards 106; reviewed portable creation 20;
+eslint-import-map 123; generate-outcome-projection 7; payment-truth schema 3;
+payment allowance 8; domain truth 8; managed storage transfer 1. Full file names
+and individual results are in .context/scratch/g2/bundle-repair/sweep-results.json.
+The unchanged subscriptionComposition suite passes 20/20.
+
+The restricted-role purchase-renewal suite passes 12/12 (including the paid-gap
+second caller and precise purchase-to-renewal regression); method compatibility
+3/3; retained method compatibility 1/1; simulator/cancellation 16/16; populated
+connected transfer 13/13. Catalog truth passes 126/126 across service-role
+present/absent modes. Both static native admissions pass. The offline Linux
+glibc consumer passes on Node24.21.0/glibc2.36 with network disabled, a fresh
+empty cache, exactly 16 local tarballs, and pg resolved at
+/consumer/node_modules/pg/lib/index.js. No additional dependency was needed.
+
+The unchanged joined handover witness completes in 100.952 seconds with
+LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION, two accepted
+effects recovered, and one uncertain operation fenced. The selected chain has
+97 units and 88 transfer tables, current inventory
+7c51eda0ec825e993283ba7d73463cea8e84e097d28543755a2e6bb2b8044dc3.
+Graph/filesystem publication and target continuation assertions execute;
+cleanupFailures is empty. Its report is under
+.context/scratch/oss-m14-connected-catchup/journey-EN9LSx/report.json.
+These finite handover rows do not claim the separate whole-journey proof.
+
+Official core/platform builds, ast-grep (including suppression checks), lint
+(including all eight structural-rule groups), strict public-tree typecheck,
+neutrality against 21c05703 (zero increases), and gitleaks git with --log-opts=--all
+all pass. The policy check reports only the scoped tests no-impact record,
+whose current digest and explanation are included in this commit; CONTRIBUTING
+is unchanged. Policy must be checked again after that record is committed.
+No navigation regeneration is requested. All 2,972 package files still match
+the measured tarball byte for byte; the accepted +29,741/+17,404/+135,617 B,
++17-file measure therefore remains applicable to this proof anchor.
+
+The source-line identity command is
+`python3 .context/scratch/g2/bundle-repair/read_identity.py 21c057038b25db6bdf490496a341df5b2f1fdbcc`.
+It rejects every production path outside the two accepted own deltas, lists
+the authorized precision repair lines separately, and accounts for exactly
+one merge-only separator from b98cc9eb. Accepted original own +/- hashes:
+G2 1a2cefbf86eaea14b5775098c2436925a987a84d61877dffa8b0e2444ace65bd;
+G6 db4fb97f016f789996e96648f45873f954763427e98d9a4ec5392bcbfa0eb693.
+G2 accepted-own plus authorized repairs and candidate-own +/- hashes are
+both 6f41615d74d256b40721467ef1a31c3e85184b1b1af2f82de8239a002e6c4d69;
+repair-only +/- hash 0acd0db3adc3129d5a40ae0d0dc4fb07eae828d6e9ec3126c528d02c63837749.
+G6 accepted-own plus authorized repairs and candidate-own +/- hashes are
+both e15695de449804d893c9f2a2f379df13fbe334b2ab58fd24fad71f3f6c86f2d1;
+repair-only +/- hash f9fe546686050c70bc061a583a71a3f2d607a091a02225033b3f664549045710.
+
+The only production changes beyond the accepted reads are the explicitly
+authorized simulator evidence preservation and renewal timestamp/key repairs.
+Canonical/packaged SQL bytes, class data and the two pins are unchanged.
+Managed payment/subscription adapter and reference-runtime suites above pass
+unchanged; no managed migration or served composition was edited.
+
+During proof, shared main advanced to 2d5547dcccb5d9e3c40bece5016382fbf9f6a670
+(native store promotion). A dry merge reports only disjoint publication-catalog
+additions, with architecture and package README merging automatically. The
+proof anchor above remains for the 21c05703 tree; it is not a claim that the
+future integration has been checked. The authorized catalog union, subsequent
+integration checks and pack, trusted-main reader preflight and two fresh full
+reviewers remain before READY_FOR_VERIFY. No native session has started, 0/3.
+
+Self-retro: the complete sweep took substantial admission wait time; no suite
+was weakened to shorten it. Separate executable-source proof from scheduling
+and from a later main integration rather than silently carrying results over.
