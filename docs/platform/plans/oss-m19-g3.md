@@ -1554,3 +1554,5 @@ the original SQL error at the injected executor, asserting both the unchanged
 mapping and the underlying42501. This adds no fallback or production change.
 Complete API regeneration adds only the new-address-only comment to two reports;
 no public type or other report changes. CONTRIBUTING remains unchanged.
+
+Address admission keeps parity: allowed during dunning and without a method; refused for a locked next cycle (cycle or order status) or a claimed renewal; witnesses are “allows address during open dunning without a method, but preserves the donor next-cycle lock”, “preserves next-cycle ownership before a frozen native renewal has materialized its cycle”, and “witnesses every next-cycle lock branch through the public address port”.

@@ -600,3 +600,36 @@ it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-
  expect(await counts(f)).toEqual(before);
  expect((await owner.query("SELECT count(*)::int n FROM public.customer_support_subscription_commands WHERE target_id=$1 AND idempotency_key=$2", [f.subscription, key])).rows).toEqual([{ n: 0 }]);
 });
+
+// Focused solo measured 161ms; real PostgreSQL cases keep the explicit 30s floor.
+it("witnesses every next-cycle lock branch through the public address port", async () => {
+ expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+ for (const branch of [
+  { cycle: "paid", order: "pending_payment", blocked: true },
+  { cycle: "planned", order: "paid", blocked: true },
+  { cycle: "planned", order: "fulfillment_pending", blocked: true },
+  { cycle: "planned", order: "fulfilled", blocked: true },
+  { cycle: "planned", order: "pending_payment", blocked: false },
+ ]) {
+  const f = await fixture(), label = `${branch.cycle}/${branch.order}`;
+  await owner.query("UPDATE public.subscription_cycles SET scheduled_at=(SELECT next_cycle_at FROM public.subscriptions WHERE id=$2),status=$3 WHERE id=$1", [f.cycle, f.subscription, branch.cycle]);
+  await owner.query("UPDATE public.commerce_orders SET status=$2 WHERE id=$1", [f.order, branch.order]);
+  const parcel = await port().read("shipment", f.shipment), before = await counts(f);
+  const bindings = async () => (await owner.query("SELECT to_jsonb(b) value FROM public.commerce_destination_bindings b WHERE order_id=$1 OR shipment_id=$2 OR subscription_id=$3 ORDER BY id", [f.order, f.shipment, f.subscription])).rows;
+  const beforeBindings = await bindings();
+  const result = await port().changeShippingAddress({ actorId: f.principal, clientId: f.client,
+   idempotencyKey: `cycle-lock-${randomUUID()}`, subscriptionId: f.subscription,
+   newAddress: address("Future after unlocked cycle"), expectedVersion: 1, now: AT });
+  if (branch.blocked) {
+   expect.soft(result, label).toMatchObject({ outcome: "refused", refusalCode: "payment_blocked" });
+   expect.soft(await counts(f), label).toEqual(before);
+   expect.soft(await bindings(), label).toEqual(beforeBindings);
+  } else {
+   expect.soft(result, label).toMatchObject({ outcome: "applied_from_next_parcel", appliesFrom: "next_parcel" });
+   expect.soft(await port().read("subscription", f.subscription), label).toMatchObject({ address: { ...address("Future after unlocked cycle"), country: "ZZ" } });
+  }
+  expect.soft(await port().read("shipment", f.shipment), label).toEqual(parcel);
+  expect.soft(await port().read("order", f.order), label).toEqual(f.original);
+ }
+}, 30_000);
