@@ -425,3 +425,41 @@ sequence: no inherited edge, zero/one-report refusal and full-two success on the
 same prepare. The two completed evaluations and these two distinct failure
 causes require no repeated redesign; the prior regroup remains applicable.
 Lesson: a rejected optimization must leave the valid full route reachable.
+
+
+## Regroup: complete full-review fallback after an automatic repair edge
+
+The two consecutive complete evaluations at `ab7d1f94` and `80ac508f` exposed
+one broader class: an automatically selected optimization could leave the normal
+full-review route unreachable. The unlanded-base case is closed by the ancestry
+fence. The remaining corrected cards, `REPR-I509-C-01` and `REPR-I509-D-01`,
+refer to the same landed ordinary-path case. Production CLI dogfood confirms
+that a docs repair with executable guidance can receive an eligible-path edge,
+then wrongly refuse two fresh full reports that honestly omit ordinary semantics.
+This is a wrong refusal, not a bypass; the earlier green ordinary-only cases did
+not cover semantic escalation.
+
+The smaller adequate alternative keeps both existing routes in one prepare:
+ordinary delta reports keep exact-delta confirmation and inherited expiry;
+actual fresh full reports satisfy the full-two floor without being discarded.
+Do not count delta-only reports as full reviews or renew their inherited age.
+A mixed delta/full pair is not two full reports. Complete history, findings,
+identity and Git-source replay remain binding. No new protocol, transport or
+reviewer service is needed. Existing real-Git fixtures test the same prepare,
+mixed counting and distinct expiry origins. This is one necessary repair batch
+within the recorded continuation, not a new scope or a budget reset.
+Pattern: optional fast-route evidence poisons the normal route → keep the full
+route reachable and count only the evidence actually covering that route.
+
+
+Pre-freeze interaction proof for that same repair found an additional effect of
+changing the counted coverage anchor: a valid ordinary renewal before two fresh
+full reports was being replayed against the new full expiry. The actual CLI
+sequence refused at renewal identity/expiry validation. This failed attempt is
+retained with its exact uncommitted source hash; it is not a new native candidate
+or consumed review cycle. Validate each renewal against its historical prefix,
+then apply only renewals belonging to the counted coverage. Event order must
+remain correct even when timestamps coincide. A prior delta-only renewal cannot
+extend fresh full proof, and malformed old history must still refuse. The same
+real-Git regression covers old renewal, full-two transition, subsequent full
+renewal and tampered historical expiry. No history entry or age cap is discarded.

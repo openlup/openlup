@@ -91,8 +91,9 @@ export function coverageState(session) {
   demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
   const start = session.history.findLastIndex(event => event.type === 'prepare');
   const event = session.history[start]; demand(event, 'missing prepare');
-  const candidate = event.candidate; const reports = currentReports(session).filter(report => report.verdict === 'PASS');
+  const candidate = event.candidate; let reports = currentReports(session).filter(report => report.verdict === 'PASS');
   const edge = candidate.coverage; let inherited; let floor = Math.max(requiredReviewers(classifyRisk(candidate, event.intent.risk)), candidate.integration || candidate.changedPaths.some(protectedCoveragePath) ? 2 : 0);
+  let renewalStart = start;
   if (edge) {
     demand(start > 0 && candidate.rules?.version === 3, 'missing enabled coverage policy');
     const prior = prefixSession(session, session.history[start - 1]?.type === 'rules' ? start - 1 : start);
@@ -107,7 +108,13 @@ export function coverageState(session) {
       demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base &&
         edge.proof?.paths?.length > 0 && edge.proof.paths.every(ordinaryRepairPath) && edge.proof.modeChanged === false, 'repair delta is not ordinary');
       floor = 1;
-      demand(reports.every(report => report.ordinary === true && report.delta === edge.delta), 'repair reviewer must confirm ordinary semantics and exact delta');
+      demand(reports.every(report => report.ordinary === undefined || report.ordinary === false ||
+        (report.ordinary === true && report.delta === edge.delta)), 'repair reviewer must confirm ordinary semantics and exact delta');
+      const fullReports = reports.filter(report => report.ordinary === undefined || report.ordinary === false);
+      if (fullReports.length) {
+        reports = fullReports; inherited = undefined; floor = 2;
+        renewalStart = session.history.findIndex(item => item.type === 'report' && item.report === fullReports[0]);
+      }
     }
   }
   demand(reports.length >= floor, `${floor} independent PASS reports required`, 'needs_agent_review');
@@ -115,14 +122,14 @@ export function coverageState(session) {
   let expires = Math.min(inherited?.expires ?? Infinity, ...reports.map(report => report.at + DAY), candidate.integration?.expires ?? Infinity);
   for (let index = start + 1; index < session.history.length; index++) {
     const renewal = session.history[index]; if (renewal.type !== 'renew') continue;
+    const before = prefixSession(session, index); const priorCoverage = coverageState(before);
     demand(candidate.rules?.version === 3 && renewal.previous === digest(session.history.slice(0, index)) &&
       renewal.head === candidate.head && renewal.tree === candidate.tree && renewal.base === candidate.base &&
-      renewal.policy === digest(candidate.rules) && renewal.oldExpiry === expires && renewal.at < earliest + 3 * DAY &&
-      renewal.expires === Math.min(renewal.at + DAY, earliest + 3 * DAY), 'renewal identity, expiry or age differs');
-    const before = prefixSession(session, index); const priorCoverage = coverageState(before);
-    demand(priorCoverage.earliest === earliest && priorCoverage.expires === renewal.oldExpiry && renewal.at >= earliest &&
+      renewal.policy === digest(candidate.rules) && renewal.oldExpiry === priorCoverage.expires && renewal.at < priorCoverage.earliest + 3 * DAY &&
+      renewal.expires === Math.min(renewal.at + DAY, priorCoverage.earliest + 3 * DAY), 'renewal identity, expiry or age differs');
+    demand(renewal.at >= priorCoverage.earliest &&
       openFindings(before).size === 0, 'renewal needs complete earlier coverage with no open material findings');
-    expires = renewal.expires;
+    if (index > renewalStart) expires = renewal.expires;
   }
   return { earliest, expires, base: inherited?.base ?? candidate.base, paths: [...new Set([...(inherited?.paths ?? []), ...candidate.changedPaths])] };
 }

@@ -191,6 +191,77 @@ describe('real Git coverage histories', () => {
     await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
     expect(coverageState(await f.state()).expires).toBe(coverageState(prior).expires);
   });
+  it.each([undefined, false])('accepts two full reports with ordinary=%s for a semantically nonordinary docs repair', async ordinary => {
+    const f = await fixture(); const prior = await f.review(); const original = coverageState(prior);
+    const fullAt = original.earliest + DAY / 2; const clock = vi.spyOn(Date, 'now').mockReturnValue(fullAt);
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); const prepared = await f.state();
+    expect(prepared.candidate.coverage.kind).toBe('repair');
+    await f.report(ordinary === undefined ? {} : { ordinary }); await expect(f.cli('verify')).rejects.toThrow();
+    clock.mockReturnValue(fullAt + 1000); await f.report(ordinary === undefined ? {} : { ordinary });
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const reviewed = await f.state(); expect(reviewed.candidate).toEqual(prepared.candidate);
+    expect(reviewed.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(reviewed.cycle).toBe(prepared.cycle); expect(reviewed.allowedCycles).toBe(prior.allowedCycles);
+    expect(coverageState(reviewed)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+    await expect(validateEconomySession(f.cwd, reviewed)).resolves.toBeUndefined();
+    clock.mockReturnValue(original.expires); await expect(f.cli('verify')).resolves.toBe(0);
+    clock.mockReturnValue(fullAt + DAY); await expect(f.cli('verify')).rejects.toThrow('expired');
+  });
+  it('counts only full reports when mixed with delta-only reports and uses the full-report expiry', async () => {
+    const f = await fixture(); const prior = await f.review(); const origin = coverageState(prior).earliest;
+    const deltaAt = origin + DAY / 4; const fullAt = origin + DAY / 2;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(deltaAt);
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); const prepared = await f.state();
+    await f.report({ ordinary: true, delta: prepared.candidate.coverage.delta });
+    clock.mockReturnValue(fullAt); await f.report({ ordinary: false });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    clock.mockReturnValue(fullAt + 1000); await f.report();
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    expect(coverageState(await f.state())).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+  });
+  it.each([0, DAY / 4])('preserves a valid earlier delta renewal when full reports arrive %s ms later', async gap => {
+    const f = await fixture(); const prior = await f.review(); const origin = coverageState(prior).earliest;
+    const renewedAt = origin + DAY / 4; const fullAt = renewedAt + gap;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(renewedAt);
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); const prepared = await f.state();
+    await f.report({ ordinary: true, delta: prepared.candidate.coverage.delta }); await f.cli('renew');
+    const earlier = await f.state(); expect(coverageState(earlier).expires).toBe(renewedAt + DAY);
+    clock.mockReturnValue(fullAt); await f.report({ ordinary: false }); await f.report();
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const full = await f.state(); expect(full.history.slice(0, earlier.history.length)).toEqual(earlier.history);
+    expect(coverageState(full)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+    const tampered = structuredClone(full); tampered.history.find(event => event.type === 'renew').oldExpiry += 1;
+    expect(verdict(tampered, tampered.candidate, fullAt).ok).toBe(false);
+    expect(() => coverageState(tampered)).toThrow('renewal identity, expiry or age differs');
+    clock.mockReturnValue(fullAt + DAY); await f.cli('renew');
+    expect(coverageState(await f.state())).toMatchObject({ earliest: fullAt, expires: fullAt + 2 * DAY });
+    clock.mockReturnValue(fullAt + 71 * 3600000); await f.cli('renew');
+    expect(coverageState(await f.state())).toMatchObject({ earliest: fullAt, expires: fullAt + 3 * DAY });
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    clock.mockReturnValue(fullAt + 3 * DAY); await expect(f.cli('renew')).rejects.toThrow('72-hour');
+  });
+  it('keeps two delta-only reports on the inherited expiry rather than count them as full review', async () => {
+    const f = await fixture(); const prior = await f.review(); const original = coverageState(prior);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(original.earliest + DAY / 2);
+    await f.write('docs/host-guide.md', 'Clarify the existing host example.\n'); f.commit(); await f.cli('prepare', f.request);
+    const prepared = await f.state(); const patch = { ordinary: true, delta: prepared.candidate.coverage.delta };
+    await f.report(patch); await f.report(patch); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    expect(coverageState(await f.state())).toMatchObject({ earliest: original.earliest, expires: original.expires });
+    clock.mockReturnValue(original.expires); await expect(f.cli('verify')).rejects.toThrow('expired');
+  });
+  it('still refuses an incorrect delta confirmation alongside two full reports', async () => {
+    const f = await fixture(); await f.review();
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); await f.report({ ordinary: true, delta: 'incorrect' });
+    await f.report({ ordinary: false }); await f.report();
+    await expect(f.cli('verify')).rejects.toThrow('exact delta');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('exact delta');
+  });
   it('a mixed repair with one product path cannot use the one-review route', async () => {
     const f = await fixture(); await f.review(); await f.write('tests/demo.test.ts', 'test\n'); await f.write('app.ts', 'product change\n'); f.commit();
     await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined(); await f.report({ ordinary: true });

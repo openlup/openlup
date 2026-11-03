@@ -117,8 +117,17 @@ only for the exact disjoint main merge or three-carrier insertion-gap union.
 Ordinary repairs need one new cold report with `ordinary: true` and `delta`
 equal to the prepared delta digest. The reviewer must confirm unchanged required
 proof and ordinary semantics; unknown/security/API/control semantics use two
-fresh full reports. Denied paths win over test/prose filenames. The initial
-noncontrol package smoke-list set is empty.
+fresh full reports on the same prepare. A full report omits `ordinary` or sets
+it to `false`; it represents full current-candidate review, not a delta-only
+assessment. If full reports are present, only those reports count toward the
+two-review fallback and its fresh expiry. An `ordinary: true` delta report never
+counts as a full report; reduced repair coverage keeps its inherited age and
+requires the exact delta digest. A renewal is validated against its own recorded
+coverage prefix. Earlier reduced-coverage renewals remain in history without
+extending or capping later fresh full coverage; later full-coverage renewals keep
+that full coverage's original age cap. Complete history, finding closure and Git
+proof remain mandatory for either route. Denied paths win over test/prose filenames.
+The initial noncontrol package smoke-list set is empty.
 
 Protected inputs include the existing trust paths, all review/documentation/
 reviewed-forward/CI machinery and every path already treated as sensitive by the
