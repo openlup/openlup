@@ -2231,8 +2231,12 @@ facts return typed unsupported without installing facts or consuming the owed
 duty. Clearance and observation host projections remain unsupported in this store.
 Delivery is supported only with the host's explicit M04 envelope projection;
 SQL primitives alone do not establish that envelope.
-The incumbent local-only constructor is preserved for the reference Postgres
-adapter. Its zero-tax order positions do not establish fiscal parity.
+The local-only constructor for the reference Postgres adapter adds effective
+delivery as a separate position: shipping charges less shipping discounts,
+omitting a zero delivery amount. Product positions and delivery close to the
+paid order total. The positive-delivery end-to-end witness remains blocked by
+native checkout conservation, so this source continuation does not prove that
+path. Its zero-tax positions do not establish fiscal parity.
 `INVOICING_MIGRATIONS` separates native child-document corrections and explicit
 host fiscal facts from managed base-row corrections and managed projections.
 The approved durable-duty re-pin voids a stored reversal after a proven

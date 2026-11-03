@@ -1,8 +1,10 @@
 # Native lifecycle notice dispatch
 
-Status: NEEDS_DECISION. The existing notice implementation is being integrated with
-its pinned predecessor before a private donor map, measured pre-implementation
-package and the authorized shipping and promotion-lock ports. No new review,
+Status: NEEDS_READ (shipping and lock delta). Local implementation and the
+required focused proofs are complete on the pinned predecessor. The SQL forward
+and its co-located pins remain staged for the coordinator. The native caller
+classification and the separately observed settlement ACL limitation below are
+named read items. No review, submission or activation is claimed. No new review,
 submission or publication is authorized in this run.
 
 ## Outcome, scope and authority
@@ -16,9 +18,12 @@ back cleanly and the identical request succeeds once after release. Exhaustion
 keeps an open repair case and an active subscription.
 
 Worktree: .claude/worktrees/oss-m19-g8; branch: codex/oss-m19-g8.
-Code base and current instruction revision are
-bb0008481a11267ec6dbe3e7e531299777cddc19; origin/main was refreshed before this
-handoff and is identical. The notice writer acts under the money-stream
+The current stack base is 935481eaef20fd3e736211d38b015c91c0ff3fa3.
+Instructions were refreshed from origin/main at
+7249a750addf64fea1da42fa87e77467794da09c at handoff, separately from that code base.
+The root instructions and trusted forward reader are byte-identical to the
+initial 2a59da4be321f6413ae384f49e66ae3145f881d4 read.
+Earlier pins below describe their original executions. The notice writer acts under the money-stream
 supervisor. Current authority permits local implementation, focused proof and DCO-signed
 commit after the accepted read corrections and checks. Native review, submission
 and external delivery remain unauthorized at this stop. Canonical
@@ -906,7 +911,7 @@ requires a refreshed answer for the resolved current-chain witnesses. This answe
 records the existing declared fixtures and unchanged proof contract, rather than
 claiming that the still-pending behavioral suites passed.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-9d56e35b6cc57563f3bc2d3bd19609cbc9053647486f7867b23df6a5b6dabe12","reason":"The merged notice tests retain the declared local PostgreSQL fixtures and restricted-runtime replay, refusal, concurrency and capture/restore assertions. Current-chain counts and inventories are recomputed on the combined tree; every issued-prefix pin stays unchanged. No fixture privilege, setup step, command, test-selection rule, hosted qualification or contributor verification obligation changes. Current behavioral reruns and the real destination-writer join remain pending and are not implied by this integration."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-3ab77e7a90cbbf6434f7f379d556e2501fb6e07413b1af5d7e61549f5bb3fc1f","reason":"The tests retain the declared local PostgreSQL and isolated local-tarball profiles. Operations use the restricted runtime; owner access supplies synthetic fixtures and observes state. New conservation, effective delivery, concurrency, ACL and replay witnesses preserve the existing test-scope rules. The two explicitly approved known-limit lifts replace a shipping-refusal expectation and the exact invoice SQL literal; zero-payable and line-discount refusals stay unchanged. The destination join uses the actual writer, with the previous event fixture retained. Current inventories are measured and historic pins stay untouched. No test-selection control, test-profile privilege, contributor command or proof requirement changes. The admin case bound follows the existing measured-timeout rule."} -->
 
 
 The official pre-implementation pack (Node 24.21.0/npm 11.19.0) measured
@@ -934,3 +939,227 @@ private delta packet are the handoff endpoint. No new SQL proposal exists yet.
 Self-retro at this stop: the named adapter had a conditional composition caller;
 managed refusal and absence of any adopter caller are different facts. Recording
 that distinction before implementation preserved the instructed boundary.
+
+
+## Authorized shipping and promotion-lock continuation
+
+The supervisor resolved the prior reachability stop: the conditional native
+composition is off by default. The native threshold and lock changes after
+adoption remain a named item in the private coordinator read. This does not
+claim unreachable or identical behavior, and no current deployment settings
+were inspected. Continue the already approved bounded build, tests and measured
+package proof; no review, push, PR or publication. Keep SQL staged for the read.
+Policy remains the freshly fetched 2a59da4be321f6413ae384f49e66ae3145f881d4;
+stack base remains 935481eaef20fd3e736211d38b015c91c0ff3fa3.
+
+Reuse the existing configured threshold and quote mechanisms. Port the small
+money/helper/free/stale presentation calculation beside the existing helper;
+append the effective shipping invoice line to the existing native projection.
+The SQL replacement preserves invoker headers and all existing money/refusal,
+claim and replay checks except the specifically approved net-shipping boundary.
+The new definer routine only locks/returns one promotion definition; no runtime
+definition UPDATE is granted. Restricted-runtime concurrency, ACL and missing-
+definition behavior require actual PostgreSQL proof.
+
+An existing native checkout case pins net-shipping refusal. Its narrowly scoped
+replacement is awaiting the supervisor's explicit word under the known-limit
+rule; zero-payable and line-discount refusals remain required unchanged.
+
+
+### Shipping proof regroup
+
+The first installed-runtime run exposed paid-shipping failures; its focused
+below-threshold diagnostic identifies the promoted-allocation CHECK. Two
+executions of this acceptance boundary now distinguish the cause: the existing
+allocator distributes the whole charged total, which previously equalled product
+payable because net shipping was refused. With a positive fee it can allocate
+more than catalogue value and violate the nonnegative discount check. The
+smallest correct allocation uses product payable alone, preserving a separate
+shipping charge. That is insufficient by itself if the existing deferred
+line-sum guard still requires product lines to equal the whole charged total.
+The next discriminating proof is paid shipping without a product discount;
+it should isolate that guard without entering allocation. No guard or CHECK is
+weakened, no new SQL object is added, and no fixture privilege is widened.
+Lesson: lifting a money refusal requires tracing its allocation and deferred
+conservation owners together before treating the old refusal as the sole cause.
+
+
+### Conservation blocker requiring a slot decision
+
+The discriminating zero-product-discount paid-delivery case reaches the
+existing deferred trigger and refuses with SQLSTATE 23514,
+commerce_order_line_sum_mismatch. That guard compares product-line sum with the
+whole order total and has no shipping-adjustment term. Its function is outside
+the approved two-replacement/one-creation slot. The worker does not change the
+guard, disable constraints, add a synthetic product line or enlarge the slot.
+Discounted paid shipping independently reaches the promoted allocation CHECK:
+the old allocator distributes the whole charged total rather than product
+payable. Correct product-only allocation in the approved draft replacement
+still needs the separate guard's conservation rule to account for delivery.
+This is a real installed-runtime failure, not a static concern or a test-limit
+waiver. No passing shipping build, final gate or DCO-ready candidate is claimed.
+The next read needs a bounded decision on this additional existing-function
+owner and prior slot approval; the private packet contains its exact preimage.
+
+
+Independent proof at the conservation stop: the strengthened capacity cases
+observe the second runtime backend blocked by the first definition-row lock
+before committing the winner. The four lock/ACL/missing-definition cases pass
+in default, +9 and -5 sessions; both capacity cases use mixed session zones.
+The presentation table passes 11 cases and threshold parity passes 12, including
+both engines with configured boundaries after product discounts. The unchanged
+invoice store suite passes 183 of 184; its remaining exact SQL-literal assertion
+pins the previous local projection and is left unchanged pending explicit word.
+The existing checkout shipping-refusal pin also remains untouched. No passing
+whole shipping path or complete existing-suite gate is claimed.
+
+The current blocked working-tree pack, on the official toolchain, is 2,478,368 B
+packed / 1,977,514 B code gzip / 11,662,288 B unpacked / 3,052 files.
+Against the exact retained predecessor artifact: +8,134 / +5,540 / +38,947 B
+and +4 files. It includes the staged SQL/projection. This is a measured partial
+candidate, not final clean build proof. No cap changed. Moving the display
+calculation beside its existing policy avoided a new subpath or production file.
+
+Self-retro: the refusal had hidden two conservation assumptions. Trace allocation
+and deferred money guards together before porting a previously refused shape.
+The installed consumer also caught an author harness mistake: isolated installs
+must use the existing disposable external fixture directory, with evidence kept
+inside task scratch. No isolation check or runtime privilege was weakened.
+
+
+Handoff checks on the blocked proposal: strict typecheck passes with zero
+unresolved edges and zero consumer errors; complete API check covers 68
+surfaces with six related snapshot changes; lint passes with zero errors and
+173 warnings, including eight structural-rule suites. Repository neutrality has
+zero increases and UI neutrality zero forbidden hits. All 3,052 packed files
+remain identical after the lint prerequisite builds. No final clean-candidate
+verification stamp is claimed. The five catalogue measurements and selected
+lock proofs do not replace the unrun full catalogue conformance, transfer,
+handover, cold-consumer, starter, notice/destination join or whole-row time and
+solo-case gates. The unchanged existing invoice SQL pin remains failing, so
+non-SQL DCO sign-off is held; all proposed source and SQL bytes stay staged for
+the read. No new commit, native review, push or PR is made. Instructions were
+refreshed again at handoff; origin/main remains the same policy revision.
+
+
+Main's trusted reader accepts the proposed G8 function inventory using its
+already approved class in scratch. Actual staged-tree co-location refuses with
+“reviewed native store feature path, order or inventory drifted” against the
+older inherited local class data. No branch control data or reader was changed
+to conceal that refusal; the instructed final predecessor integration and
+ordinary gates remain necessary. The private read records this separately from
+the observed runtime conservation blocker and the unchanged test pins.
+
+
+## Approved conservation continuation
+
+The coordinator approved product-only allocation in the promoted-draft replacement,
+and replacement of the existing deferred line-sum guard, preserving its complete
+header and every other check. Main's helper independently recomputed the guard
+preimage as `403236204ab35f1776bb1d43a0c9878872fc1547874772b7634b0216b8d837d4`.
+The extra slot entry belongs to the lead's separate control change; until that
+lands, class/catalogue proof uses the expressly authorized scratch registry.
+No branch class data or control reader is changed.
+
+Two known-limit pins are explicitly lifted. The checkout case's former
+`net_shipping_unsupported` expectation becomes persisted charge, exact total and
+no-extra-effects replay proof; its zero-payable and line-promotion refusals stay
+byte-identical. The invoice store's exact SQL literal now pins the effective
+shipping CTE and appended delivery position. Behavioural invoice coverage stays
+and the real installed restricted-runtime cases prove positive and zero delivery.
+No refusal mapping is removed. No managed SQL, OMS marker or attempt storage is
+changed. This continuation grants implementation and local non-SQL commits,
+not native review, push, PR, release or deployment.
+
+
+A supplementary invoice variant with a shipping promotion exposed an unchanged
+settlement ACL limitation: the restricted runtime receives 42501 for
+commerce_promotion_claim_events while recording settlement. The first variant
+had also used an invalid promotion applicability tag; the corrected valid
+free-shipping fixture reached this different, downstream limitation. Both
+attempts and the exact source are retained privately. No ACL, claim/settlement
+routine or another row's production file is changed. This is not claimed as
+proved promotion settlement or repaired by this row.
+
+Regroup: the extra variant coupled a draft-conservation check to a separate
+promotion-settlement capability. The approved required witnesses distinguish
+those boundaries: paid and free delivery close real invoices; the configured
+threshold after product discounts closes the restricted draft; a valid shipping
+benefit separately exercises shipping-discount conservation and replay there.
+The optional invoice variant was not an existing accepted characterization pin.
+Its downstream discovery is reported for the coordinator, without turning it
+into a new G8 acceptance obligation or fabricating paid truth to bypass it.
+Lesson: draft conservation and settlement permissions need separate evidence;
+keep the test at its owning boundary and disclose the unqualified continuation.
+
+
+## Current local build and read handoff
+
+The product allocator now distributes only product payable. The deferred guard
+adds effective shipping before its existing comparison; its header, other body
+bytes, triggers and ACL remain unchanged. A preservation check confirms the
+zero-payable and line-discount refusal assertions are byte-identical. The two
+explicitly approved known-limit lifts are the shipping persistence/replay proof
+and the invoice constructor's exact SQL literal. No refusal mapping is removed.
+
+| Current proof | Result |
+| --- | --- |
+| Restricted installed shipping/conservation/lock suite | 13 cases in each of default, +9 and -5; 39 PASS. Includes configured boundaries after discounts, product and wrong-shipping mismatch/23514, paid/free invoice lines, caps, ACL and missing-definition/40001. |
+| Native checkout | 5 cases per zone, 15 PASS. The changed case also passes from an empty-cache offline installation. |
+| Notice and actual destination-writer join | 16 cases per zone, 48 PASS. All original 15 cases and their assertions remain; the new join uses the real writer and preserves the handed-over parcel and one-mail replay. |
+| Mixed sessions | Both capacity cases observe actual blocking; replay crosses +9/-5 in one connection. |
+| Shipping presentation and engine parity | 11 presentation cases; 12 parity cases, including both engines and all three configured boundaries. All four shipping unit files pass, 22 cases. |
+| Invoice unit suites | All 17 files pass, 251 cases, including the complete 184-case store suite. |
+| Existing compatibility | 12 files, 3,127 PASS, including four real invoice suites, shipping, package/browser boundaries, qualified profiles, released upgrade and restricted restore. Existing native promotions: 5 PASS. |
+| Transfer and handover | Transfer 17 PASS. Handover executes to LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION, with no cleanup failures. |
+| Starter | Source tests 176 PASS; cadence 14 PASS using the authorized scratch class fixture. |
+| Solo timing | 21 new/changed or inventory-sensitive cases pass individually without coverage. New money/join cases max 50.93 ms; composition max 23.36 s. The two admin cases' bound is 60 seconds, derived from their measured 18.16-second maximum; that suite passes again. |
+| Catalog and class | Existing real catalog test: 134 PASS across service-role present/absent. Trusted main reader accepts the exact authorized scratch slot: three replacements, one creation. Branch class data stays unchanged. |
+| API and static checks | Complete report 68 surfaces; strict typecheck zero unresolved edges and zero consumer errors; lint zero errors/173 warnings and eight structural suites. |
+
+The raw starter-cadence load first refused the inherited branch class data,
+before any case. It passes with the same explicitly authorized scratch registry
+used by the catalog test; no test assertion or control reader was changed.
+Actual co-location still has that inherited-class-data refusal. It resolves
+through the instructed final predecessor/main integration, not a local class
+rewrite. Current main's class plus the sole approved guard append is exactly
+the fixture used by these proofs; its reader is byte-identical at handoff.
+
+The retained offline harness was copied into this worktree. Preparation alone
+may acquire locked Linux inputs. The consumer uses Node 24.21.0/npm 11.19.0,
+three real package tarballs, 42 locked peer-closure tarballs, a fresh empty cache
+and offline installs. Missing registry inputs refuse. The manifest's identifier
+is the staged Git tree, explicitly not a committed-candidate stamp. The cold
+consumer passes, including PostgreSQL, and all 3,052 platform file contents are
+identical to the official final tarball. No live provider is used.
+
+Official final measurement against the exact pinned predecessor:
+
+| Measure | Predecessor | Candidate | Delta |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 2,470,234 | 2,478,838 | +8,604 |
+| Code gzip bytes | 1,971,974 | 1,977,514 | +5,540 |
+| Unpacked bytes | 11,623,341 | 11,664,002 | +40,661 |
+| Files | 3,048 | 3,052 | +4 |
+
+SQL and the generated projection are included. Packed headroom is 6,162 bytes;
+docs gzip is 66,050 bytes. The final growth after the pre-pack is 3,588 packed
+bytes, below the labelled 4,500–6,500 estimate. No budget changed. The inherited
+local code cap awaits the separately staged predecessor raise to 2,054,458;
+this code measure is below that named cap. No clean-head verification stamp,
+model review or admission receipt is claimed. The SQL and its co-located pins
+stay uncommitted for the read; non-SQL work uses the expressly authorized DCO
+commit boundary. Release, push, PR and managed/adopter changes remain excluded.
+
+The separate promotion-settlement ACL discovery above remains unqualified;
+its archived failed variant is not represented as a PASS. No settlement/claim
+routine or table privilege was repaired. UUID-spelling inspection found no
+new caller-string versus database-UUID match in this TypeScript delta; invoice
+predicates cast in SQL and the presentation helper handles only money.
+
+Self-retro: use the complete owning fixture prerequisites for integration,
+and type diagnostic helpers before broad lint. Seven untracked helper
+annotations cost a 182-second failed lint pass; fixing them needed no tracked
+production repair. The additional settlement attempt was kept distinct from
+the required draft/conservation proof, preserving its actual failure for the
+coordinator instead of widening privileges or fabricating payment truth.

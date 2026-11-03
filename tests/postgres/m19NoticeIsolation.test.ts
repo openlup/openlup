@@ -12,6 +12,9 @@ import { createPostgresLifecycleMessages, type NativeLifecycleNotice } from "@op
 import type { CapturedTransactionalDeliveryPort } from "@openlup/platform/communications";
 import type { OutboxEventRow } from "@openlup/core/outbox";
 import { capturedPaidHandler, nativeNoticeOrder } from "./m19NoticeFixture.js";
+import { fixture as shipmentFixture } from "../helpers/fulfillmentNative.js";
+import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
+import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -639,4 +642,40 @@ it("refuses every newly granted routine under actual browser roles", async () =>
       } finally { await caller.query("ROLLBACK"); }
     }
   } finally { caller.release(); }
+});
+
+
+it("joins the real future-only destination writer to one customer notice and preserves replay", async () => {
+  const f = await shipmentFixture(admin), operator = randomUUID(), principal = randomUUID();
+  await admin.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2),($3,$4)", [operator, `${operator}@example.invalid`, principal, `${principal}@example.invalid`]);
+  await admin.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
+  await admin.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',$2)", [operator, at]);
+  await admin.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [operator]);
+  const address = { recipientName: "Original recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "zz" };
+  const destinations = createPostgresDestinationPort(runtime);
+  const original = await destinations.registerOrder({ idempotencyKey: `g8-register:${f.order}`, orderId: f.order, address, now: at });
+  await admin.query("UPDATE public.fulfillment_shipments SET status='handed_over',handed_over_at=$2 WHERE id=$1", [f.shipment, at]);
+  const authority = createPostgresOperatorAuthority({ run: work => work(runtime) }, { operatorId: operator, now: () => Date.parse(at), recoveryPath: () => "/repair" });
+  const input = { operatorId: operator, subscriptionId: f.subscription, subscriptionAction: "change_shipping_address" as const,
+    payload: { newAddress: { ...address, recipientName: "Future recipient" } }, expectedVersion: 1, idempotencyKey: `g8-destination:${randomUUID()}` };
+  expect(await authority.applySubscriptionAction(input)).toMatchObject({ outcome: "applied_from_next_parcel", appliesFrom: "next_parcel", replayed: false });
+  const event = (await runtime.query("SELECT id,payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.change_shipping_address'", [f.subscription])).rows[0];
+  expect(event.payload).toMatchObject({ outcome: "applied_from_next_parcel", appliesFrom: "next_parcel" });
+  expect(await destinations.read("shipment", f.shipment)).toEqual(original);
+  const key = `subscription-notice:event:${event.id}`, notices: NativeLifecycleNotice[] = [], captures: string[] = [];
+  const store = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+  const captured = createCapturedTransactionalDelivery({ outcome: command => {
+    if (command.idempotencyKey === key) captures.push(command.recipientReference);
+    return { state: "accepted" };
+  } });
+  try {
+    const binding = noticeBinding(store, captured, notices);
+    expect((await binding.run(100)).failed).toBe(0);
+    expect(notices.filter(notice => notice.id === event.id)).toEqual([expect.objectContaining({ clientId: f.client, kind: "subscription.address_changed", payload: event.payload })]);
+    expect(captures).toEqual([`client:${f.client}`]);
+    expect(await authority.applySubscriptionAction(input)).toMatchObject({ outcome: "applied_from_next_parcel", replayed: true });
+    await binding.run(100);
+    expect(captures).toEqual([`client:${f.client}`]);
+    expect(await destinations.read("shipment", f.shipment)).toEqual(original);
+  } finally { await store.close(); }
 });

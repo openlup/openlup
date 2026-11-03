@@ -9834,6 +9834,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/contracts.test.ts",
       "class": "public-output"
     },
@@ -28095,6 +28099,10 @@
     },
     {
       "path": "tests/postgres/m19BundleWriteIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19CheckoutShipping.test.ts",
       "class": "public-output"
     },
     {

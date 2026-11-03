@@ -676,6 +676,13 @@ and any artifact-cap change require their own approved scope.
 
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
+`resolveThresholdShipping` evaluates configured delivery terms against product
+payable after product discounts, excluding delivery: equality and higher spend
+are free. `summarizeThresholdShipping` projects one quote's effective delivery,
+free state and remaining product spend. Pass `stale: true` for loading, failed
+or busy quote state to suppress the remaining-spend helper. Missing delivery
+money does not imply free delivery. Hosts own copy and formatting; fees and
+thresholds remain configuration inputs.
 Native flat-rate save requires the rate port, a ready Core report and
 `nativeRateSchema`, a same-database Core `SchemaObservation` proving the applied
 seed identity and settings objects. A candidate schema label is not proof;

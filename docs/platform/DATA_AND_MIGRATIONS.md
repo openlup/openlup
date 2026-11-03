@@ -1721,8 +1721,8 @@ separate from both this probe and application-file upgrades.
 ## Compatibility lifecycle
 
 The native [paid-email forward](../../db/platform/migrations/20261101231000_native_paid_email.sql)
-replaces only the paid-notification trigger function, preserving its invoker
-header and existing paid event. The additional mail event uses order_<UUID>,
+replaces the paid-notification trigger and promoted-draft functions, preserving
+their invoker headers. The existing paid event remains; the additional mail event uses order_<UUID>,
 a separate idempotency key and the native cycle/draft mode. Its mail-only block
 bounds lock waits, absorbs insertion/cancellation errors and restores the
 caller's timeout, so this added effect cannot roll back settlement. A missed mail
@@ -1737,6 +1737,26 @@ release. The [scheduled binding boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscri
 and [grant assessment](plans/oss-m19-g8.md#grant-exposure-assessment) own caller
 trust and contact-data exposure. The feature retains its separate prior
 admission-control prerequisite; local SQL proof alone does not admit it.
+
+The staged promoted-draft port validates effective shipping and retains its canonical charge
+adjustment, money equation, replay and line-allocation refusals. Where a quote
+retains `shipping-threshold.v1` terms, the configured flat fee applies below the
+threshold and zero applies at or above it, measured after product discounts and
+excluding delivery. Currency, numeric bounds and the retained shipping amount
+must agree. Quotes without these terms retain their supplied shipping amount;
+hosts must supply server-produced quotes and authorize the customer separately.
+Product discounts allocate only to product lines. The deferred line-sum guard
+adds shipping charges and subtracts shipping-scoped discounts before comparing
+with the order total; its other checks and invoker trigger header remain unchanged.
+The local invoice constructor appends positive effective delivery as its own line.
+
+The new `commerce_promotion_lock_definition(text)` is a volatile definer routine
+owned by the migration role, with `search_path = pg_catalog, pg_temp`. It only
+selects the named definition for update and returns its row or null. PUBLIC and
+browser roles cannot execute it; only the service runtime receives EXECUTE.
+The invoker draft retains definition, missing-promotion and global/customer cap
+checks after that lock. Runtime callers still cannot update definitions.
+These native opt-in changes do not modify a managed database or activate a host.
 
 The existing `subscription_dunning_notifications` and
 `transactional_delivery_receipts` tables can hold customer-linked delivery facts.
