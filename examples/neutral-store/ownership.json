@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "owned": [
     "AGENTS.md",
+    "owned/catalogue.ts",
     "owned/copy.ts",
     "owned/acquisition-addresses.ts",
     "owned/demo-seed.ts",
@@ -26,6 +27,7 @@
     "browser/journey.spec.ts",
     "browser/native-acquisition.proof.ts",
     "browser/native-intake.proof.ts",
+    "browser/native-operator.proof.ts",
     "client/api.ts",
     "client/cart.ts",
     "client/context.ts",
@@ -50,6 +52,7 @@
     "host/e-composition.ts",
     "host/healthcheck.ts",
     "host/native-composition.ts",
+    "host/operator-composition.ts",
     "host/origin-policy.ts",
     "host/server.ts",
     "host/sessions.ts",

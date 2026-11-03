@@ -8,12 +8,13 @@ import { limitFor, nativeLimits, otherLimits } from '../shared/limits.ts';
 export interface FieldSpec {
   name: string;
   label: CopyKey;
-  type?: 'text' | 'email' | 'tel' | 'number' | 'date' | 'textarea' | 'checkbox' | 'select';
+  type?: 'text' | 'password' | 'email' | 'tel' | 'number' | 'date' | 'textarea' | 'checkbox' | 'select';
   value?: string;
   required?: boolean;
   min?: number;
   max?: number;
   maxLength?: number;
+  pattern?: string;
   options?: Array<{ value: string; text: string }>;
   autocomplete?: string;
 }
@@ -47,7 +48,7 @@ export function field(context: PageContext, spec: FieldSpec): {
       el('option', { value: option.value, selected: spec.value === option.value }, option.text)));
   } else {
     control = el('input', { ...attrs, type: spec.type ?? 'text', value: spec.value ?? '',
-      min: spec.min, max: spec.max, step: spec.type === 'number' ? 1 : undefined });
+      pattern: spec.pattern, min: spec.min, max: spec.max, step: spec.type === 'number' ? 1 : undefined });
   }
   const wrapper = el('div', { class: spec.type === 'checkbox' ? 'field checkbox-field' : 'field' });
   const label = el('label', { for: id }, context.t(spec.label));
