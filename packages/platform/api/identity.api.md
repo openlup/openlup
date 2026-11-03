@@ -1625,6 +1625,7 @@ export * from "./privacyHandlers.js";
 export * from "./oidcIdentityVerifier.js";
 export * from "./oidcPrincipal.js";
 export * from "./postgresAccountLinkStore.js";
+export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
@@ -2538,6 +2539,49 @@ export declare function createPostgresAccountLinkStore(env: {
 }): AccountLinkStore & {
     close(): Promise<void>;
 };
+```
+## dist/identity/postgresContactClientRegistrar.d.ts
+
+```ts
+export interface EnsureContactClientInput {
+    email: string;
+    acquisitionSource: string;
+    lifecycleStage: "lead" | "customer" | "inactive";
+    profileDefaults?: {
+        firstName?: string | null;
+        lastName?: string | null;
+        phone?: string | null;
+        country?: string | null;
+    };
+    journey?: {
+        idempotencyKey: string;
+        locale: string;
+        mode: "one_time" | "subscription";
+    };
+}
+export type EnsureContactClientResult = {
+    ok: true;
+    clientId: string;
+    created: boolean;
+    linked: boolean;
+} | {
+    ok: false;
+    code: "contact_client_email_invalid" | "contact_client_input_invalid" | "account_erased_refused";
+};
+/** Host-only contact resolution, never authentication. Never expose linked or created
+ * to the browser: they would reveal account existence. Keep clientId internal to
+ * the host's admitted purchase; it grants no access to existing customer data. */
+export interface PostgresContactClientRegistrar {
+    ensureContactClient(input: EnsureContactClientInput): Promise<EnsureContactClientResult>;
+    close(): Promise<void>;
+}
+/** Ensure an unverified checkout contact; refresh defaults and journey facts only
+ * while it remains unlinked. Linked rows are never updated or relinked.
+ * The host owns validation, requester quotas, checkout admission and retention.
+ * Receipt-bound shells refuse; a freed original email starts a fresh client. */
+export declare function createPostgresContactClientRegistrar(env: {
+    connectionString: string;
+}): PostgresContactClientRegistrar;
 ```
 ## dist/identity/postgresCustomerMe.d.ts
 

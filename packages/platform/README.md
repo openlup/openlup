@@ -1152,6 +1152,11 @@ in both resolution modes with all three optional peers absent.
 ## Identity import candidate
 
 `./identity` provides server identity services; `./identity/contracts` supplies browser-shareable contracts.
+The host-only `createPostgresContactClientRegistrar` resolves guest purchase
+contacts and refreshes optional defaults only on unlinked rows; its result grants
+no account access and linked rows remain untouched.
+See [guest contact resolution](../../docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
+for host quotas, internal result fields and erasure boundaries.
 This is a development-preview import candidate, not an activated adopter contract.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
