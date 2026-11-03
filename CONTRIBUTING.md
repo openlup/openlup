@@ -307,7 +307,8 @@ identities only as an atomic positions 13–16 append after all twelve earlier
 approvals, checks their exact fixture hashes, and rejects prior repins or
 co-located active SQL. These approvals are inert until a separate selected
 generation passes its installation and runtime proofs.
-The term-line lock control witness prepares one shared seventeenth identity.
+The lock and conflict completion control witness prepares one shared
+seventeenth identity.
 The reader admits it only as an atomic position-17 append after all sixteen
 issued approvals, pins its inert fixture hash, and refuses co-located SQL,
 later repins and wrong positions. The manifest witness admits it only once, as

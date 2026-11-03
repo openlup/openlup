@@ -17,7 +17,7 @@ import {
   QUALIFIED_RUNTIME_FILE,
   QUALIFIED_RUNTIME_COMPLETION_FILE,
   QUALIFIED_OWNER_PATH_FILE,
-  QUALIFIED_TERM_LINE_LOCK_FILE,
+  QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE,
   readPlatformMigrations,
   selectPlatformMigrationManifest,
   sha256,
@@ -246,10 +246,10 @@ describe("canonical qualified migration selection", () => {
     expect(evaluatePlatformMigrationManifest({ manifest: legacy, migrations }).length).toBeGreaterThan(0);
   });
 
-  it("admits the shared term-line lock only as one late tail of both qualified plans", () => {
+  it("admits the shared lock and conflict completion only as one late tail of both qualified plans", () => {
     if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
-    const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_TERM_LINE_LOCK_FILE}`, "utf8");
-    const lock = { file: QUALIFIED_TERM_LINE_LOCK_FILE, sha256: sha256(content) };
+    const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`, "utf8");
+    const lock = { file: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: sha256(content) };
     const migrations = [...readPlatformMigrations(process.cwd()).migrations, { file: lock.file, content }];
     expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
     const next = structuredClone(current);
@@ -304,7 +304,7 @@ describe("canonical qualified migration selection", () => {
     withoutAdmin.qualified.forward.push(lock);
     const issuedQualified = issuedMigrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
     expect(evaluatePlatformMigrationManifest({ manifest: withoutAdmin, migrations: [...issuedQualified, { file: lock.file, content }] }))
-      .toContain("the term-line lock tail requires both qualified plans");
+      .toContain("the lock and conflict completion tail requires both qualified plans");
   });
 
   it("rejects omitted/reordered shared units, unqualified bootstrap reuse and early sealing", () => {

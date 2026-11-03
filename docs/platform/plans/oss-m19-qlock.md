@@ -1,90 +1,136 @@
-# Qualified runtime term-line row lock
+# Qualified runtime lock and conflict completion
 
-Status: checkpoint 1 (reader preparation) focused proof complete; maintainer
-read required before DCO. No source commit. Base: `origin/main` `ad31565d`.
+Status: checkpoint 1 of 3 (reader preparation). The approval pin and the active
+SQL follow as separate changes.
 
 ## Outcome and boundary
 
-On both qualified generations (`qualified-v2` and `qualified-admin`) the
-restricted runtime login cannot complete any native subscription lifecycle
-command. The existing command apply locks the renewal term lines `FOR UPDATE`
-before its replace-in-transaction rewrite, while the issued runtime units grant
-the runtime group `SELECT`, `INSERT` and `DELETE` on that table without any
-`UPDATE` column. Cancel, pause, resume and slide therefore fail with `42501`
-and record no receipt, through both the customer command store and the operator
-support wrapper. The legacy and managed chains are unaffected.
+The restricted runtime login on both qualified generations (`qualified-v2` and
+`qualified-admin`) cannot complete four existing native writers. Each fails
+with `42501` and writes nothing:
+
+| Writer | Locked or written table | Issued runtime grant |
+|---|---|---|
+| Subscription command apply (cancel, pause, resume, slide), customer store and operator support wrapper | renewal term lines, locked `FOR UPDATE` | `SELECT`, `INSERT`, `DELETE` |
+| Operator recovery issue | recovery commands, locked `FOR UPDATE` | `SELECT`, `INSERT` |
+| Platform control set and heartbeat | control operations, locked `FOR UPDATE` | `SELECT`, `INSERT` |
+| Order promotion-claim transition trigger, on any runtime settlement of an order with a claim | claim events, appended with `INSERT … ON CONFLICT (claim_id, event_key) DO NOTHING` | `INSERT` only |
+
+None of the four tables has row security. The legacy and managed chains are
+unaffected.
 
 The fix is one shared qualified completion unit,
-`q2_20261103200000_runtime_term_line_lock.sql` (its exact bytes are the
-[inert fixture](../../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261103200000_runtime_term_line_lock.sql)
-until checkpoint 3), selected by both qualified plans after their issued tails:
+`q2_20261103200000_runtime_lock_and_conflict_completion.sql`. Both qualified
+plans select it after their issued tails. Until checkpoint 3, its exact bytes
+are the
+[inert fixture](../../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql).
 
-- enable row security on `public.subscription_renewal_term_lines` (the table
-  has none today, so a lock-only policy alone could not bind);
-- runtime-group policies preserving the existing `SELECT`, `INSERT` and
-  `DELETE` access;
-- an `UPDATE` lock-only policy, `USING (true) WITH CHECK (false)`, and
-  `GRANT UPDATE (updated_at)` only, so row locking works and every actual
-  update is refused.
+For each of the three locked tables, the unit:
 
-It follows the issued runtime unit's lock-only pattern for privacy erasures.
-Its guard repeats the runtime-completion binding checks and requires the
-unswitched installer to own the target with no row security or policy yet.
+- enables row security, without `FORCE`;
+- adds runtime-group policies that preserve the existing access;
+- adds an `UPDATE` lock-only policy, `USING (true) WITH CHECK (false)`;
+- grants `UPDATE` on one timestamp column only.
 
-Exclusions: issued SQL and approvals, every function body and security mode,
-new routines, other tables, the legacy and managed chains, and the reference
-adopter's production composition. The adopter imports the packaged migration
-validator only with its default legacy selection, whose output this change
-keeps identical.
+Row locking then works, and every actual update is refused.
+
+For claim events, it grants `SELECT (claim_id, event_key)` only. A conflict
+target needs `SELECT` on both arbiter columns. Row security would add nothing
+there, because an arbiter also requires the new row to pass a select policy.
+The runtime already reads the claims these keys derive from, and the other
+event columns stay unreadable.
+
+The pattern follows the issued runtime unit's lock-only precedent for privacy
+erasures. The guard repeats the runtime-completion binding checks. It also
+requires the unswitched installer to own all four targets, with no row
+security or policy yet.
+
+Exclusions:
+
+- issued SQL and approvals;
+- every function body and security mode;
+- new routines;
+- other tables;
+- the legacy and managed chains;
+- the reference adopter's production composition.
+
+The adopter imports the packaged migration validator only with its default
+legacy selection, whose output this change keeps identical.
 
 ## Delivery route
 
-Qualified SQL uses the existing control-before-feature route. Three
-separately landed checkpoints, each on actual main before the next:
+Qualified SQL uses the existing control-before-feature route: three separately
+landed checkpoints, each on actual main before the next.
 
-1. **Reader.** The seventeenth fixed identity and registry length 17 beside the
-   existing set. The manifest ordering rule for one shared late tail, with its
-   packaged exact copy. The inert exact fixture and tests. The approval registry
-   and the canonical manifest are unchanged.
-2. **Pin.** Only the exact seventeenth approval row, SHA-256
-   `a90d6315227698e6e1a8ba72ca9df953f6d5a066e7ffe2e976e180211d2bf3e8`.
+1. **Reader.**
+   - The seventeenth fixed identity, and registry length 17 beside the existing set.
+   - The manifest ordering rule for one shared late tail, with its packaged
+     exact copy.
+   - The inert exact fixture and tests.
+   - The approval registry and the canonical manifest stay unchanged.
+2. **Pin.** Only the exact seventeenth approval row.
 3. **SQL.**
    - The identical active file and its packaged projection.
-   - The appended row in both qualified plans with measured inventories.
-   - Real-PostgreSQL proofs: the four commands through both wrappers with
-     receipts; refused actual updates; unchanged access for every other role;
-     legacy and managed untouched.
-   - Existing pinned qualified-runtime lifecycle limits become positive proofs.
+   - The appended row in both qualified plans, with measured inventories.
+   - Real-PostgreSQL proofs:
+     - the four writers succeed with receipts or exactly one event;
+     - replays add no duplicate;
+     - actual updates and other event reads are refused;
+     - access for every other role is unchanged;
+     - legacy and managed stay untouched.
+   - Existing pinned qualified-runtime limits become positive proofs.
 
 ## Checkpoint 1 acceptance and proof
 
-- The reader accepts lengths 4, 5, 6, 7, 12, 16 and 17. It refuses 8–11 and
-  13–15, an eighteenth entry, a wrong path at position 17, swapped positions 16
-  and 17, and extra keys.
-- The lock path is a qualified identity. Its introduction requires a prior exact
-  approval. Pin and SQL together refuse, a later repin refuses, and machinery
-  changed beside its SQL refuses in pull-request and merge-group admission.
-- The manifest admits the lock only once, as a tail of both qualified plans after
-  every issued tail, at the same position among shared units. Later shared
-  forwards append after it. Legacy selection of it, a schema-2 manifest with it,
-  insertion before the end and changed bytes all refuse. Legacy and current
-  qualified selections stay unchanged.
-- The fixture bytes are pinned by SHA-256. A focused disposable PostgreSQL 16
-  probe on an installer-managed `qualified-v2` install (a runtime login that is
-  `NOSUPERUSER`, `NOBYPASSRLS` and `NOINHERIT`) showed the following. It is not
-  a committed test in this checkpoint.
-  - Before the unit, pause fails with `42501`.
-  - After it, pause, resume, slide and cancel each apply and record a receipt.
-  - `UPDATE … SET updated_at = updated_at` fails the row-security check, and
-    `SET sku = sku` lacks privilege.
-  - `SELECT`, `INSERT`, `DELETE` and the row lock succeed; line values and
-    timestamps are unchanged.
-  - A second application refuses through its guard.
+- **Reader.** It accepts lengths 4, 5, 6, 7, 12, 16 and 17. It refuses:
+  - lengths 8–11 and 13–15;
+  - an eighteenth entry;
+  - a wrong path at position 17;
+  - swapped positions 16 and 17;
+  - extra keys.
+- **Qualified identity.** The completion path is a qualified identity, so its
+  introduction requires a prior exact approval. Admission refuses, both for
+  pull requests and in the merge group:
+  - the pin and the SQL together;
+  - a later repin;
+  - machinery changed beside the SQL.
+- **Manifest.** It admits the tail only once: as a tail of both qualified plans,
+  after every issued tail, at the same position among shared units. Later
+  shared forwards append after it. It refuses:
+  - a legacy selection;
+  - a schema-2 manifest;
+  - insertion before the end;
+  - changed bytes.
 
-Simplicity pre-check: extend the existing fixed identity list and ordering check
-exactly as the runtime-completion and owner-path tails did. Refused
-alternatives:
-- edit the issued units: immutable approvals;
-- a column grant without row security: it admits real updates;
-- change the command function: a routine or security-mode change;
-- a shared portable forward: the closed classes refuse table grants.
+  Legacy and current qualified selections stay unchanged.
+- **Fixture and probe.** SHA-256 pins the fixture bytes. Disposable PostgreSQL 16
+  probes exercised these exact bytes on an installer-managed `qualified-v2`
+  install, with a runtime login that is `NOSUPERUSER`, `NOBYPASSRLS` and
+  `NOINHERIT`. These probes are not committed tests in this checkpoint.
+  - Before the unit, all four writers fail with `42501`.
+  - After it, the writers succeed:
+    - pause, resume, slide and cancel apply, each with a receipt;
+    - recovery issue returns `issued`, then `replayed`;
+    - set and heartbeat record, then replay;
+    - settlement records exactly one claim event, and repeated or later
+      statuses add none.
+  - Refusals after the unit:
+    - every actual update on the three locked tables fails, through the row
+      security check or the existing append-only trigger;
+    - on claim events, reading other columns, update, delete and row locks all
+      fail;
+    - a conflicting append does nothing.
+  - anon, authenticated and the restore login hold no access before or after.
+  - A second application refuses through the guard.
+
+Simplicity pre-check: this extends the existing fixed identity list and
+ordering check exactly as the runtime-completion and owner-path tails did.
+Refused alternatives:
+
+- editing the issued units, whose approvals are immutable;
+- a column grant without row security, which would admit a real update of
+  the granted column on control operations and term lines (recovery commands
+  also have an append-only trigger);
+- changing a function, which is a routine or security-mode change;
+- a shared portable forward, which the closed classes refuse because it carries
+  table grants.

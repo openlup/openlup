@@ -10410,7 +10410,7 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261103200000_runtime_term_line_lock.sql",
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
       "class": "public-output"
     },
     {

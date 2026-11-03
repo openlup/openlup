@@ -35,10 +35,11 @@ will select the `qa_` baseline and four `qb_` replacements, then reuse the
 issued completion tail without the qualified owner-path forward. See the
 [restricted-bootstrap task](../../../../../../docs/platform/plans/oss-m14-restricted-bootstrap.md).
 
-The `q2_20261103200000_runtime_term_line_lock.sql` fixture is an inert,
-unapproved candidate for the reserved seventeenth position: one shared tail
-for both qualified plans that lets the restricted runtime take the existing
-renewal term-line row lock without admitting an actual update. Reader support
+The `q2_20261103200000_runtime_lock_and_conflict_completion.sql` fixture is an
+inert, unapproved candidate for the reserved seventeenth position: one shared
+tail for both qualified plans. It lets the restricted runtime take three
+existing row locks without admitting an actual update, and read only the two
+arbiter columns that an existing conflict target requires. Reader support
 lands first; its exact approval and the identical active SQL follow as separate
 changes.
 

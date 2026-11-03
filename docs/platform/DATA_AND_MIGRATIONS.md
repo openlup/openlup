@@ -785,7 +785,7 @@ separately from historical grant spellings or inherited CLI defaults.
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
 for four bootstrap units, an optional retained-import unit, the runtime
 completion tail and the owner-path forward. The reader also reserves position
-17 for the shared term-line lock tail described under
+17 for the shared lock and conflict completion tail described under
 [Compatibility lifecycle](#compatibility-lifecycle). Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
@@ -1781,22 +1781,36 @@ completion does not authorize owner fallback, legacy relabelling or a new role m
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
 
-Both qualified generations currently refuse every native subscription lifecycle
-command on the restricted runtime with `42501`. The command apply locks the
-renewal term lines. The issued runtime grants on that table include no `UPDATE`
-column, and the table has no row security. One shared completion tail closes
-this gap.
+Both qualified generations currently refuse four existing native writers on
+the restricted runtime with `42501`:
 
-Reader support reserves the tail as the seventeenth qualified identity. Both
-qualified plans select it once, after their issued tails and at the same
-position among shared units, so later shared forwards still append identically.
-The tail does the following:
+- native subscription lifecycle commands;
+- operator recovery issue;
+- platform control set and heartbeat;
+- order settlement for an order with a promotion claim.
 
-- enables row security on that table only;
-- keeps the existing runtime `SELECT`, `INSERT` and `DELETE` through policies;
-- admits row locks through an `UPDATE` policy whose check refuses every actual
-  update;
-- grants `UPDATE` on the timestamp column only.
+The first three lock a row `FOR UPDATE` on a table whose issued runtime grants
+include no `UPDATE` column: renewal term lines, recovery commands and control
+operations. None of these tables has row security. The claim transition
+trigger appends events with a conflict target, and the issued runtime grant
+there is `INSERT` only.
+
+One shared completion tail closes these gaps. Reader support reserves it as
+the seventeenth qualified identity. Both qualified plans will select it once,
+after their issued tails and at the same position among shared units, so later
+shared forwards still append identically.
+
+On each of the three locked tables, the tail does the following:
+
+- enables row security;
+- keeps the existing runtime access through policies;
+- admits row locks through an `UPDATE` policy whose check refuses every
+  actual update;
+- grants `UPDATE` on one timestamp column.
+
+On claim events it grants `SELECT` on the two arbiter columns only. Row
+security would not help there, because an arbiter also requires the new row
+to pass a select policy.
 
 Its exact bytes stay an inert fixture until a separate approval lands. The SQL,
 both plans' rows and their measured inventories follow in a later change. Until
