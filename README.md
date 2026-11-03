@@ -289,13 +289,18 @@ bill of materials, a thin adopter application, public extension/conformance
 contracts, upgrade tools and passing installation, compatibility, provenance
 and independent-adopter evidence. An npm `latest` tag does not close that gate.
 
-The starter host currently boots pending bindings, accepts only local
-Host authorities and does not connect a database. Only local offer validation
-and application-status reporting are bound; configuration health does not
-establish a live store. The [image quickstart](deploy/neutral-store/README.md) is limited to local
-image build and rollback; its local A → B → A run passed. Public hosting remains
-blocked on starter-owned
-binding and public-origin work; the binder stays application-owned.
+The starter’s lifecycle connects its local demonstration database and mounts
+its available native bindings; starting without the runtime URL remains the
+UI-only preview. Configuration health alone does not establish a live store.
+The [local quickstart](deploy/neutral-store/README.md) has exercised
+application-image A → B → A rollback with durable partner records on that local
+demonstration database. Schema and package inputs stayed unchanged; this proves
+neither rollback after an upgrade nor complete-store qualification. The binder
+stays application-owned.
+
+The starter runs on its local demonstration database only; a hosted database
+connection is not part of this release and comes in a later round.
+See the [starter’s limits](examples/neutral-store/docs/limits.md).
 
 The native account readers need explicit host sources for saved addresses,
 billing profiles, payment/delivery preferences, account events and private-profile
@@ -315,8 +320,8 @@ is claimed.
 
 Root `ui-*` neutrality counts remain shrink-only reference-source debt; copying
 root pages takes on that debt. The new neutral starter and deployment examples
-are constrained to system fonts only. Complete-store evidence, data-bearing rollback, public hosting and broader
-neutrality qualification remain pending at this source revision.
+are constrained to system fonts only. Complete-store evidence, public hosting and broader neutrality qualification
+remain pending at this source revision.
 
 Self-hosting and provider integrations need their own composition and evidence.
 The repository includes adapters for payment, carrier/3PL, email, accounting,
