@@ -126,7 +126,7 @@ function violations(files: readonly SourceFile[]): string[] {
     }
     if (file.path === QUOTE_READER && (
       /\b(?:parse|safeParse|validate|canonicalize)\s*\(/.test(file.source)
-      || /\b(?:console|logger)\s*[.\[]|\bJSON\s*\.\s*stringify\s*\(/.test(file.source)
+      || /\b(?:console|logger)\s*[.[]|\bJSON\s*\.\s*stringify\s*\(/.test(file.source)
     )) {
       found.push(`${file.path}: quote document must pass unparsed to host policy`);
     }
