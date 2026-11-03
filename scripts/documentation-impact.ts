@@ -7,13 +7,14 @@ import {
   documentationDigest, documentationGit, readDocumentationCandidate, readDocumentationIndex, readDocumentationObjects, readDocumentationTree,
   type DocumentationObject,
 } from "./documentation-git.ts";
+import { strictRegistryJson } from "./agent-review-registry.mjs";
 export { resolveDocumentationBase } from "./documentation-git.ts";
 export type { DocumentationBase } from "./documentation-git.ts";
 
 export type DocumentationObligation = {
   unit: string; doc: string; anchor: string; changedPaths: string[]; digest: string;
   status: "updated" | "no-impact" | "unanswered";
-  answers?: { source: "trailer" | "section"; commit?: string; reason: string }[];
+  answers?: { source: "trailer" | "section" | "task-record"; commit?: string; path?: string; reason: string }[];
 };
 export type DocumentationImpactResult = { base: string; obligations: DocumentationObligation[]; failures: string[] };
 type ReviewComment = { unit: string; digest: string; reason: string };
@@ -44,6 +45,43 @@ function reviewComments(section: string): ReviewComment[] {
   }
   if (/^ {0,3}<!--\s*openlup-doc-impact\b/mu.test(visible.replace(/<!--\s*openlup-doc-impact\b[\s\S]*?-->/gu, ""))) throw new Error("unterminated no-impact comment");
   return result;
+}
+
+type TaskAnswer = ReviewComment & { doc: string; anchor: string; path: string };
+const taskRecordPath = (path: string): boolean => /^docs\/platform\/plans\/[a-z0-9][a-z0-9-]*\.md$/u.test(path);
+function taskComments(contents: string): Omit<TaskAnswer, "path">[] {
+  const result: Omit<TaskAnswer, "path">[] = [];
+  const visible = unfencedMarkdown(contents).replace(/<!--[\s\S]*?-->|(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/gu,
+    match => match.startsWith("<!--") ? match : match.replace(/[^\n]/gu, " "));
+  for (const match of visible.matchAll(/^<!-- openlup-task-doc-impact ([^\n]*?) -->[ \t]*$/gmu)) {
+    const value = strictRegistryJson(match[1]!) as Record<string, unknown>;
+    if (!value || Array.isArray(value) || Object.keys(value).sort().join(",") !== "anchor,digest,doc,reason,unit" ||
+      typeof value.unit !== "string" || !/^[a-z][a-z0-9-]*$/u.test(value.unit) ||
+      typeof value.digest !== "string" || !/^sha256-[a-f0-9]{64}$/u.test(value.digest) ||
+      typeof value.doc !== "string" || !/^[A-Za-z0-9_./-]+\.md$/u.test(value.doc) ||
+      typeof value.anchor !== "string" || (value.anchor !== "" && !/^#[\p{L}\p{N}\p{M}_-]+$/u.test(value.anchor)) ||
+      typeof value.reason !== "string" || !value.reason.trim() || value.reason.length > 4096 || /[\r\n\u2028\u2029]/u.test(value.reason))
+      throw new Error("task no-impact record needs exact owner, unit, digest and one-line reason");
+    result.push(value as Omit<TaskAnswer, "path">);
+  }
+  if (/^<!--\s*openlup-task-doc-impact\b/mu.test(visible.replace(/^<!-- openlup-task-doc-impact [^\n]*? -->[ \t]*$/gmu, "")))
+    throw new Error("malformed or unterminated task no-impact record");
+  return result;
+}
+function taskAnswers(before: Map<string, DocumentationObject>, after: Map<string, DocumentationObject>, failures: string[]): TaskAnswer[] {
+  const answers: TaskAnswer[] = [];
+  for (const [path, object] of after) {
+    if (!taskRecordPath(path)) continue;
+    try {
+      const records = taskComments(object.contents.toString("utf8"));
+      const prior = before.get(path); let previous: Omit<TaskAnswer, "path">[] = [];
+      if (prior) try { previous = taskComments(prior.contents.toString("utf8")); } catch { /* Only current malformed answers fail; a corrected old record can be fresh. */ }
+      for (const record of records) if (!previous.some(old => JSON.stringify(old) === JSON.stringify(record))) answers.push({ ...record, path });
+    } catch (error) { failures.push(`${path}: ${(error as Error).message}`); }
+  }
+  const keys = answers.map(answer => `${answer.unit}\0${answer.doc}\0${answer.anchor}\0${answer.digest}`);
+  if (new Set(keys).size !== keys.length) failures.push("ambiguous task no-impact records for the same owner and delta");
+  return answers;
 }
 
 function trailerAnswers(root: string, base: string, head: string, failures: string[]): { shallow: boolean; commits: string[]; records: (ReviewComment & { commit: string })[] } {
@@ -94,7 +132,7 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
   const committed = headSHA === baseSHA ? before : readDocumentationTree(root, headSHA);
   // A hidden staged proposal is not the materialized candidate whose owners are being checked.
   for (const path of new Set([...committed.keys(), ...after.keys(), ...index.keys()])) {
-    if (!relevant(path)) continue;
+    if (!relevant(path) && !(taskRecordPath(path) && [committed.get(path), after.get(path), index.get(path)].some(object => object?.contents.includes("openlup-task-doc-impact")))) continue;
     const staged = JSON.stringify(binding(index.get(path)));
     if (staged !== JSON.stringify(binding(committed.get(path))) && staged !== JSON.stringify(binding(after.get(path))))
       throw new Error(`documentation: staged source differs from both HEAD and materialized candidate: ${path}; reconcile the index before verification`);
@@ -124,6 +162,7 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
   const result: DocumentationImpactResult = { base: baseSHA, obligations: [], failures: [] };
   // Read the change's own records once, so a malformed one fails even when no obligation needs it.
   const trailers: ReturnType<typeof trailerAnswers> = inputs.size === 0 ? { shallow: false, commits: [], records: [] } : trailerAnswers(root, baseSHA, headSHA, result.failures);
+  const tasks = taskAnswers(before, after, result.failures);
   const ownDocuments = new Map<string, (Buffer | null)[]>();
   for (const { owner, paths } of [...inputs.values()].sort((left, right) => identity(left.owner).localeCompare(identity(right.owner)))) {
     const changedPaths = [...paths].sort();
@@ -165,9 +204,11 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     const priorComments = priorSection === null ? [] : reviewComments(priorSection);
     const fresh = matching.length === 1 && !priorComments.some((comment) => JSON.stringify(comment) === JSON.stringify(matching[0]));
     if (applicable.length === 1 && fresh) { obligation.status = "no-impact"; obligation.answers = [{ source: "section", reason: matching[0]!.reason }]; continue; }
+    const task = tasks.filter(record => record.unit === owner.unit && record.doc === owner.doc && record.anchor === owner.anchor && record.digest === digest);
+    if (task.length === 1) { obligation.status = "no-impact"; obligation.answers = [{ source: "task-record", path: task[0]!.path, reason: task[0]!.reason }]; continue; }
     const answers = trailers.records.filter((record) => record.unit === owner.unit && record.digest === digest);
     if (answers.length) { obligation.status = "no-impact"; obligation.answers = answers.map(({ commit, reason }) => ({ source: "trailer", commit, reason })); continue; }
-    result.failures.push(`${owner.doc}${owner.anchor}: ${owner.unit} needs a substantive section update or a no-impact trailer in this change's own commits: ${renderNoImpactTrailer(obligation, "<why this section stays correct>")}; source: ${changedPaths.join(", ")}${trailers.shallow ? "; this checkout is shallow, so no trailer could be read: fetch complete history" : ""}`);
+    result.failures.push(`${owner.doc}${owner.anchor}: ${owner.unit} needs a substantive section update, fresh task record or a no-impact trailer in this change's own commits: ${renderNoImpactTrailer(obligation, "<why this section stays correct>")}; source: ${changedPaths.join(", ")}${trailers.shallow ? "; this checkout is shallow, so no trailer could be read: fetch complete history" : ""}`);
   }
   return result;
 }
@@ -186,7 +227,7 @@ export function renderDocumentationImpact(result: DocumentationImpactResult): st
     `- documentation base: ${result.base}`,
     `- documentation obligations: ${result.obligations.length}; unanswered: ${result.obligations.filter((row) => row.status === "unanswered").length}`,
     // Reasons are author text: print them escaped so one cannot add or forge log lines.
-    ...result.obligations.flatMap((row) => (row.answers ?? []).map((answer) => `- documentation no-impact: ${row.unit} ${row.doc}${row.anchor} (${answer.commit?.slice(0, 12) ?? "section record"}): ${JSON.stringify(answer.reason).replace(/[\u0085\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`)}`)),
+    ...result.obligations.flatMap((row) => (row.answers ?? []).map((answer) => `- documentation no-impact: ${row.unit} ${row.doc}${row.anchor} (${answer.path ?? answer.commit?.slice(0, 12) ?? "section record"}): ${JSON.stringify(answer.reason).replace(/[\u0085\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`)}`)),
     ...result.failures.map((failure) => `documentation: ${failure}`),
   ];
 }

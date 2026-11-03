@@ -1702,6 +1702,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-review-economy.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-e1.md",
       "class": "public-output"
     },
@@ -9943,6 +9947,14 @@
     },
     {
       "path": "scripts/agent-review-queue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-registry.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-registry.test.ts",
       "class": "public-output"
     },
     {
