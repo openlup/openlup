@@ -107,7 +107,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     },
     freeze(row, schedule) {
       const due = codec.due({ ...row, scheduled_at: schedule.scheduledAt });
-      if (due.subscriptionId !== schedule.subscriptionId || due.scheduledInstant !== schedule.scheduledInstant) throw new Error("subscription_renewal_schedule_mismatch");
+      if (due.subscriptionId.toLowerCase() !== schedule.subscriptionId.toLowerCase() || due.scheduledInstant !== schedule.scheduledInstant) throw new Error("subscription_renewal_schedule_mismatch");
       const facts = subscriptionRecord(row.purchase_facts);
       if (due.cycle.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
       const frozenLines = lines(row.lines);

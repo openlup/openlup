@@ -419,3 +419,21 @@ it("refuses a non-zero renewal shipping amount through the restricted purchase w
     { ...facts, shippingAmountMinor: 1 } as unknown as NativeRenewalPurchaseFacts)).rejects.toMatchObject({ code: "22023" });
   expect(await allPublicRows(admin)).toEqual(before);
 });
+
+
+it("accepts an uppercase subscription UUID through the restricted installed renewal runner", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "succeeded");
+  const upper = f.subscriptionId.toUpperCase();
+  expect(upper).not.toBe(f.subscriptionId);
+  const due = { ...d.due, subscriptionId: upper };
+  const snapshot = await d.input.store.buildCycleSnapshots(due);
+  expect(snapshot.subscriptionId).toBe(f.subscriptionId);
+  const result = await api.runOneAutomaticSubscriptionRenewal(d.input, due, now);
+  expect(result.status).toBe("succeeded");
+  expect(d.execute).toHaveBeenCalledTimes(1);
+  const before = await allPublicRows(admin);
+  expect(await api.runOneAutomaticSubscriptionRenewal(d.input, due, later))
+    .toMatchObject({ status: "terminal_replay", operationId: result.operationId });
+  expect(d.execute).toHaveBeenCalledTimes(1);
+  expect(await allPublicRows(admin)).toEqual(before);
+}, 30_000);
