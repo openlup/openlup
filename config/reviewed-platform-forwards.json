@@ -3207,6 +3207,58 @@
           "afterSha256": "9555f527efe706b487a5a00ede7bc89c3111a0d878ad7bf1995c901e86c5f8c6"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+      "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323",
+      "functions": [
+        {
+          "signature": "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "68ae58a37cfde075a868bbb1d3429aafbb002fd8ec3355be90425a567584ef3e"
+        },
+        {
+          "signature": "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "3b7b91659cdad82b955e6869c6f377d3b2ad7eb9e6d957ad0866bbcf4da6116a"
+        },
+        {
+          "signature": "public.fulfillment_expire_purchase_reservations(timestamptz,integer)",
+          "beforeSha256": null,
+          "afterSha256": "b46e7682e60118d5d3cb9460c34002a3ac16c809e25b24fa8bca99bd80675039"
+        },
+        {
+          "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "03ccfcf7129ddfcfeb3ed03f5eb6fc9969705c0d54c0856cb07e503cb136ed5c"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+      "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6",
+      "functions": [
+        {
+          "signature": "public.commerce_register_order_destination(text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "a78694eafb85cd8e43a2dbf8379ae303a7f744187cba7bd290785251514efa18"
+        },
+        {
+          "signature": "public.commerce_read_destination(text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "98281cc8a26421dc08506cec7d6332c75d35f74f9ebe57e8a1d627a0cb5f2c4f"
+        },
+        {
+          "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "4e8c26611e79cde0b1d76718fef6966d4c8bf868db4b3e2ed7d7ed7eb79b6f08"
+        },
+        {
+          "signature": "public.customer_support_change_shipping_destination(uuid,uuid,jsonb,integer,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "1d46c163cab94822f15af870ea98ae2dde7fd56af7a11dce5eac791a1c76a8ce"
+        }
+      ]
     }
   ]
 }
