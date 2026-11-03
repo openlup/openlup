@@ -97,3 +97,29 @@ is reported explicitly in the final packet.
 Self-retro: the native token port removes the interim second credential database;
 keeping raw delivery separate from authentication and logs gives the browser
 entry one durable authority and a small host-owned delivery composition.
+
+
+## Local commit continuation and canonical UUID matching
+
+The maintainer authorized the accepted composition as one local signed commit,
+followed by the bounded canonical UUID repair as its own named signed commit.
+Focused local proof belongs to this continuation. Review and delivery retain
+their assigned train slot.
+
+Order UUID checks accept uppercase and mixed-case spellings. Recovery comparisons
+therefore validate and compare the canonical UUID value while preserving the
+request and existing response identifiers. Real PostgreSQL host cases cover guest
+and native signed-in reads and sandbox payment, lowercase equivalence and the
+existing non-UUID refusals in both configurations. The initial regression run
+exposes the two spelling-sensitive comparisons before their repair.
+
+Self-retro. The case-insensitive validator and byte-sensitive identity comparison
+had different acceptance rules. Canonicalizing only the validated comparison
+operand repairs that mismatch at the two affected boundaries.
+
+The PostgreSQL UUID regression launches the existing starter CLI and sends real
+HTTP requests. This keeps the starter host under its own strict compiler profile
+and exercises native authentication, origin admission and payment composition
+without importing the entire host graph into the root tests' compiler profile.
+A clean install, package build and public typecheck of the accepted composition
+passes; the earlier compiler error arose only from that test import graph.

@@ -28178,6 +28178,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStoreUuid.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/newPurchaseStockManaged.test.ts",
       "class": "public-output"
     },

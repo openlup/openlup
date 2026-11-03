@@ -414,6 +414,9 @@ timestamps, fictional tax inputs and sandbox template/path choices. Validation
 rejects malformed values. Existing protocol/security constraints remain fixed.
 Recovery timing is the fixed native database rule; the existing session boundary is unchanged.
 
+Checkout order UUIDs match by UUID value across lowercase, uppercase and mixed-case
+input. The host preserves request fields and the existing native response identifiers.
+
 The install seed gives each SKU and purchase mode a deterministic distinct price
 identity. Identical installation adds no price rows; changed-price conflicts
 refuse loudly. Resolve a deliberate price change through the application's

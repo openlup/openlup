@@ -49,7 +49,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     }
     if (!token(payload.token)) return null;
     const verified = await recovery.tokens.validate(payload.token);
-    if (!verified || (payload.orderRef !== undefined && payload.orderRef !== verified.orderId)) return null;
+    if (!verified || (payload.orderRef !== undefined
+      && (!uuid(payload.orderRef) || payload.orderRef.toLowerCase() !== verified.orderId))) return null;
     const order = await readOrder(verified.orderId);
     return order?.status === 'pending_payment' && order.client_id === verified.clientId ? order : null;
   };
@@ -171,7 +172,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     }
     if (!token(payload.token)) return refused('starter_recovery_unavailable');
     const inspected = await recovery.tokens.inspect(payload.token);
-    if (!inspected || (payload.orderRef !== undefined && payload.orderRef !== inspected.orderId)) return refused('starter_recovery_unavailable');
+    if (!inspected || (payload.orderRef !== undefined
+      && (!uuid(payload.orderRef) || payload.orderRef.toLowerCase() !== inspected.orderId))) return refused('starter_recovery_unavailable');
     if (context.actor.customerRef && inspected.clientId !== context.actor.customerRef) return refused('starter_order_not_found');
     if (inspected.tokenState === 'revoked') return refused('starter_recovery_unavailable');
     if (inspected.tokenState === 'expired') return refused('starter_recovery_expired');
