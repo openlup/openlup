@@ -66,4 +66,5 @@ export * from "./privacyHandlers.js";
 export * from "./oidcIdentityVerifier.js";
 export * from "./oidcPrincipal.js";
 export * from "./postgresAccountLinkStore.js";
+export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";

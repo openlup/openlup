@@ -265,6 +265,50 @@ would narrow useful hits further. An independent value checkpoint reached the
 same decision. The prototype was archived locally and removed from the submitted
 tree; no resume option, cache, new receipt, lock or compiler change is shipped.
 
+### S3/S4 qualification: checkout recovery token port (#521)
+
+The [#521](https://github.com/openlup/openlup/pull/521) local run
+`verify-local-gXmzv0` on `b35a6248a8608b23c528e696d59d01f2f1589b2c`
+passed the complete package stage and failed the root test
+`packages/platform/test/commerce/browserSafety.test.ts`. The server export
+inventory expected 154 exports and the bundle had 155. The direct repair
+`0729707ca2fea177f3a972b0df4b087bedbd3550` adds
+`createPostgresCheckoutRecoveryTokenPort` to the test inventory. The fresh
+`verify-local-w9WF9A` passed, including selected pgTAP. Both candidates were
+clean on base and recorded main `2a59da4be321f6413ae384f49e66ae3145f881d4`
+with Node 24.21.0, npm 11.19.0 and gitleaks 8.30.1. This was an assertion
+failure requiring a source repair, with no broker refusal.
+
+| Measure | Failed run | Repaired run |
+| --- | ---: | ---: |
+| Package stage elapsed | 112.582 s | 117.092 s |
+| Package broker wait reported | 0 s | 0 s |
+| Root tests elapsed | 662.188 s | 645.059 s |
+| Run wall time | 932.723 s | 946.328 s |
+
+The interval between runs was 453.914 s. Total repair-loop wall time was
+2,332.965 s. The package timer includes its wrapper and consumer execution.
+The logs do not split every internal wait from execution.
+
+Recomputed SHA-256 hashes matched for the three retained package tarballs and
+the eight retained subscription build files. Package manifests differed only
+in the commit field, which the consumer validates against its candidate.
+The manifests precede API and installed-consumer completion. The logs establish
+those phases ran, while actual installed dependency bytes, inherited npm
+configuration and environment, and the platform consumer's PostgreSQL 16 image
+identity are not fully bound by these records. The changed test is itself
+registered as source smoke evidence for `./commerce/server`. A rule based
+only on a test-file diff or equal tarballs would miss these boundaries.
+
+**DROP for reuse.** The entire package stage offers at most 117.092 s gross
+before evidence collection, validation and restoration (12.4% of the repeat,
+5.0% of the whole loop). Those costs were not measured for a complete proof,
+and no stage was reused. Safe qualified saving is zero on this evidence.
+The narrower subscription build repeated in 7.088 s. This case supports
+focused reproduction of the failing assertion before a fresh full run,
+and remains a reference for qualifying a future donor. S3 recovery, S4 repair
+reuse and public workflow v1 remain partial.
+
 ### Coordination, retro and deferred observations
 
 [PR #509](https://github.com/openlup/openlup/pull/509) landed as
