@@ -3081,6 +3081,11 @@
             "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
             "beforeSha256": "2dd59a4f2eb7603e2a1714a97ccfad3d078990cb8978a4db16c130ff9db43364",
             "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_order_assert_line_sum()",
+            "beforeSha256": "403236204ab35f1776bb1d43a0c9878872fc1547874772b7634b0216b8d837d4",
+            "searchPath": "public, pg_catalog"
           }
         ],
         "createdFunctions": [
