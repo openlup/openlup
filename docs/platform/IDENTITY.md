@@ -1096,6 +1096,93 @@ HTML and public auth settings, every reachable first-party build input, package
 resolution inputs and the subscription import inventory with that predecessor.
 This service-free proof is outside Vitest and the required test selectors.
 
+## Guest checkout contact resolution
+
+`createPostgresContactClientRegistrar({ connectionString })` is an opt-in,
+server-only factory in `@openlup/platform/identity`. Its
+`ensureContactClient({ email, acquisitionSource, lifecycleStage, profileDefaults?, journey? })` returns
+`{ ok: true, clientId, created, linked }` or `{ ok: false, code }`; `close()`
+releases its pool. It finds or inserts a contact, without creating a session,
+assigning a principal or updating any linked row. Concurrent requests for the
+same canonical email share one client and exactly one reports `created: true`.
+The existing native challenge can subsequently prove the mailbox and link that
+contact to a principal; owned account reads then follow the same client.
+
+The host must never expose `linked` or `created` to a browser: these fields
+would reveal account existence. Keep `clientId` internal to the admitted new
+purchase. Resolving an existing linked contact is not authentication and grants
+no access to its profile, previous orders, subscriptions, addresses or invoices.
+An unverified buyer can enter another person's email; returning that contact
+allows the new purchase to belong to that email's client, without modifying a
+linked account. A signed-in buyer instead uses the verified session's owned client.
+
+Optional `profileDefaults` contains `firstName`, `lastName`, `phone` and `country`
+(each optional or null). On a new unlinked contact these initialize the profile;
+on an existing unlinked contact a nonempty value replaces its prior default,
+while an empty string, null or absent input never erases a stored value. This
+matches the reference adopter's guest-default refresh, rather than treating a
+guest's previous default as a protected account profile. Names are bounded to
+80 characters, phone to 64 and country to 2; the host supplies only values already
+admitted through its own field validation. The factory does not normalize these
+profile values or make them an order's immutable delivery contact.
+
+Optional `journey` contains `idempotencyKey` (8–160 characters), `locale` (1–35)
+and `mode` (`one_time` or `subscription`). It replaces the `metadata.checkout`
+object with `lastIntentIdempotencyKey`, `locale`, `mode` and `clientMatchReason`
+(`client_created` or `client_match_exact_email`), preserving other metadata keys.
+Absent journey input preserves existing metadata. Existing unlinked contacts
+refresh `updated_at` on each call, including calls without optional inputs.
+The UPDATE itself requires `principal_id IS NULL`; a concurrent sign-in that
+links the row prevents any later refresh of it. Linked rows preserve every
+column and row version, including timestamps and metadata. Creation provenance
+and lifecycle stage are not rewritten on an existing contact.
+
+Input email is trimmed and lowercased, with no dot or plus-tag folding. A
+canonical input must be a valid email; raw email is limited to 320 characters.
+The server chooses acquisition source (1–100 characters after trimming, raw
+limit 100) and lifecycle stage (`lead`, `customer` or `inactive`). Extra fields,
+including a principal ID or arbitrary metadata patch, refuse. Malformed email returns
+`contact_client_email_invalid`; malformed shape/provenance/stage returns
+`contact_client_input_invalid`. Lookup compares the exact `lower(email)` namespace
+of the unique index and challenge: a space-padded legacy row is not the canonical
+email. An existing canonical peer wins; otherwise a new canonical client is
+inserted. The factory does not repair legacy identity data. The separate native
+account-link lookup trims stored email and can report
+`account_normalized_email_ambiguous` when both rows exist; the existing email
+challenge matches exactly and can sign in the canonical contact in that state.
+
+A matching retained client or principal with an erasure receipt returns
+`account_erased_refused`. Erasure fencing uses the same receipt-before-contact
+SHARE lock as account linking. Erasure pseudonymizes the old contact and frees
+its original email: a later purchase with that address creates a fresh client,
+with no access to the erased shell or its history. Receipts contain no original
+email lookup, so this is subject-level refusal, not original-email suppression.
+
+Bind the factory to the restricted runtime connection with the existing native
+client INSERT/SELECT, bounded profile/metadata UPDATE and receipt SELECT capabilities.
+The profile initialization uses the existing permitted INSERT columns followed
+by the guarded UPDATE in the same transaction. One transaction uses
+`INSERT ... ON CONFLICT (lower(email)) DO NOTHING` and a fresh lookup, with
+5-second lock and 15-second statement timeouts. Operational errors reject and
+roll back; they are not successful typed refusals. There is no SQL/grant change,
+account-link interface change or modification of challenge issue/redeem.
+
+The existing privacy contributor treats populated `clients.metadata` as opaque
+host-owned data. A host that supplies journey facts must declare its disposition
+in the existing privacy policy; the factory installs no retention exemption.
+Missing ownership continues to refuse erasure. Retaining journey provenance
+under that explicit policy does not reconnect a fresh contact to the erased
+client or its orders.
+
+Before calling, the host admits checkout, applies requester quotas and bounded
+request size/concurrency, and records its applicable terms decision. Call at
+purchase submission, not each configurator render. The host owns retention and
+cleanup of unpurchased unlinked contacts; no TTL, marketing consent or automatic
+challenge delivery is inferred. Contact creation and order creation are separate
+transactions: a failed order may leave an unlinked contact. Downstream writers
+must recheck their own authority, including erasure races after this transaction.
+No requester limiter or public HTTP endpoint is installed by this factory.
+
 ## Opt-in OIDC access tokens
 
 `createOidcIdentityVerifier` is separate from the existing static customer and

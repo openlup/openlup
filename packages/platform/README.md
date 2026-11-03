@@ -435,6 +435,31 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 
 ## Commerce contracts
 
+`./commerce/server` also exports `createPostgresCheckoutRecoveryTokenPort` for a
+trusted host's already admitted order. Inject a dedicated transaction lane with
+effective service-role privileges. The port supports contacts without a principal,
+stores only token hashes and computes expiry as order creation plus 24 hours;
+the shared `expiresAt` argument cannot choose a deadline. Issuing a new link ends
+the previous link of the same order. Inspection preserves initial subscription
+mode and cadence from stored quote/activation facts, normalizes consumed links
+for paid confirmation, and grants payment continuation only through validation
+of an active pending order. It sends no mail and performs no settlement. See the
+[recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens).
+
+`./commerce/server/postgres` also exports
+`createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
+request and pass it to `createConcurrentCommercePriceAuthorityPort` from
+`./pricing`. It reads complete active price-list and exact unit-entry histories,
+plus the selected context's complete subscription-policy history. UUID demand
+waves are deduplicated and chunked at 500; result rows are never truncated.
+Matching keys use canonical UUID values; query arguments and returned identifiers
+keep their original spelling.
+Raw histories and failed promises are shared only within that request, with
+caller-owned copies. The existing authority selects half-open effective windows,
+validates policy digests and refuses ambiguity; the reader never chooses a newest
+winner or substitutes a fallback after a failed read. Supply the restricted
+runtime executor; the reader changes no role, grants, configuration or data.
+
 `./commerce/server/postgres` exposes the existing native
 `createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
 `createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
@@ -714,12 +739,20 @@ the managed adapter retains the underlying write fences. Adjacent shipping,
 catalog-price and subscription-band schemas and managed adapters remain reference-owned.
 
 `createPostgresCommercePromoDataPort` and `createPostgresPromotionClaimSweepPort`
-use an injected `PgQueryExecutor` from `./data`. They retain four evaluator reads
+use an injected `PgQueryExecutor` from `./data`. They retain five evaluator methods
 and bounded stale-claim sweep; they add no claim writer or reservation path.
 `PROMOTIONS_MIGRATIONS` identifies the byte-identical projections of canonical
 units 47/48 with paths, positions and hashes. These sparse units are not an
 installation chain: use the complete canonical catalogue. No migration or
 manifest identity changes in this move.
+
+Two native evidence limits remain: the device-redemption routine returns constant
+false because visitor evidence is not persisted; this does not establish device
+eligibility or implement a device guard. Redemption counts are keyed by individual
+promotion IDs and do not aggregate mirror families. Hosts must not assume either
+capability or claim full eligibility parity from these reads. The characterization
+tests preserve these limits without changing the reader or adding a default
+eligibility rule.
 
 The server entry is classified as an adapter because its executor declaration
 reaches the data entry and optional pg types. It imports at runtime without pg
@@ -1175,6 +1208,11 @@ in both resolution modes with all three optional peers absent.
 ## Identity import candidate
 
 `./identity` provides server identity services; `./identity/contracts` supplies browser-shareable contracts.
+The host-only `createPostgresContactClientRegistrar` resolves guest purchase
+contacts and refreshes optional defaults only on unlinked rows; its result grants
+no account access and linked rows remain untouched.
+See [guest contact resolution](../../docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
+for host quotas, internal result fields and erasure boundaries.
 This is a development-preview import candidate, not an activated adopter contract.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
