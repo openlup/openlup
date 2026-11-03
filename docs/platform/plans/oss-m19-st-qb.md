@@ -17,8 +17,10 @@ additive entry/API inventory and related documentation changes.
 
 ## Exclusions and limits
 
-No SQL asset, grant, export subpath, control, starter composition, price authority
-or promotion reader changes. Existing strict envelope readers remain unchanged.
+No SQL asset, grant, export subpath, starter composition, price authority
+or promotion reader changes. The sole control exception is the pinned opaque
+payload handoff in the catalog document boundary scanner and its contribution
+guidance. Existing strict envelope readers remain unchanged.
 Current-direct row consistency does not establish a publication-wide snapshot
 or a publication-head protocol. Document schema admission, semantic identity
 and canonical digest verification remain required host policy. No fallback,
@@ -203,3 +205,12 @@ behavior remain unchanged. The measurement is not rerun after this timing-only e
 - maps the existing authority error catalog_sku_identifier_authority_absent to catalog_primary_trade_item_invalid: 0.045 ms local, 0.176 ms estimated hosted, 10,000 ms default.
 - maps the existing authority error catalog_sku_identifier_authority_ambiguous to catalog_primary_trade_item_invalid: 0.048 ms local, 0.187 ms estimated hosted, 10,000 ms default.
 - maps the existing authority error catalog_sku_identifier_authority_invalid to catalog_primary_trade_item_invalid: 0.046 ms local, 0.180 ms estimated hosted, 10,000 ms default.
+
+## Document verification boundary
+
+The authorized repair admits exactly this reader's single payload projection,
+unknown field and direct unread handoff to required host verification. Refusal
+witnesses retain other-path, extra-read, interpretation, inspection and logging
+exclusions. The lexical guard supports independent behavior review. Local signed
+repair and two fresh full reviews are authorized; canonical verification and
+external delivery retain the existing supervisor gate.
