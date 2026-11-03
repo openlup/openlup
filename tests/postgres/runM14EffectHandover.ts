@@ -804,7 +804,7 @@ try {
   }
   if (catchup) {
     const expected = finalGraph.compatible.tables.find(table => table.table === "outbox_events")!.rows.filter(row => JSON.parse(row).idempotency_key === "catchup-effect-key");
-    assert.equal(expected.length, 99);
+    assert.equal(expected.length, 1);
     assert.deepEqual((await target.runtime.query("SELECT pg_catalog.to_jsonb(t)::text AS value FROM public.outbox_events t WHERE idempotency_key='catchup-effect-key'")).rows.map(row => row.value), expected);
   }
   if (managedFirst) await assertManagedTypedTarget(target.runtime, managedFirst.obligations);

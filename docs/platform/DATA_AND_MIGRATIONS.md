@@ -1775,19 +1775,18 @@ legacy selection remains available for existing history. The required installed-
 compares the projection against the canonical manifest and exact source bytes.
 See [module catalogues](#module-catalogues-and-installed-histories) and the
 [installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
-The G4 local draft adds purchase ownership to the existing inventory reservation
+The G4 forward adds purchase ownership to the existing inventory reservation
 table. Renewal ownership becomes nullable while its UNIQUE and foreign key stay
 intact; a validated exclusive-owner CHECK requires either a renewal operation
 or a purchase order. Existing renewal rows need no data backfill. Purchase
 release/expiry change only purchase-owned rows, and the unchanged ATP, renewal,
 stock-wait and retry paths continue counting their live quantities. One command
 receipt retains batch/release/cancel replay; runtime table grants do not widen. This
-ownership alteration is accepted in principle and the observed-stock donor
-slice and stabilized owner read are accepted; the small prior admission control
-remains required before landing. The receipt table revokes PUBLIC and named
+ownership alteration is named by the closed class control and bound by the
+co-located feature pins. The receipt table revokes PUBLIC and named
 runtime/browser roles separately from function ACLs; it introduces neither RLS
 nor table grants. The existing reservation-table ACL stays unchanged. Local lots, locations,
-balance counters and movement history are not represented by this draft.
+balance counters and movement history are outside this slice.
 
 The native abandoned-checkout wrapper locks the order then its intents, matching
 the preceding payment slot. It delegates aggregate cleanup to the existing
@@ -1796,8 +1795,8 @@ one transaction. Strict command receipts reject changed keyed input; paid,
 captured or indeterminate evidence prevents cancellation. It rejects renewal
 orders and admits no new holds on cancelled orders. No withdrawal metadata or
 money effect is written. A late capture's review disposition belongs to the
-preceding payment slot; this draft's base can only prove settlement refuses to
-reopen a cancelled order until that slot is integrated.
+preceding payment slot: it records `review_required` without reopening the
+cancelled order or reclaiming its released holds.
 Dedicated promotion cancellation remains unbound. Reference fields, including
 keys and source references, can contain identifying strings; hosts should use
 opaque references and avoid personal details in metadata and reasons. No erasure

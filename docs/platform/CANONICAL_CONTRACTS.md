@@ -595,16 +595,14 @@ generic prepared-provider storage and real PSP qualification remain unavailable.
 The separate closed-class admission prerequisite and feature pins must precede
 submission; a local manifest entry alone grants no delivery or release authority.
 
-The G4 purchase-hold draft appends the same native forward path/hash to all three
+The G4 purchase-hold forward appends the same native forward path/hash to all three
 manifest selections, with a separate measured catalogue digest for each existing
 installation shape. It preserves every prior source pin and defines four new
 bounded routines rather than replacing ATP or renewal functions. Abandoned compensation wraps
 the unchanged aggregate donor and releases purchase holds atomically; it adds
-neither withdrawal markers nor raw runtime ledger grants. Manifest
-selection is not SQL admission: the ownership alteration and narrowed donor
-slice and stabilized read are accepted; the small prior control remains
-required before landing. No reviewed
-forward approval pin is added by the feature draft.
+neither withdrawal markers nor raw runtime ledger grants. Source admission
+separately checks the closed native class and co-located whole-forward/function
+pins. The data owner records the accepted ownership shape and donor limits.
 The native destination suffix adds two private address/binding relations and
 four bounded routines without replacing an existing function. Native operator
 results add applied_from_next_parcel; callers must name that partial applicability

@@ -539,3 +539,226 @@ correction is the only invocation recovery; no behavioral test needed relaxing.
 The real pack above is stable because no packed source, SQL or manifest changed
 after measurement. Remaining joined G6 acceptance, ordered integration and native
 review are still open; estimate1-2workingdays excluding waits, repair cycles0.
+
+
+## Combined hold/destination continuation and time proof
+
+The supervisor accepts the read-only (a)-(l) inventory on the two frozen row
+heads. This continuation builds one combined candidate with fresh native review
+budget0/3, stopping before review. SQL remains byte-identical. The later time
+ruling accepts a PostgreSQL-built SQL-only identity: exact UTC rendering after
+AT TIME ZONE preserves microseconds, while TypeScript never builds/parses/compares
+that key. No format-only SQL edit, timestamp helper or public entry is added.
+
+| Own time use | Class | Treatment |
+| --- | --- | --- |
+| TS expiresAt, SQL command expiry | PostgreSQL-built SQL-only identity, no TypeScript key | purchaseReservation.ts:11,50 -> forward:60,64,115; typed timestamptz rendered after AT TIME ZONE UTC, compared as receipt JSON and hashed only in SQL. |
+| TS reserve/release/expiry now | VALUE | TS:13,50,54,57 binds exact input string directly to timestamptz; SQL:50,74-76,110,118,126,141,156,163,173,176-178 retains precision. |
+| TS cancellation clock/default Date | VALUE | TS:65,74 uses a fresh host clock, not a stored time; SQL:189,199,225,231,239 stores/passes timestamptz and excludes it from receipt identity. |
+| SQL created_at/updated_at defaults and writes | VALUE | forward:21,118,126,156,163,178,239; timestamp storage only. |
+| SQL stock.stale_after and held expiry/order | VALUE | forward:110,176-177; timestamp comparisons/order stay entirely in SQL. |
+| Stored times returned to G4 TS | None | Bounded results contain IDs/status/counts or cancellation boolean; no stored-time JS parse or key. |
+
+New real PostgreSQL proof is in purchaseReservationNative.test.ts: SQL-only expiry
+identity, with two instant pairs (123456Z/+09:00 and000000Z/no-fraction), each
+across three distinct runtime backend PIDs fixed at UTC, Etc/GMT-9 and Etc/GMT+5.
+Every connection asserts effective service_role with no superuser/bypass flags
+and the g4_runtime login identity; fixture setup declares that login NOSUPERUSER/NOBYPASSRLS. Twelve equivalent-spelling replays, six changed-
+microsecond refusals, two initial non-null identities, plus two NULL/default
+identities remain one effect each. Each non-null replay scenario has one receipt, fingerprint,
+header and line; hard hold stays2 and availability8 before the separate NULL/default case. Stored expires_at retains
+all6digits; receipt expiry text preserves123456 or its stable whole-second UTC
+spelling. Stock snapshots stay unchanged. NULL now and both infinities retain
+named input/elapsed refusals; NULL expiry keeps the30minute default and replay.
+The full native file passes28cases; logs g4g3-g4-time-three-sessions.out in scratch.
+No movement ledger is introduced; native observed-stock row and reservation-line
+accounting are the asserted stock boundary. No SQL/managed behavior change.
+
+G3's separate frozen-head proof is prepared only in an ignored scratch archive
+inside this worktree so its own worktree remains untouched. Test/record patches
+will be applied after the two expressly authorized integration merges. Keep the
+first G4 source delta/patch preserved while those merges require a clean tree.
+
+## Combined purchase holds and destinations: integration evidence
+
+The supervisor authorizes one local bundle, with two exact DCO merge commits:
+`941c64e4` integrates `48fb8a20` (tree `12754c5b`), and `2cc64167`
+integrates `51c029d1` (tree `61152662`). The separate pin commit is
+`cf890d9f`; no native review, canonical verification, push or PR is authorized
+in this run. The bundle has consumed zero of its three native repair cycles.
+A subsequently repaired predecessor must be integrated only when the supervisor
+names its head.
+
+Both own production deltas preserve their accepted added/deleted line hashes:
+G4 has 362 lines, SHA-256
+`5eb934055d876b047e16713a3fd2c9b84dc20416ffa4b002acc8c27eefd06162`;
+G3 has 377 lines, SHA-256
+`a7326d0a08dcd291f45fdee999163dc3b8d546619d534ff42809b8d58c624cbf`.
+Every own production source and canonical SQL file is also byte-identical to
+its accepted row head. G4's generated packaged SQL copy and both manifest
+projections are now present; the canonical and packaged forward hashes stay
+`0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323`
+and `104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6`.
+
+The transfer union preserves all added content lines: first merge 63 G4 and
+274 predecessor lines; second merge 337 integrated-predecessor and 54 G3
+lines. Sorted added-line hash lists match before and after each union. The
+complete transfer file passes all 16 cases without coverage. Both fixture sets
+run without row/key collision. Duplicate activation table entries were
+deduplicated in capture/restore; the actual connected graph has 98 tables.
+The two destination relations carry full postal addresses and may carry contact
+phones; transfer enforces cumulative row and byte limits and no erasure path
+is provided. Purchase references may also hold identifying strings; hosts
+should supply opaque references.
+
+Real PostgreSQL measured the current inventories and replayed each installation
+with zero additional migrations. Historic inventory pins remain unchanged:
+
+| Shape | Units | Actual current inventory SHA-256 |
+| --- | ---: | --- |
+| Legacy | 95 | `877bdd3d4db0e71da014647e6e8a884f8626ea59206dc6c70c4cad2477719a61` |
+| Qualified bootstrap with restore | 99 | `e578feac21e0329e3dd17f8188ad42c6ff522672708d23c7c6bdf236a6e65819` |
+| Qualified separate migrator with restore | 99 | `f0723c366ccbc4de21ea433efe880a286a2b3d09aa74114eb823faa6157848dd` |
+| Restricted admin installer-managed | 98 | `6930bc93c7975858d1357cb0801b840eb4590571330c796cf1020a8b0a356a60` |
+| Restricted admin operator-provisioned | 98 | `0f51f4ee95a8d756e62352443d79f1fde45c41dafc62279a5c12bf05eaeb67e7` |
+
+The producer is `node --import tsx .context/scratch/g4-inventories.ts`, using
+real containers, the canonical migration runner, catalog projection and a
+fresh runner replay. The literal change tables retain both parent values and
+the measured replacement in `.context/scratch/g4g3-*-literal-report.json`.
+The actual capture export supplies the handover table count; the unrelated
+catch-up outbox expectation remains one.
+
+Main's `79ebda3d` registry/admission reader accepts G6, G2, G4 and G3 and passes
+co-location against the exact predecessor. The real catalog suite passes all
+130 cases with `service_role` present and absent. The pin commit changes only
+the two row bindings and the bound-list test description/expectation, now
+`slots.slice(0, 4)`.
+
+| Official Node 24.21.0 real pack | Predecessor `48fb8a20` | Bundle | Delta |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 2,435,777 | 2,449,097 | +13,320 |
+| Code gzip bytes | 1,950,344 | 1,954,742 | +4,398 |
+| Unpacked bytes | 11,454,327 | 11,524,618 | +70,291 |
+| Files | 3,021 | 3,029 | +8 |
+
+Both the 1,970,000-byte code cap and 2,485,000-byte packed regroup point
+remain satisfied. The package includes both real SQL assets and manifest
+entries. The per-file itemization is
+`.context/scratch/g4g3-bundle-size/itemization.json`: exact marginal prefix-gzip
+contributions at every content-changing file, plus an explicitly identified
+unchanged-content dictionary/framing residual. Those contributions sum to the
+real pack and policy code-class deltas, rather than adding standalone gzip
+sizes. Root capture/restore files, native tests and these records add no
+tarball bytes.
+
+The joined capture-after-cancel test originally assumed a flat response shape.
+The predecessor returns the outcome under `event`; the corrected assertion
+checks that exact shape and requires the review column to exist. Its isolated
+real-PostgreSQL run passes, including restart, the `review_required` persisted
+fact and released stock. No production code or SQL repair is involved.
+
+Self-retro: preserve complete shared proof cases, then measure the combined
+catalog rather than adding parent counts. An overly broad local count rewrite
+also touched an unrelated catch-up assertion; inspection restored its original
+value and narrowed the helper before the witness run.
+
+### Bundle time sweep and timeout measurements
+
+All 55 initial solo no-coverage cases pass: 28 purchase, 24 destination and
+three bundle-owned transfer cases. The latter measure 6.30, 4.97 and 3.68 s;
+each now has an explicit 30,000 ms timeout and its measured one-line comment.
+The 52 native cases are below three seconds when run solo.
+
+The current ten-file real-PostgreSQL sweep reports:
+
+| Sessions | Passed | Classified main observations | Unclassified failures |
+| --- | ---: | ---: | ---: |
+| Default UTC | 204 | 0 | 0 |
+| Etc/GMT-9 | 201 | 3 | 0 |
+| Etc/GMT+5 | 201 | 3 | 0 |
+| Alternating UTC / Etc/GMT-9 | 197 | 7 | 0 |
+
+Every own native case passes in all four modes. The observations are confined
+to the nine preclassified main sites: the date-only retry fixture, two raw
+transfer representations, two retry rollback snapshots, two technical-stock
+snapshots and two restored-line snapshots. Those main assertions are unchanged.
+The diagnostic startup hook checks each actual connection's requested zone and
+role and patches newly loaded pg copies; it is ignored scratch, not a product
+default, parser, export, CI exemption or committed harness change.
+
+Two own test snapshots initially compared PostgreSQL-rendered time strings from
+different sessions. Purchase snapshots now retain every field under a local
+read-only UTC transaction. The destination transfer comparison reuses the
+existing UTC census and still compares all five address/support tables without
+truncating times or dropping fields. These are the expressly authorized test-side
+zone corrections; production source, SQL, grants and behavior stay unchanged.
+The transfer merge's original added-line and callback-body hash witnesses were
+recorded before this separate correction. Full current-mode reports, startup
+connection probes and the earlier failed observations remain in scratch.
+
+Public owner prose now reflects the integrated class/pins and the proved
+late-capture review result, rather than the earlier draft's pending-control
+state. Source admission remains separate from manifest selection. Dedicated
+promotion cancellation and native address-notice dispatch remain unbound here;
+the notice binding belongs to the communications follow-up. The package README
+correction needs a fresh official pack before the final report.
+
+### Bundle integration stop: cold-consumer export classification
+
+The actual cold consumer stops in assertExportInventory at
+scripts/packages/platform-cold-consumer.ts:170: the installed manifest exposes
+commerce/server/destinations but neither closed classification list names it.
+A complete comparison finds exactly that one unclassified export and zero stale
+entries. The original accepted G3 head also lacks this classification. No source,
+SQL, assertion, registry or control fix was made after this finding. The existing
+suite stop rule requires reporting before a source repair. The bounded proposed
+repair is the own non-adapter inventory line plus a regression assertion; no SQL,
+public API, signature, grant or cap needs changing.
+
+Current completed proof, without coverage: 26 further focused files / 446 cases,
+all green; this includes all 11 unchanged starter files. The remaining focused
+queue is paused, not claimed complete. Four full composition files pass22 cases;
+all22 cases pass solo. The repeated own proofs pass32 cases (all28 purchase,
+the restricted next-cycle route and allthree own transfer cases); the original
+55-case solo evidence remains. Slow transfer cases retain explicit30,000ms
+comments; additional composition timeout comments are not yet finalized. Their
+existing explicit600,000ms (restore1,200,000ms) cold-setup overrides remain, and
+measured solo timings are retained in g4g3-composition-timeout-table.json.
+
+The handover witness ran to its end in99.128s:98tables, two accepted effects
+recovered and one uncertain operation fenced. The complete report is in
+.context/scratch/oss-m14-connected-catchup/journey-Klwh7S/report.json. The10-table
+growth is G4's five purchase/stock relations and G3's five destination/support
+relations already listed above. Historic catalogue pins stay unchanged.
+
+Official final pack supersedes the earlier figure: predecessor48fb8a20 packed
+2,435,777 ->2,449,053B (+13,276); code1,950,344 ->1,954,742B (+4,398);
+unpacked11,454,327 ->11,524,562B (+70,235); files3,021 ->3,029 (+8).
+Real SQL and manifest are included. It is44B below the first bundle pack after
+the public-text correction. Per-file packed/code attribution is retained in
+.context/scratch/g4g3-final-size/itemization.json. No cap or gate number changed.
+The clean exact candidate archive passed packages:check --pack for allthree
+publishable tarballs, without findings. Actual cold starter173tests, typecheck
+and build pass before the export-classification refusal. A separate Linux glibc
+2.36 / officialNode24.21.0 install passes with networknone, a fresh empty cache,
+only local tarballs and all required omission/script flags. Its installed public
+factories preserve the microsecond input, named next-parcel outcome and bounded
+cancel call, with both packagedSQL hashes checked. This is a bounded installed
+entry proof, not a claim that the full cold consumer passed on Linux.
+
+Time sweep connections were353 inGMT+5,352 inGMT-9 and353 in mixed mode, over
+tenfiles each, with zero requested/actual zone mismatches. Effective restricted
+role proofs remain in the committed native cases. Both neutrality checks pass;
+strict typecheck has zeroerrors/edges, lint zeroerrors, astclean. Policy retains
+three unanswered scoped no-impact obligations, to settle with the final delta.
+No native review/session, canonicalverify, push, PR or delivery occurred;0/3
+cycles consumed. DCO finalization and the supervisor-named repaired predecessor
+remain pending. No G3 or other worktree was edited.
+
+Self-retro: the real installed consumer catches a missing export classification
+that synthetic fixtures generated from the same lists cannot expose. Running it
+earlier than the remainder of the broad suite queue bounded the wasted work.
+Stop before repairing shared source; the package and SQL outcomes themselves
+remain unchanged. The remaining suites and final identity must be recomputed
+on the resumed, repaired candidate.

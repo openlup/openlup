@@ -659,7 +659,7 @@ caller-declared schema requirements. Missing proof keeps the named refusal.
 
 ## Inventory
 
-The local purchase-reservation draft exposes `createPostgresPurchaseReservationPort`:
+Native purchase reservations expose `createPostgresPurchaseReservationPort`:
 an atomic ordered item batch over finalized order items, per-reservation release,
 and bounded expiry. The trusted host supplies its observed-stock source and
 server payment status, wires checkout compensation and schedules expiry. Item
@@ -668,8 +668,8 @@ live holds together with renewal holds, while the fourteen-day subscription
 priority remains in force for purchase admission. Matching replay retains the
 reservation identity and current status; changed keyed input and elapsed initial
 expiry refuse. Local lots, locations, balance counters and movement history are
-outside this slice. The ownership alteration and narrowed donor slice await
-admission; this is not an installed npm capability. See the
+outside this slice. Install the complete catalogue; this remains a
+development-preview source binding. See the
 [G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
 
 `createPostgresAbandonedCheckoutCompensationPort(executor, now?)` supplies
@@ -680,8 +680,8 @@ keyed replay, refuses renewal orders and leaves existing payment/uncertainty
 facts untouched. The host withholds this operation for uncertain dispatch.
 Dedicated promotion cancellation (`cancelUnstartedPromotionOrder`) remains
 unbound on native PostgreSQL. No table grant, withdrawal marker or provider
-dispatch is added. The owner read is accepted; the prior admission control
-remains required before landing.
+dispatch is added. Install the complete catalogue and compose the binding
+explicitly.
 
 Reservation keys, stock-source references and cancellation reasons can contain
 identifying strings, as can receipt metadata. Hosts should use opaque references

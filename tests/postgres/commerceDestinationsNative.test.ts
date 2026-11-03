@@ -8,7 +8,8 @@ import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/
 import { fixture as shipmentFixture, openCase, replacement, executor } from "../helpers/fulfillmentNative.js";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresDeliveryAlignmentPort } from "@openlup/platform/fulfillment";
-import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
+import { createPostgresOperatorAuthority, createOperatorRecovery } from "@openlup/platform/account-support";
+import { createM12OperatorSubscriptionActionRoute } from "../../server/runtime/public-reference/m12AccountSupportBinding.js";
 import { AT, later, call, alignmentInvariant } from "./subscriptionNativeFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -372,4 +373,40 @@ it("retains future-only replay, old parcel and its notice across a real PostgreS
  expect(await counts(f)).toEqual(before);
  expect(await port().read("shipment", f.shipment)).toEqual(f.original);
  expect((await port().read("subscription", f.subscription)).destinationId).toBe(changed.futureDestinationId);
+});
+
+it("reports the stored microsecond next-cycle VALUE through the real restricted operator route", async () => {
+ const stored = "2026-11-30T12:00:00.123456Z";
+ const observations: { zone: string; database: string; route: string | null }[] = [];
+ for (const zone of ["UTC", "Etc/GMT-9", "Etc/GMT+5"]) {
+  const f = await fixture(), db = await runtime.connect(), key = `precision-${randomUUID()}`;
+  await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscription, stored]);
+  try {
+   await db.query("SELECT set_config('TimeZone',$1,false)", [zone]);
+   expect((await db.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+    .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+   const authority = createPostgresOperatorAuthority({ run: work => work(db) }, { operatorId: f.operator, now: () => Date.parse(AT), recoveryPath: () => "/repair" });
+   const input = { operatorId: f.operator, subscriptionId: f.subscription, subscriptionAction: "change_shipping_address" as const,
+    payload: { newAddress: address("Precision recipient") }, expectedVersion: 1, idempotencyKey: key };
+   const execute = createOperatorRecovery({ graph: "native", authority }).execute;
+   const route = createM12OperatorSubscriptionActionRoute(execute);
+   const envelope = { actor: { operatorId: f.operator, graph: "native" as const, role: "admin" as const, isMachineActor: false as const },
+    subject: { subjectId: f.client, subscriptionId: f.subscription }, command: { action: "apply_subscription_action" as const, ...input },
+    expectedVersion: 1, idempotencyKey: key, reason: null, evidence: [] };
+   const response = await route(envelope);
+   expect(response).toMatchObject({ outcome: "applied", nextCycleAt: "2026-11-30T12:00:00.123Z" });
+   if (!("nextCycleAt" in response)) throw new Error("operator_route_time_value_missing");
+   const persisted = (await owner.query(`SELECT c.response->>'nextCycleAt' raw,
+    to_char((c.response->>'nextCycleAt')::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') receipt_instant,
+    to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') stored_instant
+    FROM public.customer_support_subscription_commands c JOIN public.subscriptions s ON s.id=c.target_id
+    WHERE c.idempotency_key=$1`, [key])).rows[0];
+   const rawByZone: Record<string, string> = { UTC: "2026-11-30T12:00:00.123456+00:00",
+    "Etc/GMT-9": "2026-11-30T21:00:00.123456+09:00", "Etc/GMT+5": "2026-11-30T07:00:00.123456-05:00" };
+   expect(persisted).toEqual({ raw: rawByZone[zone], receipt_instant: stored, stored_instant: stored });
+   expect(await route(envelope)).toMatchObject({ outcome: "replayed", nextCycleAt: response.nextCycleAt });
+   observations.push({ zone, database: persisted.raw, route: response.nextCycleAt });
+  } finally { await db.query("RESET TIME ZONE"); db.release(); }
+ }
+ console.info("destination-time-value", JSON.stringify(observations));
 });

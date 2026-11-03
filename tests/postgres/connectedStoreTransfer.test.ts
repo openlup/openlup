@@ -480,6 +480,7 @@ for (const table of ["payment_simulator_attempts", "payment_simulator_observatio
   expect(await census(target.owner)).toEqual(before);
 });
 
+// Solo without coverage: 6.30 s including restore; retain 30 s headroom.
 it("transfers purchase owners, lines and receipts losslessly and preserves replay and bounded capture", async () => {
   for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
     expect(packet.owned.find(value => value.table === table)?.rows.length).toBeGreaterThan(0);
@@ -510,7 +511,7 @@ it("transfers purchase owners, lines and receipts losslessly and preserves repla
   expect(await port.reserveOrderItems(purchaseHold)).toMatchObject({ replayed: true, reservations: [{ reservationId: purchaseHoldId }] });
   await expect(port.reserveOrderItems({ ...purchaseHold, metadata: { note: "changed" } })).rejects.toMatchObject({ code: "23505" });
   expect((await target.owner.query("SELECT count(*)::int n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1", [purchaseHold.orderId])).rows).toEqual([{ n: 1 }]);
-});
+}, 30_000);
 
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
@@ -925,11 +926,13 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   expect(before.clients).toEqual([]);
 }, 30_000);
 
+// Solo without coverage: 4.97 s including restore; retain 30 s headroom.
 it("retains private destinations, scoped bindings, support replay and exact address data after restore", async () => {
   await restore();
+  // The existing census compares every field in UTC without truncating stored microseconds.
+  const targetRows = await census(target.owner), sourceRows = await census(source.owner);
   for (const table of ["commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts", "customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
-    const read = (db: Pool) => db.query(`SELECT to_jsonb(t)::text value FROM public.${table} t ORDER BY to_jsonb(t)::text`);
-    expect((await read(target.owner)).rows).toEqual((await read(source.owner)).rows);
+    expect(targetRows[table]).toEqual(sourceRows[table]);
   }
   const original = await createPostgresDestinationPort(target.runtime).registerOrder({ idempotencyKey: `destination-${graph.order}`, orderId: graph.order,
     address: { recipientName: "Synthetic personal recipient", line1: "Synthetic personal street", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: "2026-09-02T12:00:00Z" });
@@ -937,8 +940,9 @@ it("retains private destinations, scoped bindings, support replay and exact addr
   const replay = await target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z') result", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
   expect(replay.rows[0].result).toMatchObject({ replayed: true });
   await expect(target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z')", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version + 1, destinationCommand.key])).rejects.toMatchObject({ code: "23505" });
-});
+}, 30_000);
 
+// Solo without coverage: 3.68 s including restore; retain 30 s headroom.
 it("enforces actual cumulative row and byte limits at EACH address relation", async () => {
   for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
     const index = packet.owned.findIndex(t => t.table === table);
@@ -958,7 +962,7 @@ it("enforces actual cumulative row and byte limits at EACH address relation", as
         } } })).rejects.toMatchObject({ code: "limit_exceeded", table });
     }
   }
-});
+}, 30_000);
 
 
 it("drains every target acquisition command before opening a new installation-key namespace", async () => {

@@ -31,6 +31,18 @@ function connect() {
   const url = new URL(container!.connectionString); url.username = installation.runtimeLogin;
   runtime = new Pool({ connectionString: url.toString(), options: "-c role=service_role", max: 8 });
 }
+
+// Compare every persisted field at full precision without session-zone display differences.
+async function readSnapshot(sql: string, values: unknown[] = []) {
+  const db = await admin.connect();
+  try {
+    await db.query("BEGIN READ ONLY");
+    await db.query("SET LOCAL TimeZone='UTC'");
+    const result = await db.query(sql, values);
+    await db.query("COMMIT");
+    return result;
+  } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+}
 const port = () => createPostgresPurchaseReservationPort(runtime);
 const runner = (root?: string) => createPostgresMigrationRunner({ connectionString: container!.connectionString },
   { installation, root, poolFactory: () => migration });
@@ -58,7 +70,7 @@ beforeAll(async () => {
     WHERE attrelid='public.fulfillment_inventory_reservations'::regclass AND attname='renewal_operation_id'`)).rows).toEqual([{ attnotnull: true }]);
   await expect(admin.query(`INSERT INTO public.fulfillment_inventory_reservations(operation_fingerprint,source_key,expires_at,created_at)
     VALUES($1,'synthetic',$2,$3)`, ["a".repeat(64), later(1), AT])).rejects.toMatchObject({ code: "23502", column: "renewal_operation_id" });
-  beforeUpgradeRows = (await admin.query(`SELECT to_jsonb(r) row FROM public.fulfillment_inventory_reservations r ORDER BY id`)).rows;
+  beforeUpgradeRows = (await readSnapshot(`SELECT to_jsonb(r) row FROM public.fulfillment_inventory_reservations r ORDER BY id`)).rows;
   expect(beforeUpgradeRows).toHaveLength(5);
   expect(beforeUpgradeRows.every(r => typeof r.row.renewal_operation_id === "string")).toBe(true);
   beforeUpgradeAcl = (await admin.query("SELECT relacl::text acl FROM pg_class WHERE oid='public.fulfillment_inventory_reservations'::regclass")).rows[0].acl;
@@ -104,7 +116,7 @@ async function budget(f: Stock, now = AT, forRenewal = false) {
   return call(runtime, "inventory_available_to_promise", [f.source, f.sku, now, forRenewal]);
 }
 async function rows(orderId: string) {
-  return (await admin.query(`SELECT to_jsonb(r) header,
+  return (await readSnapshot(`SELECT to_jsonb(r) header,
     (SELECT jsonb_agg(to_jsonb(l) ORDER BY l.sku) FROM public.fulfillment_inventory_reservation_lines l WHERE l.reservation_id=r.id) lines
     FROM public.fulfillment_inventory_reservations r WHERE r.purchase_order_id=$1 ORDER BY r.id`, [orderId])).rows;
 }
@@ -112,7 +124,7 @@ async function release(id: string, now = AT, key = randomUUID()) {
   return port().releaseReservation({ idempotencyKey: key, reservationId: id, reason: "cancelled", now });
 }
 it("upgrades an existing renewal unchanged and exposes only bounded functions to the actual restricted login", async () => {
-  expect((await admin.query(`SELECT to_jsonb(r)-'purchase_order_id' row FROM public.fulfillment_inventory_reservations r ORDER BY id`)).rows).toEqual(beforeUpgradeRows);
+  expect((await readSnapshot(`SELECT to_jsonb(r)-'purchase_order_id' row FROM public.fulfillment_inventory_reservations r ORDER BY id`)).rows).toEqual(beforeUpgradeRows);
   expect((await admin.query(`SELECT count(*)::int total,count(renewal_operation_id)::int owned,
     count(purchase_order_id)::int purchases FROM public.fulfillment_inventory_reservations`)).rows).toEqual([{ total: 5, owned: 5, purchases: 0 }]);
   expect((await admin.query("SELECT relacl::text acl FROM pg_class WHERE oid='public.fulfillment_inventory_reservations'::regclass")).rows[0].acl).toEqual(beforeUpgradeAcl);
@@ -216,6 +228,58 @@ it("persists the ordered batch, serializes JS arrays as JSON, and refuses every 
   await expect(release(held.reservations[1].reservationId, AT, key)).rejects.toThrow("fulfillment_purchase_reservation_idempotency_conflict");
   expect(await rows(input.orderId)).toEqual(released);
   expect(await budget(f)).toMatchObject({ hard_hold_quantity: 3, available_quantity: 7 });
+});
+it("retains SQL-only expiry identity across spellings, zones and microsecond changes", async () => {
+  for (const [expiry, equivalent, changed, receiptText] of [
+    ["2026-09-02T12:00:00.123456Z", "2026-09-02T21:00:00.123456+09:00", "2026-09-02T12:00:00.123457Z", "2026-09-02T12:00:00.123456"],
+    ["2026-09-02T12:00:00.000000Z", "2026-09-02T12:00:00Z", "2026-09-02T12:00:00.000001Z", "2026-09-02T12:00:00"],
+  ]) {
+    const f = await stock(), input = { ...await purchase(f), expiresAt: expiry };
+    const zones = ["UTC", "Etc/GMT-9", "Etc/GMT+5"], clients = await Promise.all(zones.map(() => runtime.connect()));
+    const db = clients[0];
+    try {
+      const pids: number[] = [];
+      for (const [index, session] of clients.entries()) {
+        await session.query("SELECT set_config('TimeZone',$1,false)", [zones[index]]);
+        expect((await session.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+          .toEqual([{ current_user: "service_role", session_user: "g4_runtime", rolsuper: false, rolbypassrls: false }]);
+        pids.push((await session.query("SELECT pg_backend_pid() pid")).rows[0].pid);
+      }
+      expect(new Set(pids).size).toBe(3);
+      const bound = createPostgresPurchaseReservationPort(db), held = await bound.reserveOrderItems(input);
+      const before = await rows(input.orderId);
+      const stockBefore = (await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows;
+      for (const session of clients) {
+        const bound = createPostgresPurchaseReservationPort(session);
+        for (const expiresAt of [expiry, equivalent]) expect(await bound.reserveOrderItems({ ...input, expiresAt }))
+          .toMatchObject({ replayed: true, reservations: [{ reservationId: held.reservations[0].reservationId, replayed: true }] });
+        await expect(bound.reserveOrderItems({ ...input, expiresAt: changed }))
+          .rejects.toThrow("fulfillment_purchase_reservation_idempotency_conflict");
+        expect((await admin.query(`SELECT count(*)::int receipts, min(command->>'expiresAt') expiry,
+          count(DISTINCT encode(sha256(convert_to(command::text,'UTF8')),'hex'))::int fingerprints
+          FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$1`, [input.idempotencyKey])).rows)
+          .toEqual([{ receipts: 1, expiry: receiptText, fingerprints: 1 }]);
+        expect((await admin.query(`SELECT to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') expiry,
+          operation_fingerprint=(SELECT encode(sha256(convert_to(command::text,'UTF8')),'hex')
+          FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$2) same_fingerprint
+          FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1`, [input.orderId, input.idempotencyKey])).rows)
+          .toEqual([{ expiry, same_fingerprint: true }]);
+        expect(await rows(input.orderId)).toEqual(before);
+        expect(await budget(f)).toMatchObject({ hard_hold_quantity: 2, available_quantity: 8 });
+        expect((await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows).toEqual(stockBefore);
+      }
+      for (const expiresAt of ["infinity", "-infinity"]) await expect(bound.reserveOrderItems({ ...input, idempotencyKey: randomUUID(), expiresAt }))
+        .rejects.toThrow("fulfillment_purchase_reservation_elapsed_expiry");
+      for (const now of [null, "infinity", "-infinity"]) await expect(db.query(
+        "SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,$5,$6,$7,$8)",
+        [randomUUID(), input.orderId, input.stockSourceKey, JSON.stringify(input.items), input.paymentStatus, expiry, "{}", now]))
+        .rejects.toThrow("fulfillment_purchase_reservation_invalid_input");
+      const defaultInput = { ...await purchase(f), expiresAt: null };
+      const defaultHold = await bound.reserveOrderItems(defaultInput);
+      expect(await bound.reserveOrderItems(defaultInput)).toMatchObject({ replayed: true, reservations: [{ reservationId: defaultHold.reservations[0].reservationId }] });
+      expect((await admin.query("SELECT command->'expiresAt' expiry FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$1", [defaultInput.idempotencyKey])).rows).toEqual([{ expiry: null }]);
+    } finally { for (const session of clients) { await session.query("RESET TIME ZONE"); session.release(); } }
+  }
 });
 it("refuses malformed, elapsed, missing, stale, unavailable and foreign-item requests without partial holds", async () => {
   const f = await stock(3), input = await purchase(f, [2, 2]);
@@ -361,7 +425,7 @@ async function besideRenewal(f: Awaited<ReturnType<typeof renewal>>, quantity = 
   return { input, held, stock: { id, sku, source: f.source } };
 }
 async function renewalRows() {
-  return (await admin.query("SELECT to_jsonb(r) row FROM public.fulfillment_inventory_reservations r WHERE renewal_operation_id IS NOT NULL ORDER BY id")).rows;
+  return (await readSnapshot("SELECT to_jsonb(r) row FROM public.fulfillment_inventory_reservations r WHERE renewal_operation_id IS NOT NULL ORDER BY id")).rows;
 }
 it("renewal release and expiry exclude NULL owners; purchase release and expiry preserve all renewal rows", async () => {
   const f = await renewal(admin);
@@ -482,10 +546,10 @@ const compensate = (now = AT) => createPostgresAbandonedCheckoutCompensationPort
 async function compensationState(orderId: string) {
   const result: Record<string, unknown> = {};
   for (const table of ["commerce_orders", "commerce_settlement_intents", "subscription_activations", "commerce_checkout_compensations"]) {
-    result[table] = (await admin.query(`SELECT to_jsonb(t) row FROM public.${table} t WHERE ${table === "commerce_orders" ? "id" : "order_id"}=$1 ORDER BY to_jsonb(t)::text`, [orderId])).rows;
+    result[table] = (await readSnapshot(`SELECT to_jsonb(t) row FROM public.${table} t WHERE ${table === "commerce_orders" ? "id" : "order_id"}=$1 ORDER BY to_jsonb(t)::text`, [orderId])).rows;
   }
   result.reservations = await rows(orderId);
-  result.receipts = (await admin.query(`SELECT to_jsonb(r) row FROM public.fulfillment_purchase_reservation_receipts r
+  result.receipts = (await readSnapshot(`SELECT to_jsonb(r) row FROM public.fulfillment_purchase_reservation_receipts r
     WHERE command->>'orderId'=$1 OR command->>'reservationId' IN
       (SELECT id::text FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1::uuid) ORDER BY idempotency_key`, [orderId])).rows;
   return result;
@@ -569,8 +633,9 @@ it("keeps cancellation after restart and retains the earlier payment slot's late
   const source = randomUUID(), args = [source, "b".repeat(64), source, f.intent, "captured", 500, "XXX", later(1), null, null,
     { sourceKind: "accepted_event", sourceReference: "server-late-capture", observedStatus: "captured", observedAt: later(1), payloadFingerprint: "c".repeat(64) }, "fixture", "/repair", "fixture"];
   const reviewSlot = (await admin.query("SELECT 1 FROM pg_attribute WHERE attrelid='public.payment_truth_events'::regclass AND attname='review_required_at' AND NOT attisdropped")).rowCount === 1;
+  expect(reviewSlot).toBe(true); // The integrated predecessor must exercise the joined capture-after-cancel proof.
   if (reviewSlot) {
-    expect(await call(runtime, "payment_truth_ingest_event", args)).toMatchObject({ outcome: "captured", applicationStatus: "review_required" });
+    expect(await call(runtime, "payment_truth_ingest_event", args)).toMatchObject({ event: { outcome: "captured", applicationStatus: "review_required" } });
     expect((await admin.query("SELECT state,outcome,review_required_at IS NOT NULL review,settlement_transition_id,accounting_document_id FROM public.payment_truth_events WHERE source_event_id=$1", [source])).rows)
       .toEqual([{ state: "open", outcome: "captured", review: true, settlement_transition_id: null, accounting_document_id: null }]);
   } else {

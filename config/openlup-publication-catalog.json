@@ -3718,6 +3718,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261101224000_new_purchase_inventory_reservations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261101225000_commerce_destinations.sql",
       "class": "public-output"
     },
