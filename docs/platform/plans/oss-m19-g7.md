@@ -72,10 +72,10 @@ observed status/time/fingerprint and exact attempt reference. It is a local
 structural type: no payments-module dependency or checker amendment. The driver
 forwards it before fixed money/identity inputs into the existing recovery writer.
 
-## Sole SQL replacement and installed chain
+## Initial SQL replacement and installed chain (historical)
 
 Source: `db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql`.
-The only replacement is
+The initial promotion's only replacement was
 `public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)`.
 Same header/defaults/RETURNS jsonb, plpgsql, implicit SECURITY INVOKER,
 `search_path=pg_catalog`, owner and ACL. No new function/definer, table, index,
@@ -552,3 +552,84 @@ Self-retro: inspect the consumer after a TypeScript comparison. Canonical UUID
 comparison alone is insufficient when unchanged SQL later compares JSON text.
 The same value spelling must reach that request, without normalizing opaque
 provider references or rewriting historical frozen documents.
+
+## Adoption fixes: claim and prepare lock order
+
+The maintainer approved one additional replacement in the existing renewal
+forward: `public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)`.
+It first reads the operation's subscription id without locking, locks that
+subscription FOR UPDATE, then takes the existing operation FOR UPDATE. This
+matches claim's subscription-then-operation order. The remaining prepare body
+is byte-identical, and the original named missing-operation refusal is kept.
+Signature, defaults, jsonb result, implicit invoker rights, search_path pg_catalog,
+ownership and ACL stay unchanged. Claim and every earlier forward byte stay
+unchanged. No retry, extra grant, table, data writer or payment-attempt store.
+
+The reserved SQL commit message, after the required SQL read, is
+`obvious defect fix: renewal claim/prepare lock order`.
+Prepare's preimage is
+`76578042f03f95f7599fa5fc84b0c720fbc8cb17d4031b0a0be6a5c5ce0019fe`;
+after-definition SHA-256 is `fdf5dd6e73764a6404aeb9ed5e05dfc6e66b28044c464905b6f5375410c496e0`.
+The main reader's unchanged exported helper computed the preimage with
+preceding=true. Scratch class checks pass for all five bound forwards; actual
+control admission remains pending the ordered integration and slot amendment.
+
+The new real-PostgreSQL restricted-role test holds the subscription in session
+A, proves B's prepare blocks behind A through pg_blocking_pids, and proves the
+operation remains available to A through FOR UPDATE NOWAIT. A then claims.
+Before repair the witness failed with 40P01 (1.2 s solo). After repair it passes
+(0.4 s solo), with a measured 30 s deadline. It requires one artifact set, no
+new money/subscription/alignment effects, no provider execution, a zero-write
+prepare replay and the same missing-operation refusal. The unchanged concurrent
+public-run witness also passes: one charge, one cycle and no new effect on rerun.
+
+| Zone | Installed | Purchase | Composition | Lifecycle | Gate |
+|---|---:|---:|---:|---:|---:|
+| Default |22/0|13/0|20/0|66/0|18/0|
+| Etc/GMT-9 |22/0|13/0|20/0|65/1|18/0|
+| Etc/GMT+5 |22/0|13/0|20/0|65/1|18/0|
+
+The two failures are the previously classified main test-side UTC assumption
+at subscriptionRetryLifecycleCases.ts:107, with the same case and reason.
+That test stays unchanged. All product and row-owned assertions pass.
+Qualified composition additionally passes 4/0 and admin composition 2/0;
+only their current inventory literals change. Historic pins, chain counts,
+the handover guard text and table count stay unchanged. The handover witness
+reached LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION.
+
+| Profile | Units | Measured current inventory |
+|---|---:|---|
+|legacy|96|abe9d0f792d414e8822f4aa4c2ad87705feb941a74c539e65c8cf76f16c45f05|
+|bootstrap|100|3f1eca1bfd3f84dc5fb9aefa9941c719b3de55f780880c87e9b38985b6dccc58|
+|separate|100|fed2b12ec787b397eb45478401359bba745ae0fb0b982cbbf7b8720aab5d0038|
+|admin-managed|99|51349e1cb0fa1f46867bf23c684fc49f70e7527b990d3d4d695cd82427e60fd1|
+|admin-operator|99|29159277d5b9c54a33e350196f0f46cef14d98dff49edaa0c846ace88cd48a57|
+
+Typecheck, lint, structural rules, both neutrality checks and the complete API
+check pass; API reports and TypeScript are unchanged. The exclusive scanner
+run requested all 58 root script test files after four capacity timeouts:
+54 files pass, four fail; 1,254 cases pass, 16 fail, one skips. Every failed
+file reports the pre-integration native store feature/class inventory mismatch:
+qualified-migration-admission, reviewed-batch-forward,
+reviewed-native-store-forward and source-preview-release. Controls and their
+expectations are unchanged. This is not a passing admission claim; the actual
+registry/scanners must be rerun after the authorized stack/control integration.
+
+Official pack versus the exact predecessor: +18,105 B packed, +14,875 B code,
++89,165 B unpacked, +16 files. Absolute: 2,471,750 B packed; 1,972,522 B code;
+11,631,434 B unpacked; 3,048 files. This repair alone adds 1,042 packed bytes,
+6,465 unpacked bytes, zero code bytes and zero files. The new packaged SQL
+accounts for all unpacked growth; manifest replacements keep the same length.
+The existing 17,300 B row stop is exceeded by 805 B. No cap is changed.
+The run stops for size disposition before the test/record DCO commit; the
+working candidate and SQL read evidence are retained, without claiming review
+readiness. No merge, review, canonical verify, push or PR.
+
+No managed-chain or separate adopter change, supersededByStableJourneyKey or
+checkoutAbandoned write, or new place for dispatched attempts.
+Self-retro: the direct lock-order change needs no retry abstraction. Recompute
+current catalog hashes before a post-fix install. Use the documented tsx
+handover launcher; the initial loader-only error was corrected without a source
+change. The new draft assertion was corrected to the raw RPC's acquired field
+before the passing run; its old-body counterexample stopped earlier at 40P01.
+About 44 minutes were spent waiting for exclusive scanner capacity.

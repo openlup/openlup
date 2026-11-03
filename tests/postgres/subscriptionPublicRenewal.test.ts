@@ -484,3 +484,69 @@ it("refuses a non-zero renewal shipping amount through the restricted purchase w
     { ...facts, shippingAmountMinor: 1 } as unknown as NativeRenewalPurchaseFacts)).rejects.toMatchObject({ code: "22023" });
   expect(await allPublicRows(admin)).toEqual(before);
 });
+
+// Two-session witness measured 1.2 s solo before repair; allow 30 s under load.
+it("locks the subscription before prepare so a concurrent claim creates one artifact set", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "succeeded");
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  const claim = await d.input.store.claimDue({ snapshot, workerId: "lock-order", now });
+  expect((await inventory.createPostgresRenewalReservationPort(executor).reserve({
+    operationId: claim.operationId, claimToken: claim.claimToken, now,
+  })).reserved).toBe(true);
+  const operation = (await d.input.store.readRenewal(d.codec.identity(snapshot)))!;
+  const before = await allPublicRows(admin), a = await runtime.connect(), b = await runtime.connect();
+  const run = async (db: typeof a, sql: string, values: unknown[]) => {
+    try {
+      const result = (await db.query(sql, values)).rows[0].result;
+      await db.query("COMMIT"); return { result, code: null };
+    } catch (error) {
+      await db.query("ROLLBACK"); return { result: null, code: (error as { code: string }).code };
+    }
+  };
+  try {
+    await a.query("BEGIN"); await b.query("BEGIN");
+    await a.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscriptionId]);
+    const aPid = Number((await a.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+    const bPid = Number((await b.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+    const preparation = run(b, "SELECT public.commerce_prepare_subscription_renewal($1::uuid,$2::uuid,$3::timestamptz) AS result",
+      [claim.operationId, claim.claimToken, now]);
+    let blockers: number[] = [];
+    for (let n = 0; n < 500; n++) {
+      blockers = (await a.query("SELECT pg_blocking_pids($1) AS pids", [bPid])).rows[0].pids;
+      if (blockers.includes(aPid)) break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    expect(blockers).toContain(aPid);
+    // B is blocked by A's subscription lock; B must not already own the operation.
+    await a.query("SAVEPOINT operation_probe");
+    let operationAvailable = true;
+    try { await a.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1 FOR UPDATE NOWAIT", [claim.operationId]); }
+    catch (error) {
+      expect(error).toMatchObject({ code: "55P03" }); operationAvailable = false;
+      await a.query("ROLLBACK TO SAVEPOINT operation_probe");
+    }
+    const reclaim = run(a, "SELECT public.subscription_claim_due_renewal($1::text,$2::text,$3::jsonb,'lock-order',300,$4::timestamptz) AS result",
+      [operation.identityKey, operation.operationFingerprint, JSON.stringify(d.codec.encode(operation.cycleSnapshot)), now]);
+    const [prepared, replay] = await Promise.all([preparation, reclaim]);
+    console.log(JSON.stringify({ witness: "renewal-lock-order", operationAvailable, codes: [prepared.code, replay.code] }));
+    expect([prepared.code, replay.code]).toEqual([null, null]);
+    expect(operationAvailable).toBe(true);
+    expect(prepared.result).toMatchObject({ replayed: false, state: "attempt_prepared" });
+    expect(replay.result).toMatchObject({ acquired: false, replayed: true });
+    for (const table of ["subscription_cycles", "commerce_orders", "commerce_settlement_intents"]) {
+      expect((await runtime.query(`SELECT count(*)::integer AS n FROM public.${table} WHERE renewal_operation_id=$1`, [claim.operationId])).rows[0].n).toBe(1);
+    }
+    const after = await allPublicRows(admin);
+    for (const table of Object.keys(before).filter(table => /^(payment_|subscription_delivery_|subscription_method|subscriptions$)/.test(table))) {
+      expect(after[table]).toEqual(before[table]);
+    }
+    expect(d.execute).not.toHaveBeenCalled();
+    expect(await rpc("commerce_prepare_subscription_renewal", [claim.operationId, claim.claimToken, now])).toMatchObject({ replayed: true });
+    expect(await allPublicRows(admin)).toEqual(after);
+    await expect(rpc("commerce_prepare_subscription_renewal", [randomUUID(), claim.claimToken, now]))
+      .rejects.toMatchObject({ code: "22023", message: "commerce_renewal_operation_not_found" });
+    expect(await allPublicRows(admin)).toEqual(after);
+  } finally {
+    await a.query("ROLLBACK"); await b.query("ROLLBACK"); a.release(); b.release();
+  }
+}, 30_000);
