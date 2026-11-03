@@ -89,11 +89,24 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     for (let remaining = Math.ceil(wait); remaining > 0; remaining -= 30_000) {
       await new Promise(done => setTimeout(done, Math.min(remaining, 30_000)));
     }
+    const mailbox = resolve(state, '.context/captured-messages/identity.jsonl');
+    const messages = async () => (await readFile(mailbox, 'utf8').catch(error => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw error;
+    })).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+    const priorTokens = new Set((await messages()).filter(row => row.email === email).map(row => row.token));
     const requested = await call(operator ? 'auth.operator' : 'auth.request', { email }, email);
     expect(requested.ok).toBe(true);
-    const lines = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8')).trim().split('\n');
-    const message = lines.map(line => JSON.parse(line)).filter(row => row.email === email).at(-1);
-    if (!message || typeof message.token !== 'string') throw new Error('recovery_challenge_missing');
+    // Operator acceptance deliberately precedes private mailbox delivery.
+    let message: { token: string } | undefined;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      message = (await messages()).filter(row => row.email === email && typeof row.token === 'string'
+        && !priorTokens.has(row.token)).at(-1);
+      if (message) break;
+      await new Promise(done => setTimeout(done, 25));
+    }
+    if (!message) throw new Error('recovery_challenge_missing');
     privateValues.add(message.token);
     expect((await call(operator ? 'auth.operator' : 'auth.verify', { token: message.token }, email)).ok).toBe(true);
   }

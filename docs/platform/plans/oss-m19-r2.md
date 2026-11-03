@@ -78,3 +78,11 @@ scratch prerequisite. Initial policy output requested the tests-owner trailer
 for the current exact source digest. The unified commit carries that computed
 answer. The existing test discovery, restricted fixture authority, per-case
 timeout convention and mandatory command set remain sufficient.
+
+The first complete scratch run passed nine of ten recovery cases and both
+50-case browser configurations. A restart fixture read the previous operator
+challenge after generic acceptance, before asynchronous mailbox delivery. The
+fixture now waits up to5 seconds for a new captured challenge without issuing
+another request. This preserves the existing acceptance-before-delivery
+contract and the native login cadence. The pending proof reruns that repaired
+operator boundary in both configurations.
