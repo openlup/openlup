@@ -1714,11 +1714,19 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-qa.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
       "class": "public-output"
     },
     {
       "path": "docs/platform/plans/oss-m19-st-rec.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-reg.md",
       "class": "public-output"
     },
     {
@@ -4978,6 +4986,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceReadPreparation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgres/index.ts",
       "class": "public-output"
     },
@@ -6139,6 +6155,10 @@
     },
     {
       "path": "packages/platform/src/identity/postgresAccountLinkStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresContactClientRegistrar.ts",
       "class": "public-output"
     },
     {
@@ -27790,6 +27810,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/communicationsNative.test.ts",
       "class": "public-output"
     },
@@ -27799,6 +27823,10 @@
     },
     {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/contactClientRegistrar.test.ts",
       "class": "public-output"
     },
     {
