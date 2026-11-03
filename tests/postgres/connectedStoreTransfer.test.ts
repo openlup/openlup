@@ -404,6 +404,7 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   return copy;
 }
 
+// Solo median 6.32 s, max 6.44 s; source CI 14.9 s and merge group 21.3 s both ran without coverage (10 s flat limit).
 it("restores writer-created sandbox attempts, cyclic observations and terminal review truth, then continues once", async () => {
   const before = await census(source.owner);
   expect(JSON.stringify(packet)).not.toContain("dispatch-only@example.invalid");
@@ -455,8 +456,9 @@ it("restores writer-created sandbox attempts, cyclic observations and terminal r
     expect(rows.join()).not.toContain("dispatch-only@example.invalid");
     expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
   }
-});
+}, 65_000);
 
+// Solo median 4.31 s, max 4.34 s; allow headroom for hosted database contention.
 it("rolls back the whole restore when a captured simulator observation is missing", async () => {
   const corrupted = structuredClone(packet), observations = corrupted.owned.find(data => data.table === "payment_simulator_observations")!;
   observations.rows = observations.rows.filter(row => (JSON.parse(row) as { id: string }).id !== payments.captured.id);
@@ -464,8 +466,9 @@ it("rolls back the whole restore when a captured simulator observation is missin
   const before = await census(target.owner);
   await expect(restore(corrupted)).rejects.toMatchObject({ code: "target_conflict" });
   expect(await census(target.owner)).toEqual(before);
-});
+}, 30_000);
 
+// Solo medians 3.70/3.64 s, maxima 3.78/3.69 s for the two table-limit cases.
 for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) it(`counts linkable ${table} rows and bytes toward the transfer limits`, async () => {
   const all = [...packet.compatible.tables, ...packet.owned], index = all.findIndex(data => data.table === table);
   const through = all.slice(0, index + 1), rows = through.reduce((sum, data) => sum + data.rows.length, 0);
@@ -478,7 +481,7 @@ for (const table of ["payment_simulator_attempts", "payment_simulator_observatio
   const before = await census(target.owner);
   await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
   expect(await census(target.owner)).toEqual(before);
-});
+}, 30_000);
 
 // Solo without coverage: 6.30 s including restore; retain 30 s headroom.
 it("transfers purchase owners, lines and receipts losslessly and preserves replay and bounded capture", async () => {
@@ -513,6 +516,7 @@ it("transfers purchase owners, lines and receipts losslessly and preserves repla
   expect((await target.owner.query("SELECT count(*)::int n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1", [purchaseHold.orderId])).rows).toEqual([{ n: 1 }]);
 }, 30_000);
 
+// Solo median 3.55 s, max 3.61 s; allow headroom for hosted database contention.
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
@@ -547,15 +551,17 @@ it("refuses a native capture login that row security would silently filter", asy
     await reader.end();
     await source.owner.query(`DROP ROLE ${login}`);
   }
-});
+}, 30_000);
 
+// Solo median 5.03 s, max 5.21 s; allow headroom for hosted database contention.
 it("preserves native JSON digits above the JavaScript exact integer range", async () => {
   const carried = await capture(source.owner, "native-json-number-source");
   await restore(carried);
   expect((await target.owner.query("SELECT payload->>'frozen' AS value FROM public.outbox_events WHERE idempotency_key='original-effect-key'"))
     .rows).toEqual([{ value: "9007199254740993" }]);
-});
+}, 30_000);
 
+// Solo median 5.17 s, max 5.18 s; allow headroom for hosted database contention.
 it("refuses a changed known trigger body and an unknown INSERT trigger before importing rows", async () => {
   const before = await census(target.owner);
   const original = (await target.owner.query<{ definition: string }>(
@@ -575,8 +581,9 @@ it("refuses a changed known trigger body and an unknown INSERT trigger before im
     expect(await census(target.owner)).toEqual(before);
   } finally { await target.owner.query("DROP TRIGGER IF EXISTS retained_transfer_unapproved ON public.commerce_order_holds"); }
   expect(await census(target.owner)).toEqual(before);
-});
+}, 30_000);
 
+// Solo median 5.18 s, max 5.29 s; allow headroom for hosted database contention.
 it("refuses private business omission and nonpristine targets without deleting existing obligations", async () => {
   const targetBefore = await census(target.owner);
   // An actual canonical private BUSINESS row must not disappear as if private
@@ -608,8 +615,9 @@ it("refuses private business omission and nonpristine targets without deleting e
     await target.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.exception' AND idempotency_key=$1", [`shipment_exception:${retainedHold}`]);
   }
   expect(await census(target.owner)).toEqual(targetBefore);
-});
+}, 30_000);
 
+// Solo median 3.86 s, max 4.07 s; allow headroom for hosted database contention.
 it("bounds customer-linked purchase facts, method events and method state in transfer", async () => {
   const compatibleRows = packet.compatible.tables.reduce((sum, table) => sum + table.rows.length, 0);
   const compatibleBytes = packet.compatible.tables.reduce((sum, table) => sum + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0);
@@ -636,7 +644,7 @@ it("bounds customer-linked purchase facts, method events and method state in tra
   oversized.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
   await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
   expect(await census(target.owner)).toEqual(Object.fromEntries([...pristine.compatible.tables, ...pristine.owned].map(table => [table.table, [...table.rows].sort()])));
-});
+}, 30_000);
 
 it("restores writer-produced renewal data and pending duties, then renews through the restricted runtime", async () => {
   await restore();
