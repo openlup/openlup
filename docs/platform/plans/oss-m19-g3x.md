@@ -35,7 +35,8 @@ lint/structural checks, publication/catalog modes, documentation CLI/policy,
 neutrality checks and the full cold installed consumer must pass. Linux glibc
 uses a fresh empty consumer cache and local tarballs for offline installation;
 a temporary uncommitted probe times every cold-consumer command. Real packs
-measure the complete leaf against its exact main base without changing caps.
+measure the complete leaf against its exact predecessor, including the separately
+admitted measured code-class cap carrier.
 
 Simplicity pre-check: copy the already accepted small port unchanged and expose
 one subpath. A wrapper, fallback, shared registry or alternative SQL path would
@@ -61,7 +62,7 @@ the scoped tooling explanation covers only the added classification name.
 The real official-Node pack against main 4d78e855 measures +2,432 B packed,
 +1,867 B code, +8,062 B unpacked and +3 files. Absolute packed bytes are 2,441,887;
 code bytes are 1,954,758. All three publishable tarballs pass package checks.
-No SQL asset, manifest, pin, privilege or budget changes in this leaf.
+The initial leaf changed no SQL asset, manifest, pin, privilege or budget.
 
 The full Linux glibc run passes with Node 24.21.0/npm 11.19.0, a fresh empty
 consumer cache and only local tarballs for every consumer install. An isolated
@@ -97,3 +98,22 @@ unauthorized in this run. The purchase and destination bundle is untouched.
 Self-retro: use the retained preparation/consumer separation to preserve a truly
 empty offline consumer cache, and keep writable ignored fixtures separate from
 tracked source. Run complete API reports after public-type changes.
+
+## Release-train integration
+
+The supervisor authorized stacking this leaf directly on Q2's fixed head
+`24f427232ac00bf8299a388b2a880ad9dda3c236`, preserving its content and the
+coupled leaf-first delivery conditions. The conflict-free merge matches Git's
+predicted tree. The official Node 24.21.0 pack measures 1,970,035 code-class
+bytes, 35 bytes above the previous 1,970,000-byte cap. The leaf therefore carries
+only the admitted code-class number change to 2,055,017, leaving 84,982 bytes
+of measured code headroom. The official pack is +2,455 bytes packed, +1,883
+code-class bytes, +8,062 unpacked bytes and three files against Q2. Absolute
+packed bytes are 2,458,988, unpacked bytes 11,545,321 and files 3,042.
+The three earlier stacked review candidates were voided before any reviewer
+reported. The source now omits the roadmap change; its later delivery follows
+the purchase and destination bundle. Public exports and SQL boundaries are
+unchanged. Two fresh full reviews assess this candidate and its measured carrier
+after the scanner comparison, both neutrality checks, lint, built export checks
+and the leaf's required proofs. No canonical verification, submission or
+publication is authorized here.
