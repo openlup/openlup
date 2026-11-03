@@ -14,14 +14,17 @@ witness. The public-reference descriptor is unrelated and unchanged.
 The distribution supervisor coordinates this worker. Bart Roszkowski is the
 accountable human. Local edits, isolated local Docker proof and a signed DCO
 commit are authorized in this assigned worktree only. Stop built ahead: no
-prepare, reviewers, canonical verify, push/upstream, PR, comment, queue, merge,
-release or publication. Mechanically merge the starter predecessor only after
+prepare, reviewers, canonical verify, push/upstream, PR, comment, queue,
+release or publication. The supervisor separately authorized the required local
+integration of main recorded below. Merge the starter predecessor only after
 the supervisor supplies its frozen head; never rebase or land before it.
 
-Base and policy revision: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`;
+Original implementation base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`;
 base tree: `69ed6ac17997e1f824ab657abc4b862f79326b0a`.
 Scope: existing deployment proof/tests/README, this task record, one additive
-public-output catalogue row, root README and installation-policy limits.
+public-output catalogue row and root README limits. The installation support
+policy remains byte-identical to the original base and is excluded from this
+change’s net paths.
 Exclusions: starter or package edits, migration/workflow/control/budget/baseline
 changes; public hosting, hosted database connection, any
 requirements/blockers document or vendor-documentation claim; credentials,
@@ -162,8 +165,10 @@ and this record carry its executed evidence. No platform host/runtime contract
 changes. Final policy must observe that trailer on the committed tree.
 
 The executed proof source blob is `7816b9bea525e71fc91cd4f63ff7f520ce8beff7`.
-Package, starter, migration, workflow and all existing script-test inputs equal
-the assigned base. The prepared input remains for inspection; proof scratch is
+At the original proof checkpoint, package, starter, migration, workflow and
+existing script-test inputs equalled the original base. The required main
+integration below changes review controls and their tests, without changing the
+Docker proof’s application or package inputs. The prepared input remains for inspection; proof scratch is
 empty and the mutual-exclusion lock is released. Staged secret scanning found
 no leaks. No paths outside the grants are changed.
 
@@ -174,9 +179,120 @@ money, system fonts and unclaimed support/stability/readiness limits remain.
 No upgrade, complete-store, hosted, credential, TLS or production qualification
 was added. No hosted service or account was used.
 
-The frozen starter predecessor has not been supplied. No merge, upstream,
-push, PR, comment, queue, release or publication was attempted. Stop built ahead;
-review/verification/delivery need the supervisor’s later continuation.
+The frozen starter predecessor has not been supplied. Apart from the authorized
+local integration below, no merge, upstream, push, PR, comment, queue, release or
+publication was attempted. Stop built ahead; review/verification/delivery need
+the supervisor’s later continuation.
+
+## Required main integration before first review
+
+Current policy revision and integration base:
+`5054c53dc81b246b81fb77122aeb71f92cfbdd75`, fetched from `origin/main`.
+The old code comparison is `4d78e855cf8bbd57704f9503cd7bae28f96453a5` to
+`3939e227ad8098cee671935e619e7bdc710b9517` (tree
+`ad891007b85edf6ba20749ace42f99b573b688f6`). The required signed-off merge is
+`7c086e5fa4d3c190c6e174520ede07024df71df8`, tree
+`f21b939993dc10b62cc8c89844d05ad7d3cf1e10`, with parents:
+
+1. `3939e227ad8098cee671935e619e7bdc710b9517`
+2. `5054c53dc81b246b81fb77122aeb71f92cfbdd75`
+
+Before merging, `git merge-tree --write-tree --name-only --no-messages HEAD
+origin/main` exited 1, returned conflict tree
+`1e2ed33d99278af8ff9e693066d6d163e97bae4c` and named only
+`config/openlup-publication-catalog.json`. The single merge used
+`git merge --no-ff --no-commit --signoff origin/main`, then a signed-off merge
+commit after an additive catalogue union. No rebase or extra source edit.
+The resolved catalogue was asserted byte-for-byte equal to main with only this
+row inserted in path order:
+`docs/platform/plans/oss-m19-recipes2.md` (`public-output`). Main’s review-economy
+and registry rows retain their values, formatting and original order. The own
+catalogue addition set is exactly that single path before and after integration.
+
+The following values compare the original two-point diff with
+`5054c53dc81b246b81fb77122aeb71f92cfbdd75` to merge
+`7c086e5fa4d3c190c6e174520ede07024df71df8`, before this evidence-only task
+record update. Sorted content lines omit file/hunk headers. They are equal:
+
+| Comparison | Before | After |
+| --- | --- | --- |
+| All files, SHA-256 | `92d2379a46f4c282dd974733a36f98a7c4aa1b7214f9f20bcf554284165ff7ba` | `92d2379a46f4c282dd974733a36f98a7c4aa1b7214f9f20bcf554284165ff7ba` |
+| Without catalogue, SHA-256 | `ffd64264c195d0de2dee3c1078b0f6270259dfcc2455b7d6042ccfe9f2000673` | `ffd64264c195d0de2dee3c1078b0f6270259dfcc2455b7d6042ccfe9f2000673` |
+| All files, stable patch ID | `319cc28f830065d6363a99f24e793f723c9b0b73` | `1608f00889011377d28f60b305566c411f7c5cff` |
+| Without catalogue, stable patch ID | `8fcef22759c7a950b53e5c090bf0700d32946480` | `8fcef22759c7a950b53e5c090bf0700d32946480` |
+
+The full patch ID differs only in catalogue context added on main; excluding
+that file the patch ID matches exactly. No implementation, test or instruction
+line changed outside the additive union. Exact commands run:
+
+```sh
+git diff 4d78e855cf8bbd57704f9503cd7bae28f96453a5 3939e227ad8098cee671935e619e7bdc710b9517 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 4d78e855cf8bbd57704f9503cd7bae28f96453a5 3939e227ad8098cee671935e619e7bdc710b9517 | git patch-id --stable
+git diff 4d78e855cf8bbd57704f9503cd7bae28f96453a5 3939e227ad8098cee671935e619e7bdc710b9517 -- . ':!config/openlup-publication-catalog.json' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 4d78e855cf8bbd57704f9503cd7bae28f96453a5 3939e227ad8098cee671935e619e7bdc710b9517 -- . ':!config/openlup-publication-catalog.json' | git patch-id --stable
+git diff 5054c53dc81b246b81fb77122aeb71f92cfbdd75 7c086e5fa4d3c190c6e174520ede07024df71df8 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 5054c53dc81b246b81fb77122aeb71f92cfbdd75 7c086e5fa4d3c190c6e174520ede07024df71df8 | git patch-id --stable
+git diff 5054c53dc81b246b81fb77122aeb71f92cfbdd75 7c086e5fa4d3c190c6e174520ede07024df71df8 -- . ':!config/openlup-publication-catalog.json' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | sort | shasum -a 256
+git diff 5054c53dc81b246b81fb77122aeb71f92cfbdd75 7c086e5fa4d3c190c6e174520ede07024df71df8 -- . ':!config/openlup-publication-catalog.json' | git patch-id --stable
+```
+
+`git diff --name-only 5054c53dc81b246b81fb77122aeb71f92cfbdd75
+7c086e5fa4d3c190c6e174520ede07024df71df8` names exactly six own paths: root
+README, the catalogue, this task record and the three deployment recipe files.
+None is a package/build/pack input.
+
+The following main-side comparisons produced empty output:
+
+```sh
+git diff --stat 4d78e855 5054c53dc81b246b81fb77122aeb71f92cfbdd75 -- examples packages deploy db .github
+git diff --stat 4d78e855 5054c53dc81b246b81fb77122aeb71f92cfbdd75 -- package.json package-lock.json .nvmrc .npmrc config/openlup-packages.json scripts/packages
+```
+
+The Docker data-rollback proof is therefore not rerun: starter, package, deploy,
+database and build/pack inputs are unchanged. Package delta remains zero by
+input equality; no new packed size or hosted qualification is inferred.
+
+Re-read the merged root guide, native review and accountability, Coverage after
+a passing candidate, Review lessons and documentation-impact guidance. The
+first candidate still needs two fresh independent full reviews for executable
+instructions/proof scripts. An unlanded stack uses full review; reduced
+integration/repair coverage requires a reviewed base already on main and its
+other existing conditions. This row has no counted prior coverage. Do not
+integrate merely for freshness. The frozen starter head is still required before
+any prepare/review continuation; no reviewer, native session or canonical verify
+is started here. Task-record answers are now permitted, but do not reduce review
+or change publication authority.
+
+On the clean merge, `npm run oss:published-tree -- --policy` reports one
+`operations` obligation at
+`docs/platform/RUNTIME_AND_SELF_HOSTING.md#self-host-boundary`, zero unanswered.
+The digest remains
+`sha256-335ccdd934db283b4109d12b3fd5436e645330653b88284614e9c04461867a63`;
+the existing non-merge trailer on `3939e227` still counts. No refreshed answer is
+needed. This follow-up changes only task evidence and contradicting historical
+authority/base wording, not executable source. It is an ordinary content commit
+before prepare, not a tree-identical trailer-only exception. The integration
+hashes above bind the exact merge, before this explicit prose-only exception.
+
+Post-integration checks used pinned Node 24.21.0. Under focused admission,
+the original ten unchanged test files listed above plus
+`scripts/agent-review-registry.test.ts` passed 539 cases across eleven files.
+This includes main’s updated `scripts/documentation-impact.test.ts` and registry
+catalogue/task-record scans. `node --test deploy/neutral-store/prove.test.mjs`
+passed all eight cases, including the planted Edge refusal. The actual Edge
+scan found zero findings in 65 files. Tests and proof source were not edited.
+
+`npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`
+passed. Under its own focused admission, `npm run lint` passed with zero errors
+and 33 warnings; no unrelated warning repair was attempted. `git diff --check`
+passed. Repository neutrality against the merged main SHA reported zero
+increases (7031 text and 57 binary files); UI smoke neutrality reported zero
+forbidden hits. Main’s package/build inputs and the own six-path boundary remain
+unchanged. No Docker rerun, full verify, deployment or review is claimed.
+
+The evidence-only content commit is followed by final policy/navigation,
+clean-tree and secret-scan checks before handoff. It introduces no new active
+in-tree documentation answer; the unchanged existing trailer remains sufficient.
 
 ## Self-retro
 
@@ -187,3 +303,7 @@ actual installation and application to their existing owners keeps the proof sma
 The failed first swap exposed an unnecessary dependency on pooled HTTP state.
 Fresh per-request connections remove that dependency rather than adding retries.
 Lesson: container replacement → connect afresh at the transport boundary.
+
+The required control integration preserved the exact implementation delta. An
+additive catalogue union plus unchanged-input evidence avoided a redundant Docker
+run; full first review remains required. No new process or successor was added.
