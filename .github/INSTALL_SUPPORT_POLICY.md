@@ -62,9 +62,31 @@ the affected claim. A generated package-set BOM binds artifact identities; it
 does not establish installation, publication, provenance or support evidence.
 See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md).
 
-The neutral-store Node/OCI rollback and portable-Postgres Vercel recipes remain
-pending their application-owned entry and exercised local evidence. No hosting
-account or resource is supplied. Root `ui-*` counts remain shrink-only
+The starter host currently boots pending bindings, accepts only local
+Host authorities and does not connect a database. Only local offer validation
+and application-status reporting are bound; configuration health does not
+establish a live store. The [image quickstart](../deploy/neutral-store/README.md) is limited to local
+image build and rollback; its local A → B → A run passed. Public hosting remains
+blocked on starter-owned
+binding and public-origin work; the binder stays application-owned.
+
+The native account readers need explicit host sources for saved addresses,
+billing profiles, payment/delivery preferences, account events and private-profile
+views. A missing section refuses `host_binding_required`, rather than returning
+an empty success. Complete consent choices and grants remain unavailable;
+newsletter read/withdrawal is available, but a saved grant without evaluator
+evidence refuses `host_binding_required`. Historical order detail without
+captured money refuses `native_account_order_money_unavailable`; summaries retain
+recorded total/currency and the line reader retains recorded amounts. Paid
+provisional activation is read through its owned order companion, with no
+subscription association invented before activation completes. See the
+[native account boundary](../packages/platform/README.md#native-account-persistence-reads).
+
+The portable rail takes sandbox payments only; real money currently runs only
+on the managed rail. No supported, stable or production-ready store deployment
+is claimed.
+
+No hosting account or resource is supplied. Root `ui-*` counts remain shrink-only
 reference-source debt. New neutral presentation is constrained to system fonts;
 the root reference's font choices are not an inherited starter requirement.
 
