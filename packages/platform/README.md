@@ -1607,7 +1607,10 @@ R2 adds `readAccountSnapshot` with the two-stage fan-out and a store-level recen
 20-order request, stored-money order history/detail, Customer 360 projections
 and M09 invoice history/PDF delegation. `createInvoiceAccess` checks the requested
 document against the owned account/order history before resolving its ticket or
-reading PDF bytes; foreign or unknown documents return `{ kind: "denied" }`. Select pricing, captured line
+reading PDF bytes; foreign or unknown documents return `{ kind: "denied" }`.
+Standard UUID owner/order/document identifiers match regardless of letter case,
+without rewriting echoed values. Opaque host references remain case-sensitive.
+Select pricing, captured line
 presentation, private extensions and fulfillment evidence through typed host
 ports. Missing evidence stays unknown; owner refusals retain their distinctions.
 The default-off reference selections and host-fed read views are unmounted.

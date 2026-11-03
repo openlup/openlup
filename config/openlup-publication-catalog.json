@@ -1710,6 +1710,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-e4u.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
       "class": "public-output"
     },
@@ -6423,6 +6427,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/snapshot.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/uuidIdentity.ts",
       "class": "public-output"
     },
     {
