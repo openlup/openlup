@@ -3,6 +3,7 @@ import { createOrderReviewHandlers, createPostgresOrderReviewLifecyclePort,
   createOrderReviewAdminHandlers, createPostgresOrderReviewAdminReadPort } from '@openlup/platform/commerce/server';
 import { createPostgresPartnerAcquisitionPort } from '@openlup/platform/marketing/server/postgres';
 import type { PartnersB2BInquirySubmitRequest } from '@openlup/platform/marketing/contracts';
+import { composeOperatorCapabilities } from './operator-composition.ts';
 import type { ActionBinding, ApplicationBindings } from './bindings.ts';
 
 interface QueryExecutor {
@@ -18,7 +19,8 @@ export function composeExistingCapabilities(input: {
   const reviews = createOrderReviewHandlers(lifecycle);
   const admin = createOrderReviewAdminHandlers(lifecycle, createPostgresOrderReviewAdminReadPort(input.executor));
   const partners = createPostgresPartnerAcquisitionPort({ connectionString: input.connectionString });
-  const actions: ApplicationBindings['actions'] = {};
+  const operatorCapabilities = composeOperatorCapabilities(input);
+  const actions: ApplicationBindings['actions'] = { ...operatorCapabilities.actions };
 
   actions['review.read'] = async payload => {
     if (typeof payload.grant !== 'string' || !payload.grant) return refused('access_grant_unavailable');
@@ -80,7 +82,7 @@ export function composeExistingCapabilities(input: {
   };
   // Acquisition requires a verified native address reference; research additionally
   // requires case ownership. Neither is inferred from a browser-supplied reference.
-  return { actions, close: () => partners.close() };
+  return { actions, close: async () => { await Promise.all([partners.close(), operatorCapabilities.close()]); } };
 }
 
 function partnerRequest(payload: Record<string, unknown>): PartnersB2BInquirySubmitRequest | null {

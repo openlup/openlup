@@ -150,3 +150,17 @@ docker compose exec -T --user node application cat /application/.context/capture
 
 Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
 private; the host does not publish it through HTTP.
+
+## Catalogue authoring and storefront
+
+Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.
+
+`owned/catalogue.ts` installs the fictional `starter:item@1` authoring type for
+both configurations; replace its content validator and type definitions in your
+application. Draft payloads cannot install executable validators. The operator
+page accepts create/revise/abandon and detail/list requests. The host supplies the
+command key and session actor; neither comes from the JSON editor.
+
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+
+See the [operator roster recipe](../README.md#operator-support-roster-and-catalogue-authoring) for support provisioning and deactivation through the owner connection.

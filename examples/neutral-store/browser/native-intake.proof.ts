@@ -27,7 +27,7 @@ test('native public intake, operator authority, quotas and restart persistence',
     });
     return { status: response.status(), body: await response.json() };
   };
-  const signIn = async (kind: 'operator' | 'customer', email: string) => {
+  const signIn = async (kind: 'operator' | 'customer', email: string, locale: 'en' | 'pl' = 'en') => {
     const messages = () => {
       try { return compose('exec', '-T', '--user', 'node', 'application', 'cat',
         '/application/.context/captured-messages/identity.jsonl').trim().split('\n')
@@ -35,14 +35,29 @@ test('native public intake, operator authority, quotas and restart persistence',
       catch { return []; }
     };
     const previous = messages().at(-1)?.token;
-    const requested = Date.now();
-    expect((await action(kind === 'operator' ? 'auth.operator' : 'auth.request', { email })).body.ok).toBe(true);
+    let requested = Date.now();
+    if (kind === 'operator') {
+      await page.goto(routes.admin[locale]);
+      const request = page.locator('#operator-sign-in form').first();
+      await request.getByLabel(copy[locale].email, { exact: true }).fill(email);
+      const response = page.waitForResponse(item => item.url().endsWith('/api/actions/auth.operator'));
+      await request.getByRole('button', { name: copy[locale].operatorRequestSignIn, exact: true }).click();
+      expect((await (await response).json()).ok).toBe(true);
+    } else expect((await action('auth.request', { email })).body.ok).toBe(true);
+    requested = Date.now();
     let token = '';
     await expect.poll(() => {
       token = messages().at(-1)?.token ?? '';
-      return token !== previous ? token : '';
-    }).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect((await action(kind === 'operator' ? 'auth.operator' : 'auth.verify', { token })).body.ok).toBe(true);
+      return token !== previous && /^[A-Za-z0-9_-]{43}$/.test(token);
+    }).toBe(true);
+    if (kind === 'operator') {
+      const redemption = page.locator('#operator-sign-in form').nth(1);
+      await redemption.getByLabel(copy[locale].operatorToken, { exact: true }).fill(token);
+      const response = page.waitForResponse(item => item.url().endsWith('/api/actions/auth.operator'));
+      await redemption.getByRole('button', { name: copy[locale].operatorRedeemToken, exact: true }).click();
+      expect((await (await response).json()).ok).toBe(true);
+      expect(await redemption.locator('[name=token]').evaluate(input => (input as HTMLInputElement).value.length === 0)).toBe(true);
+    } else expect((await action('auth.verify', { token })).body.ok).toBe(true);
     return requested;
   };
 
@@ -136,7 +151,7 @@ test('native public intake, operator authority, quotas and restart persistence',
   const delay = Math.max(0, signedInAt + 61000 - Date.now());
   await new Promise(resolve => setTimeout(resolve, delay));
   await context.clearCookies();
-  await signIn('operator', operatorEmail);
+  await signIn('operator', operatorEmail, 'pl');
   await page.goto(routes.admin.pl + '#partners');
   await page.locator('#partners').getByRole('button', { name: copy.pl.readStatus, exact: true }).click();
   await expect(page.locator('#partners')).toContainText(caseRef);

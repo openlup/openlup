@@ -18,6 +18,30 @@ for (const locale of ['en', 'pl'] as const) {
     });
   }
 
+  test(`${locale}: operator sign-in has separate localized email and private token forms`, async ({ page }) => {
+    await page.goto(routes.admin[locale]);
+    const forms = page.locator('#operator-sign-in form');
+    await expect(forms).toHaveCount(2);
+    await expect(forms.first().getByLabel(copy[locale].email, { exact: true })).toHaveAttribute('type', 'email');
+    await expect(forms.first().getByRole('button', { name: copy[locale].operatorRequestSignIn, exact: true })).toBeVisible();
+    const token = forms.nth(1).getByLabel(copy[locale].operatorToken, { exact: true });
+    await expect(token).toHaveAttribute('type', 'password');
+    await expect(token).toHaveAttribute('required', '');
+    await expect(token).toHaveAttribute('maxlength', '43');
+    await expect(token).toHaveAttribute('pattern', '(?:[A-Za-z0-9_]|-){43}');
+    for (const value of ['x'.repeat(42), 'x'.repeat(44), '!'.repeat(43)]) {
+      expect(await token.evaluate((input, candidate) => {
+        (input as HTMLInputElement).value = candidate;
+        return (input as HTMLInputElement).checkValidity();
+      }, value)).toBe(false);
+    }
+    for (const value of ['x', '_', '-']) {
+      await token.fill(value.repeat(43));
+      expect(await token.evaluate(input => (input as HTMLInputElement).checkValidity())).toBe(true);
+    }
+    await expect(forms.nth(1).getByRole('button', { name: copy[locale].operatorRedeemToken, exact: true })).toBeVisible();
+  });
+
   test(`${locale}: operator choices translate labels and preserve submitted wire values`, async ({ page }) => {
     await page.goto(routes.admin[locale]);
     const cases = [

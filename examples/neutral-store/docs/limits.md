@@ -9,7 +9,7 @@ application composition limits; they are not claims of exported package errors.
 
 | Limit | Actions | Named refusal |
 | --- | --- | --- |
-| N1 | Catalogue/prices/promotions are seed data; one owned demo-seed step with the install connection; no runtime catalogue/price administration or checkout promotion codes | `starter_promotion_write_unavailable` |
+| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
 | N4 | Replacement request and complete fulfillment cancellation | `host_binding_required` |
@@ -21,8 +21,8 @@ application composition limits; they are not claims of exported package errors.
 | N10 | Google sign-in | `oauth_not_supported` |
 | Inventory boundary | Lot traceability, locations and stock movements | `starter_inventory_traceability_unavailable` |
 
-The portable rail has no runtime writer for `catalog_products`, `catalog_skus`,
-`price_lists` or `price_entries`. Under N1, `owned/demo-seed.ts` builds their
+The starter has no runtime writer for live products, SKUs, price lists, price
+entries or promotions. Bundle writers update their own catalogue and price tables. Under N1, `owned/demo-seed.ts` builds their
 fictional rows from the same typed configuration; `installation/install.ts`
 applies one transactional, idempotent step during `./lifecycle up`, using only
 the install connection after installed bootstrap. It refuses absent bootstrap
@@ -127,3 +127,7 @@ A browser-supplied reference or a customer session cannot supply that provenance
 Research remains `host_binding_required` until the host can authorize ownership
 of the research case (`authorizeResearchCase`); normalized ingest also remains
 `host_binding_required`. Neither action is mounted merely to return a refusal.
+
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+
+See the [operator roster recipe](../README.md#operator-support-roster-and-catalogue-authoring) for support provisioning and deactivation through the owner connection.

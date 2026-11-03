@@ -71,3 +71,11 @@ runtime state, not owned configuration or installed package sources.
 The optional `supportEmail` is owned configuration. Managed support rendering
 uses text nodes only. Partner/review host composition is managed and reuses the
 same request admission and native operator authority as other operator reads.
+
+`owned/catalogue.ts` owns the fictional catalogue-draft type registry. Managed
+`host/operator-composition.ts` composes support and catalogue native ports. Native
+human membership precedes each operator action; the owner alone provisions and
+deactivates the separate support roster as documented in the README. No runtime
+roster writer or installer roster seed exists. Drafts and bundle activation do
+not replace the owned storefront offer configuration. The managed real-database
+browser recipe is `browser/native-operator.proof.ts`.
