@@ -34,6 +34,7 @@ CREATE TABLE public.commerce_destination_bindings (
 );
 ALTER TABLE public.commerce_destinations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commerce_destination_bindings ENABLE ROW LEVEL SECURITY;
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');
 
 -- Bounded parent reads; shipment preparation pins its document under dispatch's lock.
 CREATE FUNCTION public.commerce_read_destination(p_scope text,p_id uuid)

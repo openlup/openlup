@@ -379,7 +379,7 @@
     },
     {
       "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
-      "sha256": "abee0c74e5055223f6e39d1b52e5ae9483bb433a47a1aea057f2305b9cdd63c8"
+      "sha256": "1cdb720a6fadbfebeca50dad091e709b069639c2a8af9c8abb542f753687980f"
     }
   ],
   "objectInventorySha256": "df5515f691d9d8f234fdf0c5fed78d062eb3ce6407fae76b8ffa22c65a689676",
@@ -779,7 +779,7 @@
       },
       {
         "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
-        "sha256": "abee0c74e5055223f6e39d1b52e5ae9483bb433a47a1aea057f2305b9cdd63c8"
+        "sha256": "1cdb720a6fadbfebeca50dad091e709b069639c2a8af9c8abb542f753687980f"
       }
     ],
     "objectInventorySha256": {
@@ -1183,7 +1183,7 @@
       },
       {
         "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
-        "sha256": "abee0c74e5055223f6e39d1b52e5ae9483bb433a47a1aea057f2305b9cdd63c8"
+        "sha256": "1cdb720a6fadbfebeca50dad091e709b069639c2a8af9c8abb542f753687980f"
       }
     ],
     "objectInventorySha256": {
