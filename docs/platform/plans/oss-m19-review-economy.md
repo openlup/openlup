@@ -351,3 +351,43 @@ authorized committing the unchanged three-file repair first, then integrating
 the landed prerequisite. No markup workaround or control relaxation was made.
 All 1,417 pre-integration focused cases passed; all required checks are rerun
 on the merged tree, including the catalogue and local-runner suites.
+
+
+## Authorized continuation to technical mergeability
+
+On 2026-11-03 Bart Roszkowski directly instructed this supervisor to make
+PR #509 mergeable, then build S3 on its actual base and make both PRs
+technically mergeable. This later grant permits the necessary compatibility
+repair, actual-main integration, local proof, signed commits and non-forced
+push to the existing #509 branch, plus the dependent S3 draft. It supersedes
+the earlier stop after the bounded extra evaluation and the old delivery hold.
+It grants no merge, ready-status change, queue arming, settings or release.
+The previous owner run is stopped; its clean candidate, reports and native
+history are retained. No continuation event or budget reset is inferred.
+Policy freshness pin: main `4d78e855cf8bbd57704f9503cd7bae28f96453a5`;
+this is separate from the final code review base.
+
+Regroup: the initial evaluation exposed omitted guard owners; the later
+catalogue integration evaluation closed that omission but exposed legacy-v2
+prefix replay. The remaining gap is supported old-session compatibility in
+`validateEconomySession`, not another selector mechanism. Replaying a historical
+prepare on a pre-feature base produces absent rules on both sides, which the
+unconditional digest cannot represent. The smaller adequate repair compares
+absence explicitly and otherwise retains exact digest equality. A real Git
+history must transition a retained v2 prefix to enabled v3, require two fresh
+full reports, then pass replay and receipt; asymmetric missing rules must still
+refuse. Keep all earlier reports, findings and consumed cycles. This repair and
+necessary integration form one candidate, followed by two fresh full reviews
+and complete exact-candidate local verification. Pattern: optional historical
+state fed into a total hash function → compare absence at the owning boundary.
+
+
+The maintainer also explicitly requested dogfooding #509 during this recovery.
+The reproduction failed before the repair because absent legacy rules reached
+`digest`; after the direct absence comparison, the real Git transition requires
+zero/one-report refusal and two fresh full reports, preserves the old history
+and budget, passes replay and receipt, and rejects both asymmetric missing-rule
+tamper cases. The two focused suites pass 148 cases on pinned Node 24.21.0.
+Fixture reviewer identities are synthetic test data, not independent native
+approval. A separate bounded dogfood run exercises the CLI and records its raw
+results locally; final independent review and full verification remain required.

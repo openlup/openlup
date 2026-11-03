@@ -220,7 +220,9 @@ export async function validateEconomySession(cwd, session, runGit = git) {
     if (event.type === 'prepare') {
       const actual = await captureCommittedReviewCandidate(cwd, event.candidate.base, event.candidate.head, runGit);
       for (const key of ['base', 'head', 'tree', 'changedPaths', 'modeChanged']) demand(digest(actual[key]) === digest(event.candidate[key]), 'recorded candidate diff differs');
-      const rules = await captureReviewRules(cwd, actual, runGit); demand(digest(rules) === digest(event.candidate.rules), 'recorded policy or base rules differ');
+      const rules = await captureReviewRules(cwd, actual, runGit);
+      demand(rules === undefined ? event.candidate.rules === undefined :
+        event.candidate.rules !== undefined && digest(rules) === digest(event.candidate.rules), 'recorded policy or base rules differ');
       if (event.candidate.coverage) {
         const prefix = session.history.slice(0, session.history[index - 1]?.type === 'rules' ? index - 1 : index); const prior = prefix.findLast(item => item.type === 'prepare');
         const before = { ...session, candidate: prior.candidate, history: prefix, preparedAt: prior.at, cycle: prior.cycle };

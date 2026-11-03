@@ -210,6 +210,33 @@ describe('real Git coverage histories', () => {
     const summary = receiptSummary(session, 12, Date.now()); expect(summary).not.toHaveProperty('version');
     expect(reader.parseReceipt(`${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``)).toBeNull();
   });
+  it('replays a v2 prefix after enabling v3 with two fresh full reviews and preserves absent rules', async () => {
+    const f = await fixture(false); const prior = await f.review();
+    expect(prior.version).toBe(2); expect(prior.candidate).not.toHaveProperty('rules');
+    const main = await f.mainMove(() => f.write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n'));
+    f.git('merge', '--no-ff', '-qm', 'integrate enabled rules', main);
+    await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.version).toBe(3); expect(next.candidate.rules.version).toBe(3);
+    expect(next.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(next.history[prior.history.length]).toMatchObject({ type: 'rules', version: 3 });
+    expect(next.cycle).toBe(prior.cycle); expect(next.allowedCycles).toBe(prior.allowedCycles);
+    expect(next.candidate.coverage).toBeUndefined();
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const reviewed = await f.state();
+    await expect(validateEconomySession(f.cwd, reviewed)).resolves.toBeUndefined();
+    expect(verdict(reviewed, reviewed.candidate, Date.now()).ok).toBe(true);
+    const summary = receiptSummary(reviewed, 12, Date.now());
+    expect(parseReceipt(`${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``)).toEqual(summary);
+    const fabricatedLegacyRules = structuredClone(reviewed);
+    fabricatedLegacyRules.history.find(event => event.type === 'prepare').candidate.rules = reviewed.candidate.rules;
+    await expect(validateEconomySession(f.cwd, fabricatedLegacyRules)).rejects.toThrow('recorded policy or base rules differ');
+    const missingEnabledRules = structuredClone(reviewed);
+    delete missingEnabledRules.history.findLast(event => event.type === 'prepare').candidate.rules;
+    await expect(validateEconomySession(f.cwd, missingEnabledRules)).rejects.toThrow('recorded policy or base rules differ');
+  });
   it('binds v3 summaries to complete history and the actual head', async () => {
     const f = await fixture(); const session = await f.review(); const summary = receiptSummary(session, 12, Date.now());
     const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;

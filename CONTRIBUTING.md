@@ -3002,6 +3002,11 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-11-03, review-economy compatibility: replaying a preserved legacy
+  prepare fed absent optional rules into a hash function → compare absence
+  explicitly at the owning boundary, and exercise an actual old-to-new history
+  before relying on tests that start with the new version.
+
 - 2026-11-02, closed native forward class: six review cycles chased divergences
   between a hand-written SQL reader and PostgreSQL, and no written bar said what
   counts as material → in the first review request of a control-path change, put an
