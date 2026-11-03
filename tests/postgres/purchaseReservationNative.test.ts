@@ -76,6 +76,7 @@ beforeAll(async () => {
   beforeUpgradeAcl = (await admin.query("SELECT relacl::text acl FROM pg_class WHERE oid='public.fulfillment_inventory_reservations'::regclass")).rows[0].acl;
   // Existing command cancellation cannot lock term lines as this runtime on
   // the issued prefix. Record the same refusal before introducing G4.
+  // Pre-existing qualified-runtime limit; closed by the qlock row (F-QUALIFIED-LIFECYCLE-LOCK).
   await expect(call(runtime, "subscription_command_apply", [randomUUID(), inherited.client, randomUUID(), inherited.subscription, "cancel", {}, later(1)]))
     .rejects.toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
   expect((await admin.query("SELECT has_table_privilege('service_role','public.commerce_promotion_claim_events','SELECT') allowed")).rows).toEqual([{ allowed: false }]);
@@ -558,6 +559,7 @@ it.each(["preflight", "cancel", "succeeded", "refused", "late_recovery"])("%s mu
   if (action === "preflight") await call(runtime, "subscription_refuse_renewal_preflight", [f.operation, f.token, "synthetic", AT]);
   else if (action === "cancel") {
     const args = [randomUUID(), f.client, randomUUID(), f.subscription, "cancel", {}, later(1)];
+    // Pre-existing qualified-runtime limit; closed by the qlock row (F-QUALIFIED-LIFECYCLE-LOCK).
     await expect(call(runtime, "subscription_command_apply", args))
       .rejects.toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
     await admin.query("UPDATE public.subscriptions SET created_at=$2,started_at=$2 WHERE id=$1", [f.subscription, AT]);

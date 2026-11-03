@@ -1,22 +1,22 @@
 # Native purchase holds
 
-Status: the admission port is staged for the maintainer's whole-delta read.
-The inventory-owned error mapping passes lint without a cross-module dependency.
-PostgreSQL proofs preserve expiry execution access and deny direct runtime entry
-to the owner-only helper. The prior control amendment remains required. No
-admission-delta commit, native review or delivery has started.
+Current status: G4 and G3 form one native bundle in this worktree. The SQL,
+feature pins, admission gate and compensation guard have their accepted reads;
+the draft cycle-2 repair checks delivered writers against capability and
+documentation claims. Runtime agreement has an owner-gated gap; no commit,
+new review or delivery is authorized until it is resolved. Earlier
+local-stage entries below retain their historical evidence, not current grants.
 
 ## Outcome, authority and scope
 
-The supervisor authorized G4 only: purchase hold, release and expiry on the
+The original separate-row scope authorized G4: purchase hold, release and expiry on the
 existing native reservation table, through a public factory and restricted
 runtime. Local implementation, focused checks and a clean DCO-signed history are permitted.
 The narrowed donor slice and existing-table ownership alteration cannot land
 until a separate prior control admits them; the stabilized owner read is accepted.
 The coordinator accepted the ownership shape in principle for this slot and
-accepted the donor slice; neither remains an unanswered design decision. No
-review/admission machinery or approval pin changes. G3 remains a later task in
-its own worktree; no destination, activation or codec implementation is included.
+accepted the donor slice; neither remains an unanswered design decision. No review/admission control logic changes. The later bundle grant includes G3
+and its feature pins; activation and codec implementations remain outside G4.
 
 Branch: `codex/oss-m19-g4`. Code review base and freshly fetched policy pin are
 separate identities, both initially

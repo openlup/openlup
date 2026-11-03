@@ -1,29 +1,33 @@
 # Native order, subscription and parcel destinations
 
-Status: locally proved staged read candidate for retained parcel ownership and
-optional reason persistence. The two changes await the coordinator's read.
-No native review or delivery has started.
+Current status: G3 is combined with G4 in the assigned bundle worktree. The
+parcel-owner and reason SQL reads are accepted and committed. The draft cycle-2
+sweep identified a pre-existing lifecycle runtime limit. The accepted scope
+correction separates that named limit from address agreement; delivery is still unauthorized. Earlier
+separate-row stage notes below are historical evidence, not current grants.
 
 ## Outcome, authority and boundaries
 
 G3 ports new-address order/subscription destinations and customer/operator
 change_shipping_address, including parcel applicability. Matrix rows: P08, R08,
-T04-12, A23, T03-57, A78. Assigned worktree oss-m19-g3, branch codex/oss-m19-g3;
+T04-12, A23, T03-57, A78. Original separate-row worktree oss-m19-g3, branch codex/oss-m19-g3;
 base and recovered policy revision 3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d.
-G4 and every other worktree stay untouched. The supervisor authorized local SQL,
+That original grant kept G4 untouched. The current bundle grant permits this
+assigned worktree only and leaves the export leaf untouched. It authorizes local SQL,
 manifest selection, public bindings, own API snapshots, transfer additions,
-characterization/refusal tests and unsigned WIP commits. No approval-class pin,
-checker edit or native review is authorized. The later accepted-read grant below
-authorizes DCO; landing still waits for separate control and ordered predecessors. No hosted qualification is claimed.
+characterization/refusal tests and unsigned WIP commits. The accepted-read and bundle grants authorize own feature pins, DCO and native
+review; no checker edit or delivery is authorized. Landing remains ordered after
+the leaf and predecessors. No hosted qualification is claimed.
 
 The lead accepted newAddress only (saved book is a named refusal), a separate
 address routine, and future-only application once dispatch owns the parcel.
 The latest resume authorizes donor confirmation enqueue in the existing routine
 and native subscription_events account history. No fifth signature, third table
-or trigger. It also permits only the additive native outcome/decoder lines and
-one address branch in the existing operator adapter. Other operator capabilities
-remain unsupported in the reference projection; explicit host composition is
-required. No existing OMS/G5 files or renewal codec are edited.
+or trigger. It permits the additive native outcome/decoder, the address adapter branch and
+the native address capability advertisement. Email, phone, account link, short-band
+slide, unpaid resume and prepared-attempt pause retain their named native
+refusals; ordinary pause/resume/slide and new-address change are advertised.
+Explicit host composition is required. No existing OMS/G5 files or renewal codec are edited.
 
 Hard package stop: 8,200 bytes packed including own SQL and manifest. No saved address book,
 default selector, list/delete/export/erasure API, real PSP, new attempt ledger,
@@ -1444,3 +1448,108 @@ Self-retro: align the complete staged candidate before policy, and prove event
 readback through the existing runtime permission as well as runtime writes.
 Both ports now have source-pinned and real-database evidence; final delivery
 still needs the read, signed commit, native reviews and authorized verification.
+
+
+## Operator recipe alignment
+
+The typed UUID guard and the linked operator recipe exposed two different gaps
+in the same approved outcome: identity validation used text, while a secondary
+recipe still described the previous address refusal. The remaining documentation
+owner is the current operator recipe and its canonical receipt summary. The
+simplest repair is to describe the already implemented bounded new-address branch
+and next-parcel result in both places, preserving the separate shipping-port
+refusal and managed boundary. Existing native operator, recovery and destination
+regressions discriminate writing, replay and partial applicability; no new runtime
+mechanism or prose-mirroring test is needed. This corrects an existing accepted
+contract; the native address advertisement now matches its accepted writer.
+No additional writer or public type is introduced.
+
+Self-retro: accepted native branch plus stale linked recipe → trace secondary
+instructions and correct the same contract at its current documentation owners.
+
+
+## Cycle-2 regroup and claim sweep
+
+Cycle 0's UUID-alias evaluation and cycle 1's operator-recipe evaluation left
+material obstacles to the same approved outcome. G3's advertised native
+capabilities, operator recipe and contract text must match the writers it
+delivers; the owners are the operator-authority contract and canonical contracts.
+The port moved writers without sweeping their same-change claims, so stale
+claims surfaced one at a time. The simpler path is one sweep of the whole
+purchase-hold/destination delta and its touched files, replacing isolated fixes.
+The next discriminating step is that sweep plus the restricted-runtime agreement
+regression for the moved address writer and every unsupported native subcase.
+Address must succeed and unsupported inputs must return their named refusal,
+with zero stale claims. Ordinary lifecycle commands retain a separate named
+pre-existing limit, not a passing availability claim (CD-M19-219). The existing review history and
+cycle budget remain intact. This entry adds no new behaviour or delivery grant.
+
+Lesson: a ported writer without its capability or doc claims → sweep every claim
+tied to a moved writer in the same change.
+
+
+### Whole-bundle claim sweep
+
+The sweep uses the complete delta from the exact export-leaf stack base and the
+full contents of its touched files, plus six related binding/owner files. `rg`
+checks supported/unsupported/unavailable/refusal wording, each delivered routine,
+capability names, operator recipes, destination/reason and next-parcel terms.
+Each hit is one matched HEAD file/line, deduplicated; historical stage notes are
+qualified by the current status. Generated declarations and exact SQL/pin/test
+references are checked against their source, not treated as capability probes.
+
+| Scope | Finding and action |
+|---|---|
+| 55 files, 3,471 matched lines | 3,448 accurate; 22 stale sites corrected; one pre-existing named limit (F-QUALIFIED-LIFECYCLE-LOCK), closed by the qlock row. |
+| Operator capability and expectation | Advertise native new-address change; preserve every other subcase expectation and the managed graph. |
+| Operator recipe and canonical receipt summary | Replace old address refusal and incomplete partial-result claims with bounded SQL and next-parcel applicability. |
+| Inventory/account-support package guidance | State native zero safety/exposure accounting separately from managed accounting; include next-parcel partial recovery. |
+| G4 routine inventory and row-record status | Four runtime entries plus owner-only helper; qualify original separate-row and pre-read stages as history. |
+| Admission, hold/release/expiry, compensation, destination registration/read, event reason and frozen-parcel claims | Retain accurate entry, replay, refusal, owner, privacy and default-off boundaries; no SQL or privilege change. |
+| Correctly unsupported restrictions | 486 accurate restriction hit lines across 20 checked classes listed below; they are unchanged. |
+| Required runtime agreement | The moved address writer and every unsupported subcase have agreement assertions. Separate pause/resume/slide pins require42501 at the term-line row lock and zero new receipts; these are pre-existing known limits, closed by the qlock row (F-QUALIFIED-LIFECYCLE-LOCK), not passing lifecycle claims. |
+
+The 20 correctly unsupported classes are: email; phone; account link;
+short-band slide; expired-dunning resume; residual-unpaid resume;
+prepared-attempt pause; saved-address selection/book APIs; elapsed/non-finite
+expiry admission; non-READ-COMMITTED admission; direct runtime admission-helper
+entry; dedicated promotion cancellation; lots/locations/movement history;
+direct native stock adjustment; native safety/channel exposure; subject privacy
+export/erasure; automatic mail/host activation; the legacy browser's next-parcel
+decoder; the separate OMS address-correction port; and unselected host lanes.
+These source-scope checks do not certify qualified-runtime lifecycle commands.
+Existing lifecycle availability flags and runtime privileges remain unchanged.
+CD-M19-219 narrows agreement to the writers moved here and registers qlock as
+the closer of F-QUALIFIED-LIFECYCLE-LOCK, immediately after this bundle. The
+qualified runtime lacks the term-line row-lock privilege: ordinary pause, resume
+and slide currently refuse42501 with no new receipt. The qlock row turns these
+and the existing G4 cancel pins into positive proofs; this bundle adds no grant.
+
+The parked prose patch was hash-checked and applied exactly first (its proposed
+tree matched), then rebased by this sweep's additional claim corrections. No
+CONTRIBUTING edit is included; the lead will collect the lesson after delivery.
+
+
+### Cycle-2 scope correction and discriminating proof
+
+CD-M19-219 confines writer agreement to new-address change and every unsupported
+native subcase. The restricted runtime succeeds for the address writer; email,
+phone, account link, short-band slide, both unpaid-resume variants and prepared
+attempt pause retain their named refusal. Ordinary pause/resume/slide are not
+certified by that test. Each has a separate pre-existing42501 term-line row-lock
+pin and zero new command receipts, named for qlock (F-QUALIFIED-LIFECYCLE-LOCK).
+The same closer is recorded beside both existing G4 cancel pins; those assertions
+are unchanged. No capability other than address, table privilege or role changes.
+The one bundle-touched lifecycle delegation claim in the package reference now
+states this qualified-runtime limit. This is a scope correction, not a reviewer
+finding or a new regroup. The qlock row follows this bundle and converts the pins
+into positive proofs.
+
+The four new cases ran without coverage in the focused lane: address/unsupported
+agreement258ms; pause26ms; resume26ms; slide23ms. None needs a per-case timeout
+above the existing10s limit. The first lifecycle expectation incorrectly inspected
+the adapter's mapped error for raw SQLSTATE; the test now captures and rethrows
+the original SQL error at the injected executor, asserting both the unchanged
+mapping and the underlying42501. This adds no fallback or production change.
+Complete API regeneration adds only the new-address-only comment to two reports;
+no public type or other report changes. CONTRIBUTING remains unchanged.

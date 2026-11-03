@@ -8,9 +8,9 @@ import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/
 import { fixture as shipmentFixture, openCase, replacement, executor } from "../helpers/fulfillmentNative.js";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresDeliveryAlignmentPort } from "@openlup/platform/fulfillment";
-import { createPostgresOperatorAuthority, createOperatorRecovery } from "@openlup/platform/account-support";
+import { createPostgresOperatorAuthority, createOperatorRecovery, operatorAuthorityCapabilities } from "@openlup/platform/account-support";
 import { createM12OperatorSubscriptionActionRoute } from "../../server/runtime/public-reference/m12AccountSupportBinding.js";
-import { AT, later, call, alignmentInvariant } from "./subscriptionNativeFixture.js";
+import { AT, later, call, alignmentInvariant, renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, owner: Pool, runtime: Pool;
@@ -525,4 +525,78 @@ it("pins the characterized optional-reason event expression", async () => {
    expect(event.payload).toEqual(input);
   }
  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("matches native address and unsupported subcases through the restricted writer", async () => {
+ const cap = operatorAuthorityCapabilities("native");
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ const observed: Record<string, unknown> = {}, expected: Record<string, unknown> = {};
+ for (const name of ["address", "email", "phone", "link", "shortBand", "unpaidResume-expired", "unpaidResume-residual",
+  "preparedAttemptPause"] as const) {
+  const f = await fixture();
+  let subscriptionId: string = f.subscription, clientId: string = f.client;
+  if (name === "preparedAttemptPause") {
+   const r = await renewal(owner), principal = randomUUID();
+   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+   await owner.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [r.client, principal]);
+   await prepareOriginal(owner, r);
+   subscriptionId = r.subscription; clientId = r.client;
+  }
+  await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [subscriptionId, later(240)]);
+  await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy') ON CONFLICT(subscription_id) DO NOTHING", [subscriptionId]);
+  if (name.startsWith("unpaidResume")) await owner.query("UPDATE public.subscriptions SET status='paused' WHERE id=$1", [subscriptionId]);
+  if (name.startsWith("unpaidResume")) {
+   const cycle = randomUUID(), expired = name.endsWith("expired");
+   await owner.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3,$4)", [cycle, subscriptionId, AT, expired ? "paid" : "payment_pending"]);
+   if (expired) await owner.query("INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,status,opened_at,expired_at,idempotency_key) VALUES($1::uuid,$2,$3,$4,'expired',$5,$5,$1::uuid::text)", [randomUUID(), subscriptionId, cycle, clientId, AT]);
+  }
+  const authority = createPostgresOperatorAuthority({ run: work => work(runtime) },
+   { operatorId: f.operator, now: () => Date.parse(AT), recoveryPath: () => "/repair" });
+  const key = `capability-${randomUUID()}`, field = name.startsWith("unpaidResume") ? "unpaidResume" : name;
+  expected[name] = cap[field as Exclude<keyof typeof cap, "graph">];
+  try {
+   const result = name === "email" ? await authority.correctSubjectEmail({ operatorId: f.operator, subjectId: clientId, expectedEmail: "old@example.invalid", newEmail: "new@example.invalid", idempotencyKey: key })
+    : name === "phone" ? await authority.correctSubjectPhone({ operatorId: f.operator, subjectId: clientId, expectedPhone: "old", newPhone: "new", idempotencyKey: key })
+    : name === "link" ? await authority.linkSubjectAccount({ operatorId: f.operator, subjectId: clientId, expectedEmail: "old@example.invalid", authUserId: null, idempotencyKey: key })
+    : await authority.applySubscriptionAction({ operatorId: f.operator, subscriptionId: subscriptionId,
+      subscriptionAction: name === "address" ? "change_shipping_address" : name === "shortBand" ? "slide_next_cycle" : name.startsWith("unpaidResume") ? "resume" : "pause",
+      payload: name === "address" ? { newAddress: address("Advertised synthetic recipient") } : name === "shortBand" ? { slideMinDays: 1, newNextCycleAt: later(48) } : {},
+      expectedVersion: 1, idempotencyKey: key });
+   observed[name] = result.outcome === "refused" && result.refusalCode === "operator_subscription_authority_unavailable"
+    ? { supported: false, refusalCode: result.refusalCode }
+    : ["applied", "noop", "replayed", "applied_from_next_parcel"].includes(result.outcome) ? { supported: true } : result;
+   if (name === "address") expect(await port().read("subscription", subscriptionId))
+    .toMatchObject({ address: { ...address("Advertised synthetic recipient"), country: "ZZ" } });
+  } catch (error) { observed[name] = { error: error instanceof Error ? error.message : String(error) }; }
+ }
+ expect(observed, JSON.stringify({ observed, expected })).toEqual(expected);
+});
+
+// Pre-existing qualified-runtime limit; closed by the qlock row (F-QUALIFIED-LIFECYCLE-LOCK).
+it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-runtime %s lock limit for qlock", async name => {
+ const f = await fixture();
+ await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(240)]);
+ await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+ let version = 1;
+ if (name === "resume") {
+  const paused = await call(owner, "customer_support_apply_subscription_action_v1",
+   [f.operator, f.subscription, "pause", {}, 1, `fixture-pause-${randomUUID()}`, AT]);
+  expect(paused).toMatchObject({ outcome: "applied" });
+  version = paused.templateVersion;
+ }
+ let sqlFailure: unknown;
+ const authority = createPostgresOperatorAuthority({ run: work => work({ query: async (sql, values) => {
+  try { return await runtime.query(sql, values); }
+  catch (error) { sqlFailure = error; throw error; }
+ } }) },
+  { operatorId: f.operator, now: () => Date.parse(AT), recoveryPath: () => "/repair" });
+ const before = await counts(f), key = `known-limit-${randomUUID()}`;
+ await expect(authority.applySubscriptionAction({ operatorId: f.operator, subscriptionId: f.subscription,
+  subscriptionAction: name === "slide" ? "slide_next_cycle" : name,
+  payload: name === "slide" ? { newNextCycleAt: later(72) } : {}, expectedVersion: version,
+  idempotencyKey: key })).rejects.toThrow("managed_customer_support_operator_inactive");
+ expect(sqlFailure).toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
+ expect(await counts(f)).toEqual(before);
+ expect((await owner.query("SELECT count(*)::int n FROM public.customer_support_subscription_commands WHERE target_id=$1 AND idempotency_key=$2", [f.subscription, key])).rows).toEqual([{ n: 0 }]);
 });

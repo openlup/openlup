@@ -597,8 +597,8 @@ submission; a local manifest entry alone grants no delivery or release authority
 
 The G4 purchase-hold forward appends the same native forward path/hash to all three
 manifest selections, with a separate measured catalogue digest for each existing
-installation shape. It preserves every prior source pin and defines four new
-bounded routines rather than replacing ATP or renewal functions. Abandoned compensation wraps
+installation shape. It preserves every prior source pin and defines four bounded runtime entries
+and one owner-only admission helper rather than replacing ATP or renewal functions. Abandoned compensation wraps
 the unchanged aggregate donor and releases purchase holds atomically; it adds
 neither withdrawal markers nor raw runtime ledger grants. Source admission
 separately checks the closed native class and co-located whole-forward/function
@@ -1620,13 +1620,17 @@ an owner in-band refusal is durably paired with its support receipt/audit.
 
 Native SQL refusals write exactly one support receipt and one audit, with zero
 owner/lifecycle/event/outbox/address/identity changes. Native email/phone/link
-port refusals and typed address refusal open no transaction. Same-UTC-day slide
-is a support-only noop after window/version checks. Required real database proofs
+port refusals open no transaction. The native new-address branch instead calls
+its bounded destination routine and returns the destination applicability result;
+`applied_from_next_parcel` retains the frozen current parcel and changes the
+subscription's future. Same-UTC-day slide is a support-only noop after
+window/version checks. Required real database proofs
 are [operator authority](../../tests/postgres/accountSupportOperatorAuthority.test.ts)
 and [upgrade/recovery replay](../../tests/postgres/accountSupportUpgrade.test.ts).
 
-Only link-then-subscription composition has a partial result: the completed link
-and the second command's refusal or unknown transport completion remain separate.
+Link-then-subscription composition preserves a partial result: the completed link
+and the second command's refusal, next-parcel application or unknown transport
+completion remain separate.
 Its callback is invoked before the second call without awaiting refresh. Email
 correction instead follows admission, exclusive execution claim, identity commit
 and settlement. A queued recovery notice is not proof of delivery, and an email
