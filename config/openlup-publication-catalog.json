@@ -1710,6 +1710,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-qa.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
       "class": "public-output"
     },
@@ -4971,6 +4975,14 @@
     },
     {
       "path": "packages/platform/src/commerce/server/outboxShipmentExceptionEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceReadPreparation.ts",
       "class": "public-output"
     },
     {
@@ -27779,6 +27791,10 @@
     },
     {
       "path": "tests/postgres/commerceManagedRail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
       "class": "public-output"
     },
     {

@@ -16,6 +16,36 @@ It reuses the existing runner and exact canonical SQL history; qualified host
 profiles remain explicit. The package factory requires `installation`; only the
 repository facade defaults to legacy. No checkout is required.
 
+## PostgreSQL quote price reads
+
+Supply the installation's restricted runtime executor and allocate one raw-read
+scope for each request:
+
+```ts
+import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
+import { createConcurrentCommercePriceAuthorityPort } from "@openlup/platform/pricing";
+
+const authority = createConcurrentCommercePriceAuthorityPort(
+  createPostgresCommercePriceAuthorityReadPort(runtimeExecutor),
+);
+```
+
+The four reads preserve complete list, exact base, exact legacy subscription and
+policy histories. The existing authority validates effective intervals and
+digests; no price, discount or rounding quantum is supplied by the reader.
+Do not reuse this request scope as a process-wide cache or use current prices
+to replace frozen renewal obligations. See the
+[price authority contract](../../packages/platform/README.md#pricing).
+
+The existing `createPostgresCommercePromoDataPort(runtimeExecutor)` from
+`@openlup/platform/promotions` supplies five advisory evaluation methods. Two
+named limits remain: device evidence is not persisted and the device routine
+returns constant false; redemption counts do not aggregate mirror families.
+Neither limit establishes eligibility or full parity. Hosts must not infer those
+capabilities from the factory's presence. See
+[native promotion evidence](../../packages/platform/README.md#promotions) and the
+[restricted PostgreSQL characterization](../../tests/postgres/commercePriceAuthorityRead.test.ts).
+
 ## Application file upgrade
 
 This development-preview recipe uses the experimental `@openlup/platform/lifecycle`
