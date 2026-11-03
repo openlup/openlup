@@ -1140,3 +1140,32 @@ Official Node v24.21.0 pack against the exact stack leaf: +12,056 B packed,
 packet is 298 B packed and zero code-gzip, due to the guard SQL and its public
 explanation. Packaged SQL and generated manifest are included. The final
 staged identities and exact patch are in the maintainer packet, awaiting read.
+
+
+## UUID item identity repair (read pending)
+
+Full native review found that alternate UUID spellings could bypass the batch's
+existing duplicate-item refusal and allocate two holds for one finalized item.
+The repair compares parsed UUID identity in that same guard. Single uppercase,
+braced and hyphenless UUID inputs remain valid; raw command replay stays strict.
+No signature, privilege, owner shape or G3 change is needed. The native regression
+requires an atomic invalid-item refusal for duplicate aliases, one effect for a
+single alias, unchanged stock, and exact replay. The reference witness records
+one per-item effect across aliases; the existing native duplicate refusal remains
+a deliberate stricter boundary. Provenance and the full repair are in the private
+maintainer packet. Read acceptance and fresh full review remain required.
+
+Self-retro: validate identity using the database type used by ownership checks;
+text uniqueness can otherwise admit a second effect for the same item.
+
+
+Repair proof: native PostgreSQL 41/41 in each of the four session profiles,
+destinations 29/29 in each profile, catalog 130/130, transfer 17/17,
+composition 6/6, inventory unit 48/48 and donor 4/4. The 99-table handover
+reaches the qualified-target ready outcome with one fenced uncertain operation.
+Both new cases pass solo below three seconds. All 68 API reports, five-project
+typecheck, lint, ast-grep and both neutrality checks pass. Official Node v24.21.0
+pack against the frozen leaf: +12,196 B packed, +2,889 B code-gzip,
++69,461 B unpacked, +5 files; absolute 2,454,083 B packed / 1,957,647 B code.
+The repair adds 21 B packed and zero code-gzip over the prior candidate.
+The staged repair still needs its maintainer read before DCO and fresh full review.

@@ -375,14 +375,14 @@
     },
     {
       "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-      "sha256": "7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f"
+      "sha256": "f65bf19867af697b277372770f222e9e2a01e99f07653e705ed6d8b5016ba8a9"
     },
     {
       "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
       "sha256": "abee0c74e5055223f6e39d1b52e5ae9483bb433a47a1aea057f2305b9cdd63c8"
     }
   ],
-  "objectInventorySha256": "49b0f960386c612c79c888634f63c59bcae17df0db4d43fa56252bef3bf8e6b1",
+  "objectInventorySha256": "df5515f691d9d8f234fdf0c5fed78d062eb3ce6407fae76b8ffa22c65a689676",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -775,7 +775,7 @@
       },
       {
         "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-        "sha256": "7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f"
+        "sha256": "f65bf19867af697b277372770f222e9e2a01e99f07653e705ed6d8b5016ba8a9"
       },
       {
         "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
@@ -784,10 +784,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "02be252bdef8b5dbb5053f77d37f058b98f857043cb57ba1875ed796c7cf647f"
+        "withRestore": "d6ec9b657eb2e1756f3a7a1f2f91506f8f280a7d68508a6b214e439e79558051"
       },
       "separateMigrator": {
-        "withRestore": "9250799e79557d489f2ce617aa53bb2d6af8a22fc2d1a9e10536d7c849ee404a"
+        "withRestore": "b1a5b7c5d846a7784e58f3061e6668c9ecb7f51575d7a0111da1c5522d6adb92"
       }
     }
   },
@@ -1179,7 +1179,7 @@
       },
       {
         "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-        "sha256": "7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f"
+        "sha256": "f65bf19867af697b277372770f222e9e2a01e99f07653e705ed6d8b5016ba8a9"
       },
       {
         "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
@@ -1187,8 +1187,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "f47ee11eb5a78e01bd9cabb5f2cb63045e96fe005ad57f2a6c5fae5263b679b3",
-      "operatorProvisioned": "3f4135031c7dcfb3b00238d3475e99ac68f60b9357cd7bdb81d3bfd68dd0c967"
+      "installerManaged": "f15a163085768f911a5b5858e0f41d46fa0fef440692c8c6123968328b3a7dab",
+      "operatorProvisioned": "a87debe7ef05177317d3841040b7b056edc8ec70d7b5278af2fd0e5c0ba98440"
     }
   }
 }

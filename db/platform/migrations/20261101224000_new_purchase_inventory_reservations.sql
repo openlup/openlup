@@ -80,7 +80,7 @@ BEGIN
       RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
     END IF;
   END LOOP;
-  IF (SELECT count(DISTINCT value->>'orderItemId') FROM jsonb_array_elements(p_items))<>jsonb_array_length(p_items) THEN
+  IF (SELECT count(DISTINCT (value->>'orderItemId')::uuid) FROM jsonb_array_elements(p_items))<>jsonb_array_length(p_items) THEN
     RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
   END IF;
   command := jsonb_build_object('action','reserve','orderId',p_order_id,'sourceKey',p_source_key,

@@ -3219,12 +3219,12 @@
     },
     {
       "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-      "sha256": "7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f",
+      "sha256": "f65bf19867af697b277372770f222e9e2a01e99f07653e705ed6d8b5016ba8a9",
       "functions": [
         {
           "signature": "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "f17851b244c3962237d3e72b874e34b431c5712aa0bf4614049e65ccf3b98724"
+          "afterSha256": "a3f6c2d003b30632ece84ad6279341497132b5801ece29846f10da3287bb0a66"
         },
         {
           "signature": "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)",

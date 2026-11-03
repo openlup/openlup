@@ -996,3 +996,40 @@ it.each(["begin", "cancel"])("serializes simulator begin versus compensation wit
     first.release(); second.release();
   }
 }, 30_000);
+
+it("refuses duplicate UUID identities atomically while retaining single alias inputs and exact replay", async () => {
+  expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=session_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  for (const spelling of ["uppercase", "braced", "hyphenless"] as const) {
+    const f = await stock(), input = await purchase(f);
+    const canonical = "a" + input.items[0].orderItemId.slice(1);
+    await admin.query("UPDATE public.commerce_order_items SET id=$2 WHERE id=$1", [input.items[0].orderItemId, canonical]);
+    const item = { ...input.items[0], orderItemId: canonical };
+    const alias = spelling === "uppercase" ? canonical.toUpperCase()
+      : spelling === "braced" ? `{${canonical}}` : canonical.replaceAll("-", "");
+    const aliased = { ...item, orderItemId: alias };
+    const stockBefore = (await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows;
+    for (const items of [[item, aliased], [aliased, item]]) {
+      await expect(port().reserveOrderItems({ ...input, items }))
+        .rejects.toMatchObject({ code: "22023", message: "inventory_reservation_item_invalid" });
+      expect(await rows(input.orderId)).toEqual([]);
+      expect((await admin.query("SELECT count(*)::int receipts FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$1", [input.idempotencyKey])).rows)
+        .toEqual([{ receipts: 0 }]);
+      expect(await budget(f)).toMatchObject({ hard_hold_quantity: 0, available_quantity: 10 });
+      expect((await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows).toEqual(stockBefore);
+    }
+    const single = { ...input, items: [aliased] }, first = await port().reserveOrderItems(single);
+    expect(first).toMatchObject({ replayed: false, reservations: [{ orderItemId: alias, replayed: false }] });
+    const persisted = await rows(input.orderId);
+    expect(persisted).toHaveLength(1);
+    expect(await port().reserveOrderItems(single)).toMatchObject({ replayed: true,
+      reservations: [{ reservationId: first.reservations[0].reservationId, replayed: true }] });
+    await expect(port().reserveOrderItems({ ...single, items: [item] }))
+      .rejects.toThrow("fulfillment_purchase_reservation_idempotency_conflict");
+    expect(await rows(input.orderId)).toEqual(persisted);
+    expect((await admin.query("SELECT count(*)::int receipts FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$1", [input.idempotencyKey])).rows)
+      .toEqual([{ receipts: 1 }]);
+    expect(await budget(f)).toMatchObject({ hard_hold_quantity: 2, available_quantity: 8 });
+    expect((await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows).toEqual(stockBefore);
+  }
+});
