@@ -3210,22 +3210,27 @@
     },
     {
       "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-      "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323",
+      "sha256": "86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c",
       "functions": [
+        {
+          "signature": "public.inventory_admission_try_enter()",
+          "beforeSha256": null,
+          "afterSha256": "e416e4e3a77c6c8146e7b6337f8b7a758926e7a4f6a5f7a1216ef35b0236d9d8"
+        },
         {
           "signature": "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "68ae58a37cfde075a868bbb1d3429aafbb002fd8ec3355be90425a567584ef3e"
+          "afterSha256": "f17851b244c3962237d3e72b874e34b431c5712aa0bf4614049e65ccf3b98724"
         },
         {
           "signature": "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "3b7b91659cdad82b955e6869c6f377d3b2ad7eb9e6d957ad0866bbcf4da6116a"
+          "afterSha256": "5190e7c4f39746bbc27437423685a18bd63e8b89a3887470df2081e7796e86c5"
         },
         {
           "signature": "public.fulfillment_expire_purchase_reservations(timestamptz,integer)",
           "beforeSha256": null,
-          "afterSha256": "b46e7682e60118d5d3cb9460c34002a3ac16c809e25b24fa8bca99bd80675039"
+          "afterSha256": "051edc88775ab7c17f82cc810fc26239f9403af9b59760c88ac37b269b388db1"
         },
         {
           "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",

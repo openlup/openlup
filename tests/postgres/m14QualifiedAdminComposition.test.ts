@@ -5,8 +5,8 @@ import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresCont
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
 const modes = [
-  { roleMode: "installer-managed", currentInventory: "6930bc93c7975858d1357cb0801b840eb4590571330c796cf1020a8b0a356a60", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
-  { roleMode: "operator-provisioned", currentInventory: "0f51f4ee95a8d756e62352443d79f1fde45c41dafc62279a5c12bf05eaeb67e7", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
+  { roleMode: "installer-managed", currentInventory: "0901cafc39ca7dc21d9890055dcf2743b0440461979d1f31bd8601953ca659e5", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
+  { roleMode: "operator-provisioned", currentInventory: "68260ca9b870e4ace63defd20e0e767c899e01ae0906727900e6fe509f2d5285", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
 ] as const;
 
 beforeAll(async () => {

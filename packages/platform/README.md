@@ -697,6 +697,15 @@ expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
 development-preview source binding. See the
 [G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
+Fresh reserve/release writes and expiry require READ COMMITTED and shared
+transaction admission. Contention maps to `InventoryPersistenceError`
+with SQLSTATE `55P03` and reason `inventory_admission_busy` or
+`inventory_lock_unavailable`; unsupported isolation maps to the persistence
+error with code `22023`. Committed receipt replay needs no new admission.
+The gate caps the transaction-local lock timeout at 50 ms; no automatic retry
+or fallback is performed. The helper is owner-only, reached through the bounded
+definer entries, with no runtime helper or table grant.
+
 
 `createPostgresAbandonedCheckoutCompensationPort(executor, now?)` supplies
 `CheckoutCompensationPort.cancelAbandonedOrder` on native PostgreSQL. The bounded

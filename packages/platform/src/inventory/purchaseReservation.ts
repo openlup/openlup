@@ -1,3 +1,5 @@
+import { InventoryPersistenceError } from "./ports.js";
+
 interface PurchaseReservationExecutor {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
@@ -36,7 +38,20 @@ export interface PurchaseInventoryReservationPort {
  * checkout compensation/expiry. No provider dispatch, order cancellation or renewal mutation. */
 export function createPostgresPurchaseReservationPort(executor: PurchaseReservationExecutor): PurchaseInventoryReservationPort {
   async function call<T>(sql: string, values: unknown[]): Promise<T> {
-    const { rows } = await executor.query(sql, values);
+    const { rows } = await executor.query(sql, values).catch((error: unknown) => {
+      if (error && typeof error === "object" && "code" in error) {
+        if (error.code === "55P03") {
+          throw new InventoryPersistenceError("Inventory admission temporarily unavailable", {
+            code: "55P03", reason: "message" in error && error.message === "inventory_admission_busy"
+              ? "inventory_admission_busy" : "inventory_lock_unavailable",
+          });
+        }
+        if (error.code === "22023" && "message" in error && error.message === "inventory_admission_isolation_unsupported") {
+          throw new InventoryPersistenceError("Inventory reservation RPC failed", { code: error.code });
+        }
+      }
+      throw error;
+    });
     const result = rows[0]?.result;
     if (rows.length !== 1 || !result || typeof result !== "object" || Array.isArray(result)) {
       throw new Error("fulfillment_purchase_reservation_response_invalid");
