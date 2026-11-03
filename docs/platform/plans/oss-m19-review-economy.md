@@ -463,3 +463,27 @@ remain correct even when timestamps coincide. A prior delta-only renewal cannot
 extend fresh full proof, and malformed old history must still refuse. The same
 real-Git regression covers old renewal, full-two transition, subsequent full
 renewal and tampered historical expiry. No history entry or age cap is discarded.
+
+
+## Regroup: report scope at every full-review boundary
+
+The completed evaluations at `80ac508f` and `b408666f` close the earlier
+full-fallback/renewal defects but reveal that report scope was selected only in
+the repair branch. `REPR-I509-E-01` is confirmed by actual pinned CLI: a first
+protected candidate without a coverage edge accepted two explicitly delta-only
+reports as its full-two floor. Local receipt production also succeeded. This
+is a full-review scope violation; synthetic fixture reviewers do not establish
+that any real model or hosted queue was bypassed.
+
+Centralize the existing full versus delta-only classification at the v3
+coverage entry, then let only an eligible repair edge select exact-delta reports
+for inherited coverage. All full routes, including first review and denied or
+ineligible repairs, count actual full reports and their timestamps. Preserve
+v2 historical semantics, all stored observations and findings, invalid-field
+refusal and the existing reduced integration proof. The previous mixed-repair
+case stopped after one partial report; extend it through two partial reports,
+a mixed partial/full pair and complete full evidence, alongside the first
+protected-candidate case and standard prose/routine full-review controls.
+This is the last candidate within the recorded continuation, not a reset.
+Pattern: branch-local evidence classification leaves another route unguarded →
+select counted report scope once at the common v3 boundary.

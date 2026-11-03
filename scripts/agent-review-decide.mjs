@@ -91,7 +91,10 @@ export function coverageState(session) {
   demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
   const start = session.history.findLastIndex(event => event.type === 'prepare');
   const event = session.history[start]; demand(event, 'missing prepare');
-  const candidate = event.candidate; let reports = currentReports(session).filter(report => report.verdict === 'PASS');
+  const candidate = event.candidate; const passes = currentReports(session).filter(report => report.verdict === 'PASS');
+  demand(passes.every(report => report.ordinary === undefined || report.ordinary === false || report.ordinary === true), 'review scope must be full or delta-only');
+  const fullReports = passes.filter(report => report.ordinary !== true); const deltaReports = passes.filter(report => report.ordinary === true);
+  let reports = fullReports;
   const edge = candidate.coverage; let inherited; let floor = Math.max(requiredReviewers(classifyRisk(candidate, event.intent.risk)), candidate.integration || candidate.changedPaths.some(protectedCoveragePath) ? 2 : 0);
   let renewalStart = start;
   if (edge) {
@@ -108,13 +111,11 @@ export function coverageState(session) {
       demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base &&
         edge.proof?.paths?.length > 0 && edge.proof.paths.every(ordinaryRepairPath) && edge.proof.modeChanged === false, 'repair delta is not ordinary');
       floor = 1;
-      demand(reports.every(report => report.ordinary === undefined || report.ordinary === false ||
-        (report.ordinary === true && report.delta === edge.delta)), 'repair reviewer must confirm ordinary semantics and exact delta');
-      const fullReports = reports.filter(report => report.ordinary === undefined || report.ordinary === false);
+      demand(deltaReports.every(report => report.delta === edge.delta), 'repair reviewer must confirm ordinary semantics and exact delta');
       if (fullReports.length) {
-        reports = fullReports; inherited = undefined; floor = 2;
+        inherited = undefined; floor = 2;
         renewalStart = session.history.findIndex(item => item.type === 'report' && item.report === fullReports[0]);
-      }
+      } else reports = deltaReports;
     }
   }
   demand(reports.length >= floor, `${floor} independent PASS reports required`, 'needs_agent_review');

@@ -75,6 +75,33 @@ describe('closed registry grammar', () => {
 });
 
 describe('real Git coverage histories', () => {
+  it('requires full reports for a first protected candidate and excludes partial observations from full expiry', async () => {
+    const f = await fixture(); await f.write('scripts/ci-extra.mjs', 'export const guard = true;\n'); f.commit();
+    const partialAt = Date.now(); const fullAt = partialAt + DAY / 2;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(partialAt);
+    await f.cli('prepare', f.request); const prepared = await f.state(); expect(prepared.candidate.coverage).toBeUndefined();
+    await f.report({ ordinary: true, delta: 'a'.repeat(64) }); await f.report({ ordinary: true, delta: 'b'.repeat(64) });
+    const partial = await f.state();
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    clock.mockReturnValue(fullAt); await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: false }); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const full = await f.state(); expect(full.candidate).toEqual(prepared.candidate);
+    expect(full.history.slice(0, partial.history.length)).toEqual(partial.history);
+    expect(coverageState(full)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+    const malformed = structuredClone(full); malformed.history.find(event => event.type === 'report').report.ordinary = 'invalid';
+    expect(verdict(malformed, malformed.candidate, fullAt).reason).toContain('review scope');
+    clock.mockReturnValue(partialAt + DAY); await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it.each(['prose', 'routine'])('retains one standard full report for an initial %s candidate', async risk => {
+    const f = await fixture();
+    if (risk === 'prose') { await f.write('app.ts', 'export const before = 1;\n'); await f.write('docs/guide.md', 'Explain the existing example.\n'); f.commit(); }
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.risk = risk; await writeFile(f.request, JSON.stringify(request));
+    await f.cli('prepare', f.request); await f.report();
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+  });
   it.each(['integration', 'ordinary repair'])('keeps the full-review route for %s on an unlanded stack base', async kind => {
     const f = await fixture(); const original = kind === 'integration' ? await f.review() : undefined;
     f.git('checkout', '-q', '--detach', f.base);
@@ -266,6 +293,15 @@ describe('real Git coverage histories', () => {
     const f = await fixture(); await f.review(); await f.write('tests/demo.test.ts', 'test\n'); await f.write('app.ts', 'product change\n'); f.commit();
     await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined(); await f.report({ ordinary: true });
     await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: 'a'.repeat(64) });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    const partial = await f.state(); const fullAt = Date.now() + DAY / 2; vi.spyOn(Date, 'now').mockReturnValue(fullAt);
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: false }); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const full = await f.state(); expect(full.history.slice(0, partial.history.length)).toEqual(partial.history);
+    expect(coverageState(full)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
   });
   it('does not inherit expired coverage or an open material card', async () => {
     const f = await fixture(); const prior = await f.review();

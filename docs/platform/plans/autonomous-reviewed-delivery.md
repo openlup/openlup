@@ -127,7 +127,10 @@ coverage prefix. Earlier reduced-coverage renewals remain in history without
 extending or capping later fresh full coverage; later full-coverage renewals keep
 that full coverage's original age cap. Complete history, finding closure and Git
 proof remain mandatory for either route. Denied paths win over test/prose filenames.
-The initial noncontrol package smoke-list set is empty.
+Report scope applies to every full-review floor, including first review and
+candidates with no coverage edge. Delta-only observations remain in history but
+do not count as full reports or set fresh full expiry. The initial noncontrol
+package smoke-list set is empty.
 
 Protected inputs include the existing trust paths, all review/documentation/
 reviewed-forward/CI machinery and every path already treated as sensitive by the
