@@ -136,3 +136,44 @@ pin only in test children, matching the canonical test command; no assertion
 ran or failed during that correction. Parent policy and review keep the pin.
 The largest resumed test-stage admission wait was 271 seconds. No new
 control mechanism or relaxation was needed.
+
+## Committed review handoff
+
+The later maintainer acceptance authorized DCO sign-off of the exact staged
+tree `0814b3a901aaffd9366352b665e04fb042c36ac9` on predecessor
+`d0d40d5249f2dd9b59a4a96180d7d25c3328f305`. The assigned worker committed
+it as `09c3fc2489b555776d6404f16f29bc5a2673a740`, then integrated current
+main `20d8493a66b7390acf2a0c4ed1c9da6dc3747704` by a DCO-signed merge,
+`2ed6ce1924ef44f587700d2e9a896b933b3bdf3d`. The merge was conflict-free;
+its complete tree equals Git's successful merge-tree prediction. This main
+revision is also the current policy pin and review base; the old predecessor
+stack pin is no longer used after integration. Earlier preparation statements
+above describe the historical staged candidate.
+
+The current bounded authority covers these local commits, integration, two
+fresh full native reviews and focused checks. Canonical verification waits for
+the lead's go; no push, pull request, remote merge, release, publication, settings,
+credentials or adopter change is authorized by this handoff. The acceptance and
+0 B package delta remain unchanged.
+
+Integration identity evidence was captured before this handoff-only prose was
+added. Saved patches are `.context/scratch/g8ctl-v3/pre-merge.patch` and
+`.context/scratch/g8ctl-v3/post-merge.patch`; commands were
+`git diff --binary d0d40d5249f2dd9b59a4a96180d7d25c3328f305 09c3fc2489b555776d6404f16f29bc5a2673a740`
+and `git diff --binary 20d8493a66b7390acf2a0c4ed1c9da6dc3747704 2ed6ce1924ef44f587700d2e9a896b933b3bdf3d`.
+On each saved patch, the same awk selectors shown above compute equal added-line
+SHA-256 `196aacd5edcfaca8a2761d5cfc7026de289f8303a63e15c25e9858ec61447db3`,
+removed-line SHA-256 `fc46de4c50e13663a5dac2b4c6b117fe76c3681cd7aa97076721c92a7caae923`
+and combined +/- SHA-256
+`5e5afa1c4419d07da6c4c1ec1145f715301dc44475e6517398c4272257771820`.
+Thus the accepted data and tests survived integration unchanged.
+
+The current documentation tool accepts both original no-impact trailers, with
+zero unanswered obligations and no generated tracked change. Two fresh full
+reviews are required on the committed final candidate; no prior native PASS,
+repair cycle, receipt or expiry is claimed. Focused checks will be recorded in
+ignored task evidence. This handoff adds no new semantics or acceptance duty.
+
+Handoff retro: the mechanical merge preserved the entire accepted delta and
+the original documentation digests. Retain the existing closed data lists and
+full review route; no new process mechanism is justified.
