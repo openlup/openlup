@@ -389,10 +389,10 @@
       },
       {
         "file": "db/platform/migrations/20261101231000_native_paid_email.sql",
-        "sha256": "92eca6c6d7cc9024bdd4260fca3059a2a47e05f3b4296e561dbd16f642cc5971"
+        "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
       }
     ],
-    "objectInventorySha256": "3a0f392615962160720ddc5a3c0035df541f0036af5c980fd854f1b270a6d41e",
+    "objectInventorySha256": "227507872382d9c861316d2b599fdb2c82273ba53dea188f15f4be56ce1c053f",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -797,15 +797,15 @@
         },
         {
           "file": "db/platform/migrations/20261101231000_native_paid_email.sql",
-          "sha256": "92eca6c6d7cc9024bdd4260fca3059a2a47e05f3b4296e561dbd16f642cc5971"
+          "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "c06bdfac390c28c9165bcf661c64a59bb5db931ca3df7383d82d5e56252c3fc0"
+          "withRestore": "7340cc797ba6d9fb5cd951d9b11018f8b1d320c673cbd64da482e61ffdbad74b"
         },
         "separateMigrator": {
-          "withRestore": "d7fdafb57261945776e5749ef2a51d095d7af563c0d6ba3da268d8c6b70706ee"
+          "withRestore": "db234f40e97c661794e1052d5fd30895c0222d1168184f998801c7e705d4f4d4"
         }
       }
     },
@@ -1209,12 +1209,12 @@
         },
         {
           "file": "db/platform/migrations/20261101231000_native_paid_email.sql",
-          "sha256": "92eca6c6d7cc9024bdd4260fca3059a2a47e05f3b4296e561dbd16f642cc5971"
+          "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "aadd799f3d1245d9b8d21700500f86cb6fa6216028c85016ed9a4378d04aabc2",
-        "operatorProvisioned": "4140d541e67352806dd1d8ff513f18488402180a4c14166e9674a7f9e17023f8"
+        "installerManaged": "60c0835d3d53569030d916db2b06f393d35645a4b6a3e9d3231bba4132a34886",
+        "operatorProvisioned": "6da523bae00bfbc267fcf6355d7f84fff717c197ef88cb5306ad6b345a3260ba"
       }
     }
   },
@@ -1702,7 +1702,7 @@
     {
       "file": "20261101231000_native_paid_email.sql",
       "source": "db/platform/migrations/20261101231000_native_paid_email.sql",
-      "sha256": "92eca6c6d7cc9024bdd4260fca3059a2a47e05f3b4296e561dbd16f642cc5971"
+      "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
