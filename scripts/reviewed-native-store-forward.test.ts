@@ -169,7 +169,16 @@ describe("native store SQL shapes and pins", () => {
     const slot = production.nativeStoreForwardClass!.slots.find(slot => slot.row === "G11-c")!;
     const real = sqlStatements(readFileSync("db/platform/migrations/20261019200000_communications_native_operations.sql", "utf8")).find(statement => statement.startsWith("CREATE TABLE public.communication_native_sync_state ("))!;
     expect(slot.purposeCheck).toEqual({ beforeSha256: sqlSha256(real), values: ["marketing_launch_offer", "marketing_newsletter"] });
-    expect(slot.createdFunctions.map(fn => fn.signature)).toEqual(["public.customer_account_communication_choices_as_actor(uuid)", "public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)"]);
+    expect(slot.createdFunctions).toEqual([
+      { signature: "public.customer_account_communication_choices_as_actor(uuid)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)", searchPath: "pg_catalog, pg_temp" },
+    ]);
+    expect(slot.dataStatements).toEqual([
+      "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_stock_wait_cases', 'block', 'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead.');",
+      "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('identity_privacy_erasures', 'block', 'A privacy erasure is a legal process on one named record; absorption never moves or bypasses it.');",
+      "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_command_receipts', 'block', 'Subscription command receipts belong to the subscriptions they answer, which already block absorption; never carry or rebind them.');",
+    ]);
     const statement = sqlStatements(before.toString()).find(statement => statement.startsWith("CREATE TABLE public.communication_native_sync_state ("))!;
     expect(control.slots[6]!.purposeCheck!.beforeSha256).toBe(sqlSha256(statement));
     expect(control.slots[6]!.createdFunctions.map(fn => fn.signature)).toEqual(["public.fixture_account_choices(uuid)", "public.fixture_account_choice_set(uuid,text,boolean,text)"]);
@@ -214,8 +223,27 @@ describe("native store SQL shapes and pins", () => {
     expect(slots.find(slot => slot.row === "G2")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)"]);
     expect(slots.find(slot => slot.row === "G2")!.createdFunctions).toHaveLength(7);
     expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)"]);
-    expect(slots.find(slot => slot.row === "G7")!.createdFunctions).toEqual([{ signature: "public.commerce_view_shipment_destination(uuid)", searchPath: "pg_catalog, pg_temp" }]);
-    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([]);
+    expect(slots.find(slot => slot.row === "G7")!.createdFunctions).toEqual([
+      { signature: "public.commerce_view_shipment_destination(uuid)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)", searchPath: "pg_catalog, pg_temp" },
+    ]);
+    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([
+      { signature: "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
+      { signature: "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
+      { signature: "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
+    ]);
+    expect(slots.find(slot => slot.row === "G8")!.replacedFunctions).toEqual([
+      { signature: "public.commerce_order_emit_paid_notification()", beforeSha256: "6352247a869fda2812d3e83fbcd9b7a0bd9106d27bec22296492e06a15f78bee", searchPath: "public, pg_catalog" },
+      { signature: "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)", beforeSha256: "2dd59a4f2eb7603e2a1714a97ccfad3d078990cb8978a4db16c130ff9db43364", searchPath: "pg_catalog" },
+    ]);
+    expect(slots.find(slot => slot.row === "G8")!.createdFunctions).toEqual([
+      { signature: "public.commerce_promotion_lock_definition(text)", searchPath: "pg_catalog, pg_temp" },
+    ]);
     expect(slots.find(slot => slot.row === "G8")!.grantOnlyFunctions).toHaveLength(8);
     const signatures = slots.flatMap(slot => [...functionsInSlot(slot), ...slot.grantOnlyFunctions].map(fn => fn.signature)), actual = new Map<string, string>();
     for (const file of readdirSync("db/platform/migrations").filter(file => /^\d{14}_.*\.sql$/u.test(file) && file < "20261101222000_").sort()) {
@@ -226,7 +254,7 @@ describe("native store SQL shapes and pins", () => {
       for (const fn of slot.createdFunctions) expect(actual.has(fn.signature), fn.signature).toBe(false);
       for (const fn of slot.grantOnlyFunctions) {
         expect(actual.has(fn.signature), fn.signature).toBe(true);
-        expect(fn.grantTo).toEqual(["service_role"]); expect(fn.revokeFrom).toEqual([]);
+        expect(fn.grantTo).toEqual(slot.row === "G7" ? [] : ["service_role"]); expect(fn.revokeFrom).toEqual(slot.row === "G7" ? ["service_role"] : []);
       }
     }
   });
