@@ -3213,11 +3213,6 @@
       "sha256": "86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c",
       "functions": [
         {
-          "signature": "public.inventory_admission_try_enter()",
-          "beforeSha256": null,
-          "afterSha256": "e416e4e3a77c6c8146e7b6337f8b7a758926e7a4f6a5f7a1216ef35b0236d9d8"
-        },
-        {
           "signature": "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "f17851b244c3962237d3e72b874e34b431c5712aa0bf4614049e65ccf3b98724"
@@ -3236,6 +3231,11 @@
           "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "03ccfcf7129ddfcfeb3ed03f5eb6fc9969705c0d54c0856cb07e503cb136ed5c"
+        },
+        {
+          "signature": "public.inventory_admission_try_enter()",
+          "beforeSha256": null,
+          "afterSha256": "e416e4e3a77c6c8146e7b6337f8b7a758926e7a4f6a5f7a1216ef35b0236d9d8"
         }
       ]
     },
