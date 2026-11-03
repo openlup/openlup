@@ -3017,9 +3017,55 @@
           {
             "signature": "public.commerce_view_shipment_destination(uuid)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
-        "grantOnlyFunctions": [],
+        "grantOnlyFunctions": [
+          {
+            "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+            "grantTo": [],
+            "revokeFrom": [
+              "service_role"
+            ]
+          },
+          {
+            "signature": "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+            "grantTo": [],
+            "revokeFrom": [
+              "service_role"
+            ]
+          },
+          {
+            "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+            "grantTo": [],
+            "revokeFrom": [
+              "service_role"
+            ]
+          }
+        ],
         "dataStatements": []
       },
       {
