@@ -1163,6 +1163,14 @@ export interface OperatorOwnerReceipt {
 /** Additive native superset. The managed transcription above remains unchanged. */
 export type NativeOperatorSubscriptionResult = (OperatorSubscriptionResult & {
     ownerReceipt?: OperatorOwnerReceipt;
+}) | (Omit<Extract<OperatorSubscriptionResult, {
+    outcome: "applied" | "noop" | "replayed";
+}>, "outcome"> & {
+    outcome: "applied_from_next_parcel";
+    appliesFrom: "next_parcel";
+    futureDestinationId: string;
+    replayed: boolean;
+    ownerReceipt?: OperatorOwnerReceipt;
 }) | {
     outcome: "refused";
     refusalCode: "operator_subscription_authority_unavailable";
@@ -1729,7 +1737,20 @@ export declare function createOperatorRecovery(selection: OperatorRecoverySelect
     execute(envelope: OperatorRecoveryCommandEnvelope<OperatorRecoveryCommand | OperatorAccountLinkRequest>): Promise<{
         outcome: "refused" | "conflict";
         refusalCode: import("./contracts/operator.js").OperatorSubscriptionRefusal;
-    } | import("./contracts/operator.js").OperatorAuthorityUnavailable | {
+    } | (Omit<{
+        outcome: "applied" | "noop" | "replayed";
+        subscriptionStatus: string;
+        nextCycleAt: string | null;
+        templateVersion: number;
+        eventId: string | null;
+        appliedBy: "operator_reschedule_band" | "customer_self_service_delegate" | null;
+    }, "outcome"> & {
+        outcome: "applied_from_next_parcel";
+        appliesFrom: "next_parcel";
+        futureDestinationId: string;
+        replayed: boolean;
+        ownerReceipt?: import("./contracts/operator.js").OperatorOwnerReceipt;
+    }) | import("./contracts/operator.js").OperatorAuthorityUnavailable | {
         outcome: "refused" | "conflict";
         refusalCode: import("./contracts/operator.js").EmailCorrectionRefusal;
     } | {

@@ -1051,6 +1051,14 @@ export interface OperatorOwnerReceipt {
 /** Additive native superset. The managed transcription above remains unchanged. */
 export type NativeOperatorSubscriptionResult = (OperatorSubscriptionResult & {
     ownerReceipt?: OperatorOwnerReceipt;
+}) | (Omit<Extract<OperatorSubscriptionResult, {
+    outcome: "applied" | "noop" | "replayed";
+}>, "outcome"> & {
+    outcome: "applied_from_next_parcel";
+    appliesFrom: "next_parcel";
+    futureDestinationId: string;
+    replayed: boolean;
+    ownerReceipt?: OperatorOwnerReceipt;
 }) | {
     outcome: "refused";
     refusalCode: "operator_subscription_authority_unavailable";

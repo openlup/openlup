@@ -595,6 +595,22 @@ generic prepared-provider storage and real PSP qualification remain unavailable.
 The separate closed-class admission prerequisite and feature pins must precede
 submission; a local manifest entry alone grants no delivery or release authority.
 
+The G4 purchase-hold forward appends the same native forward path/hash to all three
+manifest selections, with a separate measured catalogue digest for each existing
+installation shape. It preserves every prior source pin and defines four new
+bounded routines rather than replacing ATP or renewal functions. Abandoned compensation wraps
+the unchanged aggregate donor and releases purchase holds atomically; it adds
+neither withdrawal markers nor raw runtime ledger grants. Source admission
+separately checks the closed native class and co-located whole-forward/function
+pins. The data owner records the accepted ownership shape and donor limits.
+The native destination suffix adds two private address/binding relations and
+four bounded routines without replacing an existing function. Native operator
+results add applied_from_next_parcel; callers must name that partial applicability
+or refuse it, never infer fully applied current-parcel success. The managed
+subscription result/decoder remain unchanged. Destination/event/outbox records
+commit atomically; parcel and money transitions do not depend on mail delivery.
+No saved address book, privacy erasure/export, or automatic host/mail wiring is
+provided. The source task and data owner describe the explicit limits.
 
 The M17 channel suffix appends two native units to each existing selected plan:
 legacy now has 91 units, qualified selections 95, and restricted selections 94.

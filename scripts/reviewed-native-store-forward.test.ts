@@ -648,11 +648,11 @@ function checkG4G3(index: number, text: string) {
 describe("G4 exact existing-table companions and G3 inventory", () => {
   const g4 = () => `${g4g3.g4Statements.join("\n")}\n${sql(2)}`;
   const g3 = () => fixture("g3-shape.sql").toString();
-  it("adds only two slots in order, without feature bindings, sealing or whole-file class pins", () => {
+  it("keeps the slots in order with four feature bindings, without sealing or whole-file class pins", () => {
     const slots = production.nativeStoreForwardClass!.slots;
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 2).map(slot => slot.path));
+    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 4).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
     for (const index of [2, 3]) {
       expect(slots[index]!.replacedFunctions).toEqual([]);
