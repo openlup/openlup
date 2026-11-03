@@ -2870,10 +2870,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/core/test/platformAgentGuide.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/core/test/pricingBreakdown.test.ts",
       "class": "public-output"
     },
@@ -10795,6 +10791,10 @@
     },
     {
       "path": "scripts/packages/packages-check.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-agent-guide.test.ts",
       "class": "public-output"
     },
     {

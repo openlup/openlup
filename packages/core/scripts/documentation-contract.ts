@@ -309,4 +309,17 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : undefined;
-if (invokedPath === import.meta.url) assertDocumentationContract();
+if (invokedPath === import.meta.url) {
+  const args = process.argv.slice(2);
+  if (args.length === 0) assertDocumentationContract();
+  else if (args.length === 3 && args[0] === "--agent-guide") {
+    // Root source tooling can check another package without importing its helpers.
+    const packageRoot = resolve(args[1]);
+    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+    const gates = JSON.parse(readFileSync(join(packageRoot, "release-gates.json"), "utf8"));
+    const packed = new Set((packDryRun(packageRoot).files ?? []).map(file => file.path));
+    const violations: string[] = [];
+    assertAgentGuide(packageRoot, gates.kind, manifest.exports, gates.packageSurface, packed, violations, args[2]);
+    assert(violations.length === 0, `agent guide contract violations:\n${violations.join("\n")}`);
+  } else throw new Error("Usage: documentation-contract.ts [--agent-guide <package-root> <example-source>]");
+}

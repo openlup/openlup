@@ -56,6 +56,8 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
     expect(readFileSync(join(directory, "sql", entry.file))).toEqual(readFileSync(join(root, entry.source)));
     const guide = readFileSync(join(directory, "AGENTS.md"), "utf8");
     const example = /```ts\n([\s\S]*?)\n```/.exec(guide)![1];
+    const readme = readFileSync(join(directory, "README.md"), "utf8");
+    expect(/```ts\n([\s\S]*?)\n```/.exec(readme)?.[1]).toBe(example);
     const file = join(scratch, "agent-example.mts"); writeFileSync(file, example);
     execFileSync(join(root, "node_modules/.bin/tsc"), [file, "--ignoreConfig", "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--target", "ES2022"], { cwd: root });
     const refusal = spawnSync("npm", ["run", "prepublishOnly", "--cache", cache], { cwd: directory, encoding: "utf8" });

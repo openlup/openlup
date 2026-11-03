@@ -638,6 +638,7 @@
         "packages/platform/CHANGELOG-HISTORY.md",
         "packages/platform/api/**",
         "packages/platform/test/**",
+        "scripts/packages/platform-agent-guide.test.ts",
         "packages/platform/release-gates.json",
         "packages/platform/scripts/**",
         "packages/platform/vitest.config.ts",
