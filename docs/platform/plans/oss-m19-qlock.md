@@ -6,8 +6,8 @@ SQL follow as separate changes.
 ## Outcome and boundary
 
 The restricted runtime login on both qualified generations (`qualified-v2` and
-`qualified-admin`) cannot complete four existing native writers. Each fails
-with `42501` and writes nothing:
+`qualified-admin`) cannot complete five existing native paths. Each fails with
+`42501` and writes nothing:
 
 | Writer | Locked or written table | Issued runtime grant |
 |---|---|---|
@@ -15,9 +15,10 @@ with `42501` and writes nothing:
 | Operator recovery issue | recovery commands, locked `FOR UPDATE` | `SELECT`, `INSERT` |
 | Platform control set and heartbeat | control operations, locked `FOR UPDATE` | `SELECT`, `INSERT` |
 | Order promotion-claim transition trigger, on any runtime settlement of an order with a claim | claim events, appended with `INSERT … ON CONFLICT (claim_id, event_key) DO NOTHING` | `INSERT` only |
+| Operator lead absorption, counting blocking rows per client | delivery destinations, read by client | none; row security already enabled |
 
-None of the four tables has row security. The legacy and managed chains are
-unaffected.
+The first four tables have no row security; delivery destinations already do.
+The legacy and managed chains are unaffected.
 
 The fix is one shared qualified completion unit,
 `q2_20261103200000_runtime_lock_and_conflict_completion.sql`. Both qualified
@@ -40,10 +41,18 @@ there, because an arbiter also requires the new row to pass a select policy.
 The runtime already reads the claims these keys derive from, and the other
 event columns stay unreadable.
 
+For delivery destinations, it grants `SELECT (client_id)` and adds a runtime
+`SELECT` policy, `USING (true)`. Without the policy, the existing row security
+would silently return zero rows, and absorption would miss a blocking
+destination. Addresses stay unreadable, and every write stays unavailable.
+
 The pattern follows the issued runtime unit's lock-only precedent for privacy
 erasures. The guard repeats the runtime-completion binding checks. It also
-requires the unswitched installer to own all four targets, with no row
-security or policy yet.
+requires the unswitched installer to own the four row-lock and arbiter
+targets, with no row security or policy yet. It also requires the delivery
+destinations to be in their exact post-creation state: owned by the installer,
+row security on without `FORCE`, no policy, and owner-only table and column
+privileges.
 
 Exclusions:
 

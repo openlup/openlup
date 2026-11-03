@@ -215,7 +215,7 @@ it("prepares the inert shared lock and conflict completion as the seventeenth id
   const issued = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH)).qualifiedInstallations!;
   expect(issued.map(({ path }) => path)).not.toContain(QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE);
   const lock = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`);
-  expect(sqlSha256(lock)).toBe("0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7");
+  expect(sqlSha256(lock)).toBe("6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1");
 
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, 16) }));

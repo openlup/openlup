@@ -1,5 +1,5 @@
--- Qualified runtime completion for existing native row locks and a conflict read.
--- Four existing invoker writers fail on the restricted runtime. Three lock a row
+-- Qualified runtime completion for existing native row locks and narrow reads.
+-- Five existing invoker paths fail on the restricted runtime. Three lock a row
 -- FOR UPDATE: the subscription command apply (renewal term lines), operator
 -- recovery issue (recovery commands) and platform control (control operations).
 -- PostgreSQL requires UPDATE on at least one column for that row lock. Without
@@ -8,6 +8,9 @@
 -- access and admit locking, while every actual update fails its check. The order
 -- promotion-claim transition appends claim events with a conflict target, which
 -- requires SELECT on the arbiter columns; row security would add nothing there.
+-- Operator lead absorption counts a lead's delivery destinations by client; that
+-- table already has row security and no runtime access, so it gains a read of the
+-- client column and a select policy only.
 -- Runtime ownership and BYPASSRLS are forbidden by qualified session admission.
 -- The local guard binds the existing runtime and requires the unswitched
 -- installer to own every target before any change.
@@ -17,6 +20,7 @@ DECLARE
   v_mode text := pg_catalog.current_setting('openlup.qualified.role_mode', true);
   v_runtime_oid oid;
   v_service_oid oid;
+  v_destinations oid := pg_catalog.to_regclass('public.commerce_destinations');
 BEGIN
   IF current_user <> session_user
     OR NOT COALESCE(v_runtime ~ '^[A-Za-z_][A-Za-z0-9_]{0,62}$', false)
@@ -49,6 +53,19 @@ BEGIN
           'platform_control_operations', 'commerce_promotion_claim_events')) <> 4
   THEN
     RAISE EXCEPTION 'runtime_lock_completion_installer_must_own_targets' USING ERRCODE = '42501';
+  END IF;
+  IF v_destinations IS NULL
+    OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
+      WHERE c.oid = v_destinations AND c.relkind = 'r' AND r.rolname = current_user
+        AND c.relrowsecurity AND NOT c.relforcerowsecurity)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid = v_destinations)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c, pg_catalog.aclexplode(c.relacl) a
+      WHERE c.oid = v_destinations AND a.grantee <> c.relowner)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
+      WHERE attrelid = v_destinations AND attnum > 0 AND attacl IS NOT NULL)
+  THEN
+    RAISE EXCEPTION 'runtime_lock_completion_destination_state_invalid' USING ERRCODE = '42501';
   END IF;
 END
 $runtime_lock_completion$;
@@ -109,3 +126,12 @@ GRANT UPDATE (created_at) ON TABLE public.platform_control_operations
 -- keys derive from. Other event columns stay unreadable.
 GRANT SELECT (claim_id, event_key) ON TABLE public.commerce_promotion_claim_events
   TO service_role;
+
+-- Existing operator lead absorption counts blocking delivery destinations by
+-- client. The runtime reads only the client column, and the select policy makes
+-- the count truthful under the existing row security; addresses stay unreadable
+-- and every write stays unavailable.
+GRANT SELECT (client_id) ON TABLE public.commerce_destinations TO service_role;
+CREATE POLICY qualified_rt_destinations_select
+  ON public.commerce_destinations
+  FOR SELECT TO service_role USING (true);

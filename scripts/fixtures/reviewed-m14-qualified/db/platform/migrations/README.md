@@ -38,8 +38,9 @@ issued completion tail without the qualified owner-path forward. See the
 The `q2_20261103200000_runtime_lock_and_conflict_completion.sql` fixture is an
 inert, unapproved candidate for the reserved seventeenth position: one shared
 tail for both qualified plans. It lets the restricted runtime take three
-existing row locks without admitting an actual update, and read only the two
-arbiter columns that an existing conflict target requires. Reader support
+existing row locks without admitting an actual update. It also lets the runtime
+read only the two arbiter columns that an existing conflict target requires,
+and only the client column that operator lead absorption counts. Reader support
 lands first; its exact approval and the identical active SQL follow as separate
 changes.
 
