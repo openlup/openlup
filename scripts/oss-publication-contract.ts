@@ -1,5 +1,6 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
+  "deploy/neutral-store/prove.mjs",
   "examples/neutral-store/extract.mjs",
   "examples/neutral-store/host/server.ts",
   "examples/neutral-store/lifecycle",
@@ -8,6 +9,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",
   "packages/platform/test/lifecycle/appUpgrade.test.ts",
+  "packages/platform/src/lifecycle/openlup.mjs",
   "tests/postgres/nodeHostRuntimeDrain.test.ts",
   "tests/postgres/runM14EffectHandover.ts",
   "tests/postgres/fixtures/m14EffectActor.mjs",

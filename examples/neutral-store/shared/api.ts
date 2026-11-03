@@ -13,7 +13,7 @@ export const operations = [
   'operator.returns', 'operator.returnApprove', 'operator.returnReject',
   'operator.bundles', 'operator.bundle', 'operator.bundleCommand', 'operator.catalogDrafts',
   'operator.reviews', 'operator.reviewModerate', 'operator.partners', 'operator.partnerTransition',
-  'review.read', 'review.submit', 'unsubscribe.apply', 'inquiry.submit',
+  'review.read', 'review.submit', 'unsubscribe.apply',
   'tracking.read', 'acquisition.submit', 'research.submit', 'partners.submit',
   'ingest.submit', 'application.status', 'offer.validate',
 ] as const;

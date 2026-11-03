@@ -54,6 +54,50 @@ updating the typed configuration. Add that file to the ownership inventory.
 Product media paths must remain local; remote tracking images are not part of
 this demo. Theme tokens are six-digit hex colors, and system fonts are used.
 
+## Support contact
+
+Set optional `supportEmail: 'help@example.test'` in the owned configuration.
+The shared validator beside `assertConfig` accepts a bounded ASCII email address
+and refuses whitespace, HTML, URL schemes and other invalid values with
+`starter_support_email_invalid`. Omit the field to show that no support contact
+is configured. Both localized support pages render it as plain text, with no
+HTML interpretation or generated email link, and link to the account page.
+Restart after editing configuration. This field is an owned upgrade input.
+
+## Public origin
+
+`publicOrigin?: string` and `allowInsecurePublicOrigin?: boolean` are optional
+fields of the owned `StoreConfig` in `owned/store.config.ts`. Existing registries
+need no new export or field. Owned upgrade preservation includes these inputs.
+For a host behind your own TLS terminator, set, for example,
+`publicOrigin: 'https://store.example.test'`. The terminator must preserve the
+original Host; X-Forwarded-Host, X-Forwarded-Proto, Forwarded and similar headers
+are never authority. Validate the selected config before Docker work and again
+at host startup; restart after an edit. No network publication changes follow.
+
+Supply canonical lowercase ASCII (or already encoded punycode) host input, at
+most 256 characters. A root slash and an explicit default port normalize to the
+stored URL origin. Other parser repairs, uppercase/Unicode host input, trailing
+dots, userinfo, whitespace, wildcard, path, query, fragment and non-HTTP(S)
+schemes refuse. A non-loopback HTTP origin needs the explicit
+`allowInsecurePublicOrigin: true` opt-in; use HTTPS for a TLS terminator.
+The HTTP loopback exemptions are exactly `localhost`, `127.0.0.1` and `[::1]`;
+no DNS lookup establishes an exemption. Exact IP literals and loopback origins
+on a different port are permitted:
+the operator still selects one complete origin, including the externally mapped
+port. This does not supply a browser-trusted certificate or validate DNS/TLS
+ownership. Host matching stays exact, including IPv6 brackets and nondefault
+ports. For default ports browsers send no port in Host. Writes must send the
+canonical origin exactly, without a slash or explicit default port.
+
+The validator names `starter_public_origin_invalid`,
+`starter_public_origin_not_canonical`, `starter_public_origin_flag_invalid` and
+`starter_public_origin_tls_required`. HTTP admission retains
+`starter_local_host_required` and `starter_same_origin_required`.
+The latter covers missing/null/mismatched Origin, duplicate/multi-valued Origin,
+missing request marker and a non-JSON write. Every non-GET/HEAD method receives
+the check, including routes outside `/api/actions`.
+
 ## Changes that need a page copy
 
 Take ownership of a page when changing its complete structure, replacing the
@@ -90,3 +134,51 @@ change, and commit that independent application's work. Use the installed
 hashes, restart and repeat the minimum-unit refusal and successful purchase.
 Record the actual old/new package and schema identities and browser results.
 An unchanged file-copy test alone is not upgrade acceptance.
+
+## Demonstration sessions and mailbox
+
+Sessions live in a single process, expire after one hour, have capacity 1000 and
+are lost on restart. This is not a production session store. Customer ownership
+and operator membership are rechecked by the native stores on requests.
+The demonstration mailbox is not a real mailbox. Its captured messages are
+written to a 0600 file by the container's `node` user under `/application`.
+From the extracted application directory, read it with:
+
+```sh
+docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+```
+
+Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
+private; the host does not publish it through HTTP.
+
+## Catalogue authoring and storefront
+
+Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.
+
+`owned/catalogue.ts` installs the fictional `starter:item@1` authoring type for
+both configurations; replace its content validator and type definitions in your
+application. Draft payloads cannot install executable validators. The operator
+page accepts create/revise/abandon and detail/list requests. The host supplies the
+command key and session actor; neither comes from the JSON editor.
+
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+
+See the [operator roster recipe](../README.md#operator-support-roster-and-catalogue-authoring) for support provisioning and deactivation through the owner connection.
+
+## Acquisition location choices
+
+`owned/acquisition-addresses.ts` owns the fictional choice IDs, localized labels
+and opaque source/reference/revision/provenance tuples. Keep IDs unique and
+stable, and follow the native registry constraints. This list is demonstration
+data, not a real address directory. Acquisition submission is a public durable
+write through the native case port. The client submits only the selected ID;
+the host rejects extra fields and selects its tuple from this list. Email and
+explicit application consent are stored natively; applicant names are not collected.
+
+The existing install-only seed uses the acquisition foundation migration header
+contract (lines 16-17) to load the adopter-owned registry through the owner connection
+behind the same identity and demonstration-marker checks as the catalogue.
+Repeating an identical tuple is safe. A different provenance or inactive row
+fails the entire transaction rather than overwriting it. A customer environment
+needs its own owner-loaded registry and onboarding. Editing this list never
+grants runtime registry writes or customer delivery qualification.

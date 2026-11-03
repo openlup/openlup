@@ -1,3 +1,4 @@
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
@@ -5,8 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import * as jose from "jose";
+import * as renewal from "@openlup/platform/subscriptions";
+import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
+import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
+import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -34,9 +40,62 @@ let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
 let identity: Awaited<ReturnType<typeof identityFixture>>;
+let payments: Awaited<ReturnType<typeof paymentTransferFixture>>;
+const paymentOptions = { dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered" };
+const paymentAt = "2026-10-30T12:00:00.123Z";
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
+const renewalAt = "2026-09-01T12:00:00.000Z", renewalDue = "2026-09-29T12:01:00.000Z";
+// Identifying-looking synthetic references deliberately demonstrate that the
+// sandbox channel check does not enforce nonpersonal reference contents.
+const renewalFacts: renewal.NativeRenewalPurchaseFacts = {
+  settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization:customer@example.invalid",
+  unattendedChargeAuthorizedAt: renewalAt, payerAccountRef: "payer@example.invalid",
+  methodRef: "sandbox-method:customer@example.invalid", methodEvidenceRef: "sandbox-evidence:customer@example.invalid",
+  stockSourceKey: "transfer-renewal", templateId: "transfer-refill", cadenceDays: 28, currency: "XXX",
+  lines: [{ lineOrdinal: 1, sku: "retained-sku", quantity: 2, unitAmountMinor: 100 }], shippingAmountMinor: 0,
+  acquisitionRef: "acquisition:customer@example.invalid",
+};
+let retainedRenewal: { orderId: string; subscriptionId: string }, pendingRenewal: typeof retainedRenewal;
+
+async function renewalPurchase(complete: boolean) {
+  const call = async (name: string, values: unknown[]) => (await source.runtime.query(
+    `SELECT public.${name}(${values.map((_, index) => `$${index + 1}`).join(",")}) AS value`, values)).rows[0].value;
+  const key = randomUUID();
+  // Match the retained-transfer suite's existing order fixture. G5 owns
+  // checkout draft receipts; every G2 row below is produced by its real writer.
+  const orderId = randomUUID(), order = await source.owner.connect();
+  try {
+    await order.query("BEGIN");
+    await order.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'pending_payment','XXX',200)", [orderId, graph.client]);
+    await order.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,sku_id,quantity,unit_amount_minor,line_amount_minor) SELECT $1,1,id,2,100,200 FROM public.catalog_skus WHERE sku='retained-sku'", [orderId]);
+    await order.query("COMMIT");
+  } catch (error) { await order.query("ROLLBACK"); throw error; } finally { order.release(); }
+  const intent = await call("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", "{}", renewalAt]);
+  await captureSandboxPurchase(paymentPort(source.runtime), { settlementIntentId: intent.settlement.id, key, at: renewalAt });
+  await call("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, renewalAt]);
+  const writer = renewal.createPostgresPurchaseRenewalWriter(source.runtime);
+  await writer.register(orderId, renewalFacts);
+  const intentRow = (await source.runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
+  const fingerprint = createHash("sha256").update(intentRow.external_ref ?? intentRow.id).digest("hex");
+  const activated = await call("subscription_activate_from_captured_payment", [`activate:${key}`, orderId, fingerprint]);
+  if (complete) {
+    await writer.complete(orderId);
+    const change = { subscriptionId: activated.subscriptionId, eventKey: `missing:${orderId}`, expectedState: "healthy" as const,
+      healthState: "method_missing" as const, methodRef: renewalFacts.methodRef, evidenceRef: "sandbox-missing:customer@example.invalid" };
+    await writer.transitionMethod(change);
+    await writer.transitionMethod({ ...change, eventKey: `repair:${orderId}`, expectedState: "method_missing", healthState: "healthy",
+      evidenceRef: "sandbox-repaired:customer@example.invalid" });
+    // Explicit synthetic delivered-parcel fact for the carried enforcing
+    // alignment policy. Never confirm the original fixture's undelivered replacement.
+    const shipment = randomUUID();
+    await source.owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key) VALUES($1,$2,'fixture-port','3pl',$3)", [shipment, orderId, `transfer-parcel:${orderId}`]);
+    await source.runtime.query("SELECT public.fulfillment_record_alignment_arrival($1,$2,$3,$4)",
+      [`transfer-arrival:${orderId}`, shipment, "2026-09-02T12:00:00.000Z", `evidence:transfer-arrival:${orderId}`]);
+  }
+  return { orderId, subscriptionId: String(activated.subscriptionId) };
+}
 
 function pool(connectionString: string): Pool { const result = new Pool({ connectionString }); pools.push(result); return result; }
 async function installation(label: string): Promise<Installation> {
@@ -61,8 +120,8 @@ async function installation(label: string): Promise<Installation> {
   expect((await runner.status()).pending).toEqual([]);
   return { owner, ownerUrl: url(selection.migrationLogin, true), runtime: pool(url(selection.runtimeLogin)), restore: pool(url(selection.restoreLogin!)), runtimeUrl: url(selection.runtimeLogin) };
 }
-async function capture(db: Pool, sourceId: string): Promise<ConnectedNativeStoreCapture> {
-  return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+async function capture(db: Pool, sourceId: string, limits = { maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 }): Promise<ConnectedNativeStoreCapture> {
+  return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, ...limits,
     source: { async withSnapshot(work) {
       const client = await db.connect();
       try {
@@ -74,6 +133,51 @@ async function capture(db: Pool, sourceId: string): Promise<ConnectedNativeStore
     } },
   });
 }
+function paymentPort(db: Pool) { return createPostgresSandboxPaymentSimulator(db, paymentOptions); }
+function paymentReceive(db: Pool, attempt: SandboxPaymentAttempt, observationId: string) {
+  return paymentPort(db).ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({
+    settlementIntentId: attempt.settlementIntentId, attemptId: attempt.id, observationId,
+  })), headers: {}, receivedAt: paymentAt });
+}
+async function paymentObservation(db: Pool, attempt: SandboxPaymentAttempt, outcome: SandboxPaymentOutcome) {
+  const input = { attemptId: attempt.id, idempotencyKey: `observation:${randomUUID()}`, outcome, occurredAt: paymentAt,
+    payerEmail: "dispatch-only@example.invalid", rawPayload: { contact: "dispatch-only@example.invalid" } };
+  const observation = await paymentPort(db).recordObservation(input);
+  return { input, ...observation };
+}
+async function paymentFixture() {
+  const clientId = randomUUID(), orderId = randomUUID(), writer = await source.owner.connect();
+  try {
+    await writer.query("BEGIN");
+    await writer.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [clientId, `${clientId}@example.invalid`]);
+    await writer.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',900)", [orderId, clientId]);
+    await writer.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)", [orderId]);
+    await writer.query("COMMIT");
+  } catch (error) { await writer.query("ROLLBACK"); throw error; } finally { writer.release(); }
+  await source.runtime.query("SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',900,'XXX','{}'::jsonb,$3)", [`open:${orderId}`, orderId, paymentAt]);
+  const intentId = (await source.owner.query("SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1", [orderId])).rows[0].id as string;
+  const input = { settlementIntentId: intentId, idempotencyKey: `attempt:${randomUUID()}`, requestFingerprint: "b".repeat(64), at: paymentAt };
+  const extraFacts = { authorizationRef: "sandbox:authorization", unattendedChargeAuthorizedAt: paymentAt,
+    payerAccountRef: "sandbox:payer", methodRef: "sandbox:method", methodEvidenceRef: "sandbox:evidence", payerEmail: "dispatch-only@example.invalid" };
+  await expect(paymentPort(source.runtime).beginAttempt({ ...input, methodFacts: extraFacts })).rejects.toThrow("payment_simulator_method_facts_invalid");
+  return { orderId, intentId, input, attempt: await paymentPort(source.runtime).beginAttempt(input) };
+}
+async function paymentTransferFixture() {
+  const open = await paymentFixture(), fenced = await paymentFixture(), pending = await paymentFixture(), review = await paymentFixture();
+  const refused = await paymentObservation(source.runtime, fenced.attempt, "refused");
+  expect((await paymentReceive(source.runtime, fenced.attempt, refused.id)).status).toBe(200);
+  const nextInput = { ...fenced.input, idempotencyKey: `attempt:${randomUUID()}` };
+  const active = await paymentPort(source.runtime).beginAttempt(nextInput);
+  const unknown = await paymentObservation(source.runtime, active, "indeterminate");
+  expect((await paymentReceive(source.runtime, active, unknown.id)).status).toBe(200);
+  const captured = await paymentObservation(source.runtime, pending.attempt, "captured");
+  await source.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${review.orderId}`, review.orderId]);
+  const cancelled = await paymentObservation(source.runtime, review.attempt, "captured");
+  expect((await paymentReceive(source.runtime, review.attempt, cancelled.id)).status).toBe(200);
+  const reviewEvent = (await source.owner.query("SELECT id FROM public.payment_truth_events WHERE source_event_id=$1", [`sandbox:${cancelled.id}`])).rows[0].id as string;
+  return { open, fenced, active, nextInput, refused, pending, captured, review, cancelled, reviewEvent };
+}
+
 async function identityFixture() {
   const issuer = "https://issuer.example.invalid/retained-store", audience = "customer-api";
   const key = await jose.generateKeyPair("ES256"), jwk = { ...await jose.exportJWK(key.publicKey), kid: "native-source", alg: "ES256", use: "sig" };
@@ -214,6 +318,10 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
+  retainedRenewal = await renewalPurchase(true);
+  pendingRenewal = await renewalPurchase(false);
+
+  payments = await paymentTransferFixture();
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -254,6 +362,86 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   return copy;
 }
 
+// Solo median 6.32 s, max 6.44 s; source CI 14.9 s and merge group 21.3 s both ran without coverage (10 s flat limit).
+it("restores writer-created sandbox attempts, cyclic observations and terminal review truth, then continues once", async () => {
+  const before = await census(source.owner);
+  expect(JSON.stringify(packet)).not.toContain("dispatch-only@example.invalid");
+  expect((await restore()).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(before);
+  expect((await restore()).replayed).toBe(true);
+  const restarted = pool(target.runtimeUrl), port = paymentPort(restarted), truth = createPostgresPaymentTruthPort(restarted, paymentOptions);
+  const p = payments;
+  expect(await port.readAttempt({ settlementIntentId: p.open.intentId })).toMatchObject({ id: p.open.attempt.id, state: "dispatched", latestObservation: null });
+  expect((await port.beginAttempt(p.open.input)).replayed).toBe(true);
+  await expect(port.beginAttempt({ ...p.open.input, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
+  expect(await port.readAttempt({ settlementIntentId: p.fenced.intentId })).toMatchObject({ id: p.active.id, state: "indeterminate" });
+  expect((await port.beginAttempt(p.nextInput)).replayed).toBe(true);
+  await expect(port.beginAttempt({ ...p.nextInput, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
+  await expect(port.recordObservation({ ...p.refused.input, idempotencyKey: `observation:${randomUUID()}`, outcome: "captured" })).rejects.toThrow("wrong_attempt");
+  expect(await paymentReceive(restarted, p.fenced.attempt, p.refused.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  expect(await port.recordObservation(p.captured.input)).toEqual({ id: p.captured.id, replayed: true });
+  expect((await paymentReceive(restarted, p.pending.attempt, p.captured.id)).status).toBe(200);
+  expect(await paymentReceive(restarted, p.pending.attempt, p.captured.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  for (const current of [{ ...p.open, active: p.open.attempt }, { ...p.fenced, active: p.active }]) {
+    const late = await paymentObservation(restarted, current.active, "captured");
+    expect((await paymentReceive(restarted, current.active, late.id)).status).toBe(200);
+    expect(await paymentReceive(restarted, current.active, late.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  }
+  for (const current of [p.open, p.fenced, p.pending]) {
+    expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [current.intentId])).rows).toHaveLength(1);
+    expect((await target.owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid'", [current.orderId])).rows).toHaveLength(1);
+  }
+  const original = await createPostgresPaymentTruthPort(source.runtime, paymentOptions).readEvent(p.reviewEvent);
+  expect(await truth.readEvent(p.reviewEvent)).toEqual(original);
+  expect(original).toMatchObject({ event: { applicationStatus: "review_required", state: "open", outcome: "captured" }, financial: { orderStatus: "cancelled" } });
+  expect(original!.event.reviewRequiredAt).toBeTruthy();
+  const observation = (await port.readAttempt({ settlementIntentId: p.review.intentId }))!.latestObservation!;
+  const reconciliation = { eventId: p.reviewEvent, idempotencyKey: randomUUID(), evidenceStatus: "observed" as const, outcome: "captured" as const,
+    occurredAt: paymentAt, failure: null, evidence: { sourceKind: "reconciliation_read" as const, sourceReference: observation.id,
+      observedStatus: observation.outcome, observedAt: observation.occurredAt, payloadFingerprint: observation.fingerprint, attemptRef: p.review.attempt.id } };
+  expect((await truth.recordReconciliation(reconciliation)).event.applicationStatus).toBe("review_required");
+  expect((await truth.recordReconciliation(reconciliation)).event.replayed).toBe(true);
+  for (let n = 0; n < 2; n++) expect((await truth.sweepOpenEvents({ now: "2030-01-01T00:00:00Z", limit: 1000 })).eventIds).not.toContain(p.reviewEvent);
+  expect(await paymentReceive(restarted, p.review.attempt, p.cancelled.id)).toMatchObject({ status: 200, data: { replayed: true } });
+  expect((await target.owner.query("SELECT e.review_required_at IS NOT NULL AS review,e.outcome,o.status FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id JOIN public.commerce_orders o ON o.id=i.order_id WHERE e.id=$1", [p.reviewEvent])).rows)
+    .toEqual([{ review: true, outcome: "captured", status: "cancelled" }]);
+  const reviewTransitions = "SELECT id,outcome FROM public.commerce_settlement_transitions WHERE intent_id=$1 ORDER BY id";
+  expect((await target.owner.query(reviewTransitions, [p.review.intentId])).rows).toEqual((await source.owner.query(reviewTransitions, [p.review.intentId])).rows);
+  expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [p.review.intentId])).rows).toEqual([]);
+  for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) {
+    const rows = packet.owned.find(data => data.table === table)!.rows;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.join()).not.toContain("dispatch-only@example.invalid");
+    expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
+  }
+}, 65_000);
+
+// Solo median 4.31 s, max 4.34 s; allow headroom for hosted database contention.
+it("rolls back the whole restore when a captured simulator observation is missing", async () => {
+  const corrupted = structuredClone(packet), observations = corrupted.owned.find(data => data.table === "payment_simulator_observations")!;
+  observations.rows = observations.rows.filter(row => (JSON.parse(row) as { id: string }).id !== payments.captured.id);
+  const { sha256: _hash, ...body } = corrupted; corrupted.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  const before = await census(target.owner);
+  await expect(restore(corrupted)).rejects.toMatchObject({ code: "target_conflict" });
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+
+// Solo medians 3.70/3.64 s, maxima 3.78/3.69 s for the two table-limit cases.
+for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) it(`counts linkable ${table} rows and bytes toward the transfer limits`, async () => {
+  const all = [...packet.compatible.tables, ...packet.owned], index = all.findIndex(data => data.table === table);
+  const through = all.slice(0, index + 1), rows = through.reduce((sum, data) => sum + data.rows.length, 0);
+  const bytes = through.reduce((sum, data) => sum + data.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+  await expect(capture(source.owner, "sandbox-row-limit", { maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 })).rejects.toMatchObject({ code: "limit_exceeded", table });
+  await expect(capture(source.owner, "sandbox-byte-limit", { maximumRows: 10000, maximumBytes: bytes - 1 })).rejects.toMatchObject({ code: "limit_exceeded", table });
+  const oversized = structuredClone(packet), targetRows = oversized.owned.find(data => data.table === table)!;
+  targetRows.rows = Array.from({ length: 10001 }, () => targetRows.rows[0]!);
+  const { sha256: _hash, ...body } = oversized; oversized.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  const before = await census(target.owner);
+  await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+
+// Solo median 3.55 s, max 3.61 s; allow headroom for hosted database contention.
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
@@ -281,15 +469,17 @@ it("refuses a native capture login that row security would silently filter", asy
     await reader.end();
     await source.owner.query(`DROP ROLE ${login}`);
   }
-});
+}, 30_000);
 
+// Solo median 5.03 s, max 5.21 s; allow headroom for hosted database contention.
 it("preserves native JSON digits above the JavaScript exact integer range", async () => {
   const carried = await capture(source.owner, "native-json-number-source");
   await restore(carried);
   expect((await target.owner.query("SELECT payload->>'frozen' AS value FROM public.outbox_events WHERE idempotency_key='original-effect-key'"))
     .rows).toEqual([{ value: "9007199254740993" }]);
-});
+}, 30_000);
 
+// Solo median 5.17 s, max 5.18 s; allow headroom for hosted database contention.
 it("refuses a changed known trigger body and an unknown INSERT trigger before importing rows", async () => {
   const before = await census(target.owner);
   const original = (await target.owner.query<{ definition: string }>(
@@ -309,8 +499,9 @@ it("refuses a changed known trigger body and an unknown INSERT trigger before im
     expect(await census(target.owner)).toEqual(before);
   } finally { await target.owner.query("DROP TRIGGER IF EXISTS retained_transfer_unapproved ON public.commerce_order_holds"); }
   expect(await census(target.owner)).toEqual(before);
-});
+}, 30_000);
 
+// Solo median 5.18 s, max 5.29 s; allow headroom for hosted database contention.
 it("refuses private business omission and nonpristine targets without deleting existing obligations", async () => {
   const targetBefore = await census(target.owner);
   // An actual canonical private BUSINESS row must not disappear as if private
@@ -342,7 +533,96 @@ it("refuses private business omission and nonpristine targets without deleting e
     await target.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.exception' AND idempotency_key=$1", [`shipment_exception:${retainedHold}`]);
   }
   expect(await census(target.owner)).toEqual(targetBefore);
-});
+}, 30_000);
+
+// Solo median 3.86 s, max 4.07 s; allow headroom for hosted database contention.
+it("bounds customer-linked purchase facts, method events and method state in transfer", async () => {
+  const compatibleRows = packet.compatible.tables.reduce((sum, table) => sum + table.rows.length, 0);
+  const compatibleBytes = packet.compatible.tables.reduce((sum, table) => sum + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0);
+  let rows = compatibleRows, bytes = compatibleBytes;
+  for (const name of ["subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations"]) {
+    const held = packet.owned.find(table => table.table === name)!;
+    expect(held.rows.length).toBeGreaterThan(0);
+    rows += held.rows.length; bytes += held.rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
+    for (const limits of [{ maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 }, { maximumRows: 10000, maximumBytes: bytes - 1 }]) {
+      await expect(captureConnectedNativeStore({ sourceId: "bounded-renewal-source", catalogueId: selected.objectInventorySha256, ...limits,
+        source: { async withSnapshot(work) {
+          const client = await source.owner.connect();
+          try {
+            await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+            return await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
+          } finally { await client.query("ROLLBACK"); client.release(); }
+        } },
+      })).rejects.toMatchObject({ code: "limit_exceeded", table: name });
+    }
+  }
+  const oversized = structuredClone(packet), held = oversized.owned.find(table => table.table === "subscription_method_states")!;
+  held.rows = Array.from({ length: 10001 }, () => held.rows[0]);
+  const { sha256: _old, ...body } = oversized;
+  oversized.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
+  expect(await census(target.owner)).toEqual(Object.fromEntries([...pristine.compatible.tables, ...pristine.owned].map(table => [table.table, [...table.rows].sort()])));
+}, 30_000);
+
+it("restores writer-produced renewal data and pending duties, then renews through the restricted runtime", async () => {
+  await restore();
+  expect((await restore()).replayed).toBe(true);
+  for (const table of ["subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states",
+    "subscription_renewal_terms", "subscription_renewal_term_lines", "subscription_activations"] as const) {
+    const read = async (pool: Pool) => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN READ ONLY");
+        await client.query("SET LOCAL TimeZone='UTC'");
+        return (await client.query(`SELECT to_jsonb(t)::text AS value FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+      } finally { await client.query("ROLLBACK"); client.release(); }
+    };
+    expect(await read(target.owner)).toEqual(await read(source.owner));
+  }
+  for (const table of ["subscription_renewal_attachments", "subscription_method_state_events"]) {
+    await expect(target.runtime.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });
+  }
+  const writer = renewal.createPostgresPurchaseRenewalWriter(target.runtime);
+  expect(await writer.pending()).toContainEqual({ ...pendingRenewal, hasPurchaseFacts: true });
+  expect(await writer.complete(pendingRenewal.orderId)).toMatchObject({ subscriptionId: pendingRenewal.subscriptionId, replayed: false });
+  expect(await writer.complete(pendingRenewal.orderId)).toMatchObject({ replayed: true });
+  await expect(writer.register(pendingRenewal.orderId, { ...renewalFacts, payerAccountRef: "different@example.invalid" })).rejects.toThrow("purchase_conflict");
+  expect(await writer.readMethod(retainedRenewal.subscriptionId)).toMatchObject({ healthState: "healthy",
+    methodRef: renewalFacts.methodRef, evidenceRef: "sandbox-repaired:customer@example.invalid" });
+  // The row proof supplies current stock after restore through its production
+  // writer; inventory-history transfer belongs to the final joined witness.
+  await createPostgresFulfillmentStockSyncPort(target.runtime, { sourceKey: renewalFacts.stockSourceKey, readLocalInventoryStock: async () => [] })
+    .recordProviderStockCurrent({ requestKey: "fixture-stock", snapshot: { providerRef: "sandbox-stock", collectedAt: renewalAt,
+      sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot", skuRef: "retained-sku", totalQuantity: 100,
+      forSaleQuantity: 100, reservedOrUnavailableQuantity: 0, syncRunId: "transfer-stock" }, inventoryClass: "sellable",
+      lastSyncedAt: renewalAt, staleAfter: "2027-01-01T00:00:00.000Z" });
+  const codec = renewal.createNativeRenewalCodec(), store = renewal.createPostgresRenewalStore(target.runtime, codec);
+  const call = async <T = Record<string, unknown>>(name: string, values: unknown[]): Promise<T> =>
+    (await target.runtime.query(`SELECT public.${name}(${values.map((_, index) => `$${index + 1}`).join(",")}) AS value`, values)).rows[0].value as T;
+  const settlement: RenewalSettlementPort = {
+    prepareRenewal: i => call<RenewalPreparedSettlement>("commerce_prepare_subscription_renewal", [i.operationId, i.claimToken, i.now]),
+    acknowledgeExternalAttempt: async i => codec.readback(await call("commerce_acknowledge_subscription_renewal_attempt", [i.operationId, i.operationFingerprint, i.externalAttemptRef, i.acknowledgedAt])),
+    recordTerminalOutcome: async i => codec.readback(await call("commerce_record_subscription_renewal_outcome", [i.operationId, i.eventKey, i.operationFingerprint, i.outcome, i.externalRef ?? null, i.reason ?? null, i.occurredAt])),
+  };
+  const due = (await store.listDue(100, renewalDue)).find(row => row.subscriptionId === retainedRenewal.subscriptionId)!;
+  const snapshot = await store.buildCycleSnapshots(due);
+  expect(snapshot.cycle.status).toBe("correlated");
+  expect(snapshot.payerAccountRef).toBe(renewalFacts.payerAccountRef);
+  expect(await call("subscription_delivery_alignment_admit_renewal", [due.subscriptionId, due.scheduledAt, renewalDue]))
+    .toMatchObject({ allowed: true, reason: "predecessor_delivered" });
+  const rail = renewal.createPostgresSandboxRenewalRail(target.runtime, { scenario: "succeeded", now: () => renewalDue });
+  const lifecycle = renewal.createPostgresRetryLifecycleBinding({ executor: target.runtime, async withTransaction(work) {
+    const client = await target.runtime.connect();
+    try { await client.query("BEGIN"); const value = await work(client); await client.query("COMMIT"); return value; }
+    catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }, settlement: () => settlement, correlate: wire => codec.decode(wire).cycle, failureTemplate: "failed", recoveryPath: "/recover" });
+  const result = await renewal.runOneAutomaticSubscriptionRenewal({ store, settlement: lifecycle.settlement, failureHandoff: lifecycle.failureHandoff,
+    inventory: { expireReservations: async () => 0, reserve: i => call<RenewalReservationResult>("fulfillment_reserve_subscription_renewal", [i.operationId, i.claimToken, 900, i.now]) },
+    paymentRails: { resolve: channel => channel === "sandbox" ? rail : null }, workerId: "transfer-renewal", policy: renewal.createSandboxRenewalPolicy(renewalFacts.methodRef),
+  }, due, renewalDue);
+  expect(result.status).toBe("succeeded");
+  expect((await target.runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [retainedRenewal.subscriptionId])).rows[0].status).toBe("active");
+}, 30_000);
 
 // Three real restore outcomes, full graph censuses and post-replay runtime
 // checks share one bounded hosted integration deadline; retry remains zero.
@@ -625,3 +905,88 @@ it("drains every target acquisition command before opening a new installation-ke
   expect((await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows).toEqual(sourceReceipt);
   expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
 }, 30_000);
+
+
+// Solo 15.06 s without coverage; 60 s covers installed tarballs, capture/restore and child restart with headroom.
+it("preserves native checkout receipt identity, privacy and microseconds across transfer and restart", async () => {
+  const { installSubscriptionConsumer } = await import("../helpers/installSubscriptionConsumer.js");
+  const { execFileSync } = await import("node:child_process");
+  const { writeFile } = await import("node:fs/promises");
+  const consumer = await mkdtemp(join(process.cwd(), ".context/scratch/checkout-transfer-consumer-"));
+  try {
+    const installed = await installSubscriptionConsumer(consumer);
+    const checkout = await import(installed.resolve("@openlup/platform/commerce/server/native-checkout")) as typeof import("@openlup/platform/commerce/server/native-checkout");
+    const native = await installation("checkout-source");
+    const clientId = randomUUID(), principalId = randomUUID(), skuId = randomUUID(), listId = randomUUID();
+    await native.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'checkout-transfer@example.invalid')", [principalId]);
+    await native.owner.query("INSERT INTO public.clients(id,principal_id,email) VALUES($1,$2,'checkout-transfer@example.invalid')", [clientId, principalId]);
+    await native.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'checkout-transfer','Synthetic checkout')", [skuId]);
+    await native.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,'CHECKOUT-TRANSFER','Synthetic checkout')", [skuId]);
+    await native.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic checkout','ZZ','XXX')", [listId]);
+    await native.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor) VALUES($1,$2,100)", [listId, skuId]);
+    const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+    const request = { idempotencyKey: `checkout-transfer:${randomUUID()}`, quoteSnapshot: { contractVersion: "commerce.v0" as const, quote: {
+      currency: "XXX", taxIncluded: true as const,
+      lines: [{ sku: "CHECKOUT-TRANSFER", productSlug: "checkout-transfer", quantity: 2,
+        unitPriceGross: money(100), lineSubtotalGross: money(200), tax: { included: true as const, country: "ZZ",
+          category: "standard", vatRateBps: 2000, legalBasis: "Synthetic transfer tax", netAmount: money(167), vatAmount: money(33), grossAmount: money(200) } }],
+      discounts: [], context: { mode: "one_time" as const, cadenceDays: null, promoCodes: [],
+        hostFacts: { clientId, principalId, contact: "checkout-transfer@example.invalid" } },
+      subtotalGross: money(200), discountTotalGross: money(0), shippingGross: money(0), shippingDiscountGross: money(0),
+      totalGross: money(200), netTotal: money(167), taxTotal: money(33) } } };
+    const created = await checkout.createPostgresNativeCheckoutPersistence(native.runtime).createOrderDraft(request, { clientId });
+    const orderId = created.orderDraft.orderId.replace(/^order_/, "");
+    // Precision fixture only: the public writer creates the receipt; its timestamp is not part of the request fingerprint.
+    await native.owner.query("UPDATE public.commerce_order_draft_receipts SET created_at='2026-11-03T12:34:56.123456Z' WHERE order_id=$1", [orderId]);
+    const carried = await capture(native.owner, "native-checkout-source");
+    const receipt = carried.owned.find(data => data.table === "commerce_order_draft_receipts")!;
+    expect(receipt.rows).toHaveLength(1);
+    const receiptRow = JSON.parse(receipt.rows[0]!);
+    const order = JSON.parse(carried.compatible.tables.find(data => data.table === "commerce_orders")!.rows[0]!);
+    expect(receiptRow.response_payload.orderDraft.quoteSnapshot).toEqual(order.metadata.quoteSnapshot);
+    expect(order.metadata.quoteSnapshot).toEqual(request.quoteSnapshot);
+    expect(receiptRow.created_at).toBe("2026-11-03T12:34:56.123456+00:00");
+    const throughReceipt = [...carried.compatible.tables, receipt];
+    const rows = throughReceipt.reduce((total, data) => total + data.rows.length, 0);
+    const bytes = throughReceipt.reduce((total, data) => total + data.rows.reduce((size, row) => size + Buffer.byteLength(row), 0), 0);
+    await expect(capture(native.owner, "receipt-row-bound", { maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 }))
+      .rejects.toMatchObject({ code: "limit_exceeded", table: "commerce_order_draft_receipts" });
+    await expect(capture(native.owner, "receipt-byte-bound", { maximumRows: 10000, maximumBytes: bytes - 1 }))
+      .rejects.toMatchObject({ code: "limit_exceeded", table: "commerce_order_draft_receipts" });
+    expect(await restore(carried)).toMatchObject({ replayed: false });
+    expect((await census(target.owner)).commerce_order_draft_receipts).toEqual(receipt.rows);
+    const retained = (await target.owner.query(`SELECT r.order_id,
+      r.response_payload#>>'{orderDraft,orderId}' AS response_order,
+      to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+      r.request_fingerprint=md5((o.metadata->'quoteSnapshot')::text||'|'||(o.metadata->'orderDraftSnapshot')::text||'|'||coalesce(o.client_id::text,'')) AS fingerprint_matches,
+      o.client_id,c.principal_id FROM public.commerce_order_draft_receipts r JOIN public.commerce_orders o ON o.id=r.order_id
+      JOIN public.clients c ON c.id=o.client_id WHERE r.order_id=$1`, [orderId])).rows;
+    expect(retained).toEqual([{ order_id: orderId, response_order: created.orderDraft.orderId,
+      created_at: "2026-11-03T12:34:56.123456Z", fingerprint_matches: true, client_id: clientId, principal_id: principalId }]);
+    expect((await target.owner.query("SELECT principal_id FROM public.platform_human_principals WHERE principal_id=$1", [principalId])).rows)
+      .toEqual([{ principal_id: principalId }]);
+    await target.runtime.end();
+    const script = join(consumer, "restart-checkout.mjs");
+    await writeFile(script, `import {Pool} from "pg";
+import {readFileSync} from "node:fs";
+import {createPostgresNativeCheckoutPersistence} from "@openlup/platform/commerce/server/native-checkout";
+const input=JSON.parse(readFileSync(0,"utf8")),db=new Pool({connectionString:input.url});
+try {
+  const port=createPostgresNativeCheckoutPersistence(db),replay=await port.createOrderDraft(input.request,{clientId:input.clientId});
+  const changed=structuredClone(input.request);changed.quoteSnapshot.quote.context.hostFacts.contact="changed@example.invalid";
+  let refusal=null;try {await port.createOrderDraft(changed,{clientId:input.clientId});}catch(error){refusal={name:error.name,details:error.details};}
+  const counts=(await db.query("SELECT (SELECT count(*)::int FROM public.commerce_orders) orders,(SELECT count(*)::int FROM public.commerce_order_draft_receipts) receipts,(SELECT count(*)::int FROM public.outbox_events WHERE event_type='commerce.order_draft.created') events")).rows[0];
+  const role=(await db.query("SELECT current_user,(SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) elevated")).rows[0];
+  console.log(JSON.stringify({replay,refusal,counts,role}));
+}finally {await db.end();}`);
+    const restarted = JSON.parse(execFileSync(process.execPath, [script], { cwd: consumer, encoding: "utf8", timeout: 30_000,
+      input: JSON.stringify({ url: target.runtimeUrl, request, clientId }) }));
+    expect(restarted.replay).toEqual({ ...created, orderDraft: { ...created.orderDraft, replayed: true } });
+    expect(restarted.refusal).toMatchObject({ name: "CommerceOrderDraftConflictError", details: { code: "23505" } });
+    expect(restarted.counts).toEqual({ orders: 1, receipts: 1, events: 1 });
+    expect(restarted.role).toEqual({ current_user: "transfer_runtime", elevated: false });
+    expect((await census(target.owner)).commerce_order_draft_receipts).toEqual(receipt.rows);
+    expect(await restore(carried)).toMatchObject({ replayed: true });
+    console.info("Checkout transfer retained tables:", connectedNativeStoreTables.length);
+  } finally { await rm(consumer, { recursive: true, force: true }); }
+}, 60_000);

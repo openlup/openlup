@@ -62,3 +62,34 @@ never adopted or marked. A customer environment must use its
 own data onboarding, never this seed or demonstration marker. Clients, stock and
 settings use native writers; renewal terms and method states are purchase truth,
 not demo seed inputs.
+
+The optional public origin and insecure-HTTP opt-in are owned configuration and
+upgrade inputs. Origin policy, session handling and native composition stay
+managed. The private captured mailbox and process sessions are generated local
+runtime state, not owned configuration or installed package sources.
+
+The optional `supportEmail` is owned configuration. Managed support rendering
+uses text nodes only. Partner/review host composition is managed and reuses the
+same request admission and native operator authority as other operator reads.
+
+`owned/catalogue.ts` owns the fictional catalogue-draft type registry. Managed
+`host/operator-composition.ts` composes support and catalogue native ports. Native
+human membership precedes each operator action; the owner alone provisions and
+deactivates the separate support roster as documented in the README. No runtime
+roster writer or installer roster seed exists. Drafts and bundle activation do
+not replace the owned storefront offer configuration. The managed real-database
+browser recipe is `browser/native-operator.proof.ts`.
+
+Acquisition ownership below was established before support and catalogue
+composition; its final scope statement describes that earlier contribution only.
+
+`owned/acquisition-addresses.ts` is owned demonstration data beside the catalogue
+seed. It contains fictional opaque registry tuples and localized choice labels.
+The acquisition foundation migration header, lines 16-17, permits an adopter to load its own
+replaceable registry through the database owner connection; the managed installer
+uses that contract only after its existing install-identity and demonstration
+marker admission. Its insert names every column and verifies provenance/active
+state after a keyed conflict. The runtime host only reads the owned list, maps a
+choice ID and submits through the native port; it never loads the registry.
+Support customer reads and catalogue administration remain unbound. Their
+composition is outside this acquisition change.

@@ -2,7 +2,9 @@
   "schemaVersion": 1,
   "owned": [
     "AGENTS.md",
+    "owned/catalogue.ts",
     "owned/copy.ts",
+    "owned/acquisition-addresses.ts",
     "owned/demo-seed.ts",
     "owned/fragments.ts",
     "owned/store.config.ts",
@@ -23,6 +25,9 @@
     "README.md",
     "artifacts/README.md",
     "browser/journey.spec.ts",
+    "browser/native-acquisition.proof.ts",
+    "browser/native-intake.proof.ts",
+    "browser/native-operator.proof.ts",
     "client/api.ts",
     "client/cart.ts",
     "client/context.ts",
@@ -45,7 +50,12 @@
     "docs/proof.md",
     "host/bindings.ts",
     "host/e-composition.ts",
+    "host/healthcheck.ts",
+    "host/native-composition.ts",
+    "host/operator-composition.ts",
+    "host/origin-policy.ts",
     "host/server.ts",
+    "host/sessions.ts",
     "index.html",
     "installation/install.ts",
     "lifecycle",
@@ -60,9 +70,14 @@
     "shared/routes.ts",
     "starter-release.json",
     "test/bindings.test.ts",
+    "test/healthcheck.test.ts",
     "test/import-boundary.test.ts",
     "test/installation.test.ts",
     "test/offer.test.ts",
+    "test/origin-http.test.ts",
+    "test/origin-policy.test.ts",
+    "test/sessions.test.ts",
+    "test/support.test.ts",
     "test/routes.test.ts",
     "tsconfig.json"
   ],
@@ -84,6 +99,7 @@
     "test-results/"
   ],
   "demoData": [
+    "owned/acquisition-addresses.ts",
     "owned/demo-seed.ts",
     "owned/store.config.ts",
     "public/media/coffee.svg",
@@ -95,7 +111,7 @@
     "public/media/medium.svg",
     "public/media/noon.svg"
   ],
-  "demoDataNote": "Fictional catalogues, prices, contacts and media are local demonstration data. Never reuse the demo database, identities or grants in a customer environment. A customer environment requires its own data, authority, policies, restricted connections and qualified provider bindings. The owned demo seed populates only catalog_products, catalog_skus, price_lists and price_entries at install with the install connection in a database explicitly marked as a demonstration. Never seed clients, stock, settings, renewal terms or method states; use their native writers.",
+  "demoDataNote": "Fictional catalogues, prices, contacts and media are local demonstration data. Never reuse the demo database, identities or grants in a customer environment. A customer environment requires its own data, authority, policies, restricted connections and qualified provider bindings. The owned demo seed populates catalog_products, catalog_skus, price_lists, price_entries and the fictional acquisition address-reference registry at install with the install connection in a database explicitly marked as a demonstration. Never seed clients, stock, settings, renewal terms or method states; use their native writers.",
   "pageCopyRequiredFor": [
     "Complete page layout or navigation changes outside the three named fragments.",
     "New checkout, account or operator workflows or application-specific routes."

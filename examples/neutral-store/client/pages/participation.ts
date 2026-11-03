@@ -1,6 +1,7 @@
 import type { PageContext } from '../context.ts';
 import { actionForm } from '../forms.ts';
 import { el } from '../dom.ts';
+import { acquisitionAddresses } from '../../owned/acquisition-addresses.ts';
 
 export function acquisitionPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('acquisition')),
@@ -9,13 +10,11 @@ export function acquisitionPage(context: PageContext): HTMLElement {
     actionForm(context, {
       operation: 'acquisition.submit', submit: 'apply',
       fields: [
-        { name: 'firstName', label: 'firstName', value: context.t('demoFirstName') },
-        { name: 'lastName', label: 'lastName', value: context.t('demoApplicant') },
+        { name: 'addressChoiceId', label: 'acquisitionAddress', type: 'select',
+          options: acquisitionAddresses.map(choice => ({ value: choice.id, text: choice.label[context.locale] })) },
         { name: 'email', label: 'email', type: 'email', value: 'applicant@example.test' },
         { name: 'consent', label: 'consent', type: 'checkbox' },
       ],
-      input: () => ({ policyVersion: context.config.legal.revision,
-        consentVersion: context.config.legal.revision, sourcePath: '/tester-application' }),
     }));
 }
 

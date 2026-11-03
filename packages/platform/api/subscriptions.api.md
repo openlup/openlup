@@ -1062,6 +1062,11 @@ export { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, c
 export type { AutomaticRenewalRunStatus, AutomaticRenewalRunResult, AutomaticRenewalRunDeps, AutomaticRenewalPolicy } from "./automaticRenewal.js";
 export { createPostgresRenewalStore } from "./postgresRenewalStore.js";
 export type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export { createNativeRenewalCodec } from "./nativeRenewalCodec.js";
+export { createPostgresPurchaseRenewalWriter, activateNativePurchaseWithRenewal } from "./nativePurchaseRenewal.js";
+export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePurchaseRenewal.js";
+export { createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "./sandboxRenewalRail.js";
+export type { SandboxRenewalScenario } from "./sandboxRenewalRail.js";
 export { createPostgresRetryStore } from "./postgresRetryStore.js";
 export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
@@ -1100,6 +1105,67 @@ export declare function createSubscriptionLifecycleMessages(delivery: Subscripti
         replayed: boolean;
     }>;
 };
+```
+## dist/subscriptions/nativePurchaseRenewal.d.ts
+
+```ts
+import type { RenewalLine } from "./contracts/renewal.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
+export interface NativeRenewalPurchaseFacts {
+    settlementChannelKey: "sandbox";
+    authorizationRef: string;
+    unattendedChargeAuthorizedAt: string;
+    payerAccountRef: string | null;
+    methodRef: string;
+    methodEvidenceRef: string;
+    stockSourceKey: string;
+    templateId: string;
+    cadenceDays: number;
+    currency: string;
+    lines: readonly RenewalLine[];
+    /** Native preparation currently supports line totals only. */
+    shippingAmountMinor: 0;
+    acquisitionRef: string | null;
+}
+export type SandboxMethodHealth = "healthy" | "method_missing" | "mandate_not_chargeable_unattended" | "pending_activation";
+/** No driver or connection lifecycle is selected. Register before activation;
+ * completion failure leaves the activation's durable duty open for another worker. */
+export declare function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryExecutor): {
+    register(orderId: string, facts: NativeRenewalPurchaseFacts): Promise<Record<string, unknown>>;
+    complete(orderId: string): Promise<Record<string, unknown>>;
+    pending(limit?: number): Promise<Record<string, unknown>[]>;
+    transitionMethod(input: {
+        subscriptionId: string;
+        eventKey: string;
+        expectedState: SandboxMethodHealth;
+        healthState: SandboxMethodHealth;
+        methodRef: string;
+        evidenceRef: string;
+    }): Promise<Record<string, unknown>>;
+    readMethod(subscriptionId: string): Promise<Record<string, unknown> | null>;
+};
+/** Requires independently committed queries, never an enclosing transaction.
+ * The host declares first; saved purchase facts survive activation ACK loss. */
+export declare function activateNativePurchaseWithRenewal(executor: SubscriptionQueryExecutor, input: {
+    orderId: string;
+    idempotencyKey: string;
+    capturedReference: string;
+    facts: NativeRenewalPurchaseFacts;
+}): Promise<{
+    activation: Record<string, unknown>;
+    renewalAttachment: "pending";
+} | {
+    activation: Record<string, unknown>;
+    renewalAttachment: "complete";
+}>;
+```
+## dist/subscriptions/nativeRenewalCodec.d.ts
+
+```ts
+import { type NativeRenewalCodec } from "./postgresRenewalStore.js";
+/** Production native dialect: no closure state and no host metadata on readback. */
+export declare function createNativeRenewalCodec(): NativeRenewalCodec;
 ```
 ## dist/subscriptions/postgresCommandStore.d.ts
 
@@ -1159,7 +1225,7 @@ export interface SubscriptionQueryExecutor {
         rows: Record<string, unknown>[];
     }>;
 }
-/** The host preserves its native wire snapshot, identity dialect and evidence-bound numbering. */
+/** Custom dialects remain injectable; createNativeRenewalCodec supplies the purchase lineage dialect. */
 export interface NativeRenewalCodec {
     due(row: Record<string, unknown>): RenewalDue;
     freeze(row: Record<string, unknown>, schedule: RenewalSchedule): RenewalFrozenSnapshot;
@@ -1466,6 +1532,31 @@ export declare function replayRenewalAttempt<D extends HostedRenewalDue>(deps: R
 import type { RenewalIdentity, RenewalSchedule } from "./contracts/renewal.js";
 /** The host's existing dialect owns every byte; no normalization or new prefix. */
 export declare function renewalIdentity(schedule: RenewalSchedule, keys: (schedule: RenewalSchedule) => RenewalIdentity): RenewalIdentity;
+```
+## dist/subscriptions/sandboxRenewalRail.d.ts
+
+```ts
+import type { RenewalPaymentRail } from "./contracts/renewal.js";
+import type { AutomaticRenewalPolicy } from "./automaticRenewal.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export type SandboxRenewalScenario = "succeeded" | "declined" | "ambiguous";
+/** No provider, key, network or real mandate. The existing native operation is
+ * the dispatch fence; the existing outcome ledger stores sandbox observations. */
+export declare function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExecutor, options: {
+    scenario: SandboxRenewalScenario;
+    now?: () => string;
+}): RenewalPaymentRail & {
+    observe(input: {
+        operationId: string;
+        fingerprint: string;
+        externalAttemptRef: string;
+        outcome: "succeeded" | "refused";
+        occurredAt: string;
+    }): Promise<void>;
+};
+/** Host supplies current method identity from readMethod; all original money,
+ * identities and authorization remain the frozen operation's own facts. */
+export declare function createSandboxRenewalPolicy(methodRef: string): AutomaticRenewalPolicy;
 ```
 ## dist/subscriptions/services.d.ts
 
