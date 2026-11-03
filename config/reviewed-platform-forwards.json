@@ -2964,6 +2964,10 @@
           {
             "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_admission_try_enter()",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -3009,7 +3013,12 @@
             "searchPath": "pg_catalog"
           }
         ],
-        "createdFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_view_shipment_destination(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
         "grantOnlyFunctions": [],
         "dataStatements": []
       },
