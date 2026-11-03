@@ -285,6 +285,7 @@ describe("release pack check", () => {
   it("classes dist JavaScript, declarations and sources as code and root files as docs", () => {
     expect(packFileClass("dist/subscription/index.js")).toBe("code");
     expect(packFileClass("dist/subscription/index.d.ts")).toBe("code");
+    expect(packFileClass("dist/subscription/index.d.ts.map")).toBe("code");
     expect(packFileClass("src/subscription/index.ts")).toBe("code");
     expect(packFileClass("CHANGELOG.md")).toBe("docs");
     expect(packFileClass("release-gates.json")).toBe("docs");

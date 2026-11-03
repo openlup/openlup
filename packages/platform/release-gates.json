@@ -946,17 +946,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1970000,
-      "maxFiles": 3039
+      "maxPackedBytes": 2230000,
+      "maxFiles": 4014
     },
     "docs": {
       "maxPackedBytes": 75000,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2485000,
-    "maxUnpackedBytes": 11955000,
-    "maxFiles": 3173,
-    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained.",
+    "maxPackedBytes": 2715000,
+    "maxUnpackedBytes": 13220000,
+    "maxFiles": 4148,
+    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained. Declaration maps add 259,012 compressed code bytes, 975 code/aggregate files, 229,600 tarball bytes and 1,262,189 unpacked bytes in the working-tree comparison with identical docs/source and map trailers removed. Add these costs to prior caps, rounding byte caps up to 5,000; retain existing reserve rather than create a new module budget.",
     "baseline": {
       "version": "0.35.0",
       "packedBytes": 2097540

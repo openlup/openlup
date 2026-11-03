@@ -36,7 +36,12 @@ test('all checked-in corpora are current and every citation binds exact source b
       const metadata = JSON.parse(json);
       const originalSource = routes[packageName].find((route) => route[0] === metadata.id)[2];
       const localPrefix = `packages/${packageName}/`;
-      assert.equal(metadata.source, originalSource.startsWith(localPrefix) ? originalSource.slice(localPrefix.length) : originalSource);
+      const version = JSON.parse(readFileSync(resolve(root, `packages/${packageName}/package.json`), 'utf8')).version;
+      const expected = originalSource.startsWith(localPrefix) ? originalSource.slice(localPrefix.length)
+        : `https://github.com/openlup/openlup/blob/openlup-${packageName}-v${version}/${originalSource}`;
+      assert.equal(metadata.source, expected);
+      const target = expected.startsWith('https:') ? `${expected}#L${metadata.startLine}-L${metadata.endLine}` : expected;
+      assert.ok(corpus.includes(`](${target})`));
       const lines = readFileSync(resolve(root, originalSource), 'utf8').split('\n');
       assert.equal(excerpt, lines.slice(metadata.startLine - 1, metadata.endLine).join('\n') + '\n');
       assert.equal(createHash('sha256').update(excerpt).digest('hex'), metadata.sha256);
@@ -52,7 +57,10 @@ test('freshness check refuses source drift and missing corpus without writing', 
       mkdirSync(dirname(resolve(temporary, source)), { recursive: true });
       writeFileSync(resolve(temporary, source), readFileSync(resolve(root, source)));
     }
-    for (const packageName of Object.keys(routes)) mkdirSync(resolve(temporary, 'packages', packageName), { recursive: true });
+    for (const packageName of Object.keys(routes)) {
+      mkdirSync(resolve(temporary, 'packages', packageName), { recursive: true });
+      writeFileSync(resolve(temporary, `packages/${packageName}/package.json`), readFileSync(resolve(root, `packages/${packageName}/package.json`)));
+    }
     assert.throws(() => run(temporary, true), /Stale agent context/u);
     run(temporary);
     run(temporary, true);
@@ -66,5 +74,22 @@ test('freshness check refuses source drift and missing corpus without writing', 
     writeFileSync(owner, original.replace(`${ownerHeading}\n`, `${ownerHeading}\nChanged owner guidance.\n`));
     assert.throws(() => run(temporary, true), /packages\/core\/AGENT_CONTEXT.md/u);
     assert.equal(readFileSync(corpusPath, 'utf8'), before);
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
+});
+
+test('unshipped package owners use release links and version changes stale the corpus', () => {
+  const temporary = mkdtempSync(resolve(tmpdir(), 'openlup-agent-source-'));
+  try {
+    for (const source of new Set(routes.core.map(route => route[2]))) {
+      mkdirSync(dirname(resolve(temporary, source)), { recursive: true });
+      writeFileSync(resolve(temporary, source), readFileSync(resolve(root, source)));
+    }
+    const manifest = resolve(temporary, 'packages/core/package.json');
+    writeFileSync(manifest, JSON.stringify({ version: '0.99.0', files: ['README.md'] }));
+    const corpus = generateCorpus(temporary, 'core');
+    assert.match(corpus, /https:\/\/github.com\/openlup\/openlup\/blob\/openlup-core-v0\.99\.0\/packages\/core\/docs\/SUBSCRIPTION_ENGINE\.md/u);
+    assert.match(corpus, /not required application files or aliases/u);
+    writeFileSync(manifest, JSON.stringify({ version: '0.99.1', files: ['README.md'] }));
+    assert.notEqual(generateCorpus(temporary, 'core'), corpus);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 });

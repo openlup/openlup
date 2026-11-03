@@ -1,25 +1,24 @@
 # Commerce Core
 
-`@openlup/core` is the kernel of the `@openlup/*` package family: the
-framework-independent TypeScript contracts and logic for subscription and
-bundle commerce that the other packages and an application's composition read.
-Agents start with [AGENTS.md](AGENTS.md). Its "Using this package in an
-application" section, which `docs:check` requires, tells an application's agent
-not to edit or patch the installed package and to upgrade every `@openlup/*`
-package together.
+`@openlup/core` provides framework-independent TypeScript contracts and pure logic
+for subscription and bundle commerce. An application binds its ports and owns
+composition. This is a development preview: pin an exact version and upgrade all
+`@openlup/*` packages together after reading their changelogs.
 
-The prepared `0.36.0` set adds Platform's neutral partner acquisition entries and
-reference delegation. Core runtime, exports and SQL are unchanged since `0.35.0`.
-Upgrade all packages together and read [the set notes](CHANGELOG.md#0360);
-Core introduces no schema migration. Size comparison uses the published `0.35.0`
-tarball; releases before `0.34.0` remain in the source-only
-`CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+```sh
+npm install --save-exact @openlup/core
+```
 
-The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
-Oversized constrained collections fail before per-element errors accumulate;
-bounded valid inputs and public exports are preserved. Both dependency locks
-select the fixed runtime. The build uses the existing development-only Node
-types for Zod's standard `URL` declaration; Core adds no runtime Node import.
+```ts
+import { platformEnvSchema } from "@openlup/core/platform-runtime";
+
+const env = platformEnvSchema.parse({ APP_BASE_URL: "https://shop.example" });
+```
+
+Start with [AGENTS.md](AGENTS.md) for installed context lookup, subpath maturity
+and a complete wiring example that compiles in CI. Node 24 or newer is required.
+Declarations in `dist/` include declaration maps to the shipped `src/` files for
+editor source navigation; JavaScript source maps are not shipped.
 
 ## Channel and stability
 
@@ -197,8 +196,13 @@ contract coverage.
 Nested Markdown headings return separate spans; copied excerpts of an already
 indexed installed page do not take another result slot. Each package's root
 `AGENT_CONTEXT.md` contains small excerpts of canonical
-repository guidance, with source paths, line ranges and excerpt digests. Read
-the package version from its installed `package.json` and check the cited source
+repository guidance, with shipped local sources or repository links at
+`openlup-core-v<version>`, line ranges and excerpt digests. Repository paths and
+aliases inside excerpts belong to that checkout, not the application.
+Repository citations must name that package's own release tag at its installed
+version; another package, version, branch or host is refused. The same canonical
+owner and heading take one result slot across package release tags. No link is
+fetched. Read the package version from its installed `package.json` and check the cited source
 before changing a contract; a result locates
 evidence, and does not grant application policy or execution authority. The
 snapshot and command do not establish a registry release or stable support.
@@ -430,3 +434,18 @@ The `./standard-schema` export exposes the framework-neutral schema interface
 used by package contracts. It keeps browser-safe consumers independent of a
 schema library runtime; validation behavior still belongs to each declared
 schema and its consumer.
+
+## Release notes
+
+The `0.36.0` set adds Platform's neutral partner acquisition entries and
+reference delegation. Core runtime, exports and SQL are unchanged since `0.35.0`.
+Upgrade all packages together and read [the set notes](CHANGELOG.md#0360);
+Core introduces no schema migration. Size comparison uses the published `0.35.0`
+tarball; releases before `0.34.0` remain in the source-only
+`CHANGELOG-HISTORY.md`.
+
+The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Oversized constrained collections fail before per-element errors accumulate;
+bounded valid inputs and public exports are preserved. Both dependency locks
+select the fixed runtime. The build uses the existing development-only Node
+types for Zod's standard `URL` declaration; Core adds no runtime Node import.

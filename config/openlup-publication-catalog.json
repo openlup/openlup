@@ -2870,6 +2870,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/platformAgentGuide.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/pricingBreakdown.test.ts",
       "class": "public-output"
     },
@@ -3083,6 +3087,10 @@
     },
     {
       "path": "packages/outbox/vitest.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/AGENTS.md",
       "class": "public-output"
     },
     {
@@ -7799,6 +7807,10 @@
     },
     {
       "path": "packages/platform/test/account-support/subscriptionCommandCodec.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/agentsWiringExample.ts",
       "class": "public-output"
     },
     {

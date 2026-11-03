@@ -1,20 +1,33 @@
 # @openlup/outbox
 
-Development preview, kind `rail`. One at-least-once dispatch engine, lease-bound dispatch and terminal-compaction schedules, registry composition, transactional enqueue and a driver-free PostgreSQL default. No stable API or universal exactly-once guarantee is claimed.
+`@openlup/outbox` provides transactional PostgreSQL enqueue, at-least-once dispatch,
+lease-bound schedules and registry composition. The application supplies handlers,
+credentials and transaction ownership. This is a development preview with no stable
+API or universal exactly-once guarantee: pin an exact version and upgrade the
+`@openlup/*` set together.
 
-The publication catalogue admits this complete rail to the release set. Catalogue admission does not publish it: direct directory publishing still refuses, and the reviewed release workflow owns provenance-backed publication. New API and shipped SQL require the next minor set.
+```sh
+npm install --save-exact @openlup/core @openlup/outbox
+```
 
-The prepared `0.36.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.36.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.36.0 notes](CHANGELOG.md#0360);
-releases before `0.34.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.35.0` tarball; preparation grants no
-publication or installation proof.
+```ts
+import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
+import type { SqlExecutor } from "@openlup/core/readiness";
+export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(executor);
+```
+
+This CI-compiled example binds a store; the executor must commit each operation
+before resolving. Read the installation and transaction section before use.
+[AGENTS.md](AGENTS.md) explains application ownership and extension boundaries.
+Node 24 or newer is required. Declaration maps connect `dist/` declarations to
+shipped `src/`; JavaScript source maps are not shipped.
 
 ## Installed agent context
 
 The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical outbox
-guidance. Its metadata records source paths, line ranges and excerpt digests.
+guidance. Its metadata records shipped local sources or repository links at the
+package release tag, line ranges and excerpt digests. Repository paths inside
+verbatim excerpts describe the OpenLup checkout, not the application.
 Read the version from the installed `package.json` and check the cited source
 before relying on an excerpt. Core's installed
 `openlup-context` command discovers this local snapshot and returns source
@@ -155,3 +168,13 @@ artifact evidence.
 Source contributors record notable changes in package changelog fragments;
 release preparation assembles the shipped CHANGELOG. Follow the
 [public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+
+## Release notes
+
+The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
+
+The `0.36.0` set includes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.36.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.36.0 notes](CHANGELOG.md#0360);
+releases before `0.34.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.35.0` tarball. Installation must be verified in the application.

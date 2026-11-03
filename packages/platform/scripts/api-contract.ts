@@ -44,7 +44,7 @@ function renderSnapshot(subpath, contract, entrypoint) {
   const declarations = collectDeclarationGraph(entrypoint);
   const sections = declarations.map((file) => {
     const path = toPosix(relative(packageRoot, file));
-    const source = readFileSync(file, "utf8").split("\n").map(line => line.trimEnd()).join("\n").trimEnd();
+    const source = readFileSync(file, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").split("\n").map(line => line.trimEnd()).join("\n").trimEnd();
     return `## ${path}\n\n\`\`\`ts\n${source}\n\`\`\``;
   });
 

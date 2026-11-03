@@ -1,14 +1,29 @@
 # @openlup/platform
 
-Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
-`createInvoiceContribution` through `/invoicing`, with no new composition entry.
-`claimInvoiceSellerRevision` reads an injected selection before claim; the pinned
-SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
-available from the type-only contracts entry. Legacy obligations keep fallback.
+`@openlup/platform` provides the server substrate an application composes: Node
+HTTP and BFF dispatch, scheduling and leases, blob storage, data gateways,
+PostgreSQL migrations and optional commerce services. Ports and contracts live in
+`@openlup/core/platform-runtime`. This is a development preview: pin exact versions
+and upgrade the `@openlup/*` set together after reading every changelog.
 
-Development preview. This package is part of the publishable set with core and outbox; preparation does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
+```sh
+npm install --save-exact @openlup/core @openlup/platform
+```
 
-It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
+```ts
+import { createScheduledJobRegistry } from "@openlup/platform/scheduler";
+
+export const jobs = createScheduledJobRegistry([
+  { id: "app-cleanup", schedule: "0 * * * *", run: async () => {} },
+]);
+```
+
+This CI-compiled example declares a job registry; the application must bind a
+scheduler and implement the job before running it. Start with [AGENTS.md](AGENTS.md)
+for installed context lookup, subpath maturity and application ownership.
+Node 24 or newer is required. Declaration maps connect `dist/` declarations to
+shipped `src/`; JavaScript source maps are not shipped. Directory
+publishing refuses and the authorized release workflow owns publication.
 
 The `openlup` Node bin provides [application upgrade and diagnosis](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-command-line-tooling); check your installed `openlup --help` for the versioned syntax.
 
@@ -18,74 +33,6 @@ different revision than the version installed. For version-specific behavior,
 start with the installed package's README, CHANGELOG and declarations, and consult
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
-
-For the prepared `0.36.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0360) before selecting optional services. Experimental
-marketing uses browser-safe `./marketing`, type-only browser-safe
-`./marketing/contracts`, and Node-only `./marketing/server` and
-`./marketing/server/postgres`. Marketing contributions and bindings remain
-inert and default-off. Experimental
-account/support APIs use `./account-support` and the type-only
-`./account-support/contracts`; reference bindings remain inert and default-off.
-Apply the M12 support-authority forwards after complete same-rail predecessors
-and follow the email-correction admission, claim, identity-commit and settlement
-migration notes before replacing retired callers. Experimental
-commerce schemas and ports use `./commerce` and `./commerce/contracts`;
-handlers, adapters and checkout engines use the Node-only `./commerce/server`.
-The commerce contribution and reference binding remain inert and default-off.
-Install the complete native chain through the M17 purchased-source forward
-(`20261030122000_channel_purchased_source.sql`). Use the complete packaged installer described below; individual module SQL
-projections are not an install chain. Native runtime
-roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
-the release notes.
-Managed hosts apply the complete prefix through `20261030122000`, including
-the two channel forwards, the support-authority forward and M11's nine forwards for preference/return ownership, operator receipts,
-acquisition/finalize admission, ATP preview and starter graduation. Legacy
-omitted-country input uses the configured settlement region; neutral commands
-require explicit country. Starter graduation admits 14, 21 or 28 days; rollback
-below that forward with a 21-day marker is unsupported, so roll forward.
-The service-only ATP preview uses owner privileges and a fixed search path.
-Retain exact applied failure-attempt attribution for the existing managed
-dunning overloads; native attempt-replay parity remains registered. These
-managed forwards authorize no host activation.
-Preserve captured obligations and receipts on rollback.
-M10 subscription services and contributions remain **EXPERIMENTAL and DEFAULT-OFF**.
-Hosts explicitly supply readiness, execution, commands, mandatory G23 admission,
-a population lease and M04 delivery. Factories activate no serving work. The inert
-native reference composes renewal, dunning and stock wait; managed TypeScript
-stock recovery, native multi-cycle prepaid and M07 prepared-attempt-store
-capabilities retain their named unsupported boundaries. Follow the older native-row
-migration precautions when upgrading `0.22.0` data.
-M09 invoicing remains **EXPERIMENTAL and DEFAULT-OFF**, available for explicit
-provider/capability selection and ready host composition, including issue,
-correction, independent duties, delivery/read-side and seller revision helpers.
-Adopters must not activate unselected or unready invoicing; installation and
-inert contributions register no runner, worker, route or schedule.
-M06 managed-host proof classes remain pending in the
-[M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.35.0` tarball. Preparation and offline
-adapter evidence grant no publication or provider-account certification.
-
-Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
-
-The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
-Public quote requests retain their collection limits and valid-input behavior;
-oversized collections now fail with the size error before accumulating invalid
-element errors. Package API and installed-consumer checks remain required.
-The observation adapter explicitly retains minute-precision timestamps
-alongside seconds/fractions, compact offsets and local timestamps. Calendar
-validation still rejects impossible dates; validation never rewrites the raw
-timestamp used in the webhook's idempotency key.
-
-The experimental migration source may supply `assertSession` to observe host
-facts once under the existing advisory lock, after exact ledger-prefix admission
-and before status, dry-run or pending SQL. Every source uses catalog-bound locks
-and admits only the canonical baseline ledger catalog shape before reading its
-exact prefix. A pending unit locks an installed ledger before its first catalog
-read in that transaction and preserves the connection's isolation setting. The
-[migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
-and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
-this callback does not provision or qualify a hosted installation.
 
 ## Install the portable PostgreSQL schema
 
@@ -1928,3 +1875,78 @@ Source: [channel contracts](src/channels/index.ts),
 [server bindings](src/channels/server/index.ts) and
 [preservation witnesses](test/channels/). Repository users can also consult
 [the channel task record](../../docs/platform/plans/oss-m17-r1-channel-import.md).
+
+## Release notes
+
+Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
+`createInvoiceContribution` through `/invoicing`, with no new composition entry.
+`claimInvoiceSellerRevision` reads an injected selection before claim; the pinned
+SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
+available from the type-only contracts entry. Legacy obligations keep fallback.
+
+For the `0.36.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0360) before selecting optional services. Experimental
+marketing uses browser-safe `./marketing`, type-only browser-safe
+`./marketing/contracts`, and Node-only `./marketing/server` and
+`./marketing/server/postgres`. Marketing contributions and bindings remain
+inert and default-off. Experimental
+account/support APIs use `./account-support` and the type-only
+`./account-support/contracts`; reference bindings remain inert and default-off.
+Apply the M12 support-authority forwards after complete same-rail predecessors
+and follow the email-correction admission, claim, identity-commit and settlement
+migration notes before replacing retired callers. Experimental
+commerce schemas and ports use `./commerce` and `./commerce/contracts`;
+handlers, adapters and checkout engines use the Node-only `./commerce/server`.
+The commerce contribution and reference binding remain inert and default-off.
+Install the complete native chain through the M17 purchased-source forward
+(`20261030122000_channel_purchased_source.sql`). Use the complete packaged installer described below; individual module SQL
+projections are not an install chain. Native runtime
+roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
+the release notes.
+Managed hosts apply the complete prefix through `20261030122000`, including
+the two channel forwards, the support-authority forward and M11's nine forwards for preference/return ownership, operator receipts,
+acquisition/finalize admission, ATP preview and starter graduation. Legacy
+omitted-country input uses the configured settlement region; neutral commands
+require explicit country. Starter graduation admits 14, 21 or 28 days; rollback
+below that forward with a 21-day marker is unsupported, so roll forward.
+The service-only ATP preview uses owner privileges and a fixed search path.
+Retain exact applied failure-attempt attribution for the existing managed
+dunning overloads; native attempt-replay parity remains registered. These
+managed forwards authorize no host activation.
+Preserve captured obligations and receipts on rollback.
+M10 subscription services and contributions remain **EXPERIMENTAL and DEFAULT-OFF**.
+Hosts explicitly supply readiness, execution, commands, mandatory G23 admission,
+a population lease and M04 delivery. Factories activate no serving work. The inert
+native reference composes renewal, dunning and stock wait; managed TypeScript
+stock recovery, native multi-cycle prepaid and M07 prepared-attempt-store
+capabilities retain their named unsupported boundaries. Follow the older native-row
+migration precautions when upgrading `0.22.0` data.
+M09 invoicing remains **EXPERIMENTAL and DEFAULT-OFF**, available for explicit
+provider/capability selection and ready host composition, including issue,
+correction, independent duties, delivery/read-side and seller revision helpers.
+Adopters must not activate unselected or unready invoicing; installation and
+inert contributions register no runner, worker, route or schedule.
+M06 managed-host proof classes remain pending in the
+[M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
+Size comparison uses the published `0.35.0` tarball. Offline adapter evidence does not certify a provider account.
+
+Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
+
+The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Public quote requests retain their collection limits and valid-input behavior;
+oversized collections now fail with the size error before accumulating invalid
+element errors. Package API and installed-consumer checks remain required.
+The observation adapter explicitly retains minute-precision timestamps
+alongside seconds/fractions, compact offsets and local timestamps. Calendar
+validation still rejects impossible dates; validation never rewrites the raw
+timestamp used in the webhook's idempotency key.
+
+The experimental migration source may supply `assertSession` to observe host
+facts once under the existing advisory lock, after exact ledger-prefix admission
+and before status, dry-run or pending SQL. Every source uses catalog-bound locks
+and admits only the canonical baseline ledger catalog shape before reading its
+exact prefix. A pending unit locks an installed ledger before its first catalog
+read in that transaction and preserves the connection's isolation setting. The
+[migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
+this callback does not provision or qualify a hosted installation.

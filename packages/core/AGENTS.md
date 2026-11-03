@@ -104,7 +104,8 @@ export function readPlatformReadiness(input: PlatformEnvInput): PlatformBundleRe
 
 The tarball ships its TypeScript sources under `src/` and its JavaScript and
 declarations under `dist/`. Each export's `types` condition names its
-declaration file, and its `core-source` condition names its source file. Read
+declaration file, its declaration map navigates to shipped `src/`, and its
+`core-source` condition names its source file. Read
 those before guessing at a contract.
 
 ## Readiness codes

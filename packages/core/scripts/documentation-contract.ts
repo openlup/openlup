@@ -126,13 +126,14 @@ export function assertDocumentationContract(
 
 // Every tarball carries an agent guide stating the package's kind, the
 // maturity of each subpath and one wiring example that compiles in CI.
-function assertAgentGuide(
+export function assertAgentGuide(
   packageRoot: string,
   kind: unknown,
   exports: Record<string, unknown>,
   surface: Record<string, SurfaceContract>,
   packedFiles: ReadonlySet<string>,
   violations: string[],
+  exampleSource = wiringExamplePath,
 ): void {
   if (typeof kind !== "string" || !packageKinds.includes(kind)) {
     violations.push(`release-gates.json: package kind must be one of ${packageKinds.join(", ")}`);
@@ -152,9 +153,9 @@ function assertAgentGuide(
   }
   assertSurfaceTable(packageRoot, "AGENTS.md", "Subpath maturity", false, exports, surface, violations);
   const example = markdownSection(guide, "Wiring example")?.match(/```ts\n(?<code>[\s\S]*?)```/)?.groups?.code;
-  const examplePath = join(packageRoot, wiringExamplePath);
+  const examplePath = join(packageRoot, exampleSource);
   if (!existsSync(examplePath) || example !== readFileSync(examplePath, "utf8")) {
-    violations.push(`AGENTS.md: wiring example differs from ${wiringExamplePath}`);
+    violations.push(`AGENTS.md: wiring example differs from ${exampleSource}`);
   }
 }
 

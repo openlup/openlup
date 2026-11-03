@@ -19,7 +19,7 @@ export type PackMeasurement = { packedBytes: number; unpackedBytes: number; file
 /** Same compressed class measure as core's release:pack: sorted contents gzipped together, not a tar. */
 export function measurePack(entries: readonly TarballEntry[], packedBytes: number): PackMeasurement {
   const group = (kind: "code" | "docs") => {
-    const files = entries.filter(({ path }) => kind === "code" ? /^(?:dist\/.+\.(?:[cm]?js|d\.[cm]?ts)|src\/.+\.tsx?)$/u.test(path) : !path.includes("/"));
+    const files = entries.filter(({ path }) => kind === "code" ? /^(?:dist\/.+\.(?:[cm]?js|d\.[cm]?ts(?:\.map)?)|src\/.+\.tsx?)$/u.test(path) : !path.includes("/"));
     files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
     return { packedBytes: gzipSync(Buffer.concat(files.map(({ bytes }) => bytes))).length, files: files.length };
   };
