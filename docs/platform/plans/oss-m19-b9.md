@@ -5,7 +5,8 @@ acceptance remains pending the native rows below.
 
 Code base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
 Instruction freshness pin: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`, fetched
-again at this continuation; applicable instruction paths had no delta.
+during stage 1. This extension reread the local instruction revision; no fetch
+or merge was performed, so remote freshness is unverified.
 
 ## Outcome, scope and authority
 
@@ -16,14 +17,33 @@ Stage 1 proves checkout draft persistence, sandbox attempt/observation and
 verified ingress capture, activation with an open renewal-attachment duty,
 capture, pristine restore and restricted-runtime duty completion/replay.
 
-The worker owns only the two new PostgreSQL test files, one shared fixture,
-this record and four publication-catalog rows. Existing transfer/composition
-witnesses, adapters, packages, migrations, scripts and the example application
-are unchanged. Local implementation and a DCO commit are authorized by the
-coordinating supervisor. No maintainer read is required for this test-only
-boundary. Push, submission, native-review preparation, reviews, merge, release,
-adopter changes and hosted resources remain outside this run. No native review
-session, repair cycle or WIP ref was created.
+Stage 1 owns its new PostgreSQL tests, shared fixture and catalog rows. A later
+bounded extension also owns the connected-capture adapter's exact authorization
+exclusion, one new PostgreSQL test, transfer documentation and this record.
+The carried table list, existing transfer/composition witnesses, restore adapter,
+packages, migrations, scripts and example application remain unchanged.
+The extension is staged and uncommitted pending the required security/trust
+boundary read. No DCO sign-off, native-review preparation, review, push,
+submission, merge, release, adopter change or hosted resource is authorized in
+this round. The existing local stage 1 commit remains the base.
+
+## Authorization-state transfer exclusion
+
+The exact relation `public.customer_identity_challenges` is intentionally not
+carried. These rows are single-use, short-lived authorization state holding token
+hashes, so carrying them would move live bearer material between stores, and
+customers sign in again after a restore. Census includes only relation, owner,
+row count and the new `intentionally-not-carried` disposition. The adapter never
+reads any challenge column; all other nonempty outside-profile relations still
+refuse. The carried table set and restore behavior stay unchanged.
+
+The new PostgreSQL witness must establish no inbound foreign keys or required-id
+references, capture used/expired/live challenges without their rows or hashes,
+restore zero challenge rows into a pristine installation, issue/redeem a new
+native challenge and read the customer's own profile through the restricted
+runtime, and preserve the registry tuple and differential lead-absorption result. This is
+an explicitly accepted plan item with no equivalent in the reference adopter's
+journey. It does not implement the still-missing guest checkout start.
 
 ## Acceptance and discriminating proof
 
@@ -125,3 +145,81 @@ was reset or hidden.
 
 Self-retro: narrow the fixture's existing optional value before mutation; that
 preserves its required contract fields without constructing a weaker shape.
+
+
+## Authorization exclusion continuation
+
+The extension is staged on the stage 1 commit and remains uncommitted pending
+the security/trust-boundary read. The exclusion adds no configuration value:
+its only named value is the exact relation name. Test data and identity
+configuration are neutral synthetic fixtures, not reference-adopter values.
+
+The initial real PostgreSQL proof reached restored sign-in and customer reads,
+then found the native absorption classification gap: three client-referencing
+tables lacked registry dispositions. The earlier failure is retained in
+`.context/scratch/b9-challenge-isolated.log`. The approved current proof is
+narrower: equivalent leads and native challenges on source and restored stores
+must yield exactly equal absorption responses, including outcome, refusal code
+and blocking tables. It does not hard-code the current classification answer.
+The challenge registry tuple is compared exactly across restore; its explanatory
+note is preserved rather than pinned to prose. No test-only policy row or
+reference deletion changes the native answer.
+
+The challenge-specific absorption assertion lands together with the
+classification repair for the three client-referencing tables. B9 adds it once
+that repair is on main. The SQL stream owns the classification repair and its
+full-chain regression proof. Guest checkout start and renewal replay remain
+outside this extension and await their owning native rows.
+
+Earlier fixture defects were repaired: a generated JWK lacked `use: sig`, and
+the shared fixture's letters-only routine guard rejected a versioned RPC name.
+The new test uses the fixed native SQL call. No unexplained assertion was
+rerun and no retry or review history was reset.
+
+Current continuation evidence follows. No commit, DCO sign-off, native review, push or canonical verify is
+authorized before the read is answered.
+
+Self-retro: separate a transfer-equivalence proof from an independent native
+classification repair; keep the latter's explicit assertion with its owning
+repair instead of manufacturing policy in the transfer fixture.
+
+
+## Stabilized exclusion evidence
+
+Pinned Node 24.21.0 and npm 11.19.0; heavy phases used the focused gate with
+SQL-chain priority. No timing-only or launch-error rerun was needed.
+
+| Check | Result and evidence |
+| --- | --- |
+| PostgreSQL, all six selected files | PASS: 23 tests, 198.70 s; `.context/scratch/b9-challenge-differential-postgres.log` |
+| Unchanged transfer/composition baseline within that run | PASS: 3 files / 20 tests; Git diff confirms no baseline-file delta |
+| Challenge proof and both stage 1 suites within that run | PASS: 3 files / 3 tests, including exact differential absorption response and unknown-table refusal |
+| Published-tree typecheck | PASS: all five projects, zero edges/errors; `.context/scratch/b9-challenge-differential-typecheck.log` |
+| Lint | PASS: 0 errors, 39 warnings outside changed files; `.context/scratch/b9-challenge-differential-lint.log` |
+| Neutrality | PASS: 0 increases; `.context/scratch/b9-challenge-differential-neutrality-final.log` |
+| Structural scan | PASS with both suppression errors enabled; `.context/scratch/b9-challenge-differential-ast.log` |
+| Documentation policy and navigation update | Two obligations, exactly one unanswered: `tests` at `CONTRIBUTING.md#development-preview-checks`; `.context/scratch/b9-challenge-differential-policy-final.log` |
+| Official package check/pack | PASS: 3 packages, no findings; `.context/scratch/b9-challenge-differential-official-pack.log` |
+
+The pending test-documentation obligation requires the later commit's scoped
+no-impact trailer; no commit or sign-off is permitted before the read. The
+transfer owner's section is updated. Test placement and invocation remain the
+existing root PostgreSQL suite and npm test command. Documentation update
+produced no generated tracked delta.
+
+The current official archives match both base and candidate comparison archives
+by SHA-256. The fresh measurement reproduces the package figures in the table
+above: core 182871 packed B / 765428 unpacked B / 229 files; outbox 41407 /
+143183 / 42; platform 2439455 / 11467472 / 3024. Every package has zero delta in
+packed bytes, unpacked bytes, code-class packed bytes and files. The capture
+adapter, tests and documentation are not packaged. Comparison uses the official
+size classifier, the unchanged base package sources and pinned build output.
+Evidence: `.context/scratch/b9-challenge-pack-comparison/result.json` and its
+`official-verification.json` companion.
+
+All six conditions pass at the approved differential scope. The challenge-
+specific absorption assertion, guest checkout start and post-restore renewal
+replay remain deliberately unproved here. No hosted/adopter execution, canonical
+verify, native review or delivery action is claimed. The staged patch identity
+is recorded privately after this final evidence edit; no self-referential hash
+is placed in this record.
