@@ -62,18 +62,13 @@ the affected claim. A generated package-set BOM binds artifact identities; it
 does not establish installation, publication, provenance or support evidence.
 See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md).
 
-The starter’s lifecycle connects its local demonstration database and mounts
-its available native bindings; starting without the runtime URL remains the
-UI-only preview. Configuration health alone does not establish a live store.
-The [local quickstart](../deploy/neutral-store/README.md) has exercised
-application-image A → B → A rollback with durable partner records on that local
-demonstration database. Schema and package inputs stayed unchanged; this proves
-neither rollback after an upgrade nor complete-store qualification. The binder
-stays application-owned.
-
-The starter runs on its local demonstration database only; a hosted database
-connection is not part of this release.
-See the [starter’s limits](../examples/neutral-store/docs/limits.md).
+The starter host currently boots pending bindings, accepts only local
+Host authorities and does not connect a database. Only local offer validation
+and application-status reporting are bound; configuration health does not
+establish a live store. The [image quickstart](../deploy/neutral-store/README.md) is limited to local
+image build and rollback; its local A → B → A run passed. Public hosting remains
+blocked on starter-owned
+binding and public-origin work; the binder stays application-owned.
 
 The native account readers need explicit host sources for saved addresses,
 billing profiles, payment/delivery preferences, account events and private-profile
