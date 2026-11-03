@@ -1,296 +1,327 @@
 # M19 G5: native checkout persistence
 
-Status: package-entry repair read accepted and DCO-signed; fresh native review
-pending, development preview (2026-11-01). No PR yet.
-Audience: the money-stream supervisor, implementer and independent reviewers.
+Status: transfer receipt draft awaits its owner read before DCO/native review (development preview).
+Audience: money-stream supervisor, implementer and independent reviewers.
 
-## Outcome and boundary
+## Outcome and authority
 
-Persist a server-produced quote as a native order draft on `qualified-v2`,
-through an installed public export and the restricted runtime role, without
-`commerce_configurator_persist_intent` or its policy. Every created order keeps
-the complete quote and derived draft snapshot. Matching replay has one effect;
-changed input refuses; a new process recovers the durable result. Browser
-return data never establishes paid truth.
+Persist a trusted host-produced quote as a native qualified-v2 order draft,
+through the installed experimental `commerce/server/native-checkout` export
+and restricted runtime login. Preserve complete quote and derived draft money
+snapshots for order-detail readers; matching/concurrent replay has one effect,
+changed input refuses, and a new process recovers the durable receipt. A browser
+return never establishes paid truth.
 
-The accountable maintainer authorizes local work, DCO-signed commits,
-submission and merge of this accepted row under normal gates. The native-path
-worker implements and supervises this PR under the money-stream supervisor;
-the M19 lead owns overall acceptance, caps and landing order. DCO author:
-Bart Roszkowski <dev@openlup.com>. Publish, releases, tags, production,
-credentials, settings, costs and control changes have no grant here.
+Worktree `oss-m19-g5`, branch `codex/oss-m19-g5`. The accountable maintainer
+allows local implementation, DCO-signed commits and independent native review.
+This run stops before canonical verify, push or PR creation; the lead names
+that next step and owns acceptance, caps and landing order. DCO author is
+Bart Roszkowski <dev@openlup.com>. No release, publication, production,
+credentials, settings, cost or control changes are authorized.
 
-Worktree: `oss-m19-g5`; branch: `codex/oss-m19-g5`.
-Code base and separately checked policy revision:
-`bb0008481a11267ec6dbe3e7e531299777cddc19`.
-The lead resumed G5 after the probe reported; no stop rule tripped.
-G6, G2, G4, G3, G7 and G8 belong to other assignments.
+## Smallest complete scope
 
-## Smallest adequate implementation
+One structural executor adapter, one parameterized call to the existing
+`commerce_create_promoted_order_draft_with_outbox`, explicitly serialized JSON,
+and existing quote/schema/error types. Derive the draft from the same quote;
+do not accept independent money records. The incumbent TypeScript draft port
+has a supersession fallback, so direct reuse would break changed-input refusal.
+The separate opt-in entry keeps the existing port and managed rail unchanged.
 
-Add a separate server-only native checkout subpath in the existing platform
-package. Reuse quote validation and the existing native draft functions;
-derive the draft snapshot from the quote rather than accepting two independent
-money records. Use one parameterized call, with JSON values serialized at the
-call boundary. Do not use the incumbent TypeScript draft port's supersession
-fallback: a changed request must remain a conflict.
+The host supplies the quote and separately authorized client ID. This adapter
+does not authenticate or produce authoritative quotes. Catalogue-drift refusal
+comes from the existing SQL routine. The stored receipt describes draft creation,
+not current paid truth. Existing net-shipping, line-discount and zero-payable
+refusals remain. No configurator persist-intent or policy is invoked.
 
-No forward is planned. Existing SQL already atomically writes the order,
-items, outbox fact and replay receipt, retaining `metadata.quoteSnapshot` and
-`metadata.orderDraftSnapshot`. The reserved G5 SQL slot remains empty.
-Managed SQL, the gateway and existing commerce/server files stay unchanged.
-New public export, API snapshot, consumer classification, catalogue rows and
-the affected commerce owner explanation accompany the implementation.
+No SQL forward, schema/privilege/object change, price writer, payment dispatch,
+attempt storage, activation, renewal, destination, inventory or notice work.
+The unchanged native routine retains `commerce_orders.metadata.quoteSnapshot`
+and `orderDraftSnapshot`; it writes items, the receipt and draft outbox fact
+atomically. Managed migrations and existing commerce/server implementations
+are untouched by G5's own delta.
 
-No price writer, promotion administration, payment dispatch, attempt store,
-activation, renewal, destination, inventory hold or notification work is added.
-Host routing authenticates the customer and supplies the client identity out
-of band; it supplies the server-produced quote. Existing native money-shape
-refusals remain binding. No new withdrawn-order marker or dispatched-attempt
-location is introduced.
+Because checkout first populates the existing draft receipt on this native
+rail, its row also joins the existing finite capture/restore profile. The root
+adapter lists, owner explanation and transfer proof are shared additive edits;
+the profile change awaits its required owner read before commit.
 
-## Native compensation and withdrawn markers
+G5 writes neither `supersededByStableJourneyKey` nor `checkoutAbandoned`, and
+adds no location for a dispatched attempt. Native abandoned-order compensation
+is a later follow-on, not G5. The generic adapter still calls the undefined native
+`commerce_cancel_abandoned_checkout` and fails closed with `42883`; the existing
+native `commerce_compensate_abandoned_checkout` has a different name and writes
+no withdrawn metadata marker. Binding and proving native compensation remains
+required before the overall money path counts it. Any future native withdrawn-
+marker writer must add the OMS dispatched-attempt clause in the same PR.
 
-Static trace at the recorded base: the `checkout_journey_consumed` branch in
-[the failure handler](../../../packages/platform/src/commerce/server/commerceCheckoutFailureHandler.ts)
-passes that cancellation reason to `tryCompensate` only when it has an order ID
-for compensation. [That orchestrator](../../../packages/platform/src/commerce/server/commerceCheckoutCompensation.ts)
-tries reservation release, then promotion cancellation, then abandoned-order
-cancellation if promotion cancellation did not succeed. Its caller must withhold
-the compensable order ID for uncertain or in-flight provider attempts.
+## Forced integration
 
-The generic [RPC compensation adapter](../../../packages/platform/src/commerce/server/checkoutCompensation.ts)
-calls `commerce_cancel_abandoned_checkout`; there is no definition or alias for
-that name in the native migration stream. Bound unchanged through
-`PgGatewayClient` to a `qualified-v2` database, it gets missing-function SQLSTATE
-`42883` and throws `CommerceRuntimePersistenceError`. Inside `tryCompensate`,
-that failure is caught and logged as `checkout_abandoned_order_compensation_failed`;
-the original journey conflict still returns. It does not cancel the native
-draft, write a marker, or fall back to the differently named native routine.
-The reference M11 wrapper only guards injected callables; it does not translate
-this RPC or establish that a scripted client works against native PostgreSQL.
+Review base and trusted policy source: main `46c3e8b2e063407ce27a914828c9548fff8b92ae`.
+A single DCO-signed merge incorporated main; G5's changelog note then moved
+verbatim to a fragment in a separate DCO-signed commit. CHANGELOG matches main.
 
-A native host using this failure handler must explicitly bind
-`cancelAbandonedOrder` to `commerce_compensate_abandoned_checkout`, supplying a
-native order UUID and stable idempotency key. The existing reference
-[activation adapter](../../../server/adapters/postgres/subscriptionActivation.ts)
-exposes `compensateAbandonedCheckout` for that native call; its
-[runtime binding](../../../server/runtime/customers/subscriptionActivationBinding.ts)
-selects the `node-postgres` bundle. G5's persistence-only export does not wire
-this handler or compensation port, and does not promote that reference adapter.
-The [native routine](../../../db/platform/migrations/20260814150000_subscription_activation_spine.sql)
-cancels a pending-payment order, fails only a `created` settlement intent,
-marks a provisional activation compensated, and records an idempotent
-compensation outcome. It does not update order metadata. By contrast, the
-managed `commerce_cancel_abandoned_checkout_sealed_v1` writes
-`checkoutAbandoned = p_reason` in the managed baseline.
-
-The native checkout definitions and first-party callers at this base contain
-no writer for `supersededByStableJourneyKey` or `checkoutAbandoned`; the PostgreSQL
-OMS adapter only reads them. No such native marker writer is added here.
-Whoever later adds a native withdrawn-marker writer must add the OMS
-dispatched-attempt clause in the same PR, so dispatched or ambiguous money
-cannot be hidden as a withdrawn draft.
-
-## Proof and delivery
-
-The real-PostgreSQL witness installs the hash-checked `qualified-v2` chain and
-calls the exported port from an installed tarball using its restricted runtime
-login. Only synthetic catalogue/prices and identity are fixture setup; no
-order, item, receipt, settlement or payment-truth row is hand-written.
-
-Prove complete stored money with distinct lines and tax values; matching and
-concurrent replay with one order, item set, receipt and draft event; changed
-quote/client refusal without mutation; invalid money and catalogue admission
-refusal; native shipping refusal; response to forged paid-return fields; and
-fresh-process replay after disconnect. Compare actual order status and absent
-settlement/truth effects, not just a returned `not_started` field. All new
-gates receive committed real-PostgreSQL refusal cases. Check every JSON-valued
-call with the real pg driver, including arrays nested in snapshots.
-
-Run focused stages through the shared focused gate without requesting release.
-Before sign-off, complete the existing cheap checks and the stabilized public
-API maintainer read. Two independent fresh-context native reviewers launched
-through `collaboration.spawn_agent` review the exact committed candidate; one
-considers the smallest adequate alternative. No SQL assessment is required
-without a forward. Follow [native review](../../../CONTRIBUTING.md#native-review-and-accountability)
-and [documentation impact](../DOCUMENTATION.md#impact).
-Stop at `READY_FOR_VERIFY G5` after review; canonical verify waits for the
-lead to name this PR. Land after the packaging prerequisite in lead order.
-
-Estimate from code: 1–2 working days including installed DB proof, read/review
-and delivery, replacing the earlier 3–5-day estimate. The earlier +3,497-byte
-figure came from `npm pack` plus the shared budget measurement functions,
-not `packages:check --pack`. A subsequent real
-`npm run packages:check -- --pack` now passes for all three packages with no
-findings. It ran on an exact staged-tree export in this worktree's ignored
-scratch, using an unsigned measurement-only Git snapshot to satisfy the
-checker's clean-source requirement. At that measurement the task branch was uncommitted and
-unsigned; it was not final post-review verification.
-
-The full check reproduces the identical platform tarball: 2,106,268 packed
-bytes, 9,822,946 unpacked bytes and 2,843 files. Against the probe's reported
-pack at the same base, the delta remains +3,497 packed bytes, +13,444 unpacked
-bytes and +3 files (source, runtime JS, declaration). This comparison is not
-an independent baseline rebuild. G5 has no SQL bytes to add. Existing budgets
-pass; no new npm package, dependency or numeric gate-budget change is proposed.
-
-## Evidence and remaining work
-
-The probe's successful draft/activation stage is supporting history. Source
-reading confirms retained snapshots in
-[the native draft](../../../db/platform/migrations/20260813220000_merchandising_order_draft.sql),
-native money/refusal guards in
-[its wrapper](../../../db/platform/migrations/20260817180000_promotion_claim_lifecycle.sql),
-and supersession in the separate
-[incumbent port](../../../packages/platform/src/commerce/server/commerceOrderDraft.ts).
-Executed working-tree evidence on Node 24.21.0 / npm 11.19.0:
-
-- `npm test -- tests/postgres/nativeCheckoutPersistence.test.ts --maxWorkers=1`:
-  5/5 PASS, 12.45 seconds including setup. The installed export loads without
-  optional peers; NodeNext and Bundler declarations compile. Both purchase
-  modes retain nonzero tax and complete money, including nested arrays. The
-  restricted login denies schema creation and privilege escalation. Concurrent
-  creation, replay, fresh-process recovery and refusal cases leave one effect
-  and no settlement or payment-truth rows.
-- `npm run lint`: PASS, zero errors; 33 warnings in unchanged files.
-- `npm run oss:published-tree -- --typecheck`: PASS; zero unresolved edges and
-  zero consumer-side errors. API snapshot check, ast-grep and whitespace: PASS.
-- Real `packages:check --pack`: all three packages PASS with no findings on
-  the unsigned staged-source snapshot described above. Gitleaks passed on its
-  input delta and snapshot. Platform SHA-256:
-  `5d794c6f712211790ba682f9d72814965753b229fd0dad6f0ad9707e635f709b`.
-  Code class: 1,812,124 bytes / 2,784 files; documentation class: 58,586 bytes /
-  6 files. Signed-candidate package proof and canonical verification remain unrun.
-- Policy/navigation check ran on the would-be committed set. Two no-impact
-  trailers for the unchanged contributor tests/tooling guidance were subsequently
-  recorded with the initial signed commit after the accepted read. Their exact
-  source fingerprints and substantive reasons accompany the read packet, and
-  the committed policy check passes. Other documentation obligations are
-  answered. No contributor-control file changes.
-
-An initial PostgreSQL run failed subscription checkout because the synthetic
-SKU fixture omitted the existing opt-in sellability flag. The fixture now
-sets it explicitly. Initial lint also caught deep imports across the pricing
-module boundary; the implementation now uses that module's public entry.
-Both repairs passed the subsequent applicable checks. At that evidence freeze,
-no native review session, repair cycle or queue retry had been consumed; the
-initial review outcome and pending repair are recorded below.
-
-Remaining: two fresh independent reviews closing the package-entry findings,
-lead-named final verification and authorized delivery. The renewed read and
-repair DCO are complete. No canonical verify, push, PR, receipt or merge has
-been attempted. Preserve evidence and budgets on resume. G5 writes neither `supersededByStableJourneyKey` nor
-`checkoutAbandoned`, and adds no dispatched-attempt field or store.
-
-Self-retro: the probe reduced G5 to a binding and proof task, avoiding a forward.
-The fixture and import failures showed that profile flags and module entries
-deserve checking before the database run. Shared-gate waits dominated elapsed
-time; one final type-check admission alone waited 554 seconds. No process or
-control change is proposed. The compensation trace distinguishes the managed
-RPC from the native routine and exposes the missing automatic binding without
-changing either. The full package checker reproduced the earlier preview's
-bytes and hash without signing the task candidate.
-
-
-## Package-entry review repair
-
-The initial API read was accepted for the frozen candidate, which was then
-DCO-signed and prepared for two independent fresh-context native reviews. Both
-reviews found the same material package-boundary mismatch: the new subpath
-was absent from the test's closed nested-entry inventory and targeted a direct
-file instead of the required entry directory. The focused package-boundary
-run reproduced it: 2,818 passed, one failed. The committed documentation-impact
-trailers passed the policy check with zero unanswered obligations.
-
-The repair keeps the existing boundary helper and all its checks. The native
-implementation moves to `commerce/server/native-checkout/index.ts`, with only
-relative import paths adjusted; its export and declaration targets follow that
-layout. The test's exact inventory gains this one entry. No helper, assertion,
-refusal, privilege, numeric budget, behavior or API signature is relaxed. The
-API snapshot and catalogue follow the new source location. A renewed maintainer
-read covers these package-source and target changes before repair sign-off;
-the initial FAIL reports remain open until fresh reviewers close them.
-
-Native abandoned-order compensation is not bound or qualified by G5. The
-unchanged generic adapter fails closed with `42883`; the binding and proof are
-owned by G4's PR and must pass before overall money-path acceptance counts
-compensation. G5 writes
-neither withdrawn marker and adds no location for a dispatched attempt.
-
-Self-retro: pack and installed PostgreSQL proof did not cover the package's
-closed export inventory. Check that inventory with the new entry before counted
-review; preserve its existing standard layout rather than adding an exception.
-
-
-The repaired entry passes all 2,819 package-boundary cases and all five installed
-real-PostgreSQL cases (13.08 seconds including setup). The fresh full
-`packages:check --pack` passes all three packages on an exact staged-source
-fixture in this worktree's ignored scratch. This is the same unsigned
-measurement-only method as before; it does not sign the repair or substitute
-for final verification. The repaired platform tarball is 2,106,571 packed bytes,
-9,822,963 unpacked bytes and 2,843 files, SHA-256
-`a9f07ce7b1e119496a98cc5fa11fb904651c3a3ec70fbd3c8df927035a246a37`.
-Against the probe's reported same-base pack (not independently rebuilt), this
-is +3,800 packed bytes, +13,461 unpacked bytes and +3 files, superseding the
-earlier +3,497-byte measurement. No SQL bytes or numeric cap change.
-The estimate remains 1–2 working days. The extra changed test path is
-`packages/platform/test/packageBoundary.test.ts`; it changes only the exact
-entry list and is explicitly included in the renewed read.
-
-Repair checks also pass: API declaration check, ast-grep and strict root
-typecheck (zero unresolved edges and zero consumer-side errors). Full lint
-passes with zero errors and 99 warnings in unchanged files. The focused gate
-for that lint run waited 520 seconds; there is no rule or suppression change.
-At the repair read freeze, native review was at cycle zero on the initial
-committed candidate, with two reports and no counted PASS. The first repair
-was staged and unsigned pending that read; its current cycle is recorded below.
-Canonical verification has not run.
-
-
-## Historical review state (2026-11-01)
-
-The accepted package-entry repair was committed with its exact read tree. This
-is repair cycle 1 of 3, including the current run's factual record update; the
-initial findings remain open until two new independent fresh-context reviewers
-close them. The renewed read is accepted for DCO. Native abandoned-order
-compensation remains outside G5 and is owned by G4's PR. Its binding and real
-PostgreSQL proof are required before overall money-path acceptance counts it.
-No canonical verification, PR or delivery has run.
-
-This record-only correction adds the assigned follow-on owner and current cycle
-accounting without changing source, API, budgets, controls or qualification.
-Self-retro: keep repair accounting explicit across a paused read and preserve
-the original exact read commit before recording later factual ownership.
-
-
-## Integration refresh (2026-11-03)
-
-The lead resumed this row for a forced merge onto main `46c3e8b2`, a fresh
-full proof and two independent full reviews. Earlier review evidence expired;
-no canonical verification or submission is authorized in this run. Current
-compensation scope: native abandoned-order binding remains a later follow-on,
-not G5 acceptance. Earlier references to G4 ownership describe prior planning.
-
-The DCO-signed merge retains main's ordered shared lists and adds only G5's
-entries. All conflicts and resolutions:
-
-| File | Conflicted hunks | Resolution |
+| File | Conflicted shape | Resolution |
 | --- | --- | --- |
-| Publication catalogue | Three disjoint path groups: task records, API snapshots, PostgreSQL tests | Union main's rows and G5's four path rows; retain main order |
-| Package boundary test | One nested-entry literal | Keep every main entry, add native checkout after commerce/server |
-| Changelog | One Unreleased note insertion | Keep main byte-for-byte; move G5 note verbatim to a fragment |
+| Publication catalogue | Three disjoint path groups: task records, API snapshots, PostgreSQL tests | Retain main order and all rows; add only G5's four rows |
+| Package boundary test | One closed nested-entry literal | Retain all main entries; add native checkout after commerce/server |
+| Changelog | One Unreleased insertion | Keep main verbatim; move G5 note to its fragment |
 
-The allowed changelog migration is a separate DCO-signed commit. The source,
-API snapshot, export values and cold-consumer entry are unchanged from G5's
-accepted source. Full own-delta patch IDs differ because the shared-line union
-changes context and the changelog note moves; this is not claimed as Git's
-conflict-free mechanical case.
+Full own-delta patch-id before: `3f7bff6e2e981161462d838837a39e06e46304f4`; after merge: `697a9992478346d20419a6485bda92d7c85f3d96`.
 
-Before full patch-id: `3f7bff6e2e981161462d838837a39e06e46304f4`.
-After merge full patch-id: `697a9992478346d20419a6485bda92d7c85f3d96`.
-Excluding task record/changelog: before `ca3292c11ac91f95bd093985e561264f8371d7a3`, after `0888b8deecd4277a9b8435580bf3b4f5623f31f3`.
+Excluding task record/changelog, before: `ca3292c11ac91f95bd093985e561264f8371d7a3`; after: `0888b8deecd4277a9b8435580bf3b4f5623f31f3`.
 
-Evidence commands: `git diff <base> <head> | git patch-id --stable`; repeat
-against the merged main, with the explicit exclusions above. The complete
-conflict text and patches remain in local integration evidence.
+Commands: `git diff <base> <head> | git patch-id --stable`, repeated against
+merged main with the stated exclusions. IDs differ because allowed shared-list
+line/context changes and note migration change the patch. This is not claimed
+as Git's conflict-free mechanical case. The production source and API snapshot
+are byte-identical to the accepted pre-merge G5 blobs; export values and cold
+entry are preserved. The subsequent test-only repair replaces registry peer
+specs with locked local tarballs and logs the actual session TimeZone. No new
+API/source/budget semantics require a renewed read.
+
+## Official real-pack measurement
+
+Independent archives of main and candidate, same official Node v24.21.0 and
+npm v11.19.0, normal internal build/prepack order, real npm pack, and the shared
+package-size policy measured the actual extracted tarball. Inherited packaged
+SQL and manifest bytes are included. G5 adds no SQL.
+
+| Measure | Main | G5 | Delta |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 2,435,777 | 2,439,455 | 3,678 |
+| Code-class gzip | 1,950,344 | 1,952,891 | 2,547 |
+| Unpacked bytes | 11,454,327 | 11,467,472 | 13,145 |
+| Files | 3,021 | 3,024 | 3 |
+
+All caps pass; no numeric gate changes. The three added packed files are the
+source entry, runtime JS and declaration. Fragment, task record and root tests
+are not packed. Later proof-only edits do not change any package input.
+Estimate remains 1–2 working days including proof/review and delivery.
+
+## Every G5 time use
+
+| Site | Classification | Reason |
+| --- | --- | --- |
+| Production request, SQL parameters and response | None | No named time fields, clock, Date conversion or timestamp comparison |
+| Opaque host quote context | Not a platform time contract | Persisted unchanged; the host owns any additional facts |
+| npm subprocess bound | VALUE, duration | 120 seconds; execution only |
+| TypeScript subprocess bound | VALUE, duration | 120 seconds; execution only |
+| PostgreSQL setup/teardown hooks | VALUE, durations | Existing shared bounded fixture lifecycle |
+| Fresh-process subprocess bound | VALUE, duration | 15 seconds; execution only |
+| Restart-case timeout | VALUE, duration | Existing 30-second case bound |
+| Transfer child / transfer-case bounds | VALUE, durations | 30-second child and 60-second case; execution only |
+| Transfer timestamp fixture | VALUE | Exact six-digit instant assigned to the writer-created typed SQL column |
+| Transfer timestamp audit | IDENTITY, proof only | SQL renders UTC with six fraction digits and Z before exact assertion |
+
+Production VALUE 0, IDENTITY 0: the transfer additions only name the table in
+existing lists. Eight proof-duration call sites are VALUE and none is persisted
+or used as a money key. The transfer proof audits a canonical SQL time and the
+existing UTC JSON row round trip; no production time conversion is added.
+All five checkout real-PostgreSQL cases pass in default,
+Etc/GMT-9 and Etc/GMT+5 sessions; SHOW TimeZone confirms each runtime setting.
+
+Each new PostgreSQL case also ran solo, without coverage:
+
+| Case | Solo seconds | Timeout |
+| --- | ---: | ---: |
+| persists complete one_time money and arrays, replays concurrently and recovers from a fresh process | 0.143 | 30,000 ms (existing) |
+| persists complete subscription money and arrays, replays concurrently and recovers from a fresh process | 0.133 | 30,000 ms (existing) |
+| refuses catalogue drift and an unprivileged caller without partial effects | 0.028 | 10,000 ms (default) |
+| rejects malformed money, identity injection and browser-return payment fields | 0.026 | 10,000 ms (default) |
+| retains the native zero-payable, shipping and line-discount refusals | 0.019 | 10,000 ms (default) |
+
+These five checkout cases stay below 3 seconds. The added transfer case measures
+15.06 seconds solo and uses a commented 60,000 ms timeout. Common fixture work
+remains under the shared explicit hook budgets.
+
+## Proof on the integrated tree
+
+The PostgreSQL witness imports the public export from installed tarballs,
+compiles NodeNext/Bundler types, uses the restricted qualified-v2 runtime role,
+and denies schema creation and privilege escalation. Synthetic catalogue,
+prices and identity are fixture setup; orders, items, receipts, settlement and
+payment-truth facts are never hand-written. Both purchase modes retain all
+money, tax, arrays and host context; concurrent replay/restart/changed quote
+and client, invalid money, browser-return fields and money limits are proved.
+The peer-present phase now installs only the packed locked dependency closure
+offline, with a fresh cache supplied outside the test.
+
+| Required proof | Passed |
+| --- | ---: |
+| G5 PostgreSQL default / GMT-9 / GMT+5 | 5 / 5 / 5 |
+| G5 solo PostgreSQL cases | 5 |
+| Complete commerce tests | 112 files, 887 cases |
+| Package boundary | 2,945 |
+| ESLint import map | 123 |
+| Outcome projection | 7 |
+| Documentation CLI | 3 |
+| Existing importer tests (excluding G5) | 8 files, 154 cases |
+| Broad total, no failures | 124 files, 4,119 cases |
+| Neutral starter | 176 |
+| Platform API check | All experimental surfaces |
+| Root strict typecheck | 0 unresolved edges, 0 consumer errors |
+| Ast-grep / both neutrality checks | Pass; no baseline increases |
+
+The Linux/glibc full cold consumer passed in 101.69 seconds on Node v24.21.0 /
+npm v11.19.0. Its independent empty cache and all install phases used local
+tarballs only. A scratch npm launcher maps the existing peer phase's exact locked
+specs to its packed closure and forces offline installation; the consumer source
+and every import/declaration/adapter/SQL assertion remain unchanged. Linux-native
+optional packages were prepared from the lockfile before the proof, separately
+from the empty consumer cache. The full starter, optional-peer and installed
+PostgreSQL proofs executed. Initial preparation assumed obsolete Rollup instead
+of current Rolldown; that scratch setup was corrected before the one proof run.
+
+The changed-source test importer inventory is the cold-consumer test, reference
+invoice consumer, channel/inventory/catalogue consumers and promotion/acquisition/
+account PostgreSQL consumers, plus G5 itself. Every existing importer ran unchanged.
+The fresh proof logs and JSON summaries remain in ignored local scratch.
+
+Gitleaks scanned all WIP refs: 1,773 commits / 87.61 MB, no leaks. Full lint,
+policy/navigation, final signed-candidate registry/admission preflight and fresh
+native review are recorded in the completion section below. No canonical verify
+has been run and no submission is authorized here.
+
+## Process accounting and next gate
+
+The same append-only native history retains one consumed repair cycle. This
+forced, conflicted integration and full refresh use normal accounting; prepare
+with the updated intent must preserve that history and advance to cycle 2 of 3.
+No old review evidence is inherited. Two new full reviewers assess the complete
+diff from main, with an independent complexity challenge and documentation
+assessment. Stop on needs_owner rather than resetting the history or budget.
+
+Self-retro: one narrow native query adapter remains sufficient; the probe avoided
+a new SQL forward. Locked local tarballs remove cache-dependent registry behavior,
+and per-case timing distinguishes fast assertions from the common install/setup
+hook. The forced merge's shared-list changes are explicit, rather than treated as
+an identical patch. Canonical verify, PR creation and delivery remain lead-gated.
+
+
+## Connected-store profile gap and assigned draft
+
+The current native draft routine writes `commerce_order_draft_receipts`; the
+installed G5 witness proves that receipt is nonempty after purchase. Main's
+finite connected-store capture profile lists orders, items and outbox facts,
+but not this receipt table. Its unknown-nonempty census rejects any nonempty
+public table outside that profile with `PostgresTransferError("unsupported_table", "public.commerce_order_draft_receipts")`. The restore
+path likewise has no receipt mapping. A native checkout store would therefore
+lose the existing transfer promise before capture, even though draft persistence,
+replay and restart work.
+
+The money-writer brief explicitly makes a newly written unlisted table part of
+the row, and the profile header requires its identity/operations owner read.
+The prior run stopped before editing capture/restore. The maintainer now assigns
+G5 its additive lines in these shared files; whichever row lands second unions
+them. The receipt draft below remains uncommitted for the required owner read.
+No native review, canonical verify, PR or submission has been attempted.
+The native session remains at cycle 1 of 3; the planned refresh has not yet been
+prepared. The assigned finite receipt addition and its transfer/replay/identity
+proof now await the domain/identity/operations owner read before G5 can proceed.
+
+The receipt holds idempotency key, request fingerprint, order UUID, response
+payload and created_at. The payload duplicates the accepted quote and may carry
+opaque host context; restore must assess customer/order remapping and the
+fingerprint, rather than blindly copying or deleting the receipt. No new field
+or receipt table is proposed.
+
+Self-retro: the full cold consumer and SQL snapshot proof covered installation
+and money facts, but did not make a purchased store transferable. Trace every
+nonempty table the promoted writer reaches against the finite capture profile
+before review; existing-table reuse can still require transfer ownership.
+
+
+At the stop, the unchanged full lint command passes with zero errors and 99
+existing warnings. Its first run scanned generated scratch archives; all 57
+errors were in those fixtures. The archives were retained under the already
+ignored scratch node_modules directory, without changing any lint rule or
+candidate source. Policy and docs-update were executed; two no-impact trailers
+for the existing contributor tests/tooling sections remain to be committed.
+Native review, final admission/registry preflight and canonical verify remain
+unrun. The blocking capture behavior above is established from the executed
+nonempty-receipt assertion and current census implementation, not claimed as
+an executed capture refusal test.
+
+
+## Receipt transfer draft (owner read pending)
+
+Add the existing receipt table to the finite owned capture list and restore it
+after orders/items through the unchanged `insert` path. PostgreSQL serializes
+and repopulates the row; no JavaScript Date or timestamp conversion is added.
+The table count becomes 89 because only `commerce_order_draft_receipts` joins
+the profile. The handover's current count literal changes 88 to 89; its current
+schema hash and every historical pin remain unchanged. No table, SQL forward,
+grant, schema, package source or public API changes.
+
+Native restore preserves the order and client UUIDs; client import passes the
+original ID and principal ID to SQL. Native principal rows and opaque quote,
+draft and receipt JSON are copied unchanged. The stored decorated response order
+UUID therefore still identifies the same order. The request fingerprint depends
+on the quote JSONB, draft JSONB and client UUID; all remain exact. The optional
+managed identity mapper is a separate function and is not invoked by native
+restore. This draft adds no managed receipt/identity translation capability.
+
+The new case creates its source checkout through the installed public factory
+with the restricted runtime login, captures and restores to a clean qualified
+target, then uses a fresh process and installed export to replay once. It checks
+SQL recomputation of the fingerprint, order/client/principal IDs and embedded
+identity facts, response payload parity with order metadata, changed-fact refusal,
+one order/receipt/draft event and unchanged whole receipt rows. A precision-only
+fixture UPDATE fixes the writer-created receipt's created_at to an exact
+sub-millisecond instant; no order or receipt is created by hand. Its 15.06-second
+solo measurement has an explicit 60-second timeout and comment.
+
+The receipt is linkable customer/order data, including idempotency keys and opaque
+host context. No privacy scrub or nonpersonal-content guarantee is introduced.
+The owner-only transfer boundary and existing row/byte limits cover it; the new
+case specifically exercises both limits at this receipt. No public read route,
+service activation or browser/table grant is added. The adapter owner's finite
+transfer section documents this same boundary.
+
+Self-retro: preserving native IDs avoids a new receipt translator and SQL/JS hash
+implementation. The minimal change is two list entries plus its proof and owner
+explanation; remapping is unnecessary on this native-to-native path.
+
+
+The transfer draft retains exact-profile validation. It expects 89 tables, even
+when the receipt table is empty, and does not convert earlier 88-table packets.
+That compatibility limit is explicitly part of the owner read; no missing-table
+inference or replay-evidence deletion is added. The new test's context mode
+needed a literal type assertion to match the existing public request type; this
+was a test-only compiler correction with no emitted/runtime behavior change.
+
+The completed transfer file passes 14/14 cases in each of default, Etc/GMT-9
+and Etc/GMT+5; checkout passes 5/5 in each of those sessions. Five existing
+transfer-importer files pass all 34 cases, including the existing restricted
+qualified-admin fixtures. The new positive receipt case is qualified-v2; it does
+not claim a new managed mapping or qualified-admin receipt witness.
+
+The handover reaches LOCAL_QUALIFIED_TARGET_READY_WITH_ONE_FENCED_UNCERTAIN_OPERATION
+in 99.994 seconds, with 97 migration units and 89 retained tables. Only the
+receipt table moves the count. Two accepted effects recover, one uncertain
+effect stays fenced, all publication/activation flags are true and cleanup has
+no failures. The current catalogue hash remains unchanged.
+
+A real official-toolchain pack is byte-identical before/after these root-only
+edits: SHA256 4b5cd153af6c978dbe9e17a9bc10c480f4e2d80b2c45a140f01d8d32d068d16a.
+The transfer delta is 0 packed/unpacked/code bytes and 0 files; absolute G5
+remains 2,439,455 packed bytes, 1,952,891 code-class bytes and 3,024 files.
+Strict typecheck, full lint, ast-grep, both neutrality checks and all-ref gitleaks
+pass. The two earlier contributor no-impact policy answers are committed
+separately with the already-proved checkout fixture change; the transfer draft
+itself remains uncommitted for the owner read.
+
+That separate DCO commit is c7148da0ba27f2032a3c7087cb48f3aa3076058c. Both
+policy commands ran on the draft; the adapter owner section is answered, and
+two new-delta no-impact answers remain pending for the handover count literal
+and expanded tests unit. Their exact digests and proposed reasons are in the
+owner-read packet; they can accompany the transfer commit only after acceptance.
+No documentation/control baseline was relaxed to make the draft pass.
+The final documented gitleaks command scans all 1,774 WIP commits with no leaks.
+An extra default-rules invocation reported 34 matches because it omitted the
+repository configuration; the configured check passed without any policy edit.
+
+Self-retro: the new whole-file proof exposes the finite-profile change and its
+older-packet limit before signing it. Preserving native IDs keeps the repair to
+two list entries and avoids a translator or another fingerprint implementation.

@@ -240,6 +240,7 @@ const order = [
   "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
+  "commerce_order_draft_receipts",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
   "commerce_settlement_intents", "commerce_settlement_transitions",
   "payment_simulator_attempts", "payment_simulator_observations",
