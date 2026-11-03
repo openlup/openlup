@@ -21,6 +21,8 @@ export interface StoreConfig {
   publicOrigin?: string;
   /** Explicit opt-in for a non-loopback HTTP origin. Prefer TLS. */
   allowInsecurePublicOrigin?: boolean;
+  /** Public support contact, rendered as plain text only. */
+  supportEmail?: string;
   brand: {
     name: string;
     strapline: Localized;
@@ -78,6 +80,7 @@ export interface StoreConfig {
 
 export function assertConfig(config: StoreConfig): void {
   assertPublicOrigin(config);
+  assertSupportEmail(config);
   const offer = config.offer;
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
     || typeof config.market.currency !== 'string' || !/^[A-Z]{3}$/.test(config.market.currency)
@@ -121,6 +124,15 @@ export function assertConfig(config: StoreConfig): void {
     }
     seen.add(product.sku);
     slugs.add(product.slug);
+  }
+}
+
+/** One validator for the optional public contact; no URL or HTML is accepted. */
+export function assertSupportEmail(config: Pick<StoreConfig, 'supportEmail'>): void {
+  if (config.supportEmail === undefined) return;
+  if (typeof config.supportEmail !== 'string' || config.supportEmail.length > 254 || /\s/.test(config.supportEmail)
+    || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(config.supportEmail)) {
+    throw new Error('starter_support_email_invalid');
   }
 }
 

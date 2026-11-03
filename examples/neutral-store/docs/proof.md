@@ -228,3 +228,33 @@ The unchanged required purchase browser assertion ran once in each configuration
 Both failed at the missing completion path with `host_binding_required` visible
 in the saved page context, zero skips, in 62.227 seconds total. No browser
 assertion changed; these failures retain the pending purchase acceptance.
+
+## Native partner intake recipe
+
+`browser/native-intake.proof.ts` is an explicit real-PostgreSQL Playwright recipe,
+separate from the default UI-only server configuration. Run it against a fresh
+local demonstration installation with its runtime connection mounted. In the
+proof's own disposable database, use the native identity store's
+`bootstrapFirstAdministrator` and account-link store's `createAccount` to prepare
+fictional operator and customer contacts. Do not insert inquiry, order, review
+or grant rows. The browser submits the inquiry and activates the invited human
+operator through native challenges and the private captured mailbox.
+
+Select this file with `testMatch: 'native-intake.proof.ts'` in a local Playwright
+configuration, `testDir` pointing at `browser`, and one worker. Set the `use`
+options `baseURL`, `composeProject`, `operatorEmail` and `customerEmail` for the
+proof-owned installation. Run from the application directory so the recipe's
+Docker Compose commands select that project's existing `compose.yaml`. The
+recipe restarts only that application's service and waits for the native
+one-challenge-per-minute limit before reauthentication. Remove its disposable
+containers and volumes after proof.
+
+This recipe checks mounted status, the public submit/replay, native deduplication
+and independent peer/email quotas, operator transition and stale-version refusal,
+customer-as-operator refusal, invalid/nonexistent/wrong-kind grant refusals and
+persistence after host restart. It creates no purchase or review grant. Actual
+expired-grant refusal, positive review submit/read, publish/hide with a real
+review, grant expiry/revocation and purchase-generated grant ownership are carried
+to the purchase composition contribution's acceptance. They are not proved here;
+a nonexistent reference is not an expired-grant witness. The unchanged required purchase browser test remains
+required and failing while purchase is unbound.

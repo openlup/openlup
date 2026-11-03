@@ -94,3 +94,36 @@ Both example catalogues price in `XTS` test units for fictional market `ZZ` at
 configuration is a non-secret `--configuration` argument. The one-command
 installation target defaults from the owned registry. CLI transport does not
 supply an installation capability.
+
+## Partner intake and reviews
+
+No generic contact form; the partner inquiry is the durable intake.
+Support is static and shows optional validated `supportEmail` as plain text,
+with an account link. Missing contact configuration is stated explicitly.
+The application declares 52 operations. With a runtime connection, the partner
+submit/list/transition and review read/submit/list/moderation actions are mounted.
+Without that connection they remain unbound, like the other native actions.
+
+Partner requester quotas use a hash of the socket peer, never the email or a
+forwarded header. A proxy therefore shares one requester quota across its users;
+this local host does not establish trusted proxy admission. Native quotas are
+five requester attempts and three email attempts per 60-minute window; command
+replay precedes the quotas, and repeated contact submits conflict. The native
+contact deduplication has no time-based expiry. Public success returns only the
+case reference; contact details are visible through the authorized operator view.
+
+Review read and submit require an accepted, unexpired native order review grant.
+Invalid references do not prove positive grant behavior. Expired-grant refusal,
+positive review submit/read, publish/hide with a real review, grant expiry and
+revocation, and purchase-generated grant ownership remain acceptance duties of
+the purchase composition contribution. This slice claims none of them.
+Operator list/moderation admission reuses native human membership, rechecked on
+requests; a customer session supplies no operator authority.
+
+Tester application submission remains `host_binding_required`: the native port
+requires a source, reference, revision and provenance matching an existing active
+address-reference record. The host has no verified address-registration binding.
+A browser-supplied reference or a customer session cannot supply that provenance.
+Research remains `host_binding_required` until the host can authorize ownership
+of the research case (`authorizeResearchCase`); normalized ingest also remains
+`host_binding_required`. Neither action is mounted merely to return a refusal.

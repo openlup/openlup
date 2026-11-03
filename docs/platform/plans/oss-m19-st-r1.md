@@ -268,11 +268,11 @@ No new limit or cut is proposed by this clarification.
 | Waiting on a named landing | 15 | Existing dependencies plus the returns reader; unchanged refusals |
 | Native on main, host composition not mounted in r1a | 24 | Separate E composition contribution or r2; supervisor selects the delivery grouping |
 | No complete remaining native operation on the selected main | 1 | Complete normalized-ingest rails remain KEEP in G14 |
-| To be removed in a later destination change | 1 | Generic `inquiry.submit` has no donor journey; the durable partner inquiry stays KEEP |
+| To be removed in a later destination change | 1 | The generic contact operation has no donor journey; the durable partner inquiry stays KEEP |
 | Total currently declared | 53 | 52 retained operations and one generic operation marked for future removal |
 
 The retained-operation four-way split is **12 bound / 15 waiting / 24 native but
-unmounted / 1 without a complete native**, total 52. Adding `inquiry.submit`
+unmounted / 1 without a complete native**, total 52. Adding the generic contact operation
 marked for future removal accounts for all 53 declarations; no declaration is
 removed in r1a.
 
@@ -397,8 +397,9 @@ separate E composition contribution, with the T07-12 destination pointing there.
 
 The generic `/inquiry` and `/support` form in
 `examples/neutral-store/client/pages/destinations.ts:63–74` has no donor journey.
-`inquiry.submit` and its page entry will be removed in the first starter
-contribution that touches those destinations, outside r1a. This removes an
+The generic contact operation and its page entry were scheduled for removal in
+the first starter contribution touching those destinations, outside r1a.
+[Starter intake composition](oss-m19-st-e1.md) performs that removal. This removes an
 invented generic path, not an accepted journey; no cut-register entry is needed.
 `/support` will become a static page using the operator-configured contact, plus
 signed-in account support where a native exists. A captured-mailbox-only form is

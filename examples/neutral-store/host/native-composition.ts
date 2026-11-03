@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
@@ -12,6 +13,7 @@ import { createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerc
 import type { ActionBinding, ApplicationBindings, VerifiedActor } from './bindings.ts';
 import type { OriginPolicy } from './origin-policy.ts';
 import { createSessions } from './sessions.ts';
+import { composeExistingCapabilities } from './e-composition.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -50,7 +52,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
-  const actions: ApplicationBindings['actions'] = {};
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString });
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown): value is string => typeof value === 'string' && value.length <= 160
@@ -136,19 +139,23 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   return {
     actions,
     async authenticate(request) {
+      // This local host trusts its socket peer only, never forwarding headers or
+      // a contact supplied by the caller. Proxies share their peer's quota.
+      const peer = request.socket.remoteAddress;
+      const requester = peer ? { requesterKey: createHash('sha256').update(peer.toLowerCase()).digest('hex') } : {};
       const found = sessions.read(request);
-      if (!found) return nobody();
+      if (!found) return { ...nobody(), ...requester };
       const { session, token } = found;
       if (session.kind === 'operator') {
         const authorized = await operatorAuth.authorize(token);
         // Reduced reads require native human admin authority, not a Commerce
         // mutation actor. The control-plane resolver cannot provision that actor.
-        return authorized.ok ? { customerRef: null, operatorRef: authorized.principalId,
-          principalRef: authorized.principalId, sessionToken: token } : nobody();
+        return authorized.ok ? { ...requester, customerRef: null, operatorRef: authorized.principalId,
+          principalRef: authorized.principalId, sessionToken: token } : { ...nobody(), ...requester };
       }
       const profile = await asCustomer(session.principalId, db => createPostgresCustomerMePort(db).getCustomerMe(session.principalId));
-      return profile ? { customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : nobody();
+      return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
-    async close() { sessions.close(); await Promise.all([operators.close(), pool.end()]); },
+    async close() { sessions.close(); await Promise.all([capabilities.close(), operators.close(), pool.end()]); },
   };
 }
