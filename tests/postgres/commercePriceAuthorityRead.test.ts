@@ -144,6 +144,60 @@ it("permits legacy only with no history and uses half-open list/entry intervals"
   await expect(authority().resolvePrice(query())).rejects.toMatchObject({ code: "subscription_price_policy_not_effective" });
 });
 
+it("matches canonical UUID values across spellings without rewriting arguments or results", async () => {
+  const variant = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+  const fixedList = "fedcbafe-dcba-4fed-8cba-fedcbafedcba";
+  await admin.query("UPDATE public.price_lists SET id=$2 WHERE id=$1", [list, fixedList]); list = fixedList;
+  await admin.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES ($1,$2,'UUID-SPELLING','Example item')", [variant, product]);
+  await entry({ variant }); await entry({ variant, mode: "subscription", amount: 1400 });
+  const mixed = (value: string) => value.replace(/[a-f]/g, (letter, offset: number) => offset % 2 ? letter.toUpperCase() : letter);
+  const spellings = [
+    { variantId: variant.toUpperCase(), priceListId: list.toUpperCase() },
+    { variantId: mixed(variant), priceListId: mixed(list) },
+    { variantId: variant, priceListId: list },
+    { variantId: `{${variant.replaceAll("-", "").toUpperCase()}}`, priceListId: `{${list}}` },
+    { variantId: variant.replaceAll("-", "").match(/.{4}/g)!.join("-"), priceListId: list.replaceAll("-", "") },
+  ];
+  const recorder = vi.fn((sql: string, values?: unknown[]) => runtime.query(sql, values));
+  const port = reads({ query: recorder });
+  for (const method of ["listExactBaseEntries", "listExactLegacySubscriptionEntries"] as const) {
+    const expected = await reads()[method]({ variantId: variant, priceListId: list });
+    expect(expected).toHaveLength(1);
+    const results = await Promise.all(spellings.map(input => port[method](input)));
+    expect(results).toEqual(spellings.map(() => expected));
+    expect(new Set(results).size).toBe(spellings.length);
+  }
+  expect(recorder).toHaveBeenCalledTimes(2);
+  expect(recorder.mock.calls[0]![1]).toEqual([[spellings[0]!.variantId], spellings[0]!.priceListId, "one_time"]);
+  expect(recorder.mock.calls[1]![1]).toEqual([[spellings[0]!.variantId], spellings[0]!.priceListId, "subscription"]);
+  for (const mode of ["one_time", "subscription"] as const) {
+    const expected = await authority().resolvePrice({ ...query(), variantId: variant, mode });
+    for (const input of spellings) expect(await authority().resolvePrice({ ...query(), variantId: input.variantId, mode })).toEqual(expected);
+  }
+  const echoed = reads({ async query(sql, values) {
+    const result = await runtime.query(sql, values);
+    return sql.includes("FROM public.price_entries") ? { rows: result.rows.map(row => ({
+      ...row, variant_id: variant.toUpperCase(), price_list_id: list.toUpperCase(),
+    })) } : result;
+  } });
+  expect((await echoed.listExactBaseEntries(spellings[1]!))[0]!.value).toMatchObject({
+    variantId: variant.toUpperCase(), priceListId: list.toUpperCase(),
+  });
+  await policy();
+  const expectedHistory = await reads().listSubscriptionPolicyHistory({ ...context, priceListId: list });
+  expect(await Promise.all(spellings.map(input => port.listSubscriptionPolicyHistory({ ...context, priceListId: input.priceListId }))))
+    .toEqual(spellings.map(() => expectedHistory));
+  expect(recorder.mock.calls.filter(call => call[0].includes("FROM public.subscription_price_policy_revisions"))).toHaveLength(1);
+  expect(recorder.mock.calls.at(-1)![1]).toEqual([spellings[0]!.priceListId, context.regionCode, context.currency, context.channel]);
+  const expectedPrice = await authority().resolvePrice({ ...query(), variantId: variant });
+  for (const input of spellings) expect(await authority().resolvePrice({ ...query(), variantId: input.variantId })).toEqual(expectedPrice);
+  for (const invalid of ["not-a-uuid", `${variant}\n`, `{${variant}`, `${variant.replaceAll("-", "").slice(0, 2)}-${variant.replaceAll("-", "").slice(2)}`]) {
+    await expect(reads().listExactBaseEntries({ variantId: invalid, priceListId: list })).rejects.toMatchObject({ code: "22P02" });
+    await expect(reads().listExactBaseEntries({ variantId: variant, priceListId: invalid })).rejects.toMatchObject({ code: "22P02" });
+    await expect(reads().listSubscriptionPolicyHistory({ ...context, priceListId: invalid })).rejects.toMatchObject({ code: "22P02" });
+  }
+});
+
 it("deduplicates a request, chunks 501 UUIDs at 500 and retains histories beyond the argument-count limit", async () => {
   const ids = Array.from({ length: 501 }, () => randomUUID());
   const historyRows = 150_000;

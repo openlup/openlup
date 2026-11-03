@@ -452,6 +452,8 @@ request and pass it to `createConcurrentCommercePriceAuthorityPort` from
 `./pricing`. It reads complete active price-list and exact unit-entry histories,
 plus the selected context's complete subscription-policy history. UUID demand
 waves are deduplicated and chunked at 500; result rows are never truncated.
+Matching keys use canonical UUID values; query arguments and returned identifiers
+keep their original spelling.
 Raw histories and failed promises are shared only within that request, with
 caller-owned copies. The existing authority selects half-open effective windows,
 validates policy digests and refuses ambiguity; the reader never chooses a newest

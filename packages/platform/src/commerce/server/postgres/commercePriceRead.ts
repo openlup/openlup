@@ -29,7 +29,7 @@ const POLICIES_SQL = `SELECT id, revision_no, price_list_id, region_code, curren
 /** Allocate once per request: raw history is shared, effective money is always revalidated. */
 export function createPostgresCommercePriceAuthorityReadPort(executor: PgQueryExecutor): CommercePriceAuthorityReadPort {
   async function entries(input: { variantIds: readonly string[]; priceListId: string }, mode: "one_time" | "subscription") {
-    const ids = [...new Set(input.variantIds)];
+    const ids = input.variantIds;
     const rows: PriceRow[] = [];
     for (let offset = 0; offset < ids.length; offset += 500) {
       const result = await executor.query(ENTRIES_SQL, [ids.slice(offset, offset + 500), input.priceListId, mode]);
