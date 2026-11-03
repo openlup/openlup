@@ -701,6 +701,13 @@ and any artifact-cap change require their own approved scope.
 
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
+`resolveThresholdShipping` evaluates configured delivery terms against product
+payable after product discounts, excluding delivery: equality and higher spend
+are free. `summarizeThresholdShipping` projects one quote's effective delivery,
+free state and remaining product spend. Pass `stale: true` for loading, failed
+or busy quote state to suppress the remaining-spend helper. Missing delivery
+money does not imply free delivery. Hosts own copy and formatting; fees and
+thresholds remain configuration inputs.
 Native flat-rate save requires the rate port, a ready Core report and
 `nativeRateSchema`, a same-database Core `SchemaObservation` proving the applied
 seed identity and settings objects. A candidate schema label is not proof;
@@ -722,6 +729,15 @@ expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
 development-preview source binding. See the
 [G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
+Fresh reserve/release writes and expiry require READ COMMITTED and shared
+transaction admission. Contention maps to `InventoryPersistenceError`
+with SQLSTATE `55P03` and reason `inventory_admission_busy` or
+`inventory_lock_unavailable`; unsupported isolation maps to the persistence
+error with code `22023`. Committed receipt replay needs no new admission.
+The gate caps the transaction-local lock timeout at 50 ms; no automatic retry
+or fallback is performed. The helper is owner-only, reached through the bounded
+definer entries, with no runtime helper or table grant.
+
 
 `createPostgresAbandonedCheckoutCompensationPort(executor, now?)` supplies
 `CheckoutCompensationPort.cancelAbandonedOrder` on native PostgreSQL. The bounded
@@ -1536,6 +1552,20 @@ raise `23505`; no rewrite is supplied. See the [migration owner](https://github.
 for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
+
+The subscriptions entry also exports `createNativeSubscriptionBinding`,
+`createNativeRetryDriver`, `withNativeDeliveryAlignmentRenewalAdmission`,
+`createPostgresRenewalSettlementPort` and `nativeSubscriptionSchema`. These are
+opt-in native composition and persistence boundaries; hosts supply readiness,
+transactions, a shared population lease and exact payment-attempt readback.
+The binding freezes the destination under the claim lock. Lower-level hosts
+supply the transaction callback to `createPostgresRenewalStore`. Until cycle
+shipping quotes are available, `shippingQuoteRef` is the typed
+`{ kind: "zero_shipping", shippingAmountMinor: 0 }` marker, never a real quote.
+This rail refuses non-zero renewal shipping amounts.
+See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
+for destination claim transactions and qualification limits.
+
 
 The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently

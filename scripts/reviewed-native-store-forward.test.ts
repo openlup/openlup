@@ -680,7 +680,7 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     const slots = production.nativeStoreForwardClass!.slots;
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 4).map(slot => slot.path));
+    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 5).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
     expect(slots[2]!.createdFunctions).toEqual([
       { signature: "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },

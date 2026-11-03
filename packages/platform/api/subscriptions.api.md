@@ -724,9 +724,14 @@ export interface RenewalPricingSnapshot {
     agreementPolicy: "lock_until_edit";
     proration: "none";
 }
+/** Explicit zero-shipping limit; this is not a quote issued by a quote authority. */
+export interface RenewalZeroShippingMarker {
+    kind: "zero_shipping";
+    shippingAmountMinor: 0;
+}
 export interface RenewalOrderSnapshot {
     shippingAddressRef: string | null;
-    shippingQuoteRef: string | null;
+    shippingQuoteRef: string | RenewalZeroShippingMarker | null;
     acquisitionRef: string | null;
     lines: readonly RenewalLine[];
 }
@@ -1030,28 +1035,7 @@ export interface StockWaitStorePort {
 
 ```ts
 export { renewalIdentity } from "./renewalIdentity.js";
-export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
-    readonly graph: "native";
-    readonly multiCyclePrepaid: Readonly<{
-        supported: false;
-        refusalCode: "multi_cycle_prepaid_unsupported";
-    }>;
-    readonly genericBundleCommands: Readonly<{
-        supported: true;
-    }>;
-    readonly commandBoundReceipts: Readonly<{
-        supported: true;
-    }>;
-    readonly preparedAttemptStore: Readonly<{
-        supported: false;
-        refusalCode: "native_prepared_attempt_store_unsupported";
-    }>;
-    readonly retryRecovery: "selected";
-    readonly stockRecovery: "unavailable";
-    readonly deliveryAdmission: "required";
-    readonly executorCount: 1;
-    readonly defaultEnabled: false;
-}>;
+export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome } from "./renewalCycleRefusalMechanism.js";
@@ -1067,6 +1051,12 @@ export { createPostgresPurchaseRenewalWriter, activateNativePurchaseWithRenewal 
 export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePurchaseRenewal.js";
 export { createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "./sandboxRenewalRail.js";
 export type { SandboxRenewalScenario } from "./sandboxRenewalRail.js";
+export { createNativeSubscriptionBinding } from "./nativeSubscriptionBinding.js";
+export { createNativeRetryDriver } from "./nativeRetryDriver.js";
+export type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+export { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
+export { withNativeDeliveryAlignmentRenewalAdmission } from "./postgresDeliveryAlignmentStore.js";
+export { createPostgresRenewalSettlementPort } from "./postgresRenewalSettlement.js";
 export { createPostgresRetryStore } from "./postgresRetryStore.js";
 export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
@@ -1090,6 +1080,7 @@ export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
 export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
 export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
 ```
@@ -1167,6 +1158,135 @@ import { type NativeRenewalCodec } from "./postgresRenewalStore.js";
 /** Production native dialect: no closure state and no host metadata on readback. */
 export declare function createNativeRenewalCodec(): NativeRenewalCodec;
 ```
+## dist/subscriptions/nativeRetryDriver.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
+import type { RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
+export interface NativeRetryDriverOptions {
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    decode(snapshot: Record<string, unknown>): RenewalFrozenSnapshot;
+    /** Trusted host correlation and frozen mandate, not mutable future terms. */
+    readFrozenMandate(snapshot: RenewalFrozenSnapshot): Promise<{
+        authorized: boolean;
+        authorizationRef: string;
+        paymentMethodRef: string;
+    }>;
+    retryInput(snapshot: RenewalFrozenSnapshot, row: NativeRetryRow): RenewalExecutionRequest;
+    validateInput(input: RenewalExecutionRequest): void;
+    payments: {
+        execute: RenewalPaymentRail["execute"];
+        /** Read the payment owner's exact prepared attempt; never settle through purchase ingress. */
+        readOutcome(preparation: NativeRetryPreparation, snapshot: RenewalFrozenSnapshot): Promise<RenewalPaymentEvidence & {
+            sourceEvidence?: {
+                sourceKind: "accepted_event" | "reconciliation_read";
+                sourceReference: string;
+                observedStatus: string;
+                observedAt: string;
+                payloadFingerprint: string;
+                attemptRef: string;
+            };
+        }>;
+    };
+    failureTemplate: string;
+    recoveredTemplate: string;
+    recoveryPath: string | null;
+    classifyFailure(reason: string): string;
+}
+export declare function createNativeRetryDriver(options: NativeRetryDriverOptions): {
+    run: (now: string, limit: number) => Promise<{
+        operationId: string;
+        status: string;
+    }[]>;
+    propagateFailure: (operationId: string, key: string, input: NativeRetryFailure) => Promise<{
+        obligation: NativeRetryRow;
+        replayed: boolean;
+        caseAdvanced: boolean;
+    }>;
+};
+```
+## dist/subscriptions/nativeSubscriptionBinding.d.ts
+
+```ts
+import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { AutomaticRenewalRunDeps, AutomaticRenewalRunResult } from "./automaticRenewal.js";
+import type { RenewalSettlementPort } from "./contracts/renewal.js";
+import type { SubscriptionCapabilities } from "./contracts/commands.js";
+import type { ReadinessReport, RequiredSchema } from "@openlup/core/readiness";
+import { type NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+/** Explicit native selection under a host-owned population lease; construction mounts nothing. */
+export declare function createNativeSubscriptionBinding(input: {
+    enabled?: boolean;
+    batchLimit?: number;
+    population: string;
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Shared durable host lease, also used by any incumbent writer for this population. */
+    withRunLease<T>(population: string, work: () => Promise<T>): Promise<T | null>;
+    codec: NativeRenewalCodec;
+    settlement(db: SubscriptionQueryExecutor): RenewalSettlementPort;
+    inventory: AutomaticRenewalRunDeps["inventory"];
+    paymentRails: AutomaticRenewalRunDeps["paymentRails"];
+    policy: AutomaticRenewalRunDeps["policy"];
+    retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate">;
+    failureTemplate: string;
+    recoveryPath: string | null;
+    workerId: string;
+    now(): string;
+    catalogue: {
+        version: string;
+        migration: string;
+    };
+    readiness(schema: RequiredSchema): Promise<ReadinessReport>;
+}): {
+    services: {
+        capabilities: SubscriptionCapabilities;
+        readiness: () => Promise<{
+            kind: "ready";
+        } | {
+            kind: "refused";
+            code: string;
+        } | {
+            readonly kind: "refused";
+            readonly code: "disabled";
+        }>;
+        run(): Promise<{
+            kind: "refused";
+            code: string;
+        } | {
+            retries: {
+                operationId: string;
+                status: string;
+            }[];
+            renewals: AutomaticRenewalRunResult[];
+        } | {
+            readonly kind: "refused";
+            readonly code: "disabled";
+        } | null>;
+    };
+    schema: RequiredSchema;
+    /** Called only after the host's actual paid-realization admission, never on stock arrival alone. */
+    realizationAdmitted(orderId: string): Promise<{
+        kind: "refused";
+        code: string;
+    } | import("./contracts/stockWait.js").StockWaitCase | {
+        readonly kind: "refused";
+        readonly code: "disabled";
+    } | null>;
+};
+```
+## dist/subscriptions/nativeSubscriptionSchema.d.ts
+
+```ts
+import type { RequiredSchema } from "@openlup/core/readiness";
+/** The host supplies the complete installed catalogue identity, never a guessed tail. */
+export declare function nativeSubscriptionSchema(catalogue: {
+    version: string;
+    migration: string;
+}): RequiredSchema;
+```
 ## dist/subscriptions/postgresCommandStore.d.ts
 
 ```ts
@@ -1215,6 +1335,78 @@ export declare function createPostgresSubscriptionCommands(binding: NativeSubscr
     }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
 };
 ```
+## dist/subscriptions/postgresDeliveryAlignmentStore.d.ts
+
+```ts
+import type { RenewalStorePort } from "./contracts/renewal.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Native new-cycle admission; prepared attempts and existing cycles keep their
+ * original obligation. The host owns mode selection and actual arrival facts. */
+export declare function withNativeDeliveryAlignmentRenewalAdmission(store: RenewalStorePort, db: SubscriptionQueryExecutor, now?: () => string): RenewalStorePort;
+```
+## dist/subscriptions/postgresLifecycleMessages.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeLifecycleNotice {
+    id: string;
+    messageKey: string;
+    source: "dunning" | "event" | "reminder";
+    subscriptionId: string;
+    clientId: string;
+    kind: string;
+    templateSlug: string;
+    payload: Record<string, unknown>;
+    recoveryUrlPath: string | null;
+}
+type NoticeCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+    accessGrantReference?: string;
+};
+type NoticeReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+};
+export interface NativeLifecycleMessagesOptions {
+    /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Host composes the transactional delivery engine and durable receipt reader. */
+    delivery: {
+        send(command: NoticeCommand): Promise<NoticeReceipt>;
+        readReceipt(key: string): Promise<NoticeReceipt | null>;
+    };
+    /** Trusted host rendering/locale/access-link binding. Never accepts browser-supplied recipient facts. */
+    bind(notice: NativeLifecycleNotice, recipient: {
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+}
+/** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.
+ * Session advisory locks serialize this binding's sends without a transaction across transport.
+ * A transport must preserve command idempotency on ambiguous acceptance; no live-provider claim. */
+export declare function createPostgresLifecycleMessages(options: NativeLifecycleMessagesOptions): {
+    run(limit?: number): Promise<{
+        sent: number;
+        replayed: number;
+        failed: number;
+        skipped: number;
+        busy: number;
+        stale: number;
+    }>;
+};
+export {};
+```
+## dist/subscriptions/postgresRenewalSettlement.d.ts
+
+```ts
+import type { RenewalSettlementPort } from "./contracts/renewal.js";
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Direct settlement persistence; terminal truth must arrive from an external acknowledgement. */
+export declare function createPostgresRenewalSettlementPort(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec): RenewalSettlementPort;
+```
 ## dist/subscriptions/postgresRenewalStore.d.ts
 
 ```ts
@@ -1234,10 +1426,14 @@ export interface NativeRenewalCodec {
     readback(row: Record<string, unknown>): RenewalReadback;
     identity(snapshot: RenewalFrozenSnapshot): string;
     fingerprint(snapshot: RenewalFrozenSnapshot): string;
+    /** Native destination authority binds the final frozen document under the claim lock. */
+    withDestination?(snapshot: RenewalFrozenSnapshot, destinationId: string): RenewalFrozenSnapshot;
 }
+export declare const subscriptionCorrelationSql = "o.subscription_cycle_id AS activation_cycle_id,\n ac.status='paid' AS activation_cycle_paid,\n (SELECT count(*)::integer FROM public.subscription_cycles pc\n  WHERE pc.subscription_id=s.id AND pc.status='paid' AND pc.scheduled_at<s.next_cycle_at) AS paid_cycle_count";
+export declare const subscriptionCorrelationJoin = "LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id\n LEFT JOIN public.commerce_orders o ON o.id=a.order_id\n LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id";
 export declare function subscriptionRecord(value: unknown): Record<string, unknown>;
 /** Native claim/prepare remain their original SQL transaction units. G23 is composed by the host. */
-export declare function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec): RenewalStorePort;
+export declare function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalStorePort;
 ```
 ## dist/subscriptions/postgresRetryStore.d.ts
 
@@ -1592,4 +1788,26 @@ export declare function createSubscriptionServices<Result>(input: {
         readonly code: "disabled";
     }>;
 };
+export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
+    readonly graph: "native";
+    readonly multiCyclePrepaid: Readonly<{
+        supported: false;
+        refusalCode: "multi_cycle_prepaid_unsupported";
+    }>;
+    readonly genericBundleCommands: Readonly<{
+        supported: true;
+    }>;
+    readonly commandBoundReceipts: Readonly<{
+        supported: true;
+    }>;
+    readonly preparedAttemptStore: Readonly<{
+        supported: false;
+        refusalCode: "native_prepared_attempt_store_unsupported";
+    }>;
+    readonly retryRecovery: "selected";
+    readonly stockRecovery: "unavailable";
+    readonly deliveryAdmission: "required";
+    readonly executorCount: 1;
+    readonly defaultEnabled: false;
+}>;
 ```

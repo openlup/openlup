@@ -32,6 +32,20 @@ CREATE INDEX fulfillment_inventory_reservations_purchase_expiry_idx
   ON public.fulfillment_inventory_reservations(expires_at,id)
   WHERE purchase_order_id IS NOT NULL AND status = 'held';
 
+CREATE FUNCTION public.inventory_admission_try_enter() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE prior_ms integer;
+BEGIN
+  IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+    RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+  END IF;
+  IF NOT pg_catalog.pg_try_advisory_xact_lock(846832106,1) THEN
+    RAISE EXCEPTION 'inventory_admission_busy' USING ERRCODE='55P03';
+  END IF;
+  SELECT setting::integer INTO prior_ms FROM pg_catalog.pg_settings WHERE name='lock_timeout';
+  PERFORM pg_catalog.set_config('lock_timeout',CASE WHEN prior_ms=0 THEN '50' ELSE least(prior_ms,50)::text END,true);
+END; $$;
+
 CREATE FUNCTION public.fulfillment_reserve_purchase_order_items(
   p_idempotency_key text, p_order_id uuid, p_source_key text, p_items jsonb,
   p_payment_status text, p_expires_at timestamptz, p_metadata jsonb DEFAULT '{}',
@@ -56,10 +70,27 @@ BEGIN
   IF p_items IS NULL OR jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)=0 THEN
     RAISE EXCEPTION 'inventory_reservation_items_invalid' USING ERRCODE='22023';
   END IF;
+  FOR item IN SELECT value FROM jsonb_array_elements(p_items) LOOP
+    BEGIN
+      v_item_id:=(item->>'orderItemId')::uuid; v_sku_id:=(item->>'skuId')::uuid; qty:=(item->>'quantity')::integer;
+    EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
+      RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
+    END;
+    IF v_item_id IS NULL OR v_sku_id IS NULL OR qty IS NULL OR qty<=0 THEN
+      RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
+    END IF;
+  END LOOP;
+  IF (SELECT count(DISTINCT value->>'orderItemId') FROM jsonb_array_elements(p_items))<>jsonb_array_length(p_items) THEN
+    RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
+  END IF;
   command := jsonb_build_object('action','reserve','orderId',p_order_id,'sourceKey',p_source_key,
     'items',p_items,'paymentStatus',p_payment_status,'expiresAt',p_expires_at AT TIME ZONE 'UTC','metadata',p_metadata);
-  PERFORM pg_advisory_xact_lock(hashtextextended('purchase-reservation:'||p_idempotency_key,0));
   SELECT * INTO receipt FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=p_idempotency_key;
+  IF NOT FOUND THEN
+    PERFORM public.inventory_admission_try_enter();
+    PERFORM pg_advisory_xact_lock(hashtextextended('purchase-reservation:'||p_idempotency_key,0));
+    SELECT * INTO receipt FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=p_idempotency_key;
+  END IF;
   IF FOUND THEN
     IF receipt.command<>command THEN
       RAISE EXCEPTION 'fulfillment_purchase_reservation_idempotency_conflict' USING ERRCODE='23505';
@@ -80,23 +111,13 @@ BEGIN
     RAISE EXCEPTION 'fulfillment_purchase_reservation_order_invalid' USING ERRCODE='22023';
   END IF;
   FOR item IN SELECT value FROM jsonb_array_elements(p_items) LOOP
-    BEGIN
-      v_item_id:=(item->>'orderItemId')::uuid; v_sku_id:=(item->>'skuId')::uuid; qty:=(item->>'quantity')::integer;
-    EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
-      RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
-    END;
-    IF v_item_id IS NULL OR v_sku_id IS NULL OR qty IS NULL OR qty<=0 THEN
-      RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
-    END IF;
+    v_item_id:=(item->>'orderItemId')::uuid; v_sku_id:=(item->>'skuId')::uuid; qty:=(item->>'quantity')::integer;
     PERFORM 1 FROM public.commerce_order_items oi
       WHERE oi.id=v_item_id AND oi.order_id=p_order_id AND oi.sku_id=v_sku_id AND oi.quantity=qty FOR SHARE;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'fulfillment_purchase_reservation_item_mismatch' USING ERRCODE='22023';
     END IF;
   END LOOP;
-  IF (SELECT count(DISTINCT value->>'orderItemId') FROM jsonb_array_elements(p_items))<>jsonb_array_length(p_items) THEN
-    RAISE EXCEPTION 'inventory_reservation_item_invalid' USING ERRCODE='22023';
-  END IF;
   -- Match renewal/stock-wait/retry ordering before any ATP read.
   PERFORM s.sku FROM public.fulfillment_stock_current s
     JOIN public.catalog_skus sku ON sku.sku=s.sku
@@ -143,8 +164,12 @@ BEGIN
     RAISE EXCEPTION 'fulfillment_purchase_release_invalid_input' USING ERRCODE='22023';
   END IF;
   command:=jsonb_build_object('action','release','reservationId',p_reservation_id,'reason',p_reason,'metadata',p_metadata);
-  PERFORM pg_advisory_xact_lock(hashtextextended('purchase-reservation:'||p_idempotency_key,0));
   SELECT * INTO receipt FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=p_idempotency_key;
+  IF NOT FOUND THEN
+    PERFORM public.inventory_admission_try_enter();
+    PERFORM pg_advisory_xact_lock(hashtextextended('purchase-reservation:'||p_idempotency_key,0));
+    SELECT * INTO receipt FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=p_idempotency_key;
+  END IF;
   IF FOUND THEN
     IF receipt.command<>command THEN RAISE EXCEPTION 'fulfillment_purchase_reservation_idempotency_conflict' USING ERRCODE='23505'; END IF;
     RETURN receipt.result||jsonb_build_object('replayed',true);
@@ -165,13 +190,14 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION public.fulfillment_expire_purchase_reservations(p_now timestamptz DEFAULT now(),p_limit integer DEFAULT 100)
-RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+CREATE FUNCTION public.fulfillment_expire_purchase_reservations(p_now timestamptz DEFAULT pg_catalog.now(),p_limit integer DEFAULT 100)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE reservation record; count integer:=0;
 BEGIN
-  IF p_now IS NULL OR NOT isfinite(p_now) OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
+  IF p_now IS NULL OR NOT pg_catalog.isfinite(p_now) OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
     RAISE EXCEPTION 'fulfillment_purchase_expiry_invalid_input' USING ERRCODE='22023';
   END IF;
+  PERFORM public.inventory_admission_try_enter();
   FOR reservation IN SELECT id FROM public.fulfillment_inventory_reservations
     WHERE purchase_order_id IS NOT NULL AND status='held' AND expires_at<=p_now
     ORDER BY expires_at,id LIMIT p_limit FOR UPDATE LOOP
@@ -179,7 +205,7 @@ BEGIN
       WHERE id=reservation.id;
     count:=count+1;
   END LOOP;
-  RETURN jsonb_build_object('contractVersion','inventory.v0','expiredCount',count);
+  RETURN pg_catalog.jsonb_build_object('contractVersion','inventory.v0','expiredCount',count);
 END;
 $$;
 
@@ -242,6 +268,7 @@ END;
 $$;
 
 REVOKE ALL ON TABLE public.fulfillment_purchase_reservation_receipts FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.inventory_admission_try_enter() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_expire_purchase_reservations(timestamptz,integer) FROM PUBLIC;
@@ -263,16 +290,21 @@ DO $$ BEGIN
 END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-    EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM anon';
+    EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_admission_try_enter(), public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM anon';
   END IF;
 END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-    EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM authenticated';
+    EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_admission_try_enter(), public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM authenticated';
   END IF;
 END; $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz), public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz), public.fulfillment_expire_purchase_reservations(timestamptz,integer), public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) TO service_role';
+  END IF;
+END; $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_admission_try_enter() FROM service_role';
   END IF;
 END; $$;

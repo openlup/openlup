@@ -1,9 +1,9 @@
 # Native order, subscription and parcel destinations
 
-Status: BLOCKED on co-located SQL/pin admission. Functional proofs, policy,
-size and DCO are complete; the main reader rejects the approved cold-consumer
-registry addition as release machinery. No checker or SQL repair is authorized.
-Native review, verification and submission have not started. See the final stop.
+Status: BLOCKED with the combined purchase-hold change on current-donor
+admission parity. G3's completed proofs are preserved, but the new donor mapping
+and production reachability assessment are incomplete; native review has not
+started. See Donor mapping below.
 
 ## Outcome, authority and boundaries
 
@@ -1333,3 +1333,36 @@ bundle stacks on that exact entry change and supplies the routines, internal
 operator integration, SQL pins and real-database proofs. Release tooling is
 identical to the predecessor. The public owner text now states that the routines
 are included; the predecessor-only undefined-function interval ends here.
+
+## Donor mapping
+
+Each rule is ported from the reference adopter's behaviour; the rule-by-rule mapping and witnesses are in the maintainer packet.
+
+The current mapping and production reachability assessment remain incomplete.
+No zero-regression certification or native review is claimed. The combined
+change remains on hold for the inventory admission-gate ruling. Listing exposure
+is deferred to a registered follow-up outside this bundle; native stock
+accounting does not subtract retained listing exposure.
+
+Accepted differences and limits:
+
+- Only a new address is accepted; a saved address book is outside this change.
+- First order registration is immutable; destination reads are scoped and
+  shipments receive their own destination binding.
+- Changed customer input under an existing key refuses rather than replaying
+  from an event alone.
+- Dispatch-owned orders and parcels keep the frozen destination, including when
+  local shipment status is created, packed or label_pending. The subscription's
+  future address changes and the response names `applied_from_next_parcel`.
+- The additive operator outcome and recovery result retain next-parcel
+  applicability; recovery reports partial rather than completed.
+- Address changes do not move a cycle or confirm an undelivered replacement.
+  Confirmation mail belongs to the following communication binding.
+
+The private maintainer packet retains the complete pending package-path
+inventory. An additive result type or installed-version pin does not establish
+production reachability or service parity. The public-entry predecessor is
+untouched.
+
+Self-retro: public records can state the porting boundary and limits without
+exposing the reference adopter's source structure.

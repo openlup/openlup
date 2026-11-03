@@ -18,7 +18,10 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
-  "commerce_order_draft_receipts",
+  "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "subscription_dunning_cases", "subscription_dunning_notifications",
+  "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
+  "commerce_checkout_recovery_tokens", "subscription_stock_wait_cases",
   "subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations",
 
   // Private companion rows of the compatible payment_truth_events above.
@@ -44,6 +47,7 @@ const owned = [
   "platform_alerts", "platform_alert_notifications", "platform_job_controls", "platform_job_runs",
   "sales_channels", "commerce_settings", "client_absorption_policy", "subscriber_retention_activation_watermarks",
   "subscription_delivery_alignment_control", "outbox_dormant_event_types",
+  "subscription_reminder_ledger", "transactional_delivery_receipts",
 ] as const;
 
 export const connectedNativeStoreTables = [...compatible, ...owned] as const;
