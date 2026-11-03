@@ -1,6 +1,6 @@
 # Native lifecycle notice dispatch
 
-Status: IN_PROGRESS. The existing notice implementation is being integrated with
+Status: NEEDS_DECISION. The existing notice implementation is being integrated with
 its pinned predecessor before a private donor map, measured pre-implementation
 package and the authorized shipping and promotion-lock ports. No new review,
 submission or publication is authorized in this run.
@@ -889,3 +889,48 @@ Own-delta stable patch-id after integration (task record excluded):
 a5473271da51304226236cc9879af40c88ca45d5. The before/after identities differ for the documented
 manual registry, projection and measured witness integration; no source equality
 exemption is claimed.
+
+
+### Current continuation stop
+
+The private pre-implementation donor map identifies a conditional caller in the
+reference adopter's native composition. Its managed-binding refusal is explicit,
+but literal absence of an adopter-reachable caller is unproved. The worker stops
+before new production code or SQL pending reconciliation of that specific
+reachability prerequisite. No adoption, environment or live-deployment state was
+read or changed. The independently useful merged-tree package measurement
+continues; no shipping/lock build, review, push or PR has begun.
+
+The merged-tree documentation check finds seven obligations; the tests owner
+requires a refreshed answer for the resolved current-chain witnesses. This answer
+records the existing declared fixtures and unchanged proof contract, rather than
+claiming that the still-pending behavioral suites passed.
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-9d56e35b6cc57563f3bc2d3bd19609cbc9053647486f7867b23df6a5b6dabe12","reason":"The merged notice tests retain the declared local PostgreSQL fixtures and restricted-runtime replay, refusal, concurrency and capture/restore assertions. Current-chain counts and inventories are recomputed on the combined tree; every issued-prefix pin stays unchanged. No fixture privilege, setup step, command, test-selection rule, hosted qualification or contributor verification obligation changes. Current behavioral reruns and the real destination-writer join remain pending and are not implied by this integration."} -->
+
+
+The official pre-implementation pack (Node 24.21.0/npm 11.19.0) measured
+2,475,250 B packed, 1,976,732 B code gzip, 11,646,855 B unpacked and 3,052 files.
+The exact pinned predecessor measured 2,470,234 / 1,971,974 / 11,623,341 B and
+3,048 files respectively. Deltas: +5,016 packed, +4,758 code gzip, +23,514
+unpacked and +4 files. Both committed trees were independently archived, built
+and packed under this worktree's scratch using the official toolchain; SQL and
+generated manifest bytes are included. No numeric budget changed.
+
+Planning estimate only for the unbuilt remainder: +4,500 to +6,500 packed B;
+estimated complete own delta +9,516 to +11,516 B, absolute 2,479,750 to
+2,481,750 B. This is no measured implementation proof or cap approval.
+
+Current integration checks pass: all five real catalogue measurements, package
+build/API, lint (zero errors, 99 warnings), eight structural-rule suites, focused
+ast-grep, documentation policy (seven obligations, zero unanswered), exact
+repository neutrality (zero increases), UI neutrality (zero forbidden hits) and
+added-line privacy scan (zero private citations/names/register codes). Historical
+behavioral results remain historical. New time, concurrency, transfer, handover,
+consumer, starter, typecheck, class and conformance proof remains unexecuted;
+no readiness, review or completed port is claimed. The pending prerequisite and
+private delta packet are the handoff endpoint. No new SQL proposal exists yet.
+
+Self-retro at this stop: the named adapter had a conditional composition caller;
+managed refusal and absence of any adopter caller are different facts. Recording
+that distinction before implementation preserved the instructed boundary.
