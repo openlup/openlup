@@ -1,5 +1,6 @@
 import type { InvoiceDocumentIdentity, InvoiceHostPorts } from "../contracts/index.js";
 import { invoicePdfFilename } from "../artifacts.js";
+import { sameInvoiceIdentifier } from "../uuidIdentity.js";
 import { artifactRef, capturedReceipt, receiptKey, unknown, type InvoicePostgresExecutor } from "./captured.js";
 
 type History = Extract<Awaited<ReturnType<InvoiceHostPorts["accountHistory"]["read"]>>, { kind: "found" }>;
@@ -74,10 +75,10 @@ export function createPostgresInvoiceAccountHistory(db: InvoicePostgresExecutor)
         if (!rows) return { kind: "denied" };
         // Membership and eligibility precede any ticket or PDF access, including
         // when this lower-level port is called without createInvoiceAccess.
-        const document = project(rows).find(document => document.documentRef === input.documentRef);
+        const document = project(rows).find(document => sameInvoiceIdentifier(document.documentRef, input.documentRef));
         if (!document) return { kind: "denied" };
         if (!document.downloadAvailable) return unknown;
-        const row = rows.find(row => row.id === input.documentRef)!;
+        const row = rows.find(row => sameInvoiceIdentifier(row.id, input.documentRef))!;
         const receipt = matchingReceipt(row)!;
         const identity: InvoiceDocumentIdentity = { providerRef: row.provider!, documentRef: row.id,
           providerDocumentRef: row.provider_reference, orderRef: row.order_ref,

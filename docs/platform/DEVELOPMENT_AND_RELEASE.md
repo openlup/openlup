@@ -223,6 +223,25 @@ last recorded SQL closure from archived failures; neither is permission to ignor
 run. Compare failures with the exact base; disclose new failures and missing
 execution. Required success is not complete-suite success.
 
+Before retrying, classify the first causal failure from the stage log and run
+identity. Reproduce an assertion or contract failure with a focused check, then
+confirm the fix there before repeating the full gate. For confirmed resource
+admission or infrastructure failures, record the cause and what changed before
+using the existing retry route and budget. For a missing prerequisite, stale
+candidate or missing review evidence, resolve the named refusal first. A test
+timeout without broker evidence is not an admission timeout. If the cause is
+unclear, retain the log and diagnose it before retrying.
+
+When assessing a repair loop, record three times in the existing task evidence:
+stage execution, resource or dependency wait, and elapsed wall time from the
+start of the failed run to the end of verification after the repair. Include the
+time between runs in that last figure. Use recorded start/end times and
+scheduler logs. If a stage timer combines execution and wait and the log cannot
+separate them, record the combined time and mark the split unknown. Overlapping
+stage waits are not additive wall time. For a proposed reuse, subtract the cost
+of collecting, validating and restoring evidence from the work it would save,
+and distinguish that estimate from an observed saving.
+
 Fix named local violations rather than bypass hooks. A busy verification lock
 belongs to another run; wait without removing it. A pre-push refusal for a
 missing stamp needs `openlup-dev verify` on the clean committed tree. Workflow-mirror drift needs
