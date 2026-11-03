@@ -18,7 +18,10 @@ export function operatorPage(context: PageContext): HTMLElement {
   ];
   return el('div', {}, el('h1', {}, context.t('admin')),
     el('p', {}, context.t('operatorBody')),
-    actionForm(context, { operation: 'auth.operator', submit: 'operatorSignIn' }),
+    el('section', { id: 'operator-sign-in', class: 'panel' },
+      actionForm(context, { operation: 'auth.operator', submit: 'operatorRequestSignIn',
+        fields: [{ name: 'email', label: 'email', type: 'email', autocomplete: 'email' }] }),
+      operatorTokenForm(context)),
     el('nav', { 'aria-label': context.t('admin'), class: 'section-nav' },
       ...navItems.map(([anchor, label]) => link(context.t(label), `${routes.admin[context.locale]}#${anchor}`))),
     readPanel(context, 'bindingStatus', 'application.status'),
@@ -28,6 +31,15 @@ export function operatorPage(context: PageContext): HTMLElement {
       el('p', {}, context.t('riskBody')), refusedAction(context, 'riskAction', 'starter_risk_disabled')),
     marketInputs(context), ingestActions(context),
     nativeActions(context, ['N1', 'N2', 'N3', 'N4', 'N9']));
+}
+
+function operatorTokenForm(context: PageContext): HTMLElement {
+  const form = actionForm(context, { operation: 'auth.operator', submit: 'operatorRedeemToken',
+    fields: [{ name: 'token', label: 'operatorToken', type: 'password', maxLength: 43,
+      pattern: '(?:[A-Za-z0-9_]|-){43}', autocomplete: 'one-time-code' }],
+    onSuccess: () => { (form as HTMLFormElement).reset(); },
+  });
+  return form;
 }
 
 function orderActions(context: PageContext): HTMLElement {
@@ -51,6 +63,7 @@ function orderActions(context: PageContext): HTMLElement {
 
 function customerActions(context: PageContext): HTMLElement {
   return el('section', { id: 'customers', class: 'panel' }, el('h2', {}, context.t('customer360')),
+    el('p', {}, context.t('supportRosterBody')),
     actionForm(context, {
       operation: 'operator.customerSearch', submit: 'searchCustomer',
       fields: [{ name: 'query', label: 'search' }],
@@ -94,6 +107,7 @@ function bundleActions(context: PageContext): HTMLElement {
     fields: [{ name: 'bundleCode', label: 'bundleCode' }, ...fields], input: () => ({ action }),
   });
   return el('section', { id: 'catalogue', class: 'panel' }, el('h2', {}, context.t('bundles')),
+    el('p', {}, context.t('catalogAuthoringBody')),
     readPanel(context, 'bundles', 'operator.bundles'),
     actionForm(context, {
       operation: 'operator.bundle', submit: 'read', fields: [{ name: 'bundleCode', label: 'bundleCode' }],
@@ -118,8 +132,31 @@ function bundleActions(context: PageContext): HTMLElement {
       make('bundleActivate', 'activate'), make('bundleDeactivate', 'deactivate'),
       make('bundleArchive', 'archive'), make('bundleRestore', 'restore'),
       make('bundleClone', 'clone', [{ name: 'newCode', label: 'actionRef' }])) ,
-    readPanel(context, 'catalogDrafts', 'operator.catalogDrafts'),
+    catalogDraftActions(context),
     otherRefusal(context, 'publishCatalog'));
+}
+
+function catalogDraftActions(context: PageContext): HTMLElement {
+  const productId = crypto.randomUUID();
+  return el('section', { id: 'catalogue-drafts' },
+    readPanel(context, 'catalogDrafts', 'operator.catalogDrafts'),
+    actionForm(context, { operation: 'operator.catalogDrafts', submit: 'catalogDraftRead',
+      fields: [{ name: 'draftId', label: 'catalogDraftId' }], input: () => ({ action: 'get' }) }),
+    actionForm(context, { operation: 'operator.catalogDrafts', title: 'catalogDraftCommand', submit: 'save',
+      fields: [
+        { name: 'action', label: 'catalogDraftAction', type: 'select', options:
+          ([['create', 'catalogDraftCreate'], ['revise', 'catalogDraftRevise'], ['abandon', 'catalogDraftAbandon']] as const)
+            .map(([value, label]) => ({ value, text: context.t(label) })) },
+        { name: 'draftId', label: 'catalogDraftId', value: crypto.randomUUID() },
+        { name: 'expectedRevision', label: 'catalogDraftRevision', type: 'number', min: 0, value: '0' },
+        { name: 'payload', label: 'catalogDraftPayload', type: 'textarea', maxLength: 20000,
+          value: JSON.stringify({ schemaVersion: 1, product: { id: productId,
+            type: { key: 'starter:item', version: 1 }, dimensions: [], sharedContent: { title: 'Fictional item' } },
+          skus: [] }, null, 2) },
+      ], transform: values => ({ action: values.action, draftId: values.draftId,
+        expectedRevision: values.expectedRevision,
+        ...(values.action === 'abandon' ? {} : { payload: JSON.parse(String(values.payload)) as unknown }) }),
+    }));
 }
 
 function reviewActions(context: PageContext): HTMLElement {

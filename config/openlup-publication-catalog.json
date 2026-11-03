@@ -1690,6 +1690,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-e3.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
       "class": "public-output"
     },
@@ -1767,6 +1771,10 @@
     },
     {
       "path": "examples/neutral-store/browser/native-intake.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/native-operator.proof.ts",
       "class": "public-output"
     },
     {
@@ -1870,6 +1878,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/operator-composition.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/origin-policy.ts",
       "class": "public-output"
     },
@@ -1899,6 +1911,10 @@
     },
     {
       "path": "examples/neutral-store/owned/acquisition-addresses.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/catalogue.ts",
       "class": "public-output"
     },
     {

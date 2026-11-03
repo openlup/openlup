@@ -238,7 +238,8 @@ proof's own disposable database, use the native identity store's
 `bootstrapFirstAdministrator` and account-link store's `createAccount` to prepare
 fictional operator and customer contacts. Do not insert inquiry, order, review
 or grant rows. The browser submits the inquiry and activates the invited human
-operator through native challenges and the private captured mailbox.
+operator through the real email/token forms and private captured mailbox; the
+harness alone reads the mailbox.
 
 Select this file with `testMatch: 'native-intake.proof.ts'` in a local Playwright
 configuration, `testDir` pointing at `browser`, and one worker. Set the `use`
@@ -258,6 +259,57 @@ review, grant expiry/revocation and purchase-generated grant ownership are carri
 to the purchase composition contribution's acceptance. They are not proved here;
 a nonexistent reference is not an expired-grant witness. The unchanged required purchase browser test remains
 required and failing while purchase is unbound.
+
+## Native support and catalogue recipe
+
+`browser/native-operator.proof.ts` runs only against a fresh disposable local
+installation with the runtime connection mounted. Select it using a local
+Playwright configuration with `testDir` pointing at `browser`,
+`testMatch: 'native-operator.proof.ts'`, one worker, `use.baseURL` and
+`use.composeProject` matching that installation. Run from the application
+directory. It creates fictional contacts with the native account writer and
+bootstraps/invites the first administrator with the native identity store; the
+browser requests the operator challenge through the email form, reads the token
+only in the harness from the private captured mailbox, then redeems it through
+the separate password token form to activate and sign in. Both locales render
+localized labels. Missing-field tests explicitly bypass HTML required validation
+to observe starter_input_invalid from the unchanged host; an exact-shape wrong
+token reaches starter_auth_invalid. No token is logged or rendered in responses. It inserts no
+hand-written business or membership rows.
+
+The sole manual INSERT is exactly the README's documented owner-connection
+support-roster step, after native activation and the owner principal lookup.
+The recipe proves native not-provisioned refusal before that step, search and
+customer detail afterwards, then refusal after owner deactivation. The native
+adapter hides its SQL cause behind `customer_support_read_failed`; a separate
+runtime SQL probe observes `communications_operator_inactive`. The UI explains
+that provisioning is one possible cause and does not invent a more precise error.
+No-session, customer, invalid-session and supplied-actor refusals are separate.
+Repeated successful and refused support reads compare live PostgreSQL connection
+counts to detect a missing `finally` close.
+
+The same recipe exercises bundle list/detail, draft creation, composition, target
+price, activation/readback, deactivate/archive/restore/clone, invalid input,
+state refusal and command replay. Catalogue draft create/read/list/revise/abandon
+and replay use the native handler, registry and store; actor and command key are
+host inputs. Effective runtime EXECUTE privileges are checked for all required
+routines and helpers without adding grants. The source configuration remains
+identical after activation: native catalogue state is not the storefront offer.
+Both example configurations require independent fresh databases. Remove only the
+proof project's containers, volumes and image tags afterwards.
+
+This recipe does not create a purchase, publish a catalogue draft, add a live
+product/SKU/price/promotion writer or prove provider, deployment, upgrade or
+release qualification. The required purchase browser assertion remains required
+and failing until its native binding lands. This contribution adds no package
+implementation or release pin; its decision packet records the measured local
+results and exact source/artifact identities.
+
+The acquisition recipe and results below record the earlier acquisition-only
+baseline. Its support-binding assertions apply to that baseline; the current
+combined installation uses the support and catalogue recipe above alongside the
+acquisition journey, with the additional bindings counted and native roster
+refusals retained. Acquisition semantics and seed admission are unchanged.
 
 ## Native acquisition recipe
 

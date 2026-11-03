@@ -13,8 +13,8 @@ export const nativeLimits: readonly NativeLimit[] = [
   {
     id: 'N1', actions: ['promotion', 'promotionAdmin'], code: 'starter_promotion_write_unavailable',
     explanation: {
-      en: 'Catalogues, prices and promotions are seed data on the portable rail. lifecycle up applies owned/demo-seed.ts once at install, with the install connection in a marked demonstration database. No runtime catalog/price writer or promotion administration and checkout codes are available.',
-      pl: 'Katalogi, ceny i promocje są danymi początkowymi ścieżki przenośnej. lifecycle up stosuje owned/demo-seed.ts raz przy instalacji, połączeniem instalacyjnym w oznaczonej bazie demonstracyjnej. Brak zapisu katalogu/cen w czasie działania, zarządzania promocjami i kodów przy zakupie.',
+      en: 'Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.',
+      pl: 'Produkty, SKU, cenniki, pozycje cenowe i promocje katalogu bieżącego są danymi początkowymi: jeden własny krok demo-seed połączeniem instalacyjnym, bez zapisu tych danych w czasie działania i bez kodów promocyjnych przy zakupie. Wersjami roboczymi pakietów, ich składem, cenami docelowymi i aktywacją oraz wersjami roboczymi katalogu zarządza natywny operator będący człowiekiem przez natywne mechanizmy zapisu.',
     },
   },
   {
