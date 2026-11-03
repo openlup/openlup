@@ -1,9 +1,15 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
+  "deploy/neutral-store/prove.mjs",
+  "examples/neutral-store/extract.mjs",
+  "examples/neutral-store/host/server.ts",
+  "examples/neutral-store/lifecycle",
+  "examples/neutral-store/lifecycle.mjs",
   "packages/core/src/agent-context-cli.ts", "packages/core/src/openlup-context.js",
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",
   "packages/platform/test/lifecycle/appUpgrade.test.ts",
+  "packages/platform/src/lifecycle/openlup.mjs",
   "tests/postgres/nodeHostRuntimeDrain.test.ts",
   "tests/postgres/runM14EffectHandover.ts",
   "tests/postgres/fixtures/m14EffectActor.mjs",
@@ -53,6 +59,8 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "tests/identity/runAcceptance.mjs", "tests/identity/acceptance.conformance.ts", "server/runtime/auth/capturedIdentityMailbox.test.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
+  "scripts/generate-outcome-projection-cli.ts",
+  "scripts/packages/generate-release-bom-cli.ts",
   "vitest.config.ts",
 ] as const;
 

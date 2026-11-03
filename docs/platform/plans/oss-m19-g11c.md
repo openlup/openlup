@@ -799,3 +799,38 @@ The merge stays pinned to the actually fetched 09cd599b R0 base; no second merge
 or control-file edit is made. Comparisons and package measurements use that exact
 pin, not the moving remote ref. No focused/mechanical native-review exemption
 is claimed: no native review exists yet and both manual resolutions are recorded.
+
+## Authorized continuation: retained renewal terms
+
+The supervisor resumed this task for a local build of renewal delivery pricing,
+retained delivery-two acquisition terms and graduation, the three lead-absorption
+policy rows, and preservation of the existing consent API. This supersedes the
+original exclusion of renewal money objects only for that bounded continuation.
+Values are host configuration; real PSPs, promotion-code administration, prepaid,
+refund creation, saved preferences and managed behavior remain excluded.
+
+Integration is pinned to predecessor `4a14148b`; instruction freshness was checked
+against main `7249a750addf64fea1da42fa87e77467794da09c`. The current integration
+unions disjoint catalogue/documentation/transfer-fixture additions and regenerates
+the package SQL projection. Five canonical PostgreSQL inventory measurements
+are retained in local execution evidence; literal selection counts are 98 legacy,
+102 qualified-v2 and 101 qualified-admin, with 111 connected transfer tables.
+No historic inventory pin is changed.
+
+The grant permits a DCO-signed predecessor merge and non-SQL commits. New SQL
+and its co-located pins stay staged for the coordinator's read. The extra
+retained-terms reader requires the preceding control change. No review, canonical
+verification, push, PR, merge-queue action or publication is authorized in this run.
+Final measurement uses the official toolchain against the pinned predecessor;
+packed/code delta stops are 16,000/7,000 bytes. Full installation, uppercase UUID,
+time-zone, replay, consent, transfer, handover and installed-consumer evidence
+remain required before the delta-read packet can claim completion.
+
+Integration rethink: the first generic registry union assumed strings instead of
+path records; the subsequent text union let its closing marker span lines and
+truncated trailing content. Lint detected the lost transfer fixture use. The
+corrected route reconstructs the original three-way inputs, unions only bounded
+conflict blocks and checks additions against both parents. The corrected delta
+retains the predecessor's full transfer test and adds the consent fixture.
+Lesson: generic conflict parsing -> preserve Git's complete three-way output and
+match marker lines locally. This is local integration recovery, not native review.

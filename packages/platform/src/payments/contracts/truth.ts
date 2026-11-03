@@ -61,6 +61,9 @@ export type PaymentTruthReadback = {
     fingerprint: string;
     state: "open" | "settled";
     outcome: PaymentTruthOutcome;
+    /** Present on the sandbox-attempt forward; state remains open for a terminal review fact. */
+    reviewRequiredAt?: string | null;
+    applicationStatus?: "awaiting_evidence" | "applied" | "review_required";
     replayed: boolean;
   };
   effects: {

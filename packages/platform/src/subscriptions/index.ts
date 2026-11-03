@@ -1,15 +1,5 @@
 export { renewalIdentity } from "./renewalIdentity.js";
-export const NATIVE_SUBSCRIPTION_CAPABILITIES = Object.freeze({
-  graph: "native",
-  multiCyclePrepaid: Object.freeze({ supported: false, refusalCode: "multi_cycle_prepaid_unsupported" }),
-  genericBundleCommands: Object.freeze({ supported: true }),
-  commandBoundReceipts: Object.freeze({ supported: true }),
-  preparedAttemptStore: Object.freeze({ supported: false, refusalCode: "native_prepared_attempt_store_unsupported" }),
-  retryRecovery: "selected",
-  // Native N3 adapters exist; selection requires passing real-PG evidence.
-  stockRecovery: "unavailable",
-  deliveryAdmission: "required", executorCount: 1, defaultEnabled: false,
-} as const satisfies import("./contracts/commands.js").SubscriptionCapabilities);
+export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome } from "./renewalCycleRefusalMechanism.js";
@@ -20,6 +10,18 @@ export { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, c
 export type { AutomaticRenewalRunStatus, AutomaticRenewalRunResult, AutomaticRenewalRunDeps, AutomaticRenewalPolicy } from "./automaticRenewal.js";
 export { createPostgresRenewalStore } from "./postgresRenewalStore.js";
 export type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export { createNativeRenewalCodec } from "./nativeRenewalCodec.js";
+export { createPostgresPurchaseRenewalWriter, activateNativePurchaseWithRenewal } from "./nativePurchaseRenewal.js";
+export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePurchaseRenewal.js";
+export { createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "./sandboxRenewalRail.js";
+export type { SandboxRenewalScenario } from "./sandboxRenewalRail.js";
+export { createNativeSubscriptionBinding } from "./nativeSubscriptionBinding.js";
+export { createNativeRetryDriver } from "./nativeRetryDriver.js";
+export type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+export { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
+export { withNativeDeliveryAlignmentRenewalAdmission } from "./postgresDeliveryAlignmentStore.js";
+export { createPostgresRenewalSettlementPort } from "./postgresRenewalSettlement.js";
+
 export { createPostgresRetryStore } from "./postgresRetryStore.js";
 export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
@@ -48,5 +50,6 @@ export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
 export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";

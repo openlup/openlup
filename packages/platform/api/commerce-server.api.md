@@ -10393,6 +10393,33 @@ import type { FulfillmentServices, FulfillmentServicesOptions } from './contract
 /** Explicit selection; no environment readers, implicit provider or automatic dispatch. */
 export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;
 ```
+## dist/fulfillment/capturedAdapter.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./contracts/index.js";
+/** Synthetic, host-owned captures only. No command is sent to a provider. */
+export interface CapturedFulfillmentCommand {
+    request: FulfillmentDispatchRequest;
+    outcome: {
+        kind: "accepted";
+        externalRef: string;
+    } | {
+        kind: "not_dispatched";
+    } | {
+        kind: "unknown";
+    };
+}
+/** An offline adapter, selected explicitly; captures are immutable after construction. */
+export declare function createCapturedFulfillmentAdapter(options: {
+    providerRef: string;
+    selected?: boolean;
+    captures: readonly CapturedFulfillmentCommand[];
+}): {
+    capabilities: FulfillmentCapabilityDescriptor;
+    dispatch: FulfillmentDispatchPort;
+    readSubmissionCount(): number;
+};
+```
 ## dist/fulfillment/commerceFulfillmentHandlers.d.ts
 
 ```ts
@@ -12474,6 +12501,7 @@ export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrd
 export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
+export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 
@@ -17484,7 +17512,7 @@ export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
-export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping, summarizeThresholdShipping } from "./thresholdPolicy.js";
 /** Sparse canonical projections, never an install chain. */
 export declare const SHIPPING_MIGRATIONS: readonly [{
     readonly id: "20260807140000_read_parity_catalog";
@@ -17613,6 +17641,20 @@ export declare function resolveShippingPolicy(settings: ShippingSettings, asOf: 
 /** Only product payable after discounts counts; equality receives free delivery. */
 export declare function resolveThresholdShipping(terms: ShippingTerms, productPayableMinor: number): {
     grossMinor: number;
+    remainingMinor: number;
+};
+/** Presentation of one quote's money; stale terms never produce a remaining-spend helper. */
+export declare function summarizeThresholdShipping(input: {
+    productPayableMinor: number | null;
+    totalMinor: number | null;
+    shippingGrossMinor: number | null;
+    shippingDiscountMinor: number;
+    terms?: ShippingTerms | null;
+    stale?: boolean;
+}): {
+    hasShipping: boolean;
+    effectiveShippingMinor: number;
+    shippingIsFree: boolean;
     remainingMinor: number;
 };
 ```

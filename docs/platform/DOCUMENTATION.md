@@ -69,6 +69,22 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Review coverage helpers use the existing tooling owner in CONTRIBUTING, and
+documentation impact parsing uses this page's Impact section. Task records stay
+under the existing history route and require explicit publication-catalog rows.
+Their no-impact comments are reviewable answers, not a new source owner or a
+substantive owner-section update. Carrier arrays retain their existing owners;
+recognizing an exact union does not transfer their maintenance responsibility.
+
+The source-only outcome and package-set BOM generators route to
+[distribution evidence](DISTRIBUTION_EVIDENCE.md). Its projection section owns
+class grouping, exact input fingerprints and refusal of partial outcome claims;
+its BOM section owns committed inventory and verified artifact identity. The
+publication catalogue includes their helpers, wrappers, witnesses and the one
+generated outcome file. README evaluation paths and installation policy retain
+preview and sandbox-payment limits. Generated navigation grants no execution,
+installation, publication or support qualification.
+
 The hosted S3 task and storage witness are public source outputs. The runner
 owner in runtime guidance defines its explicit storage-only declaration, private
 lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
@@ -438,13 +454,31 @@ architecture owns explicit owner composition and provider readiness boundaries.
 
 ## Impact
 
+When an affected canonical section remains correct, a scoped no-impact explanation may be recorded in the change's in-tree task record at docs/platform/plans/<task>.md instead of a commit trailer. Use one active openlup-task-doc-impact record per owner and current delta, with the reported unit and digest, the exact owner document and anchor, and a substantive reason. The record must be newly introduced or changed relative to the comparison base and match the current source, modes and ownership. Existing records on the base, malformed or ambiguous records, and records bound to another delta or owner answer nothing. The checker reads regular in-tree files without network access, prints every accepted reason and still requires meaningful independent documentation assessment. Existing OpenLup-Doc-Impact trailers remain valid. A shallow checkout may use a task record only when the exact comparison-base tree and candidate tree are available; missing comparison objects still refuse. Trailer history retains its existing complete-history requirement.
+
+Use the existing task record, with one active column-zero unfenced comment:
+
+```text
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-<reported 64 hex>","reason":"Explain why this exact owner section stays correct."} -->
+```
+
+The exact keys are unit, doc, anchor, digest and reason. The file must be an
+explicitly published regular Markdown file directly under plans/. An unchanged
+record already on the comparison base answers nothing. Changed source bytes,
+modes or ownership require a fresh digest. Duplicates, ambiguous or malformed
+active records fail; fenced, indented and inline examples are ignored. Reasons
+are printed with their task path. An independently staged answer concealed by
+restoring other worktree bytes refuses. Existing trailers and legacy section
+compatibility remain valid. No-impact text still needs substantive review.
+
+
 For a source change:
 
 1. Resolve its documentation impact against the comparison base.
 2. Read each affected canonical section and follow its source and test links.
 3. Update the explanation where behavior or the public boundary changed.
 4. If the section remains correct, record a scoped no-impact explanation as a
-   commit trailer in the change itself, tied to the source delta and its owner.
+   fresh in-tree task record or a commit trailer in the change itself, tied to the source delta and its owner.
 5. Regenerate navigation, then run the structural and impact checks.
 
 Each new native review report carries its short `documentation` assessment in
@@ -519,7 +553,7 @@ line to complete:
 OpenLup-Doc-Impact: {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"…"}
 ```
 
-For example, record the explanation in an empty signed commit:
+An existing trailer may be recorded in a signed commit; an empty commit is optional when a fresh task-record answer is used:
 
 ```sh
 git commit --allow-empty -s -m "docs: record no-impact for <unit>" -m 'OpenLup-Doc-Impact: {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"Explain why this section stays correct."}'
@@ -535,8 +569,8 @@ a base change to a path the record covers. An edit of the owner section on
 line to answer the same unit. Reviewers still read the reason against the
 current section.
 
-Only the change's own non-merge commits between the comparison base and `HEAD`
-count. The base's history and merge commits never answer, including the merge
+For trailers, only the change's own non-merge commits between the comparison
+base and `HEAD` count. The base's history and merge commits never answer, including the merge
 queue's synthetic tip, whose message is the pull-request description.
 This relies on the merge queue building merge commits; a squash or rebase queue
 would need its own rule.
@@ -544,6 +578,17 @@ Records matching no current obligation are ignored; a malformed record in a
 change with obligations fails the check. A shallow checkout reads no trailers
 and checks a legacy comment only against the current section; fetch complete
 history. Every accepted reason is printed by `--policy` for review.
+
+When a required integration of main changes a covered source delta, refresh the
+in-tree task answer or record its fresh reason on a non-merge commit. The
+[focused integration review rule](../../CONTRIBUTING.md#native-review-and-accountability)
+also permits exactly one single-parent commit directly after the qualifying
+two-parent merge: its tree must equal the merge tree, and its message may contain
+only a subject, one or more `OpenLup-Doc-Impact` trailer lines and optional
+`Signed-off-by` lines. Reviewers receive and judge those reasons. The actual
+trailer tip remains the reviewed and receipted head; all existing coverage,
+expiry, intent, author, finding, cycle and mechanical-proof rules still apply.
+This does not change which commits answer obligations or what the digest binds.
 
 For compatibility, an in-section `openlup-doc-impact` comment accepted by the
 previous rule still answers: exactly one fresh record for the unit in its owner

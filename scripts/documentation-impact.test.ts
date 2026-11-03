@@ -769,3 +769,52 @@ describe("strict documentation base attribution", () => {
     expect(existsSync(join(shallow, ".git/FETCH_HEAD"))).toBe(false);
   });
 });
+
+describe('in-tree task documentation answers', () => {
+  const task = 'docs/platform/plans/fixture-task.md';
+  function taskAnswer(root: string, base: string) {
+    const obligation = impact(root, base).obligations.find(row => row.unit === 'domain-demo')!;
+    return `<!-- openlup-task-doc-impact ${JSON.stringify({ unit: obligation.unit, doc: obligation.doc, anchor: obligation.anchor, digest: obligation.digest, reason: 'The documented replay boundary remains correct for this exact implementation delta.' })} -->`;
+  }
+  it('accepts a fresh materialized/committed task record and prints its path', () => {
+    const { root, base } = fixture(); write(root, SOURCE, 'export const value = 2;\n');
+    write(root, task, '# Task\n\n' + taskAnswer(root, base) + '\n');
+    expect(impact(root, base).failures).toEqual([]); commit(root);
+    const result = impact(root, base); expect(result.obligations[0]?.answers?.[0]).toMatchObject({ source: 'task-record', path: task });
+    expect(renderDocumentationImpact(result).join('\n')).toContain(task);
+  });
+  it.each(['source', 'mode', 'owner'])('expires when the bound %s changes', kind => {
+    const { root, base, surfaces } = fixture(); write(root, SOURCE, 'export const value = 2;\n');
+    write(root, task, '# Task\n\n' + taskAnswer(root, base) + '\n');
+    if (kind === 'source') write(root, SOURCE, 'export const value = 3;\n');
+    if (kind === 'mode') chmodSync(join(root, SOURCE), 0o755);
+    if (kind === 'owner') { surfaces[1] = { ...surfaces[1]!, anchor: '#other' }; write(root, 'config/doc-routing.json', JSON.stringify({ version: 2, surfaces })); }
+    expect(impact(root, base).failures.length).toBeGreaterThan(0);
+  });
+  it('refuses a copied unchanged base answer and duplicate active answers', () => {
+    const { root, base } = fixture(); write(root, SOURCE, 'export const value = 2;\n'); const answer = taskAnswer(root, base);
+    write(root, SOURCE, 'export const value = 1;\n'); write(root, task, '# Task\n\n' + answer + '\n'); const moved = commit(root);
+    write(root, SOURCE, 'export const value = 2;\n'); expect(impact(root, moved).failures).toHaveLength(1);
+    write(root, task, '# Task\n\n' + answer + '\n' + answer + '\n'); expect(impact(root, base).failures.join('\n')).toContain('ambiguous');
+  });
+  it('refuses hidden staged task answers and malformed active records even after a section update', () => {
+    const { root, base } = fixture(); write(root, SOURCE, 'export const value = 2;\n');
+    write(root, task, '# Task\n'); commit(root);
+    write(root, task, '# Task\n\n' + taskAnswer(root, base) + '\n'); git(root, 'add', task); write(root, task, '# Task\n');
+    expect(() => impact(root, base)).toThrow('staged source differs'); git(root, 'add', task);
+    write(root, task, '# Task\n\n<!-- openlup-task-doc-impact bad JSON -->\n'); sectionUpdate(root);
+    expect(impact(root, base).failures.join('\n')).toContain(task);
+  });
+  it.each(['```text\nANSWER\n```', '    ANSWER', '`ANSWER`'])('ignores examples: %s', example => {
+    const { root, base } = fixture(); write(root, SOURCE, 'export const value = 2;\n'); write(root, task, example.replace('ANSWER', taskAnswer(root, base)));
+    expect(impact(root, base).obligations[0]?.status).toBe('unanswered');
+  });
+  it('accepts a merge-carried answer and a shallow checkout with exact comparison trees', () => {
+    const { root, base } = fixture(); git(root, 'checkout', '-qb', 'topic'); write(root, SOURCE, 'export const value = 2;\n');
+    write(root, task, '# Task\n\n' + taskAnswer(root, base) + '\n'); const topic = commit(root);
+    git(root, 'checkout', '-qb', 'integration', base); write(root, 'README.md', '[Owner](docs/owner.md)\nIndependent main prose.\n'); const moved = commit(root); merge(root, topic);
+    const shallow = join(temporary(), 'checkout'); git(root, 'clone', '-q', '--depth=2', `file://${root}`, shallow);
+    expect(git(shallow, 'rev-parse', '--is-shallow-repository')).toBe('true');
+    expect(impact(shallow, moved).failures).toEqual([]);
+  });
+});

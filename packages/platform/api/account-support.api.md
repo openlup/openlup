@@ -402,6 +402,42 @@ export interface AccountSnapshot<Extension = unknown> {
     events: AccountEvent[];
     actionRequired: AccountActionRequired[];
 }
+/** Existing actor snapshot DTO; this declaration grants no actor or SQL authority. */
+export interface NativeCustomerSubscriptionSnapshot {
+    contractVersion: "customer.subscription_control.v1";
+    subscriptions: {
+        subscriptionId: string;
+        status: AccountSubscription["status"];
+        cadenceDays: number;
+        nextCycleAt: string | null;
+        editCutoffAt: string | null;
+        templateVersion: number;
+        recurringTotal: AccountSupportMoney | null;
+        lines: {
+            variantId: string;
+            quantity: number;
+            isAddon: boolean;
+            sortOrder: number;
+        }[];
+    }[];
+}
+/** Saved newsletter preference only; complete evaluator-purpose choices remain separate. */
+export interface NativeCustomerNewsletterPreferences {
+    contractVersion: "customer.communication_preferences.v1";
+    contact: {
+        contactId: string;
+        email: string;
+    } | null;
+    marketingNewsletter: {
+        purpose: "marketing_newsletter";
+        state: "unknown" | "granted" | "denied" | "suppressed";
+        granted: boolean;
+        source: string | null;
+        reason: string | null;
+        capturedAt: string | null;
+        updatedAt: string | null;
+    };
+}
 ```
 ## dist/account-support/contracts/capabilities.d.ts
 
@@ -933,6 +969,7 @@ export type { LegacySubscriptionRequest, RawSubscriptionCommands, NativeSubscrip
 export type { AccountSupportLaneUnavailable } from "./capabilities.js";
 export type { OperatorOwnerReceipt, NativeOperatorSubscriptionResult, OperatorAuthorityUnavailable, OperatorEmailCorrectionResult, OperatorPhoneCorrectionResult, CustomerRecoveryAuthorityResult, LeadAbsorptionCarried, OperatorLeadAbsorptionResult, OperatorEmailCorrectionClaim, OperatorIdentityMovePort, OperatorEmailCorrectionAdmission, OperatorEmailCorrectionPhase, OperatorEmailCorrectionSettlement, OperatorEmailCorrectionExecution, OperatorAccountLinkRefusal, OperatorAccountLinkResult, OperatorAccountLinkRequest, OperatorAccountLinkIdentityPort, OperatorSubscriptionInput, OperatorEmailInput, OperatorPhoneInput, OperatorLinkInput, OperatorRecoveryInput, OperatorAbsorptionInput, ManagedOperatorAuthorityPort, NativeOperatorAuthorityPort, LinkThenSubscriptionResult } from "./operator.js";
 export type { OperatorAuthorityCapabilities } from "./capabilities.js";
+export type { NativeCustomerSubscriptionSnapshot, NativeCustomerNewsletterPreferences } from "./account.js";
 ```
 ## dist/account-support/contracts/invoice.d.ts
 
@@ -1125,6 +1162,14 @@ export interface OperatorOwnerReceipt {
 }
 /** Additive native superset. The managed transcription above remains unchanged. */
 export type NativeOperatorSubscriptionResult = (OperatorSubscriptionResult & {
+    ownerReceipt?: OperatorOwnerReceipt;
+}) | (Omit<Extract<OperatorSubscriptionResult, {
+    outcome: "applied" | "noop" | "replayed";
+}>, "outcome"> & {
+    outcome: "applied_from_next_parcel";
+    appliesFrom: "next_parcel";
+    futureDestinationId: string;
+    replayed: boolean;
     ownerReceipt?: OperatorOwnerReceipt;
 }) | {
     outcome: "refused";
@@ -1492,6 +1537,14 @@ export { createAccountSupportBindings } from "./bindings.js";
 export type { AccountSupportCallable, AccountSupportOperations, AccountSupportHostBindingRequired } from "./bindings.js";
 export { createAccountSupportServices } from "./contribution.js";
 export type { AccountSupportBindingRefusal, AccountSupportReadiness, GuardedAccountSupportOperation, GuardedAccountSupportOperations } from "./contribution.js";
+export { createPostgresCustomerOrderHistoryReadStore } from "./postgresOrderHistory.js";
+export type { NativeOrderHistoryOptions } from "./postgresOrderHistory.js";
+export { createPostgresAccountReadSources } from "./postgresAccountSources.js";
+export type { NativeAccountPaymentEvidence, NativeAccountAdditionalSources, NativeAccountSourcesOptions } from "./postgresAccountSources.js";
+export { readPostgresCustomerAccountClient } from "./postgresAccountReadScope.js";
+export type { NativeAccountReadScope, NativePaidActivationGap, NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
+export { createPostgresCustomerSubscriptionSnapshotPort, createPostgresCustomerNewsletterPreferencesPort } from "./postgresCustomerActorReads.js";
+export type { NativeAccountRpcExecutor } from "./postgresCustomerActorReads.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -1684,7 +1737,20 @@ export declare function createOperatorRecovery(selection: OperatorRecoverySelect
     execute(envelope: OperatorRecoveryCommandEnvelope<OperatorRecoveryCommand | OperatorAccountLinkRequest>): Promise<{
         outcome: "refused" | "conflict";
         refusalCode: import("./contracts/operator.js").OperatorSubscriptionRefusal;
-    } | import("./contracts/operator.js").OperatorAuthorityUnavailable | {
+    } | (Omit<{
+        outcome: "applied" | "noop" | "replayed";
+        subscriptionStatus: string;
+        nextCycleAt: string | null;
+        templateVersion: number;
+        eventId: string | null;
+        appliedBy: "operator_reschedule_band" | "customer_self_service_delegate" | null;
+    }, "outcome"> & {
+        outcome: "applied_from_next_parcel";
+        appliesFrom: "next_parcel";
+        futureDestinationId: string;
+        replayed: boolean;
+        ownerReceipt?: import("./contracts/operator.js").OperatorOwnerReceipt;
+    }) | import("./contracts/operator.js").OperatorAuthorityUnavailable | {
         outcome: "refused" | "conflict";
         refusalCode: import("./contracts/operator.js").EmailCorrectionRefusal;
     } | {
@@ -1776,6 +1842,81 @@ export declare function createPaymentMethodComposition<Handoff>(port: MethodSetu
     execute(userId: string, request: MethodSetupInput): Promise<MethodSetupResult<Handoff>>;
 };
 ```
+## dist/account-support/postgresAccountReadScope.d.ts
+
+```ts
+import type { OperatorQueryExecutor } from "./postgresOperatorAuthority.js";
+/** Verified by the host, never populated from an untrusted account request. */
+export interface NativeAccountReadScope {
+    principalId: string;
+    clientId: string;
+}
+export type NativeAccountRow = Record<string, unknown>;
+/** Every read rechecks principal/client ownership, including companion reads by ID. */
+export declare function accountRows(executor: OperatorQueryExecutor, scope: NativeAccountReadScope): (sql: string, values?: unknown[]) => Promise<NativeAccountRow[]>;
+export declare function record(value: unknown): NativeAccountRow;
+export declare function text(value: unknown): string;
+export declare function nullableText(value: unknown): string | null;
+export declare function grouped(rows: NativeAccountRow[], key: string): Map<string, NativeAccountRow[]>;
+export declare function minor(value: unknown): number;
+/** Owned account identity lookup used before composing an account snapshot. */
+export declare function readPostgresCustomerAccountClient(executor: OperatorQueryExecutor, scope: NativeAccountReadScope): Promise<NativeAccountRow | null>;
+/** An owned order can be paid before any subscription identity exists. */
+export interface NativePaidActivationGap {
+    orderId: string;
+    paidAt: string | null;
+}
+export interface NativePaidActivationGapReadSource {
+    readPaidActivationGaps(orderIds: string[]): Promise<Map<string, NativePaidActivationGap>>;
+}
+export declare function readOwnedPaidActivationGaps(rows: ReturnType<typeof accountRows>, ids: string[]): Promise<Map<string, NativePaidActivationGap>>;
+```
+## dist/account-support/postgresAccountSources.d.ts
+
+```ts
+import type { AccountReadSources } from "./accountReadModels.js";
+import type { AccountSubscription } from "./contracts/account.js";
+import type { CustomerOrderHistoryProjectionPort, CustomerOrderHistoryReadStore } from "./orderHistory.js";
+import type { OperatorQueryExecutor } from "./postgresOperatorAuthority.js";
+import { type NativeAccountReadScope, type NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
+/** Native health is evidence for the selected projection policy, not a provider instrument. */
+export interface NativeAccountPaymentEvidence {
+    healthState: string | null;
+    unattendedChargeAuthorizedAt: string | null;
+    stockWaitState: string | null;
+}
+/** Host policies are required; missing profile/event sources refuse their section. */
+export type NativeAccountAdditionalSources<Extension, ChargeEvidence> = Pick<AccountReadSources<Extension, ChargeEvidence, NativeAccountPaymentEvidence>, "readExtension" | "readNextCharges"> & Partial<Pick<AccountReadSources<Extension, ChargeEvidence, NativeAccountPaymentEvidence>, "readAddresses" | "readOrdererProfiles" | "readPaymentPreferences" | "readDeliveryPreferences" | "readEvents">>;
+export interface NativeAccountSourcesOptions<Extension, ChargeEvidence> extends NativeAccountReadScope {
+    additional: NativeAccountAdditionalSources<Extension, ChargeEvidence>;
+    orders: CustomerOrderHistoryReadStore;
+    orderProjection: CustomerOrderHistoryProjectionPort;
+    now(): string;
+}
+/** Compose the existing account assembler with native owned persistence reads. */
+export declare function createPostgresAccountReadSources<Extension, ChargeEvidence = AccountSubscription["nextCharge"]>(executor: OperatorQueryExecutor, options: NativeAccountSourcesOptions<Extension, ChargeEvidence>): AccountReadSources<Extension, ChargeEvidence, NativeAccountPaymentEvidence> & NativePaidActivationGapReadSource;
+```
+## dist/account-support/postgresCustomerActorReads.d.ts
+
+```ts
+import type { NativeCustomerSubscriptionSnapshot, NativeCustomerNewsletterPreferences } from "./contracts/account.js";
+/** Must already be bound to the verified actor through DataGatewayPort.asActor. */
+export interface NativeAccountRpcExecutor {
+    rpc(name: string, args?: Record<string, unknown>): Promise<{
+        data: unknown;
+        error: unknown;
+    }>;
+}
+/** Read-only A129 access. Existing root action/preview constructors are untouched. */
+export declare function createPostgresCustomerSubscriptionSnapshotPort(gateway: NativeAccountRpcExecutor): {
+    getSnapshot(): Promise<NativeCustomerSubscriptionSnapshot | null>;
+};
+/** Current SQL can read newsletter choices and withdraw. It cannot establish a grant. */
+export declare function createPostgresCustomerNewsletterPreferencesPort(gateway: NativeAccountRpcExecutor): {
+    getPreferences(): Promise<NativeCustomerNewsletterPreferences | null>;
+    withdrawNewsletter(): Promise<NativeCustomerNewsletterPreferences | null>;
+};
+```
 ## dist/account-support/postgresOperatorAuthority.d.ts
 
 ```ts
@@ -1795,6 +1936,19 @@ export declare const OPERATOR_AUTHORITY_UNAVAILABLE: {
     readonly refusalCode: "operator_subscription_authority_unavailable";
 };
 export declare function createPostgresOperatorAuthority(lane: OperatorTransactionExecutor, options: OperatorAuthorityOptions): NativeOperatorAuthorityPort;
+```
+## dist/account-support/postgresOrderHistory.d.ts
+
+```ts
+import type { CustomerOrderHistoryReadStore } from "./orderHistory.js";
+import type { OperatorQueryExecutor } from "./postgresOperatorAuthority.js";
+import { type NativeAccountReadScope, type NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
+export interface NativeOrderHistoryOptions extends NativeAccountReadScope {
+    /** The selected invoice owner supplies its complete summary; no empty success fallback. */
+    readInvoiceSummaries: CustomerOrderHistoryReadStore["readInvoiceSummaries"];
+}
+/** Native table shapes translated to the existing customer order projection contract. */
+export declare function createPostgresCustomerOrderHistoryReadStore(executor: OperatorQueryExecutor, options: NativeOrderHistoryOptions): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource;
 ```
 ## dist/account-support/selfService.d.ts
 

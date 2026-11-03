@@ -52,6 +52,11 @@
     "zod": "^4.6.6"
   },
   "exports": {
+    "./fulfillment/native": {
+      "types": "./dist/fulfillment/native/index.d.ts",
+      "import": "./dist/fulfillment/native/index.js",
+      "default": "./dist/fulfillment/native/index.js"
+    },
     "./http": {
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js",
@@ -117,10 +122,20 @@
       "import": "./dist/commerce/contracts/index.js",
       "default": "./dist/commerce/contracts/index.js"
     },
+    "./commerce/server/destinations": {
+      "types": "./dist/commerce/server/destinations/index.d.ts",
+      "import": "./dist/commerce/server/destinations/index.js",
+      "default": "./dist/commerce/server/destinations/index.js"
+    },
     "./commerce/server": {
       "types": "./dist/commerce/server/index.d.ts",
       "import": "./dist/commerce/server/index.js",
       "default": "./dist/commerce/server/index.js"
+    },
+    "./commerce/server/native-checkout": {
+      "types": "./dist/commerce/server/native-checkout/index.d.ts",
+      "import": "./dist/commerce/server/native-checkout/index.js",
+      "default": "./dist/commerce/server/native-checkout/index.js"
     },
     "./communications": {
       "types": "./dist/communications/index.d.ts",
@@ -247,6 +262,11 @@
       "import": "./dist/invoicing/index.js",
       "default": "./dist/invoicing/index.js"
     },
+    "./invoicing/postgres": {
+      "types": "./dist/invoicing/postgres/index.d.ts",
+      "import": "./dist/invoicing/postgres/index.js",
+      "default": "./dist/invoicing/postgres/index.js"
+    },
     "./invoicing/contracts": {
       "types": "./dist/invoicing/contracts/index.d.ts",
       "import": "./dist/invoicing/contracts/index.js",
@@ -356,6 +376,21 @@
       "types": "./dist/channels/server/index.d.ts",
       "import": "./dist/channels/server/index.js",
       "default": "./dist/channels/server/index.js"
+    },
+    "./commerce/server/postgres": {
+      "types": "./dist/commerce/server/postgres/index.d.ts",
+      "import": "./dist/commerce/server/postgres/index.js",
+      "default": "./dist/commerce/server/postgres/index.js"
+    },
+    "./account-support/postgres": {
+      "types": "./dist/account-support/postgres/index.d.ts",
+      "import": "./dist/account-support/postgres/index.js",
+      "default": "./dist/account-support/postgres/index.js"
+    },
+    "./account-support/read-contracts": {
+      "types": "./dist/account-support/read-contracts/index.d.ts",
+      "import": "./dist/account-support/read-contracts/index.js",
+      "default": "./dist/account-support/read-contracts/index.js"
     }
   },
   "repository": {
@@ -367,5 +402,8 @@
     "access": "public",
     "provenance": true,
     "tag": "preview"
+  },
+  "bin": {
+    "openlup": "./src/lifecycle/openlup.mjs"
   }
 }

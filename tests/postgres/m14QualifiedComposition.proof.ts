@@ -1,5 +1,6 @@
 // One disposable installation's production proof; invoked only by its adjacent test.
 import assert from "node:assert/strict";
+import { createCapturedFulfillmentAdapter } from "@openlup/platform/fulfillment";
 import { createHash, randomUUID } from "node:crypto";
 import { createPostgresFulfillmentDispatchStore, createPostgresFulfillmentShipmentSpinePort } from "@openlup/platform/fulfillment";
 import type { FulfillmentObservation } from "@openlup/platform/fulfillment/contracts";
@@ -17,6 +18,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { createPostgresFulfillmentObservationLifecycle } from "../../server/adapters/postgres/fulfillmentObservationLifecycle.js";
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { createM08FulfillmentReferenceBinding } from "../../server/runtime/public-reference/m08FulfillmentBinding.js";
+import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { profile, request } from "../helpers/fulfillmentComposition.js";
@@ -662,7 +664,7 @@ async function prove() {
   const issuedExpected = [issued.baseline, ...issued.forward];
   assert.equal(issuedExpected.length, 92);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 96);
+  assert.equal(expected.length, 102);
   assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;
@@ -750,6 +752,7 @@ async function prove() {
   await proveOwnerPathResolution(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
   await proveRuntimeCompletion(bootstrap);
+  await proveCapturedFulfillmentDispatch(bootstrap);
   if (input.discriminators) await proveConnectionRecipe();
   if (input.discriminators) await proveObservationRuntime(bootstrap);
   assert.deepEqual(await runner.status(), healthy);
@@ -850,3 +853,49 @@ try {
 }
 // Every runner call is awaited; exiting releases only this child's hidden pools.
 process.exit(exitCode);
+
+
+async function proveCapturedFulfillmentDispatch(bootstrap: Pool): Promise<void> {
+  const runtime = pool(loginUrl(selection.runtimeLogin));
+  assert.deepEqual((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows,
+    [{ current_user: selection.runtimeLogin, session_user: selection.runtimeLogin, rolsuper: false, rolbypassrls: false }]);
+  const f = await fixture(bootstrap);
+  const candidate = { ...request(), requestKey: `captured:${f.shipment}`, fulfillmentRef: f.shipment, orderRef: f.order };
+  const adapter = createCapturedFulfillmentAdapter({ providerRef: "warehouse-a", selected: true,
+    captures: [{ request: candidate, outcome: { kind: "accepted", externalRef: `captured:${f.shipment}` } }] });
+  const lane = createPostgresFulfillmentTransactionLane({ connectionString: loginUrl(selection.runtimeLogin) }, { poolFactory: () => runtime });
+  ports.push(lane);
+  const options = { transactions: lane,
+    preparation: { readAuthoritative: async (db: PgQueryExecutor, ref: string) => {
+      assert.equal(ref, f.shipment);
+      assert.equal((await db.query("SELECT current_user AS name")).rows[0].name, selection.runtimeLogin);
+      return { candidate, withheld: false };
+    } },
+    services: { selection: candidate.selection, capability: adapter.capabilities, provider: adapter.dispatch,
+      readiness: async () => ({ ready: true as const }), listCandidates: async () => [candidate],
+      config: { mode: "stage" as const, batchLimit: 1 }, keys: { request: (value: typeof candidate) => value.requestKey,
+        mappedAttempt: (key: string, index: number) => `${key}:mapped:${index}`,
+        acceptance: (ref: string) => ({ providerAttemptKey: `captured-attempt:${ref}`, labelKey: `captured-receipt:${ref}` }) } },
+    version: "fixture", requiredSchema: { version: "fixture", migration: "fixture", objects: [] } };
+  const off = createNativeFulfillmentBinding(options);
+  assert.deepEqual(await off.prepare(f.shipment), { kind: "refused", refusal: { reason: "disabled", phase: "selection", retryable: false } });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1", [f.shipment])).rows, []);
+  const absent = createNativeFulfillmentBinding({ ...options, enabled: true, preparation: undefined });
+  assert.deepEqual(await absent.prepare(f.shipment), { kind: "native_unsupported", reason: "host_binding_required", retryable: false });
+  const binding = createNativeFulfillmentBinding({ ...options, enabled: true });
+  assert.deepEqual(await binding.prepare(f.shipment), { disposition: "ready", contactRevision: 1 });
+  assert.deepEqual(await binding.prepare(f.shipment), { disposition: "ready", contactRevision: 1 });
+  const result = await binding.services.runDispatch();
+  assert.ok("ok" in result && result.ok, JSON.stringify(result));
+  assert.equal(adapter.readSubmissionCount(), 1);
+  const replay = await binding.services.runDispatch();
+  assert.ok("ok" in replay && replay.ok, JSON.stringify(replay));
+  assert.equal(adapter.readSubmissionCount(), 1);
+  assert.deepEqual((await runtime.query("SELECT status,external_ref FROM public.fulfillment_dispatch_refs WHERE shipment_id=$1", [f.shipment])).rows,
+    [{ status: "created", external_ref: `captured:${f.shipment}` }]);
+  // Mapped-command proof and acceptance use distinct host keys; replay creates neither again.
+  assert.deepEqual((await runtime.query("SELECT attempt_key FROM public.fulfillment_provider_attempts WHERE shipment_id=$1", [f.shipment])).rows.map(row => row.attempt_key).sort(),
+    [`captured:${f.shipment}:mapped:0`, `captured-attempt:${f.shipment}`].sort());
+  // An offline acceptance is not evidence of packing, shipment or arrival.
+  assert.equal((await runtime.query("SELECT status FROM public.fulfillment_shipments WHERE id=$1", [f.shipment])).rows[0].status, "created");
+}

@@ -1,0 +1,359 @@
+# Neutral store
+
+Status: local application draft. Candidate compilation, browser navigation and
+local installed PostgreSQL bootstrap are checked. Sandbox purchase and upgrade
+qualification remain pending. This is not a stable or supported framework.
+
+This is an application, not an npm package or a monorepo workspace. It uses the
+three OpenLup packages through public entries, ordinary TypeScript, a small
+browser UI, system fonts and application-owned configuration. The fictional
+supplement and coffee catalogues use the same pages, validation and host seams.
+
+## Current candidate
+
+The installer catalogue and purchase/account stores are being delivered by
+their package owners. Until they land, the app deliberately returns
+`host_binding_required` at dependent actions. The catalogue and UI can be
+inspected without pretending an order was persisted. `./lifecycle up` installs
+the packaged PostgreSQL history and fictional catalogue before starting the UI.
+Final release pins and lockfile wait for the selected set.
+The single required purchase browser spec fails by design until the native purchase path lands.
+
+An accepted native limit and a missing required purchase binding are different:
+the former is documented acceptance, the latter still blocks completion.
+See [limits](docs/limits.md) and [proof](docs/proof.md).
+
+No generic contact form; the partner inquiry is the durable intake.
+With the native runtime connection, public partner submissions use the native
+idempotency, contact deduplication and rate limits. Operator partner list and
+status transitions use the existing native human operator session. Public review
+read/submit require an order review grant; operator review list/moderation use
+that same operator authority. The purchase composition contribution retains
+acceptance for expired-grant refusal, positive review submit/read, publish/hide
+with a real review, grant expiry/revocation and purchase-generated grant ownership.
+None of those outcomes is proved by this starter composition slice.
+Tester applications are public durable writes through the native acquisition
+case port and an install-seeded adopter-owned opaque registry. Research needs
+case ownership and ingest needs a complete native binding; those two actions
+remain unmounted and refuse `host_binding_required`.
+Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
+
+## Start from an exact source archive
+
+The release route is a source archive, followed by the small extraction script.
+No generator package or author checkout is required. Select the exact public
+release and its source commit; do not use a floating main archive. The final
+release reference is pending; the following shows the shape, not a published
+artifact claim:
+
+```sh
+# Download the source archive for your selected immutable release commit.
+# Extract it into a staging directory using your normal archive tool.
+node /path/to/extracted-release/examples/neutral-store/extract.mjs /path/to/empty-store
+cd /path/to/empty-store
+```
+
+The script requires Node 24 and Git. It refuses a nonempty destination, copies
+only application-owned and managed inventory entries (not source-only extraction
+tooling or its tests), creates a new `.git` directory and
+materializes the application agent guide. It never searches a parent directory,
+copies the monorepo configuration or resolves workspace packages.
+
+During candidate development, supply only the three selected tarballs as
+described in [candidate artifacts](artifacts/README.md). The application manifest
+contains exact `file:` references to those bytes. Candidate import records their
+names, equal set version and SHA-256 identities. It does not certify publication.
+
+## Run the local application
+
+Target prerequisites for the final cold path are Docker with Compose and an
+exact release archive. The target command is:
+
+```sh
+./lifecycle up
+```
+
+With the selected local candidate artifacts and generated lockfile in place,
+Compose builds the application, starts pinned PostgreSQL 16, runs the one-shot
+installed migration runner and fictional seed, then serves the application at
+`http://127.0.0.1:4319`. No keys, source edits or manual migration are needed.
+A healthy application does not establish the still-pending sandbox purchase.
+
+For authorized UI development after importing the candidate and generating its
+lockfile, use the application directory and its own toolchain:
+
+```sh
+npm ci
+npm run build
+npm start
+```
+
+The running app is the customization preview. It displays local-candidate and
+sandbox notices. The host binds to loopback; the container publishes its port
+only on loopback. Do not expose this local demonstration to a public network.
+No external email provider, payment provider or marketplace connector is active.
+
+To run the other configuration through the same code:
+
+```sh
+npm start -- --configuration coffee
+```
+
+Stop the running process before restarting on the same port. For the eventual
+Compose path, use `./lifecycle up --configuration coffee`. With no flags,
+`./lifecycle up` uses the owned default.
+`./lifecycle down` stops this Compose project without deleting persistent data.
+
+## Host origin and local sessions
+
+`StoreConfig.publicOrigin` is an optional owned input. Without it, the host
+accepts only `127.0.0.1:<listening-port>` and `localhost:<listening-port>` over
+HTTP. With it, the host accepts exactly that origin's canonical Host authority
+and requires its exact scheme, host and port in Origin on every method other
+than GET/HEAD. The request marker and JSON content type remain required.
+Unknown or ambiguous Host/Origin headers refuse; forwarded headers grant no
+trust. A TLS terminator must pass the original Host through. This setting opens
+no port and provides no deployment qualification: the demonstration Compose
+publication stays loopback-only, and its passwordless HBA is never a deployment
+recipe. See [customization](docs/customization.md#public-origin).
+
+`./lifecycle up` supplies the passwordless runtime URL as a non-secret host
+argument; the application receives no install connection or socket. `npm start`
+without `--database-url` is still the UI-only preview with pending bindings.
+The native runtime composition binds customer challenge request/redemption,
+sign-out, reduced customer profile/subscription-control and owned order reads,
+newsletter read/withdraw, and the reduced operator order control-plane view.
+Invoice artifacts, the full account projection and shipment reads remain named
+refusals. Purchase persistence and the purchase/account/operator journey remain
+pending; the required purchase browser assertion is unchanged.
+
+The demonstration captured mailbox is `.context/captured-messages/identity.jsonl` inside
+the application container, readable only with that runtime's filesystem
+access. The container runs as `node` in `/application`; read the 0600
+file with this exact command from the extracted application directory:
+
+```sh
+docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+```
+
+This demonstration mailbox is not a real mailbox. It is never served by HTTP or
+printed in application logs. Native redemption accepts
+its token through `auth.verify` or `auth.callback`; `auth.operator` accepts email
+for a challenge and token for redemption. The native stores must already contain
+the customer or an invited operator. There is no public operator bootstrap.
+After activation, support reads require the [owner roster step](#operator-support-roster-and-catalogue-authoring), including its deactivation recipe.
+Opaque sessions are limited to a single process, expire after one hour, have a
+capacity of 1000 and are lost on restart. This is not a production session store;
+operator membership and customer ownership are rechecked on requests.
+Cookies are host-only, HttpOnly, SameSite=Lax, scoped to `/api/actions`, and Secure
+exactly for a configured HTTPS origin. The local mailbox is a demonstration
+transport, not proof of access to a real mailbox.
+
+With `publicOrigin` set, a probe using the ordinary loopback Host receives
+`starter_local_host_required`. Lifecycle's internal probe connects privately and
+sends the configured Host; any external health probe must also send that Host.
+
+## Customize and upgrade
+
+Read [customization](docs/customization.md), [ownership](docs/ownership.md) and
+the generated application agent guide. The typed input lives in
+`owned/store.config.ts`; localized general copy lives in `owned/copy.ts`; three
+named UI fragments live in `owned/fragments.ts`.
+
+A selection below the configured purchase minimum remains saved across browser
+reloads and storage updates. The shared validator still refuses checkout until
+that minimum is met; a saved partial selection is not an eligible order quote.
+
+`./lifecycle verify` and `./lifecycle upgrade` delegate to the installed public
+CLI when it exists. They refuse explicitly before that capability is shipped.
+They do not replace it with an application-owned upgrade engine. A real
+`openlup upgrade apply` preservation witness remains required.
+
+## Install-only fictional catalogue
+
+`./lifecycle up` calls `installation/install.ts` in a one-shot container before
+starting the host. The installed bootstrap obtains a dedicated install connection and
+applies one transaction using `owned/demo-seed.ts` and the owned acquisition
+registry. The catalogue builder reads the same
+`StoreConfig` as the UI: deterministic product/SKU/list/price identifiers and
+parameterized catalogue upserts populate `catalog_products`, `catalog_skus`,
+`price_lists` and `price_entries`. Repeating installation updates the same rows.
+Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.
+
+The bootstrap must mark a newly created demonstration database with database
+comment `openlup-neutral-store-demo-v1`. The applier reads that marker from
+PostgreSQL, checks both login and current role against the dedicated install
+identity, refuses either runtime identity and closes the connection after its
+transaction. It never marks an arbitrary existing database as a demo.
+`starter_installation_binding_required`, `starter_seed_runtime_role_forbidden`,
+`starter_seed_install_role_required` and
+`starter_seed_demonstration_database_required` name the refusal boundaries.
+The missing-binding refusal applies only when the installed migration API is absent.
+The complete history uses explicit `qualified-v2` / `installer-managed` selection.
+Only PostgreSQL and the one-shot installer mount the Unix socket that permits
+privileged local logins. The application has only the restricted runtime TCP
+URL, no socket, install credential or privileged connection environment. The
+database has no published port; its HBA admits only the runtime login over TCP
+and rejects all other logins. This passwordless local demonstration is isolated
+by container mounts and networking; it is not a customer authentication recipe.
+No deployment recipe may reuse this Compose file or its HBA.
+An existing unmarked database fails closed before role or schema changes. Only
+a successful database creation in that invocation can set the marker. An
+interruption between creation and marking deliberately leaves a refused database.
+
+Clients, stock and settings use native writers; they are never seeded here.
+Subscription renewal terms, term lines and method states belong to the native
+purchase path and must never be hand-written by this application. After the
+catalogue seed, purchase uses zero hand-written business rows. This data step
+is not a schema installer, price editor, promotion engine or customer import.
+
+## Reset an interrupted first install
+
+An interruption after database creation but before its demonstration marker is
+written leaves an unmarked database. Startup refuses it with
+`starter_seed_demonstration_database_required`; it never adopts or marks it.
+To discard that interrupted **local demonstration**, run from its extracted
+application directory with the same Compose project selection used to start it:
+
+```sh
+./lifecycle down
+docker compose down --volumes
+./lifecycle up
+```
+
+`docker compose down --volumes` explicitly removes the named demonstration
+volumes and destroys all local demonstration data. It must never be run against
+anything else. A fresh startup creates and marks a new demonstration database.
+
+## Data boundary
+
+All identities, contacts, catalogue entries, labels and prices are fictional.
+The supplement catalogue contains no health claim or consumption advice. No
+money is charged, real parcel sent or real invoice issued. Use `.test` addresses
+and fictional contacts only. The browser cart is convenience state, not an order.
+
+Do not point this demo database or its identities at customer infrastructure.
+A customer environment needs its own authority, restricted runtime and migration
+identities, terms, tax and shipping policy, operational controls and verified
+provider bindings. A demonstration flag does not establish those.
+
+## Pages and proof
+
+The footer's message-links page lists every message destination in both locales.
+Sample grant links deliberately use invalid values, which must refuse instead of
+accessing another account. Local captured messages must supply real scoped
+grants once their bindings exist. Follow [destination mapping](docs/destinations.md)
+for the mounted paths and [proof](docs/proof.md) for required execution evidence.
+
+## Neutral inputs and local transport
+
+Both fictional catalogues use the ISO test currency `XTS`, fictional country
+`ZZ` and timezone `UTC`. Amounts are illustrative test units, with no exchange,
+pricing, tax or jurisdiction claim. Polish and English remain UI content; money
+formatting uses the selected locale ID directly.
+
+The starter reads no environment configuration. For direct host use, pass
+`--configuration <id>`, `--port <number>` and `--listen <address>` after `npm start --`.
+The port defaults to 4319 and listen address to 127.0.0.1. The only other supported
+listen address is 0.0.0.0 for explicit container transport. Unknown/duplicate flags,
+missing values, invalid ports/addresses and unknown configurations refuse by name.
+Compose passes the container listen/port flags and publishes only host loopback.
+Lifecycle accepts the optional configuration flag for `up`; the same selected ID
+reaches the one-shot installer through arguments and the child host through a
+stdin Compose command override.
+The documented no-flag `./lifecycle up` remains the one-command target.
+
+These arguments contain only a public configuration ID, port and listen address.
+There are no credential arguments, URLs, keys or passwords. The local one-shot
+bootstrap uses only its isolated Unix socket; the runtime has only its fixed,
+passwordless private-network URL. Neither connection is selected from starter
+process environment reads. An absent installed migration API still refuses by
+name. No customer environment is selected by a demonstration flag.
+
+## Operator support roster and catalogue authoring
+
+Activate a native human operator through the native invitation and challenge
+redemption described in [Host origin and local sessions](#host-origin-and-local-sessions)
+first. On the operator page (`/admin` or `/pl/admin`), enter the invited email
+and request a sign-in token. Read the token from the private demonstration mailbox
+with the documented `docker compose exec -T --user node application cat
+/application/.context/captured-messages/identity.jsonl` command above, then enter
+the exact 43-character URL-safe token in the separate operator token form and
+sign in. The password field hides the token and clears after successful
+redemption; the response does not echo it. Keep mailbox access private.
+There is no HTTP bootstrap or roster writer. The database owner then runs
+this **one owner-connection step**, never with the runtime login or application
+connection. From the extracted demonstration application directory:
+
+```sh
+docker compose exec -T database psql -U starter_install -d neutral_store
+```
+
+Find the activated principal using its normalized invitation email:
+
+```sql
+SELECT p.principal_id, p.email, m.role, m.membership_state
+FROM public.platform_human_principals p
+JOIN public.platform_human_memberships m USING (principal_id)
+WHERE lower(btrim(p.email)) = lower(btrim('operator@example.test'))
+  AND m.membership_state = 'active' AND m.role IN ('admin', 'distributor')
+  AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o
+                  WHERE o.principal_id = p.principal_id);
+```
+
+Require exactly one row. Copy its `principal_id` unchanged below; this is exactly
+the principal passed by the host as `operatorRef`, never a customer/client ID:
+
+```sql
+INSERT INTO public.platform_communication_operators (principal_id, active)
+VALUES ('<activated-principal-id>'::uuid, true)
+ON CONFLICT (principal_id) DO UPDATE SET active = true, updated_at = now();
+```
+
+To withdraw support access through the same owner connection:
+
+```sql
+UPDATE public.platform_communication_operators
+SET active = false, updated_at = now()
+WHERE principal_id = '<activated-principal-id>'::uuid;
+```
+
+This roster is an additional native support precondition, not human membership
+or sign-in authority. The host checks active native human membership on every
+request **before** the support action. A roster row alone admits no request;
+no session, customer sessions, inactive human members and supplied actor IDs
+cannot become operators. Do not seed this table during installation: the human
+principal does not yet exist. Native `customer_support_read_failed` intentionally
+hides the SQL cause; the UI names the roster prerequisite without asserting that
+every read failure means not provisioned. No second authority is built here.
+
+With the runtime connection, operator customer search/detail and bundle
+list/detail/commands plus catalogue draft list/detail/create/revise/abandon are
+composed. Bundle commands and catalogue draft writes are restricted to a native
+human admin/distributor session, rechecked per request; actor identity and command
+key come only from the accepted host context. `owned/catalogue.ts` owns the
+fictional authoring type. The support port is constructed per request for that
+operator and closed in `finally`, including failed reads; it has no operator cache.
+
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application's storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+
+The following acquisition baseline predates support and catalogue composition;
+its unbound-operator statements describe that earlier baseline only. The current
+operator composition and its prerequisites are documented above.
+
+## Acquisition and unbound operator actions
+
+With the runtime connection, acquisition.submit is a public durable write through
+the native acquisition case port and an install-seeded fictional location choice.
+Only email, application
+consent and the choice are collected; names are not stored. The owned registry
+in `owned/acquisition-addresses.ts` follows the acquisition migration's
+owner-loaded opaque reference contract in
+`packages/platform/sql/20260816140000_acquisition_case_foundation.sql:16-17`.
+It is applied only in the marked demo
+installation, never by the runtime host. Conflicting registry data fails install
+loudly. Replace this fictional registry and its onboarding for a customer environment.
+
+Operator customer search/detail remain unbound because the native reader
+requires a separate communications operator roster entry. The host does not
+provision that authority. Recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.

@@ -397,4 +397,18 @@ export declare function resolveThresholdShipping(terms: ShippingTerms, productPa
     grossMinor: number;
     remainingMinor: number;
 };
+/** Presentation of one quote's money; stale terms never produce a remaining-spend helper. */
+export declare function summarizeThresholdShipping(input: {
+    productPayableMinor: number | null;
+    totalMinor: number | null;
+    shippingGrossMinor: number | null;
+    shippingDiscountMinor: number;
+    terms?: ShippingTerms | null;
+    stale?: boolean;
+}): {
+    hasShipping: boolean;
+    effectiveShippingMinor: number;
+    shippingIsFree: boolean;
+    remainingMinor: number;
+};
 ```
