@@ -171,3 +171,36 @@ keeping the pre-class control and assertion intact. The existing list and
 production witness suffice for both approved additions. The source-release
 suite took 411.65 seconds; resource admission accounted for additional waits,
 including 301 seconds before lint. No further process or scope change is needed.
+
+## Required main integration
+
+The precommit sections above are historical checkpoints. The maintainer later
+authorized DCO sign-off, full native control review, canonical verification,
+submission, receipt publication and queue delivery for the same two approvals.
+After main changed the review machinery, carry-over required main integration
+and fresh full review; prior reports do not count for the new candidate.
+
+The conflict-free merge of `5054c53dc81b246b81fb77122aeb71f92cfbdd75`
+into `d0d40d5249f2dd9b59a4a96180d7d25c3328f305` produced the exact
+Git prediction `ac58bbf63d8a91bd5f44eaf8963f2110f66e320f`, before
+this requested evidence note. The original own delta and the merged own delta
+have identical added/removed-line SHA-256 hashes:
+
+- Before integration: `0753168fafaab8ff3fd04efc524cb7b45e646d3458f1c02b22c8ab0e12564509`.
+- After integration: `0753168fafaab8ff3fd04efc524cb7b45e646d3458f1c02b22c8ab0e12564509`.
+
+The proof used `git diff 4d78e855 d0d40d52` and
+`git diff --cached 5054c53d`, selected lines starting with `+` or `-`,
+excluded the `+++`/`---` headers, joined the remaining lines with newlines
+and included a final newline before SHA-256. Raw patch equality was overly
+strict because the catalog's base blob identity changed; no source line
+differed. The present note is the only additional authored delta.
+
+The old reviewed base predates the current coverage rules. Use the native
+session's full-review route and full canonical verification on the resulting
+committed tree; no inherited or delta-only review is claimed. No release,
+production, settings, secrets or adopter endpoint action is authorized.
+Package inputs remain identical to main, 0 B.
+
+Self-retro: raw patch metadata caused an unnecessary stop. Compare the actual
+added/removed lines to distinguish unchanged task content from base identities.
