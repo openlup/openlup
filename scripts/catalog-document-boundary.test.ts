@@ -13,6 +13,13 @@ const PERIMETERS = [
 ] as const;
 const PORTABLE_MIGRATION = "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql";
 const PORTABLE_ADAPTER = "packages/platform/src/catalog/catalogSkuEnvelope.ts";
+const QUOTE_READER = "packages/platform/src/catalog/commerceQuoteCatalogRead.ts";
+const QUOTE_PAYLOAD_SELECT = "revision.document_payload AS revision_document_payload, revision.digest AS revision_digest";
+const QUOTE_PAYLOAD_USES = [
+  QUOTE_PAYLOAD_SELECT,
+  "await verifyDocument(documents[index]!.revision_document_payload, envelope);",
+  "revision_document_payload: unknown;",
+];
 
 interface SourceFile {
   path: string;
@@ -75,6 +82,16 @@ function readsDormantCatalogSkuGtin(source: string): boolean {
   });
 }
 
+// This exact opt-in reader may transport an unknown value only to host policy.
+// Any second selection or other use of the value requires another boundary decision.
+function opaqueQuotePayloadPassThrough(source: string, payloadLines: readonly string[]): boolean {
+  const uses = source.split("\n").filter((line) => /\brevision_document_payload\b/.test(line)).map((line) => line.trim());
+  return payloadLines.length === 1 && payloadLines[0]!.trim() === QUOTE_PAYLOAD_SELECT
+    && uses.length === QUOTE_PAYLOAD_USES.length
+    && new Set(uses).size === QUOTE_PAYLOAD_USES.length
+    && uses.every((line) => QUOTE_PAYLOAD_USES.includes(line));
+}
+
 function violations(files: readonly SourceFile[]): string[] {
   const found: string[] = [];
   for (const file of files) {
@@ -98,11 +115,20 @@ function violations(files: readonly SourceFile[]): string[] {
     const payloadLines = file.source
       .split("\n")
       .filter((line) => /\bdocument_payload\b/.test(line) && !line.trimStart().startsWith("--"));
-    if (!isTestSource && payloadLines.length > 0 && (
-      file.path !== PORTABLE_MIGRATION
-      || payloadLines.some((line) => !/^\s*document_payload jsonb NOT NULL,\s*$/.test(line))
+    const opaqueQuoteRead = file.path === QUOTE_READER && opaqueQuotePayloadPassThrough(file.source, payloadLines);
+    const opaqueStorage = file.path === PORTABLE_MIGRATION
+      && payloadLines.every((line) => /^\s*document_payload jsonb NOT NULL,\s*$/.test(line));
+    if (!isTestSource && (
+      (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead)
+      || (file.path === QUOTE_READER && /\brevision_document_payload\b/.test(file.source) && !opaqueQuoteRead)
     )) {
       found.push(`${file.path}: document payload must remain opaque SQL storage only`);
+    }
+    if (file.path === QUOTE_READER && (
+      /\b(?:parse|safeParse|validate|canonicalize)\s*\(/.test(file.source)
+      || /\b(?:console|logger)\s*[.\[]|\bJSON\s*\.\s*stringify\s*\(/.test(file.source)
+    )) {
+      found.push(`${file.path}: quote document must pass unparsed to host policy`);
     }
   }
   return found;
@@ -132,6 +158,49 @@ describe("portable catalog document boundary", () => {
       "server/adapters/postgres/unsafe.ts: imports a private document boundary",
       "server/adapters/postgres/unsafe-payload.ts: document payload must remain opaque SQL storage only",
     ]);
+
+    const passThrough = QUOTE_PAYLOAD_USES.join("\n");
+    expect(violations([{ path: QUOTE_READER, source: passThrough }])).toEqual([]);
+    // Every other perimeter retains the original no-read boundary.
+    for (const perimeter of PERIMETERS) {
+      const path = `${perimeter}/unexpected-document-read.ts`;
+      expect(violations([{ path, source: passThrough }])).toContain(
+        `${path}: document payload must remain opaque SQL storage only`,
+      );
+    }
+    expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${QUOTE_PAYLOAD_SELECT}` }])).toContain(
+      `${QUOTE_READER}: document payload must remain opaque SQL storage only`,
+    );
+    for (const interpretation of ["parseDocument(value);", "validateDocument(value);", "canonicalizeDocument(value);"]) {
+      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${interpretation}` }])).toContain(
+        `${QUOTE_READER}: parses, validates, or canonicalizes a private document`,
+      );
+    }
+    for (const interpretation of ["JSON.parse(value);", "schema.safeParse(value);", "validate(value);", "canonicalize(value);"]) {
+      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${interpretation}` }])).toContain(
+        `${QUOTE_READER}: quote document must pass unparsed to host policy`,
+      );
+    }
+    for (const logging of ["console.log(documents);", "logger.info(documents[index]);", "JSON.stringify(documents);"]) {
+      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${logging}` }])).toContain(
+        `${QUOTE_READER}: quote document must pass unparsed to host policy`,
+      );
+    }
+    for (const schema of ["ProductDocumentV1", "productDocumentV1Schema", "productDocumentSchema"]) {
+      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${schema};` }])).toContain(
+        `${QUOTE_READER}: private document schema vocabulary is not portable`,
+      );
+    }
+    for (const misuse of [
+      passThrough.replace("revision_document_payload, envelope", "revision_document_payload.title, envelope"),
+      passThrough.replace("revision_document_payload, envelope", 'revision_document_payload["title"], envelope'),
+      `${passThrough}\nconsole.log(documents[index]!.revision_document_payload);`,
+      `${passThrough}\nconst copied = documents[index]!.revision_document_payload;`,
+    ]) {
+      expect(violations([{ path: QUOTE_READER, source: misuse }])).toContain(
+        `${QUOTE_READER}: document payload must remain opaque SQL storage only`,
+      );
+    }
   });
 
   it("fails imports or interpretation of the private W2d mapping proof", () => {
