@@ -33,7 +33,7 @@ export function createPostgresCommercePriceAuthorityReadPort(executor: PgQueryEx
     const rows: PriceRow[] = [];
     for (let offset = 0; offset < ids.length; offset += 500) {
       const result = await executor.query(ENTRIES_SQL, [ids.slice(offset, offset + 500), input.priceListId, mode]);
-      rows.push(...result.rows as unknown as PriceRow[]);
+      for (const row of result.rows as unknown as PriceRow[]) rows.push(row);
     }
     return rows.map(row => timed<ResolvedPrice>({
       variantId: row.variant_id, mode: row.mode, matchedMinQty: row.min_qty,

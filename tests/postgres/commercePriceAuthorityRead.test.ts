@@ -1,5 +1,4 @@
 /** Characterizes strict price history reads and bounded native promotion evidence on PostgreSQL. */
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -12,8 +11,6 @@ import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, admin: Pool, runtime: Pool;
-let volumeCreated = false;
-const volume = `commerce-price-read-${process.pid}`;
 const password = "synthetic-conformance";
 const installation: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "postgres", bootstrapLogin: "postgres", runtimeLogin: "price_read_runtime", restoreLogin: "price_read_restore" };
@@ -26,9 +23,7 @@ const reads = (executor: PgQueryExecutor = runtime) => createPostgresCommercePri
 const authority = (executor: PgQueryExecutor = runtime) => createConcurrentCommercePriceAuthorityPort(reads(executor));
 
 beforeAll(async () => {
-  execFileSync("docker", ["volume", "create", volume], { stdio: "pipe" }); volumeCreated = true;
-  container = await runPostgresContainer({ name: `commerce-price-read-${process.pid}`, password,
-    runOptions: ["--mount", `type=volume,source=${volume},target=/price-read-data`, "-e", "PGDATA=/price-read-data"] });
+  container = await runPostgresContainer({ name: `commerce-price-read-${process.pid}`, password });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("price_read_postgres_tcp_unavailable");
   admin = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(installation) });
   for (const name of [installation.runtimeLogin, installation.restoreLogin!]) {
@@ -42,10 +37,7 @@ beforeAll(async () => {
   await admin.query("INSERT INTO public.catalog_products(id,slug,name) VALUES ($1,'price-read-item','Example item')", [product]);
   await admin.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES ($1,$2,'PRICE-READ-ITEM','Example item')", [sku, product]);
 }, postgresSetupTimeoutMs);
-afterAll(async () => {
-  try { await closePostgres(container, [admin, runtime]); }
-  finally { if (volumeCreated) execFileSync("docker", ["volume", "rm", volume], { stdio: "pipe" }); }
-}, postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [admin, runtime]), postgresTeardownTimeoutMs);
 beforeEach(async () => {
   await admin.query("UPDATE public.price_lists SET status='archived'");
   list = await priceList();
@@ -152,18 +144,19 @@ it("permits legacy only with no history and uses half-open list/entry intervals"
   await expect(authority().resolvePrice(query())).rejects.toMatchObject({ code: "subscription_price_policy_not_effective" });
 });
 
-it("deduplicates a request, chunks 501 UUIDs at 500 and retains more than 1100 candidate rows", async () => {
+it("deduplicates a request, chunks 501 UUIDs at 500 and retains histories beyond the argument-count limit", async () => {
   const ids = Array.from({ length: 501 }, () => randomUUID());
+  const historyRows = 150_000;
   await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title)
     SELECT id,$2,'READ-'||id::text,'Example' FROM unnest($1::uuid[]) id`, [ids, product]);
   await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
     SELECT $1,id,'one_time',1499,$3 FROM unnest($2::uuid[]) id`, [list, ids, start]);
   await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
-    SELECT $1,$2,'one_time',1499,$3 FROM generate_series(1,1101)`, [list, ids[0], future]);
+    SELECT $1,$2,'one_time',1499,$3 FROM generate_series(1,$4::integer)`, [list, ids[0], future, historyRows - 1]);
   const recorder = vi.fn((sql: string, values?: unknown[]) => runtime.query(sql, values));
   const port = reads({ query: recorder });
   const all = await Promise.all([...ids, ids[0]!].map(variantId => port.listExactBaseEntries({ variantId, priceListId: list })));
-  expect(all[0]).toHaveLength(1102); expect(all[501]).toEqual(all[0]);
+  expect(all[0]).toHaveLength(historyRows); expect(all[501]).toEqual(all[0]);
   expect(recorder.mock.calls.map(call => (call[1]![0] as string[]).length)).toEqual([500, 1]);
   expect(all.slice(1, 501).every(rows => rows.length === 1)).toBe(true);
   const first = all[0]![0]!; first.value.unitPriceMinor = 1;

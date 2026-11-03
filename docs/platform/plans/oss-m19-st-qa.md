@@ -1,6 +1,6 @@
 # PostgreSQL price authority reads
 
-Status: implementation and focused proof complete; stopped for the stabilized API read before DCO sign-off.
+Status: local review recovery; canonical verification awaits the supervised slot.
 
 ## Outcome and scope
 
@@ -18,14 +18,18 @@ renewal obligations.
 ## Authority and delivery
 
 The assigned worker may edit this task's source, tests, API snapshot, documentation
-and publication inventory, run focused checks, and create scanned local WIP
-snapshots. This run stops at the stabilized API packet before DCO sign-off. It
-does not authorize push, PR creation, native review, canonical verification,
-merge, publication, deployment or an adopter change.
+and publication inventory, run focused checks, create DCO-signed local commits,
+integrate current main mechanically and obtain fresh full native review. The
+current continuation includes bounded repairs of material review findings and
+a readiness report. Push, PR creation, receipt export, canonical verification,
+external merge, publication, deployment and adopter changes remain outside this
+run. Canonical verification awaits the supervisor's explicit slot.
 
-Code base and fetched policy revision: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
-The initial fetch found no main movement. The assigned task worktree and branch
-remain isolated; other workers' unmerged work is not an input.
+Initial code base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
+Current comparison base and fetched policy revision:
+`5079c778d9eaf9bd63e71780db614e5ee9bbe0c8`.
+The assigned task worktree and branch remain isolated; other workers' unmerged
+work is not an input.
 
 ## Acceptance and proof
 
@@ -51,11 +55,12 @@ timestamp spelling affecting policy digests and accidental financial defaults.
 
 ## Execution evidence
 
-The new PostgreSQL suite passed all 24 cases after repairing two setup fixtures:
+The initial PostgreSQL suite passed all 24 cases after repairing two setup fixtures:
 stored policy overlaps are prohibited, and order/line seeds must commit together.
-The suite uses the packaged qualified history, a named owned container and data
-volume, the host-TCP readiness helper, restricted runtime reads and complete
-installer bindings. The supplied installer pool is closed before removal.
+The suite uses the packaged qualified history, a named owned container with the
+shared helper's temporary in-memory data storage, the host-TCP readiness helper,
+restricted runtime reads and complete installer bindings. The supplied installer
+pool is closed before removal.
 
 The final affected regression and boundary selection passed 8 files/3,125 tests
 in 14.85 seconds (15.31 seconds command wall time), including the new suite,
@@ -70,8 +75,24 @@ are 2,443,733 packed bytes and 1,956,516 code-class bytes, leaving 41,267 and 13
 bytes respectively. The landing assumption is a leaf on the inspected main with
 no other row ahead; a different landing position needs a fresh measured stack.
 Exact staged/WIP identities are retained in the stabilized private read packet;
-no cap changes are made. No native review, canonical verify,
-DCO sign-off or external delivery has occurred.
+no cap changes are made. These measurements describe the initial candidate.
+Canonical verification and external delivery remain pending.
+
+Full review identified an argument-count ceiling in row accumulation and an
+unnecessary persistent fixture volume. The bounded repair appends rows without
+argument spreading, extends the existing history witness to 150,000 candidates,
+and reuses the shared helper's temporary storage and cleanup lifecycle. It changes
+no query, financial rule, public signature, SQL history, grant or package entry.
+Fresh focused proof and full native review are required for the repaired candidate.
+
+The repair passes all 24 PostgreSQL cases, including the 150,000-candidate
+history, in 8.21 seconds and five affected regression files with 3,091 tests in
+14.72 seconds. Typecheck passes in 22.19 seconds, lint in 66.22 seconds with zero
+errors, and API, neutrality, structural and whitespace checks pass. The real
+pack on the pinned Node 24.21.0/npm 11.19.0 distribution adds 4,277 packed bytes
+and 3,625 code-class bytes against the current comparison base. Absolute totals
+are 2,443,732 packed bytes and 1,956,516 code-class bytes. No cap changes are made.
+These are focused checks; canonical verification remains pending.
 
 ## Self-retro
 
@@ -82,3 +103,8 @@ a second runtime owner. Use the repository's scanner configuration explicitly;
 the generic scanner's historical fixture findings were absent under that policy.
 Lesson: complete fixture composition and existing protections before adding new
 mechanisms or retrying a failed proof.
+
+Review lesson: a complete-history contract needs a witness beyond the runtime's
+argument-count boundary. Linear accumulation removes that accidental ceiling;
+using the existing disposable helper removes the extra volume lifecycle and its
+interruption leak.
