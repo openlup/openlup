@@ -1,9 +1,8 @@
 # Native order, subscription and parcel destinations
 
-Status: BLOCKED with the combined purchase-hold change on current-donor
-admission parity. G3's completed proofs are preserved, but the new donor mapping
-and production reachability assessment are incomplete; native review has not
-started. See Donor mapping below.
+Status: locally proved staged read candidate for retained parcel ownership and
+optional reason persistence. The two changes await the coordinator's read.
+No native review or delivery has started.
 
 ## Outcome, authority and boundaries
 
@@ -1338,11 +1337,12 @@ are included; the predecessor-only undefined-function interval ends here.
 
 Each rule is ported from the reference adopter's behaviour; the rule-by-rule mapping and witnesses are in the maintainer packet.
 
-The current mapping and production reachability assessment remain incomplete.
-No zero-regression certification or native review is claimed. The combined
-change remains on hold for the inventory admission-gate ruling. Listing exposure
-is deferred to a registered follow-up outside this bundle; native stock
-accounting does not subtract retained listing exposure.
+The current source-rule mapping and production-composition reachability audit
+are recorded in the private maintainer packet. The earlier admission and
+compensation guards are ported and accepted; these two destination changes await
+their read. This is source and local-database evidence, not hosted qualification
+or a blanket service-parity certificate. Listing exposure remains a registered
+follow-up outside this bundle; native stock accounting does not subtract it.
 
 Accepted differences and limits:
 
@@ -1359,10 +1359,88 @@ Accepted differences and limits:
 - Address changes do not move a cycle or confirm an undelivered replacement.
   Confirmation mail belongs to the following communication binding.
 
-The private maintainer packet retains the complete pending package-path
-inventory. An additive result type or installed-version pin does not establish
+The private maintainer packet retains the complete package-path
+inventory and its source-composition evidence. An additive result type or installed-version pin does not establish
 production reachability or service parity. The public-entry predecessor is
 untouched.
 
 Self-retro: public records can state the porting boundary and limits without
 exposing the reference adopter's source structure.
+
+
+## Retained parcel ownership reconciliation
+
+The current draft restricts current-parcel selection to orders owned by the
+subscription's client, as well as its subscription-cycle scope. The function
+signature and header are unchanged. Beyond that lookup, only the reason-event
+projection admitted below changes; all other statements are unchanged. The draft
+adds a restricted-runtime retained-row regression and an executable source-pinned
+lookup witness; every existing case remains unchanged. Five installation
+profiles measured new current inventory digests and exact replay wrote nothing.
+
+The earlier rule-chain review found that the optional address-change reason was
+accepted but omitted from its persisted subscription event. The resumed draft
+ports its persistence in the same function: the top-level reason keeps the
+reference normalization, and the nested payload retains the originally supplied
+reason. Missing reason has no nested key; the top-level value is JSON null,
+as is an empty reason's top-level value. Supplied whitespace is preserved.
+Restricted customer and operator cases cover present, empty and absent input
+and matching replay; the operator case also checks changed-reason conflict. An exact-source event witness
+checks the same normalization. Existing tests remain unchanged.
+The source reconciliation, reachability audit and evidence stay in the private
+maintainer packet. The draft remains staged for a read; no native review or
+delivery is claimed.
+
+Self-retro: reconcile the full event payload as well as locks and ownership;
+a command fingerprint preserves identity, not the meaning of a reason.
+
+
+## Current combined ownership and reason proof
+
+All 24 pre-existing destination cases remain byte-identical. Five additions
+cover retained-owner selection, the characterized lookup, customer and operator
+reason persistence, and the characterized event expression. The complete suite
+passes 29 cases in each of default, two non-UTC and mixed sessions, including
+restricted-runtime event readback. The unchanged purchase-hold suite passes
+40 cases in each profile. The four-bound catalog passes 130 cases in both role
+modes; complete transfer passes 17; handover completes with 99 tables and its
+expected single fenced uncertain operation. The managed characterization passes
+three cases, including 56 pgTAP assertions; six composition cases pass.
+
+The five new cases also pass solo without coverage, with body durations from
+2.8 to 143.7 ms. Existing explicit transfer/composition timeouts and comments
+remain unchanged. Full API reports pass all 68 entries; typecheck passes five
+projects with zero unresolved edges; lint has zero errors and 33 existing
+warnings; ast-grep and both neutrality checks pass. The source-rule chain and
+26-path production-composition audit are retained privately, with eager barrel
+loading distinguished from unselected native branches.
+
+Policy and docs-update read the staged candidate and report 11 obligations,
+three awaiting the proposed scoped no-impact trailers in the later authorized
+DCO commit. They are not counted as green. CONTRIBUTING and control logic are
+unchanged. The delta remains staged; no commit, review, verify, push or PR.
+The public-entry predecessor remains untouched.
+
+Measured current inventories (historic pins and counts unchanged):
+
+| Profile | Current digest | Units | Replay writes |
+| --- | --- | ---: | ---: |
+| legacy | 49b0f960386c612c79c888634f63c59bcae17df0db4d43fa56252bef3bf8e6b1 | 95 | 0 |
+| bootstrap | 02be252bdef8b5dbb5053f77d37f058b98f857043cb57ba1875ed796c7cf647f | 99 | 0 |
+| separate | 9250799e79557d489f2ce617aa53bb2d6af8a22fc2d1a9e10536d7c849ee404a | 99 | 0 |
+| admin-managed | f47ee11eb5a78e01bd9cabb5f2cb63045e96fe005ad57f2a6c5fae5263b679b3 | 98 | 0 |
+| admin-operator | 3f4135031c7dcfb3b00238d3475e99ac68f60b9357cd7bdb81d3bfd68dd0c967 | 98 | 0 |
+
+
+Official Node v24.21.0 pack against the exact public-entry predecessor:
++12,175 B packed, +2,889 B code-gzip, +69,453 B unpacked and five files for the
+combined purchase-hold/destination bundle. Absolute totals: 2,454,062 B packed,
+1,957,647 B code, 11,544,987 B unpacked, 3,032 files; docs class 65,567 B.
+The two destination-body ports and reason documentation add 119 packed bytes
+and zero code-gzip over the earlier bundle measurement. SQL, manifest and README
+bytes in the extracted real tarball match the draft. No cap changes.
+
+Self-retro: align the complete staged candidate before policy, and prove event
+readback through the existing runtime permission as well as runtime writes.
+Both ports now have source-pinned and real-database evidence; final delivery
+still needs the read, signed commit, native reviews and authorized verification.

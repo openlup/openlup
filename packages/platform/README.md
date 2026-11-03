@@ -455,9 +455,10 @@ address export/erasure is unavailable. No saved address book is provided.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
-Full postal addresses, contact phone numbers and identifying reference strings persist. Use opaque references;
+Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
 there is no address export or erasure path. No saved address book is provided.
 The port's PostgreSQL routines are included in the native migration chain.
+Address-change events retain the optional command reason in their top-level and nested payloads.
 The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
 
 `./composition` exports the inert `createCommerceContribution` for the installed

@@ -410,3 +410,119 @@ it("reports the stored microsecond next-cycle VALUE through the real restricted 
  }
  console.info("destination-time-value", JSON.stringify(observations));
 });
+
+
+it("keeps a retained foreign client's newest parcel and contact revision untouched", async () => {
+ const a = await fixture(), b = await fixture();
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_catalog.pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ const bDocument = await port().read("shipment", b.shipment);
+ const revision = { schemaVersion: 1, source: `commerce-destination:${bDocument.destinationId}`, revision: 1 };
+ await owner.query("INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref) VALUES($1,$2,'warehouse-a')", [b.shipment, revision]);
+ await owner.query(`UPDATE public.commerce_orders SET
+  subscription_cycle_id=(SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1),
+  created_at=(SELECT created_at FROM public.commerce_orders WHERE id=$1)+interval '1 hour'
+  WHERE id=$2`, [a.order,b.order]);
+ const snapshot = async () => (await owner.query(`SELECT to_jsonb(o) order_row,to_jsonb(sh) parcel,
+  to_jsonb(binding) binding,to_jsonb(destination) destination,to_jsonb(context) context
+  FROM public.commerce_orders o JOIN public.fulfillment_shipments sh ON sh.order_id=o.id
+  JOIN public.commerce_destination_bindings binding ON binding.shipment_id=sh.id
+  JOIN public.commerce_destinations destination ON destination.id=binding.destination_id
+  JOIN public.fulfillment_dispatch_contexts context ON context.shipment_id=sh.id WHERE o.id=$1`, [b.order])).rows;
+ const before = await snapshot();
+ expect(before).toHaveLength(1);
+ expect(before[0].order_row.client_id).toBe(b.client);
+ const result = await change(a, `owner-scope-${randomUUID()}`);
+ expect(result).toMatchObject({ outcome: "applied", currentParcel: { outcome: "updated", orderId: a.order, shipmentId: a.shipment } });
+ expect(await snapshot()).toEqual(before);
+ expect(await port().read("shipment", b.shipment)).toEqual(bDocument);
+ expect((await port().read("order", b.order)).destinationId).toBe(bDocument.destinationId);
+ expect((await port().read("shipment", a.shipment)).destinationId).toBe(result.futureDestinationId);
+});
+
+// The exact characterized lookup and its private provenance are in the maintainer packet.
+it("pins and executes the characterized current-parcel ownership lookup", async () => {
+ const lookup = String.raw`          SELECT parcel_row.* INTO v_parcel
+            FROM public.commerce_fulfillment_orders AS parcel_row
+            JOIN public.commerce_orders AS order_row ON order_row.id = parcel_row.order_id
+           WHERE order_row.subscription_id = p_subscription_id
+             AND order_row.mode = 'subscription_cycle'
+             AND order_row.client_id = v_subject.id
+           ORDER BY order_row.created_at DESC, parcel_row.sequence_no DESC, parcel_row.id DESC
+           LIMIT 1
+           FOR UPDATE OF parcel_row;`;
+ expect(createHash("sha256").update(lookup).digest("hex")).toBe("04ddd8f33afc339df4362eff570ff70f8ca3be6d6c9f599b7114e697ba10bfa4");
+ const db = await owner.connect();
+ try {
+  await db.query("BEGIN");
+  await db.query("CREATE TEMP TABLE commerce_orders(id uuid,subscription_id uuid,client_id uuid,mode text,created_at timestamptz) ON COMMIT DROP");
+  await db.query("CREATE TEMP TABLE commerce_fulfillment_orders(id uuid,order_id uuid,sequence_no integer) ON COMMIT DROP");
+  await db.query(`CREATE FUNCTION pg_temp.g3_characterized_lookup(p_subscription_id uuid,p_client_id uuid) RETURNS uuid LANGUAGE plpgsql AS $$
+   DECLARE v_parcel record; v_subject record;
+   BEGIN SELECT p_client_id AS id INTO v_subject;
+   ${lookup.replaceAll("public.", "pg_temp.")}
+   RETURN v_parcel.id; END; $$`);
+  const sub = randomUUID(), a = randomUUID(), b = randomUUID(), first = randomUUID(), latest = randomUUID(), foreign = randomUUID();
+  await db.query(`INSERT INTO pg_temp.commerce_orders VALUES($1,$4,$5,'subscription_cycle',$7),($2,$4,$5,'subscription_cycle',$7),($3,$4,$6,'subscription_cycle',$7::timestamptz+interval '1 hour')`, [first,latest,foreign,sub,a,b,AT]);
+  await db.query("INSERT INTO pg_temp.commerce_fulfillment_orders VALUES($1,$1,1),($2,$2,2),($3,$3,3)", [first,latest,foreign]);
+  expect((await db.query("SELECT pg_temp.g3_characterized_lookup($1,$2) id", [sub,a])).rows).toEqual([{ id: latest }]);
+  expect((await db.query("SELECT pg_temp.g3_characterized_lookup($1,$2) id", [sub,b])).rows).toEqual([{ id: foreign }]);
+ } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+
+it.each(["customer", "operator"] as const)("retains the optional reason in the %s event without inventing one", async (kind) => {
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_catalog.pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ for (const reason of ["  Synthetic correction reason  ", "", undefined]) {
+  const f = await fixture(), key = `reason-${randomUUID()}`;
+  const payload = { newAddress: address("Reason recipient"), ...(reason === undefined ? {} : { reason }) };
+  const invoke = () => kind === "operator" ? call(runtime, "customer_support_change_shipping_destination", [f.operator, f.subscription, payload, 1, key, AT])
+   : port().changeShippingAddress({ actorId: f.principal, clientId: f.client, idempotencyKey: key, subscriptionId: f.subscription,
+    newAddress: payload.newAddress, expectedVersion: 1, ...(reason === undefined ? {} : { reason }), now: AT });
+  const result = await invoke();
+  expect(result.outcome).toBe(kind === "operator" ? "applied" : "applied_from_next_parcel");
+  const readEvent = async () => (await runtime.query("SELECT payload FROM public.subscription_events WHERE subscription_id=$1", [f.subscription])).rows;
+  const events = await readEvent();
+  expect(events).toHaveLength(1);
+  // The characterized top-level NULLIF yields JSON null for missing/empty reason;
+  // the nested original payload preserves a supplied empty string and omits an absent key.
+  expect(events[0].payload.reason).toBe(reason === undefined || reason === "" ? null : reason);
+  expect(events[0].payload.payload).toEqual({ shippingAddressId: result.futureDestinationId, ...(reason === undefined ? {} : { reason }) });
+  await invoke();
+  expect(await readEvent()).toEqual(events);
+  if (kind === "operator") await expect(call(runtime, "customer_support_change_shipping_destination", [f.operator, f.subscription,
+   { ...payload, reason: "Changed reason" }, 1, key, AT])).rejects.toMatchObject({ code: "23505" });
+  expect(await readEvent()).toEqual(events);
+ }
+});
+
+// Exact event expression; its source identity and private citation are in the maintainer packet.
+it("pins the characterized optional-reason event expression", async () => {
+ const expression = String.raw`    jsonb_build_object(
+      'action', p_action,
+      'payload', CASE
+        WHEN p_action IN ('update_bundle', 'resize_bundle') THEN
+          ((((((v_payload - 'repricedLines') - 'coreLines') - 'recipeLines') - 'addonLines') - 'expectedTemplateVersion') - 'acceptedQuoteHash')
+        ELSE
+          (((((v_payload - 'repricedLines') - 'recipeLines') - 'addonLines') - 'expectedTemplateVersion') - 'acceptedQuoteHash')
+      END,
+      'quotePreviewId', v_quote_preview_id,
+      'reason', v_reason,
+      'priceAgreementPolicy', jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')
+    )`;
+ expect(createHash("sha256").update(expression).digest("hex")).toBe("62c0583f570f61cab766281131fa9d19e7ee097f80f6cd03b311c44e32f18bad");
+ const db = await owner.connect();
+ try {
+  await db.query("BEGIN");
+  await db.query(`CREATE FUNCTION pg_temp.g3_characterized_event(v_payload jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+   DECLARE p_action text := 'change_shipping_address'; v_reason text := NULLIF(v_payload->>'reason',''); v_quote_preview_id uuid;
+   BEGIN RETURN ${expression}; END; $$`);
+  for (const reason of ["  Synthetic correction reason  ", "", undefined]) {
+   const input = { shippingAddressId: randomUUID(), ...(reason === undefined ? {} : { reason }) };
+   const event = (await db.query("SELECT pg_temp.g3_characterized_event($1) result", [input])).rows[0].result;
+   expect(event.reason).toBe(reason === undefined || reason === "" ? null : reason);
+   expect(event.payload).toEqual(input);
+  }
+ } finally { await db.query("ROLLBACK"); db.release(); }
+});

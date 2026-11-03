@@ -3250,7 +3250,7 @@
     },
     {
       "path": "db/platform/migrations/20261101225000_commerce_destinations.sql",
-      "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6",
+      "sha256": "abee0c74e5055223f6e39d1b52e5ae9483bb433a47a1aea057f2305b9cdd63c8",
       "functions": [
         {
           "signature": "public.commerce_register_order_destination(text,uuid,jsonb,timestamptz)",
@@ -3265,7 +3265,7 @@
         {
           "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "4e8c26611e79cde0b1d76718fef6966d4c8bf868db4b3e2ed7d7ed7eb79b6f08"
+          "afterSha256": "f7ac65daae911830b0fd1e2f8dd36c38ad0ee4b2bae25ed0407b60d5c17e7362"
         },
         {
           "signature": "public.customer_support_change_shipping_destination(uuid,uuid,jsonb,integer,text,timestamptz)",
