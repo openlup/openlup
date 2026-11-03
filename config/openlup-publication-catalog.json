@@ -1722,6 +1722,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-reg.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-up.md",
       "class": "public-output"
     },
@@ -6147,6 +6151,10 @@
     },
     {
       "path": "packages/platform/src/identity/postgresAccountLinkStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresContactClientRegistrar.ts",
       "class": "public-output"
     },
     {
@@ -27807,6 +27815,10 @@
     },
     {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/contactClientRegistrar.test.ts",
       "class": "public-output"
     },
     {

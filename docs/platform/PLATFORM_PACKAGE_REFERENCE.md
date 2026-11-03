@@ -183,6 +183,14 @@ optional `pg` peer. Identity's public surface is unchanged.
 
 ## Identity import candidate
 
+`createPostgresContactClientRegistrar` adds host-only guest contact resolution
+through the existing identity entry. It inserts only unlinked contacts and
+refreshes optional defaults and journey facts only while a contact is unlinked;
+linked rows remain byte-identical. The result's `linked` and `created` fields must
+never reach a browser. The host owns checkout admission, requester quotas and
+retention. See [guest contact resolution](IDENTITY.md#guest-checkout-contact-resolution)
+for typed refusals, exact email matching and subject-level erasure behaviour.
+
 The OIDC API adds `createOidcIdentityVerifier`,
 `deriveOidcPrincipalId`, `createPostgresAccountLinkStore` and
 `identityOidcReadiness` from `@openlup/platform/identity`, which also exports
