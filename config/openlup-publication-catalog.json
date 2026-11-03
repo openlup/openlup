@@ -1610,6 +1610,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-b9.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-forward-class.md",
       "class": "public-output"
     },
@@ -27510,6 +27514,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/storeJourney.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/identity/acceptance.conformance.ts",
       "class": "public-output"
     },
@@ -28163,6 +28171,14 @@
     },
     {
       "path": "tests/postgres/starterGraduationCadence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/storeJourneyAcceptance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/storeJourneyTransfer.test.ts",
       "class": "public-output"
     },
     {
