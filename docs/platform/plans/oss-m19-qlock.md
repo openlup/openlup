@@ -1,7 +1,7 @@
 # Qualified runtime lock and conflict completion
 
-Status: checkpoint 2 of 3 (approval pin). The reader preparation lands before
-it, and the active SQL follows separately.
+Status: checkpoint 3 of 3 (active SQL). The reader preparation and the approval
+pin land before it.
 
 ## Outcome and boundary
 
@@ -79,6 +79,51 @@ landed checkpoints, each on actual main before the next.
      - access for every other role is unchanged;
      - legacy and managed stay untouched.
    - Existing pinned qualified-runtime limits become positive proofs.
+
+## Checkpoint 3 acceptance and proof
+
+The active file is byte-identical to the approved fixture, and its packaged
+copy and projection are regenerated. Both qualified plans append it last. The
+four qualified inventories are measured again on PostgreSQL 16:
+
+| Plan | Installer shape | Digest prefix |
+|---|---|---|
+| qualified | bootstrap | `e0aad7ba` |
+| qualified | separate | `b1eb1a00` |
+| restricted | installer-managed | `fc6e74c8` |
+| restricted | operator-provisioned | `a6eb09ec` |
+
+The composition, restore and upgrade witnesses pin these values and the new unit
+counts: qualified 98, restricted 97, legacy unchanged.
+
+The [witness](../../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
+runs on `qualified-v2` and on operator-provisioned `qualified-admin`. Each run
+uses an actual restricted runtime login. It proves:
+
+- **Row security and access.** It is bound on the three locked tables with
+  exactly the expected policies, table grants and column grants. Claim events
+  stay without row security and gain column `SELECT (claim_id, event_key)` only.
+- **Roles.** It enumerates every non-predefined role reaching each target: the
+  owner, a superuser, the runtime group and the runtime login. anon,
+  authenticated and the restore login hold nothing.
+- **Lifecycle commands.** Cancel, pause, resume and slide apply through the
+  customer command store; pause, resume and slide through the operator support
+  wrapper. Each records a receipt.
+- **Recovery issue.** It returns `issued`, then `replayed`, with one receipt.
+  Receipt updates refuse.
+- **Platform control.** Set and heartbeat record, then replay. Receipt updates
+  refuse.
+- **Claim settlement.** Settling an order with a promotion claim records
+  exactly one `redeemed:paid` event, and repeated or later statuses add none.
+  A conflicting append does nothing. Reading other columns, row locks, updates
+  and deletes on events all refuse.
+- **Term lines.** Every actual update on term lines refuses, including
+  `SET col = col` and `ON CONFLICT DO UPDATE`. Reads, row locks, inserts and
+  deletes keep working.
+- **Guard.** A second application of the unit refuses through its guard.
+
+The legacy and managed chains are untouched: the legacy plan and its inventory
+are unchanged, and no `supabase/` path changes.
 
 ## Checkpoint 2 acceptance and proof
 

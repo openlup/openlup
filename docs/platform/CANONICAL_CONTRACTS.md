@@ -658,9 +658,10 @@ modes; this does not qualify a hosted installation or release.
 A seventeenth exact-byte approval follows as one append. It binds the shared
 lock and conflict completion tail that both qualified plans will select after
 their issued tails, and all sixteen earlier rows stay fixed. The approval adds
-no active SQL, manifest row, inventory or package change. The restricted
-runtime keeps refusing the affected native writers until the identical SQL is
-introduced in its own later change.
+no active SQL, manifest row, inventory or package change. The identical
+active SQL follows as its own change. It is selected last by the qualified plan
+(98 units) and the restricted plan (97 units), with four newly measured
+inventories; the legacy plan is unchanged.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2

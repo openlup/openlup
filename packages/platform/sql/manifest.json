@@ -766,14 +766,18 @@
         {
           "file": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
           "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34"
+        },
+        {
+          "file": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+          "sha256": "0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "70a6cf41fd0c24ecb642ef36b457411f9ab46b3d721982032bd77d8a8d05afca"
+          "withRestore": "e0aad7ba93c6696d135fb0601bec09c0df97ddbbf63983a2910d1a4c1cfaccc8"
         },
         "separateMigrator": {
-          "withRestore": "7c51eda0ec825e993283ba7d73463cea8e84e097d28543755a2e6bb2b8044dc3"
+          "withRestore": "b1eb1a00db7ced267a2bcd461c93578ec33bbf64fca7774d35791d5c129f5729"
         }
       }
     },
@@ -1162,11 +1166,15 @@
         {
           "file": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
           "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34"
+        },
+        {
+          "file": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+          "sha256": "0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "a4644feaaeabd7f0629aa2000ac5f587141b15f0ca7fd88a01991ca113469b7b",
-        "operatorProvisioned": "0ab6e7ae6125e765a757a9808ef93df81456ab032226e92222fd02e2b63f4899"
+        "installerManaged": "fc6e74c8f14672129a4004696f665818f8778a4f59df4dafe0a6734e48316134",
+        "operatorProvisioned": "a6eb09ec76b4129cd28f9f61c931e651ec46ed1a8465886babe4a2578cfd7aef"
       }
     }
   },
@@ -1670,6 +1678,11 @@
       "file": "q2_20261029100000_owner_path_name_resolution.sql",
       "source": "db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
       "sha256": "33b0bc85b0c0fe55b2beb08fb121e4fdc891f14f9e1ab276563ffa72a88bb7d3"
+    },
+    {
+      "file": "q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+      "source": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+      "sha256": "0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7"
     },
     {
       "file": "qa_00000000000000_platform_baseline.sql",

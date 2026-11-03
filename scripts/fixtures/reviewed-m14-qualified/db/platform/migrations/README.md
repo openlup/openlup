@@ -40,8 +40,8 @@ the exact approved bytes at the seventeenth position: one shared tail for both
 qualified plans. It lets the restricted runtime take three
 existing row locks without admitting an actual update, and read only the two
 arbiter columns that an existing conflict target requires. Reader support
-and this approval landed separately; the identical active SQL follows as its
-own change.
+and this approval landed separately; both qualified plans now select the
+byte-identical active SQL.
 
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 explains generation selection and ledger identity. These fixtures do not prove
