@@ -35,6 +35,13 @@ will select the `qa_` baseline and four `qb_` replacements, then reuse the
 issued completion tail without the qualified owner-path forward. See the
 [restricted-bootstrap task](../../../../../../docs/platform/plans/oss-m14-restricted-bootstrap.md).
 
+The `q2_20261103200000_runtime_term_line_lock.sql` fixture is an inert,
+unapproved candidate for the reserved seventeenth position: one shared tail
+for both qualified plans that lets the restricted runtime take the existing
+renewal term-line row lock without admitting an actual update. Reader support
+lands first; its exact approval and the identical active SQL follow as separate
+changes.
+
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 explains generation selection and ledger identity. These fixtures do not prove
 installation, runtime completeness, managed-host qualification or activation.

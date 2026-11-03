@@ -784,7 +784,9 @@ separately from historical grant spellings or inherited CLI defaults.
 
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
 for four bootstrap units, an optional retained-import unit, the runtime
-completion tail and the owner-path forward. Even expand-only
+completion tail and the owner-path forward. The reader also reserves position
+17 for the shared term-line lock tail described under
+[Compatibility lifecycle](#compatibility-lifecycle). Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
@@ -1778,6 +1780,27 @@ selected catalogue through the existing executor and ledger; this exact grant
 completion does not authorize owner fallback, legacy relabelling or a new role mode.
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
+
+Both qualified generations currently refuse every native subscription lifecycle
+command on the restricted runtime with `42501`. The command apply locks the
+renewal term lines. The issued runtime grants on that table include no `UPDATE`
+column, and the table has no row security. One shared completion tail closes
+this gap.
+
+Reader support reserves the tail as the seventeenth qualified identity. Both
+qualified plans select it once, after their issued tails and at the same
+position among shared units, so later shared forwards still append identically.
+The tail does the following:
+
+- enables row security on that table only;
+- keeps the existing runtime `SELECT`, `INSERT` and `DELETE` through policies;
+- admits row locks through an `UPDATE` policy whose check refuses every actual
+  update;
+- grants `UPDATE` on the timestamp column only.
+
+Its exact bytes stay an inert fixture until a separate approval lands. The SQL,
+both plans' rows and their measured inventories follow in a later change. Until
+then the issued plans, approvals and inventories are unchanged.
 
 The separate `qualified-admin` generation starts with its issued 91-unit prefix
 and appends current shared forwards. It is not an upgrade, relabel or migration-history conversion from

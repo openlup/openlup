@@ -17,6 +17,7 @@ import {
   QUALIFIED_RUNTIME_FILE,
   QUALIFIED_RUNTIME_COMPLETION_FILE,
   QUALIFIED_OWNER_PATH_FILE,
+  QUALIFIED_TERM_LINE_LOCK_FILE,
   readPlatformMigrations,
   selectPlatformMigrationManifest,
   sha256,
@@ -243,6 +244,67 @@ describe("canonical qualified migration selection", () => {
     const legacy = structuredClone(next);
     legacy.forward.push(entry);
     expect(evaluatePlatformMigrationManifest({ manifest: legacy, migrations }).length).toBeGreaterThan(0);
+  });
+
+  it("admits the shared term-line lock only as one late tail of both qualified plans", () => {
+    if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
+    const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_TERM_LINE_LOCK_FILE}`, "utf8");
+    const lock = { file: QUALIFIED_TERM_LINE_LOCK_FILE, sha256: sha256(content) };
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations, { file: lock.file, content }];
+    expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
+    const next = structuredClone(current);
+    next.qualified.forward.push(lock);
+    next.qualifiedAdmin.forward.push(lock);
+    // Structural inputs retain current inventories; they are not future live inventory evidence.
+    expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(current, next, [lock.file])).toEqual([]);
+    expect(selectPlatformMigrationManifest(next, "legacy")).toEqual(selectPlatformMigrationManifest(current, "legacy"));
+    for (const migrationIsBootstrap of [true, false]) {
+      const selected = selectPlatformMigrationManifest(next, "qualified-v2", { migrationIsBootstrap, hasRestore: true });
+      expect(selected.forward.at(-1)).toEqual(lock);
+      expect(selected.forward.slice(0, -1)).toEqual(current.qualified.forward);
+    }
+    for (const roleMode of ["installer-managed", "operator-provisioned"] as const) {
+      const selected = selectPlatformMigrationManifest(next, "qualified-admin", { roleMode });
+      expect(selected.forward.at(-1)).toEqual(lock);
+      expect(selected.forward.slice(0, -1)).toEqual(current.qualifiedAdmin.forward);
+    }
+    // A later shared forward appends after the lock in every plan.
+    const shared = { file: "db/platform/migrations/20991231000000_later_shared.sql", content: "SELECT 1;\n" };
+    const later = structuredClone(next);
+    for (const plan of [later, later.qualified, later.qualifiedAdmin]) plan.forward.push({ file: shared.file, sha256: sha256(shared.content) });
+    expect(evaluatePlatformMigrationManifest({ manifest: later, migrations: [...migrations, shared] })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(next, later, [shared.file])).toEqual([]);
+    const refusals: [string, (value: typeof next) => void][] = [
+      ["selected by both qualified plans", value => { value.qualifiedAdmin.forward.pop(); }],
+      ["selected by both qualified plans", value => { value.qualified.forward.pop(); }],
+      ["selected by both qualified plans", value => { const entry = value.qualified.forward.pop()!; value.qualified.forward.splice(value.qualified.forward.length - 1, 0, entry); }],
+      ["must follow every issued qualified tail", value => {
+        value.qualified.forward.pop();
+        value.qualified.forward.splice(value.qualified.forward.findIndex(({ file }) => file === QUALIFIED_OWNER_PATH_FILE), 0, lock);
+      }],
+      ["must follow every issued qualified tail", value => {
+        value.qualifiedAdmin.forward.pop();
+        value.qualifiedAdmin.forward.splice(value.qualifiedAdmin.forward.findIndex(({ file }) => file === QUALIFIED_RUNTIME_COMPLETION_FILE), 0, lock);
+      }],
+      ["legacy migration plan cannot select a qualified identity", value => { value.forward.push(lock); }],
+      ["duplicate migration filename", value => { value.qualified.forward.push(lock); }],
+      [`SHA-256 mismatch for ${lock.file}`, value => { value.qualified.forward.at(-1)!.sha256 = sha256(`${content} `); value.qualifiedAdmin.forward.at(-1)!.sha256 = sha256(`${content} `); }],
+    ];
+    for (const [message, change] of refusals) {
+      const changed = structuredClone(next);
+      change(changed);
+      expect(evaluatePlatformMigrationManifest({ manifest: changed, migrations }).some(error => error.includes(message)), message).toBe(true);
+    }
+    const inserted = structuredClone(next);
+    inserted.qualified.forward.pop();
+    inserted.qualified.forward.splice(inserted.qualified.forward.length - 1, 0, lock);
+    expect(evaluatePlatformMigrationManifestHistory(current, inserted, [lock.file])).toContain("qualified migration manifest must preserve the previous prefix");
+    const withoutAdmin = structuredClone(issued);
+    withoutAdmin.qualified.forward.push(lock);
+    const issuedQualified = issuedMigrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
+    expect(evaluatePlatformMigrationManifest({ manifest: withoutAdmin, migrations: [...issuedQualified, { file: lock.file, content }] }))
+      .toContain("the term-line lock tail requires both qualified plans");
   });
 
   it("rejects omitted/reordered shared units, unqualified bootstrap reuse and early sealing", () => {
