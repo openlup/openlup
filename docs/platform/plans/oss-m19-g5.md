@@ -248,7 +248,7 @@ was staged and unsigned pending that read; its current cycle is recorded below.
 Canonical verification has not run.
 
 
-## Current review state
+## Historical review state (2026-11-01)
 
 The accepted package-entry repair was committed with its exact read tree. This
 is repair cycle 1 of 3, including the current run's factual record update; the
@@ -262,3 +262,35 @@ This record-only correction adds the assigned follow-on owner and current cycle
 accounting without changing source, API, budgets, controls or qualification.
 Self-retro: keep repair accounting explicit across a paused read and preserve
 the original exact read commit before recording later factual ownership.
+
+
+## Integration refresh (2026-11-03)
+
+The lead resumed this row for a forced merge onto main `46c3e8b2`, a fresh
+full proof and two independent full reviews. Earlier review evidence expired;
+no canonical verification or submission is authorized in this run. Current
+compensation scope: native abandoned-order binding remains a later follow-on,
+not G5 acceptance. Earlier references to G4 ownership describe prior planning.
+
+The DCO-signed merge retains main's ordered shared lists and adds only G5's
+entries. All conflicts and resolutions:
+
+| File | Conflicted hunks | Resolution |
+| --- | --- | --- |
+| Publication catalogue | Three disjoint path groups: task records, API snapshots, PostgreSQL tests | Union main's rows and G5's four path rows; retain main order |
+| Package boundary test | One nested-entry literal | Keep every main entry, add native checkout after commerce/server |
+| Changelog | One Unreleased note insertion | Keep main byte-for-byte; move G5 note verbatim to a fragment |
+
+The allowed changelog migration is a separate DCO-signed commit. The source,
+API snapshot, export values and cold-consumer entry are unchanged from G5's
+accepted source. Full own-delta patch IDs differ because the shared-line union
+changes context and the changelog note moves; this is not claimed as Git's
+conflict-free mechanical case.
+
+Before full patch-id: `3f7bff6e2e981161462d838837a39e06e46304f4`.
+After merge full patch-id: `697a9992478346d20419a6485bda92d7c85f3d96`.
+Excluding task record/changelog: before `ca3292c11ac91f95bd093985e561264f8371d7a3`, after `0888b8deecd4277a9b8435580bf3b4f5623f31f3`.
+
+Evidence commands: `git diff <base> <head> | git patch-id --stable`; repeat
+against the merged main, with the explicit exclusions above. The complete
+conflict text and patches remain in local integration evidence.
