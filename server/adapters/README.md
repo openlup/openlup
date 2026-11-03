@@ -137,6 +137,18 @@ omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
 
+Native checkout draft receipts are included in this finite profile. Their order
+and client UUIDs are preserved by native restore, so the stored SQL fingerprint
+and response order reference remain consistent without a JavaScript rewrite.
+Creation timestamps retain PostgreSQL microseconds. Idempotency keys,
+fingerprints and response payloads are customer-linked order data: opaque host
+context is carried with the same privacy boundary as the order's quote/draft
+metadata, not scrubbed into nonpersonal telemetry. The existing owner-only
+capture/restore path and row/byte limits apply; no runtime or browser grant is
+added. A fresh-process checkout replay after restore returns the same order.
+The unchanged exact-set guard expects the receipt table even when empty; this
+change does not convert packets from an earlier finite profile.
+
 Ordinary outbox rows use this pinned owner insertion path while the generic
 compatible-row importer keeps its INSERT-trigger refusal. The exact
 `channel_purchase_outbox_guard` name is admitted under the existing qualified
@@ -152,6 +164,46 @@ lock, inserts catalog parents before line references, resolves a populated
 product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
+
+The native profile also carries purchase-renewal attachments, method-state
+history, current method state and their activation lineage. Attachments preserve pending duties and the
+exact purchase facts used for renewal snapshots: authorization and nullable payer
+account references, method/evidence references, acquisition reference, catalog
+lines/prices, template, cadence and stock source. Current method state carries
+health, activation-gap status and nullable method/evidence references. Event
+input carries the expected/new health and method/evidence references; the event
+key may also be supplied by the host. Activation lineage keeps order/customer/
+subscription IDs, cadence, activation state/times, replay keys and the payment
+fingerprint needed to correlate a future renewal or complete a pending duty.
+These are customer-linked payment metadata.
+Hosts should use opaque references because these fields can hold identifying
+strings. These tables have no privacy-lifecycle erasure path yet.
+The writer restricts the settlement channel to sandbox and bounds the fields;
+it does not enforce synthetic or nonpersonal reference contents. Transfer keeps
+those values unredacted for durable replay, inside the existing host-controlled
+snapshot and retention/erasure boundary. The same aggregate row and byte limits
+include these rows, and restore retains its 10,000-row/64-MiB cap. No credential
+or personal-data exclusion is inferred from the sandbox label. This native
+profile addition does not qualify managed-subscription lifecycle carry.
+
+The sandbox payment companions `payment_simulator_attempts` and
+`payment_simulator_observations` travel with payment truth, including
+`payment_truth_events.review_required_at`. Restore stages an attempt's state as
+`dispatched` and its observation pointer as null, inserts observations, then
+restores both captured values before the locked transaction's exact final census.
+This satisfies the immediate cyclic references and state CHECK without disabling
+constraints or exposing intermediate state. Inactive attempt history, unresolved
+fences and terminal review facts remain part of the restored store.
+
+These tables contain linkable order/attempt identities, opaque request/event keys,
+fingerprints, timestamps, synthetic method references and synthetic outcomes.
+The bounded writers expose no payer-contact or raw-payload column/argument;
+method facts accept exactly five named keys and sandbox-prefixed references.
+Reference/key strings are not a general personal-data scrubber: the host must not
+embed contact details or secrets in them. Treat these rows as personal data under
+the transfer's existing operator access, retention and erasure responsibilities.
+The existing 10,000-row and 64-MiB transfer ceilings include both tables; capture
+also checks the caller's lower row/byte limits. This adds no transfer budget.
 
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target

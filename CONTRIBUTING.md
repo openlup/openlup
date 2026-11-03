@@ -3178,6 +3178,13 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   a hot section → bind the answer to the change and keep it in the change's own
   commits.
 
+- 2026-11-03, M19 payment and renewal bundle: four review findings in a row
+  came from one cause, a time whose text served as identity (millisecond
+  truncation, `Z`/`.000`/offset spelling, session `TimeZone` rendering) →
+  classify each time use as a value compared by SQL cast or as an identity,
+  give every identity one canonical UTC microsecond spelling, and prove it by
+  running the real-database suites under two non-UTC session time zones.
+
 ### Merge queue
 
 **Workflow trust boundary.** Checking out `main` for the admission script does

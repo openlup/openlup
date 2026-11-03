@@ -1748,6 +1748,75 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+Native purchase renewal attachment uses
+`createPostgresPurchaseRenewalWriter` and `activateNativePurchaseWithRenewal` from
+`@openlup/platform/subscriptions`. Declare the purchase first, then supply trusted
+purchase-time template identity, cadence, line prices, stock source and sandbox
+authorization/method evidence. Registration saves those facts before activation;
+the unchanged captured-payment activation RPC records an attachment obligation
+in its own transaction. Completion separately writes terms, lines and actual
+method health atomically. The convenience wrapper requires independently
+committed queries, such as `Pool.query`, rather than an enclosing transaction.
+A failed facts or completion writer returns a pending attachment while paid
+service remains active. Hosts drain `writer.pending()` and retry `complete()`;
+rows without facts require resubmitting the original purchase facts. Changed
+accepted facts refuse; attachment replay does not reset a later method state.
+The runtime has no direct privileges on the attachment or method-event tables;
+fixed definer readers expose only pending identifiers/readiness and three
+completed snapshot fields. Method reads and cycle correlation use existing
+method/term and activation rows rather than opening either new table.
+
+Reference fields can contain identifying strings, including payer, method,
+evidence and acquisition references and host-supplied event keys. Hosts should
+use opaque references instead of personal text. The attachment and method-event
+tables and method-state references have no privacy-lifecycle erasure path yet;
+they retain the privacy lifecycle's current erasure-coverage limit.
+
+`createNativeRenewalCodec()` supplies the `native.purchase-renewal.v1` dialect.
+It derives schedule, client, cadence, native template version, lines, money and authorization from durable
+rows, template identity from saved purchase facts, and logical cycle correlation
+from the activation's paid cycle plus the paid-cycle count matched against the
+native counter. Incomplete history refuses freezing. Frozen original retry and
+external-attempt counters are zero; later retry counters belong to the retry
+obligation. Agreement policy is `lock_until_edit`, proration is `none`, and
+renewal `shippingAmountMinor` must be zero on this rail; nonzero shipping is
+refused. Destination references remain null pending native
+destination composition. The frozen wire includes the full nested port snapshots
+and the flat SQL fields, with no `_host` metadata. Its fingerprint is lowercase
+UTF-8 SHA-256 over JSON with object keys sorted by JavaScript string order and
+array order retained, excluding only the fingerprint field. The revision owns
+these bytes; existing database snapshots always take precedence over current
+terms and decode without host closure state. Schedule and authorization identity
+fields use UTC ISO strings with six fraction digits. The SQL millisecond cycle
+key truncates the fraction to three digits without rounding; it is a label,
+while row lookup and comparison retain the full microsecond instant.
+
+`createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` are explicit,
+no-key simulation, with `succeeded`, `declined` and `ambiguous` scenarios. They
+reuse the native operation's prepared/acknowledged attempt and record sandbox
+observations in the existing outcome ledger; no additional attempt store is
+created. ACK loss or ambiguity never permits redispatch. A trusted sandbox
+`observe()` call can supply a matching late terminal observation before the
+incumbent renewal transaction applies it. This is no PSP or real-mandate
+qualification, and real-provider method setup remains unavailable. Initial
+method health is healthy only with the registered sandbox method evidence;
+`writer.transitionMethod()` records later missing, pending, unchargeable or
+healthy states with immutable event identity and expected-state comparison.
+Legacy renewal terms without a method-state row retain their previous
+authorization behavior; only an explicit non-healthy state refuses renewal. New
+purchase completion always writes the method state atomically with its terms.
+A financial decline alone does not assert that a method disappeared. Recovery
+composition must exercise an actual unhealthy state, repair it with fresh method
+evidence, then authorize recovery; service stays active throughout.
+
+The [installed PostgreSQL witness](../../tests/postgres/subscriptionPurchaseRenewal.test.ts)
+uses restricted runtime connections, real tarballs, writer failure/rollback,
+database restart and fresh processes. Purchase composition inputs remain fixtures
+until the joined checkout/payment proof. Successful public-run terminal replay
+still encounters `subscription_renewal_claim_not_due`; direct frozen readback is
+durable, but that runner repair is separate. This witness does not
+qualify whole-day lateness extension.
+
 The hosted failure port now carries applied-transition attribution end to end:
 `applyFailedResult` returns optional nullable `paymentAttemptId` and
 `openDunningCase` requires nullable `failedPaymentAttemptId`. The shared leaf
