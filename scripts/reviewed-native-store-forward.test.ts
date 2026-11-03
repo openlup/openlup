@@ -568,6 +568,7 @@ describe("real Git introduction, release and co-location", () => {
     const named = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("catalog test and these named files:")[1]?.split("Code those files run")[0] ?? "";
     expect([...named.matchAll(/`([^`]+)`/gu)].map(match => match[1]).sort()).toEqual([...NATIVE_CATALOG_CONTROLS, "tests/setup/"].sort());
   });
+  // Measured 8.3 s alone and 12.1 s at load average 7 exceed Vitest's 5 s default.
   it("requires prior class approval, feature pins, unchanged controls and immutable issued SQL", () => {
     mkdirSync(".context/scratch", { recursive: true });
     const folder = mkdtempSync(resolve(".context/scratch/native-store-git-"));
@@ -608,7 +609,7 @@ describe("real Git introduction, release and co-location", () => {
       const initial = registry(); bind(initial, 0, text); put(registryPath, encode(initial)); put(path, text); const simultaneous = commit();
       expect(() => assertCoLocatedForwardApproval(folder, older, simultaneous)).toThrow(/approved separately/u);
     } finally { rmSync(folder, { recursive: true, force: true }); }
-  });
+  }, 30_000);
   it("preserves earlier classes' release approval when the new class is added", () => {
     mkdirSync(".context/scratch", { recursive: true }); const folder = mkdtempSync(resolve(".context/scratch/native-store-history-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
@@ -651,7 +652,7 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     const slots = production.nativeStoreForwardClass!.slots;
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards).toEqual([]);
+    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 2).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
     for (const index of [2, 3]) {
       expect(slots[index]!.replacedFunctions).toEqual([]);
