@@ -900,41 +900,29 @@ available after the preceding entry-only change.
 
 ## Donor mapping
 
-This mapping is deliberately incomplete: the current-source audit found an
-unaccepted observable difference and stopped before native review. It does not
-certify service parity or production reachability. Adopter source was read only
-with `git show origin/main:<path>`; no adopter file or ref was changed. The
-current managed chain has 673 migration files. Its active reserve/release/expiry
-carriers differ from the selected public donor snapshot used by this row.
+Each rule is ported from the reference adopter's behaviour; the rule-by-rule mapping and witnesses are in the maintainer packet.
 
-| Rule | Current donor file:line | Native mechanism and observable comparison | Characterization witness |
-| --- | --- | --- | --- |
-| Payment/quantity admission and no-effect key replay | `supabase/migrations/20261013173001_channel_exposure_inventory_admission.sql:106-129`, public delegate `:391-398` | G4 validates payment and quantity, persists command receipts, and replays without another hold. Changed-input conflict is an accepted stricter difference, not equality. | `purchaseReservationDonor.test.ts`: batch-fields/replay/terminal-state case and invalid-payment/late-batch-shortage case; these exercise the older explicit public donor files, not the current admission carrier. |
-| Batch rollback and item order | `supabase/migrations/20260710131002_no_cron_inventory_reservation_leases.sql:330-392` | One native transaction admits all item quantities then writes headers/lines/receipt; a late failure rolls everything back. | Same donor late-batch-shortage case; native late-receipt-fault rollback case. Latest-source pin still needs reconciliation. |
-| Release terminality and one stock restoration | `supabase/migrations/20261013173001_channel_exposure_inventory_admission.sql:565-609` | Native terminal status excludes live hold quantities from ATP; balance counters/movements are an accepted cut. Current donor admission refusal is missing, so full equality is NOT established. | Donor terminal-state case and competing-hold/release/expiry case; native mutual-owner release/expiry cases. |
-| Expiry order and one terminal transition | same donor file `:660-696` | Native elapsed purchase rows become expired in expiry/id order. Explicit finite time and bounded limit are in the accepted read. Current donor admission refusal is missing. | Donor elapsed-expiry and release/expiry-race cases; native expiry/restart and owner-isolation cases. |
-| Shared admission and isolation refusal — BLOCKER | same donor file `:10-21`, invoked by reserve `:131`, release `:583`, expiry `:672` | Donor rejects non-READ-COMMITTED isolation with 22023, rejects an occupied two-integer advisory lock `(846832106,1)` with `inventory_admission_busy` / 55P03, and bounds subsequent lock waits to 50 ms. G4 has no corresponding guard; it takes command-key and stock/reservation row locks. An independent transaction can hold that global key without locking native stock, so the donor refuses a fresh command while native admission is not fenced by it. This is an observable concurrency/refusal difference, not the accepted lot/location/movement cut. | NO current-source characterization witness. The three existing donor cases do not load this carrier or contend on this key. No production or SQL repair was made. |
-| Retained listing exposure — unresolved inherited boundary | same donor file `:36-67`, reserve calls budget `:181` | The ordinary public reserve passes zero own-exposure credit and the budget still subtracts retained listing exposure. Native ATP calls a zero-returning exposure placeholder (`20261024183000_inventory_available_to_promise.sql:6-8,43-48`), explicitly marked deferred. The G4 accepted read does not establish current-donor equality for nonzero exposure; prior deferral authority has not been reconciled under the new port-only rule. | Existing donor fit uses no retained listing exposure. No equality or new acceptance is claimed. |
-| Abandoned compensation | `supabase/migrations/20260912193000_inline_retry_exact_predecessor.sql:749-779` | Current donor first invokes its aggregate cancellation guard and sealed predecessor. Native wraps its unchanged aggregate routine and releases live purchase holds atomically; paid/uncertain truth protection and durable strict receipts were covered by the accepted G4 read. Full current-donor guard/sealed-body mapping is pending this stop. | Native cancel/release/fault/paid/restart/late-capture tests pass; the existing purchase donor file does not characterize the current cancellation chain. |
-| Nullable renewal owner | No managed equivalent of this native table alteration | Existing renewal ownership and accounting must remain identical. The purchase column, DROP NOT NULL and validated exclusive-owner CHECK are the accepted native representation under CD-M19-42 and its prior control. | Native upgrade with five pre-existing rows, convalidated checks and complete nullable-owner reader/writer cases. |
+The current mapping remains incomplete; this statement describes the required
+porting boundary, not a completed parity certification. The inventory
+admission-gate ruling is pending. No gate rework or native review has started.
+Listing exposure is deferred to a registered follow-up and is outside this
+bundle: native available-to-promise does not subtract retained listing exposure.
 
-Already accepted differences/mechanisms, not donor equivalence claims: no native
-lot/location/movement traceability; changed keyed input conflicts; elapsed initial
-expiry refuses; bounded native key/source/time/metadata/order-item validation;
-exclusive purchase/renewal owner representation; native receipt/permission
-narrowing; cancellation receipt namespace, atomic cancel/release, paid/uncertain
-truth and renewal-order protection. Their authority is the existing G4 accepted
-read (including its compensation and input-boundary sections), CD-M19-42 and the
-recorded two stricter-refusal ruling. They do not admit omission of the current
-shared admission gate. The inherited exposure placeholder requires an authority
-check; its source comment alone is not new acceptance.
+Accepted differences and limits:
 
-Stop: no new SQL, signatures, controls, API, test expectations or runtime behavior.
-The six earlier managed donor cases across G4/G3 remain legacy-fit evidence, not
-proof of the two current-source rule groups above. A new witness has not been
-invented around the missing rule. The supervisor/coordinator must resolve the
-current-donor boundary before implementation or review continues.
+- Lots, locations and stock movements are outside the native slice.
+- Changed input under the same key and an elapsed initial expiry refuse.
+- Native key, source, finite-time, metadata and order-item validation is bounded.
+- Purchase and renewal holds share the existing table with exclusive ownership;
+  the ownership constraint and foreign key are validated.
+- Durable receipts and narrowed privileges preserve native replay and access.
+- Abandonment compensation releases purchase holds atomically, protects paid or
+  uncertain orders and renewal orders, and uses its own receipt namespace.
+  Dedicated promotion cancellation remains unbound.
 
-At this stop, 158 focused files pass 4568 cases with no failures. All completed results are retained; the next file was stopped at its resource gate. No review session or canonical verify started.
+The completed 158 focused files and 4568 passing cases remain retained evidence;
+current-source parity and the remaining proofs are not certified. No SQL,
+signature, runtime behavior, test expectation or control changes in this repair.
 
-Self-retro: a public managed snapshot is not evidence that the adopter's current wrapper chain is unchanged. Resolve the current donor carriers before asserting port parity.
+Self-retro: keep donor citations and unfinished adoption tracing in the private
+maintainer packet; public task records retain only neutral outcomes and limits.

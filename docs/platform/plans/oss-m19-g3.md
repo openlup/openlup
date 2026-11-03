@@ -1336,87 +1336,33 @@ are included; the predecessor-only undefined-function interval ends here.
 
 ## Donor mapping
 
-The current-source mapping is incomplete because the combined change stopped on
-the purchase admission discrepancy. No zero-regression certification or native
-review is claimed. Current adopter SQL was read only through `git show
-origin/main:<path>`. The current operator carrier is
-`supabase/migrations/20260824130001_operator_change_shipping_address_and_machine_fence.sql:80-584`;
-customer address ownership is wrapped in
-`supabase/migrations/20260824180000_selfservice_shipping_address_ownership.sql:104-193`;
-the current outer self-service carrier is
-`supabase/migrations/20261028185108_selfservice_pause_closes_dunning.sql:208-354`.
-A complete alias/delegate and rule-by-rule mapping remains pending. These source
-anchors do not by themselves prove equivalence of the complete current chain.
+Each rule is ported from the reference adopter's behaviour; the rule-by-rule mapping and witnesses are in the maintainer packet.
 
-Existing `commerceDestinationsDonor.test.ts` runs the explicit managed operator
-address witness (39 pgTAP assertions), the self-service address witness (17), and
-one additional dunning/address-exemption, locked-cycle, event-only-replay and
-unchanged-cadence/date/version case. The files are read from the selected public
-managed snapshot. They are not yet pinned to all current adopter delegates.
-Native registration/read, strict replay, expected version, audit/outbox,
-operator recovery and real frozen-parcel race cases pass; that is native evidence,
-not a substitute for the requested current donor mapping.
+The current mapping and production reachability assessment remain incomplete.
+No zero-regression certification or native review is claimed. The combined
+change remains on hold for the inventory admission-gate ruling. Listing exposure
+is deferred to a registered follow-up outside this bundle; native stock
+accounting does not subtract retained listing exposure.
 
-No-donor-equivalent items already accepted: new-address-only storage instead of
-the saved address book (D2/N5); immutable first order registration, scoped reader
-and shipment materialization in the accepted G3 read; strict customer keyed-input
-comparison instead of donor event-only replay (accepted G3 read); dispatch-owned
-current parcel/order always skipped even when locally created/packed/label_pending
-(CD-M19-64); named `applied_from_next_parcel` result and additive native operator
-union/decoder; recovery reports partial with the nested named outcome rather
-than completed (accepted read CD-M19-74/-75 and the lead's operator-outcome and
-recovery rulings). These are explicit differences/mechanisms, not full-parity
-claims. They preserve future-only applicability, never move a cycle and never
-confirm an undelivered replacement. Confirmation mail belongs to the following
-communication binding. A new unsupported difference is not authorized here.
+Accepted differences and limits:
 
-### Production adopter reachability — pending
+- Only a new address is accepted; a saved address book is outside this change.
+- First order registration is immutable; destination reads are scoped and
+  shipments receive their own destination binding.
+- Changed customer input under an existing key refuses rather than replaying
+  from an event alone.
+- Dispatch-owned orders and parcels keep the frozen destination, including when
+  local shipment status is created, packed or label_pending. The subscription's
+  future address changes and the response names `applied_from_next_parcel`.
+- The additive operator outcome and recovery result retain next-parcel
+  applicability; recovery reports partial rather than completed.
+- Address changes do not move a cycle or confirm an undelivered replacement.
+  Confirmation mail belongs to the following communication binding.
 
-The adopter package manifest pins core, outbox and platform to npm 0.36.0 and has
-no workspaces. Source was read with `git show origin/main:package.json`. This
-establishes installed-version ownership, not future-adoption compatibility.
-The package paths below are the exact union of stack-base-to-HEAD and
-main-to-HEAD paths. Runtime composition/import tracing is unfinished because the
-new admission mismatch requires a stop. In particular, no claim that all
-account-support changes are unreachable or behavior-identical is made merely
-because a new outcome is additive. That requires tracing the real managed
-producer and its callers, including the recovery branch and transitive API.
+The private maintainer packet retains the complete pending package-path
+inventory. An additive result type or installed-version pin does not establish
+production reachability or service parity. The public-entry predecessor is
+untouched.
 
-| Package path | Stack delta | Main delta | Reachability evidence at stop |
-| --- | --- | --- | --- |
-| `packages/platform/README.md` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/api/account-support-contracts.api.md` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/api/account-support-postgres.api.md` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/api/account-support.api.md` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/api/commerce-destinations.api.md` | no | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/api/inventory.api.md` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| packages/platform/changes/native-destinations.md | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| packages/platform/changes/native-purchase-holds.md | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/package.json` | no | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/release-gates.json` | no | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/sql/20261101224000_new_purchase_inventory_reservations.sql` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/sql/20261101225000_commerce_destinations.sql` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/sql/manifest.json` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/account-support/contracts/operator.ts` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/account-support/operatorAuthority.ts` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/account-support/operatorRecovery.ts` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/account-support/postgresOperatorAuthority.ts` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/commerce/server/destinations/index.ts` | no | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/inventory/index.ts` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/src/inventory/purchaseReservation.ts` | yes | yes | Not established; current-source import/composition tracing stopped. |
-| `packages/platform/test/account-support/operatorAuthority.test.ts` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/test/account-support/operatorRecovery.test.ts` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/test/account-support/postgresOperatorAuthority.test.ts` | yes | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/test/commerce/destinationPort.test.ts` | no | yes | Non-executable metadata/test; production composition assessment still pending. |
-| `packages/platform/test/packageBoundary.test.ts` | no | yes | Non-executable metadata/test; production composition assessment still pending. |
-
-The table is an explicit incomplete inventory, not the required final three-way
-classification. Existing managed route/import reads are retained in ignored
-evidence. The public-entry predecessor is untouched. Before prepare, complete
-this mapping and classify every path as behavior-identical, unreachable or off by
-default using production composition evidence; do not infer safety from version
-pins alone.
-
-Self-retro: transitive public types and their managed producers need explicit
-reachability evidence; an additive native union alone does not certify adopter
-service behavior.
+Self-retro: public records can state the porting boundary and limits without
+exposing the reference adopter's source structure.
