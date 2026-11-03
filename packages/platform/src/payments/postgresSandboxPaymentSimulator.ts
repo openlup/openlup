@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import { paymentPayloadFingerprint } from "./paymentTruth.js";
 import { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
 import { createVerifiedPaymentIngress } from "./verifiedIngress.js";
@@ -5,7 +6,12 @@ import type { SandboxPaymentAttempt, SandboxPaymentSimulator, SandboxPaymentSimu
 import type { VerifiedPaymentEvidence } from "./contracts/evidence.js";
 
 interface Executor { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }
-const instant = (value: unknown): string => (value instanceof Date ? value : new Date(String(value))).toISOString();
+function attemptTimes<T extends SandboxPaymentAttempt>(value: T): T {
+  return { ...value, dispatchedAt: nativeInstant(value.dispatchedAt),
+    methodFacts: { ...value.methodFacts, unattendedChargeAuthorizedAt: nativeInstant(value.methodFacts.unattendedChargeAuthorizedAt) },
+    latestObservation: value.latestObservation && { ...value.latestObservation,
+      occurredAt: nativeInstant(value.latestObservation.occurredAt), recordedAt: nativeInstant(value.latestObservation.recordedAt) } };
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Server-only no-key simulator. The host authorizes commands; durable observations are its verifier's source. */
 export function createPostgresSandboxPaymentSimulator(db: Executor, options: SandboxPaymentSimulatorOptions): SandboxPaymentSimulator {
@@ -13,7 +19,7 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
   async function call(sql: string, args: unknown[]) { return (await db.query(sql, args)).rows[0]?.response; }
   async function read(input: { settlementIntentId: string; attemptId?: string }) {
     const value = await call("SELECT public.payment_simulator_read_attempt($1::uuid,$2::uuid) AS response", [input.settlementIntentId, input.attemptId ?? null]);
-    return value == null ? null : value as SandboxPaymentAttempt;
+    return value == null ? null : attemptTimes(value as SandboxPaymentAttempt);
   }
   const ingress = createVerifiedPaymentIngress({ provider: "sandbox", verifyPort: {
     async verifyAndNormalize(input) {
@@ -28,14 +34,15 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
       const attempt = await read({ settlementIntentId: String(identity.settlementIntentId), attemptId: String(identity.attemptId) });
       let event = attempt?.latestObservation;
       // Replay the immutable accepted truth even after a later observation/attempt.
-      const accepted = (await db.query(`SELECT source_evidence,occurred_at,created_at FROM public.payment_truth_events
+      const accepted = (await db.query(`SELECT source_evidence,
+        to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at FROM public.payment_truth_events
         WHERE source_event_id=$1 AND settlement_intent_id=$2::uuid AND source_evidence->>'attemptRef'=$3`,
       [`sandbox:${identity.observationId}`, identity.settlementIntentId, identity.attemptId])).rows[0];
       if (accepted) {
         const evidence = accepted.source_evidence as Record<string, string>;
         event = { id: String(identity.observationId), eventKey: "", fingerprint: evidence.payloadFingerprint,
           outcome: evidence.observedStatus as NonNullable<typeof event>["outcome"],
-          occurredAt: evidence.observedAt, recordedAt: instant(accepted.created_at) };
+          occurredAt: nativeInstant(evidence.observedAt), recordedAt: nativeInstant(String(accepted.created_at)) };
       }
       if (!attempt || !event || event.id !== identity.observationId) return { kind: "refusal", reason: "malformed" };
       // Money is read from the existing intent, not a simulator request or browser return.
@@ -43,7 +50,7 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
       if (!money) return { kind: "refusal", reason: "malformed" };
       return {
         kind: "money", provider: "sandbox", providerEventId: `sandbox:${event.id}`, fingerprint: event.fingerprint,
-        providerOccurredAt: instant(event.occurredAt), providerPaymentRef: attempt.id, intentRef: attempt.settlementIntentId,
+        providerOccurredAt: nativeInstant(event.occurredAt), providerPaymentRef: attempt.id, intentRef: attempt.settlementIntentId,
         attemptRef: attempt.id, outcome: event.outcome === "captured" ? "succeeded" : event.outcome === "indeterminate" ? "pending" : "failed",
         money: { amountMinor: Number(money.amount_minor), currency: String(money.currency_code) },
         providerAuditPayload: { sandboxObservation: { ...event } },
@@ -54,12 +61,13 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
       const observed = event.rawPayload.sandboxObservation as SandboxPaymentAttempt["latestObservation"];
       if (!observed || !event.paymentIntentId || !event.paymentAttemptId) throw new Error("payment_simulator_observation_required");
       const outcome = observed.outcome === "expired" ? "refused" : observed.outcome;
+      const occurredAt = nativeInstant(observed.occurredAt);
       const evidence = { sourceKind: "accepted_event" as const, sourceReference: observed.id, observedStatus: observed.outcome,
-        observedAt: observed.occurredAt, payloadFingerprint: observed.fingerprint, attemptRef: event.paymentAttemptId };
+        observedAt: occurredAt, payloadFingerprint: observed.fingerprint, attemptRef: event.paymentAttemptId };
       const result = await truth.ingestEvent({
         sourceEventId: event.providerEventId, idempotencyKey: `sandbox:ingest:${observed.id}`,
         settlementIntentId: event.paymentIntentId, outcome, amountMinor: event.amountMinor!, currency: event.currency!,
-        occurredAt: observed.occurredAt,
+        occurredAt,
         failure: outcome === "refused" ? { classification: "unknown_refusal", reason: `sandbox_${observed.outcome}` } : null,
         evidence,
       }).catch((error: unknown) => {
@@ -68,21 +76,21 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
         throw error;
       });
       return { paymentEventId: result.event.id, paymentIntentId: event.paymentIntentId,
-        paymentAttemptId: event.paymentAttemptId, replayed: result.event.replayed, occurredAt: observed.occurredAt };
+        paymentAttemptId: event.paymentAttemptId, replayed: result.event.replayed, occurredAt };
     },
   } });
   return {
     ingress,
     async beginAttempt(input) {
-      return await call(`SELECT public.payment_simulator_begin_attempt($1,$2::uuid,$3,
+      return attemptTimes(await call(`SELECT public.payment_simulator_begin_attempt($1,$2::uuid,$3,
         CASE WHEN jsonb_typeof($4::jsonb->'unattendedChargeAuthorizedAt')='string'
           THEN jsonb_set($4::jsonb,'{unattendedChargeAuthorizedAt}',to_jsonb(($4::jsonb->>'unattendedChargeAuthorizedAt')::timestamptz))
           ELSE $4::jsonb END,$5::timestamptz) AS response`,
-        [input.idempotencyKey, input.settlementIntentId, input.requestFingerprint, JSON.stringify(input.methodFacts ?? {}), input.at]) as SandboxPaymentAttempt & { replayed: boolean };
+        [input.idempotencyKey, input.settlementIntentId, input.requestFingerprint, JSON.stringify(input.methodFacts ?? {}), input.at]) as SandboxPaymentAttempt & { replayed: boolean });
     },
     async recordObservation(input) {
       return await call("SELECT public.payment_simulator_record_observation($1::uuid,$2,$3,$4,$5::timestamptz) AS response",
-        [input.attemptId, input.idempotencyKey, paymentPayloadFingerprint(input), input.outcome, input.occurredAt]) as { id: string; replayed: boolean };
+        [input.attemptId, input.idempotencyKey, paymentPayloadFingerprint({ ...input, occurredAt: nativeInstant(input.occurredAt) }), input.outcome, input.occurredAt]) as { id: string; replayed: boolean };
     },
     readAttempt: read,
   };

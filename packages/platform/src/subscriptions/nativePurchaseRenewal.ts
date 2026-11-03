@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import { createHash } from "node:crypto";
 import type { RenewalLine } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -28,8 +29,8 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
     return subscriptionRecord((await executor.query(sql, values)).rows[0]?.response);
   }
   return {
-    register(orderId: string, facts: NativeRenewalPurchaseFacts) {
-      return response("SELECT public.subscription_register_renewal_purchase($1::uuid,$2::jsonb) AS response", [orderId, JSON.stringify(facts)]);
+    async register(orderId: string, facts: NativeRenewalPurchaseFacts) {
+      return response("SELECT public.subscription_register_renewal_purchase($1::uuid,$2::jsonb) AS response", [orderId, JSON.stringify({ ...facts, unattendedChargeAuthorizedAt: nativeInstant(facts.unattendedChargeAuthorizedAt) })]);
     },
     complete(orderId: string) {
       return response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);
@@ -72,6 +73,7 @@ export async function activateNativePurchaseWithRenewal(executor: SubscriptionQu
   const activation = subscriptionRecord((await executor.query(
     "SELECT public.subscription_activate_from_captured_payment($1::text,$2::uuid,$3::text) AS response",
     [input.idempotencyKey, input.orderId, fingerprint])).rows[0]?.response);
+  if (typeof activation.activatedAt === "string") activation.activatedAt = nativeInstant(activation.activatedAt);
   if (registrationConflict) throw registrationConflict;
   try {
     if (!registered) return { activation, renewalAttachment: "pending" as const };

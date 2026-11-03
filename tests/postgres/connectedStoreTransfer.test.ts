@@ -561,8 +561,15 @@ it("restores writer-produced renewal data and pending duties, then renews throug
   expect((await restore()).replayed).toBe(true);
   for (const table of ["subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states",
     "subscription_renewal_terms", "subscription_renewal_term_lines", "subscription_activations"] as const) {
-    const rows = (await target.owner.query(`SELECT to_jsonb(t)::text AS value FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
-    expect(rows).toEqual((await source.owner.query(`SELECT to_jsonb(t)::text AS value FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows);
+    const read = async (pool: Pool) => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN READ ONLY");
+        await client.query("SET LOCAL TimeZone='UTC'");
+        return (await client.query(`SELECT to_jsonb(t)::text AS value FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+      } finally { await client.query("ROLLBACK"); client.release(); }
+    };
+    expect(await read(target.owner)).toEqual(await read(source.owner));
   }
   for (const table of ["subscription_renewal_attachments", "subscription_method_state_events"]) {
     await expect(target.runtime.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });

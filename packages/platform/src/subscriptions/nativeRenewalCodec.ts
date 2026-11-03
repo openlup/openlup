@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { RenewalCycleCorrelation, RenewalFrozenSnapshot, RenewalLine, RenewalReadback, RenewalSchedule } from "./contracts/renewal.js";
@@ -51,8 +52,8 @@ function integer(value: unknown, min = 0): number {
   return number;
 }
 function instant(value: unknown): string {
-  // SQL projects UTC ISO text; preserve microseconds and the existing millisecond wire dialect.
-  return z.iso.datetime().parse(value).replace(/(\.\d{3})000Z$/, "$1Z");
+  // Identity fields have one UTC microsecond spelling.
+  return nativeInstant(z.string().parse(value));
 }
 function nullable(value: unknown): string | null { return value == null ? null : String(value); }
 function lines(value: unknown): RenewalLine[] {
@@ -77,14 +78,14 @@ function correlation(row: Record<string, unknown>): RenewalCycleCorrelation {
 }
 function body(s: RenewalFrozenSnapshot): Record<string, unknown> {
   return { contractVersion: CONTRACT, frozenRevision: s.frozenRevision,
-    subscriptionId: s.subscriptionId, clientId: s.clientId, scheduledAt: s.scheduledAt,
+    subscriptionId: s.subscriptionId, clientId: s.clientId, scheduledAt: instant(s.scheduledAt),
     cycleNumber: s.cycle.nativeRenewalCounter, cycle: s.cycle, retryAttempt: s.retryAttempt,
     externalAttemptSequence: s.externalAttemptSequence, templateSnapshot: s.templateSnapshot,
     pricingSnapshot: s.pricingSnapshot, orderSnapshot: s.orderSnapshot,
     lines: s.orderSnapshot.lines, currency: s.pricingSnapshot.currency, totalAmountMinor: s.pricingSnapshot.totalAmountMinor,
     stockSourceKey: s.stockSourceKey, settlementChannelKey: s.settlementChannelKey,
     authorizationRef: s.authorizationRef, payerAccountRef: s.payerAccountRef,
-    unattendedChargeAuthorizedAt: s.unattendedChargeAuthorizedAt };
+    unattendedChargeAuthorizedAt: instant(s.unattendedChargeAuthorizedAt) };
 }
 function fingerprint(s: RenewalFrozenSnapshot): string {
   return createHash("sha256").update(nativeRenewalCanonicalJson(body(s)), "utf8").digest("hex");
@@ -93,7 +94,10 @@ function fingerprint(s: RenewalFrozenSnapshot): string {
 export function createNativeRenewalCodec(): NativeRenewalCodec {
   const codec: NativeRenewalCodec = {
     due(row) {
-      const scheduledAt = instant(row.scheduled_at);
+      // This due carrier is a SQL VALUE, also consumed by injected legacy
+      // millisecond-label dialects. Strip only zero microseconds; native frozen
+      // IDENTITY fields below always use six digits.
+      const scheduledAt = instant(row.scheduled_at).replace(/(\.\d{3})000Z$/, "$1Z");
       return { subscriptionId: text(row, "subscription_id"), clientId: text(row, "client_id"),
         scheduledAt, scheduledInstant: Date.parse(scheduledAt), cadenceDays: integer(row.cadence_days, 1), cycle: correlation(row),
         currency: text(row, "currency_code"), stockSourceKey: text(row, "stock_source_key"),
@@ -109,7 +113,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
       const frozenLines = lines(row.lines);
       const total = frozenLines.reduce((sum, line) => sum + line.quantity * line.unitAmountMinor, 0);
       integer(total, 1);
-      const snapshot: RenewalFrozenSnapshot = { subscriptionId: due.subscriptionId, scheduledAt: due.scheduledAt,
+      const snapshot: RenewalFrozenSnapshot = { subscriptionId: due.subscriptionId, scheduledAt: instant(due.scheduledAt),
         scheduledInstant: due.scheduledInstant, contractVersion: CONTRACT,
         clientId: due.clientId, frozenRevision: REVISION, frozenFingerprint: "", cycle: due.cycle,
         retryAttempt: 0, externalAttemptSequence: 0,
@@ -148,7 +152,9 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     },
     readback(row) {
       const snapshot = codec.decode(subscriptionRecord(row.cycleSnapshot));
-      return { ...row, cycleSnapshot: snapshot, cycle: snapshot.cycle, scheduledAt: snapshot.scheduledAt,
+      const times = Object.fromEntries(["leaseExpiresAt", "externalAttemptAcknowledgedAt", "terminalAt"].map(key =>
+        [key, row[key] == null ? null : instant(row[key])]));
+      return { ...row, ...times, cycleSnapshot: snapshot, cycle: snapshot.cycle, scheduledAt: snapshot.scheduledAt,
         scheduledInstant: snapshot.scheduledInstant } as unknown as RenewalReadback;
     },
     identity(snapshot: RenewalSchedule) { return `subscription:${snapshot.subscriptionId}:cycle:${instant(snapshot.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`; },

@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import type {
   PaymentTruthPort,
   PaymentTruthReadback,
@@ -113,7 +114,7 @@ function readback(value: unknown): PaymentTruthReadback {
       state,
       outcome,
       ...(event.applicationStatus === "awaiting_evidence" || event.applicationStatus === "applied" || event.applicationStatus === "review_required"
-        ? { applicationStatus: event.applicationStatus, reviewRequiredAt: nullableString(event.reviewRequiredAt) } : {}),
+        ? { applicationStatus: event.applicationStatus, reviewRequiredAt: typeof event.reviewRequiredAt === "string" ? nativeInstant(event.reviewRequiredAt) : null } : {}),
       replayed: event.replayed,
     },
     effects: {

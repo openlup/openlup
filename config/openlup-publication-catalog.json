@@ -6738,6 +6738,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/nativeInstant.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/paymentAttemptSilenceWindow.ts",
       "class": "public-output"
     },
@@ -7503,6 +7507,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/lifecycleMessages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeInstant.ts",
       "class": "public-output"
     },
     {
@@ -9131,6 +9139,10 @@
     },
     {
       "path": "packages/platform/test/payments/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/nativeInstant.test.ts",
       "class": "public-output"
     },
     {

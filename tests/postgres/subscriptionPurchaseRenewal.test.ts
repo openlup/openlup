@@ -129,6 +129,35 @@ async function deps(subscriptionId: string, scenario: "succeeded" | "declined" |
   return { input, due, codec, rail, execute };
 }
 
+it("replays purchase time facts and freezes equivalent instants with one identity spelling", async () => {
+  const p = await purchase(), writer = api.createPostgresPurchaseRenewalWriter(executor);
+  const preciseFacts = { ...facts, unattendedChargeAuthorizedAt: "2026-09-01T12:00:00.123456Z" };
+  await writer.register(p.orderId, preciseFacts);
+  expect(await writer.register(p.orderId, { ...preciseFacts, unattendedChargeAuthorizedAt: "2026-09-01T14:00:00.123456+02:00" }))
+    .toMatchObject({ replayed: true });
+  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...p, facts: preciseFacts });
+  const d = await deps(String(activated.activation.subscriptionId), "succeeded");
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  const spelling = { ...snapshot, scheduledAt: "2026-09-29T14:00:00.000000+02:00",
+    unattendedChargeAuthorizedAt: "2026-09-01T14:00:00.123456+02:00" };
+  expect(d.codec.fingerprint(spelling)).toBe(d.codec.fingerprint(snapshot));
+  expect(d.codec.identity(spelling)).toBe(d.codec.identity(snapshot));
+  expect(d.input.policy.identityKey({ ...d.due, scheduledAt: spelling.scheduledAt })).toBe(d.codec.identity(snapshot));
+  const utc = await runtime.connect(), offset = await runtime.connect();
+  try {
+    await utc.query("SET TimeZone='UTC'"); await offset.query("SET TimeZone='Etc/GMT-9'");
+    const first = await api.activateNativePurchaseWithRenewal(utc, { ...p, facts: preciseFacts });
+    const replay = await api.activateNativePurchaseWithRenewal(offset, { ...p, facts: preciseFacts });
+    expect(replay).toEqual(first);
+    await d.input.store.claimDue({ snapshot, workerId: "canonical-readback", now });
+    const identityKey = d.codec.identity(snapshot);
+    expect(await api.createPostgresRenewalStore(offset, d.codec).readRenewal(identityKey))
+      .toEqual(await api.createPostgresRenewalStore(utc, d.codec).readRenewal(identityKey));
+  } finally {
+    await utc.query("RESET TimeZone"); await offset.query("RESET TimeZone"); utc.release(); offset.release();
+  }
+});
+
 it("renews a sub-millisecond captured purchase without losing the stored cycle or evidence instant", async () => {
   const paidAt = "2026-09-01T12:00:00.123456Z", scheduledAt = "2026-09-29T12:00:00.123456Z";
   const p = await purchase(true, true, paidAt);

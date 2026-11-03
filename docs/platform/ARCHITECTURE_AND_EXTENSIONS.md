@@ -1786,7 +1786,10 @@ and the flat SQL fields, with no `_host` metadata. Its fingerprint is lowercase
 UTF-8 SHA-256 over JSON with object keys sorted by JavaScript string order and
 array order retained, excluding only the fingerprint field. The revision owns
 these bytes; existing database snapshots always take precedence over current
-terms and decode without host closure state.
+terms and decode without host closure state. Schedule and authorization identity
+fields use UTC ISO strings with six fraction digits. The SQL millisecond cycle
+key truncates the fraction to three digits without rounding; it is a label,
+while row lookup and comparison retain the full microsecond instant.
 
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` are explicit,
 no-key simulation, with `succeeded`, `declined` and `ambiguous` scenarios. They

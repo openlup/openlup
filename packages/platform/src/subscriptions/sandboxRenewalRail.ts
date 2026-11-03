@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import type { RenewalExecutionRequest, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
 import type { AutomaticRenewalPolicy } from "./automaticRenewal.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -45,7 +46,7 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
       let externalAttemptRef = typeof op.external_attempt_ref === "string" ? op.external_attempt_ref : null;
       if (externalAttemptRef && !externalAttemptRef.startsWith(prefix)) throw new Error("subscription_sandbox_scenario_conflict");
       if (!externalAttemptRef) {
-        externalAttemptRef = `${prefix}${new Date(now()).toISOString()}`;
+        externalAttemptRef = `${prefix}${nativeInstant(now())}`;
         await executor.query("SELECT public.commerce_acknowledge_subscription_renewal_attempt($1::uuid,$2::text,$3::text,$4::timestamptz)",
           [op.id, op.operation_fingerprint, externalAttemptRef, now()]);
       }
@@ -77,7 +78,7 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
         eventKey: event ? String(event.event_key) : `sandbox-observation:${String(op.id)}`,
         requestFingerprint: String(op.operation_fingerprint), verifiedEvidenceRef: event ? `sandbox:${String(event.id)}` : "",
         externalAttemptRef: input.externalAttemptRef, occurredAt: event ? String(event.occurred_at) : null,
-        observedAt: event ? String(event.created_at) : now(), firstRecordedAt: event ? String(event.created_at) : now(),
+        observedAt: event ? String(event.created_at) : nativeInstant(now()), firstRecordedAt: event ? String(event.created_at) : nativeInstant(now()),
         amountMinor: input.amountMinor, currency: input.currency, reason: event?.outcome === "refused" ? "sandbox_declined" : null };
     },
   };
@@ -88,7 +89,7 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
  * identities and authorization remain the frozen operation's own facts. */
 export function createSandboxRenewalPolicy(methodRef: string): AutomaticRenewalPolicy {
   return {
-    identityKey: due => `subscription:${due.subscriptionId}:cycle:${due.scheduledAt.replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`,
+    identityKey: due => `subscription:${due.subscriptionId}:cycle:${nativeInstant(due.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`,
     classifyFailure: () => "temporary",
     validateInput(input) {
       if (!input.paymentMethodRef || input.recurringModel !== "sandbox") throw new Error("subscription_sandbox_method_required");

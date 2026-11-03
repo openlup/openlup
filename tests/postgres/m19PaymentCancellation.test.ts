@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator, paymentSchemaDescriptor } from "@openlup/platform/payments";
+import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator, paymentTruthFingerprint, paymentSchemaDescriptor } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentObservation, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -206,6 +206,62 @@ it("replays begin/observations/capture after a fresh process and commits one fin
   expect((await admin.query("SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1", [f.intent])).rows).toHaveLength(1);
 });
 
+it("settles concurrent first ingresses across session zones without a false conflict", async () => {
+  const f = await fixture(), a = await simulator().beginAttempt(begin(f.intent));
+  const observation = await simulator().recordObservation({ attemptId: a.id, idempotencyKey: randomUUID(),
+    outcome: "captured", occurredAt: "2026-10-30T12:00:00.123456Z" });
+  const utc = await runtime.connect(), offset = await runtime.connect();
+  let release!: () => void, reached!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  const readBeforeCommit = new Promise<void>(resolve => { reached = resolve; });
+  let pending: ReturnType<typeof receive> | undefined;
+  try {
+    await utc.query("SET TimeZone='UTC'"); await offset.query("SET TimeZone='Etc/GMT-9'");
+    expect((await offset.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+      .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+    const second = createPostgresSandboxPaymentSimulator({ async query(sql, values) {
+      const result = await offset.query(sql, values);
+      if (sql.includes("FROM public.payment_truth_events") && sql.includes("source_event_id=$1") && !result.rows.length) {
+        reached(); await barrier;
+      }
+      return result;
+    } }, options);
+    const request = { rawBody: new TextEncoder().encode(JSON.stringify(delivery(a, observation.id))), headers: {}, receivedAt: at };
+    pending = second.ingress.receive(request);
+    await Promise.race([readBeforeCommit, pending.then(() => { throw new Error("interleaving_barrier_not_reached"); })]);
+    expect(await createPostgresSandboxPaymentSimulator(utc, options).ingress.receive(request))
+      .toMatchObject({ status: 200, data: { replayed: false } });
+    release();
+    expect(await pending).toMatchObject({ status: 200, data: { replayed: true } });
+    expect((await admin.query(`SELECT
+      (SELECT count(*)::int FROM public.payment_truth_events WHERE settlement_intent_id=$1) AS truth,
+      (SELECT count(*)::int FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1) AS dispatches,
+      (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS captures`, [f.intent])).rows)
+      .toEqual([{ truth: 1, dispatches: 1, captures: 1 }]);
+    expect(await financial(f.order)).toBe("paid");
+  } finally {
+    release(); await pending?.catch(() => undefined);
+    await utc.query("RESET TimeZone"); await offset.query("RESET TimeZone"); utc.release(); offset.release();
+  }
+});
+
+it("returns identical attempt time facts across sessions and replays equivalent observation instants", async () => {
+  const f = await fixture(), utc = await runtime.connect(), offset = await runtime.connect();
+  try {
+    await utc.query("SET TimeZone='UTC'"); await offset.query("SET TimeZone='Etc/GMT-9'");
+    const source = createPostgresSandboxPaymentSimulator(utc, options), target = createPostgresSandboxPaymentSimulator(offset, options);
+    const a = await source.beginAttempt({ ...begin(f.intent), methodFacts: methodFacts("2026-10-30T12:00:00.123456Z") });
+    const input = { attemptId: a.id, idempotencyKey: randomUUID(), outcome: "captured" as const, occurredAt: "2026-10-30T12:00:00.123456Z" };
+    const observation = await source.recordObservation(input);
+    expect(await target.recordObservation({ ...input, occurredAt: "2026-10-30T14:00:00.123456+02:00" }))
+      .toEqual({ id: observation.id, replayed: true });
+    expect(await target.readAttempt({ settlementIntentId: f.intent })).toEqual(await source.readAttempt({ settlementIntentId: f.intent }));
+    await expect(target.recordObservation({ ...input, occurredAt: "2026-10-30T12:00:00.123457Z" })).rejects.toMatchObject({ code: "23505" });
+  } finally {
+    await utc.query("RESET TimeZone"); await offset.query("RESET TimeZone"); utc.release(); offset.release();
+  }
+});
+
 function methodFacts(unattendedChargeAuthorizedAt: string) {
   return { authorizationRef: "sandbox:authorization:explicit", unattendedChargeAuthorizedAt,
     payerAccountRef: "sandbox:payer:explicit", methodRef: "sandbox:method:explicit", methodEvidenceRef: "sandbox:evidence:explicit" };
@@ -394,6 +450,26 @@ it("leaves non-sandbox truth independent while both simulator tables are exclusi
       evidence: { sourceKind: "accepted_event", sourceReference: "external-recorded-fact", observedStatus: "captured", observedAt: at, payloadFingerprint: "a".repeat(64) } });
     expect(result.financial.orderStatus).toBe("paid");
   } finally { await held.query("ROLLBACK"); held.release(); await closePostgres(undefined, cold); }
+});
+
+it("replays retained native truth with the inherited timestamp fingerprint dialect", async () => {
+  const f = await fixture("future-provider");
+  const input = { sourceEventId: randomUUID(), idempotencyKey: randomUUID(), settlementIntentId: f.intent,
+    outcome: "captured" as const, amountMinor: 900, currency: "XXX", occurredAt: at, failure: null,
+    evidence: { sourceKind: "accepted_event" as const, sourceReference: "external-recorded-fact",
+      observedStatus: "captured", observedAt: at, payloadFingerprint: "a".repeat(64) } };
+  expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  // Existing hosts used this same public fingerprint and production writer.
+  // No row is inserted by hand and no real-provider capability is qualified.
+  await runtime.query(`SELECT public.payment_truth_ingest_event(
+    $1,$2,$3,$4::uuid,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14)`,
+  [input.sourceEventId, paymentTruthFingerprint(input), input.idempotencyKey, f.intent, input.outcome,
+    input.amountMinor, input.currency, input.occurredAt, null, null, JSON.stringify(input.evidence),
+    options.dunningTemplateSlug, options.recoveryUrlPath, options.recoveryTemplateSlug]);
+  expect(await truth().ingestEvent(input)).toMatchObject({ event: { replayed: true }, financial: { orderStatus: "paid" } });
+  expect((await admin.query("SELECT id FROM public.payment_truth_events WHERE settlement_intent_id=$1", [f.intent])).rows).toHaveLength(1);
+  expect((await admin.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [f.intent])).rows).toHaveLength(1);
 });
 
 it("redelivers the same verified capture after recovery-notice contention rolls settlement back", async () => {

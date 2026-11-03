@@ -1401,3 +1401,637 @@ signed head reproduces `23505`; restoring the repaired factory passes all
 23 simulator cases. Both neutrality checks report zero increases. The repair
 adds 240 bytes to source and 240 bytes to emitted JavaScript, with no new
 package file. The real compressed measure remains a separate required proof.
+
+
+### Zone-forced and mixed-session observations before the second repair
+
+The unrepaired signed candidate is `239ebb6c`, on main comparison `31423ca5`.
+The before probe runs eight real PostgreSQL suites unchanged under each of
+`Etc/GMT-9` and `Etc/GMT+5`: each zone has 138 passed and four failed cases.
+The process-scoped diagnostic preload adds the startup TimeZone option to
+all loaded pg clients, including installed-consumer copies, preserving other
+startup options. It changes no committed harness default or timestamp parser.
+
+The three pre-existing main test observations are outside product acceptance:
+
+| Site | Observation |
+| --- | --- |
+| `tests/postgres/subscriptionRetryLifecycleCases.ts:104–107` | A date-only SQL fixture means midnight in the session zone, while its assertion expects midnight UTC. |
+| `tests/postgres/connectedStoreTransfer.test.ts:524` | Whole-row PostgreSQL JSON text is compared with a previously captured UTC rendering. |
+| `tests/postgres/connectedStoreTransfer.test.ts:676` | Raw `next_cycle_at::text` is compared with a fixed UTC spelling. |
+
+The bundle's retained-method test at
+`tests/postgres/subscriptionRetainedMethodCompatibility.test.ts:162` has the
+same raw-text assertion issue. Its authorized repair must still assert exactly
+`2026-10-27T12:00:00Z`; it remains pending at this diagnostic stop.
+
+The added mixed-session before probe alternates new connections between UTC
+and UTC+09:00. It completes all eight suites with 133 passed and nine failed
+cases. Six failures are additional main test snapshot comparisons:
+`subscriptionRetryLifecycleCases.ts:163,201`,
+`subscriptionStockWaitCases.ts:74` (missing and stale stock), and
+`subscriptionStockAccountingCases.ts:30` (one and two restored lines).
+Their `prepareState`/`allPublicRows` snapshots serialize timestamps with the
+session spelling. Exact offset normalization makes every printed changed
+line equal, including all six snapshot comparisons. These sites are unchanged
+from main and are not among the three specifically classified exceptions;
+no assertion or helper was changed to bypass them.
+
+Mixed transfer also exposes the bundle's optional `reviewRequiredAt` readback
+string changing spelling between source and restored sessions at
+`connectedStoreTransfer.test.ts:394`. This is a bundle-owned identity-boundary
+failure explained by the canonical timestamp rule. The known date-only fixture
+and retained-method raw-text check account for the other two mixed failures.
+The concurrent-ingress finding remains open; no interleaving regression or
+canonical helper has yet been added.
+
+The diagnostic harness patch exists only in child-process startup hooks.
+Every child has ended, the probe environment does not escape the runner, and
+`git diff -- tests/helpers/postgresContainer.ts tests/helpers/fulfillmentNative.ts tests/setup vitest.config.ts`
+is empty. Full per-case results, diff normalization and revert evidence are in
+`.context/scratch/g2/cycle2/`. No product, SQL, pin or class change was made.
+The second repair stops before implementation because the mixed probe adds
+unclassified main test failures beyond the allowed three; it needs disposition
+before the required post-repair probe can be declared green.
+
+Self-retro: mixed-session probes must account for diagnostic snapshot serializers
+as well as product identity boundaries. Keep an actual readback identity defect
+separate from unchanged test snapshots whose only difference is timestamp text.
+### Canonical timestamp identity: second native repair
+
+The regroup distinguishes **VALUE** (exact strings cast and compared by
+PostgreSQL as timestamps) from **IDENTITY** (hashes, keys, strings and JSON
+equality). Identity uses UTC ISO with exactly six fraction digits and `Z`.
+The internal helper is not a new package entry or barrel export. It parses
+strict RFC3339, validates whole seconds and offset arithmetic without putting
+fractional digits through Date or a number, and pads the untouched fraction.
+The same-statement PostgreSQL normalization of explicit method facts remains,
+as does the SQL millisecond identity label: it truncates, never rounds, and
+is not the full-precision lookup. The table supersedes the earlier forms.
+
+All 42 earlier sites are reclassified below, split by additional consumers
+where needed. Provenance uses `git blame --line-porcelain` against `31423ca5`;
+promoted lines are also compared with their incumbent facade implementation.
+The search covers time fields plus `fingerprint`, `Fingerprint`, `===`,
+`JSON.stringify`, `createHash`, `Key(` and `identity` in every changed source.
+The first sweep missed readback identity consumers (including optional review
+time), and wrongly exempted original request spellings from fingerprint
+identity. These are corrected in the bundle's own callers, with shared hashes,
+gateway parsing, SQL, class data and forward pins unchanged.
+
+| Site | Consumer | Use | Form | Own/main |
+| --- | --- | --- | --- | --- |
+| `server/adapters/postgres/connectedStoreCapture.ts:101` | Captured rows are database JSON text under UTC; timestamp strings do not pass through JavaScript dates. | IDENTITY | unchanged main archive spelling, UTC-pinned where applicable | main dcd8971d |
+| `server/adapters/postgres/connectedStoreCapture.ts:69` | Server-incarnation fingerprint consumes PostgreSQL-rendered postmaster-start epoch text; no JavaScript timestamp round trip. | IDENTITY | unchanged main archive spelling, UTC-pinned where applicable | main 99dab83b |
+| `server/adapters/postgres/connectedStoreCapture.ts:149` | ORDER BY to_jsonb(row)::text is deterministic archive byte ordering, not chronological ordering; timestamp strings are opaque. | IDENTITY | unchanged main archive spelling, UTC-pinned where applicable | main dcd8971d |
+| `packages/platform/src/subscriptions/nativePurchaseRenewal.ts:32` | Purchase facts JSON replay equality canonicalizes authorization instant before serialization. | IDENTITY | canonical UTC six digits via internal helper | bundle-owned |
+| `packages/platform/src/subscriptions/nativePurchaseRenewal.ts:10` | Purchase facts declare a string; complete/pending/readMethod/transition/activation calls contain no explicit time argument or time decision. | VALUE | exact SQL cast / typed timestamp | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:20` | Correlation counts paid cycles using PostgreSQL timestamp ordering, preserving microseconds. | VALUE | exact SQL cast / typed timestamp | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:24` | Header selects next_cycle_at as UTC ISO with six fraction digits; authorization time uses the same projection on the next line. | VALUE | UTC six-digit SQL projection, exact value | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:33` | Header lookup compares the stored next_cycle_at with input.scheduledAt parsed by PostgreSQL; caller passes the precise string unchanged. | VALUE | exact SQL cast / typed timestamp | main 41239eb7 |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:52` | Due-list schedule and authorization override driver-parsed fields with UTC ISO microsecond text. | VALUE | UTC six-digit SQL projection, exact value | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:54` | Due cutoff binds asOf as timestamptz without JavaScript conversion. | VALUE | exact SQL cast / typed timestamp | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:60` | Frozen-operation lookup uses exact input.scheduledAt through timestamptz; database JSON snapshot is decoded unchanged. | VALUE | exact SQL cast / typed timestamp | main 41239eb7 |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:66` | Method evidence returns the projected authorization timestamp unchanged. | VALUE | UTC six-digit SQL projection, exact value | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:76` | Claim binds input.now as timestamptz and encodes full scheduledAt/authorization strings in the immutable snapshot JSON. | VALUE | exact SQL cast / typed timestamp | main 41239eb7 |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:84` | Preflight refusal binds occurredAt as timestamptz unchanged. | VALUE | exact SQL cast / typed timestamp | main 41239eb7 |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:55` | Native freeze/decode/readback schedule and authorization identities use UTC six-digit strings; the due VALUE carrier is a separate row below. | IDENTITY | canonical UTC six digits via internal helper | bundle-owned |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:80` | Native snapshot canonical JSON / SHA body normalizes schedule and authorization; never session-rendered text. | IDENTITY | canonical UTC six digits via internal helper | bundle-owned |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:157` | Identity label truncates fraction text to three digits, matching SQL SS.MS without rounding. This label is never the timestamp lookup. | IDENTITY | SQL millisecond label, truncated string (explicit exception) | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:29` | Observed occurredAt is passed unchanged to the database timestamp comparison/writer. | VALUE | exact SQL cast / typed timestamp | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:50` | ACK binds a fresh host-clock string as timestamptz; no stored instant is rounded. | VALUE | exact SQL cast / typed timestamp | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:71` | Outcome selects occurred_at and created_at as UTC ISO microsecond text (next line too), then copies occurredAt/observedAt/firstRecordedAt unchanged. | IDENTITY | canonical UTC six digits via internal helper | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:91` | Policy identity uses the same string truncation as the codec and native SQL millisecond label; full schedule remains in the snapshot. | IDENTITY | SQL millisecond label, truncated string (explicit exception) | bundle-owned |
+| `server/adapters/postgres/connectedStoreRestore.ts:283` | Restore pins UTC before timestamp serialization and comparisons. | IDENTITY | unchanged main archive spelling, UTC-pinned where applicable | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:212` | Retained lifecycle rows are parsed with jsonb_populate_record and emitted as database JSON in UTC. | IDENTITY | same-statement PostgreSQL rendering / typed record | main a508a23f |
+| `server/adapters/postgres/connectedStoreRestore.ts:298` | Schema-ledger JSON captures timestamp strings under UTC and compares unchanged JSON at lines 329 and 417; ordering is by position, not time. | IDENTITY | unchanged main archive spelling, UTC-pinned where applicable | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:358` | Retained cycle/client import binds typed created/updated/scheduled times from jsonb_populate_record; generic insert uses the same typed record route. | VALUE | exact SQL cast / typed timestamp | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:571` | Cleanup compares JSON occurredAt with PostgreSQL-rendered created_at in the UTC restore transaction. | IDENTITY | same-statement PostgreSQL rendering / typed record | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:574` | Cleanup compares created_at/available_at with the exact transaction timestamp, in PostgreSQL. | VALUE | exact SQL cast / typed timestamp | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:144` | Unchanged donor compares nested audit revokedAt spelling with a membership timestamp string. Equivalent instants in different spellings can refuse projection; investigate under the identity-transfer owner, outside this bundle acceptance. | IDENTITY | DONOR FOLLOW-UP: lexical timestamp comparison unchanged | main 99321e13 |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:152` | leaseExpiresAt, externalAttemptAcknowledgedAt and terminalAt readbacks compared across sessions. MISSED readback consumers in first sweep. | IDENTITY | canonical helper | bundle-owned |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:30` | scheduledInstant consistency and finite checks, due/freeze/decode Date.parse: numeric compatibility metadata only, never full-precision row lookup or cycle identity. | VALUE | legacy millisecond compatibility projection | bundle-owned |
+| `packages/platform/src/subscriptions/nativePurchaseRenewal.ts:76` | Activation activatedAt returned by own purchase wrapper; cross-session replay equality. MISSED readback consumer in first sweep. | IDENTITY | canonical helper | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:49` | Fresh host time in dispatch-reference suffix; operation UUID/fenced ACK still own dispatch identity. Previously dismissed as fresh-clock metadata. | IDENTITY | canonical helper | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:81` | Outcome occurredAt, observedAt, firstRecordedAt are readback/evidence identity; SQL projection and canonical fallback retain exact instants. | IDENTITY | UTC six-digit SQL projection / helper for fresh clock | bundle-owned |
+| `packages/platform/src/subscriptions/nativeInstant.ts:3` | Strict RFC3339 shape including gateway output; split fraction string, whole-second date/offset arithmetic, six-digit padding, rejects guessing. | IDENTITY | module-local exact helper, shared vectors | bundle-owned |
+| `packages/platform/src/subscriptions/nativeInstant.ts:10` | Offset conversion and calendar validation use Date only without a fraction; identity fraction is never a number or rounded. | IDENTITY | whole seconds only; fraction remains text | bundle-owned |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:100` | Due schedule VALUE retains the exact prior millisecond spelling only for zero microseconds, preserving injected legacy SQL millisecond labels; native freeze separately canonicalizes identity. Nonzero microseconds are unchanged. | VALUE | exact SQL value; legacy millisecond-label spelling preserved | bundle-owned |
+
+The existing main capture/restore archive bytes are retained. UTC-pinned
+archive and schema-ledger spellings, and retained membership `revokedAt`
+lexical equality, are donor-parity observations; no main production code is
+changed. Typed record reconstruction/comparison stays in one PostgreSQL
+statement. The purchase writer's pending, complete, method-transition and
+method readbacks return no time fields. All own simulator time readbacks,
+truth review time, activation time and renewal lease/ACK/terminal times now
+have the canonical spelling. Frozen native wire identity uses six digits;
+the native revision stays unchanged before first landing, and decode refuses
+noncanonical frozen bytes rather than silently rewriting stored history.
+
+The main test observations authorized for the probes are nine classified
+sites/cases: date-only retry fixture, two transfer raw-text assertions, two
+retry rollback snapshots, two technical-stock snapshots, and two restored-line
+stock-accounting snapshots. Exact offset normalization removes all printed
+snapshot differences. They remain unchanged and outside product acceptance.
+The bundle's retained-method assertion selects UTC microseconds and still
+asserts exactly `2026-10-27T12:00:00Z`.
+
+The lead-authorized Review lessons entry in CONTRIBUTING promotes the recurring
+lesson: classify value versus identity, canonicalize every identity, and run
+the real-database suites under two non-UTC session zones. This prose-only path
+is separately authorized outside the ordinary path set.
+
+#### Second repair draft: proof stop before commit
+
+The deterministic restricted-role interleaving counterexample fails before
+the repair: session B returns HTTP 503 after A commits one capture. The
+same draft regression passes after normalization, with one truth row, one
+settlement and one dispatched attempt. Equivalent observation spellings also
+fail replay before normalization; after it, the full simulator suite passes
+25 cases, including explicit facts, offset, cross-session and one-microsecond
+refusal cases. The helper unit suite passes 18 cases. The new purchase facts
+counterexample fails before with `subscription_renewal_purchase_conflict`.
+Its first diagnostic launch used an incorrect scratch transpiler module mode;
+the one permitted launch retry corrects that scratch mode and reaches the
+expected real-PostgreSQL assertion. No product assertion is credited to the
+failed launch.
+
+The default after probe passes all 25 simulator cases, then stops in purchase
+renewal: 12 passed, one failed. The unchanged existing malformed-facts case
+at `subscriptionPurchaseRenewal.test.ts:344` receives a synchronous
+`native_instant_invalid` from `register()` for the `infinity` authorization
+timestamp. Before the draft, that refusal was a rejected promise from SQL;
+the `.rejects` assertion now cannot observe it. This is a draft source
+regression, not an allowed main test observation. No assertion is changed,
+no repair is attempted after the failure, and no commit or new native review
+starts. The new purchase identity/readback case and the original precision
+and four-fraction SQL key equality case both pass in this 12-case subtotal.
+The remaining default suites and both forced-zone/mixed after runs are unrun.
+
+The before matrix remains 138 passed/four failed per fixed zone, and 133
+passed/nine failed mixed. The authorized main observations remain unchanged.
+The 53-site draft audit has 23 VALUE and 30 IDENTITY sites, including the
+readback sites missed by the first sweep. Its implementation claims still
+require the unfinished after matrix and native class review.
+
+Both neutrality checks pass (zero increases / zero UI hits). Both raw forwards
+and the registry/packaged SQL have no changes. The process-only harness hook
+has ended; the tracked harness diff is empty and no probe environment remains
+in the parent. Artifacts, full first error and the revert evidence are under
+`.context/scratch/g2/cycle2/`. No new pack, signed-head preflight or cycle-2
+review result is claimed. The open concurrent-ingress card remains open in
+the native session; cycle 2 is a draft and has not been prepared.
+
+Self-retro: normalizing an input before an asynchronous SQL boundary must
+preserve the public promise rejection contract as well as timestamp identity.
+The existing malformed-input refusal case caught this before commit/review.
+
+#### Pre-commit refusal boundary correction
+
+The purchase writer's `register` is now async. Canonicalization therefore
+rejects its promise instead of throwing synchronously, preserving the existing
+malformed-input assertion unchanged. Its invalid timestamp message is now
+`native_instant_invalid`, replacing the database validation message for that
+input; both refuse and no write is dispatched. Other asynchronous public
+callers normalize inside their async methods or after an awaited read. Codec
+and identity-policy methods intentionally remain synchronous, as before.
+This corrects the uncommitted draft within the timestamp rule; no SQL,
+assertion, fixture, harness, contract declaration or package export changes.
+
+#### Private helper placement: pre-commit boundary stop
+
+The asynchronous refusal correction passes the existing purchase suite:
+13 passed, zero failed, with the malformed-facts assertion unchanged. The
+resumed default probe also passes the simulator (25 cases) and transfer
+(13 cases): 51 passed, zero failed across those three files. Transfer teardown
+completed before the owned runner and its next gate waiter were stopped.
+No test process or container was interrupted. The remaining default suites
+and all forced/mixed after-probes are unrun on this draft.
+
+The unchanged package-boundary suite reports 2,936 passed and three failed
+cases at `packageBoundary.test.ts:333`. The rejected imports are the private
+payment helper in nativePurchaseRenewal, nativeRenewalCodec and
+sandboxRenewalRail. Its `relativeImportAllowed` rule permits cross-module
+access only through an existing public entry. The unchanged module graph in
+`eslint.config.js:167–168` gives subscriptions and payments no runtime value
+edges. A root private helper is not a module/public entry and also has no
+allowed path under that rule. No existing exact public-core timestamp helper
+was found by the scoped canonical/microsecond search. A helper relocation
+therefore has no permitted common location without a new public route or
+boundary change; separate module-local helpers would require changing the
+explicit one-helper constraint. No alias, indirect import, policy exemption,
+control edit or new public export is introduced to evade this boundary.
+
+The catalog diff contains only the two helper source/test entries (eight
+added lines), in file order. The early unstaged policy invocation cannot
+materialize those untracked files yet; its inventory refusal is not a signed
+policy result. Lint/import-map, pack, staged/signed policy, preflight and fresh
+cycle-2 review remain unrun. No commit is made. The native session stays at
+its cycle-1 signed candidate; the cycle-2 repair remains a draft and its open
+concurrent-ingress card has not been closed.
+
+The process-local diagnostic hook has ended, the tracked harness diff remains
+empty, and the parent has no probe variables. The full boundary failure and
+resumed counts are in `.context/scratch/g2/cycle2/boundary-stop.json` and
+`package-boundary.json`. SQL, migrations, packaged SQL, pins and class data
+remain unchanged. The new Review lessons text and all earlier draft edits
+are retained for the next disposition.
+
+Self-retro: a shared internal mechanism must have an allowed module home
+before its callers are wired. Preserve the closed graph instead of exporting
+an internal utility or adding an unapproved dependency edge to silence a test.
+
+#### Authorized module-local copies
+
+Each module now owns the same private `nativeInstant` implementation, with no
+cross-module private import, boundary change or package-entry export. The
+single vector suite calls both copies and asserts identical canonical outputs
+and identical Error names/messages for refusals. Its 27 cases cover no fraction,
+one through six digits, both offset signs, gateway RFC3339 conversion across
+day/year boundaries, `.999999` without carry, invalid shapes, `infinity` and
+seven fraction digits. The full package-boundary suite passes 2,942 cases;
+`git diff 239ebb6c -- packages/platform/api` is empty. The draft catalog delta
+contains only the three new helper source/test file entries. The audit now has
+55 sites: 23 VALUE and 32 IDENTITY, adding the second module's two helper sites.
+This explicitly supersedes the one-helper placement assumption and resolves
+the private-import draft regression without changing the controls.
+
+#### Due VALUE carrier compatibility correction
+
+The default retained-method case exposed a draft regression, with
+`subscription_renewal_claim_invalid_snapshot`: its existing injected legacy
+codec builds SQL's millisecond identity label directly from the due carrier.
+Changing that carrier's zero-microsecond spelling to six digits changed that
+label. The due carrier now preserves the prior three-digit form only when its
+last three fraction digits are zero; nonzero microseconds remain untouched.
+It is a VALUE cast for row lookup, and compatibility with the explicitly
+retained millisecond label is preserved. Native freeze separately canonicalizes
+its scheduledAt identity field to all six digits before hashing/encoding.
+No SQL, assertion, fixture, harness or public export changes are made. This
+corrects the uncommitted draft within the VALUE/IDENTITY rule under the
+supervisor's pre-commit repair authority. It is not one of the nine main test
+observations and must pass on the final draft.
+
+The retained-method regression now passes on the restricted role unchanged
+apart from its previously authorized exact-instant assertion. The audit splits
+the due VALUE carrier from the native frozen IDENTITY consumer: 56 sites,
+24 VALUE and 32 IDENTITY. The complete probe matrix is rerun after this draft
+compatibility correction; earlier default results are not its final proof.
+
+#### Official pack after the second repair draft
+
+Node `v24.21.0` from the official toolchain measures the current bundle against
+`31423ca5`: +33,028 packed bytes, +19,841 code-class gzip bytes, +143,783
+unpacked bytes and +23 files. The candidate code class is 1,950,394 bytes,
+below 1,970,000. The prior signed candidate `239ebb6c` on the same base measures
++30,971 packed, +17,490 code, +136,097 unpacked and +17 files. Its exact
+unpacked increase over the accepted reference is the previously authorized
+480-byte third repair; the compressed delta changes with the integrated base.
+The fourth repair adds +2,057 packed, +2,351 code, +7,686 unpacked bytes and
+six files relative to that prior candidate. The six files are the two private
+helpers' source, emitted JavaScript and declarations. The shared vector test
+and root adapter/transfer files add no tarball bytes. No unrelated packaged
+path changes. The detailed real-pack reports and content hashes are retained
+under `.context/scratch/g2/cycle2/pack/`.
+
+| Pack path | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| dist/payments/nativeInstant.d.ts | 0 | 144 | +144 |
+| dist/payments/nativeInstant.js | 0 | 950 | +950 |
+| dist/payments/postgresPaymentTruth.js | 5743 | 6164 | +421 |
+| dist/payments/postgresSandboxPaymentSimulator.js | 6781 | 7390 | +609 |
+| dist/subscriptions/nativeInstant.d.ts | 0 | 144 | +144 |
+| dist/subscriptions/nativeInstant.js | 0 | 950 | +950 |
+| dist/subscriptions/nativePurchaseRenewal.js | 3493 | 3763 | +270 |
+| dist/subscriptions/nativeRenewalCodec.js | 11665 | 12126 | +461 |
+| dist/subscriptions/sandboxRenewalRail.js | 7670 | 7758 | +88 |
+| src/payments/nativeInstant.ts | 0 | 920 | +920 |
+| src/payments/postgresPaymentTruth.ts | 5869 | 6270 | +401 |
+| src/payments/postgresSandboxPaymentSimulator.ts | 6792 | 7407 | +615 |
+| src/subscriptions/nativeInstant.ts | 0 | 920 | +920 |
+| src/subscriptions/nativePurchaseRenewal.ts | 4549 | 4809 | +260 |
+| src/subscriptions/nativeRenewalCodec.ts | 11789 | 12234 | +445 |
+| src/subscriptions/sandboxRenewalRail.ts | 8142 | 8230 | +88 |
+
+#### Accepted-read identity after the canonical timestamp repair
+
+The fourth production repair is confined to the two private instant helpers,
+the payment-truth and simulator callers, the purchase writer, the native codec
+and the sandbox renewal rail. The new helpers and caller line changes are
+listed in `.context/scratch/g2/cycle2/read-production-identity.json`, with
+fourth-repair +/- line SHA-256
+`1befe291e24a63a9d568c2713a35c88d1265416b962dcfb104bb40a598f5079a`.
+The first three authorized repair counters remain pinned unchanged. After
+accounting for these four repairs and the previously identified merge-only
+blank separator, each row's own production and SQL delta equals its accepted
+read as a multiset of path, sign, exact line and multiplicity.
+
+Reproduce with:
+`python3 .context/scratch/g2/cycle2/read_identity.py 31423ca5b3e44698eb9a1ce342addad3e58b5d71`.
+The G2 expected/candidate hash is
+`722e90a8507d94b490a45151bf57fa85138a2a7e6a1e27131ff32208ba681cab`;
+the G6 expected/candidate hash is
+`e83b0896dcfa2cd0d14cb7c9b80a190bb71cbf41dd67c077da55e4d43e903b32`.
+No other production/SQL delta is admitted. The two forward hashes remain
+`7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29`
+and `2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34`,
+including their packaged copies. The API-report directory and package export
+manifest are unchanged against `239ebb6c`.
+
+| Repair site | Consumer and change |
+| --- | --- |
+| `packages/platform/src/payments/nativeInstant.ts:1` | Private exact UTC microsecond identity conversion. |
+| `packages/platform/src/subscriptions/nativeInstant.ts:1` | Same module-local implementation, checked by shared vectors. |
+| `packages/platform/src/payments/postgresPaymentTruth.ts:36` | Canonical ingest/reconciliation fingerprint time fields; optional review readback uses the same canonical instant. Exact SQL VALUE inputs stay unchanged. |
+| `packages/platform/src/payments/postgresSandboxPaymentSimulator.ts:9` | Canonical attempt/observation readbacks, accepted replay projection, envelope time and observation-request fingerprint. The earlier same-statement facts comparison fix stays. |
+| `packages/platform/src/subscriptions/nativePurchaseRenewal.ts:32` | Async facts normalization before JSON replay comparison, plus canonical activation readback. |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:54` | Canonical native frozen identity and lease/ACK/terminal readbacks, preserving the exact due VALUE carrier and SQL millisecond label. |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:49` | Canonical dispatch-reference clock and fallback evidence times, plus the existing truncated SQL identity label. |
+
+Nonproduction changes are counterexamples, the shared vector test, the exact
+retained-method assertion, helper-only catalog additions, neutral task records,
+the owner/fragment timestamp explanation and the lead-authorized Review
+lessons entry. The earlier admission-suite change is test-only under the
+separate authorization: first-two pin paths and one timeout/comment only.
+
+#### Final draft probe stop: own raw transfer snapshot
+
+The default matrix completes eight suites with 145 passed and no failures.
+Each fixed zone completes with 142 passed and the same three authorized main
+test failures. Their reasons are checked from the actual diffs: the date-only
+SQL input denotes session midnight; every raw snapshot difference vanishes
+under exact UTC microsecond normalization. All bundle-added or changed cases
+pass in the default and both fixed zones.
+
+The mixed run passes the simulator (25 cases) and purchase renewal (13 cases),
+then transfer reports 11 passed and two failed. One is the already classified
+main raw-schedule spelling at line 676. The new failure is the bundle's own
+accepted transfer test at `connectedStoreTransfer.test.ts:565`, outside the
+nine allowed main cases. It compares `to_jsonb(t)::text` from independently
+pooled source and target sessions. The first table, renewal attachments, has
+the same order/subscription IDs, purchase facts and exact timestamps, but
+created_at/completed_at render with +09:00 at source and +00:00 at target.
+Exact offset normalization removes every printed difference. This is another
+test-side raw timestamp spelling assumption, not demonstrated stored-data
+loss or a product readback defect. The preceding reviewRequiredAt comparison
+now passes. The later duty-completion and renewal assertions in this case
+are not reached in this mixed run and are not claimed as mixed proof.
+
+No existing assertion, fixture, harness or production code is altered to make
+this new case pass. The probe stops as required for an unclassified failure;
+the automatic post-probe checks refuse to start. The five remaining mixed
+suites are unrun. Lint, final policy/preflight, commit and fresh cycle-2 review
+are unrun. No native finding is closed or new repair cycle prepared.
+
+Pre-commit results completed before the stop: shared vectors 27/27; full
+package boundary 2,942/2,942; import-map 123/123; catalog 126/126; admission
+210/210; ast-grep and strict typecheck pass; all-ref gitleaks scans 1,760
+commits with zero leaks. API reports and export manifest are unchanged against
+239ebb6c. The three draft regressions corrected are asynchronous refusal,
+private cross-module helper placement (authorized local copies) and the
+millisecond due VALUE spelling for injected legacy identity codecs. They are
+recorded separately from this new unchanged-test assumption.
+
+The real pack remains +33,028 packed, +19,841 code, +143,783 unpacked bytes
+and +23 files against 31423ca5; absolute code 1,950,394 bytes. No packaged
+byte changes follow that measurement. Both forward hashes, packaged copies,
+pins, class data and main controls remain unchanged. All uncommitted edits,
+including the two helper copies and lead-authorized lesson, are retained.
+The process-only hook has ended, no probe variables remain in the parent, and
+the tracked harness diff is empty. Evidence is in
+`.context/scratch/g2/cycle2/mixed-own-transfer-stop.json`.
+
+Self-retro: mixed-session coverage can expose raw test snapshots only after
+an earlier failing case completes further work and changes connection reuse.
+Preserve full-row equality and exact instants when a test-side query eventually
+gets an authorized canonical projection; do not change product session policy
+to accommodate diagnostic text comparisons.
+
+#### Full-row assertion timezone scope and accepted-reference size attribution
+
+The standing test-side authority is applied only to the bundle's row equality
+at `connectedStoreTransfer.test.ts:565`: each source/target read now owns a
+read-only transaction with `SET LOCAL TimeZone='UTC'`, followed by rollback
+and release. The original SELECT, all six tables, all columns, exact instants,
+row ordering and full-row equality stay intact. Main's nine test sites and the
+shared harness remain unchanged. No production session timezone is set.
+
+The accepted tarball pair on `21c05703` reproduces +17,404 code bytes,
++135,617 unpacked bytes and +17 files. The current tarball pair on `31423ca5`
+reproduces +19,841 code, +143,783 unpacked and +23 files. Their difference is
+exactly +2,437 code, +8,166 unpacked and +6 files. The table below uses the
+same measurePack implementation and exact lexical-order marginal gzip
+contributions for each pair, then subtracts those per-path contributions.
+Gzip dictionary interactions make standalone per-file gzip sizes nonadditive;
+zero-content-growth rows explicitly identify compression-context effects.
+These rows do not imply changed source. The earlier standalone f130 comparison
+reproduced unpacked/files but had a different compression context; it is not
+the accepted-reference attribution.
+
+All content growth is the authorized timestamp repair: 480 bytes from the
+third repair and 7,686 from this fourth repair. The six files are the two
+private helpers' source/JavaScript/declarations; no new package export exists.
+The vector test, root transfer assertion and owner/record prose add no tarball
+bytes. Absolute code remains 1,950,394, below 1,970,000. The artifact is
+`.context/scratch/g2/cycle2/itemization/accepted-reference-itemization.json`.
+
+| Pack path | Code gzip delta | Unpacked delta | Files | Attribution |
+| --- | ---: | ---: | ---: | --- |
+| dist/payments/contracts/index.d.ts | -2 | +0 | +0 | Compression context only; content unchanged |
+| dist/payments/contracts/sandbox.d.ts | +11 | +0 | +0 | Compression context only; content unchanged |
+| dist/payments/contracts/sandbox.js | +4 | +0 | +0 | Compression context only; content unchanged |
+| dist/payments/contracts/truth.d.ts | +4 | +0 | +0 | Compression context only; content unchanged |
+| dist/payments/nativeInstant.d.ts | +45 | +144 | +1 | Authorized timestamp helper/caller change |
+| dist/payments/nativeInstant.js | +339 | +950 | +1 | Authorized timestamp helper/caller change |
+| dist/payments/postgresPaymentTruth.js | +71 | +421 | +0 | Authorized timestamp helper/caller change |
+| dist/payments/postgresSandboxPaymentSimulator.d.ts | +7 | +0 | +0 | Compression context only; content unchanged |
+| dist/payments/postgresSandboxPaymentSimulator.js | +179 | +849 | +0 | Authorized timestamp helper/caller change |
+| dist/subscriptions/index.d.ts | -8 | +0 | +0 | Compression context only; content unchanged |
+| dist/subscriptions/index.js | +3 | +0 | +0 | Compression context only; content unchanged |
+| dist/subscriptions/nativeInstant.d.ts | +56 | +144 | +1 | Authorized timestamp helper/caller change |
+| dist/subscriptions/nativeInstant.js | +354 | +950 | +1 | Authorized timestamp helper/caller change |
+| dist/subscriptions/nativePurchaseRenewal.d.ts | -14 | +0 | +0 | Compression context only; content unchanged |
+| dist/subscriptions/nativePurchaseRenewal.js | +51 | +270 | +0 | Authorized timestamp helper/caller change |
+| dist/subscriptions/nativeRenewalCodec.js | +123 | +461 | +0 | Authorized timestamp helper/caller change |
+| dist/subscriptions/postgresRenewalStore.d.ts | -1 | +0 | +0 | Compression context only; content unchanged |
+| dist/subscriptions/postgresRenewalStore.js | +15 | +0 | +0 | Compression context only; content unchanged |
+| dist/subscriptions/sandboxRenewalRail.d.ts | -23 | +0 | +0 | Compression context only; content unchanged |
+| dist/subscriptions/sandboxRenewalRail.js | -27 | +88 | +0 | Authorized timestamp helper/caller change |
+| src/payments/contracts/index.ts | -1 | +0 | +0 | Compression context only; content unchanged |
+| src/payments/contracts/sandbox.ts | +3 | +0 | +0 | Compression context only; content unchanged |
+| src/payments/index.ts | +3 | +0 | +0 | Compression context only; content unchanged |
+| src/payments/nativeInstant.ts | +364 | +920 | +1 | Authorized timestamp helper/caller change |
+| src/payments/postgresPaymentTruth.ts | +76 | +401 | +0 | Authorized timestamp helper/caller change |
+| src/payments/postgresSandboxPaymentSimulator.ts | +233 | +855 | +0 | Authorized timestamp helper/caller change |
+| src/subscriptions/index.ts | -2 | +0 | +0 | Compression context only; content unchanged |
+| src/subscriptions/nativeInstant.ts | +416 | +920 | +1 | Authorized timestamp helper/caller change |
+| src/subscriptions/nativePurchaseRenewal.ts | +20 | +260 | +0 | Authorized timestamp helper/caller change |
+| src/subscriptions/nativeRenewalCodec.ts | +153 | +445 | +0 | Authorized timestamp helper/caller change |
+| src/subscriptions/postgresRenewalStore.ts | -18 | +0 | +0 | Compression context only; content unchanged |
+| src/subscriptions/sandboxRenewalRail.ts | +3 | +88 | +0 | Authorized timestamp helper/caller change |
+| **Total** | **+2,437** | **+8,166** | **+6** | Authorized changes, caps unchanged |
+
+#### Generic fingerprint donor parity correction before commit
+
+A new restricted-role counterexample writes a retained native event through
+the existing production truth routine using the unchanged public fingerprint
+function. The draft generic port's normalization then refuses the identical
+replay with `payment_truth_event_fingerprint_conflict` (23505). This was an
+uncommitted draft regression: changing the generic fingerprint input would
+invalidate existing native ledger history. The generic ingest/reconciliation
+calls are restored byte-for-byte to the inherited main dialect; no shared main
+hash, gateway or SQL is changed. The new simulator instead canonicalizes its
+own occurredAt/evidence/result instant at its source boundary, before that
+unchanged generic call. The full simulator suite passes 26 cases after this
+correction, including the retained replay and concurrent-zone counterexamples.
+No second event or settlement is produced for the retained replay.
+
+The audit now explicitly marks the two inherited fingerprint sites as donor
+parity, not as a new format to impose on stored history. The source-boundary
+normalization satisfies the identity rule for new sandbox work. Generic host
+inputs retain their previous lexical fingerprint contract; versioning or
+migrating that historical dialect is outside this bundle. The preceding fourth
+repair hash and size table are superseded by the final corrected source and
+pack measurements to follow. All post-repair probes are rerun on that source.
+
+#### Corrected final repair identity and size reference
+
+The generic-fingerprint donor-parity correction supersedes the preceding
+fourth-repair hash and pack figures. The corrected fourth-repair +/- line hash
+is `8aac26c2259ae3f70dec5aa06264fc38a1355e608a8416cd10aba4b1967bae19`.
+The G2 expected/candidate hash remains
+`722e90a8507d94b490a45151bf57fa85138a2a7e6a1e27131ff32208ba681cab`;
+the G6 expected/candidate hash is now
+`8a4a84b9522f56d08935e4bcfcda6f0d2bc0ea7c40ce646c6dd735fda53cba03`.
+The first three repair counters and both SQL hashes remain unchanged. The
+same read_identity.py command verifies every production/SQL line against
+accepted reads plus those explicit repairs.
+
+The refreshed official real pack against `31423ca5` is +32,965 packed bytes,
++19,791 code-class gzip bytes, +143,197 unpacked bytes and +23 files. Absolute
+code is 1,950,344 bytes. Relative to the preceding measured draft, restoring
+the generic dialect and normalizing only the sandbox source removes 63 packed,
+50 code and 586 unpacked bytes, with no file-count change. Only the two payment
+callers' source/emitted JavaScript changed packaged bytes. No cap or baseline
+is changed. Growth over the accepted reference is now exactly +2,387 code,
++7,580 unpacked and +6 files: the 480-byte third repair plus the corrected
+7,100-byte fourth repair, with exact gzip attribution below. Every content
+change remains one of the authorized timestamp helper/caller paths.
+
+| Pack path | Code gzip delta | Unpacked delta | Files | Attribution |
+| --- | ---: | ---: | ---: | --- |
+| dist/payments/contracts/index.d.ts | -2 | +0 | +0 | Compression context only |
+| dist/payments/contracts/sandbox.d.ts | +11 | +0 | +0 | Compression context only |
+| dist/payments/contracts/sandbox.js | +4 | +0 | +0 | Compression context only |
+| dist/payments/contracts/truth.d.ts | +4 | +0 | +0 | Compression context only |
+| dist/payments/nativeInstant.d.ts | +45 | +144 | +1 | Authorized timestamp caller/helper |
+| dist/payments/nativeInstant.js | +339 | +950 | +1 | Authorized timestamp caller/helper |
+| dist/payments/postgresPaymentTruth.js | +26 | +103 | +0 | Authorized timestamp caller/helper |
+| dist/payments/postgresSandboxPaymentSimulator.d.ts | -4 | +0 | +0 | Compression context only |
+| dist/payments/postgresSandboxPaymentSimulator.js | +210 | +869 | +0 | Authorized timestamp caller/helper |
+| dist/subscriptions/index.d.ts | -5 | +0 | +0 | Compression context only |
+| dist/subscriptions/nativeInstant.d.ts | +55 | +144 | +1 | Authorized timestamp caller/helper |
+| dist/subscriptions/nativeInstant.js | +357 | +950 | +1 | Authorized timestamp caller/helper |
+| dist/subscriptions/nativePurchaseRenewal.d.ts | -13 | +0 | +0 | Compression context only |
+| dist/subscriptions/nativePurchaseRenewal.js | +45 | +270 | +0 | Authorized timestamp caller/helper |
+| dist/subscriptions/nativeRenewalCodec.d.ts | +2 | +0 | +0 | Compression context only |
+| dist/subscriptions/nativeRenewalCodec.js | +125 | +461 | +0 | Authorized timestamp caller/helper |
+| dist/subscriptions/postgresRenewalStore.js | +16 | +0 | +0 | Compression context only |
+| dist/subscriptions/sandboxRenewalRail.d.ts | -22 | +0 | +0 | Compression context only |
+| dist/subscriptions/sandboxRenewalRail.js | -29 | +88 | +0 | Authorized timestamp caller/helper |
+| src/payments/contracts/index.ts | -2 | +0 | +0 | Compression context only |
+| src/payments/contracts/sandbox.ts | +2 | +0 | +0 | Compression context only |
+| src/payments/contracts/truth.ts | +1 | +0 | +0 | Compression context only |
+| src/payments/index.ts | -1 | +0 | +0 | Compression context only |
+| src/payments/nativeInstant.ts | +366 | +920 | +1 | Authorized timestamp caller/helper |
+| src/payments/postgresPaymentTruth.ts | +29 | +103 | +0 | Authorized timestamp caller/helper |
+| src/payments/postgresSandboxPaymentSimulator.ts | +256 | +865 | +0 | Authorized timestamp caller/helper |
+| src/subscriptions/index.ts | -2 | +0 | +0 | Compression context only |
+| src/subscriptions/nativeInstant.ts | +415 | +920 | +1 | Authorized timestamp caller/helper |
+| src/subscriptions/nativePurchaseRenewal.ts | +21 | +260 | +0 | Authorized timestamp caller/helper |
+| src/subscriptions/nativeRenewalCodec.ts | +152 | +445 | +0 | Authorized timestamp caller/helper |
+| src/subscriptions/postgresRenewalStore.ts | -17 | +0 | +0 | Compression context only |
+| src/subscriptions/sandboxRenewalRail.ts | +3 | +88 | +0 | Authorized timestamp caller/helper |
+| **Total** | **+2,387** | **+7,580** | **+6** | Exact accepted/current artifact attribution |
+
+#### Current-main co-location preflight stop
+
+While the corrected final probes run, origin/main advances to
+`eedb9f9a9927002f20a30b0111ca044f9f51175a`. The current-main reader is copied
+unchanged into scratch, with recorded source hashes, and used against the
+signed checkpoint `239ebb6c` whose registry, pins and SQL are unchanged in the
+draft. Both native forward checks pass. Co-location refuses with the exact
+message: `reviewed replacement admission machinery must be approved separately before co-located SQL/pins`.
+The previous authorized integration is `31423ca5`; newer main changes include
+`.github/INSTALL_SUPPORT_POLICY.md` and `scripts/oss-publication-contract.ts`.
+Those paths trigger the unchanged reader's control/release-path guard when
+comparing current main with this older candidate. The uncommitted timestamp
+repair touches neither path and cannot clear that refusal. No checker, pin,
+class, budget or main code is changed to bypass it, and no later main is merged.
+A current-main integration needs the supervisor's explicit disposition under
+the existing no-later-main instruction.
+
+The corrected source completes default with 146 passed/no failures and UTC+09
+with 143 passed/the same three classified main observations. UTC−05 and mixed
+are unrun on this final donor-parity correction; earlier intermediate probe
+results are not claimed for it. The prior corrected UTC assertion did pass the
+mixed transfer continuation, including pending attachment completion, before
+the final donor-parity correction. The active test is allowed to finish and
+run teardown, then only the owned waiting probe/check runners are stopped.
+No native review, commit, verify, push or PR starts. The native cycle stays 1;
+the pending source is the intended cycle-2 repair, not a new counted finding.
+
+The new retained-native fingerprint counterexample fails before the correction
+with 23505 and passes afterwards as part of 26/26 simulator cases, with one
+truth and one settlement. Completed pre-correction boundary/vector/import-map,
+catalog/admission and typecheck results remain separately dated evidence;
+final lint, typecheck, boundary rerun, signed policy and signed preflight are
+unfinished. The read-identity proof on the final source still accounts for all
+production/SQL lines with the corrected fourth-repair hash. Package delta and
+accepted-reference per-file itemization remain the corrected figures above:
++32,965 packed, +19,791 code, +143,197 unpacked, +23 files; +2,387 code,
++7,580 unpacked and +6 files above the accepted reference; absolute code
+1,950,344. No package, API, pin or SQL bytes change after that measurement.
+The source and all diagnostic observations remain uncommitted. Evidence and
+cleanup/harness-revert proof are in `.context/scratch/g2/cycle2/main-preflight-stop.json`.
+
+Self-retro: canonicalize newly reconstructed source identity without changing
+an inherited ledger's fingerprint dialect; the real retained-replay case
+caught that draft regression. Refresh the trusted-main preflight before long
+proof sequences so unrelated main control-path drift is surfaced earlier.
+
+
+#### Final cycle-2 repair checkpoint and authorized leaf integration
+
+The supervisor authorizes exactly `eedb9f9a9927002f20a30b0111ca044f9f51175a`
+after the current-main preflight refusal. The repair is committed first; the
+leaf integration follows as a separate signed mechanical merge. This is cycle
+2 of the existing native session, with no budget reset. Review has not begun.
+
+Final draft lint passes (36.056 seconds). Tree-wide neutrality reports zero
+increases; UI neutrality reports zero forbidden hits. All API reports and the
+package export manifest remain unchanged against `239ebb6c`. Policy's sole
+unanswered tests obligation is answered by the measured scoped trailer in the
+repair commit. The tarball-relative paths in the size table are plain text so
+that the repository-path checker does not interpret them as repository links.
+This changes no size attribution or runtime behavior.
+
+The exact accepted-read comparison is rerun with
+`python3 .context/scratch/g2/cycle2/read_identity.py 31423ca5b3e44698eb9a1ce342addad3e58b5d71`.
+It confirms the same four explicitly itemized production repairs and no other
+production or SQL difference. The fourth repair's line hash remains
+`8aac26c2259ae3f70dec5aa06264fc38a1355e608a8416cd10aba4b1967bae19`.
+The generic native truth fingerprint retains its inherited dialect; only the
+new simulator's caller normalizes time identity before invoking that hash.
+The retained truth counterexample passes after this correction. No shared
+managed hash, gateway, SQL, pin, class or boundary is changed.
+
+Default and UTC+09 final probes completed before this integration: 146/0 and
+143/3 respectively, with all three failures the previously classified unchanged
+main test observations. UTC−05 and mixed remain to run on the integrated head.
+The integration carry-over check is
+`git diff --name-only 31423ca5 eedb9f9a -- db packages tests` (empty).
+The signed merge must equal the independently computed merge-tree. Its policy,
+trusted-main preflight, starter and remaining proof results are subsequent
+scratch evidence, not claimed by this pre-integration checkpoint.
