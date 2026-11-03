@@ -10,7 +10,8 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
-        "test/fulfillment/nativePreparation.test.ts"
+        "test/fulfillment/nativePreparation.test.ts",
+        "test/fulfillment/nativeCommerceReads.test.ts"
       ],
       "entrypoint": "dist/fulfillment/native/index.d.ts",
       "snapshot": "api/fulfillment-native.api.md"

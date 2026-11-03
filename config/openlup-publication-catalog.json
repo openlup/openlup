@@ -1626,6 +1626,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g10r.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g11.md",
       "class": "public-output"
     },
@@ -5658,6 +5662,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/commerceReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/native/index.ts",
       "class": "public-output"
     },
@@ -8651,6 +8659,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/nativeCommerceReads.test.ts",
       "class": "public-output"
     },
     {
@@ -27847,6 +27859,10 @@
     },
     {
       "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentCommerceReads.test.ts",
       "class": "public-output"
     },
     {
