@@ -435,6 +435,18 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 
 ## Commerce contracts
 
+`./commerce/server/postgres` also exports
+`createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
+request and pass it to `createConcurrentCommercePriceAuthorityPort` from
+`./pricing`. It reads complete active price-list and exact unit-entry histories,
+plus the selected context's complete subscription-policy history. UUID demand
+waves are deduplicated and chunked at 500; result rows are never truncated.
+Raw histories and failed promises are shared only within that request, with
+caller-owned copies. The existing authority selects half-open effective windows,
+validates policy digests and refuses ambiguity; the reader never chooses a newest
+winner or substitutes a fallback after a failed read. Supply the restricted
+runtime executor; the reader changes no role, grants, configuration or data.
+
 `./commerce/server/postgres` exposes the existing native
 `createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
 `createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
@@ -714,12 +726,20 @@ the managed adapter retains the underlying write fences. Adjacent shipping,
 catalog-price and subscription-band schemas and managed adapters remain reference-owned.
 
 `createPostgresCommercePromoDataPort` and `createPostgresPromotionClaimSweepPort`
-use an injected `PgQueryExecutor` from `./data`. They retain four evaluator reads
+use an injected `PgQueryExecutor` from `./data`. They retain five evaluator methods
 and bounded stale-claim sweep; they add no claim writer or reservation path.
 `PROMOTIONS_MIGRATIONS` identifies the byte-identical projections of canonical
 units 47/48 with paths, positions and hashes. These sparse units are not an
 installation chain: use the complete canonical catalogue. No migration or
 manifest identity changes in this move.
+
+Two native evidence limits remain: the device-redemption routine returns constant
+false because visitor evidence is not persisted; this does not establish device
+eligibility or implement a device guard. Redemption counts are keyed by individual
+promotion IDs and do not aggregate mirror families. Hosts must not assume either
+capability or claim full eligibility parity from these reads. The characterization
+tests preserve these limits without changing the reader or adding a default
+eligibility rule.
 
 The server entry is classified as an adapter because its executor declaration
 reaches the data entry and optional pg types. It imports at runtime without pg
