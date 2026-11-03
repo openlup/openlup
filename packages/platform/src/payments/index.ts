@@ -19,3 +19,5 @@ export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPayment
 export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";
 
 export { createPaymentServices } from "./bindings.js";
+
+export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentSimulator.js";

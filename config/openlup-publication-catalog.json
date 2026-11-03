@@ -1202,6 +1202,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101222000_sandbox_payment_attempts.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1638,7 +1646,15 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g2.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g4g3-control.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g6.md",
       "class": "public-output"
     },
     {
@@ -3683,6 +3699,14 @@
     },
     {
       "path": "packages/platform/sql/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101222000_sandbox_payment_attempts.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101223000_subscription_purchase_renewal.sql",
       "class": "public-output"
     },
     {
@@ -6774,6 +6798,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/sandbox.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/truth.ts",
       "class": "public-output"
     },
@@ -6783,6 +6811,10 @@
     },
     {
       "path": "packages/platform/src/payments/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/nativeInstant.ts",
       "class": "public-output"
     },
     {
@@ -6823,6 +6855,10 @@
     },
     {
       "path": "packages/platform/src/payments/postgresPaymentTruth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresSandboxPaymentSimulator.ts",
       "class": "public-output"
     },
     {
@@ -7550,6 +7586,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativeInstant.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativePurchaseRenewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeRenewalCodec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
       "class": "public-output"
     },
@@ -7583,6 +7631,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sandboxRenewalRail.ts",
       "class": "public-output"
     },
     {
@@ -9163,6 +9215,10 @@
     },
     {
       "path": "packages/platform/test/payments/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/nativeInstant.test.ts",
       "class": "public-output"
     },
     {
@@ -27366,6 +27422,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/captureSandboxPurchase.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/catalogRouteResponse.ts",
       "class": "public-output"
     },
@@ -27391,6 +27451,10 @@
     },
     {
       "path": "tests/helpers/fulfillmentNative.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/installSubscriptionConsumer.ts",
       "class": "public-output"
     },
     {
@@ -27898,6 +27962,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m19PaymentCancellation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19PaymentSimulatorChild.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m19StorePromotion.test.ts",
       "class": "public-output"
     },
@@ -28082,7 +28154,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionMethodHealthCompatibility.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionNativeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPurchaseRenewal.test.ts",
       "class": "public-output"
     },
     {
@@ -28091,6 +28171,10 @@
     },
     {
       "path": "tests/postgres/subscriptionRenewalLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetainedMethodCompatibility.test.ts",
       "class": "public-output"
     },
     {
