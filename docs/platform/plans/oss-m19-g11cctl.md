@@ -1,18 +1,18 @@
 # Native-store terms, guards, destination policy and measured test deadline
 
-Status: two registry amendments committed. The destinations policy and renewal
-prepare identity are staged for a combined control read. A measured test-timeout
-patch is prepared separately and remains unapplied. Native review and canonical
-verification remain pending. Original code base:
-`2a59da4be321f6413ae384f49e66ae3145f881d4`. Pending-amendment base:
-`1d698631c0c9c358d4d57934c19b9b0db62c692b`. Current instruction/reader revision:
-`967ca62b6926afb8ddffb2aa41bd8ebd41d578a2` (2026-11-03). Current agent guidance
-and the contributor-guide delta were read without integrating main.
+Status — four registry amendments and the measured per-case deadline are
+committed for native review. The combined maintainer read was accepted on
+2026-11-03 for tree `c93385557b604030c8b06d653094069ac22c3fbe` and the separately
+hashed timeout patch. Native review and canonical verification are pending.
+Original code and review base is `2a59da4be321f6413ae384f49e66ae3145f881d4`.
+Current instruction/reader revision is
+`967ca62b6926afb8ddffb2aa41bd8ebd41d578a2`. Current agent and contributor guidance
+was read separately from that comparison base.
 
 ## Outcome and boundary
 
-This control change records four registry amendments, the last two pending read, in
-`config/reviewed-platform-forwards.json`:
+This control change records four registry amendments in
+`config/reviewed-platform-forwards.json`.
 
 - Append `public.subscription_renewal_purchase_terms(uuid)` to the unbound
   account-consent slot's created functions with `pg_catalog, pg_temp`, after its
@@ -42,8 +42,8 @@ This control change records four registry amendments, the last two pending read,
   replace prepare with the same header and take the subscription lock first.
   This approves the replacement identity only.
 
-A separate test-only change is planned as the fourth commit. Its unapplied
-patch gives the merge-group admission-entry-point case in
+The fourth commit applies the accepted test-only patch. It gives the
+merge-group admission-entry-point case in
 `scripts/reviewed-batch-forward.test.ts` an explicit 30-second per-case timeout. The callback, assertions, pull-request case deadline and global
 configuration remain byte-identical. Measurements and scratch proof follow below.
 
@@ -51,30 +51,32 @@ The first approval was read at tree
 `f25158da1bf0371e8c04b90f069f02f33fcb598e` and committed, with its accepted
 prose update, as `f45f828d6853349332310e338a5c12f033dd7563`. The second approval
 was committed separately as `1d698631c0c9c358d4d57934c19b9b0db62c692b`.
-The proposed destinations and renewal-prepare amendments are staged together
-above that base. Both earlier commits retain their identities.
+The destinations and renewal-prepare amendments were committed together as
+`0afc0340b7d706d18eb6b9a92e370df27a7db63d`, with accepted tree
+`c93385557b604030c8b06d653094069ac22c3fbe`. Earlier commits retain their identities.
 
 Preserve all other registry bytes: existing functions, slot order, the consent
 purpose check and three absorption statements, sealing state and feature
 bindings. Pin only the corresponding exact production expectations.
 The second commit changes only its one registry object, one production
-expectation line and this record. The pending staged delta changes G3's one
-statement, G7's one replacement object, their production expectations and this
-record. The existing catalog
-row remains unchanged.
+expectation line and this record. The third commit contains G3's one statement,
+G7's one replacement object, their production expectations and this record. The
+fourth commit changes only the accepted batch-forward test registration and
+per-case deadline, plus this record. The existing catalog row is preserved.
 No SQL, checker code, package file, export, manifest, lockfile or workflow changes.
 No runtime behavior is added. Package-input delta is 0 B. No changed path is
 reachable from the reference adopter's production composition: registry and
 tests are repository tooling, and catalog and record are metadata/documentation.
 
-The worker stopped before the first commit for the maintainer read. The first
-two amendments were accepted for DCO and committed. This run authorizes the combined
-staged registry delta, its checks, the unapplied timeout patch and one stabilized
-control-read packet only. No
-third commit, native prepare, review, canonical verification, push or integration
-is authorized yet. After the read, a later lead instruction will govern commit,
-stack integration and two fresh full control reviews. No release, publishing,
-settings, credentials, resources or adopter endpoint action is authorized.
+The worker stopped before DCO for the applicable maintainer reads. All four
+registry amendments and the separately measured timeout were accepted. The
+current grant covers the two new DCO commits, final-head pre-review checks,
+native preparation, two fresh full independent reviews, canonical verification,
+a plain branch-create push, a draft pull request against main, its source receipt
+and exact-head arming through the designated landing command. The comparison
+base remains the fork point, with no stack pin. A refused carry-over preflight
+returns to the lead. Release, publishing, settings, credentials, hosted resource
+and adopter endpoint actions retain their separate authority.
 
 ## Acceptance, risk and proof
 
@@ -86,12 +88,12 @@ line. Every slot's function lists stay unique and disjoint; no other slot lists
 the new replacement identity. The four target slots stay unbound and the class unsealed.
 
 Use trusted main's `nativeStoreFunctionDefinitions` over all numeric migrations
-before the first class slot, retaining the last definition. The line-sum guard's
-preimage must match the approved hash. Main's actual registry reader and
+before the first class slot, retaining the last definition. Both replacement
+preimages must match their approved hashes. Main's actual registry reader and
 `assertCoLocatedForwardApproval` must accept the staged tree. Run the existing
 native registry, real-PostgreSQL native catalog and qualified-admission suites,
 ast-grep, public typecheck and lint through the focused resource gate. Regenerate
-navigation and accept both scoped no-impact answers. Scan the second commit's
+navigation and accept both scoped no-impact answers. Scan the full candidate
 diff for private names and secrets. Relax no fixture, assertion or refusal.
 
 The risk is an incorrect identity or unintended approval change. Four direct
@@ -214,7 +216,7 @@ for it took 587.91 seconds, including one wait-window timeout. No test failed or
 was rerun. Direct source-byte absence was sufficient after the broad scratch
 splitter scan refused unrelated historical input; no new checker was needed.
 
-## Pending renewal-prepare and timeout evidence
+## Renewal-prepare and measured-deadline evidence
 
 Trusted main's own `nativeStoreFunctionDefinitions` was exported to ignored
 scratch and independently scanned all 91 numeric pre-class migrations in order.
@@ -226,7 +228,7 @@ The renewal-terminal slot is unbound, the class unsealed and trusted main's
 reader accepts the entry. All slots retain unique, disjoint function lists.
 Only that slot's production replacement-signature expectation changes.
 
-The timeout patch is held in ignored scratch for the same control read. The
+The timeout patch was prepared in ignored scratch for the combined control read. The
 unmodified merge-group case measured 4.53079525 seconds in isolation and
 5.6134835 seconds in the earlier full 58-file scripts run with two workers,
 a loaded/isolated ratio of 1.238962. Four times the slower observation is
@@ -238,11 +240,13 @@ use 30 seconds. Per-case registration isolates the deadline to merge-group.
 
 A disposable copy of the earlier G3 staged source accepted the patch and passed the full
 batch-forward file, 691 cases with zero failures or skips in 276.29 seconds.
-The patch was reversed and the copy removed. The actual test source remains
-unchanged. After acceptance and a lead instruction, the third commit will contain
-the combined staged G3 and G7 registry amendments. A fourth commit will apply
-exactly the accepted timeout patch and update this record with its application
-and measurements. Both commits require DCO sign-off.
+The scratch patch was reversed and the copy removed. After maintainer acceptance,
+the third commit captured the exact G3 and G7 registry proposal. The fourth commit
+applies exactly that accepted patch with `git apply --index`, together with this
+record update. Its SHA-256 is
+`1252994c6a68984207572eadea8a39e438ec29a6b6eb97af809fd6770f87f2b4`.
+The isolated and loaded measurements, ratio and 30-second bound remain the sizing
+evidence. Both commits carry the accountable author's DCO sign-off.
 
 The current rerun selects the full direct script set immediately after the
 scanner resource gate admits it, with one full set on the host. Registry database
@@ -282,8 +286,22 @@ Current-run retro: the scanner gate initially counted a waiting shell's planned
 scanner invocation as active work. Its descendants were only the gate and sleep;
 that wrapper exited before admission. Other workers' processes were left alone.
 The existing registry assertions and trusted-main helper prove both additions
-directly, keeping the timeout proposal separate until control-read acceptance.
+directly. The accepted timeout patch then applies as its own commit.
 
+
+## Final-head delivery proof plan
+
+The accepted deadline is applied before review. Run all direct script test files
+through the scanner admission lane, then record the patched merge-group duration.
+Run lint, structural rules, public typecheck and built distribution/export tests.
+Prepare with the fork-point base and use the control-change full-review floor.
+Reviewers assess exact registry bytes, trusted-main preimages and acceptance,
+unchanged SQL/package/checker inputs, deadline sizing and documentation impact.
+Canonical verification and the installed exact-tree stamp precede submission.
+Final results, both new commit/tree identities, review reports, expiry and landing
+output are retained in the existing ignored task evidence to keep the reviewed
+tracked tree frozen. Self-retro — applying the measured deadline as its own small
+commit preserves the accepted registry tree and makes its test-only scope explicit.
 
 ## Documentation impact
 
@@ -294,4 +312,4 @@ correct. These amendments claim no implemented API, installation or support.
 Compatibility posture and contributor check instructions remain accurate.
 
 <!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-8bbb2bdf78bf1794322f4836058186b56b818355916e624b682c9c907d6feaae","reason":"One created reader, two pre-class function replacement identities and one exact absorption-policy block statement are added to four unbound slots. No SQL, issued binding, package export, runtime capability or compatibility promise changes. Compatibility posture and the data owner's separate inventory and feature-approval rules remain accurate."} -->
-<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-37194aaeb036258b7b64e8bc88dd423a272f0e46e994e91b073b239b3c632a84","reason":"Only exact production function and data-statement expectations gain the four registry entries and their pins. The separately proposed timeout remains unapplied. Synthetic fixtures, refusals, prefix, absence, purpose-check and prior absorption assertions remain intact. No reader grammar, test selection, command or verification requirement changes; contributor check instructions remain correct."} -->
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-44647b0dff9482171a9f0030cabf14538dc01c55f3ff35c93661f308cf00c94a","reason":"Exact production function and data-statement expectations gain the four registry entries and their pins. One batch-forward admission case has an explicit measured 30-second per-case deadline, registered through the existing per-case form. Its callback and assertions, synthetic fixtures and prior refusals are preserved. Checker behavior, criteria, global timeouts and contributor check documentation are preserved, so the development-preview checks section remains accurate."} -->
