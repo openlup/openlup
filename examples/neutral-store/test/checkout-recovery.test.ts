@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
@@ -47,8 +48,8 @@ test('captured checkout mail is separate and private', async () => {
       context: { config: Object.values(configurations)[0]!, actor: { customerRef: null, operatorRef: null }, commandKey: 'test-command' } });
     const mailbox = join(directory, '.context/captured-messages');
     assert.equal((await stat(mailbox)).mode & 0o777, 0o700);
-    assert.equal((await stat(join(mailbox, 'checkout-recovery.jsonl'))).mode & 0o777, 0o600);
-    assert.equal(JSON.parse(await readFile(join(mailbox, 'checkout-recovery.jsonl'), 'utf8')).kind, 'checkout-recovery');
+    assert.equal((await stat(join(mailbox, createHash('sha256').update('checkout-recovery:order-reference').digest('hex') + '.json'))).mode & 0o777, 0o600);
+    assert.equal(JSON.parse(await readFile(join(mailbox, createHash('sha256').update('checkout-recovery:order-reference').digest('hex') + '.json'), 'utf8')).record.kind, 'checkout-recovery');
     await assert.rejects(readFile(join(mailbox, 'identity.jsonl')), { code: 'ENOENT' });
   } finally { process.chdir(cwd); await rm(directory, { recursive: true, force: true }); }
 });

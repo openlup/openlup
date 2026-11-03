@@ -1,3 +1,5 @@
+import { composeOperatorRecovery } from './operator-recovery.ts';
+import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
@@ -66,7 +68,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       await createCheckoutRecoveryDelivery(admittedOrigin)(input);
     },
   };
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery), ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown): value is string => typeof value === 'string' && value.length <= 160

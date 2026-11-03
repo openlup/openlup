@@ -197,7 +197,9 @@ The native customer branch returns the next-parcel outcome. Current-parcel
 operator correction is not offered through this customer action.
 
 Generic subscription commands remain unmounted pending a complete native fit.
-Payment recovery and operator recovery await their recovery rails. No refusal
+Authenticated payment recovery authorizes the same native unpaid obligation.
+Operator recovery requires its native restricted-runtime receipt-lock permission;
+its successful capture/replay proof is currently blocked. No refusal
 pauses or freezes an active subscription or confirms an undelivered replacement.
 
 

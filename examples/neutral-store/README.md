@@ -358,7 +358,7 @@ loudly. Replace this fictional registry and its onboarding for a customer enviro
 
 Operator customer search/detail remain unbound because the native reader
 requires a separate communications operator roster entry. The host does not
-provision that authority. Broader payment/operator recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+provision that authority. Other unbound operator actions retain their named refusals; see [limits](docs/limits.md). Acquisition proves no purchase journey.
 
 
 ## Guest purchase and later sign-in
@@ -424,3 +424,29 @@ onboarding decision rather than relying on a silent seed overwrite.
 
 Attempt limits live in one process's memory and reset on restart.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay precedes quotas; denied attempts add nothing. The synchronous process-local callback fails closed. Unpurchased contact retention belongs to the host.
+
+## Recovery admission and private capture
+
+Rendered recovery messages use one keyed JSON artifact in the private captured
+message directory. The filename is the SHA-256 of the message key; permissions
+are 0700 for the directory and 0600 for each file. Publication uses an exclusive
+temporary file, file sync, exclusive link and directory sync, followed by
+committed readback. Identical writes reuse the artifact; differing or corrupt
+material refuses. A later claim must refuse a missing artifact and cannot
+regenerate its bearer. Preserve these private files separately when moving a
+store; database transfer alone does not preserve them.
+
+Authenticated recurring recovery captures its entry token synchronously before
+application requests and the login trip, then uses the server-owned
+case/obligation/operation/order chain. The route accepts no method or payment
+facts from the browser. Authorization schedules the same unpaid obligation and
+returns pending state; only native retry execution and readback establish
+recovery. Initial checkout reads, simulator completion and acquisition
+activation refuse a recurring relation for both guests and matching owners.
+
+The human operator recovery action uses the native command and its own eligible
+customer/case rules. The current restricted installation lacks the command
+receipt row-lock permission, so its successful capture/replay proof is blocked.
+No extra grant or privileged fallback is installed by the starter. The missing runtime
+permission remains an installation prerequisite; this draft claims no complete
+operator recovery journey.

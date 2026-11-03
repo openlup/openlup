@@ -1726,6 +1726,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-r2a.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-recipes.md",
       "class": "public-output"
     },
@@ -1850,6 +1854,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/recovery.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/api.ts",
       "class": "public-output"
     },
@@ -1906,6 +1914,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/recovery-page.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/recovery-session.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/style.css",
       "class": "public-output"
     },
@@ -1938,6 +1954,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/authenticated-recovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/bindings.ts",
       "class": "public-output"
     },
@@ -1966,11 +1986,23 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/operator-recovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/origin-policy.ts",
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/private-capture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/purchase-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/recurring-fence.ts",
       "class": "public-output"
     },
     {
@@ -2090,6 +2122,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/recovery-config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/routes.ts",
       "class": "public-output"
     },
@@ -2143,6 +2179,14 @@
     },
     {
       "path": "examples/neutral-store/test/origin-policy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/private-capture.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/recovery-entry.test.ts",
       "class": "public-output"
     },
     {
@@ -28279,6 +28323,10 @@
     },
     {
       "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStoreRecovery.test.ts",
       "class": "public-output"
     },
     {
