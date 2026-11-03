@@ -655,6 +655,12 @@ exact-byte append. The preceding twelve approvals remain fixed. The active
 restricted plan selects those four files with the approved `qa_` baseline only
 after the separate approval. Its local PG16 qualification covers both role
 modes; this does not qualify a hosted installation or release.
+A seventeenth exact-byte approval follows as one append. It binds the shared
+lock and conflict completion tail that both qualified plans will select after
+their issued tails, and all sixteen earlier rows stay fixed. The approval adds
+no active SQL, manifest row, inventory or package change. The restricted
+runtime keeps refusing the affected native writers until the identical SQL is
+introduced in its own later change.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2

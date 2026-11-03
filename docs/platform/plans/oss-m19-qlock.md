@@ -1,7 +1,7 @@
 # Qualified runtime lock and conflict completion
 
-Status: checkpoint 1 of 3 (reader preparation). The approval pin and the active
-SQL follow as separate changes.
+Status: checkpoint 2 of 3 (approval pin). The reader preparation lands before
+it, and the active SQL follows separately.
 
 ## Outcome and boundary
 
@@ -79,6 +79,15 @@ landed checkpoints, each on actual main before the next.
      - access for every other role is unchanged;
      - legacy and managed stay untouched.
    - Existing pinned qualified-runtime limits become positive proofs.
+
+## Checkpoint 2 acceptance and proof
+
+The registry gains exactly one row at position 17: the completion path and
+SHA-256 `0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7`, equal to the unchanged inert fixture. Every earlier row and every
+other registry byte stays the same. The witnesses now expect 17 issued
+approvals and pin position 17 to that fixture hash. The 16→17 append,
+co-located refusal and repin refusal cases from checkpoint 1 still pass. No
+SQL, manifest, reader or package file changes, so the package delta is 0 B.
 
 ## Checkpoint 1 acceptance and proof
 

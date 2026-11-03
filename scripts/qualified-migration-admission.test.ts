@@ -107,7 +107,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
   expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-  expect(registry.qualifiedInstallations).toHaveLength(16);
+  expect(registry.qualifiedInstallations).toHaveLength(17);
   expect(registry.qualifiedInstallations![6]).toEqual(binding);
   const reviewedBytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_OWNER_PATH_FILE}`);
   expect(reviewedBytes).toEqual(bytes);
@@ -141,7 +141,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
 it("preserves the first twelve issued identities and pins all four revised replacements", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
   const issued = registry.qualifiedInstallations!;
-  expect(issued).toHaveLength(16);
+  expect(issued).toHaveLength(17);
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
   for (const entry of registry.qualifiedInstallations!) {
     const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${entry.path}`);
@@ -166,7 +166,7 @@ it("preserves the first twelve issued identities and pins all four revised repla
 
 it("keeps the four revised restricted fixtures inert and exact after separate approval", () => {
   const issued = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH)).qualifiedInstallations!;
-  expect(issued).toHaveLength(16);
+  expect(issued).toHaveLength(17);
   const revised = [REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE];
   const prior = [ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
   const hashes = [
@@ -210,12 +210,11 @@ it("admits only an atomic four-identity append after the twelve issued rows", ()
   expect(() => assertCoLocatedForwardApproval(colocated.root, prior, same)).toThrow("separate exact approval");
 });
 
-it("prepares the inert shared lock and conflict completion as the seventeenth identity", () => {
-  // Fixture integrity does not approve this future pin in the active registry.
+it("approves the exact shared lock and conflict completion as the seventeenth identity", () => {
   const issued = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH)).qualifiedInstallations!;
-  expect(issued.map(({ path }) => path)).not.toContain(QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE);
+  expect(issued[16]).toEqual({ path: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: "0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7" });
   const lock = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`);
-  expect(sqlSha256(lock)).toBe("0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7");
+  expect(sqlSha256(lock)).toBe(issued[16]!.sha256);
 
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, 16) }));
