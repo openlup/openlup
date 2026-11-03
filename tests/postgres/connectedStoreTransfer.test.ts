@@ -905,3 +905,88 @@ it("drains every target acquisition command before opening a new installation-ke
   expect((await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows).toEqual(sourceReceipt);
   expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
 }, 30_000);
+
+
+// Solo 15.06 s without coverage; 60 s covers installed tarballs, capture/restore and child restart with headroom.
+it("preserves native checkout receipt identity, privacy and microseconds across transfer and restart", async () => {
+  const { installSubscriptionConsumer } = await import("../helpers/installSubscriptionConsumer.js");
+  const { execFileSync } = await import("node:child_process");
+  const { writeFile } = await import("node:fs/promises");
+  const consumer = await mkdtemp(join(process.cwd(), ".context/scratch/checkout-transfer-consumer-"));
+  try {
+    const installed = await installSubscriptionConsumer(consumer);
+    const checkout = await import(installed.resolve("@openlup/platform/commerce/server/native-checkout")) as typeof import("@openlup/platform/commerce/server/native-checkout");
+    const native = await installation("checkout-source");
+    const clientId = randomUUID(), principalId = randomUUID(), skuId = randomUUID(), listId = randomUUID();
+    await native.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'checkout-transfer@example.invalid')", [principalId]);
+    await native.owner.query("INSERT INTO public.clients(id,principal_id,email) VALUES($1,$2,'checkout-transfer@example.invalid')", [clientId, principalId]);
+    await native.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'checkout-transfer','Synthetic checkout')", [skuId]);
+    await native.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,'CHECKOUT-TRANSFER','Synthetic checkout')", [skuId]);
+    await native.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic checkout','ZZ','XXX')", [listId]);
+    await native.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor) VALUES($1,$2,100)", [listId, skuId]);
+    const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+    const request = { idempotencyKey: `checkout-transfer:${randomUUID()}`, quoteSnapshot: { contractVersion: "commerce.v0" as const, quote: {
+      currency: "XXX", taxIncluded: true as const,
+      lines: [{ sku: "CHECKOUT-TRANSFER", productSlug: "checkout-transfer", quantity: 2,
+        unitPriceGross: money(100), lineSubtotalGross: money(200), tax: { included: true as const, country: "ZZ",
+          category: "standard", vatRateBps: 2000, legalBasis: "Synthetic transfer tax", netAmount: money(167), vatAmount: money(33), grossAmount: money(200) } }],
+      discounts: [], context: { mode: "one_time" as const, cadenceDays: null, promoCodes: [],
+        hostFacts: { clientId, principalId, contact: "checkout-transfer@example.invalid" } },
+      subtotalGross: money(200), discountTotalGross: money(0), shippingGross: money(0), shippingDiscountGross: money(0),
+      totalGross: money(200), netTotal: money(167), taxTotal: money(33) } } };
+    const created = await checkout.createPostgresNativeCheckoutPersistence(native.runtime).createOrderDraft(request, { clientId });
+    const orderId = created.orderDraft.orderId.replace(/^order_/, "");
+    // Precision fixture only: the public writer creates the receipt; its timestamp is not part of the request fingerprint.
+    await native.owner.query("UPDATE public.commerce_order_draft_receipts SET created_at='2026-11-03T12:34:56.123456Z' WHERE order_id=$1", [orderId]);
+    const carried = await capture(native.owner, "native-checkout-source");
+    const receipt = carried.owned.find(data => data.table === "commerce_order_draft_receipts")!;
+    expect(receipt.rows).toHaveLength(1);
+    const receiptRow = JSON.parse(receipt.rows[0]!);
+    const order = JSON.parse(carried.compatible.tables.find(data => data.table === "commerce_orders")!.rows[0]!);
+    expect(receiptRow.response_payload.orderDraft.quoteSnapshot).toEqual(order.metadata.quoteSnapshot);
+    expect(order.metadata.quoteSnapshot).toEqual(request.quoteSnapshot);
+    expect(receiptRow.created_at).toBe("2026-11-03T12:34:56.123456+00:00");
+    const throughReceipt = [...carried.compatible.tables, receipt];
+    const rows = throughReceipt.reduce((total, data) => total + data.rows.length, 0);
+    const bytes = throughReceipt.reduce((total, data) => total + data.rows.reduce((size, row) => size + Buffer.byteLength(row), 0), 0);
+    await expect(capture(native.owner, "receipt-row-bound", { maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 }))
+      .rejects.toMatchObject({ code: "limit_exceeded", table: "commerce_order_draft_receipts" });
+    await expect(capture(native.owner, "receipt-byte-bound", { maximumRows: 10000, maximumBytes: bytes - 1 }))
+      .rejects.toMatchObject({ code: "limit_exceeded", table: "commerce_order_draft_receipts" });
+    expect(await restore(carried)).toMatchObject({ replayed: false });
+    expect((await census(target.owner)).commerce_order_draft_receipts).toEqual(receipt.rows);
+    const retained = (await target.owner.query(`SELECT r.order_id,
+      r.response_payload#>>'{orderDraft,orderId}' AS response_order,
+      to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+      r.request_fingerprint=md5((o.metadata->'quoteSnapshot')::text||'|'||(o.metadata->'orderDraftSnapshot')::text||'|'||coalesce(o.client_id::text,'')) AS fingerprint_matches,
+      o.client_id,c.principal_id FROM public.commerce_order_draft_receipts r JOIN public.commerce_orders o ON o.id=r.order_id
+      JOIN public.clients c ON c.id=o.client_id WHERE r.order_id=$1`, [orderId])).rows;
+    expect(retained).toEqual([{ order_id: orderId, response_order: created.orderDraft.orderId,
+      created_at: "2026-11-03T12:34:56.123456Z", fingerprint_matches: true, client_id: clientId, principal_id: principalId }]);
+    expect((await target.owner.query("SELECT principal_id FROM public.platform_human_principals WHERE principal_id=$1", [principalId])).rows)
+      .toEqual([{ principal_id: principalId }]);
+    await target.runtime.end();
+    const script = join(consumer, "restart-checkout.mjs");
+    await writeFile(script, `import {Pool} from "pg";
+import {readFileSync} from "node:fs";
+import {createPostgresNativeCheckoutPersistence} from "@openlup/platform/commerce/server/native-checkout";
+const input=JSON.parse(readFileSync(0,"utf8")),db=new Pool({connectionString:input.url});
+try {
+  const port=createPostgresNativeCheckoutPersistence(db),replay=await port.createOrderDraft(input.request,{clientId:input.clientId});
+  const changed=structuredClone(input.request);changed.quoteSnapshot.quote.context.hostFacts.contact="changed@example.invalid";
+  let refusal=null;try {await port.createOrderDraft(changed,{clientId:input.clientId});}catch(error){refusal={name:error.name,details:error.details};}
+  const counts=(await db.query("SELECT (SELECT count(*)::int FROM public.commerce_orders) orders,(SELECT count(*)::int FROM public.commerce_order_draft_receipts) receipts,(SELECT count(*)::int FROM public.outbox_events WHERE event_type='commerce.order_draft.created') events")).rows[0];
+  const role=(await db.query("SELECT current_user,(SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) elevated")).rows[0];
+  console.log(JSON.stringify({replay,refusal,counts,role}));
+}finally {await db.end();}`);
+    const restarted = JSON.parse(execFileSync(process.execPath, [script], { cwd: consumer, encoding: "utf8", timeout: 30_000,
+      input: JSON.stringify({ url: target.runtimeUrl, request, clientId }) }));
+    expect(restarted.replay).toEqual({ ...created, orderDraft: { ...created.orderDraft, replayed: true } });
+    expect(restarted.refusal).toMatchObject({ name: "CommerceOrderDraftConflictError", details: { code: "23505" } });
+    expect(restarted.counts).toEqual({ orders: 1, receipts: 1, events: 1 });
+    expect(restarted.role).toEqual({ current_user: "transfer_runtime", elevated: false });
+    expect((await census(target.owner)).commerce_order_draft_receipts).toEqual(receipt.rows);
+    expect(await restore(carried)).toMatchObject({ replayed: true });
+    console.info("Checkout transfer retained tables:", connectedNativeStoreTables.length);
+  } finally { await rm(consumer, { recursive: true, force: true }); }
+}, 60_000);

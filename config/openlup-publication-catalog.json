@@ -1654,6 +1654,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g5.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g6.md",
       "class": "public-output"
     },
@@ -3115,6 +3119,10 @@
     },
     {
       "path": "packages/platform/api/commerce-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce-native-checkout.api.md",
       "class": "public-output"
     },
     {
@@ -4847,6 +4855,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/native-checkout/index.ts",
       "class": "public-output"
     },
     {
@@ -28011,6 +28023,10 @@
     },
     {
       "path": "tests/postgres/nativeAccountReads.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeCheckoutPersistence.test.ts",
       "class": "public-output"
     },
     {
