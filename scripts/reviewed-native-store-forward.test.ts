@@ -223,7 +223,7 @@ describe("native store SQL shapes and pins", () => {
     expect(slots.find(slot => slot.row === "G6")!.createdFunctions).toHaveLength(4);
     expect(slots.find(slot => slot.row === "G2")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)"]);
     expect(slots.find(slot => slot.row === "G2")!.createdFunctions).toHaveLength(7);
-    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)"]);
+    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)", "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)"]);
     expect(slots.find(slot => slot.row === "G7")!.createdFunctions).toEqual([
       { signature: "public.commerce_view_shipment_destination(uuid)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)", searchPath: "pg_catalog, pg_temp" },
@@ -684,6 +684,7 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
     expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 2).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
+    expect(slots[3]!.dataStatements).toEqual(["INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');"]);
     expect(slots[2]!.createdFunctions).toEqual([
       { signature: "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },

@@ -3001,7 +3001,9 @@
           }
         ],
         "grantOnlyFunctions": [],
-        "dataStatements": []
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');"
+        ]
       },
       {
         "row": "G7",
@@ -3010,6 +3012,11 @@
           {
             "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
             "beforeSha256": "4814d98dbc9e6495af8d1d4d411a6a40d68cb5bcbd53aa41006bea6a34189af8",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+            "beforeSha256": "76578042f03f95f7599fa5fc84b0c720fbc8cb17d4031b0a0be6a5c5ce0019fe",
             "searchPath": "pg_catalog"
           }
         ],
