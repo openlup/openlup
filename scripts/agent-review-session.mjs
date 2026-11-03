@@ -189,6 +189,8 @@ export async function captureCoverageEdge(cwd, session, observed, now) {
     session.candidate.rules.head !== observed.rules.head ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
+  // An unlanded stack base remains eligible for ordinary full review only.
+  if (!await ancestor(git, cwd, observed.base, 'origin/main')) return undefined;
   let proof; let kind;
   if (session.candidate.base !== observed.base) {
     try { proof = await proveReviewIntegration(cwd, session.candidate, observed); kind = 'integration'; }

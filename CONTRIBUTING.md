@@ -3006,6 +3006,8 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   prepare fed absent optional rules into a hash function → compare absence
   explicitly at the owning boundary, and exercise an actual old-to-new history
   before relying on tests that start with the new version.
+  An ineligible optimization must leave the existing full-review route reachable;
+  prove that the same normal prepare accepts its full required evidence.
 
 - 2026-11-02, closed native forward class: six review cycles chased divergences
   between a hand-written SQL reader and PostgreSQL, and no written bar said what

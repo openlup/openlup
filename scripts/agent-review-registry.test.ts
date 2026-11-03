@@ -29,7 +29,8 @@ async function fixture(enabled = true, controls: string[] = [], initialFiles: Re
   const scratch = join(cwd, '.context/scratch'); await mkdir(scratch, { recursive: true });
   const intent = { risk: 'behavior', criteria: 'Preserve the bounded fixture outcome' };
   const request = join(scratch, 'intent.json'); await writeFile(request, JSON.stringify({ authorSessionId: 'author', intent }));
-  const cli = (...args: string[]) => sessionMain(args, { cwd, env: {} });
+  const env: { OPENLUP_STACK_BASE?: string } = {};
+  const cli = (...args: string[]) => sessionMain(args, { cwd, env });
   const state = async () => JSON.parse(await readFile(join(scratch, 'agent-review/session.json'), 'utf8'));
   let reviewer = 0;
   const report = async (patch = {}) => {
@@ -43,7 +44,7 @@ async function fixture(enabled = true, controls: string[] = [], initialFiles: Re
     git('update-ref', 'refs/remotes/origin/main', main); git('checkout', '-q', '--detach', previous); return main;
   };
   vi.spyOn(console, 'log').mockImplementation(() => {});
-  return { cwd, git, write, base, head, commit, request, cli, state, report, review, mainMove, scratch };
+  return { cwd, git, write, base, head, commit, request, cli, state, report, review, mainMove, scratch, env };
 }
 function addRegistry(path: string, source: string, entry: string) {
   if (path === REGISTRY_PATHS[0]) {
@@ -74,6 +75,27 @@ describe('closed registry grammar', () => {
 });
 
 describe('real Git coverage histories', () => {
+  it.each(['integration', 'ordinary repair'])('keeps the full-review route for %s on an unlanded stack base', async kind => {
+    const f = await fixture(); const original = kind === 'integration' ? await f.review() : undefined;
+    f.git('checkout', '-q', '--detach', f.base);
+    await f.write('predecessor.ts', 'independent predecessor\n'); const predecessor = f.commit();
+    f.git('checkout', '-q', '--detach', f.head); f.git('merge', '--no-ff', '-qm', 'integrate unlanded predecessor', predecessor);
+    f.env.OPENLUP_STACK_BASE = predecessor;
+    expect(f.git('rev-parse', 'origin/main')).toBe(f.base);
+    const prior = original ?? await f.review();
+    if (kind === 'ordinary repair') { await f.write('tests/demo.test.ts', 'ordinary fixture\n'); f.commit(); }
+    await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.candidate.base).toBe(predecessor);
+    expect(next.candidate.integration).toBeUndefined(); expect(next.candidate.coverage).toBeUndefined();
+    expect(next.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(next.cycle).toBe(prior.cycle + 1); expect(next.allowedCycles).toBe(prior.allowedCycles);
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+  });
   it('inherits a clean disjoint merge with no new reports and retains the original expiry', async () => {
     const f = await fixture(); const prior = await f.review(); const expiry = coverageState(prior).expires;
     const main = await f.mainMove(() => f.write('other.ts', 'independent\n'));

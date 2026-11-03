@@ -391,3 +391,37 @@ tamper cases. The two focused suites pass 148 cases on pinned Node 24.21.0.
 Fixture reviewer identities are synthetic test data, not independent native
 approval. A separate bounded dogfood run exercises the CLI and records its raw
 results locally; final independent review and full verification remain required.
+
+
+## Ordered merge delivery and confirmed full-route recovery
+
+Later direct maintainer instruction, 2026-11-03: "ok. twoje zadanie to
+ doprowadzenie do merge zarowno 509 jak i potem S3." This follows disclosure of
+the consumed 3/3 native budget and the need for a continuation if the new blocker
+is confirmed. The supervisor records that owner decision through the existing
+`continue` command: three additional cycles, no reset of reports, findings or
+expiry. The delivery grant now includes required ready/receipt/admission/queue
+steps and merge of #509 before S3, after all actual checks and review pass.
+It supersedes the earlier draft/merge holds, and grants no release, settings,
+credentials or unrelated branch changes. S3 remains a qualification checkpoint;
+merging it cannot claim that recovery reuse or public v1 was delivered.
+
+The next complete evaluation passed one full review and failed the other on
+`REPR-I509-B-01`; both verified legacy-prefix closure. A bounded CLI challenge
+falsified the initial privilege-gain interpretation: an unlanded stack integration
+correctly refuses zero-review verification and receipt. The confirmed defect is
+a wrong full-route refusal. Ordinary `prepare` attaches exceptional coverage but
+omits its integration context because the stack base is not on main. Adding two
+fresh full reports to that same prepare still fails. `prepare --new` works only
+by requiring another complete set of fresh reviewers. Fixture reports are
+synthetic, and offline hosted ancestry correctly refuses before the base lands.
+The native finding uses that corrected mechanism, not a bypass claim.
+
+The bounded repair prevents exceptional coverage for an unlanded review base,
+leaving the existing normal full-review route available. It uses the existing
+Git ancestry boundary, with no new policy, transport or reviewer mechanism.
+Keep the prior absence regression and test the actual stack/default-prepare
+sequence: no inherited edge, zero/one-report refusal and full-two success on the
+same prepare. The two completed evaluations and these two distinct failure
+causes require no repeated redesign; the prior regroup remains applicable.
+Lesson: a rejected optimization must leave the valid full route reachable.
