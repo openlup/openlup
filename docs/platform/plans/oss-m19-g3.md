@@ -1,9 +1,9 @@
 # Native order, subscription and parcel destinations
 
-Status: owner read accepted for DCO; bounded transaction-race and public-text
-additions proved below. Ready for the ordered native review after control and
-earlier slots. Latest SQL header normalization is recorded below; submission and
-release remain unstarted.
+Status: BLOCKED on co-located SQL/pin admission. Functional proofs, policy,
+size and DCO are complete; the main reader rejects the approved cold-consumer
+registry addition as release machinery. No checker or SQL repair is authorized.
+Native review, verification and submission have not started. See the final stop.
 
 ## Outcome, authority and boundaries
 
@@ -1151,3 +1151,126 @@ earlier than the remainder of the broad suite queue bounded the wasted work.
 Stop before repairing shared source; the package and SQL outcomes themselves
 remain unchanged. The remaining suites and final identity must be recomputed
 on the resumed, repaired candidate.
+
+### Landed-base continuation
+
+The supervisor accepted the prior stop and authorized exactly one cold-consumer
+classification addition, the named main merge46c3e8b2, remaining proofs and final
+DCO. Merge9937722a is DCO-signed; its sole conflict keeps the complete own transfer
+case and main's timeout comment/arguments verbatim. Sorted added-line hashes match
+for121bundle and16main lines. Stable patch IDs change243a97b4 ->c5b5d03a because
+context moved; all5295changed lines have identical sorted hashd7c5434d before/after.
+No SQL or derived catalogue input changed. The review base is now actual main;
+OPENLUP_STACK_BASE is unset. Native review, canonical verify and submission remain
+unauthorized; pin commitcf890d9f and line654 remain unchanged pending lead approval.
+
+The built destination declaration has zero imports and only local interfaces and
+built-in types (SHA25601d31fb3d05a9402db6d3df53c3398c84989364fd47c1f2b35cd997117c2acea).
+It cannot reach data/pg declarations, so commerce/server/destinations is a
+NON_ADAPTER entry under the cold consumer's own rule. Only that single name was
+added to the list; no other line in that source file changed. The earlier stop
+is resolved by this specific registry-union authority, not by widening a checker.
+Measured composition cases receive explicit40/45/60/75second budgets and comments;
+released-upgrade has the required30second minimum. Assertions, SQL and historic
+pins are unchanged. Remaining focused files and installed proofs run on this base.
+
+### Final landed-base local proof
+
+All242 focused files pass6588 cases with zero failures and skips. The complete
+file list and per-file cases/timings are in g4g3-focused-files/results.json;
+g4g3-focused-summary.json groups the exact results. Commerce112/887,
+inventory9/45 and account-support20/307 all pass unchanged. Package boundary2948,
+import map123, outcome projection7, documentation CLI3/bundle20, cold-consumer
+unit122, migration admission24 and registry691+210 cases pass. All11 pure starter
+files pass173 cases; the installed starter repeats173 cases, strict typecheck
+and build. This is local conformance, not hosted qualification or release.
+
+The full cold consumer passes both peer modes, NodeNext/Bundler declarations,
+packaged migration modes (qualified99/admin98), native communications/operations
+and SQL conformance with no live provider. Its cache was fresh and supplied from
+outside the process. The three verified tarballs are byte-identical to the
+accepted Linux glibc2.36 / Node24.21.0 offline empty-cache installed proof; its
+install set did not change. Official pack on main46c3e8b2 stays2449053B (+13276),
+code1954742B (+4398), unpacked11524562B (+70235),3029files (+8), including SQL.
+No cap, version, baseline or exemption changed. Full per-file packed/code
+attribution is in g4g3-main46-size/itemization.json.
+
+Main46's own forward checks accept allfour bindings; final co-location refuses
+the classification path as recorded below. Catalog130/130
+passes with roles present/absent. Full transfer16/16 retains both parent case
+sets and new address/hold rows with limits. The five actual catalogue
+measurements and their zero-application replay remain unchanged; final full
+composition and upgrade tests confirm those exact literals. The handover
+witness reaches its final98-table assertion in99.128s, recovers two accepted
+effects and fences the one uncertain operation. Its scope remains finite.
+
+Allown52 native cases pass on the landed base; six donor cases also pass full
+and solo. The earlier83 distinct owned/changed native, donor, transfer and
+composition cases have solo measurements without coverage. Slow cases now have
+measured comments and explicit budgets: transfer30s; admin45s; qualified40s or
+75s; restricted restore60s; released-upgrade30s. Their final full suites pass.
+The accepted timezone sweep remains204/0,201/3,201/3 and197/7, with only the nine
+classified main sites and no own failures. Actual zone probes353/352/353 have
+zero requested/actual mismatches. G4 identity is PostgreSQL-built SQL-only,
+no TypeScript key; G3 nextCycleAt is VALUE-only millisecond egress with exact
+stored microseconds and no feedback caller. No decoder or SQL change was made.
+
+G4's joined capture after cancel persists review_required after restart and
+released stock. G3 never updates a cycle or confirms delivery. Existing delivery
+alignment and renewal lifecycle suites pass; their clamp guards plus own
+unchanged-date/dunning tests preserve late-only extension, no stacking or earlier
+cycle and no confirmation of an undelivered replacement. Both actual parcel
+races retain the old record/fingerprint and name the next-parcel outcome.
+The fresh seven-site refusalCode audit still names/refuses the native outcome;
+four managed sites use another type. Current full postal addresses and contact
+phones remain under transfer limits, opaque-reference guidance and no erasure
+path. G8 owns the notice dispatch; dedicated promotion cancellation is unbound.
+
+Strict typecheck has zero errors/edges; lint zero errors (342 existing warnings),
+ast and both neutrality checks pass. WIP all-ref gitleaks scans1773 commits with
+zero findings. Final scoped trailers answer the three unchanged owner sections;
+no CONTRIBUTING edit. DCO completes only the two own WIP messages and their
+necessary descendant parent references, preserving checked trees, the three
+merge shapes, incoming main and pin commitcf890d9f. Final identities/mapping and
+DCO verdict are retained in the read packet. No native session/review, canonical
+verify, push, PR or release; budget0/3. The lead's pin-test approval remains a
+review prerequisite, outside this local proof.
+
+Self-retro: real installed discovery caught the missing entry classification;
+list-derived fixtures could not. A parallel prelint rebuild temporarily removed
+core/dist during one collection. No assertion ran; its single isolated retry
+passed6/6 after the build ended. Subsequent builds/tests were serialized. Keep
+prelint's build side effect in the stage plan, and report process exit/suite
+collection errors rather than only failed-assertion counts.
+
+### Final admission stop
+
+Status is BLOCKED, not ready for native review. The final main46 reader accepts
+allfour native forwards, then assertCoLocatedForwardApproval refuses at its
+releaseTool guard (reviewed-platform-forward.ts:893-894). The sole matching path
+is scripts/packages/platform-cold-consumer.ts. Its own delta is exactly the one
+NON_ADAPTER_ENTRIES addition approved by the supervisor; no other line changed.
+The guard treats every non-test scripts/packages path as release machinery and
+has no disjoint registry-union exception. Current main d848d684 has the identical
+reader. Do not remove the needed entry, alter a checker, choose a false base or
+weaken a test to obtain admission. The coordinator must reconcile this guard
+with the approved registry-union rule in a separate control. No SQL/signature,
+runtime permission, package-cap or new API decision is needed in this feature.
+
+The earlier co-location PASS was taken before this one-name source edit and does
+not certify the final candidate. All242/6588 functional cases, full cold consumer,
+policy with12answered obligations,130catalog cases and full-range14/14DCO pass;
+the admission refusal remains mandatory. DCO certifies provenance, not a green
+admission check. No native review/session, canonical verify, push or PR occurred.
+Source/SQL/product tarballs remain unchanged; this stop correction changes only
+the two task records. Pin commitcf890d9f and all controller source stay intact.
+
+Main advanced to d848d684 (#515 starter support/catalogue binding). Its read-only
+merge-tree with the candidate is clean (exit0); no extra main merge was made,
+as instructed. The actual review fork remains46c3e8b2. Final identities and
+read-only merge-tree output are retained in the external packet.
+
+Self-retro: run the exact main co-location preflight immediately after every
+admission-relevant path edit. A conceptual data-only union ruling and a blanket
+machine path guard can disagree; a pre-edit PASS cannot cover that later edit.
+This was found late after DCO completion; no reviewer or delivery consumed it.

@@ -27,5 +27,6 @@ for (const mode of modes) {
       refusalsProved: true,
     });
     console.info(`restricted-bootstrap ${mode.roleMode} ${JSON.stringify(result)}`);
-  }, postgresSetupTimeoutMs);
+  // Solo without coverage: 14.76 s; 45 s gives about three times the measured case.
+  }, 45_000);
 }

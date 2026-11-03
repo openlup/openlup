@@ -70,5 +70,6 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  }, postgresSetupTimeoutMs);
+  // Solo without coverage: 11.64 s ordinarily, 22.45 s for target/separate; allow about three times each.
+  }, profile.name === "target" && shape.separate ? 75_000 : 40_000);
 }
