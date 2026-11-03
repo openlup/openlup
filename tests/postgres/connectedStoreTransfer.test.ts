@@ -819,6 +819,7 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
 }, 30_000);
 
+// Solo without coverage: 7.90 s; 30 s exceeds three times that measurement.
 it("retains actor-written consent history, replay, suppression and trusted target across a store move", async () => {
   expect(pristine.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows).toEqual([]);
   await target.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('different-target','synthetic-provider',false)");
@@ -852,8 +853,9 @@ it("retains actor-written consent history, replay, suppression and trusted targe
     .toBe(beforeReplay.customer_account_consent_events.length + 1);
   expect((await target.owner.query("SELECT to_jsonb(t)::text AS value FROM public.customer_account_consent_sync_targets t")).rows.map(row => row.value))
     .toEqual(packet.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows);
-});
+}, 30_000);
 
+// Solo without coverage: 4.18 s; 30 s exceeds three times that measurement.
 it("counts personal consent history and attribution toward whole-capture row and byte limits", async () => {
   const index = packet.owned.findIndex(table => table.table === "customer_account_consent_events");
   const ledger = packet.owned[index]!;
@@ -876,7 +878,7 @@ it("counts personal consent history and attribution toward whole-capture row and
       } },
     })).rejects.toMatchObject({ code: "limit_exceeded", table: "customer_account_consent_events" });
   }
-});
+}, 30_000);
 
 it("checks the identity mapper's erased-subject and conflict branches with synthetic records", async () => {
   const issuer = "https://issuer.example.invalid/managed";

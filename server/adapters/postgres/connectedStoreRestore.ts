@@ -241,6 +241,7 @@ const order = [
   "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "commerce_order_adjustments",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
   "commerce_checkout_compensations",
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",

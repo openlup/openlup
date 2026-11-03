@@ -1502,10 +1502,18 @@ The subscriptions entry also exports `createNativeSubscriptionBinding`,
 opt-in native composition and persistence boundaries; hosts supply readiness,
 transactions, a shared population lease and exact payment-attempt readback.
 The binding freezes the destination under the claim lock. Lower-level hosts
-supply the transaction callback to `createPostgresRenewalStore`. Until cycle
-shipping quotes are available, `shippingQuoteRef` is the typed
-`{ kind: "zero_shipping", shippingAmountMinor: 0 }` marker, never a real quote.
-This rail refuses non-zero renewal shipping amounts.
+supply the transaction callback to `createPostgresRenewalStore` and
+`createPostgresRenewalSettlementPort`. Retained `native.renewal-terms.v1` facts
+freeze delivery pricing and optional second-delivery/graduation terms from the
+accepted server offer. Threshold shipping uses product payable after discounts:
+paid below, free at or above the configured threshold. Fixed paid shipping also
+requires the retained-terms document. New threshold or paid-shipping snapshots carry the actual
+`retained_shipping` marker; other zero-shipping snapshots keep their original
+wire and fingerprint. Graduation runs under the subscription lock before the
+first unlocked third delivery, preserving add-ons and customer-edited normal
+cadences without moving the due anchor. Preparation projects discounted product
+positions and a separate shipping charge in one transaction; replay adds neither.
+A retained snapshot refuses preparation without the supplied transaction runner.
 See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 for destination claim transactions and qualification limits.
 

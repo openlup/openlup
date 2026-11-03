@@ -34,6 +34,8 @@ describes the codec and retry duties. Installing or releasing this forward still
 requires its separately admitted SQL-control inventory and ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
 
+See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
+
 The platform owns its schema, migration history, and documented data contracts.
 An adopter owns tables and migrations for its own extensions in the `app` schema.
 The platform never writes there; the adopter owns extension compatibility and
@@ -47,6 +49,29 @@ coordination mechanism for a multi-instance deployment.
 The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
+
+## Retained renewal storage
+
+The account-choice forward also creates the service-only
+`subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
+`subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
+pg_temp`, revoke PUBLIC before conditional role ACL blocks and add no table
+privileges. Registration seals optional full retained delivery/acquisition terms
+in the existing purchase attachment, fixes its acquisition basis version on the
+server, and compares the authorization instant with UTC microsecond identity.
+The old zero-only registration and its completer remain unchanged. A completed
+attachment reader exposes the retained terms; no current-settings read or
+additional agreement table is introduced. Graduation uses existing subscription,
+line-collection and event privileges inside the host transaction. Retained order
+preparation uses existing item INSERT/DELETE and shipping-adjustment INSERT
+privileges, with the existing deferred line-sum guard. The subscription owner
+above defines those transaction and frozen-replay obligations.
+
+The same forward adds the three explicitly classified absorption-policy rows for
+stock waits, privacy erasures and subscription command receipts. The absorber
+still refuses an unclassified client-referencing table. Classification and access
+to any other earlier-row table remain that table's integration responsibility;
+the forward neither widens table grants nor changes the absorber.
 
 ## Partner acquisition data
 

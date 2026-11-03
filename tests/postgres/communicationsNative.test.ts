@@ -260,6 +260,8 @@ it.each(["public","column","inherited"] as const)("refuses unsafe %s effective p
  for(const role of ["anon","authenticated"]){const client=await fresh.connect();try{await client.query(`SET ROLE ${role}`);for(const table of tables)await expect(client.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({code:"42501"});}finally{await client.query("RESET ROLE");client.release();}}
 });
 it("refuses poisoned default ACLs on an adverse reinstall, then restores the exact clean catalogue",async()=>{
+ // Establish the upgraded catalogue even when this refusal runs alone.
+ await runner(upgrade).apply();
  const tables=["communication_native_observations","communication_native_sends","communication_native_sync_state","notification_recipients","communication_native_policy_decisions"];
  for(const table of tables)await upgrade.query(`DROP TABLE public.${table}`);
  await upgrade.query("ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO authenticated");

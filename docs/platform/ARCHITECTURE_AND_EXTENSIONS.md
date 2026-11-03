@@ -1762,8 +1762,9 @@ service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
 The runtime has no direct privileges on the attachment or method-event tables;
-fixed definer readers expose only pending identifiers/readiness and three
-completed snapshot fields. Method reads and cycle correlation use existing
+fixed definer readers expose pending identifiers/readiness and completed snapshot
+fields. `subscription_renewal_purchase_terms(uuid)` additionally returns the sealed
+retained renewal terms to the service role, without direct attachment-table reads. Method reads and cycle correlation use existing
 method/term and activation rows rather than opening either new table.
 
 Reference fields can contain identifying strings, including payer, method,
@@ -1772,16 +1773,25 @@ use opaque references instead of personal text. The attachment and method-event
 tables and method-state references have no privacy-lifecycle erasure path yet;
 they retain the privacy lifecycle's current erasure-coverage limit.
 
-`createNativeRenewalCodec()` supplies the `native.purchase-renewal.v1` dialect.
+`createNativeRenewalCodec()` preserves the `native.purchase-renewal.v1` dialect
+for legacy zero-shipping terms and uses `native.purchase-renewal.v2` when a
+`native.renewal-terms.v1` retained-terms document is present.
 It derives schedule, client, cadence, native template version, lines, money and authorization from durable
 rows, template identity from saved purchase facts, and logical cycle correlation
 from the activation's paid cycle plus the paid-cycle count matched against the
 native counter. Incomplete history refuses freezing. Frozen original retry and
 external-attempt counters are zero; later retry counters belong to the retry
 obligation. Agreement policy is `lock_until_edit`, proration is `none`, and
-renewal `shippingAmountMinor` must be zero on this rail; nonzero shipping is
-refused. Destination references remain null pending native
-destination composition. The frozen wire includes the full nested port snapshots
+the retained document supplies renewal delivery pricing. A shipping-threshold
+agreement freezes currency, flat fee and free threshold; product payable after
+product discounts is paid below the threshold and free at or above it. Fixed
+paid shipping also requires an explicit retained-terms document. The original
+zero-only SQL registration remains available; the package writer calls
+`subscription_register_renewal_purchase_with_shipping(uuid,jsonb)`. Retained
+facts come from the accepted server quote/offer, never mutable current settings
+or browser-supplied prices. The claim binds the destination and snapshots the
+actual retained shipping amount. Old zero-shipping snapshots keep their existing
+marker and fingerprint. The frozen wire includes the full nested port snapshots
 and the flat SQL fields, with no `_host` metadata. Its fingerprint is lowercase
 UTF-8 SHA-256 over JSON with object keys sorted by JavaScript string order and
 array order retained, excluding only the fingerprint field. The revision owns
@@ -1790,6 +1800,30 @@ terms and decode without host closure state. Schedule and authorization identity
 fields use UTC ISO strings with six fraction digits. The SQL millisecond cycle
 key truncates the fraction to three digits without rounding; it is a label,
 while row lookup and comparison retain the full microsecond instant.
+
+A retained acquisition marker fixes the promised second-delivery discount and
+its subtotal/rate basis, configured minimum payable, graduation lines/pricing and
+normal cadences. An unchanged subtotal keeps the exact promised discount; changed
+lines use complete retained list evidence with ceil rounding or the saved rate
+fallback, bounded by the configured minimum. Existing frozen operations win
+before any current-terms read. Before the first unlocked third delivery, a
+subscription-locked transaction graduates an unedited template, preserving
+add-ons and pricing evidence in the subscription event. An edited template may
+normalize its still-introductory cadence; an already selected normal cadence
+stays. Open payment/renewal obligations refuse graduation. Graduation does not
+advance the due anchor, pause service, execute payment or rewrite an old cycle.
+
+Supply the transaction runner to BOTH `createPostgresRenewalStore(executor,
+codec, withTransaction)` and `createPostgresRenewalSettlementPort(executor,
+codec, withTransaction)`. A retained snapshot refuses settlement preparation
+without it. Preparation writes integer effective product positions with retained
+catalogue/allocation evidence and a separate shipping adjustment before the
+existing deferred order-total constraint commits. Matching prepare replay adds
+neither positions nor shipping. Host composition must keep each callback on one
+connection through commit/rollback; a query-per-call pool is not a transaction.
+The settlement factory supplied to the native binding can pass this same runner
+as its third argument. Invoice composition uses the existing charged-total mapper
+with original subtotal, product discount and total, so delivery remains separate.
 
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` are explicit,
 no-key simulation, with `succeeded`, `declined` and `ambiguous` scenarios. They
@@ -2758,6 +2792,13 @@ The fixture harness prepares dependencies; the upgrade command never installs
 them. Registry unavailability or an integrity mismatch fails the proof.
 
 ## Existing-store transfer and recovery
+
+The finite profile retains immutable order adjustment rows, including renewal
+shipping charges. Capture and restore preserve their row and order identities,
+amounts and timestamps under the existing aggregate limits. Shipping adjustments
+have no promotion reference; related promotion data keeps its existing profile
+boundary. Restore inserts these rows after their order parents in the same
+transaction and preserves the deferred total checks.
 
 The finite native table profile includes dunning cases, fenced notifications,
 reminder-ledger rows and transactional delivery receipts. Restore inserts cases

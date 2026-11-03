@@ -13,8 +13,8 @@ const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
 // The current complete 101-unit installation includes the shared suffix.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "1bbfa2b1cda8e91dcad1479617b679025e1affc172f49c023ad2f58786f417f9", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "6c4fcf3edecc185117d6d7452316dda1809b7338f59ac32b3d9724ef2e14d8eb", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "58194d2c93fa6e85e06b77c01ad0aedb8ce383e8e157d1493bf43a1a7f6c24f1", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "1946851bcdc605946461a4fbce52b6f4f329814d568b77e7d25879696892f277", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -70,6 +70,6 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  // Solo without coverage: 11.64 s ordinarily, 22.45 s for target/separate; allow about three times each.
+  // Solo without coverage: 12.96 s ordinarily, 22.93 s for target/separate; allow about three times each.
   }, profile.name === "target" && shape.separate ? 75_000 : 40_000);
 }

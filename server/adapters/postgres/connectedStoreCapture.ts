@@ -19,6 +19,7 @@ const compatible = [
 
 const owned = [
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "commerce_order_adjustments",
   "subscription_dunning_cases", "subscription_dunning_notifications",
   "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
   "commerce_checkout_recovery_tokens", "subscription_stock_wait_cases",

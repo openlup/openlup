@@ -834,3 +834,341 @@ conflict blocks and checks additions against both parents. The corrected delta
 retains the predecessor's full transfer test and adds the consent fixture.
 Lesson: generic conflict parsing -> preserve Git's complete three-way output and
 match marker lines locally. This is local integration recovery, not native review.
+
+
+## Build stopped at the measured size limit
+
+The authorized predecessor merge is signed at `a371f6c57adb85f35a9e536a9daf1b8269b22128`.
+The first full-row draft was packed with the official Node 24.21.0 / npm 11.19.0
+toolchain against exact predecessor `4a14148b2150829ea05ebe2a3cc776152e37d951`.
+The real packed delta is 16,277 bytes and the code-class delta is 10,788 bytes;
+both exceed this continuation's 16,000 / 7,000 byte stop lines. Absolute packed
+size is 2,497,056 bytes; code is 1,990,090 bytes; unpacked is 11,753,461 bytes;
+there are 3,056 files. These measurements include source, rebuilt declarations
+and JavaScript, packaged SQL, reports and the generated SQL manifest. They are
+measurements of an unfinished draft, not a completed acceptance candidate.
+
+Implementation stopped immediately at that measurement. New SQL and its
+mechanical file/function bindings are staged for inspection; the inherited
+class data is unchanged and still refuses admission. A scratch copy of the
+preceding control's exact class passes the static function/forward check using
+main's current helper. Inventory hashes still describe the pre-draft merged
+schema and must be remeasured if continuation is authorized. New TypeScript and
+characterization tests remain uncommitted and unproved. The latest workspace
+package build passes; the prior complete API refresh predates the settlement
+constructor addition and is stale. No new PostgreSQL, time-zone, transfer,
+handover, cold-consumer, lint, policy or secret-scan completion is claimed for
+this draft. The earlier merge checks are separate evidence. Native review
+cycles used: zero. No native review, canonical verification, push or PR ran.
+
+The source trace also missed the deferred order line-sum guard. The draft adds
+an atomic settlement projection using existing item INSERT/DELETE and shipping
+adjustment INSERT privileges; new retained snapshots require a supplied
+transaction runner. That route still needs real-PostgreSQL rollback, replay,
+charge and independent invoice allocation proof. It changes no guard function,
+grant, dispatch ledger or schedule-advance SQL. No code writes
+`supersededByStableJourneyKey` or `checkoutAbandoned` and no dispatched-attempt
+location is added.
+
+Self-retro: the first real full-row pack exposed code growth above the source
+estimate before spending on the full proof matrix. The reference trace should
+have included the deferred order constraint and transaction wiring as well as
+the all-in intent amount. Continue only after the supervisor resolves the size
+stop; do not infer a budget increase from this record.
+
+
+## Resumed build: size decision and absorption classification blocker
+
+The supervisor accepted the prior measured 16,277 / 10,788 byte packed/code delta
+and set new per-row stop lines of 19,000 / 12,500 bytes against the same pinned V.
+No cap change is assigned here. The inherited package code cap is 2,054,458 bytes;
+the later programme value is separately coordinated. The earlier size stop is
+resolved, and its evidence above is historical rather than an active limit.
+
+The complete scanner/subscription run executed: 2,195 cases passed, 17 failed,
+2 skipped; five files failed and one was skipped. Four affected scanner suites
+encounter the anticipated inherited class-data refusal; the package-artifact
+case also found that the new module was not yet tracked. Intent tracking is now
+present; no rerun or waiver is claimed. Complete API reports were refreshed again
+with the settlement constructor addition. Five real PostgreSQL schema inventories
+were measured for the actual new SQL and the canonical/generated manifests and
+three live test/handover hashes updated; historical inventory pins were retained.
+
+The new installed-consumer restricted-runtime PostgreSQL suite executed ten cases
+in the default zone with a fresh empty npm cache: five passed and five failed.
+The three configured threshold boundaries charge exactly once and replay without
+writes. The settlement case proves missing-transaction refusal, fault rollback,
+replay and one shipping adjustment. Registration preserves a sub-millisecond
+instant across opposite session zones and rejects changed facts. The graduation
+case passed its cadence/line/price/anchor and third-charge assertions but failed
+its final comparison of an unbound preclaim snapshot with the destination-bound
+stored snapshot; the case remains failed and needs its witness corrected.
+
+The mandatory absorption cases expose an owning-boundary gap: the full current
+chain introduces `commerce_destinations.client_id` as a foreign key to clients,
+but has no `client_absorption_policy` classification for that table. The existing
+absorber deliberately rejects any unclassified referencing table before checking
+the populated block tables, even for an otherwise empty lead. All four new
+absorption cases therefore refuse naming commerce_destinations. The three exact
+assigned policy rows are present and are not enough for this full-chain witness.
+
+Implementation stops for an owner disposition and its exact prior class/data
+approval. No fourth policy row, grant, routine replacement or other row's forward
+was added. A retain disposition would avoid table DML; block or carry also needs
+its bounded access implications assessed because destinations revoke direct
+service access. This is source analysis, not an additional observed 42501. No new
+qualified-runtime 42501 limit was encountered. Existing named limits retain their
+scope; none is silently closed here. No review, canonical verification, push or
+PR ran. Native repair cycles used: zero. Non-SQL work remains uncommitted and
+SQL/pins remain staged; the full proof matrix remains pending this stop.
+
+Self-retro: full-chain absorption must enumerate the live client foreign-key
+census, including tables introduced earlier in the train, rather than assuming
+that the three assigned policy rows close it. The refusal test found this before
+any unapproved policy or privilege change. Preserve that fail-closed witness and
+route the disposition to its owner instead of inventing one in a fixture.
+
+
+## Resumed build: pending predecessor policy fixture and access limit
+
+The supervisor assigned the missing destination classification to the predecessor
+row. The real full-chain absorption case remains unchanged and expected red until
+that row lands. Only the three populated block variants now insert the authorized
+scratch block classification, labelled pending predecessor policy integration;
+each removes only its own fixture row in finally. No fourth forward INSERT or
+grant is introduced. The graduation mismatch was solely the test comparing an
+unbound snapshot to the destination-bound stored one. It now verifies binding
+and fingerprinting, then exact frozen replay, without changing production code.
+
+The repeated default-zone installed-consumer suite ran all ten cases in 16.92 s:
+six passed and four failed. Threshold boundaries, charge-once replay, projection
+rollback/missing transaction/no double shipping, registration precision/conflicts
+and graduation now pass. The empty-lead full-chain case retains the known missing
+classification red. All three scratch-classified block cases expose an additional
+pre-existing restricted-runtime boundary: the invoker absorber counts rows in
+commerce_destinations, while the predecessor revokes ALL direct service-role
+access to that table. PostgreSQL returns permission denied for commerce_destinations
+before any assigned block refusal is reached. New qualification-limit name for
+supervisor registration: F-QUALIFIED-ABSORPTION-DESTINATION-COUNT. No grant or
+alternate fixture privilege is added; the owning boundary needs its own repair.
+
+Complete API check, focused ast-grep and both neutrality checks pass in this
+continuation. The UUID comparison audit identifies the single already-corrected
+schedule spelling comparison; the restricted boundary matrix supplies uppercase
+UUID witnesses. The named commit remains pending because the build stops at this
+new access blocker. Source/forward SQL and its staged identities are unchanged.
+No new final pack, strict typecheck, lint, full proof-matrix completion or DCO
+commit is claimed. No review, canonical verification, push or PR. Native repair
+cycles used: zero. Private packets preserve exact current identities and results.
+
+Self-retro: an absorption classification and the permission needed to evaluate it
+are one operational boundary. The authorized scratch classification demonstrated
+that the earlier fail-closed missing-policy refusal had masked a second upstream
+limit. Preserve both failures and route the bounded access repair to that owner;
+do not turn the witness green with a grant or a different policy disposition.
+
+
+## Resumed build: predecessor absorption ownership and lock-order stop
+
+This section supersedes the preceding stopped status. The supervisor assigned
+both the destination classification and its narrow count access to the same
+predecessor repair. The earlier proposed independent qualification-limit name is
+withdrawn. The four absorption cases are unchanged: one missing classification
+and three restricted count permission failures. No grant, policy, fourth data
+statement, skip or owner-executed absorption was introduced.
+
+The default-zone matrix completed in 138.74 seconds: 226 passed, seven failed.
+The catalog passed all 136 cases in both role modes; consents, original purchase
+registration, retained-method compatibility, connected transfer, qualified
+composition, restricted restore and released-schema upgrade passed their selected
+suites. Four failures are the assigned upstream absorption reds. The other
+failures are the concurrent sub-millisecond renewal deadlock, the new graduated
+arrival assertion and the new paid-shipping transfer case. These are not waived.
+
+A separate two-session restricted-runtime diagnostic completed in 16.68 seconds
+and asserted exactly one SQLSTATE 40P01. Claim holds the subscription before
+locking the renewal operation; prepare holds that operation before inserting a
+cycle whose subscription foreign key needs the subscription lock. Both SQL
+paths are inherited unchanged from the pinned predecessor. The original
+concurrent renewal witness exposed the same deadlock. This is a new mandatory
+proof blocker for the supervisor; no SQL replacement, grant, retry or lock-order
+workaround is added here. The temporary diagnostic source is retained privately
+and removed from the public test tree.
+
+Paid shipping also makes commerce_order_adjustments nonempty. The finite
+connected-store profile currently rejects that table. The binding transfer rule
+already assigns additive coverage of a newly written existing table to this
+row; that addition and its owner read remain pending. It is not a request to
+expand unrelated transfer behavior. The graduated arrival assertion needs its
+fixture/admission sequence checked; it is not established as a product defect.
+
+All five strict typecheck projects passed in 32.94 seconds after correcting
+fixture literal types. The package build and all 181 subscription unit cases
+passed. The remaining two zones, solo timing proofs, final lint/scanners,
+handover, cold consumer, final pack, zero-unanswered documentation policy and
+DCO commits remain unfinished. The last complete API check predates this stop;
+no final-candidate claim follows from it. No review, canonical verification,
+push or pull request was started. Native repair cycles used: zero. The current
+work and SQL bindings are staged for recovery, without a feature commit.
+
+Self-retro: the required unchanged race witness found an inherited lock-order
+problem that successful sequential money cases could not expose. A small
+two-session diagnostic established the mechanism without adding retries or
+changing SQL authority. Check the binding transfer rule before treating a newly
+written existing relation as an authority gap; its additive owner-read route
+already exists.
+
+Scanner admission update: future full script scanner sets require the dedicated
+scanner lane and the official toolchain first on PATH. The earlier full set was
+run before that lane was required (2,195 passed, 17 failed, two skipped); its
+observations stand, but it is not a final passing scanner proof. No full set was
+running at this handoff, and no interrupted full set is counted as complete.
+
+
+
+
+## Continuation: upstream race disposition and local proof repairs
+
+The supervisor confirmed the inherited claim/prepare race and assigned its
+repair through the lead. Its unchanged concurrent test joins the four upstream
+absorption cases as a known red; no retry, lock change or SQL replacement is
+authorized here. The private deterministic diagnostic remains evidence.
+
+This row now adds commerce_order_adjustments to capture and restore, retaining
+immutable shipping row identities after their orders. The relation's promotion
+foreign key does not add promotion tables to this finite profile. The graph
+count is 112; the same inventory and existing handover assertions remain. The
+new graduated-arrival fixture now admits the following due cycle to establish
+its outstanding parcel case before recording the actual arrival. Production
+alignment logic and replacement confirmation remain unchanged. Proof is running.
+
+
+## Continuation: completed local repairs and new proof boundaries
+
+The additive adjustment capture/restore and graduated-arrival fixture now pass.
+The latter opens the outstanding parcel case through renewal admission before
+recording actual arrival; no production alignment routine changes. Default
+selected PostgreSQL suites pass 249 cases with only the four upstream absorption
+reds. The inherited concurrent replay race remains an unresolved known red even
+when a particular run passes. No original replay test, retry or lock changes.
+
+All 21 retained-renewal cases ran solo. The 17 business/refusal cases passed;
+the four upstream absorption cases retain their assigned causes. The paid-
+shipping retained transfer took 6.21 seconds solo. Additional consent, transfer,
+composition and upgrade cases were measured alone. The adverse default-ACL
+consent witness needed its canonical upgrade applied in its own setup; previously
+it relied on the preceding upgrade case to create the tables. That fixture
+repair preserves all existing refusal and catalogue assertions and passes solo.
+Measured case bounds are explicit; no skip or assertion weakening is introduced.
+
+The default retained offline consumer passed on a tarball byte-identical to the
+official measured pack. Handover reached its existing readiness outcome with
+one fenced uncertain operation in 101.92 seconds. Strict typecheck, complete
+API, built exports, structural checks and both neutrality checks passed. Full
+lint passed with zero errors; it is being repeated after the fixture/time-bound
+changes. The measured package delta is 17,009 packed and 11,029 code bytes,
+absolute 2,497,788 packed and 1,990,331 code. No cap was edited.
+
+Mandatory scanner comparison is blocked by the shared scanner detector matching
+an idle shell wrapper that contains the full scanner command while that wrapper
+waits for scanner admission. Its first bounded wait timed out after 542 seconds;
+the required retry followed. No full candidate or baseline scanner set started.
+The durable detached predecessor scratch worktree and its own dependencies/build
+are ready. The gate and the other process remain untouched.
+
+The broad zoned run also exposes two unchanged connected-transfer assertions
+that compare session-zone output with UTC text. The same typed instants retain
+microseconds. The assertions and production transfer logic remain unchanged;
+they need a supervisor disposition under the unchanged-existing-suite rule.
+An extended GMT+9 cold run similarly reaches an unchanged bootstrap transfer
+fixture's UTC wall-clock regex; default cold proof passes. No all-zone cold
+consumer success is claimed. These observations are distinct from the five
+already assigned upstream known reds.
+
+The first broad zoned batch also overlapped writes to the shared installed
+consumer directory despite the CLI worker limit. Its two install/import setup
+failures are invalid proof attempts, not product findings. New renewal, consent
+and catalogue zone proofs are rerunning as separate file invocations with the
+existing explicit worker environment and fresh install caches. The finite build
+remains staged without feature commits while required scanner and existing-
+fixture evidence is unresolved. No review, verify, push or pull request.
+
+Self-retro: use the documented worker environment and separate invocations for
+fixtures sharing an install directory. A CLI worker flag alone did not serialize
+these project workers. Solo proof also exposed the consent refusal's hidden
+setup dependency; applying its actual canonical upgrade closes that dependency
+without changing the security assertion. Do not bypass a blocked shared gate
+or silently normalize a zoned proof back to UTC.
+
+The separate file invocations now prove the new retained-renewal, original
+renewal/purchase, consent and catalog paths under both nondefault zones, with
+only the four assigned absorption reds. The original lock-order race test was
+unchanged and happened to pass these invocations; its independent confirmed
+defect remains unresolved. The two zoned connected-transfer assertion failures
+also reproduce on the exact predecessor in the durable scratch baseline. They
+are pre-existing presentation expectations, not a new shipping transfer loss.
+Final lint again has zero errors, and the complete strict/API/export/neutrality
+checks passed after the fixture repair. Project-configured gitleaks passed the
+staged delta and the full retained WIP history; an earlier unconfigured
+diagnostic had only historical synthetic-fixture hits and is not a project gate.
+Required scanner admission and disposition of the unchanged zoned assertions
+remain prerequisites to feature sign-off and the named UUID commit.
+
+Final stopped state: the remaining GMT-5 composition, restore and upgrade
+proofs pass. Its transfer suite has the same two UTC presentation failures as
+GMT+9; both are reproduced on the predecessor. The full scanner request never
+received admission over more than twenty minutes; its own pending request was
+cancelled for this owner stop, without starting a partial set or changing the
+shared gate/other process. Both required full scanner runs and their comparison
+remain outstanding. All local code and fixture repairs are staged; the SQL
+forward and co-located pins are intact. No new feature commit is made while
+these mandatory proof boundaries remain unresolved.
+
+
+## Build completion awaiting the SQL read
+
+This section supersedes the preceding stopped statuses. The supervisor resolved
+the scanner detector and assigned the unchanged zoned assertions to a main
+follow-up. Both complete scanner sets ran after separate scanner admissions,
+on the official runtime, against the same 58 top-level scanner files. Candidate
+and exact predecessor each report 1,254 passing, 16 failing and one existing
+skipped test. Every failure is the same qualified-admission class/data refusal;
+all sixteen normalized failure messages match exactly. No new scanner failure
+is caused by this row, and the trusted checker or class was not weakened.
+
+The canonical UUID fix is committed separately as b8e0a235, with the standalone
+restricted installed-runner witness. It settles once and replays without writes
+under default, GMT+9 and GMT-5 sessions. The existing concurrent lock-order race
+case remains byte-for-byte unchanged. This feature commit carries the retained
+pricing/shipping, atomic graduation/projection, additive adjustment transfer,
+consent preservation, API reports, documentation and measured test bounds.
+The forward and its four co-located bindings remain staged for coordinator read.
+
+All required local implementation checks have completed. Strict source checks,
+complete API, built exports, structural checks, both neutrality checks, module
+suites, restricted renewal/consent/catalog zone proofs, retained consumer and
+handover retain their recorded results. Final lint has zero errors. Published
+package bytes remain identical to the measured/cold-tested artifact: the delta
+is 17,009 packed and 11,029 code bytes against the pinned predecessor. No cap
+change is made here. Scoped documentation explanations are carried in the new
+signed commit trailers; policy, range gitleaks and DCO are checked after signing.
+
+Known reds remain four absorption cases owned by the predecessor repair (the
+restricted count closer is qlock-3), and the renewal lock-order defect assigned
+to the renewal owner. The pre-existing zone-rendering assertions are preserved
+with their owning main commits in the private packet. The adverse-ACL fixture
+now applies its real upgrade independently; all original refusal assertions
+remain. No grant, policy, fourth absorption row, retry, lock change or skip.
+
+Delivery authority remains local signed commits and a stabilized private SQL/API
+read packet. No native review, canonical verify, push, pull request, merge,
+publication or adopter switch is performed. Restack on the final frozen
+predecessor and the complete first-review route remain later supervisor steps.
+Native repair cycles used: zero. No OMS supersession/abandonment flag or new
+dispatched-attempt home is added.
+
+Self-retro: independent admission plus an exact baseline distinguished inherited
+class/data refusals from new defects. The source-normalization bug needed one
+comparison change and a real installed-runner witness; no UUID abstraction or
+control change was necessary. Keep the measured published bytes fixed while
+finishing evidence and local sign-off.

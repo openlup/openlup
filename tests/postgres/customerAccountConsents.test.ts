@@ -7,7 +7,7 @@ import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 
 const file = "db/platform/migrations/20261101232000_customer_account_consents.sql";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -15,7 +15,8 @@ const purposes = ["marketing_newsletter", "marketing_gifts_discounts"] as const;
 const tables = ["customer_communication_preferences", "customer_communication_preference_events", "communication_recipient_consents", "customer_account_consent_events", "communication_native_sync_state", "outbox_events"];
 const registry = createCommunicationPurposeRegistry([{ id: "marketing_gifts_discounts", classification: "marketing" }]);
 const profiles = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
-beforeAll(async () => { if (!await dockerAvailable()) throw new Error("Account consents require real PostgreSQL"); }, postgresSetupTimeoutMs);
+beforeAll(async () => { if (!await dockerAvailable()) throw new Error("Account consents require real PostgreSQL"); // Solo without coverage across the five modes: 3.32–5.42 s; 30 s exceeds three times the maximum.
+}, 30_000);
 
 it.each(profiles)("atomic actor account choices and refusals on %s", async profile => {
   const container = await runPostgresContainer({ name: `account-consents-${profile}-${process.pid}`, password: "synthetic-conformance" });
@@ -364,4 +365,5 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     expect(pendingDenials.map(row => row.id).sort()).toEqual(unsynced.sort());
     expect(pendingDenials.find(row => row.id === denied.permissionEventId).sync_deferred_reason).toBe("registration_failed");
   } finally { await closePostgres(container, pools, closers); }
-}, postgresSetupTimeoutMs);
+// Solo without coverage across the five modes: 3.32–5.42 s; 30 s exceeds three times the maximum.
+}, 30_000);
