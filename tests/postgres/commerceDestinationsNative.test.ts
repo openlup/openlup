@@ -633,3 +633,78 @@ it("witnesses every next-cycle lock branch through the public address port", asy
   expect.soft(await port().read("order", f.order), label).toEqual(f.original);
  }
 }, 30_000);
+
+async function absorptionFixture(withDestination: boolean) {
+ // Full-chain prerequisite: these three existing approved classifications land in G11-c.
+ // G3 contributes only its own destination classification, through its real forward.
+ const prerequisites = [
+  ["subscription_stock_wait_cases", "A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead."],
+  ["identity_privacy_erasures", "A privacy erasure is a legal process on one named record; absorption never moves or bypasses it."],
+  ["subscription_command_receipts", "Subscription command receipts belong to the subscriptions they answer, which already block absorption; never carry or rebind them."],
+ ];
+ for (const [table, note] of prerequisites) {
+  await owner.query("INSERT INTO public.client_absorption_policy(table_name,disposition,note) VALUES($1,'block',$2) ON CONFLICT(table_name) DO NOTHING", [table, note]);
+  expect((await owner.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [table])).rows).toEqual([{ disposition: "block" }]);
+ }
+ const f = await fixture(), lead = randomUUID(), email = `${lead}@example.invalid`;
+ await owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [lead, email]);
+ if (withDestination) await owner.query("INSERT INTO public.commerce_destinations(client_id,address) VALUES($1,$2)", [lead, address("Retained lead recipient")]);
+ return { ...f, lead, email, key: `absorption-${randomUUID()}` };
+}
+async function absorptionSnapshot() {
+ const db = await owner.connect();
+ try {
+  await db.query("BEGIN READ ONLY; SET LOCAL TIME ZONE 'UTC'");
+  const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+  const result: Record<string, unknown[]> = {};
+  for (const { tablename } of tables) {
+   const name = String(tablename).replaceAll('"', '""');
+   result[name] = (await db.query(`SELECT to_jsonb(t) row,xmin::text xmin FROM public."${name}" t ORDER BY to_jsonb(t)::text`)).rows;
+  }
+  return result;
+ } finally { await db.query("ROLLBACK"); db.release(); }
+}
+const absorb = (f: Awaited<ReturnType<typeof absorptionFixture>>, db: Pool) => call(db,
+ "customer_support_absorb_lead_v1", [f.operator, f.client, f.lead, f.email, f.key, AT]);
+
+it("absorbs a destination-free lead on the complete owner chain and replays once", async () => {
+ const f = await absorptionFixture(false);
+ expect((await owner.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name='commerce_destinations'")).rows)
+  .toEqual([{ disposition: "block" }]);
+ const applied = await absorb(f, owner);
+ expect(applied, JSON.stringify(applied)).toMatchObject({ outcome: "applied", leadId: f.lead, customerId: f.client });
+ expect((await owner.query("SELECT email,metadata #>> '{absorption,absorbedIntoClientId}' customer FROM public.clients WHERE id=$1", [f.lead])).rows)
+  .toEqual([{ email: `absorbed+${f.lead.replaceAll("-", "")}@absorbed.invalid`, customer: f.client }]);
+ const before = await absorptionSnapshot();
+ expect(await absorb(f, owner)).toEqual({ ...applied, outcome: "replayed" });
+ expect(await absorptionSnapshot()).toEqual(before);
+});
+
+it("refuses a lead destination by name without carrying or rebinding any row", async () => {
+ const f = await absorptionFixture(true), before = await absorptionSnapshot();
+ const refused = await absorb(f, owner);
+ expect(refused, JSON.stringify(refused)).toEqual({ outcome: "refused", action: "absorb_lead", leadId: f.lead,
+  refusalCode: "lead_has_commercial_footprint", blockingTables: ["commerce_destinations"] });
+ const after = await absorptionSnapshot();
+ for (const table of ["customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
+  expect(after[table].length - before[table].length, table).toBe(1);
+  delete after[table]; delete before[table];
+ }
+ expect(after).toEqual(before);
+ const replayBefore = await absorptionSnapshot();
+ expect(await absorb(f, owner)).toEqual(refused);
+ expect(await absorptionSnapshot()).toEqual(replayBefore);
+});
+
+// Pre-existing restricted absorption read limit; closer qlock-3. This is not availability proof.
+it.each([false, true])("pins restricted absorption 42501 at the destinations count (destination=%s), closer qlock-3", async withDestination => {
+ const f = await absorptionFixture(withDestination), before = await absorptionSnapshot();
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ try { await absorb(f, runtime); throw new Error("expected_restricted_absorption_read_limit"); }
+ catch (error) {
+  expect(error).toMatchObject({ code: "42501", message: "permission denied for table commerce_destinations" });
+  expect((error as { where?: string }).where).toContain('SELECT count(*) FROM public.commerce_destinations');
+ }
+ expect(await absorptionSnapshot()).toEqual(before);
+});

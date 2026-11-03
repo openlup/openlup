@@ -1,9 +1,10 @@
 # Native order, subscription and parcel destinations
 
 Current status: G3 is combined with G4 in the assigned bundle worktree. The
-parcel-owner and reason SQL reads are accepted and committed. The draft cycle-2
-sweep identified a pre-existing lifecycle runtime limit. The accepted scope
-correction separates that named limit from address agreement; delivery is still unauthorized. Earlier
+cycle-3 repair adds the destination absorption classification and regression
+evidence. Its SQL remains staged for the coordinator's read; native review and
+delivery are outside this worker's authority. The accepted cycle-2 scope
+correction separates the named lifecycle runtime limit from address agreement. Earlier
 separate-row stage notes below are historical evidence, not current grants.
 
 ## Outcome, authority and boundaries
@@ -1556,3 +1557,115 @@ Complete API regeneration adds only the new-address-only comment to two reports;
 no public type or other report changes. CONTRIBUTING remains unchanged.
 
 Address admission keeps parity: allowed during dunning and without a method; refused for a locked next cycle (cycle or order status) or a claimed renewal; witnesses are “allows address during open dunning without a method, but preserves the donor next-cycle lock”, “preserves next-cycle ownership before a frozen native renewal has materialized its cycle”, and “witnesses every next-cycle lock branch through the public address port”.
+
+## Cycle-3 absorption classification repair
+
+The moved destination writer introduced a client-referencing table without its
+absorption classification. The absorber enumerates every client foreign key and
+refuses unknown tables even when the lead has no rows there. The smallest repair
+is the single `commerce_destinations` classification as `block`: a delivery
+snapshot remains bound to its original order or subscription and is never
+carried or rebound during lead absorption. Both forward copies carry the same
+statement; their whole-file pins and packaged manifest are recomputed. No grant,
+RLS policy, function body, public API or managed migration changes.
+
+Acceptance distinguishes owner execution from the restricted runtime. With a
+readable destination table, a destination-free lead absorbs and replays once;
+a lead with one destination refuses `lead_has_commercial_footprint` naming
+`commerce_destinations`, leaving all subject and destination rows unchanged.
+The separate pre-existing-class pin is **restricted absorption refuses 42501 at
+the destinations count; closer qlock-3**. It asserts both empty and nonempty
+destination cases and zero absorption effects, including receipts and audits.
+It is not a passing restricted-runtime absorption availability claim.
+
+This is the third and last automatic repair cycle of the existing bundle.
+The worker may commit only tests and this record with DCO; SQL, hashes and
+manifests stay staged for a coordinator re-read. The supervisor owns the later
+stack integration and two fresh full reviews. No prepare, review, merge,
+canonical verify, push, PR or release is authorized in this run.
+
+The initial owner regression exposed a prerequisite missing on this branch:
+`identity_privacy_erasures`, `subscription_command_receipts` and
+`subscription_stock_wait_cases` are still unclassified. Their existing approved
+classification statements belong to the later consent forward. The G3 repair
+does not silently add those statements to its own production migration.
+The regression fixture supplies exactly those three approved `block` rows as
+explicit full-chain prerequisites. It never supplies the destination row: that
+must come from G3's actual hash-checked forward. The managed absorption witness
+runs unchanged after the complete managed migration chain; the original managed
+address witnesses still run on their original baseline. Only the disposable
+pgTAP assertion helpers receive test execution permission.
+
+Policy revision read for this repair:
+`6979704a5247b1f572b2cbbd8dce487ca37eff88`; code comparison remains the pinned
+stack base `c1dd21ddc8954d62c6fe75dcd90c4c774fafb71f`. Reading newer policy
+does not merge it into this candidate. Current main's independent helper accepts
+all four bound forwards and recomputes their preimages with the exact one-row G3
+amendment in a scratch registry. The tracked G3 class slot remains unchanged.
+
+The first scanner invocation inherited the stack base into synthetic child
+repositories, causing two documentation CLI expectation failures. Those tests
+create their own comparison bases; the corrected scanner invocation unsets that
+environment variable only for the scanner process. Policy and neutrality checks
+retain the actual pinned stack base. No scanner, fixture assertion or control
+was changed to accommodate the invocation error.
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-9a666f5e3d3863a716c13d75e1bfac0f70cc093e647145676863fb4fc3877bb7","reason":"The cycle-3 repair adds owner admission/replay and destination-footprint refusal, the restricted 42501 zero-effect pin and the unchanged managed absorption witness. Full-chain test setup supplies only the three already approved later absorption classifications; the destination classification must come from the real forward. Managed permissions come from the existing complete managed chain, with execution granted only to disposable pgTAP assertion helpers. Existing test commands, native privileges, gate lanes, baselines and contribution controls remain unchanged, so the development-preview test guidance remains correct."} -->
+
+Self-retro: a moved client writer also needs its absorption classification;
+exercise the complete foreign-key census before claiming absorption admission.
+The one-row fix preserves the existing fail-closed absorber and table privacy
+boundary; widening runtime access belongs to its separately owned closer.
+
+### Cycle-3 completion evidence
+
+The canonical and packaged forward are byte-identical, SHA-256
+`1cdb720a6fadbfebeca50dad091e709b069639c2a8af9c8abb542f753687980f`.
+Removing exactly the added statement reproduces the previous forward byte for
+byte. All function hashes, inventory digests and chain counts remain unchanged.
+Only the whole-file hash is rebound in the feature pin and manifest projections.
+
+| Executed scope | Result |
+| --- | --- |
+| Complete default PostgreSQL selection: writers, absorption, catalog/ACL, transfer, composition, restore and upgrade | 318 passed; final managed file separately passes all 5 cases after its fixture refinement. |
+| Native writers and named existing absorption suites, plus the existing lead-absorption domain suite | 145 passed in each of `Etc/GMT-9` and `Etc/GMT+5`. |
+| Both native writer suites, the same mixed-session profile used in cycle 2 | 79 passed. |
+| Direct managed empty-lead admission and address-footprint refusal | Passed separately in both non-UTC zones and mixed sessions, as the managed runtime role. |
+| Unchanged managed absorption pgTAP script | All 41 assertions passed in its UTC fixture profile. |
+| Stabilized full `scripts/*.test.ts` scanner set | 2,889 passed; one existing opt-in concurrency case remains unconfigured. |
+| Built dist exports, package boundary, commerce, account-support, inventory and related dist consumers | 4,285 passed. |
+| Required lint, complete API reports, public typecheck, ast-grep and both neutrality checks | Passed; lint has zero errors and 33 existing warnings; all 68 API entries pass; typecheck has zero unresolved edges or consumer errors. |
+
+All six new cases have individual no-coverage measurements. The largest measured
+body is 319 ms; existing slow-case timeout comments and budgets remain unchanged.
+Startup probes observed zero requested/actual timezone mismatches. Every existing
+native destination test byte and every existing managed test body is preserved.
+
+Broader diagnostic runs were retained rather than counted as passing profiles:
+the old managed address characterization inserts a date-only cycle against a UTC
+anchor; the unchanged pgTAP script expects UTC consent-audit display text; two
+transfer assertions compare timezone-rendered timestamp text; and extra mixed
+sessions expose the same representation issue in legacy operator snapshots.
+No production behavior or existing assertion was changed for these observations.
+The unchanged pgTAP witness explicitly runs in UTC and restores its caller's zone;
+the separate managed regression proves admission and refusal in that caller zone.
+
+Official Node 24.21.0 real pack against the pre-repair bundle: **+106 packed B,
++0 code-gzip B, +276 unpacked B, +0 files**. Absolute package totals are
+2,454,293 packed B, 1,957,699 code-gzip B, 11,545,576 unpacked B and 3,032 files.
+Every current package file byte-matches the measured tarball after the final
+build. No cap, export, version or dependency changed. No OMS marker write or
+additional dispatched-attempt storage is introduced.
+
+The completed full scanner results predate the new single-scanner-lane rule and
+are retained under its explicit transition instruction. No full scanner rerun
+was started after resumption; any future full run must use that dedicated lane.
+Resumption found no owned destination-test container left behind. The interrupted
+tail check was rerun; the newer policy read leaves the same main revision above.
+
+Execution retro: the first 431-second scanner run inherited a stack pin into
+synthetic repositories. Finish the full-chain and timezone fixture setup before
+the broad scanner, and pass scope variables only to commands that own that scope.
+The initial empty-branch-slot fixture was replaced with the three already approved
+classification prerequisites, making the actual dependency explicit. These are
+test and invocation corrections, not additional production fixes or review cycles.

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
@@ -51,5 +51,58 @@ it("characterizes the address exemption during dunning, cycle-lock precedence, a
   await db.query("SAVEPOINT refusal");
   await expect(invoke(`locked-${randomUUID()}`, address)).rejects.toMatchObject({ message: "customer_self_service_payment_blocked" });
   await db.query("ROLLBACK TO SAVEPOINT refusal");
+ } finally { await db.query("ROLLBACK"); }
+});
+
+let absorptionChainReady = false;
+async function installAbsorptionChain() {
+ if (absorptionChainReady) return;
+ // The earlier address witnesses characterize the baseline; absorption uses the complete managed chain.
+ for (const name of readdirSync("supabase/migrations").filter(name => name.endsWith(".sql") && name !== "00000000000000_platform_schema_baseline.sql").sort()) {
+  await db.query(readFileSync(`supabase/migrations/${name}`, "utf8").replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
+ }
+ absorptionChainReady = true;
+}
+it("preserves the unchanged managed lead-absorption admission, address blocker and replay witness", async () => {
+ await installAbsorptionChain();
+ // Only the disposable assertion extension needs execution after fixture default revocation.
+ await db.query(`DO $$ DECLARE fn regprocedure; BEGIN
+  FOR fn IN SELECT p.oid::regprocedure FROM pg_proc p
+   JOIN pg_depend d ON d.objid=p.oid AND d.classid='pg_proc'::regclass
+   JOIN pg_extension e ON e.oid=d.refobjid WHERE e.extname='pgtap' AND d.deptype='e'
+  LOOP EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role',fn); END LOOP;
+ END $$`);
+ // This unchanged witness explicitly expects UTC audit display text.
+ const zone = (await db.query("SHOW TimeZone")).rows[0].TimeZone;
+ try {
+  await db.query("SELECT set_config('TimeZone','UTC',false)");
+  const response = await db.query(readFileSync("supabase/tests/absorb_lead_test.sql", "utf8"));
+  const results = Array.isArray(response) ? response : [response];
+  const lines: string[] = results.flatMap(result => result.rows.flatMap((row: Record<string, unknown>) => Object.values(row).filter((v): v is string => typeof v === "string")));
+  expect(lines.filter(line => /^(?:not ok|# Looks like)/u.test(line)), lines.join("\n")).toEqual([]);
+  expect(lines.filter(line => /^(?:ok|not ok) \d+/u.test(line))).toHaveLength(41);
+ } finally { await db.query("ROLLBACK"); await db.query("SELECT set_config('TimeZone',$1,false)", [zone]); }
+});
+
+it("absorbs a destination-free managed lead and names its immutable address blocker in the caller's zone", async () => {
+ await installAbsorptionChain();
+ const operator = randomUUID(), customer = randomUUID(), lead = randomUUID(), blocked = randomUUID();
+ const zone = (await db.query("SHOW TimeZone")).rows[0].TimeZone;
+ try {
+  await db.query("BEGIN; SET LOCAL ROLE postgres");
+  await db.query("INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES($1,$2,'admin',false)", [operator, `${operator}@example.invalid`]);
+  await db.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [operator]);
+  for (const id of [customer, lead, blocked]) await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [id, `${id}@example.invalid`]);
+  await db.query("INSERT INTO public.addresses(client_id,kind,line1,city,postal_code) VALUES($1,'shipping','Synthetic street 1','Fixture','00000')", [blocked]);
+  const before = (await db.query("SELECT to_jsonb(c) client,to_jsonb(a) address FROM public.clients c JOIN public.addresses a ON a.client_id=c.id WHERE c.id=$1", [blocked])).rows;
+  await db.query("SET LOCAL ROLE service_role");
+  expect((await db.query("SHOW TimeZone")).rows[0].TimeZone).toBe(zone);
+  const absorb = async (id: string) => (await db.query("SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,'2026-11-03T12:00:00Z') result",
+   [operator, customer, id, `${id}@example.invalid`, `managed-absorption-${id}`])).rows[0].result;
+  expect(await absorb(lead)).toMatchObject({ outcome: "applied", leadId: lead, customerId: customer });
+  expect(await absorb(blocked)).toEqual({ outcome: "refused", action: "absorb_lead", leadId: blocked,
+   refusalCode: "lead_has_commercial_footprint", blockingTables: ["addresses"] });
+  await db.query("RESET ROLE");
+  expect((await db.query("SELECT to_jsonb(c) client,to_jsonb(a) address FROM public.clients c JOIN public.addresses a ON a.client_id=c.id WHERE c.id=$1", [blocked])).rows).toEqual(before);
  } finally { await db.query("ROLLBACK"); }
 });
