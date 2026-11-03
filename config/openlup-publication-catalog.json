@@ -1734,6 +1734,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-qb.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
       "class": "public-output"
     },
@@ -4159,6 +4163,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
       "class": "public-output"
     },
     {
@@ -27899,6 +27907,14 @@
     },
     {
       "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteCatalogFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
       "class": "public-output"
     },
     {
