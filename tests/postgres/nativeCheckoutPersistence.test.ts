@@ -66,8 +66,14 @@ beforeAll(async () => {
   expect(assertExportInventory(consumer)).toContain("commerce/server/native-checkout");
   const installedResolve = createRequire(join(consumer, "package.json")).resolve;
   installed = await import(pathToFileURL(installedResolve("@openlup/platform/commerce/server/native-checkout")).href);
-  const peers = ["pg", "@types/pg", "@types/node"].map(name => `${name}@${JSON.parse(readFileSync(`node_modules/${name}/package.json`, "utf8")).version}`);
-  npm(platformConsumerInstallArgs(peers, true), consumer);
+  // Pack the locked runtime/type closure: an empty cache must need no registry metadata.
+  const peers = ["pg", "pg-connection-string", "pg-int8", "pg-pool", "pg-protocol", "pg-types", "pgpass",
+    "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "split2", "xtend",
+    "@types/pg", "@types/node", "undici-types"].map(name => {
+    const [packed] = JSON.parse(npm(["pack", "--offline", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve("node_modules", name)));
+    return join(scratch, packed.filename);
+  });
+  npm(platformConsumerInstallArgs(peers), consumer);
   assertConsumerIsolation(consumer, process.cwd(), false);
   const program = `import { createPostgresNativeCheckoutPersistence, type NativeCheckoutQuery, type NativeCheckoutDraftRequest, type NativeCheckoutDraftResponse } from "@openlup/platform/commerce/server/native-checkout";
 declare const db: NativeCheckoutQuery; declare const input: NativeCheckoutDraftRequest;
@@ -95,6 +101,7 @@ createPostgresNativeCheckoutPersistence(db).createOrderDraft({...input,paymentSt
   const login = (name: string, password: string) => { const url = new URL(container!.connectionString); url.username = name; url.password = password; return url.toString(); };
   runtimeUrl = login("checkout_runtime", "synthetic-runtime"); runtime = pool(runtimeUrl);
   untrusted = pool(login("checkout_untrusted", "synthetic-untrusted"));
+  console.info("Native checkout runtime TimeZone:", (await runtime.query("SHOW TimeZone")).rows[0].TimeZone);
   expect((await runtime.query(`SELECT current_user,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) superuser,
     (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) bypassrls,pg_has_role(current_user,'service_role','USAGE') service`)).rows)
     .toEqual([{ current_user: "checkout_runtime", superuser: false, bypassrls: false, service: true }]);
