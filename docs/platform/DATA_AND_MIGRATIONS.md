@@ -1782,19 +1782,21 @@ completion does not authorize owner fallback, legacy relabelling or a new role m
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
 
-Both qualified generations currently refuse four existing native writers on
-the restricted runtime with `42501`:
+Both qualified generations currently refuse five existing native paths on the
+restricted runtime with `42501`:
 
 - native subscription lifecycle commands;
 - operator recovery issue;
 - platform control set and heartbeat;
-- order settlement for an order with a promotion claim.
+- order settlement for an order with a promotion claim;
+- operator lead absorption, once delivery destinations block absorption.
 
 The first three lock a row `FOR UPDATE` on a table whose issued runtime grants
 include no `UPDATE` column: renewal term lines, recovery commands and control
 operations. None of these tables has row security. The claim transition
 trigger appends events with a conflict target, and the issued runtime grant
-there is `INSERT` only.
+there is `INSERT` only. The absorber counts a lead's delivery destinations by
+client, but that table has row security and no runtime access at all.
 
 One shared completion tail closes these gaps. It is the approved seventeenth
 qualified identity. Both qualified plans will select it once,
@@ -1811,7 +1813,10 @@ On each of the three locked tables, the tail does the following:
 
 On claim events it grants `SELECT` on the two arbiter columns only. Row
 security would not help there, because an arbiter also requires the new row
-to pass a select policy.
+to pass a select policy. On delivery destinations it grants `SELECT` on the
+client column and adds a runtime select policy, so the existing row security
+returns a truthful count. Addresses stay unreadable, and every write stays
+unavailable.
 
 Its exact bytes are approved at position 17 and remain an inert fixture. The
 identical SQL, both plans' rows and their measured inventories follow in a later

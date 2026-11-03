@@ -1934,7 +1934,7 @@
     },
     {
       "path": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
-      "sha256": "0a46e613d2b7daeea80a68682326cd514bccbcceac167520209254338beb09b7"
+      "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
     }
   ],
   "channelIngestForwards": [

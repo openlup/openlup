@@ -37,11 +37,11 @@ issued completion tail without the qualified owner-path forward. See the
 
 The `q2_20261103200000_runtime_lock_and_conflict_completion.sql` fixture binds
 the exact approved bytes at the seventeenth position: one shared tail for both
-qualified plans. It lets the restricted runtime take three
-existing row locks without admitting an actual update, and read only the two
-arbiter columns that an existing conflict target requires. Reader support
-and this approval landed separately; the identical active SQL follows as its
-own change.
+qualified plans. It lets the restricted runtime take three existing row locks
+without admitting an actual update. It also lets the runtime read only the two
+arbiter columns that an existing conflict target requires, and only the client
+column that operator lead absorption counts. Reader support and this approval
+landed separately; the identical active SQL follows as its own change.
 
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 explains generation selection and ledger identity. These fixtures do not prove
