@@ -28306,15 +28306,15 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/subscriptionRenewalGate.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/postgres/subscriptionPurchaseRenewal.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/subscriptionRenewalAdapterCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRenewalGate.test.ts",
       "class": "public-output"
     },
     {
