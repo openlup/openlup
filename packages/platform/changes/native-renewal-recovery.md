@@ -7,3 +7,8 @@
   bounded connected-store transfer profile.
 - Include durable activation and paid-cycle correlation when selecting normal-due
   stock-wait work for the renewal codec.
+- Freeze the immutable destination inside the claim transaction. The current
+  zero-shipping rail uses an explicit typed marker until cycle shipping quotes
+  are available; non-zero renewal shipping remains refused.
+- Route renewal stock operations through owner-rights admission wrappers. The
+  shipment destination view is nonmutating and does not acquire dispatch locks.

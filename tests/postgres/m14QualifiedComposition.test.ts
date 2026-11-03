@@ -13,8 +13,8 @@ const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
 // The current complete 100-unit installation includes the shared suffix.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "4fe0c05097d3b96136eb916cc70c9d7b640cc41ac2a4f9cd5b566f1b8d692314", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "c3aaa8787575a8d12a86d85ceef50306a0668722987a1df351d2e1885fb2cf81", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "e9d4610dac638672a721f730a4fc00b07232e66deda27a2ea4d2594f8b940108", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "89fc41600e0adb30df2ecd7ea654c58f1879bfd8f343fc01909b168c6537fcaa", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },

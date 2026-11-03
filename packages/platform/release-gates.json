@@ -954,7 +954,7 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1970000,
+      "maxPackedBytes": 2054458,
       "maxFiles": 3039
     },
     "docs": {

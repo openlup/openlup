@@ -3264,6 +3264,52 @@
           "afterSha256": "1d46c163cab94822f15af870ea98ae2dde7fd56af7a11dce5eac791a1c76a8ce"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
+      "sha256": "92b4dc0b4b4ce9ef34c4c81339e59227c0c9f71e1ddb3d97f855d0411bc0353b",
+      "functions": [
+        {
+          "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+          "beforeSha256": "4814d98dbc9e6495af8d1d4d411a6a40d68cb5bcbd53aa41006bea6a34189af8",
+          "afterSha256": "b73637d95950ca72d32c1649b98ef774c2a2c9c2e377c2ae58fd051b3979660e"
+        },
+        {
+          "signature": "public.commerce_view_shipment_destination(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "c2611a10d7a48d8057cd8251c5b2772a4eb60b94186419aa970177377a8128eb"
+        },
+        {
+          "signature": "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "80d617c1d758720320bce275a7fe6e3bf627ab5d953e7843647445e3b45c79d9"
+        },
+        {
+          "signature": "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "bdae68c18e39fef02a3d4767dd51a8e6ef70f91fec5c8feda0887f6ebf657e85"
+        },
+        {
+          "signature": "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)",
+          "beforeSha256": null,
+          "afterSha256": "982c364f2772cec1b1a20ed6bef98f735ada5944fc83ebacf0611592ae97b0ea"
+        },
+        {
+          "signature": "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e98aef6ac5c7ad0ad831f7bbb7359862aff87eaff17a17759f4a7199029482ef"
+        },
+        {
+          "signature": "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e854dfcd7c9032b39e014d5b5490ad5c4d32fe018f8d6f52c94269d0ed0a5972"
+        },
+        {
+          "signature": "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "56488b20134ec83f5c72346206bc988bdc8b2f1c27865a0d8a4179ce0d87c91a"
+        }
+      ]
     }
   ]
 }

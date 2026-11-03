@@ -16,6 +16,7 @@ import { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
 /** Explicit native selection under a host-owned population lease; construction mounts nothing. */
 export function createNativeSubscriptionBinding(input: {
   enabled?: boolean;
+  batchLimit?: number;
   population: string;
   executor: SubscriptionQueryExecutor;
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
@@ -35,7 +36,7 @@ export function createNativeSubscriptionBinding(input: {
 }) {
   if (!input.population.trim()) throw new Error("subscription_population_required");
   const schema = nativeSubscriptionSchema(input.catalogue);
-  const native = createPostgresRenewalStore(input.executor, input.codec);
+  const native = createPostgresRenewalStore(input.executor, input.codec, input.withTransaction);
   const store = withNativeDeliveryAlignmentRenewalAdmission({ ...native,
     async buildCycleSnapshots(schedule) {
       const snapshot = await native.buildCycleSnapshots(schedule);
@@ -77,8 +78,8 @@ export function createNativeSubscriptionBinding(input: {
     },
     async run() {
       return input.withRunLease(input.population, async () => {
-        const now = input.now(), limit = 50;
-        await deps.inventory.expireReservations({ now, limit: 100 });
+        const now = input.now(), limit = input.batchLimit ?? 50;
+        await deps.inventory.expireReservations({ now, limit: Math.max(limit, 100) });
         const retries = await retry.run(now, limit);
         const renewals: AutomaticRenewalRunResult[] = [];
         const seen = new Set<string>();

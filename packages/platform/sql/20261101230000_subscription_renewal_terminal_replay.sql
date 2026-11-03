@@ -108,3 +108,93 @@ BEGIN
 END;
 $$;
 
+
+CREATE FUNCTION public.commerce_view_shipment_destination(p_shipment_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE d public.commerce_destinations; o public.commerce_orders; op public.subscription_renewal_operations;
+ v_order uuid; v_id uuid; v_pinned boolean;
+BEGIN
+ IF p_shipment_id IS NULL THEN RAISE EXCEPTION 'commerce_destination_invalid_scope' USING ERRCODE='22023'; END IF;
+ SELECT order_id INTO v_order FROM public.fulfillment_shipments WHERE id=p_shipment_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'commerce_destination_parent_missing' USING ERRCODE='22023'; END IF;
+ SELECT * INTO o FROM public.commerce_orders WHERE id=v_order;
+ IF NOT FOUND THEN RAISE EXCEPTION 'commerce_destination_parent_missing' USING ERRCODE='22023'; END IF;
+ SELECT destination_id INTO v_id FROM public.commerce_destination_bindings WHERE shipment_id=p_shipment_id;
+ v_pinned:=v_id IS NOT NULL;
+ IF NOT v_pinned THEN
+  SELECT destination_id INTO v_id FROM public.commerce_destination_bindings WHERE order_id=v_order;
+  IF v_id IS NULL AND o.renewal_operation_id IS NOT NULL THEN
+   SELECT * INTO op FROM public.subscription_renewal_operations WHERE id=o.renewal_operation_id;
+   IF NOT FOUND OR op.operation_fingerprint IS DISTINCT FROM o.renewal_operation_fingerprint
+    OR NOT EXISTS(SELECT 1 FROM public.subscriptions WHERE id=op.subscription_id AND client_id=o.client_id)
+    OR NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=o.subscription_cycle_id
+      AND subscription_id=op.subscription_id AND renewal_operation_id=op.id
+      AND renewal_operation_fingerprint=op.operation_fingerprint) THEN
+    RAISE EXCEPTION 'commerce_destination_owner_mismatch' USING ERRCODE='22023'; END IF;
+   BEGIN v_id:=(op.cycle_snapshot#>>'{orderSnapshot,shippingAddressRef}')::uuid;
+   EXCEPTION WHEN invalid_text_representation THEN
+    RAISE EXCEPTION 'commerce_destination_frozen_ref_invalid' USING ERRCODE='22023'; END;
+  ELSIF v_id IS NULL THEN
+   SELECT id INTO v_id FROM public.commerce_destinations WHERE purchase_order_id=v_order;
+  END IF;
+ END IF;
+ IF v_id IS NULL THEN RAISE EXCEPTION 'commerce_destination_unavailable' USING ERRCODE='22023'; END IF;
+ SELECT * INTO d FROM public.commerce_destinations WHERE id=v_id;
+ IF NOT FOUND OR d.client_id IS DISTINCT FROM o.client_id THEN
+  RAISE EXCEPTION 'commerce_destination_owner_mismatch' USING ERRCODE='22023'; END IF;
+ RETURN pg_catalog.jsonb_build_object('destinationId',d.id,'revision',d.revision,'clientId',d.client_id,'address',d.address,'pinned',v_pinned);
+END; $$;
+
+CREATE FUNCTION public.fulfillment_reserve_subscription_renewal_gated(p_operation_id uuid, p_claim_token uuid, p_hold_seconds integer DEFAULT 900, p_now timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ PERFORM public.inventory_admission_try_enter();
+ RETURN public.fulfillment_reserve_subscription_renewal(p_operation_id,p_claim_token,p_hold_seconds,p_now);
+END; $$;
+
+CREATE FUNCTION public.fulfillment_release_subscription_renewal_gated(p_operation_id uuid, p_claim_token uuid, p_reason text, p_now timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ PERFORM public.inventory_admission_try_enter();
+ RETURN public.fulfillment_release_subscription_renewal(p_operation_id,p_claim_token,p_reason,p_now);
+END; $$;
+
+CREATE FUNCTION public.fulfillment_expire_subscription_renewals_gated(p_now timestamptz DEFAULT now(), p_limit integer DEFAULT 100)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ PERFORM public.inventory_admission_try_enter();
+ RETURN public.fulfillment_expire_subscription_renewals(p_now,p_limit);
+END; $$;
+
+CREATE FUNCTION public.subscription_stock_wait_admit_gated(p_input jsonb, p_due jsonb, p_now timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ PERFORM public.inventory_admission_try_enter();
+ RETURN public.subscription_stock_wait_admit(p_input,p_due,p_now);
+END; $$;
+
+CREATE FUNCTION public.subscription_stock_wait_recover_refusal_gated(p_operation_id uuid, p_fingerprint text, p_worker text, p_now timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ PERFORM public.inventory_admission_try_enter();
+ RETURN public.subscription_stock_wait_recover_refusal(p_operation_id,p_fingerprint,p_worker,p_now);
+END; $$;
+
+CREATE FUNCTION public.subscription_stock_wait_deficits_gated(p_snapshot jsonb, p_operation_id uuid, p_now timestamptz)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ PERFORM public.inventory_admission_try_enter();
+ RETURN public.subscription_stock_wait_deficits(p_snapshot,p_operation_id,p_now);
+END; $$;
+
+REVOKE ALL ON FUNCTION public.commerce_view_shipment_destination(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_view_shipment_destination(uuid), public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz), public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz), public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer), public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz) FROM anon'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_view_shipment_destination(uuid), public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz), public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz), public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer), public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz) FROM authenticated'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_view_shipment_destination(uuid), public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz), public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz), public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer), public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz) FROM service_role'; END IF; END; $$;

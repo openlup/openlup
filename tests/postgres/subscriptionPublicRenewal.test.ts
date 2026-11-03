@@ -1,9 +1,9 @@
-import { captureConnectedNativeStore, connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
-import { api, active, admin, at, composition, days, deps, executor, facts, fulfillment, later, now, retire, restartDatabase, freshRetryReadback, rpc, runtime, settlement, stock, transaction } from "./subscriptionPublicRenewalFixture.js";
-import type { NativeRetryDriverOptions } from "@openlup/platform/subscriptions";
+import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, restartDatabase, freshRetryReadback, rpc, runtime, settlement, stock, transaction } from "./subscriptionPublicRenewalFixture.js";
+import type { NativeRetryDriverOptions, NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
 import type { RenewalReadback } from "@openlup/platform/subscriptions/contracts";
 
 beforeEach(async () => {
@@ -42,7 +42,8 @@ it("cancellation refuses new work and nonterminal takeover without changing the 
 
 function binding(d: Awaited<ReturnType<typeof deps>>, clock: () => string) {
   const unused = async (): Promise<never> => { throw new Error("unexpected_retry_on_stock_fixture"); };
-  const native = api.createNativeSubscriptionBinding({ enabled: true, population: `public-renewal:${d.due.subscriptionId}`, executor,
+  const queries = vi.fn(executor.query);
+  const native = api.createNativeSubscriptionBinding({ enabled: true, batchLimit: 7, population: `public-renewal:${d.due.subscriptionId}`, executor: { query: queries },
     withTransaction: transaction, withRunLease: async (_population, work) => {
       const db = await runtime.connect();
       try {
@@ -56,7 +57,7 @@ function binding(d: Awaited<ReturnType<typeof deps>>, clock: () => string) {
     catalogue: { version: "complete-test-catalogue", migration: "native-test-catalogue" },
     readiness: async () => ({ state: "ready", candidate: { artifact: "fixture", configuration: "fixture", environment: "disposable", database: "fixture", schema: "complete" }, loadedPackages: [], issues: [] }),
   });
-  return { ...native, ...composition.createSubscriptionContribution({ version: "fixture", requiredSchema: native.schema, run: native.services.run, cadenceSeconds: 60 }) };
+  return { ...native, queries, ...composition.createSubscriptionContribution({ version: "fixture", requiredSchema: native.schema, run: native.services.run, cadenceSeconds: 60 }) };
 }
 
 it("waits for stock and resumes the same frozen obligation through the installed public composition", async () => {
@@ -68,6 +69,7 @@ it("waits for stock and resumes the same frozen obligation through the installed
   expect(Object.values(b.triggers)).toEqual([b.services.run]);
   expect(await b.services.run()).toMatchObject({ renewals: [{ status: "refused", reason: "inventory_unavailable" }] });
   expect(d.execute).not.toHaveBeenCalled();
+  expect(b.queries.mock.calls.some(([sql, values]) => sql.includes("subscription_stock_wait_normal_due") && values?.[0] === 7)).toBe(true);
   const waiting = (await runtime.query("SELECT * FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows[0];
   expect(waiting.state).toBe("waiting");
   const frozen = JSON.stringify(waiting.cycle_snapshot), operationId = waiting.renewal_operation_id;
@@ -115,29 +117,48 @@ it("defers an undelivered parcel, then extends only the next cycle for genuinely
   // an outstanding obligation in the unchanged alignment characterization.
 });
 
-function retryDriver(d: Awaited<ReturnType<typeof deps>>, observation: "ambiguous" | "declined" | "succeeded", observedAt: string, method = facts.methodRef) {
-  const execute = vi.fn(async () => ({ status: "pending" as const, externalAttemptRef: "fixture-retry" }));
-  // Trusted payment-owner evidence fixture until the joined simulator proof.
-  // It is reconstructed against the exact durable prepared receipt after restart;
-  // no retry attempt table or aggregate-handle lookup is introduced here.
-  const options: NativeRetryDriverOptions = { executor, withTransaction: transaction, decode: d.codec.decode,
-    readFrozenMandate: async snapshot => ({ authorized: (await api.createPostgresPurchaseRenewalWriter(executor).readMethod(snapshot.subscriptionId))?.healthState === "healthy",
+function retryDriver(d: Awaited<ReturnType<typeof deps>>, observation: "ambiguous" | "declined" | "succeeded", observedAt: string, method = facts.methodRef, target = { executor, transaction }) {
+  const retryExecutor = target.executor, retryTransaction = target.transaction;
+  const operationStore = api.createPostgresRenewalStore(retryExecutor, d.codec, retryTransaction);
+  const simulator = payments.createPostgresSandboxPaymentSimulator(retryExecutor, {
+    dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+  const execute = vi.fn(async (input: Parameters<NativeRetryDriverOptions["payments"]["execute"]>[0]) => {
+    const attempt = await simulator.beginAttempt({ settlementIntentId: input.paymentIntentId, idempotencyKey: input.executionIdempotencyKey,
+      requestFingerprint: input.requestFingerprint, methodFacts: { authorizationRef: d.due.authorizationRef,
+        unattendedChargeAuthorizedAt: d.due.unattendedChargeAuthorizedAt, payerAccountRef: d.due.payerAccountRef,
+        methodRef: method, methodEvidenceRef: facts.methodEvidenceRef }, at: observedAt });
+    return { status: "pending" as const, externalAttemptRef: attempt.id };
+  });
+  // The simulator owns attempts and observations; recovery owns truth ingestion.
+  const options: NativeRetryDriverOptions = { executor: retryExecutor, withTransaction: retryTransaction, decode: d.codec.decode,
+    readFrozenMandate: async snapshot => ({ authorized: (await api.createPostgresPurchaseRenewalWriter(retryExecutor).readMethod(snapshot.subscriptionId))?.healthState === "healthy",
       authorizationRef: snapshot.authorizationRef, paymentMethodRef: facts.methodRef }),
     retryInput: (snapshot, row) => ({ ...api.createSandboxRenewalPolicy(method).executionInput(d.due,
       { cycleSnapshot: snapshot, identityKey: row.identityKey, operationFingerprint: row.requestFingerprint } as RenewalReadback,
       { settlementIntentId: row.settlementIntentId, orderId: row.orderId }),
       executionIdempotencyKey: `${row.identityKey}:retry:${row.retryAttempt}`, externalIdempotencyKey: `${row.identityKey}:retry-provider:${row.retryAttempt}` }),
     validateInput: d.input.policy.validateInput, classifyFailure: () => "temporary", failureTemplate: "failed", recoveredTemplate: "recovered", recoveryPath: "/recover",
-    payments: { execute, readOutcome: async (prepared, snapshot) => ({
-      status: observation === "succeeded" ? "succeeded" : observation === "declined" ? "failed" : "unknown",
-      disposition: observation === "ambiguous" ? "ambiguous" : "observed", operationId: d.codec.identity(snapshot) === prepared.identityKey ?
-        (await d.input.store.readRenewal(prepared.identityKey))!.operationId : "wrong-operation",
-      eventKey: `fixture-observation:${prepared.obligationId}:${prepared.attemptSequence}`,
-      requestFingerprint: prepared.operationFingerprint, verifiedEvidenceRef: observation === "ambiguous" ? "" : `fixture-evidence:${prepared.obligationId}:${prepared.attemptSequence}`,
-      externalAttemptRef: `fixture-attempt:${prepared.obligationId}:${prepared.attemptSequence}`, occurredAt: observation === "ambiguous" ? null : observedAt,
-      observedAt, firstRecordedAt: observedAt, amountMinor: snapshot.pricingSnapshot.totalAmountMinor, currency: snapshot.pricingSnapshot.currency,
-      reason: observation === "declined" ? "fixture_declined" : null,
-    }) },
+    payments: { execute, readOutcome: async (prepared, snapshot) => {
+      const attempt = await simulator.readAttempt({ settlementIntentId: prepared.settlementIntentId });
+      if (!attempt) throw new Error("missing_saved_simulator_attempt");
+      const eventKey = `retry-observation:${prepared.obligationId}:${prepared.attemptSequence}:${observation}`;
+      if (observation !== "ambiguous") await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: eventKey,
+        outcome: observation === "succeeded" ? "captured" : "refused", occurredAt: observedAt });
+      const saved = await simulator.readAttempt({ settlementIntentId: prepared.settlementIntentId, attemptId: attempt.id });
+      const evidence = saved!.latestObservation;
+      return {
+        status: observation === "succeeded" ? "succeeded" : observation === "declined" ? "failed" : "unknown",
+        disposition: observation === "ambiguous" ? "ambiguous" : "observed", operationId:
+          (await operationStore.readRenewal(prepared.identityKey))!.operationId,
+        eventKey, requestFingerprint: prepared.operationFingerprint,
+        verifiedEvidenceRef: evidence ? `sandbox:${evidence.id}` : "", externalAttemptRef: attempt.id,
+        occurredAt: evidence?.occurredAt ?? null, observedAt, firstRecordedAt: observedAt,
+        amountMinor: snapshot.pricingSnapshot.totalAmountMinor, currency: snapshot.pricingSnapshot.currency,
+        reason: observation === "declined" ? "fixture_declined" : null,
+        ...(evidence ? { sourceEvidence: { sourceKind: "accepted_event" as const, sourceReference: evidence.id,
+          attemptRef: attempt.id, observedStatus: evidence.outcome, observedAt: evidence.occurredAt, payloadFingerprint: evidence.fingerprint } } : {}),
+      };
+    } },
   };
   return { driver: api.createNativeRetryDriver(options), execute, options };
 }
@@ -254,24 +275,23 @@ it("forwards the payment owner's captured observation into the real recovery wri
   const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now);
   const store = api.createPostgresRetryStore(executor), row = (await store.read(first.operationId))!;
   const recoveredAt = row.nextRetryAt!, recovery = retryDriver(d, "succeeded", recoveredAt);
-  // Labelled observation fixture until the payment-owner simulator joins this stack.
-  const sourceEvidence = { sourceKind: "accepted_event" as const, sourceReference: randomUUID(),
-    attemptRef: randomUUID(), observedStatus: "captured", observedAt: recoveredAt, payloadFingerprint: "a".repeat(64) };
+  let sourceEvidence: Awaited<ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]>>["sourceEvidence"];
   const read = recovery.options.payments.readOutcome;
-  recovery.options.payments.readOutcome = async (...input) => ({ ...await read(...input),
-    verifiedEvidenceRef: `sandbox:${sourceEvidence.sourceReference}`, sourceEvidence });
+  recovery.options.payments.readOutcome = async (...input) => {
+    const result = await read(...input); sourceEvidence = result.sourceEvidence; return result;
+  };
   expect(await recovery.driver.run(recoveredAt, 50)).toEqual([{ operationId: first.operationId, status: "succeeded" }]);
   expect(recovery.execute).toHaveBeenCalledTimes(1);
   const receipt = (await runtime.query(`SELECT receipt_key,input FROM public.subscription_retry_receipts
     WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) AND kind='recovery'`, [first.operationId])).rows[0];
-  expect(receipt.input).toMatchObject({ ...sourceEvidence, evidenceKey: `sandbox:${sourceEvidence.sourceReference}` });
+  expect(receipt.input).toMatchObject({ ...sourceEvidence, evidenceKey: `sandbox:${sourceEvidence!.sourceReference}` });
   const before = await allPublicRows(admin);
   await store.recordRecovery(first.operationId, receipt.receipt_key, receipt.input);
   await expect(store.recordRecovery(first.operationId, receipt.receipt_key, { ...receipt.input, attemptRef: randomUUID() })).rejects.toMatchObject({ code: "23505" });
   expect(await allPublicRows(admin)).toEqual(before);
 });
 
-it("populates the retry, token, authorization and stock-wait transfer set using writers and refuses missing stock transfer entries", async () => {
+it("captures populated retry, token, destination and draft rows, restores cleanly, completes a pending duty and continues", async () => {
   const f = await active(), d = await deps(f.subscriptionId, "declined");
   const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now);
   const store = api.createPostgresRetryStore(executor), row = (await store.read(first.operationId))!;
@@ -301,21 +321,101 @@ it("populates the retry, token, authorization and stock-wait transfer set using 
     const identifier = String(tablename).replaceAll('"', '""');
     if ((await admin.query(`SELECT 1 FROM public."${identifier}" LIMIT 1`)).rows.length) outside.push(tablename);
   }
-  expect(outside).toEqual(["fulfillment_inventory_reservation_lines", "fulfillment_inventory_reservations", "fulfillment_stock_current"]);
+  expect(outside).toEqual([]);
+  await stock(1000);
+  const pendingPurchase = await purchase();
+  const fault = { async query(sql: string, args?: unknown[]) {
+    if (sql.includes("subscription_complete_renewal_attachment")) throw new Error("synthetic_completion_unavailable");
+    return executor.query(sql, args);
+  } };
+  const duty = await api.activateNativePurchaseWithRenewal(fault, { ...pendingPurchase, facts });
+  expect(duty.renewalAttachment).toBe("pending");
+  const before = await allPublicRows(admin), packet = await captureStore(admin, "public-renewal-source");
+  expect(await allPublicRows(admin)).toEqual(before);
+  for (const table of [...tables, "commerce_destinations", "commerce_destination_bindings", "commerce_order_draft_receipts"]) {
+    const index = packet.owned.findIndex(relation => relation.table === table), relation = packet.owned[index]!;
+    expect(relation.rows.length).toBeGreaterThan(0);
+    const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+    const rows = prior.reduce((n, row) => n + row.rows.length, 0) + relation.rows.length;
+    const bytes = [...prior, relation].reduce((n, row) => n + row.rows.reduce((sum, value) => sum + Buffer.byteLength(value), 0), 0);
+    await expect(captureStore(admin, "renewal-row-bound", { maximumRows: rows - 1, maximumBytes: 64 * 1024 * 1024 })).rejects.toMatchObject({ code: "limit_exceeded", table });
+    await expect(captureStore(admin, "renewal-byte-bound", { maximumRows: 10000, maximumBytes: bytes - 1 })).rejects.toMatchObject({ code: "limit_exceeded", table });
+  }
+  await withRestoredStore(packet, async target => {
+    for (const table of tables) expect((await target.runtime.query(`SELECT count(*) AS n FROM public.${table}`)).rows)
+      .toEqual((await runtime.query(`SELECT count(*) AS n FROM public.${table}`)).rows);
+    expect((await target.runtime.query("SELECT token_hash FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [token])).rows[0].token_hash).toBe(tokenHash);
+    const recovered = retryDriver(d, "succeeded", liveNow, facts.methodRef, { executor: target.runtime, transaction: target.transaction });
+    expect(await recovered.driver.run(liveNow, 50)).toContainEqual({ operationId: first.operationId, status: "succeeded" });
+    expect(recovered.execute).not.toHaveBeenCalled();
+    await api.createPostgresPurchaseRenewalWriter(target.runtime).complete(pendingPurchase.orderId);
+    const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(target.runtime, codec, target.transaction);
+    const due = (await store.listDue(500, now)).find(row => row.subscriptionId === duty.activation.subscriptionId)!;
+    expect(due).toBeDefined();
+    const lifecycle = api.createPostgresRetryLifecycleBinding({ executor: target.runtime, withTransaction: target.transaction,
+      settlement: db => settlement(codec, db), correlate: wire => codec.decode(wire).cycle, failureTemplate: "failed", recoveryPath: "/recover" });
+    const rail = api.createPostgresSandboxRenewalRail(target.runtime, { scenario: "succeeded", now: () => now }), execute = vi.spyOn(rail, "execute");
+    const input = { ...d.input, store, settlement: lifecycle.settlement, failureHandoff: lifecycle.failureHandoff,
+      inventory: inventory.createPostgresRenewalReservationPort(target.runtime), paymentRails: { resolve: () => rail } };
+    expect(await api.runOneAutomaticSubscriptionRenewal(input, due, now)).toMatchObject({ status: "succeeded" });
+    expect(execute).toHaveBeenCalledTimes(1);
+    const paid = await allPublicRows(target.owner);
+    expect(await api.runOneAutomaticSubscriptionRenewal(input, due, later)).toMatchObject({ status: "terminal_replay" });
+    expect(execute).toHaveBeenCalledTimes(1); expect(await allPublicRows(target.owner)).toEqual(paid);
+    const address = await destinations.createPostgresDestinationPort(target.runtime).read("subscription", due.subscriptionId);
+    expect((await store.readRenewal(codec.identity(await store.buildCycleSnapshots(due))))!.cycleSnapshot.orderSnapshot.shippingAddressRef).toBe(address.destinationId);
+  });
+}, 65_000);
+
+it("views the current and pinned shipment destination without writes or waiting for dispatch locks", async () => {
+  const f = await active(), shipmentId = await parcel(f.orderId);
+  const expected = await destinations.createPostgresDestinationPort(executor).read("order", f.orderId);
+  for (const pinned of [false, true]) {
+    if (pinned) await destinations.createPostgresDestinationPort(executor).read("shipment", shipmentId);
+    const before = await allPublicRows(admin), holder = await admin.connect(), reader = await runtime.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`native-dispatch|${shipmentId}`]);
+      await holder.query("SELECT id FROM public.fulfillment_shipments WHERE id=$1 FOR UPDATE", [shipmentId]);
+      await reader.query("BEGIN READ ONLY"); await reader.query("SET LOCAL statement_timeout='500ms'");
+      const result = (await reader.query("SELECT public.commerce_view_shipment_destination($1::uuid) AS value", [shipmentId])).rows[0].value;
+      expect(result).toEqual({ ...expected, pinned });
+      await reader.query("COMMIT");
+    } finally { await reader.query("ROLLBACK"); reader.release(); await holder.query("ROLLBACK"); holder.release(); }
+    expect(await allPublicRows(admin)).toEqual(before);
+  }
+  await expect(rpc("commerce_view_shipment_destination", [null])).rejects.toMatchObject({ code: "22023", message: "commerce_destination_invalid_scope" });
+  await expect(rpc("commerce_view_shipment_destination", [randomUUID()])).rejects.toMatchObject({ code: "22023", message: "commerce_destination_parent_missing" });
+});
+
+it("settles one destination-bound sub-millisecond cycle and replays without another charge or cycle", async () => {
+  const paidAt = at.replace(/\.\d{3}Z$/, ".123456Z"), f = await purchase(true, true, paidAt);
+  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...f, facts });
+  expect(activated.renewalAttachment).toBe("complete");
+  const subscriptionId = String(activated.activation.subscriptionId), d = await deps(subscriptionId, "succeeded");
+  expect(d.due.scheduledAt).toMatch(/\.123456Z$/);
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.scheduledAt).toBe(d.due.scheduledAt); expect(snapshot.scheduledInstant).toBe(Date.parse(snapshot.scheduledAt));
+  const results = await Promise.all([api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now),
+    api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now)]);
+  const result = results.find(row => row.status === "succeeded")!;
+  expect(result).toBeDefined(); expect(results.every(row => ["succeeded", "lease_active", "terminal_replay"].includes(row.status))).toBe(true);
+  expect(d.execute).toHaveBeenCalledTimes(1);
+  const read = (await d.input.store.readRenewal(result.identityKey))!;
+  expect(read.claimGeneration).toBe(1); expect(read.cycleSnapshot.scheduledAt).toBe(snapshot.scheduledAt);
+  const destination = await destinations.createPostgresDestinationPort(executor).read("subscription", subscriptionId);
+  expect(read.cycleSnapshot.orderSnapshot.shippingAddressRef).toBe(destination.destinationId);
+  expect(read.cycleSnapshot.orderSnapshot.shippingQuoteRef).toEqual({ kind: "zero_shipping", shippingAmountMinor: 0 });
+  expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_renewal_operations WHERE subscription_id=$1", [subscriptionId])).rows[0].n).toBe(1);
+  expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_cycles WHERE subscription_id=$1", [subscriptionId])).rows[0].n).toBe(2);
   const before = await allPublicRows(admin);
-  // The earlier stock row's three profile entries are deliberately absent here.
-  // At the instructed main merge this becomes full clean-target restore and
-  // continuation proof; do not delete/filter writer-created reservation facts.
-  await expect(captureConnectedNativeStore({ sourceId: "public-renewal-source", catalogueId: "same-qualified-catalogue",
-    maximumRows: 10000, maximumBytes: 64 * 1024 * 1024, source: { async withSnapshot(work) {
-      const db = await admin.connect();
-      await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      try { const result = await work({ query: (sql, values) => db.query(sql, values ? [...values] : undefined) });
-        await db.query("COMMIT"); return result;
-      } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
-    } } }).catch(error => {
-      console.info("renewal-transfer-refusal", JSON.stringify({ code: error.code, table: error.table }));
-      throw error;
-    })).rejects.toMatchObject({ code: "unsupported_table", table: expect.stringMatching(/^public\.fulfillment_(inventory_reservation|stock_current)/) });
+  expect(await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).toMatchObject({ status: "terminal_replay", operationId: result.operationId });
+  expect(d.execute).toHaveBeenCalledTimes(1); expect(await allPublicRows(admin)).toEqual(before);
+});
+
+it("refuses a non-zero renewal shipping amount through the restricted purchase writer", async () => {
+  const f = await purchase(), before = await allPublicRows(admin);
+  await expect(api.createPostgresPurchaseRenewalWriter(executor).register(f.orderId,
+    { ...facts, shippingAmountMinor: 1 } as unknown as NativeRenewalPurchaseFacts)).rejects.toMatchObject({ code: "22023" });
   expect(await allPublicRows(admin)).toEqual(before);
 });

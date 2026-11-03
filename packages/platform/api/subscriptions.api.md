@@ -724,9 +724,14 @@ export interface RenewalPricingSnapshot {
     agreementPolicy: "lock_until_edit";
     proration: "none";
 }
+/** Explicit zero-shipping limit; this is not a quote issued by a quote authority. */
+export interface RenewalZeroShippingMarker {
+    kind: "zero_shipping";
+    shippingAmountMinor: 0;
+}
 export interface RenewalOrderSnapshot {
     shippingAddressRef: string | null;
-    shippingQuoteRef: string | null;
+    shippingQuoteRef: string | RenewalZeroShippingMarker | null;
     acquisitionRef: string | null;
     lines: readonly RenewalLine[];
 }
@@ -1213,6 +1218,7 @@ import { type NativeRetryDriverOptions } from "./nativeRetryDriver.js";
 /** Explicit native selection under a host-owned population lease; construction mounts nothing. */
 export declare function createNativeSubscriptionBinding(input: {
     enabled?: boolean;
+    batchLimit?: number;
     population: string;
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
@@ -1364,12 +1370,14 @@ export interface NativeRenewalCodec {
     readback(row: Record<string, unknown>): RenewalReadback;
     identity(snapshot: RenewalFrozenSnapshot): string;
     fingerprint(snapshot: RenewalFrozenSnapshot): string;
+    /** Native destination authority binds the final frozen document under the claim lock. */
+    withDestination?(snapshot: RenewalFrozenSnapshot, destinationId: string): RenewalFrozenSnapshot;
 }
 export declare const subscriptionCorrelationSql = "o.subscription_cycle_id AS activation_cycle_id,\n ac.status='paid' AS activation_cycle_paid,\n (SELECT count(*)::integer FROM public.subscription_cycles pc\n  WHERE pc.subscription_id=s.id AND pc.status='paid' AND pc.scheduled_at<s.next_cycle_at) AS paid_cycle_count";
 export declare const subscriptionCorrelationJoin = "LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id\n LEFT JOIN public.commerce_orders o ON o.id=a.order_id\n LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id";
 export declare function subscriptionRecord(value: unknown): Record<string, unknown>;
 /** Native claim/prepare remain their original SQL transaction units. G23 is composed by the host. */
-export declare function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec): RenewalStorePort;
+export declare function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalStorePort;
 ```
 ## dist/subscriptions/postgresRetryStore.d.ts
 

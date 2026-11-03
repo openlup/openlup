@@ -360,3 +360,155 @@ Self-retro: reuse one explicit local runtime closure for all installed witnesses
 removing old consumer modules and using distinct empty caches makes registry or
 checkout fallback visible without changing money assertions.
 Evidence: `.context/scratch/g7/offline-consumer/`.
+
+## Current integration draft
+
+The prerequisite merge is signed at `4439fa0b`; subsequent work remains an
+unsigned draft. The native reservation, release, expiry and stock-wait entry
+points now have six owner-rights gated wrappers. The existing stock routines
+are unchanged. The three direct stock-wait grants narrow to the wrapper path;
+the helper remains owner-only. The original reserve, release and expiry PUBLIC
+EXECUTE is an accepted residual tracked as F-NATIVE-PUBLIC-EXECUTE.
+
+The new shipment destination view is stable and nonmutating. Native destination
+snapshot finalization and claim share the host transaction and subscription lock.
+An existing operation keeps its original frozen document, including on replay;
+concurrent first claimants derive the same frozen destination. Lower-level hosts
+must supply the store's transaction callback. Custom codecs remain injectable.
+The native batch limit is explicit host configuration, with its existing default.
+New retry evidence times use canonical UTC microseconds; previously persisted
+failure request documents still replay unchanged.
+
+The five PostgreSQL inventory measurements used the exact predecessor order.
+A draft merge mistake had sorted the qualified bootstrap entries; the canonical
+manifest now preserves the predecessor lists and appends only this forward.
+No historic issued inventory pin, guard or validation rule changed. The connected
+transfer set remains 107 tables; these wrappers add no row-holding table.
+
+Completed focused evidence: 18 restricted-runtime gate/ACL cases; three joined
+simulator recovery cases, including unhealthy repair, exhaustion, ambiguity,
+restart and genuinely past lateness. The latter run preceded the final evidence-
+time normalization edit and is not claimed as proof of the final draft. The
+initial installed-tarball run passed replay and the locked nonmutating destination
+view; its four retry fixture errors were traced to invalid synthetic reference
+prefixes and corrected. Test assertions were preserved. The new full transfer
+and sub-millisecond/concurrent-claim cases have not run. Existing importer suites,
+zone probes, cold consumer, starter, handover and final cheap checks remain due.
+The admission expectation changes only its bound prefix from four to five slots.
+
+Official Node 24.21.0 real pack versus the predecessor: +16,272 packed bytes,
++14,096 code-class bytes, +79,822 unpacked bytes and +16 files. Absolute figures:
+2,469,917 packed bytes, 1,971,743 code-class bytes, 11,622,091 unpacked bytes and
+3,048 files. This exceeds the row's 16,000-byte stop by 272 bytes. Work stops
+before any cut, cap edit, sign-off, native review or delivery. A measured code-cap
+read is still required once the row-size disposition and final tree are settled.
+The independent shipping-quote authority remains unresolved on the zero-shipping
+rail; no quote reference is invented from a destination UUID.
+
+Self-retro: retain each qualified recipe's predecessor order rather than sorting
+its filenames. The early class and size checks found the admission mismatch and
+then the 272-byte overrun before a review or delivery cycle was spent.
+
+## Resumed marker and compatibility evidence
+
+The packed stop is now 16,800 bytes. Destination-bound zero-shipping renewals
+carry the typed `{ kind: "zero_shipping", shippingAmountMinor: 0 }` marker in
+`shippingQuoteRef`, distinguishable from a real quote reference. Cycle shipping
+will supply its independent reference later. Existing frozen wire still decodes;
+the marker does not permit a non-zero renewal shipping amount.
+
+All 13 installed-tarball cases pass on this draft: terminal replay, cancellation,
+stock wait, delivery alignment, exhaustion and real method repair, saved simulator
+attempt/observation recovery, restart without redispatch, a full populated capture
+and clean restore with per-table row/byte bounds, pending attachment completion,
+restored renewal continuation, the nonblocking destination view, concurrent
+sub-millisecond claim/charge, the typed marker and non-zero shipping refusal.
+The complete API regeneration changes only subscriptions and its contracts report.
+The scratch co-location preflight passes using Git trees, with no fixture commits
+and no edit to the admission reader or actual slot data.
+
+The first unchanged existing purchase-renewal suite stops with 12 passes and one
+failure: subscriptionPurchaseRenewal.test.ts:209 expects the former
+subscription_renewal_claim_not_due rejection after success. Its promise resolves
+with the terminal replay repair active. That test file remains byte-identical
+to this integration's signed head. No assertion, source or SQL repair follows
+this stop. Final zone sweeps, remaining importers, both-mode catalog, handover,
+cold consumer, starter, solo timing and final checks/pack remain due. No new
+code-class number is written before the final measurement. The full remaining
+package reserve is 34,701 bytes, to be added before the 1.02 factor.
+
+Self-retro: run compatibility suites early. A test that deliberately pinned an
+old known limit can outlive its defect; preserve it until its disposition is
+explicit rather than changing implementation to restore the old failure.
+
+## Lifted purchase replay limit
+
+The purchase writer's deliberately pinned successful public-run replay limit is
+lifted here. The sub-millisecond purchase regression now expects the original
+succeeded operation as a terminal replay; its surrounding unchanged assertions
+still require identical effect counts and exactly one provider execution. Only
+that known-limit assertion and its comment change. The explicit zero-shipping
+marker lasts only until cycle shipping replaces it with the cycle-snapshot
+reference and the full free-shipping threshold mechanism.
+
+## Replay disposition and admission-test stop
+
+The full purchase-renewal suite now passes 13/13 after lifting its one known-limit
+assertion. Its effect-count and single-execution assertions remain unchanged. The
+installed public renewal suite passes 13/13 on the default zone and 13/13 with
+sessions forced to UTC+09:00. The full package boundary passes 2,966/2,966. The
+real PostgreSQL catalog passes 132/132 across both role modes with the approved
+scratch class and five bound forwards. Both neutrality checks report zero
+increases. The feature pin is included without changing actual class data.
+
+The unchanged remainder of the admission test was also exercised against that
+scratch class: 208 pass, two fail. At line 217 it still expects no created
+functions for this row, whereas the approved class lists the destination view
+and six wrappers. At line 660 it still expects four inventory functions, whereas
+the later inventory class lists five. The signed prerequisite's test predates
+those class changes. The approved five-pin expectation is its only edited line;
+no additional control, assertion or fixture is changed to bypass the failures.
+The next empty grant-only expectation also predates this row's approved three
+revokes and will require the control owner's disposition.
+
+Work stops before final pack, code-cap editing or a completed read packet. The
+remaining compatibility sweep and zone runs were cancelled while waiting at the
+gate; no incomplete case is counted as a failure or pass. Remaining package
+work uses the final approximately 42,200-byte reserve, rather than the superseded
+34,701-byte inventory, before applying the 1.02 factor to the final measurement.
+No SQL, production repair, sign-off, native review, verify or delivery follows
+this admission-test stop. All draft changes stay staged for the supervisor.
+
+Self-retro: test the edited admission expectation against the proposed scratch
+class before review. Class amendments can outpace the prerequisite's fixture
+expectations; keep their disposition with the control owner.
+
+## Staged delta and code-budget read
+
+The two admission failures are control-owned, pending integration. The inventory
+class now has five created functions; this row's final slot has seven created
+functions and three grant-only revokes. Their expectation updates arrive with
+the prerequisite bundle's final integration and the separate control change.
+They are not edited here. The authorized bound-prefix expectation remains the
+only local admission-test change.
+
+Official Node 24.21.0 paired pack against the exact predecessor, including the
+packaged forward and proposed budget metadata: +16,589 packed bytes, +14,327
+code-class bytes, +81,072 unpacked bytes and +16 files. Absolute figures are
+2,470,234 packed bytes, 1,971,974 code-class bytes, 11,623,341 unpacked bytes and
+3,048 files. The packed delta is 211 bytes below the authorized 16,800-byte stop.
+Only the code-class maximum changes, from 1,970,000 to 2,054,458 bytes, computed
+as ceil((1,971,974 + 42,200) * 1.02). All other limits and baselines stay unchanged.
+The metadata-only repack changes packed size by -2 bytes and leaves code,
+unpacked bytes and files unchanged.
+
+The delta, reference mapping and budget packets are ready for the maintainer
+read of this staged proposal. They list measured suite results rather than
+claiming canonical verification. After final prerequisite/control integration,
+rerun admission, co-location against the actual registry and the real PostgreSQL
+catalog on the integrated tree. No merge, commit, native review, verify, push
+or pull request is authorized by these packets. All edits remain staged.
+
+Self-retro: resolve versioned control expectations with their owner and keep
+the product proof separate. Repacking the proposed budget metadata makes the
+reported artifact match the staged package inputs exactly.

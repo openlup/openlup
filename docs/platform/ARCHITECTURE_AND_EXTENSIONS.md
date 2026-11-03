@@ -2042,9 +2042,15 @@ the existing recovery truth transaction. Sandbox recovery requires all six,
 with `verifiedEvidenceRef` equal to `sandbox:<observation ID>` and the exact
 observation instant as `occurredAt`. Ordinary renewal completion does not qualify
 this recovery path. Preserve the original saved method authorization time;
-a prepared ambiguous attempt is reconciled without another dispatch. Destination
-composition remains at the frozen order snapshot's `shippingAddressRef` seam;
-its durable reader/revision is pending, so no destination or quote is fabricated.
+a prepared ambiguous attempt is reconciled without another dispatch. The native binding locks the subscription and resolves its immutable destination
+in the same writable transaction as final snapshot construction and claim.
+Lower-level callers supply the transaction callback to `createPostgresRenewalStore`.
+The frozen `shippingAddressRef` is the destination UUID; later address changes do
+not rewrite it. Until cycle shipping quotes are available, `shippingQuoteRef`
+is the explicit typed `{ kind: "zero_shipping", shippingAmountMinor: 0 }` marker.
+It is distinguishable from an issued quote reference, and non-zero renewal
+shipping amounts still refuse. Existing frozen operations replay their retained
+wire. A host supplies the batch limit; its existing default is preserved.
 Both normal-due and stock-recovery rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
 `error` result with `renewal_processing_failed` and later rows still execute.
 Static admission precedes G23;
@@ -2074,6 +2080,13 @@ arrival alone cannot emit a resumed notice. No automatic renewal operation
 pauses, suspends or interrupts an active subscription. Managed stock descriptors
 continue to declare SQL surfaces and unavailable TypeScript recovery; the served
 managed runner and account aggregation are unchanged.
+The native reservation, release, expiry and stock-wait ports enter the shared
+inventory admission gate through owner-rights wrappers. Only the restricted
+service role receives wrapper execution; direct stock-wait calls and the helper
+are not runtime entry points. Original reservation, release and expiry routines
+retain their historical PUBLIC execution as a known narrowing follow-up. The
+shipment destination view reads the pinned document or the order's current
+document without writing or acquiring preparation locks.
 
 `subscriptionLifecycleTemplate` maps existing lifecycle events plus M5 stock-wait
 started/resumed events to M04 templates. Payment failures use the installed

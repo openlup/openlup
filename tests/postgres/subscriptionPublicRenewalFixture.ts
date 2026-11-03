@@ -1,6 +1,9 @@
+import { captureConnectedNativeStore, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsumer.js";
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -17,13 +20,15 @@ const exec = promisify(execFile);
 const scratch = resolve(".context/scratch/g7/installed");
 export let at: string, now: string, later: string;
 export const days = (stamp: string, count: number) => new Date(Date.parse(stamp) + count * 86_400_000).toISOString();
-const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export let api: typeof import("@openlup/platform/subscriptions");
 export let payments: typeof import("@openlup/platform/payments");
 export let identity: typeof import("@openlup/platform/identity");
 export let inventory: typeof import("@openlup/platform/inventory");
+export let checkout: typeof import("@openlup/platform/commerce/server/native-checkout");
+export let destinations: typeof import("@openlup/platform/commerce/server/destinations");
 export let composition: typeof import("@openlup/platform/composition");
 export let fulfillment: typeof import("@openlup/platform/fulfillment");
+let migrationsApi: typeof import("@openlup/platform/migrations");
 let container: PostgresContainer | undefined;
 export let admin: Pool, migration: Pool, runtime: Pool;
 export let runtimeUrl: string;
@@ -31,8 +36,8 @@ const selection = { generation: "qualified-v2", roleMode: "installer-managed", b
   migrationLogin: "postgres", runtimeLogin: "g7_runtime", restoreLogin: "g7_restore" } as const;
 const lock = "openlup:public-platform-migrations:v1";
 const secret = "synthetic-conformance";
-export const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization",
-  unattendedChargeAuthorizedAt: "", payerAccountRef: "sandbox-customer", methodRef: "sandbox-method", methodEvidenceRef: "sandbox-method-evidence",
+export const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox:authorization",
+  unattendedChargeAuthorizedAt: "", payerAccountRef: "sandbox:customer", methodRef: "sandbox:method", methodEvidenceRef: "sandbox:method-evidence",
   stockSourceKey: "g7-stock", templateId: "g7-refill", cadenceDays: 28, currency: "XXX",
   lines: [{ lineOrdinal: 1, sku: "G7-REFILL", quantity: 2, unitAmountMinor: 100 }], shippingAmountMinor: 0, acquisitionRef: null };
 export const executor: SubscriptionQueryExecutor = { query: (sql, values) => runtime.query(sql, values) };
@@ -45,8 +50,10 @@ beforeAll(async () => {
   api = await load("@openlup/platform/subscriptions"); payments = await load("@openlup/platform/payments");
   identity = await load("@openlup/platform/identity"); fulfillment = await load("@openlup/platform/fulfillment");
   composition = await load("@openlup/platform/composition");
+  checkout = await load("@openlup/platform/commerce/server/native-checkout");
+  destinations = await load("@openlup/platform/commerce/server/destinations");
   inventory = await load("@openlup/platform/inventory");
-  const migrationsApi = await load("@openlup/platform/migrations");
+  migrationsApi = await load("@openlup/platform/migrations");
   container = await runPostgresContainer({ name: `g7-renewal-${process.pid}`, password: secret, runOptions: ["-e", "PGDATA=/var/lib/postgresql/g7-data"] });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Renewal PostgreSQL unavailable");
   admin = new Pool({ connectionString: container.connectionString });
@@ -89,25 +96,27 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await closePostgres(container, [admin, migration, runtime].filter(Boolean)); });
 
-export async function purchase(captured = true, declared = true) {
+export async function purchase(captured = true, declared = true, paidAt = at) {
   const accounts = identity.createPostgresAccountLinkStore({ connectionString: runtimeUrl });
   let clientId: string;
   try { clientId = (await accounts.createAccount({ email: `${randomUUID()}@example.invalid`, principalId: randomUUID(), acquisitionSource: "fixture", lifecycleStage: "customer" })).id; }
   finally { await accounts.close(); }
-  // Purchase quote/draft remains an explicit fixture until joined proof. No
-  // direct client, stock, settings, activation, terms, lines or method row writes.
-  const quote = { context: { mode: "subscription", cadenceDays: 28 }, lines: [
-    { sku: "G7-REFILL", quantity: 2, unitPriceGross: { amountMinor: 100, currency: "XXX" }, lineSubtotalGross: { amountMinor: 200, currency: "XXX" } }], totalGross: { amountMinor: 200, currency: "XXX" } };
-  const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
-    currency: "XXX", context: quote.context, lines: quote.lines, totals: { totalGross: { amountMinor: 200, currency: "XXX" } } };
-  const key = randomUUID();
-  const made = await rpc<{ orderDraft: { orderId: string } }>("commerce_create_order_draft_with_outbox", [key, JSON.stringify({ quote }), JSON.stringify(draft), clientId]);
+  const key = randomUUID(), money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const made = await checkout.createPostgresNativeCheckoutPersistence(executor).createOrderDraft({ idempotencyKey: key,
+    quoteSnapshot: { contractVersion: "commerce.v0", quote: { currency: "XXX", taxIncluded: true,
+      lines: [{ sku: "G7-REFILL", productSlug: "g7-refill", quantity: 2, unitPriceGross: money(100), lineSubtotalGross: money(200),
+        tax: { included: true, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Synthetic test tax",
+          netAmount: money(200), vatAmount: money(0), grossAmount: money(200) } }],
+      discounts: [], context: { mode: "subscription", cadenceDays: 28, promoCodes: [] },
+      subtotalGross: money(200), discountTotalGross: money(0), shippingGross: money(0), shippingDiscountGross: money(0),
+      totalGross: money(200), netTotal: money(200), taxTotal: money(0) } } }, { clientId });
   const orderId = String(made.orderDraft.orderId).replace(/^order_/, "");
   const intent = await rpc<{ settlement: { id: string } }>("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", "{}", at]);
-  const truth = payments.createPostgresPaymentTruthPort(executor, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
-  if (captured) await truth.ingestEvent({ sourceEventId: `purchase:${key}`, idempotencyKey: `truth:${key}`, settlementIntentId: intent.settlement.id,
-    outcome: "captured", amountMinor: 200, currency: "XXX", occurredAt: at, failure: null,
-    evidence: { sourceKind: "accepted_event", sourceReference: `sandbox:${key}`, observedStatus: "captured", observedAt: at, payloadFingerprint: hash(key) } });
+  if (captured) expect(await captureSandboxPurchase(payments.createPostgresSandboxPaymentSimulator(executor, {
+    dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" }),
+    { settlementIntentId: intent.settlement.id, key, at: paidAt })).toMatchObject({ status: 200 });
+  await destinations.createPostgresDestinationPort(executor).registerOrder({ idempotencyKey: `destination:${key}`, orderId,
+    address: { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: at });
   if (declared) await rpc("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, at]);
   const settled = (await runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
   return { orderId, clientId, capturedReference: settled.external_ref ?? settled.id, idempotencyKey: `activate:${key}` };
@@ -136,7 +145,7 @@ export async function stock(quantity: number, key = randomUUID()) {
       reservedOrUnavailableQuantity: 0, syncRunId: key }, inventoryClass: "sellable", lastSyncedAt: days(at, 1), staleAfter: days(at, 500) });
 }
 export async function deps(subscriptionId: string, scenario: "succeeded" | "declined" | "ambiguous", asOf = now) {
-  const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(executor, codec);
+  const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(executor, codec, transaction);
   const rail = api.createPostgresSandboxRenewalRail(executor, { scenario, now: () => asOf });
   const execute = vi.spyOn(rail, "execute");
   const lifecycle = api.createPostgresRetryLifecycleBinding({ executor, async withTransaction(work) {
@@ -176,4 +185,42 @@ export async function freshRetryReadback(operationId: string, when: string) {
     const results=await driver.run(argv[3],500);console.log(JSON.stringify({results,executions,reads}));await p.end();`;
   const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child, runtimeUrl, operationId, when], { cwd: scratch });
   return JSON.parse(stdout);
+}
+
+export async function captureStore(db: Pool, sourceId: string, limits = { maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 }) {
+  const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", { migrationIsBootstrap: true, hasRestore: true });
+  return captureConnectedNativeStore({ sourceId, catalogueId: manifest.objectInventorySha256, ...limits,
+    source: { async withSnapshot(work) {
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const result = await work({ query: (sql, args) => client.query(sql, args ? [...args] : undefined) });
+        await client.query("COMMIT"); return result;
+      } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    } } });
+}
+export async function withRestoredStore(packet: ConnectedNativeStoreCapture, work: (target: {
+  owner: Pool; runtime: Pool; transaction: typeof transaction;
+}) => Promise<void>) {
+  const target = await runPostgresContainer({ name: `g7-restored-${process.pid}`, password: secret });
+  const pools: Pool[] = [];
+  try {
+    expect(await waitForPostgresTcpReady(target.connectionString)).toBe(true);
+    const owner = new Pool({ connectionString: target.connectionString }); pools.push(owner);
+    for (const role of [selection.runtimeLogin, selection.restoreLogin]) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${secret}'`);
+    const migration = new Pool({ connectionString: target.connectionString, options: qualifiedPostgresStartupOptions(selection) }); pools.push(migration);
+    const runner = migrationsApi.createPlatformPostgresMigrationRunner({ connectionString: target.connectionString }, { installation: selection, poolFactory: () => migration });
+    await runner.apply();
+    const freshTarget = await captureStore(migration, "public-renewal-pristine");
+    expect(await restoreConnectedNativeStore({ owner: migration, installation: selection, packet, freshTarget })).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
+    expect(await restoreConnectedNativeStore({ owner: migration, installation: selection, packet, freshTarget })).toMatchObject({ replayed: true });
+    const url = new URL(target.connectionString); url.username = selection.runtimeLogin;
+    const runtime = new Pool({ connectionString: url.toString(), options: "-c role=service_role" }); pools.push(runtime);
+    async function transaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T> {
+      const client = await runtime.connect();
+      try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
+      catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    }
+    await work({ owner, runtime, transaction });
+  } finally { await closePostgres(target, pools); }
 }

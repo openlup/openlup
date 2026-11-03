@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
 import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow, NativeRetryRequest } from "./postgresRetryStore.js";
@@ -75,7 +76,7 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           prepared = { ...raw.preparation as NativeRetryPreparation, execute: false, replayed: true };
           prepareKey = String(raw.prepare_key);
         } else {
-          if (!row.nextRetryAt || Date.parse(row.nextRetryAt) > Date.parse(now)) continue;
+          if (!row.nextRetryAt || nativeInstant(row.nextRetryAt) > nativeInstant(now)) continue;
           const mandate = await options.readFrozenMandate(snapshot);
           const input = options.retryInput(snapshot, row);
           const authorizations = (await options.executor.query(`SELECT a.method_ref FROM public.subscription_retry_recovery_authorizations a
@@ -108,15 +109,15 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         }
         if (evidence.status === "succeeded" && evidence.amountMinor === snapshot.pricingSnapshot.totalAmountMinor
           && evidence.currency === snapshot.pricingSnapshot.currency) {
-          await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
-            occurredAt: evidence.occurredAt, firstRecordedAt: evidence.firstRecordedAt, externalRef: evidence.externalAttemptRef,
+          await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
+            occurredAt: nativeInstant(evidence.occurredAt), firstRecordedAt: nativeInstant(evidence.firstRecordedAt), externalRef: evidence.externalAttemptRef,
             amountMinor: evidence.amountMinor, currency: evidence.currency, template: options.recoveredTemplate });
           results.push({ operationId, status: "succeeded" });
         } else if (evidence.status === "failed" && evidence.disposition === "observed") {
           await propagateFailure(operationId, evidence.eventKey, { attemptSequence: prepared.attemptSequence,
-            logicalCycleNumber: row.logicalCycleNumber, occurredAt: evidence.occurredAt,
+            logicalCycleNumber: row.logicalCycleNumber, occurredAt: nativeInstant(evidence.occurredAt),
             failureClass: options.classifyFailure(evidence.reason ?? "provider_failed"), reason: evidence.reason ?? "provider_failed",
-            externalRef: evidence.externalAttemptRef, evidenceKey: evidence.verifiedEvidenceRef, firstRecordedAt: evidence.firstRecordedAt });
+            externalRef: evidence.externalAttemptRef, evidenceKey: evidence.verifiedEvidenceRef, firstRecordedAt: nativeInstant(evidence.firstRecordedAt) });
           results.push({ operationId, status: "refused" });
         } else results.push({ operationId, status: "awaiting_provider" });
       } catch (error) {
