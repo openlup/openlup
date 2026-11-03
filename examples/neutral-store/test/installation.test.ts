@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
+import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
 
@@ -12,7 +13,9 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
     installRole: 'demo_install', runtimeRole: 'demo_runtime',
     connection: { query: async (text, values) => {
       calls.push({ text, values });
-      return { rows: text.startsWith('SELECT') ? [identity] : [] };
+      return { rows: text.startsWith('SELECT provenance')
+        ? [{ provenance: acquisitionAddresses[0]!.addressReference.provenance, active: true }]
+        : text.startsWith('SELECT') ? [identity] : [] };
     } },
     close: async () => { closed++; },
   };
@@ -43,7 +46,7 @@ for (const config of Object.values(configurations)) {
     assert.equal(updated.prices[0]!.unit_price_minor, seed.prices[0]!.unit_price_minor + 1);
   });
 
-  test(`${config.id}: install composes one transactional idempotent four-table seed and closes its connection`, async () => {
+  test(`${config.id}: install composes one transactional idempotent catalogue and address registry seed and closes its connection`, async () => {
     const first = installation();
     let bootstraps = 0;
     await installDemonstration(config, async () => { bootstraps++; return first.binding; });
@@ -51,13 +54,18 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
-    const inserts = first.calls.filter(call => call.text.startsWith('INSERT'));
+    const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
     assert.equal(inserts.length, config.offer.products.length * 3 + 1);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT \(id\) DO UPDATE/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries)\b/);
       assert.ok(call.values?.length);
     }
+    const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
+    assert.equal(registry.length, acquisitionAddresses.length);
+    assert.match(registry[0]!.text, /\(source, reference, revision, provenance, active\)/);
+    assert.match(registry[0]!.text, /ON CONFLICT \(source, reference, revision\) DO NOTHING/);
+    assert.equal(first.calls.filter(call => call.text.startsWith('SELECT provenance')).length, acquisitionAddresses.length);
     const second = installation();
     await applyDemoSeed(config, second.binding);
     assert.deepEqual(second.calls, first.calls);
@@ -112,3 +120,17 @@ test('a configured price outside PostgreSQL integer storage refuses before SQL',
   await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'starter_demo_price_out_of_range' });
   assert.equal(fixture.calls.length, 0);
 });
+
+for (const existing of [[], [{ provenance: 'other_seed', active: true }],
+  [{ provenance: acquisitionAddresses[0]!.addressReference.provenance, active: false }]]) {
+  test(`conflicting or missing address registry row fails the installation: ${JSON.stringify(existing)}`, async () => {
+    const fixture = installation();
+    const query = fixture.binding.connection.query;
+    fixture.binding.connection.query = async (text, values) => text.startsWith('SELECT provenance')
+      ? { rows: existing } : query(text, values);
+    await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding),
+      { message: 'starter_acquisition_seed_conflict' });
+    assert.equal(fixture.calls.at(-1)!.text, 'ROLLBACK');
+    assert.equal(fixture.closed(), 1);
+  });
+}

@@ -120,10 +120,26 @@ the purchase composition contribution. This slice claims none of them.
 Operator list/moderation admission reuses native human membership, rechecked on
 requests; a customer session supplies no operator authority.
 
-Tester application submission remains `host_binding_required`: the native port
-requires a source, reference, revision and provenance matching an existing active
-address-reference record. The host has no verified address-registration binding.
-A browser-supplied reference or a customer session cannot supply that provenance.
+Tester application submission is a public durable write through the native
+acquisition case port. The adopter-owned seed follows the owner-loaded registry
+contract in the acquisition foundation migration header, lines 16-17. The owned
+fictional address registry is loaded only by the install connection in the same
+marked demonstration transaction as the catalogue seed. Repeating installation
+verifies the existing tuple; a changed provenance or inactive row fails with
+`starter_acquisition_seed_conflict` and rolls back. The browser submits a choice
+identifier, email, explicit consent and locale only. The host refuses extra fields
+including raw reference/source/revision/provenance, supplies the tuple, policy
+revision and fixed source path, and derives requester identity exactly as partner
+intake does. Native replay, contact conflict and peer/email quotas still apply.
+Names are not collected or stored. Public success exposes only the case reference;
+no operator acquisition endpoint is declared.
+
+Operator customer search and detail remain unbound: the native support journey
+reader additionally requires an active communications operator roster entry,
+which the human session does not provision. No second operator authority is
+seeded or inferred. Bundle and catalogue administration remains unbound; N1 is
+unchanged.
+
 Research remains `host_binding_required` until the host can authorize ownership
 of the research case (`authorizeResearchCase`); normalized ingest also remains
 `host_binding_required`. Neither action is mounted merely to return a refusal.

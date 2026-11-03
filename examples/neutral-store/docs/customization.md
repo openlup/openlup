@@ -150,3 +150,21 @@ docker compose exec -T --user node application cat /application/.context/capture
 
 Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
 private; the host does not publish it through HTTP.
+
+## Acquisition location choices
+
+`owned/acquisition-addresses.ts` owns the fictional choice IDs, localized labels
+and opaque source/reference/revision/provenance tuples. Keep IDs unique and
+stable, and follow the native registry constraints. This list is demonstration
+data, not a real address directory. Acquisition submission is a public durable
+write through the native case port. The client submits only the selected ID;
+the host rejects extra fields and selects its tuple from this list. Email and
+explicit application consent are stored natively; applicant names are not collected.
+
+The existing install-only seed uses the acquisition foundation migration header
+contract (lines 16-17) to load the adopter-owned registry through the owner connection
+behind the same identity and demonstration-marker checks as the catalogue.
+Repeating an identical tuple is safe. A different provenance or inactive row
+fails the entire transaction rather than overwriting it. A customer environment
+needs its own owner-loaded registry and onboarding. Editing this list never
+grants runtime registry writes or customer delivery qualification.

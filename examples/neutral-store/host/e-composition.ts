@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { createOrderReviewHandlers, createPostgresOrderReviewLifecyclePort,
   createOrderReviewAdminHandlers, createPostgresOrderReviewAdminReadPort } from '@openlup/platform/commerce/server';
-import { createPostgresPartnerAcquisitionPort } from '@openlup/platform/marketing/server/postgres';
+import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
+import { createPostgresAcquisitionCasePort, createPostgresPartnerAcquisitionPort } from '@openlup/platform/marketing/server/postgres';
 import type { PartnersB2BInquirySubmitRequest } from '@openlup/platform/marketing/contracts';
 import type { ActionBinding, ApplicationBindings } from './bindings.ts';
 
@@ -18,7 +19,28 @@ export function composeExistingCapabilities(input: {
   const reviews = createOrderReviewHandlers(lifecycle);
   const admin = createOrderReviewAdminHandlers(lifecycle, createPostgresOrderReviewAdminReadPort(input.executor));
   const partners = createPostgresPartnerAcquisitionPort({ connectionString: input.connectionString });
+  const acquisition = createPostgresAcquisitionCasePort({ connectionString: input.connectionString });
   const actions: ApplicationBindings['actions'] = {};
+
+  actions['acquisition.submit'] = async (payload, context) => {
+    if (Object.keys(payload).some(key => !['email', 'consent', 'addressChoiceId', 'locale'].includes(key))
+      || typeof payload.email !== 'string' || payload.email.length > 254
+      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email.trim())
+      || payload.consent !== true || (payload.locale !== 'en' && payload.locale !== 'pl')) return refused('starter_input_invalid');
+    const choice = acquisitionAddresses.find(item => item.id === payload.addressChoiceId);
+    if (!choice) return refused('starter_input_invalid');
+    if (!context.actor.requesterKey) return refused('starter_requester_unavailable');
+    const result = await acquisition.submit({
+      scope: 'public_tester_application', sourceKind: 'tester_application',
+      idempotencyKey: context.commandKey, requesterKey: context.actor.requesterKey,
+      acceptedAt: new Date().toISOString(), sourcePath: '/tester-application',
+      request: { contact: { email: payload.email }, addressReference: choice.addressReference,
+        consent: { accepted: true, consentVersion: context.config.legal.revision,
+          policyVersion: context.config.legal.revision, locale: payload.locale } },
+    });
+    return result.ok ? { ok: true, value: { caseRef: result.value.caseRef },
+      ...(result.replayed ? { replayed: true } : {}) } : refused(`acquisition_case_${result.error.kind}`);
+  };
 
   actions['review.read'] = async payload => {
     if (typeof payload.grant !== 'string' || !payload.grant) return refused('access_grant_unavailable');
@@ -78,9 +100,8 @@ export function composeExistingCapabilities(input: {
     return result.ok ? { ok: true, value: result.value, ...(result.replayed ? { replayed: true } : {}) }
       : refused(`order_review_${result.error.kind}`);
   };
-  // Acquisition requires a verified native address reference; research additionally
-  // requires case ownership. Neither is inferred from a browser-supplied reference.
-  return { actions, close: () => partners.close() };
+  // Research still requires host-authorized case ownership. Catalogue awaits its limit decision.
+  return { actions, close: async () => { await Promise.all([partners.close(), acquisition.close()]); } };
 }
 
 function partnerRequest(payload: Record<string, unknown>): PartnersB2BInquirySubmitRequest | null {
