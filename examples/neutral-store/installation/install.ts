@@ -1,5 +1,6 @@
 import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
+import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
 
@@ -69,6 +70,19 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         amount_kind=EXCLUDED.amount_kind, active=EXCLUDED.active, valid_from=EXCLUDED.valid_from`,
     [row.id, row.price_list_id, row.variant_id, row.mode, row.min_qty, row.unit_price_minor,
       row.amount_kind, row.active, row.valid_from]);
+    for (const { addressReference: row } of acquisitionAddresses) {
+      await connection.query(`INSERT INTO acquisition_private.address_references
+        (source, reference, revision, provenance, active) VALUES ($1,$2,$3,$4,true)
+        ON CONFLICT (source, reference, revision) DO NOTHING`,
+      [row.source, row.reference, row.revision, row.provenance]);
+      // Never overwrite or silently accept an existing tuple with different meaning.
+      const existing = await connection.query(`SELECT provenance, active
+        FROM acquisition_private.address_references
+        WHERE source=$1 AND reference=$2 AND revision=$3 FOR SHARE`,
+      [row.source, row.reference, row.revision]);
+      if (existing.rows.length !== 1 || existing.rows[0]?.provenance !== row.provenance
+        || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
+    }
     await connection.query('COMMIT');
   } catch (error) {
     await connection.query('ROLLBACK');

@@ -71,3 +71,14 @@ runtime state, not owned configuration or installed package sources.
 The optional `supportEmail` is owned configuration. Managed support rendering
 uses text nodes only. Partner/review host composition is managed and reuses the
 same request admission and native operator authority as other operator reads.
+
+`owned/acquisition-addresses.ts` is owned demonstration data beside the catalogue
+seed. It contains fictional opaque registry tuples and localized choice labels.
+The acquisition foundation migration header, lines 16-17, permits an adopter to load its own
+replaceable registry through the database owner connection; the managed installer
+uses that contract only after its existing install-identity and demonstration
+marker admission. Its insert names every column and verifies provenance/active
+state after a keyed conflict. The runtime host only reads the owned list, maps a
+choice ID and submits through the native port; it never loads the registry.
+Support customer reads and catalogue administration remain unbound. Their
+composition is outside this acquisition change.
