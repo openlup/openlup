@@ -173,6 +173,7 @@ describe("native store SQL shapes and pins", () => {
       { signature: "public.customer_account_communication_choices_as_actor(uuid)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_renewal_purchase_terms(uuid)", searchPath: "pg_catalog, pg_temp" },
     ]);
     expect(slot.dataStatements).toEqual([
       "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_stock_wait_cases', 'block', 'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead.');",
