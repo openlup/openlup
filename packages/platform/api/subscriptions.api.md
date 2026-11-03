@@ -1194,6 +1194,8 @@ export interface NativeRetryDriverOptions {
     recoveryPath: string | null;
     classifyFailure(reason: string): string;
 }
+/** Internal value matcher; not re-exported by a package entry. */
+export declare function canonicalUuid(value: unknown): string | null;
 export declare function createNativeRetryDriver(options: NativeRetryDriverOptions): {
     run: (now: string, limit: number) => Promise<{
         operationId: string;
