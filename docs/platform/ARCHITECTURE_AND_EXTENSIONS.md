@@ -2119,6 +2119,38 @@ dunning finalizers retain the native claim-token fence. Failed delivery changes
 notice/receipt work only. Failed event/reminder receipts stop automatic selection
 after six recorded attempts; expired dunning claims at their native attempt
 ceiling remain visible for host repair. These outcomes never pause service.
+Operator-requested `payment_recovery` notices inherit the latest same-case
+customer `payment_failed` template and payload, ordered by `created_at DESC,
+id DESC`. Their own notice ID, key and recovery path remain the delivery
+identity. Missing source history settles skipped with `notice_source_unavailable`.
+
+The optional `dispatch` policy accepts `leaseSeconds` (60), `maxAttempts` (6)
+and `transientBackoffSeconds` (900). The optional `recovered` policy accepts
+`windowSeconds` (172800). These are neutral safety defaults. Starter hosts must
+supply all four values explicitly from their typed configuration. Every supplied
+value must be a positive integer within
+the PostgreSQL integer range. Malformed objects, unknown keys and coercion refuse
+before any producers or claims run. `run(limit)` retains its default of 25.
+
+A returned failed receipt with `retryable: false` settles failed. A failed receipt
+with `retryable: true` or an omitted disposition requeues dunning at the SQL clock
+plus the configured backoff. The run result counts these notices in `requeued`.
+Read, binding, send and finalization exceptions leave native notices sending for
+lease reclaim and increment the invocation's `failed` counter. Accepted receipt
+readback precedes binding and eligibility checks. The same receipt and notice
+key own acknowledgement recovery. At the configured attempt ceiling an expired
+claim remains visible for host repair.
+
+Before recipient lookup, binding or sending, an unaccepted recovered notice
+requires its current case to be `recovered`, with `recovered_at` at or after the
+inclusive SQL-clock window cutoff and matching subscription/client UUIDs.
+Ineligible history settles skipped with `notice_recovery_ineligible`. Accepted
+old history reconciles sent through its existing receipt. The direct queue
+retains one recovered notice per case. The [delivery witness](../../tests/postgres/subscriptionNoticeDelivery.test.ts)
+exercises routing, disposition, recency and tuple-version conservation through
+the restricted runtime. The [task record](plans/oss-m19-v.md) carries the
+separately owned recovery-host handoff and its remaining proof boundary.
+
 Recipient and send-control/consent helpers retain their native rules. The runtime
 can read arbitrary client contacts and invoke reminder producers directly; SQL
 does not authorize end users or jobs. Keep the binding behind the trusted job

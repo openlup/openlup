@@ -1746,6 +1746,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-v.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -9843,6 +9847,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/facades.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/noticePolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -28331,6 +28339,10 @@
     },
     {
       "path": "tests/postgres/subscriptionNativeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionNoticeDelivery.test.ts",
       "class": "public-output"
     },
     {

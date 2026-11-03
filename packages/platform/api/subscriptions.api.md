@@ -1368,8 +1368,19 @@ type NoticeCommand = {
 type NoticeReceipt = {
     state: "accepted" | "failed";
     deliveryReference: string | null;
+    retryable?: boolean;
 };
 export interface NativeLifecycleMessagesOptions {
+    /** Neutral safety defaults: 60-second lease, 6 attempts, 900-second backoff. Starter hosts supply explicit configured values. */
+    dispatch?: {
+        leaseSeconds?: number;
+        maxAttempts?: number;
+        transientBackoffSeconds?: number;
+    };
+    /** Neutral safety default: 172800-second recency. Starter hosts supply an explicit configured window. */
+    recovered?: {
+        windowSeconds?: number;
+    };
     /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
     withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** Host composes the transactional delivery engine and durable receipt reader. */
@@ -1391,6 +1402,7 @@ export declare function createPostgresLifecycleMessages(options: NativeLifecycle
     run(limit?: number): Promise<{
         sent: number;
         replayed: number;
+        requeued: number;
         failed: number;
         skipped: number;
         busy: number;

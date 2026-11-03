@@ -1557,6 +1557,21 @@ They are default-off and describe one host executor/job. The
 [composed module recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 owns explicit selection, frozen mandate/replay, M04 delivery and M12 boundaries.
 
+`createPostgresLifecycleMessages` consumes the native notice queue through an
+explicit trusted host. Its optional `dispatch` policy defaults to a 60-second
+lease, 6 attempts and a 900-second transient backoff. `recovered.windowSeconds`
+defaults to 172800. These are neutral safety defaults. Starter hosts must supply
+all four values explicitly from their typed configuration. Values are strictly
+validated positive PostgreSQL integers.
+Operator repair notices inherit their latest customer failure template and retain
+their own identity. Returned transient failures requeue using the SQL clock,
+explicit final failures settle failed, and exceptions retain the sending lease.
+Accepted receipts reconcile before binding. Current recovered-case truth and an
+inclusive recency cutoff gate unaccepted recovered history. The run result
+reports `requeued` separately. Hosts retain rendering, token authority and
+idempotent private-capture readback. The [lifecycle owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+defines these policies and the attempt-ceiling repair boundary.
+
 ## Invoicing contracts
 
 Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
