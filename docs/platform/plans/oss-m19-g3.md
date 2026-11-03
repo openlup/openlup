@@ -1500,14 +1500,14 @@ references are checked against their source, not treated as capability probes.
 
 | Scope | Finding and action |
 |---|---|
-| 55 files, 3,471 matched lines | 3,448 accurate; 22 stale sites corrected; one pre-existing named limit (F-QUALIFIED-LIFECYCLE-LOCK), closed by the qlock row. |
+| 55 files, 3,471 matched lines | 3,448 accurate; 22 stale sites corrected; one pre-existing named limit (F-QUALIFIED-LIFECYCLE-LOCK). |
 | Operator capability and expectation | Advertise native new-address change; preserve every other subcase expectation and the managed graph. |
 | Operator recipe and canonical receipt summary | Replace old address refusal and incomplete partial-result claims with bounded SQL and next-parcel applicability. |
 | Inventory/account-support package guidance | State native zero safety/exposure accounting separately from managed accounting; include next-parcel partial recovery. |
 | G4 routine inventory and row-record status | Four runtime entries plus owner-only helper; qualify original separate-row and pre-read stages as history. |
 | Admission, hold/release/expiry, compensation, destination registration/read, event reason and frozen-parcel claims | Retain accurate entry, replay, refusal, owner, privacy and default-off boundaries; no SQL or privilege change. |
 | Correctly unsupported restrictions | 486 accurate restriction hit lines across 20 checked classes listed below; they are unchanged. |
-| Required runtime agreement | The moved address writer and every unsupported subcase have agreement assertions. Separate pause/resume/slide pins require42501 at the term-line row lock and zero new receipts; these are pre-existing known limits, closed by the qlock row (F-QUALIFIED-LIFECYCLE-LOCK), not passing lifecycle claims. |
+| Required runtime agreement | The moved address writer and every unsupported subcase have agreement assertions. Separate pause/resume/slide pins require42501 at the term-line row lock and zero new receipts; these are pre-existing known limits, closed by F-QUALIFIED-LIFECYCLE-LOCK, not passing lifecycle claims. |
 
 The 20 correctly unsupported classes are: email; phone; account link;
 short-band slide; expired-dunning resume; residual-unpaid resume;
@@ -1519,11 +1519,12 @@ export/erasure; automatic mail/host activation; the legacy browser's next-parcel
 decoder; the separate OMS address-correction port; and unselected host lanes.
 These source-scope checks do not certify qualified-runtime lifecycle commands.
 Existing lifecycle availability flags and runtime privileges remain unchanged.
-CD-M19-219 narrows agreement to the writers moved here and registers qlock as
-the closer of F-QUALIFIED-LIFECYCLE-LOCK, immediately after this bundle. The
+CD-M19-219 narrows agreement to the writers moved here;
+F-QUALIFIED-LIFECYCLE-LOCK is the registered follow-up. The
 qualified runtime lacks the term-line row-lock privilege: ordinary pause, resume
-and slide currently refuse42501 with no new receipt. The qlock row turns these
-and the existing G4 cancel pins into positive proofs; this bundle adds no grant.
+and slide currently refuse42501 with no new receipt. The registered follow-up
+F-QUALIFIED-LIFECYCLE-LOCK will turn these and the existing G4 cancel pins into
+positive proofs when it lands; this bundle adds no grant.
 
 The parked prose patch was hash-checked and applied exactly first (its proposed
 tree matched), then rebased by this sweep's additional claim corrections. No
@@ -1537,13 +1538,13 @@ native subcase. The restricted runtime succeeds for the address writer; email,
 phone, account link, short-band slide, both unpaid-resume variants and prepared
 attempt pause retain their named refusal. Ordinary pause/resume/slide are not
 certified by that test. Each has a separate pre-existing42501 term-line row-lock
-pin and zero new command receipts, named for qlock (F-QUALIFIED-LIFECYCLE-LOCK).
+pin and zero new command receipts, closed by F-QUALIFIED-LIFECYCLE-LOCK.
 The same closer is recorded beside both existing G4 cancel pins; those assertions
 are unchanged. No capability other than address, table privilege or role changes.
 The one bundle-touched lifecycle delegation claim in the package reference now
 states this qualified-runtime limit. This is a scope correction, not a reviewer
-finding or a new regroup. The qlock row follows this bundle and converts the pins
-into positive proofs.
+finding or a new regroup. The registered follow-up F-QUALIFIED-LIFECYCLE-LOCK
+will turn the pins into positive proofs when it lands.
 
 The four new cases ran without coverage in the focused lane: address/unsupported
 agreement258ms; pause26ms; resume26ms; slide23ms. None needs a per-case timeout

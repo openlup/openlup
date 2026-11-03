@@ -573,8 +573,8 @@ it("matches native address and unsupported subcases through the restricted write
  expect(observed, JSON.stringify({ observed, expected })).toEqual(expected);
 });
 
-// Pre-existing qualified-runtime limit; closed by the qlock row (F-QUALIFIED-LIFECYCLE-LOCK).
-it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-runtime %s lock limit for qlock", async name => {
+// Pre-existing qualified-runtime limit; closed by F-QUALIFIED-LIFECYCLE-LOCK.
+it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-runtime %s lock limit for F-QUALIFIED-LIFECYCLE-LOCK", async name => {
  const f = await fixture();
  await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(240)]);
  await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
