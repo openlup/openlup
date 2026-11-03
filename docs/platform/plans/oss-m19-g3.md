@@ -1274,3 +1274,47 @@ Self-retro: run the exact main co-location preflight immediately after every
 admission-relevant path edit. A conceptual data-only union ruling and a blanket
 machine path guard can disagree; a pre-edit PASS cannot cover that later edit.
 This was found late after DCO completion; no reviewer or delivery consumed it.
+
+## Transitive operator API report correction
+
+The accepted additive `applied_from_next_parcel` operator outcome also reaches
+`account-support/postgres`. Regenerated the API reports with the repository's
+`api-contract.ts --update` command on the complete bundle, with the destination
+export still present. The only generated change is the eight-line union addition
+in `packages/platform/api/account-support-postgres.api.md`; the complete API check passes for every
+entry. No source, SQL, gate, checker or other snapshot changed.
+
+Execution lesson: run the complete API report check immediately after a public
+type changes. Boundary tests do not establish that transitive reports are current.
+The public destination entry remains scheduled for a separate no-SQL change;
+the split's feasibility checks are still pending.
+
+### Public-entry split feasibility stop
+
+The complete API report passes both with and without the destination export after
+that transitive report correction. The proposed split's real pack is 2,448,971 B
+(code 1,954,742 B, unpacked 11,523,820 B, 3,029 files), +13,194 B packed against
+the exact main predecessor. This is a feasibility measurement, not the restored
+bundle's final pack. Main's original admission reader passes all four forwards
+and co-location on the scratch split tree; policy passes with the changed,
+scoped tooling no-impact explanation.
+
+The split nevertheless cannot proceed unchanged: the existing lint rule refuses
+public destination imports in tests/postgres/commerceDestinationsNative.test.ts
+(line 9) and tests/postgres/connectedStoreTransfer.test.ts (line 3). The strict
+typecheck reports the same two unresolved import edges against its zero pin.
+Those tests remain unchanged. Reverted every uncommitted public-entry removal;
+the accepted API report correction is retained. No checker, rule, baseline,
+source, SQL, gate, import, or test assertion was changed to accommodate the split.
+No export leaf, native review, verify, push or PR was created.
+
+Completed split checks: import map 123, package boundary 2,948, outcome projection
+7, published-tree checker 74, catalog/document boundary 10, documentation CLI 3,
+and the four-bound PostgreSQL catalog in both modes 130; all pass. The remaining
+commerce, account-support, native destination, starter and full consumer checks
+were stopped at the required decision boundary. Linux consumer setup did not
+reach a consumer run; its incomplete build supplies no timing evidence.
+
+Self-retro: run the complete API report immediately after a public-type change,
+and check existing installed-subpath imports as soon as an export split is
+proposed. A passing export inventory does not prove its existing tests can compile.
