@@ -86,3 +86,45 @@ fixture now waits up to5 seconds for a new captured challenge without issuing
 another request. This preserves the existing acceptance-before-delivery
 contract and the native login cadence. The pending proof reruns that repaired
 operator boundary in both configurations.
+
+Completed capture evidence uses the unchanged application code and the repaired
+mailbox-readiness fixture. Both selected real operator cases pass in61.298 and
+61.276 seconds, each with an explicit180-second deadline. They include issuance,
+original-artifact reuse by the notice host, process restart, missing/canonical
+changed-context refusal, support-roster refusal and native human revocation.
+The earlier complete recovery run passed the two customer restart/retry cases
+in121.568 and121.518 seconds against180 seconds, fences below1 second against
+10 seconds, and unusable-capability cases below1.85 seconds against10 seconds.
+Both unchanged required browser journeys and separate recovery proofs passed
+50 cases per configuration. Their outer wrappers took8.375 and8.866 seconds
+against30-second bounds. The first operator fixture failure is closed by the
+separately committed readiness repair and both selected positive reruns.
+
+The real renewal and existing lifecycle/alignment suites pass26 cases, including
+both configured sandbox paths and original-obligation retry, actual process
+restart, late evidence and late-delivery maximum/no stacking. The separate
+unchanged alignment owner characterizes undelivered replacements. The populated-transfer case took6.743 seconds and already
+has an explicit65-second bound. Application-owned heavy cases retain their
+30-second deadlines. These are per-case observations on the official Node
+toolchain. Installation/hooks have their existing separate bounds.
+
+The scratch installation contains the exact issued native lock completion and
+its canonical selector/package projection, with the selected measured inventory
+pin. The default packaged runner applies the complete selected history with no
+pending migrations in both configurations. Unrelated conformance conflicts
+retain their base bytes. This is evidence for the starter row only. Package
+qualification and predecessor landing retain their own evidence boundary.
+
+The first scratch setup retained an older selector and was correctly refused
+before any journey assertion. Restoring the exact prerequisite selector fixed
+that setup. A private launcher quoting error also stopped before admission and
+was corrected once. Neither failure changed a grant, role, projector or payload.
+The final source-only change after the unified artifact commit is the fixture's
+bounded wait for newly captured material. Application/package source bytes
+remain equal across those two proof heads.
+
+Self-retro completes the earlier note. Keep the default selector with its issued
+SQL, and wait for actual mailbox delivery when the owner acknowledges first.
+Both recoveries reused existing contracts and avoided a second sender, token
+registry, authorization seam or persistent process. The private packet retains
+the complete attempt history and final pre-review results.
