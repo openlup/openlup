@@ -1,3 +1,4 @@
+import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
@@ -109,6 +110,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     return asCustomer(principal, async db => success({
       profile: await createPostgresCustomerMePort(db).getCustomerMe(principal),
       subscriptionControl: await createPostgresCustomerSubscriptionSnapshotPort(db).getSnapshot(),
+      renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
       fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
     }));
   };

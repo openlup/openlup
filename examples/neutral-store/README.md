@@ -436,6 +436,46 @@ material refuses. A later claim must refuse a missing artifact and cannot
 regenerate its bearer. Preserve these private files separately when moving a
 store; database transfer alone does not preserve them.
 
+### Scheduled sandbox renewal checkpoint
+
+The application owns [renewal configuration](owned/renewal.config.ts), including
+its explicit disabled default, population, cadence, batch and lease values. The
+installer and public configuration use the same object. After the selected
+installation is complete, an existing local scheduler may invoke
+`./lifecycle renewal --configuration <id> --database-url <restricted-runtime-url>`.
+This one-shot lifecycle entry selects the native renewal service once; it creates
+no timer or second HTTP server. Disabled or structurally unready invocations do
+not claim. Population session exclusion and the durable job ledger serialize
+selected executors, including a callback longer than its lease interval.
+Returned batches record actual checked, updated, failure and deferred counts.
+An invocation that throws without a batch result marks counts unavailable; it
+does not guess partial progress. Lease configuration must stay within the native
+ledger's 60–3600 second range; unsupported values refuse before any claim.
+
+[Sandbox composition](host/renewal-sandbox.ts) uses frozen renewal money and the
+current server-owned method. A retry begins an attempt on the original intent,
+persists a simulator observation and reads that exact attempt before handing
+source evidence to the native recovery owner. An ambiguous prepared attempt is
+read again after restart and never dispatched again. This is local simulation;
+it does not qualify a real payment method or provider.
+
+The account response adds a narrow `renewal` projection from owned action,
+payment, alignment and frozen/retained charge facts. Charge dates are distinct
+from promised arrival; unavailable arrival promises remain explicitly unavailable.
+Effective address outcomes come from the owning native event. Other rich account
+sections keep their existing refusal.
+
+The [notice binder](host/lifecycle-notices.ts) renders configured English/Polish
+copy through the separately owned private capture module and M04 receipt owner.
+It preserves one artifact and frozen token expiry per native notice command;
+access-grant references contain the native token UUID. It is not mounted until
+the notice predecessor and joined recovery proof are available. No parallel
+outbox handler is registered. Consent/signed opt-out wait for native purpose
+support; operator shipment and invoice joins wait for their existing owners.
+Reminder windows, historical closure, winback, escalation and configurable
+subscription policies retain their named interim limits in subscription care.
+This checkpoint makes no full notice-parity or release claim.
+
 Authenticated recurring recovery captures its entry token synchronously before
 application requests and the login trip, then uses the server-owned
 case/obligation/operation/order chain. The route accepts no method or payment

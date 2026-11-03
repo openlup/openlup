@@ -1730,6 +1730,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-r2b.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-recipes.md",
       "class": "public-output"
     },
@@ -1954,6 +1958,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/account-renewal.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/authenticated-recovery.ts",
       "class": "public-output"
     },
@@ -1975,6 +1983,10 @@
     },
     {
       "path": "examples/neutral-store/host/healthcheck.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/lifecycle-notices.ts",
       "class": "public-output"
     },
     {
@@ -2003,6 +2015,18 @@
     },
     {
       "path": "examples/neutral-store/host/recurring-fence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/renewal-job.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/renewal-sandbox.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/scheduled-renewal.ts",
       "class": "public-output"
     },
     {
@@ -2047,6 +2071,14 @@
     },
     {
       "path": "examples/neutral-store/owned/fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/renewal-copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/renewal.config.ts",
       "class": "public-output"
     },
     {
@@ -2126,6 +2158,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/renewal-config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/routes.ts",
       "class": "public-output"
     },
@@ -2187,6 +2223,10 @@
     },
     {
       "path": "examples/neutral-store/test/recovery-entry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/renewal.test.ts",
       "class": "public-output"
     },
     {
@@ -28327,6 +28367,10 @@
     },
     {
       "path": "tests/postgres/neutralStoreRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStoreRenewal.test.ts",
       "class": "public-output"
     },
     {

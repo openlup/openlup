@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "owned": [
+    "owned/renewal-copy.ts",
+    "owned/renewal.config.ts",
     "AGENTS.md",
     "owned/catalogue.ts",
     "owned/copy.ts",
@@ -18,6 +20,13 @@
     "public/media/noon.svg"
   ],
   "managed": [
+    "host/account-renewal.ts",
+    "host/lifecycle-notices.ts",
+    "host/renewal-job.ts",
+    "host/renewal-sandbox.ts",
+    "host/scheduled-renewal.ts",
+    "shared/renewal-config.ts",
+    "test/renewal.test.ts",
     ".dockerignore",
     ".gitignore",
     ".npmrc",

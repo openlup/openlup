@@ -1,3 +1,4 @@
+import { assertRenewalConfig, type RenewalConfig } from './renewal-config.ts';
 import { assertRecoveryConfiguration, type RecoveryConfiguration } from './recovery-config.ts';
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 
@@ -18,6 +19,7 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  renewal: RenewalConfig;
   recovery?: RecoveryConfiguration;
   /** Optional owned origin; absence preserves the two local HTTP authorities. */
   publicOrigin?: string;
@@ -95,6 +97,7 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  assertRenewalConfig(config.renewal);
   assertPublicOrigin(config);
   assertRecoveryConfiguration(config.recovery);
   assertSupportEmail(config);
