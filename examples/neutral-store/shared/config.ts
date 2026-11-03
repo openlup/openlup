@@ -17,6 +17,10 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  /** Optional owned origin; absence preserves the two local HTTP authorities. */
+  publicOrigin?: string;
+  /** Explicit opt-in for a non-loopback HTTP origin. Prefer TLS. */
+  allowInsecurePublicOrigin?: boolean;
   brand: {
     name: string;
     strapline: Localized;
@@ -73,6 +77,7 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  assertPublicOrigin(config);
   const offer = config.offer;
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
     || typeof config.market.currency !== 'string' || !/^[A-Z]{3}$/.test(config.market.currency)
@@ -119,23 +124,63 @@ export function assertConfig(config: StoreConfig): void {
   }
 }
 
+/** The only origin validator. Store the URL parser's canonical origin in the input. */
+export function assertPublicOrigin(config: Pick<StoreConfig, 'publicOrigin' | 'allowInsecurePublicOrigin'>): void {
+  if (config.allowInsecurePublicOrigin !== undefined && typeof config.allowInsecurePublicOrigin !== 'boolean') {
+    throw new Error('starter_public_origin_flag_invalid');
+  }
+  if (config.publicOrigin === undefined) return;
+  const value = config.publicOrigin;
+  if (typeof value !== 'string' || !value || value.length > 256 || /\s/.test(value)
+    || [...value].some(character => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127)) {
+    throw new Error('starter_public_origin_invalid');
+  }
+  let parsed: URL;
+  try { parsed = new URL(value); }
+  catch { throw new Error('starter_public_origin_invalid'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash || value.includes('*')
+    || parsed.hostname.endsWith('.')) throw new Error('starter_public_origin_invalid');
+  // Reject parser repairs (case, IDN, escaped hosts, dot paths, backslashes, empty
+  // query/fragment/userinfo). Only a root slash and the default port may normalize.
+  const defaultPort = parsed.protocol === 'https:' ? '443' : '80';
+  const accepted = [parsed.origin, parsed.origin + '/'];
+  if (!parsed.port) {
+    accepted.push(`${parsed.protocol}//${parsed.hostname}:${defaultPort}`,
+      `${parsed.protocol}//${parsed.hostname}:${defaultPort}/`);
+  }
+  if (!accepted.includes(value)) throw new Error('starter_public_origin_not_canonical');
+  const loopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
+  if (parsed.protocol === 'http:' && !loopback && config.allowInsecurePublicOrigin !== true) {
+    throw new Error('starter_public_origin_tls_required');
+  }
+  config.publicOrigin = parsed.origin;
+}
+
 
 /** Non-secret host arguments; the owned registry supplies the absent configuration. */
 export function parseHostArguments(args: readonly string[]): {
-  configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0';
+  configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0'; databaseUrl?: string;
 } {
   let configuration: string | undefined;
+  let databaseUrl: string | undefined;
   let port = 4319;
   let listen: '127.0.0.1' | '0.0.0.0' = '127.0.0.1';
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]!;
-    if (!['--configuration', '--port', '--listen'].includes(flag)) throw new Error('starter_argument_unknown');
+    if (!['--configuration', '--port', '--listen', '--database-url'].includes(flag)) throw new Error('starter_argument_unknown');
     if (seen.has(flag)) throw new Error('starter_argument_duplicate');
     seen.add(flag);
     const value = args[index + 1];
     if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
-    if (flag === '--configuration') configuration = value;
+    if (flag === '--database-url') {
+      let url: URL;
+      try { url = new URL(value); } catch { throw new Error('starter_runtime_connection_required'); }
+      if (url.protocol !== 'postgresql:' || url.username !== 'starter_runtime' || url.password
+        || url.search || url.hash || url.pathname !== '/neutral_store') throw new Error('starter_runtime_connection_required');
+      databaseUrl = value;
+    } else if (flag === '--configuration') configuration = value;
     else if (flag === '--port') {
       if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))
         || Number(value) < 1024 || Number(value) > 65535) throw new Error('starter_port_invalid');
@@ -145,5 +190,5 @@ export function parseHostArguments(args: readonly string[]): {
       listen = value;
     }
   }
-  return { configuration, port, listen };
+  return { configuration, port, listen, ...(databaseUrl === undefined ? {} : { databaseUrl }) };
 }

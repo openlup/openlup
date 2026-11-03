@@ -54,6 +54,40 @@ updating the typed configuration. Add that file to the ownership inventory.
 Product media paths must remain local; remote tracking images are not part of
 this demo. Theme tokens are six-digit hex colors, and system fonts are used.
 
+## Public origin
+
+`publicOrigin?: string` and `allowInsecurePublicOrigin?: boolean` are optional
+fields of the owned `StoreConfig` in `owned/store.config.ts`. Existing registries
+need no new export or field. Owned upgrade preservation includes these inputs.
+For a host behind your own TLS terminator, set, for example,
+`publicOrigin: 'https://store.example.test'`. The terminator must preserve the
+original Host; X-Forwarded-Host, X-Forwarded-Proto, Forwarded and similar headers
+are never authority. Validate the selected config before Docker work and again
+at host startup; restart after an edit. No network publication changes follow.
+
+Supply canonical lowercase ASCII (or already encoded punycode) host input, at
+most 256 characters. A root slash and an explicit default port normalize to the
+stored URL origin. Other parser repairs, uppercase/Unicode host input, trailing
+dots, userinfo, whitespace, wildcard, path, query, fragment and non-HTTP(S)
+schemes refuse. A non-loopback HTTP origin needs the explicit
+`allowInsecurePublicOrigin: true` opt-in; use HTTPS for a TLS terminator.
+The HTTP loopback exemptions are exactly `localhost`, `127.0.0.1` and `[::1]`;
+no DNS lookup establishes an exemption. Exact IP literals and loopback origins
+on a different port are permitted:
+the operator still selects one complete origin, including the externally mapped
+port. This does not supply a browser-trusted certificate or validate DNS/TLS
+ownership. Host matching stays exact, including IPv6 brackets and nondefault
+ports. For default ports browsers send no port in Host. Writes must send the
+canonical origin exactly, without a slash or explicit default port.
+
+The validator names `starter_public_origin_invalid`,
+`starter_public_origin_not_canonical`, `starter_public_origin_flag_invalid` and
+`starter_public_origin_tls_required`. HTTP admission retains
+`starter_local_host_required` and `starter_same_origin_required`.
+The latter covers missing/null/mismatched Origin, duplicate/multi-valued Origin,
+missing request marker and a non-JSON write. Every non-GET/HEAD method receives
+the check, including routes outside `/api/actions`.
+
 ## Changes that need a page copy
 
 Take ownership of a page when changing its complete structure, replacing the
@@ -90,3 +124,19 @@ change, and commit that independent application's work. Use the installed
 hashes, restart and repeat the minimum-unit refusal and successful purchase.
 Record the actual old/new package and schema identities and browser results.
 An unchanged file-copy test alone is not upgrade acceptance.
+
+## Demonstration sessions and mailbox
+
+Sessions live in a single process, expire after one hour, have capacity 1000 and
+are lost on restart. This is not a production session store. Customer ownership
+and operator membership are rechecked by the native stores on requests.
+The demonstration mailbox is not a real mailbox. Its captured messages are
+written to a 0600 file by the container's `node` user under `/application`.
+From the extracted application directory, read it with:
+
+```sh
+docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+```
+
+Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
+private; the host does not publish it through HTTP.

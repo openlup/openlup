@@ -6,12 +6,17 @@ import { evaluateOffer } from '../shared/offer.ts';
 export interface VerifiedActor {
   customerRef: string | null;
   operatorRef: string | null;
+  /** Server-derived values, never populated from action payloads. */
+  principalRef?: string;
+  sessionToken?: string;
 }
 
 export interface ActionContext {
   commandKey: string;
   actor: VerifiedActor;
   config: StoreConfig;
+  setCookie?: (cookie: string) => void;
+  accept?: () => Promise<void>;
 }
 
 export type ActionBinding = (input: ActionInput, context: ActionContext) => Promise<ActionResult>;
