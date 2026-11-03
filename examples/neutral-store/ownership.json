@@ -3,6 +3,7 @@
   "owned": [
     "AGENTS.md",
     "owned/copy.ts",
+    "owned/acquisition-addresses.ts",
     "owned/demo-seed.ts",
     "owned/fragments.ts",
     "owned/store.config.ts",
@@ -23,6 +24,7 @@
     "README.md",
     "artifacts/README.md",
     "browser/journey.spec.ts",
+    "browser/native-acquisition.proof.ts",
     "browser/native-intake.proof.ts",
     "client/api.ts",
     "client/cart.ts",
@@ -94,6 +96,7 @@
     "test-results/"
   ],
   "demoData": [
+    "owned/acquisition-addresses.ts",
     "owned/demo-seed.ts",
     "owned/store.config.ts",
     "public/media/coffee.svg",
@@ -105,7 +108,7 @@
     "public/media/medium.svg",
     "public/media/noon.svg"
   ],
-  "demoDataNote": "Fictional catalogues, prices, contacts and media are local demonstration data. Never reuse the demo database, identities or grants in a customer environment. A customer environment requires its own data, authority, policies, restricted connections and qualified provider bindings. The owned demo seed populates only catalog_products, catalog_skus, price_lists and price_entries at install with the install connection in a database explicitly marked as a demonstration. Never seed clients, stock, settings, renewal terms or method states; use their native writers.",
+  "demoDataNote": "Fictional catalogues, prices, contacts and media are local demonstration data. Never reuse the demo database, identities or grants in a customer environment. A customer environment requires its own data, authority, policies, restricted connections and qualified provider bindings. The owned demo seed populates catalog_products, catalog_skus, price_lists, price_entries and the fictional acquisition address-reference registry at install with the install connection in a database explicitly marked as a demonstration. Never seed clients, stock, settings, renewal terms or method states; use their native writers.",
   "pageCopyRequiredFor": [
     "Complete page layout or navigation changes outside the three named fragments.",
     "New checkout, account or operator workflows or application-specific routes."

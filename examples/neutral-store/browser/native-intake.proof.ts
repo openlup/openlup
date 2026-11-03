@@ -49,10 +49,11 @@ test('native public intake, operator authority, quotas and restart persistence',
   const status = (await action('application.status')).body.value.bindings;
   expect(status).toHaveLength(52);
   for (const operation of ['partners.submit', 'operator.partners', 'operator.partnerTransition',
-    'review.read', 'review.submit', 'operator.reviews', 'operator.reviewModerate']) {
+    'review.read', 'review.submit', 'operator.reviews', 'operator.reviewModerate',
+    'acquisition.submit']) {
     expect(status.find((item: { operation: string }) => item.operation === operation)?.bound).toBe(true);
   }
-  for (const operation of ['acquisition.submit', 'research.submit', 'ingest.submit']) {
+  for (const operation of ['research.submit', 'ingest.submit']) {
     expect(status.find((item: { operation: string }) => item.operation === operation)?.bound).toBe(false);
   }
   expect((await action(['inquiry', 'submit'].join('.'))).status).toBe(404);
@@ -60,7 +61,7 @@ test('native public intake, operator authority, quotas and restart persistence',
     expect((await action(operation, { operatorRef: randomUUID() })).body.code).toBe('operator_required');
   }
   expect((await action('partners.submit', { email: 'invalid' })).body.code).toBe('starter_input_invalid');
-  expect((await action('acquisition.submit', { consent: true })).body.code).toBe('host_binding_required');
+  expect((await action('acquisition.submit', { consent: true })).body.code).toBe('starter_input_invalid');
   expect((await action('research.submit', { caseReference: 'unowned-case' })).body.code).toBe('host_binding_required');
 
   // No fabricated review/grant rows: these references must reach the real native refusal boundary.

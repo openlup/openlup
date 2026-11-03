@@ -186,7 +186,7 @@ passed, and installation used only locally packed inputs offline. The initial
 
 The source and extracted-copy test layout pass 168 source tests, zero skips,
 with strict app typecheck and build. Exact candidate identities accompany the
-stabilized read packet. The local three-package 0.36.0 development candidates
+stabilized source evidence. The local three-package 0.36.0 development candidates
 were packed from main `420e68ef843092a174b84461a2bcb4882bca3c03`; no package
 implementation changed. They are not published pins.
 
@@ -258,3 +258,38 @@ review, grant expiry/revocation and purchase-generated grant ownership are carri
 to the purchase composition contribution's acceptance. They are not proved here;
 a nonexistent reference is not an expired-grant witness. The unchanged required purchase browser test remains
 required and failing while purchase is unbound.
+
+## Native acquisition recipe
+
+Acquisition submission is a public durable write using the adopter-owned registry
+loaded under the acquisition foundation migration header contract, lines 16-17.
+`browser/native-acquisition.proof.ts` selects a fresh disposable installation,
+never the default UI-only host. Use one worker and set `baseURL`, `composeProject`,
+`operatorEmail`, `operatorRef`, `customerEmail` and `customerRef` from the native
+identity bootstrap/account writers. Run from the application directory. The
+browser submits only a location choice ID, email, explicit consent and locale;
+it checks success/replay, contact conflict, both quotas and raw-registry-field
+refusal. The test harness reads the durable case through the native list port
+using the activated operator actor, without adding an acquisition operator route.
+
+The same recipe keeps support search/detail unbound: it checks no-session,
+customer and payload-actor refusal, then host_binding_required for an admitted
+human operator, and probes the native support port's additional roster failure.
+That is seam evidence, not positive support acceptance. Bundle administration
+remains unbound under N1. Before running the browser, separately exercise repeat
+installation and a deliberately conflicting address-registry row through the
+install connection; retain the failure and restore the intended fictional seed.
+The required purchase test remains unchanged and must still fail until purchase
+is bound. The new recipe establishes no purchase or review-grant lifecycle proof.
+
+The acquisition recipe passed locally on 2026-11-03 with both configurations and
+fresh installed PostgreSQL histories. Both use locally packed 0.36.0 development
+candidates from main `79ebda3dbd082858ef667c45023246b32eebb9af`, not published
+pins. Submit/replay, duplicate contact, quotas, unchecked consent, unknown choice,
+raw-field refusal and native-port durable readback passed. Repeat installation
+preserved the complete registry row; a conflicting provenance failed installation
+loudly. Support remained unbound with its roster seam reproduced. The existing
+partner/review regression passed in both configurations. The default browser
+suite passed 92 UI checks and retained exactly two unchanged purchase failures,
+with zero skips. All proof-owned resources were removed; no purchase, positive
+support, catalogue administration or release qualification follows.

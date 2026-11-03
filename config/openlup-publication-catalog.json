@@ -1666,6 +1666,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-e2.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
       "class": "public-output"
     },
@@ -1735,6 +1739,10 @@
     },
     {
       "path": "examples/neutral-store/browser/journey.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/native-acquisition.proof.ts",
       "class": "public-output"
     },
     {
@@ -1867,6 +1875,10 @@
     },
     {
       "path": "examples/neutral-store/lifecycle.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/acquisition-addresses.ts",
       "class": "public-output"
     },
     {
