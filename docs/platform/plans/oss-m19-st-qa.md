@@ -94,6 +94,56 @@ and 3,625 code-class bytes against the current comparison base. Absolute totals
 are 2,443,732 packed bytes and 1,956,516 code-class bytes. No cap changes are made.
 These are focused checks; canonical verification remains pending.
 
+A hosted full-root shard timed out the 150,000-row history case (run 41695619688, shard 2/4, 10,726 ms against the 10,000 ms default; timing only, no assertion mismatch); its explicit per-test deadline now fixes that cause without changing assertions or fixtures, and no follow-up is needed.
+
+Timeout measurement: pinned Node 24.21.0/npm 11.19.0, one local Vitest worker,
+unchanged candidate source, disposable real PostgreSQL, focused verbose/JSON
+reporters; all 25 cases passed in a 6.90-second file run.
+The history case took 2,759.601 ms locally versus 10,726 ms at the hosted timeout,
+a 3.887× observed hosted/local ratio. The nearby real-PG transfer
+witness in `tests/postgres/connectedStoreTransfer.test.ts` allows 60 seconds
+for a measured 15.06-second case (3.98×); its other measured cases allow
+30 seconds for local maxima of 3.61–5.29 seconds (5.67–8.31×).
+Using the smaller approximately 4× precedent on the observed hosted time gives
+10,726 × 4 = 42,904 ms, rounded up to the existing 60,000-ms value.
+This is a bounded deadline, not an expected runtime or an automatic retry.
+The optional external duration manifest's 1.5× factor applies to whole-file
+pins; this CI workflow supplies no manifest, so only the explicit third argument
+is needed. The global default and `retry: 0` remain unchanged.
+
+The table records every local case and its hosted estimate using the observed
+scaling ratio; only the history row has a measured hosted timing. No other case
+exceeds 5,000 ms locally or an estimated 5,000 ms (half the ordinary default),
+so their deadlines retain the ordinary 10,000-ms default.
+
+| Case | Local ms | Scaled hosted estimate ms | Explicit deadline ms |
+| --- | ---: | ---: | ---: |
+| Restricted runtime / denied writes | 12.451 | 48.394 | — |
+| Exact context / active lists | 2.905 | 11.292 | — |
+| Entry histories / filters / Dates | 3.481 | 13.532 | — |
+| Policy history / instant boundary | 7.543 | 29.320 | — |
+| Refusal: active_price_list_not_found | 1.191 | 4.630 | — |
+| Refusal: active_price_list_ambiguous | 0.994 | 3.863 | — |
+| Refusal: base_price_not_found | 1.020 | 3.963 | — |
+| Refusal: base_price_ambiguous | 1.644 | 6.389 | — |
+| Refusal: base_price_amount_kind_invalid | 1.397 | 5.432 | — |
+| Refusal: legacy_subscription_price_not_found | 1.645 | 6.392 | — |
+| Refusal: legacy_subscription_price_ambiguous | 1.938 | 7.532 | — |
+| Refusal: subscription_price_policy_not_effective | 1.837 | 7.138 | — |
+| Refusal: subscription_price_policy_ambiguous | 1.611 | 6.261 | — |
+| Refusal: subscription_price_policy_invalid | 1.725 | 6.706 | — |
+| Refusal: subscription_price_policy_digest_mismatch | 1.489 | 5.788 | — |
+| Legacy / half-open intervals | 3.146 | 12.227 | — |
+| Canonical UUID spellings | 41.469 | 161.183 | — |
+| 150,000-row history / 501 UUIDs | 2759.601 | 10726.000 | 60,000 |
+| Rejected lists read | 1.324 | 5.147 | — |
+| Rejected entries read | 0.847 | 3.293 | — |
+| Rejected policies read | 0.677 | 2.633 | — |
+| Memo identity / time / mode | 9.540 | 37.080 | — |
+| Base-read refusal precedence | 1.902 | 7.392 | — |
+| One-time / subscription quote | 3.306 | 12.851 | — |
+| Five promotion methods | 12.357 | 48.030 | — |
+
 ## Self-retro
 
 The initial focused admission waited 180 seconds. Constraint-aware seeds and one

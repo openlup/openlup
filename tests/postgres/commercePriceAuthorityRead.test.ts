@@ -217,7 +217,7 @@ it("deduplicates a request, chunks 501 UUIDs at 500 and retains histories beyond
   expect((await port.listExactBaseEntries({ variantId: ids[0]!, priceListId: list }))[0]!.value.unitPriceMinor).toBe(1499);
   await admin.query("UPDATE public.price_entries SET unit_price_minor=1599 WHERE price_list_id=$1", [list]);
   expect((await reads().listExactBaseEntries({ variantId: ids[0]!, priceListId: list }))[0]!.value.unitPriceMinor).toBe(1599);
-});
+}, 60_000);
 
 it.each(["lists", "entries", "policies"] as const)("retains rejected %s reads rather than yielding empty success", async phase => {
   const failure = new Error("read unavailable");
