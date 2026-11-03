@@ -10,7 +10,7 @@ import type { RenewalDue, RenewalFrozenSnapshot, RenewalSettlementPort } from ".
 import type { SubscriptionCapabilities } from "./contracts/commands.js";
 import type { ReadinessReport, RequiredSchema } from "@openlup/core/readiness";
 import { withNativeDeliveryAlignmentRenewalAdmission } from "./postgresDeliveryAlignmentStore.js";
-import { createNativeRetryDriver, type NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+import { canonicalUuid, createNativeRetryDriver, type NativeRetryDriverOptions } from "./nativeRetryDriver.js";
 import { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
 
 /** Explicit native selection under a host-owned population lease; construction mounts nothing. */
@@ -84,7 +84,7 @@ export function createNativeSubscriptionBinding(input: {
         const renewals: AutomaticRenewalRunResult[] = [];
         const seen = new Set<string>();
         for (const candidate of await stock.listCandidates({ limit, asOf: now })) {
-          seen.add(candidate.subscriptionId);
+          seen.add(canonicalUuid(candidate.subscriptionId) ?? candidate.subscriptionId);
           const snapshot = candidate.frozenSnapshot;
           renewals.push(...await runRenewalBatchRows([due(snapshot)], async () => {
             correlatedLogicalCycle(snapshot);
@@ -108,7 +108,7 @@ export function createNativeSubscriptionBinding(input: {
             } }, due(snapshot), now);
           }, deps.policy));
         }
-        const normalDue = (await stock.listNormalDue({ limit, asOf: now })).filter(row => !seen.has(row.subscriptionId));
+        const normalDue = (await stock.listNormalDue({ limit, asOf: now })).filter(row => !seen.has(canonicalUuid(row.subscriptionId) ?? row.subscriptionId));
         renewals.push(...await runRenewalBatchRows(normalDue, row => runOneAutomaticSubscriptionRenewal(deps, row, now), deps.policy));
         return { retries, renewals };
       });

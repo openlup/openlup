@@ -163,6 +163,71 @@ function retryDriver(d: Awaited<ReturnType<typeof deps>>, observation: "ambiguou
   return { driver: api.createNativeRetryDriver(options), execute, options };
 }
 
+it.each(["canonical", "uppercase", "compact", "braced", "grouped"] as const)("matches host UUIDs by value for retry and recovery (%s)", async spelling => {
+  const f = await active(), d = await deps(f.subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now), store = api.createPostgresRetryStore(executor);
+  const row = (await store.read(first.operationId))!, retryAt = row.nextRetryAt!;
+  if (spelling === "uppercase") {
+    const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+    expect(d.codec.withDestination!(snapshot, snapshot.orderSnapshot.shippingAddressRef!.toUpperCase())).toEqual(snapshot);
+    expect(() => d.codec.withDestination!(snapshot, "not-a-uuid")).toThrow();
+  }
+  const spell = (id: string) => spelling === "canonical" ? id : spelling === "uppercase" ? id.toUpperCase()
+    : spelling === "compact" ? id.replaceAll("-", "") : spelling === "braced" ? `{${id.toUpperCase()}}`
+    : id.replaceAll("-", "").match(/.{4}/g)!.join("-").toUpperCase();
+  for (const id of [row.settlementIntentId, row.orderId, first.operationId]) {
+    expect((await runtime.query("SELECT $1::uuid::text AS id", [spell(id)])).rows[0].id).toBe(id);
+  }
+  const recovery = retryDriver(d, "succeeded", retryAt), original = recovery.options;
+  const retry = api.createNativeRetryDriver({ ...original,
+    retryInput: (snapshot, obligation) => ({ ...original.retryInput(snapshot, obligation),
+      paymentIntentId: spell(obligation.settlementIntentId), orderRef: spell(obligation.orderId) }),
+    payments: { ...original.payments, readOutcome: async (prepared, snapshot) => ({ ...await original.payments.readOutcome(prepared, snapshot),
+      operationId: spell(first.operationId) }) },
+  });
+  expect(await retry.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "succeeded" }]);
+  expect(recovery.execute).toHaveBeenCalledTimes(1);
+  expect(await store.read(first.operationId)).toMatchObject({ state: "recovered", externalAttemptSequence: 1 });
+  const prepared = (await runtime.query("SELECT input FROM public.subscription_retry_receipts WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) AND kind='prepare'", [first.operationId])).rows;
+  expect(prepared).toHaveLength(1);
+  expect(prepared[0].input).toMatchObject({ paymentIntentId: row.settlementIntentId, orderRef: row.orderId });
+  expect((await runtime.query(`SELECT
+    (SELECT count(*)::integer FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured') AS captures,
+    (SELECT status FROM public.commerce_settlement_intents WHERE id=$1) AS status,
+    (SELECT count(*)::integer FROM public.subscription_cycles WHERE subscription_id=$2) AS cycles`, [row.settlementIntentId, f.subscriptionId])).rows[0])
+    .toEqual({ captures: 1, status: "settled", cycles: 2 });
+  const before = await allPublicRows(admin);
+  expect(await retry.run(retryAt, 50)).toEqual([]);
+  expect(recovery.execute).toHaveBeenCalledTimes(1); expect(await allPublicRows(admin)).toEqual(before);
+});
+
+it.each(["paymentIntentId", "orderRef"] as const)("refuses an invalid retry UUID in %s without preparing or charging", async field => {
+  const f = await active(), d = await deps(f.subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now), store = api.createPostgresRetryStore(executor);
+  const row = (await store.read(first.operationId))!, retryAt = row.nextRetryAt!;
+  const recovery = retryDriver(d, "succeeded", retryAt), original = recovery.options;
+  const retry = api.createNativeRetryDriver({ ...original, retryInput: (snapshot, obligation) => ({ ...original.retryInput(snapshot, obligation), [field]: "not-a-uuid" }) });
+  const before = await allPublicRows(admin);
+  expect(await retry.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "frozen_mandate_mismatch" }]);
+  expect(recovery.execute).not.toHaveBeenCalled(); expect(await allPublicRows(admin)).toEqual(before);
+});
+
+it("refuses an invalid operation UUID in outcome evidence without settlement or redispatch", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now), store = api.createPostgresRetryStore(executor);
+  const row = (await store.read(first.operationId))!, retryAt = row.nextRetryAt!;
+  const recovery = retryDriver(d, "succeeded", retryAt), original = recovery.options;
+  const retry = api.createNativeRetryDriver({ ...original, payments: { ...original.payments,
+    readOutcome: async (prepared, snapshot) => ({ ...await original.payments.readOutcome(prepared, snapshot), operationId: "not-a-uuid" }) } });
+  expect(await retry.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "awaiting_provider" }]);
+  expect(recovery.execute).toHaveBeenCalledTimes(1);
+  expect(await store.read(first.operationId)).toMatchObject({ state: "prepared" });
+  expect((await runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [row.settlementIntentId])).rows[0].status).toBe("failed");
+  const next = retryDriver(d, "succeeded", retryAt);
+  expect(await next.driver.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "succeeded" }]);
+  expect(next.execute).not.toHaveBeenCalled();
+});
+
 it("exhausts the real retry ladder without pausing, refuses unhealthy recovery, and authorizes only after bounded method repair", async () => {
   const f = await active(), d = await deps(f.subscriptionId, "declined");
   const result = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now);

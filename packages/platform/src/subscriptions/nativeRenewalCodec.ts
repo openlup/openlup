@@ -1,4 +1,5 @@
 import { nativeInstant } from "./nativeInstant.js";
+import { canonicalUuid } from "./nativeRetryDriver.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { RenewalCycleCorrelation, RenewalFrozenSnapshot, RenewalLine, RenewalReadback, RenewalSchedule } from "./contracts/renewal.js";
@@ -161,7 +162,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     fingerprint,
     withDestination(snapshot, destinationId) {
       codec.encode(snapshot);
-      const next = { ...snapshot, orderSnapshot: { ...snapshot.orderSnapshot, shippingAddressRef: z.uuid().parse(destinationId),
+      const next = { ...snapshot, orderSnapshot: { ...snapshot.orderSnapshot, shippingAddressRef: canonicalUuid(z.uuid().parse(destinationId)),
         shippingQuoteRef: snapshot.orderSnapshot.shippingQuoteRef ?? { kind: "zero_shipping" as const, shippingAmountMinor: 0 as const } } };
       next.frozenFingerprint = fingerprint(next);
       return next;

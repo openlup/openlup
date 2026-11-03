@@ -512,3 +512,43 @@ or pull request is authorized by these packets. All edits remain staged.
 Self-retro: resolve versioned control expectations with their owner and keep
 the product proof separate. Repacking the proposed budget metadata makes the
 reported artifact match the staged package inputs exactly.
+
+## Native UUID value matching correction
+
+The maintainer authorized the UUID matching class repair in this row's own
+TypeScript delta. One internal helper accepts PostgreSQL UUID value spellings,
+validates their hexadecimal grouping and emits lower-case canonical UUID text.
+It is shared inside subscriptions and is not re-exported by a package entry.
+Opaque method references, authorization references, receipt keys and provider
+fingerprints retain their exact bytes. No SQL or persisted frozen wire changes.
+
+| Site | UUID origin and matching consumer | Correction |
+|---|---|---|
+| nativeRetryDriver.ts:91,97 | Host retryInput paymentIntentId/orderRef versus typed UUID columns | Canonical values before comparison; invalid requests retain frozen_mandate_mismatch and no prepare/dispatch |
+| nativeRetryDriver.ts:102 | Same two IDs enter prepare JSON; pinned SQL compares their text to typed UUID output | Reuse the canonical IDs in the request; no SQL change |
+| nativeRetryDriver.ts:113 | Host readOutcome operationId versus durable operation UUID | Canonical comparison; invalid evidence remains awaiting_provider without settlement or redispatch |
+| nativeSubscriptionBinding.ts:85-111 | Host-injectable codec projections from waiting and normal-due discovery enter a seen-subscription Set | Canonicalize insertion and lookup; invalid projections keep their prior downstream refusal path |
+| nativeRenewalCodec.ts:165 | New destination UUID enters the frozen fingerprint document | Retain existing UUID schema validation, then canonicalize before fingerprinting; no old snapshot rewrite |
+
+The rest of the delta was swept as well: inventory reservation and the alignment/
+settlement adapters bind UUIDs to SQL casts and compare only states/contracts;
+services and readiness compare no UUIDs; the transfer delta adds only table
+names. Stock deficit find matches opaque SKUs, not UUIDs. The codec's older
+schedule comparison and the stock-wait store's older frozen-binding comparison
+already exist byte-identically at the predecessor and are not new matching sites
+in this delta. This is not a qualification of all earlier native ports.
+
+The restricted PostgreSQL counterexample first passed canonical spelling and
+three invalid-input refusal cases, while uppercase, compact, braced and grouped
+spellings failed: 4 pass, 4 fail. An additional uppercase destination witness
+then demonstrated a changed snapshot/fingerprint before that correction. The
+new witnesses require one captured truth, one settlement, one retry execution,
+canonical prepare JSON and no effect on a rerun. Invalid input IDs refuse before
+prepare; invalid outcome IDs leave the prepared obligation reconcilable and the
+next valid read settles without executing again. Evidence is under
+`.context/scratch/g7/uuid/`, separated into fail-before and final-run transcripts.
+
+Self-retro: inspect the consumer after a TypeScript comparison. Canonical UUID
+comparison alone is insufficient when unchanged SQL later compares JSON text.
+The same value spelling must reach that request, without normalizing opaque
+provider references or rewriting historical frozen documents.
