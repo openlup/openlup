@@ -585,6 +585,16 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The sandbox-attempt source suffix follows the M17 prefix described below. Its
+one additive native unit extends those prefix counts to legacy 92, qualified 96
+and restricted 95, with separate reference digests for all five installation
+shapes. It preserves every earlier migration identity and existing state CHECK;
+its additive review marker distinguishes terminal cancelled capture from work
+awaiting reconciliation. The new attempt/readback factory is sandbox-only;
+generic prepared-provider storage and real PSP qualification remain unavailable.
+The separate closed-class admission prerequisite and feature pins must precede
+submission; a local manifest entry alone grants no delivery or release authority.
+
 The G4 purchase-hold draft appends the same native forward path/hash to all three
 manifest selections, with a separate measured catalogue digest for each existing
 installation shape. It preserves every prior source pin and defines four new
@@ -897,16 +907,17 @@ separately reviewed dunning forward.
 
 Bundle application/admin now has package ownership in the existing catalog server
 entry with named reference compatibility bindings. Read-error identity is shared
-through its shim; the RPC subclass stays reference-owned and is injected into
+through its shim; the packaged RPC subclass is re-exported and injected into
 handlers. Validators, their defaults/strictness and operation/MCP/flag authority
 remain at the reference boundary. Catalog contracts publish plain DTO types only.
 Existing composition order, stock unknowns, allocation and preview selection are
 preserved. No database gate, actor-history parity, mount or stronger replay claim
 follows from this move; the bundle pending ledger owns those outcomes. The native
 read store now has package ownership with unchanged queries and an injected data
-executor. Sparse SQL 16/19 projections preserve canonical identity and bytes;
-existing writer/transaction/transport ownership and native handler-only actor-kind
-protection are unchanged. Sequential key recognition is characterized, without a
+executor. Catalog also owns the native pooled writer and shared RPC marshalling.
+Sparse SQL 16/19 projections preserve canonical identity and bytes; host
+authorization, response mapping, managed transport and native handler-only actor-kind
+protection retain their existing boundaries. Sequential key recognition is characterized, without a
 payload-bound or concurrency guarantee.
 
 Promotion admin DTOs and server schemas now have package ownership with named

@@ -193,8 +193,8 @@ export declare const acquisitionNewsletterConsentEventSchema: z.ZodObject<{
         complaint: "complaint";
     }>;
     purpose: z.ZodEnum<{
-        marketing_launch_offer: "marketing_launch_offer";
         marketing_newsletter: "marketing_newsletter";
+        marketing_launch_offer: "marketing_launch_offer";
     }>;
     explicitOptInEvidence: z.ZodDefault<z.ZodBoolean>;
     occurredAt: z.ZodString;
@@ -208,8 +208,8 @@ export declare const acquisitionNewsletterConsentResponseSchema: z.ZodObject<{
         stale: "stale";
     }>;
     consentState: z.ZodNullable<z.ZodEnum<{
-        suppressed: "suppressed";
         granted: "granted";
+        suppressed: "suppressed";
     }>>;
     auditReference: z.ZodString;
     replayed: z.ZodBoolean;

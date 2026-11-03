@@ -4169,8 +4169,8 @@ export declare const promotionCodesListRequestSchema: z.ZodObject<{
         draft: "draft";
         expired: "expired";
         scheduled: "scheduled";
-        archived: "archived";
         all: "all";
+        archived: "archived";
         expired_or_archived: "expired_or_archived";
     }>>;
     scope: z.ZodDefault<z.ZodEnum<{

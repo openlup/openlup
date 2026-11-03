@@ -117,26 +117,20 @@ export interface CustomerSupportOperatorCommandPort extends CustomerRecoveryAuth
  * caller fault the route reports as 400, not an upstream outage: retrying the
  * identical body cannot succeed.
  */
-export class CustomerSupportCommandInvalidError extends Error {
-  constructor() { super("customer_support_operator_command_invalid"); }
-}
+export { CustomerSupportCommandInvalidError } from "@openlup/platform/account-support";
 
 /**
  * The same idempotency key already settled a *different* command (SQLSTATE
  * 23505). The key is spent; a caller must mint a new one rather than retry.
  */
-export class CustomerSupportCommandIdempotencyConflictError extends Error {
-  constructor() { super("customer_support_idempotency_conflict"); }
-}
+export { CustomerSupportCommandIdempotencyConflictError } from "@openlup/platform/account-support";
 
 /**
  * This deployment has no operator subscription authority at all. Raised by a
  * composition whose migration tree carries no twin of these routines, so that a
  * missing capability is a named refusal instead of a silent success.
  */
-export class OperatorSubscriptionAuthorityUnavailableError extends Error {
-  constructor() { super("operator_subscription_authority_unavailable"); }
-}
+export { OperatorSubscriptionAuthorityUnavailableError } from "@openlup/platform/account-support";
 
 export async function executeCustomerRecoveryCommand(input: {
   command: CustomerRecoveryCommandRequest;

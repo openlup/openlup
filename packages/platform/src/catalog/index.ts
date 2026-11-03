@@ -42,3 +42,7 @@ export { SUMMARY_COLUMNS, LIST_FILTER, LIST_SQL, COUNT_SQL, DETAIL_SQL, REFERENC
 export { createPostgresCatalogSkuEnvelopeReadPort } from "./catalogSkuEnvelope.js";
 export { createPostgresCatalogDraftStore } from "./catalogDraftStore.js";
 export { selectEffectiveBundleTargetPrice } from "./bundlePriceSelection.js";
+export { DomainRpcError } from "./rpcErrors.js";
+export { BundleRpcError } from "./bundleRpcError.js";
+export { createBundleAdminWriteStore, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, type BundleWriteRoutineClient } from "./bundleAdminWriteStore.js";
+export { createPostgresBundleAdminWriteStore, type PostgresBundleAdminWriteStore } from "./postgresBundleAdminWriteStore.js";

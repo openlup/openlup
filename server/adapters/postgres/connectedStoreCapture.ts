@@ -18,13 +18,17 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
+  "subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations",
+
+  // Private companion rows of the compatible payment_truth_events above.
+  "payment_simulator_attempts", "payment_simulator_observations",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   "catalog_products", "catalog_skus", "price_lists", "price_entries", "subscription_lines",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "commerce_operators", "commerce_order_holds", "commerce_order_operations",
-  "subscription_activations", "commerce_checkout_compensations",
+  "commerce_checkout_compensations",
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
   "fulfillment_provider_archetypes", "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations",
   "fulfillment_provider_attempts", "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions",

@@ -7,39 +7,21 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { captureSessionCandidate, git, sessionMain } from './agent-review-session.mjs';
+import { verificationPlan } from './verification-plan.mjs';
+export { verificationSteps } from './verification-plan.mjs';
 
-const profiles = {
-  policy: null, inventory: null, dco: null,
-  gitleaks: null, install: 'openlup:install', lint: 'openlup:typecheck',
-  typecheck: 'openlup:typecheck', build: 'openlup:build', subscription: 'openlup:build',
-  packages: 'openlup:coverage', tests: 'openlup:coverage', neutrality: null,
-  'ui-neutrality': null, pgtap: 'openlup:pgtap',
-};
-export function verificationSteps(candidate, build, packs, pgtap) {
-  const npm = (...args) => ['npm', ...args];
-  const node = (...args) => [process.execPath, ...args];
-  const steps = [
-    ['policy', npm('run', 'oss:published-tree', '--', '--policy')],
-    ['inventory', npm('run', 'oss:published-tree', '--', '--inventory')],
-    ['dco', npm('run', 'check:dco-signoff', '--', candidate.base, candidate.head)],
-    ['gitleaks', ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner']],
-    ['install', npm('ci', '--prefer-offline', '--no-audit', '--fund=false')],
-    ['lint', npm('run', 'lint')],
-    ['typecheck', npm('run', 'oss:published-tree', '--', '--typecheck')],
-    ['build', npm('run', 'build')],
-    ['subscription', npm('run', 'build:public-reference'), { OPENLUP_REFERENCE_PROFILE: 'subscription',
-      OPENLUP_BUILD_OUT_DIR: join(build, 'client'), OPENLUP_SSR_OUT_DIR: join(build, 'ssr') }],
-    ['packages', node('--experimental-strip-types', 'scripts/packages/required-package-gates.ts', '--out', packs, '--expected-commit', candidate.head)],
-    // Keep the real stack pin in the native wrapper, outside isolated test Git fixtures.
-    ['tests', ['env', '-u', 'OPENLUP_STACK_BASE', ...npm('run', 'test:scoped')]],
-    ['neutrality', node('scripts/public-ci-neutrality.mjs', '--base-commit', candidate.base)],
-    ['ui-neutrality', node('--experimental-strip-types', 'packages/ui/smoke/neutrality.ts')],
-  ];
-  if (pgtap) steps.push(['pgtap', node('scripts/public-ci-pgtap.mjs')]);
-  return steps.map(([name, command, env = {}]) => {
-    if (!Object.hasOwn(profiles, name)) throw new Error(`unknown verification phase: ${name}`);
-    return { name, command, env, resource: profiles[name] };
-  });
+export async function explainVerification({ cwd = process.cwd(), env = processEnvironment, pgtap = false } = {}) {
+  let candidate; let error;
+  try {
+    candidate = await captureSessionCandidate(cwd, undefined, {
+      env, runGit: (root, ...args) => git(root, '--no-optional-locks', ...args),
+    });
+  } catch (failure) { error = failure.message; }
+  return {
+    kind: 'verification-plan', evidence: 'none; commands have not run',
+    scope: candidate ? { state: 'known', candidate } : { state: 'unknown', error },
+    ...verificationPlan(candidate ?? { base: '<comparison-base>', head: '<candidate-head>' }, '<run-directory>', '<package-artifacts>', pgtap),
+  };
 }
 export function hasBroker(env) {
   return (env.PATH ?? '').split(delimiter).some(dir => {
@@ -89,9 +71,9 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
     }
     const packs = await mkdtemp(join(tmpdir(), 'openlup-verify-packs-')); result.packs = packs;
     const broker = hasBroker(env); result.broker = broker;
-    const steps = verificationSteps(candidate, directory, packs, pgtap);
-    result.pgtap = pgtap ? 'selected' : 'not selected; use --pgtap for database inputs or an explicit diagnostic request';
-    for (const step of steps) {
+    const plan = verificationPlan(candidate, directory, packs, pgtap);
+    result.pgtap = plan.pgtap;
+    for (const step of plan.phases) {
       const current = await captureSessionCandidate(cwd, candidate.base, { env });
       if (!current.clean || current.head !== candidate.head || current.tree !== candidate.tree) throw new Error('candidate changed during local verification');
       const argv = ['scripts/agent-review-session.mjs', 'verify-command', ...(broker && step.resource ? ['--resource', step.resource] : []), '--', ...step.command];
@@ -113,6 +95,21 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const args = process.argv.slice(2);
-  if (args.length > 1 || args.some(arg => arg !== '--pgtap')) { console.error('usage: node scripts/verify-local.mjs [--pgtap]'); process.exitCode = 1; }
+  if (new Set(args).size !== args.length || args.some(arg => !['--pgtap', '--plan', '--json'].includes(arg)) || (args.includes('--json') && !args.includes('--plan'))) {
+    console.error('usage: node scripts/verify-local.mjs [--pgtap] [--plan [--json]]'); process.exitCode = 1;
+  } else if (args.includes('--plan')) {
+    const plan = await explainVerification({ pgtap: args.includes('--pgtap') });
+    if (args.includes('--json')) console.log(JSON.stringify(plan, null, 2));
+    else {
+      console.log(`Verification plan only; no commands executed. Scope: ${plan.scope.state}.`);
+      if (plan.scope.error) console.log(plan.scope.error);
+      console.log(plan.selection);
+      for (const step of plan.phases) console.log(`${step.name}: ${step.reason}\n  owner=${step.owner}; context=${step.context}; resource=${step.resource ?? 'direct'}; requires=${step.requires.join(',') || 'none'}\n  argv=${JSON.stringify(step.command)}; env=${JSON.stringify(step.env)}`);
+      console.log(`pgTAP: ${plan.pgtap}`);
+      for (const item of plan.hostedOnly) console.log(`Hosted only (${item.context}): ${item.reason}`);
+      for (const requirement of plan.executionPrerequisites) console.log(`Execution requires: ${requirement}`);
+    }
+    process.exitCode = plan.scope.state === 'known' ? 0 : 2;
+  }
   else process.exitCode = await verifyLocal({ pgtap: args.includes('--pgtap') });
 }

@@ -645,6 +645,7 @@ export type { CatalogVariantState, CatalogHeadRef, CatalogLifecycleObservation, 
 export type { CreateBundleDraftRequest, CreateBundleDraftResponse, UpdateBundleDraftRequest, UpdateBundleDraftResponse, BundleComponent, SetBundleCompositionRequest, SetBundleCompositionResponse, SetBundleTargetPriceRequest, SetBundleTargetPriceResponse, ArchiveBundleRequest, ArchiveBundleResponse, RestoreBundleRequest, RestoreBundleResponse, CloneBundleDraftRequest, CloneBundleDraftResponse, ActivateBundleRequest, ActivateBundleResponse, DeactivateBundleRequest, DeactivateBundleResponse } from "./bundleAdmin.js";
 export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBundleRequest, GetBundleResponse, BundleDetailView, BundleAvailabilityView, BundleHistoryRequest, BundleHistoryResponse, PreviewBundlePriceRequest, PreviewBundlePriceResponse, BundlePricePreview } from "./bundleRead.js";
 export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
+export type { AgentReason } from "./rpcErrors.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -872,6 +873,11 @@ export declare function canonicalCatalogOption(value: CatalogOptionValue): strin
 import { type ProductMediaManifest, type ProductMediaRequest, type ResolvedProductMedia } from "./productMediaContracts.js";
 /** Resolve only declared variant/product material; no filename, SKU or provider inference. */
 export declare function resolveProductMedia(value: ProductMediaManifest, request: ProductMediaRequest, assetUrls: Readonly<Record<string, string>>): ResolvedProductMedia;
+```
+## dist/catalog/contracts/rpcErrors.d.ts
+
+```ts
+export type AgentReason = "actor_required" | "actor_unknown" | "actor_kind_not_allowed" | "publish_requires_human" | "draft_only_for_machine" | "price_required_to_sell" | "not_found" | "already_exists" | "feature_flag_disabled" | (string & {});
 ```
 ## dist/catalog/contracts/sellable.d.ts
 

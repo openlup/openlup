@@ -1,5 +1,6 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import ts from "typescript";
+import { checkPlatformMigrationProjection } from "./platform-migration-projection.ts";
 import { disposableLabelArgs } from "../disposable-docker.mjs";
 import { buildSync } from "esbuild";
 import { MARKET_PACK_CONSUMER_PROOF } from "./market-pack-consumer-proof.ts";
@@ -18,10 +19,12 @@ import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
+import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./distribution-cli-proof.ts";
 
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
 export const NON_ADAPTER_ENTRIES = [
+  "account-support/read-contracts",
   "channels",
   "channels/contracts",
   "channels/server",
@@ -45,6 +48,7 @@ export const NON_ADAPTER_ENTRIES = [
   "commerce/server",
   "invoicing",
   "invoicing/contracts",
+  "invoicing/postgres",
   "subscriptions",
   "subscriptions/contracts",
   "fulfillment",
@@ -71,6 +75,9 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "account-support/postgres",
+  "commerce/server/postgres",
+  "fulfillment/native",
   "operations/server",
   "risk/server",
   "marketing/server/postgres",
@@ -834,7 +841,7 @@ import {promises as fs} from "node:fs";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
 import * as lifecycle from "@openlup/platform/lifecycle";
-assert.deepEqual(Object.keys(lifecycle).sort(),["AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade"]);
+assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade","verifyApp"]);
 const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
 const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
 const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
@@ -1704,6 +1711,101 @@ try{
 `, [connectionString]);
 }
 
+/** Runs wholly inside the installed consumer; canonical expectations arrive as inert JSON. */
+const PLATFORM_MIGRATION_CONSUMER_PROOF = String.raw`
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync, unlinkSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
+// Exercise the public installed entry before any catalogue or PostgreSQL work.
+assert.throws(() => createPlatformPostgresMigrationRunner({connectionString:"unused"}, {
+  get catalog() { throw new Error("catalogue was read before selection admission"); },
+  get poolFactory() { throw new Error("pool factory was read before selection admission"); },
+}), /platform migration installation is required/);
+const [connectionString, generation, roleMode, expectedJson] = process.argv.slice(2);
+const canonical = JSON.parse(expectedJson);
+const plan = generation === "qualified-v2" ? canonical.qualified : canonical.qualifiedAdmin;
+const expected = [plan.baseline, ...plan.forward];
+const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.resolve("@openlup/platform/migrations")))));
+assert(realpathSync(packageRoot).startsWith(process.cwd() + "/node_modules/"));
+const projected = JSON.parse(readFileSync(join(packageRoot, "sql/manifest.json"), "utf8"));
+assert.deepEqual(projected.catalog, canonical);
+for (const entry of projected.migrations) {
+  assert.equal(createHash("sha256").update(readFileSync(join(packageRoot,"sql",entry.file))).digest("hex"), entry.sha256);
+}
+const bootstrap = new pg.Client({ connectionString });
+await bootstrap.connect();
+const identifier = name => { assert.match(name,/^[a-z_][a-z0-9_]*$/); return '"' + name + '"'; };
+const m = "migration_login", r = "runtime_login", s = "restore_login", o = "operator_login";
+const admin = generation === "qualified-admin";
+const selection = { generation, roleMode, migrationLogin:m, bootstrapLogin:"postgres", runtimeLogin:r, restoreLogin:s,
+  ...(admin && roleMode === "operator-provisioned" ? {operatorLogin:o} : {}) };
+try {
+  assert.equal(Math.trunc(Number((await bootstrap.query("SHOW server_version_num")).rows[0].server_version_num)/10000),16);
+  await bootstrap.query("CREATE ROLE migration_login LOGIN " + (admin ? "NOINHERIT NOSUPERUSER " + (roleMode === "installer-managed" ? "CREATEROLE" : "NOCREATEROLE") : "INHERIT SUPERUSER NOCREATEROLE") + " NOCREATEDB NOREPLICATION NOBYPASSRLS");
+  await bootstrap.query("ALTER DATABASE postgres OWNER TO migration_login");
+  for (const role of [r,s]) await bootstrap.query("CREATE ROLE " + identifier(role) + " LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS");
+  const loginUrl = name => { const u = new URL(connectionString); u.username=name; return u.toString(); };
+  if (roleMode === "operator-provisioned") {
+    if (admin) await bootstrap.query("CREATE ROLE operator_login LOGIN NOINHERIT CREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS");
+    const operator = admin ? new pg.Client({connectionString:loginUrl(o)}) : bootstrap;
+    if (admin) await operator.connect();
+    try {
+      for (const group of ["anon","authenticated","service_role","platform_acquisition_owner","platform_acquisition_runtime","openlup_retained_import_owner"]) {
+        await bootstrap.query("CREATE ROLE " + identifier(group) + " NOLOGIN NOINHERIT NOCREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS");
+        if (admin) {
+          await bootstrap.query("GRANT " + identifier(group) + " TO operator_login WITH ADMIN TRUE, INHERIT FALSE, SET FALSE");
+          await operator.query("GRANT " + identifier(group) + " TO migration_login WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY operator_login");
+        }
+        if (["anon","authenticated","service_role","platform_acquisition_runtime"].includes(group))
+          await operator.query("GRANT " + identifier(group) + " TO runtime_login WITH ADMIN FALSE, INHERIT " + (group === "service_role" ? "TRUE" : "FALSE") + ", SET TRUE" + (admin ? " GRANTED BY operator_login" : ""));
+      }
+    } finally { if (admin) await operator.end(); }
+  }
+  const runner = createPlatformPostgresMigrationRunner({connectionString:loginUrl(m)}, {installation:selection});
+  // Asset refusals must occur by canonical name before connecting, even on an installed database.
+  const missing = expected.at(-1), path = join(packageRoot,"sql",missing.file.split("/").at(-1));
+  const bytes = readFileSync(path);
+  try {
+    writeFileSync(path,Buffer.concat([bytes,Buffer.from("\n-- tampered\n")]));
+    await assert.rejects(runner.status(),error => error.message.includes(missing.file) && error.message.includes("SHA-256 mismatch"));
+    unlinkSync(path);
+    await assert.rejects(runner.apply(),error => error.message.includes(missing.file) && error.message.includes("missing"));
+  } finally { writeFileSync(path,bytes); }
+  assert.deepEqual(await runner.status(), {applied:[],pending:expected.map(e=>e.file)});
+  assert.deepEqual(await runner.apply(), {applied:expected.map(e=>e.file)});
+  assert.deepEqual(await runner.status(), {applied:expected.map(e=>e.file),pending:[]});
+  assert.deepEqual((await bootstrap.query("SELECT catalog_path AS file,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows,
+    expected.map((e,i)=>({...e,position:i})));
+  assert.deepEqual(await runner.apply(),{applied:[]});
+  console.log(JSON.stringify({generation,roleMode,applied:expected.length,hashes:"canonical",rerun:0,assetRefusals:true}));
+} finally { await bootstrap.end(); }
+// The production runner owns its default pool; this bounded process owns its lifetime.
+process.exit(0);
+`;
+
+/** Real installed-chain proof: each selection gets a fresh PG16 cluster. */
+export function provePackagedPlatformMigrations(consumer: string): void {
+  const canonical = readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8");
+  for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
+    const name = `openlup-packaged-migrations-${randomUUID()}`;
+    const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
+    try {
+      docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "postgres:16"]);
+      const port = docker(["port", name, "5432/tcp"]).split(":").at(-1)!;
+      const url = `postgresql://postgres@127.0.0.1:${port}/postgres`;
+      command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
+        import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root, "tests/helpers/postgresContainer.ts")).href)};
+        if (!await waitForPostgresTcpReady(process.argv[1])) throw new Error("Packaged migration PG16 unavailable");
+      `, url], root, isolatedConsumerEnv());
+      process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, canonical]));
+    } finally { docker(["rm", "--force", "--volumes", name]); }
+  }
+}
+
 /** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
 function proveNativeCommunicationsPostgres(consumer: string): void {
   const started = performance.now();
@@ -1734,6 +1836,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
       process.exit(0);
     `,connectionString],root,isolatedConsumerEnv()));
     proveApplicationUpgradePostgres(consumer,connectionString,schemaObservation.schemaVersion);
+    proveDistributionCliPostgres(consumer,connectionString);
     proveNativeCommunicationsOperations(consumer,connectionString);
     proveOperationsPostgres(consumer,connectionString);
     provePortabilityPostgres(consumer,connectionString);
@@ -1782,6 +1885,7 @@ for (const index of [6, 7, 8, 9, 10]) {
 }
 process.exit(0);
 `, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);
+    provePackagedPlatformMigrations(consumer);
     proveNativeCommunicationsPostgres(consumer);
     console.log(`Platform PostgreSQL SQL conformance PASS (${service ? "job service" : "owned container"}, database ${database})`);
   } finally {
@@ -2017,10 +2121,84 @@ export function platformConsumerInstallArgs(packages: string[], sdkPresent = fal
   return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
 }
 
+/** Required dependencies remain explicit inputs even when npm will refuse their platform. */
+export function starterDependencyMatchesPlatform(manifest: { os?: string | string[]; cpu?: string | string[]; libc?: string | string[] }, optional: boolean, target: { os: string; cpu: string; libc?: string }): boolean {
+  return !optional || (["os", "cpu", "libc"] as const).every(key => {
+    if (key === "libc" && target.os !== "linux") return true;
+    const constraint = manifest[key];
+    if (constraint === undefined) return true;
+    const values = typeof constraint === "string" ? [constraint] : constraint;
+    return (values.length === 1 && values[0] === "any") || (!values.includes("!" + target[key]) &&
+      (values.every(value => value.startsWith("!")) || values.includes(target[key] ?? "")));
+  });
+}
+
+/** Starter source/extraction witness in the existing required cold consumer. No browser download. */
+export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap<string, { path: string; sha256: string }>, packInstalled: (name: string) => string): void {
+  const started = performance.now();
+  const starter = join(checkout, "examples/neutral-store");
+  const extracted = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-"));
+  const environment = isolatedConsumerEnv();
+  environment.npm_config_cache = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-cache-"));
+  delete environment.NODE_TEST_CONTEXT;
+  const run = (name: string, args: string[], cwd = extracted) => process.stdout.write(command(name, args, cwd, environment));
+  try {
+    run(process.execPath, ["--experimental-strip-types", "--test"], starter);
+    run(process.execPath, [join(starter, "extract.mjs"), extracted]);
+    assert.equal(command("git", ["rev-parse", "--show-toplevel"], extracted, environment).trim(), realpathSync(extracted));
+    for (let parent = dirname(extracted); ; parent = dirname(parent)) {
+      assert(!lstatSync(join(parent, "node_modules"), { throwIfNoEntry: false }), "Starter ancestor can supply dependencies");
+      if (parent === dirname(parent)) break;
+    }
+    const metadata = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"));
+    assert.equal(metadata.workspaces, undefined);
+    const localPacks: string[] = [];
+    for (const name of ["core", "outbox", "platform"]) {
+      const pack = packs.get("@openlup/" + name);
+      assert(pack, "Starter needs the complete locally packed set");
+      const bytes = readFileSync(pack.path);
+      assert.equal(createHash("sha256").update(bytes).digest("hex"), pack.sha256);
+      const target = join(extracted, "artifacts", "openlup-" + name + ".tgz");
+      writeFileSync(target, bytes);
+      localPacks.push(target);
+    }
+    // Every selected dependency comes from the root's already locked ordinary install.
+    // Supplying its complete installed closure as tarballs avoids registry metadata resolution.
+    const dependencies = new Set<string>();
+    const platform = { os: process.platform, cpu: process.arch, libc: process.platform === "linux"
+      ? ((process.report.getReport() as { header: { glibcVersionRuntime?: string } }).header.glibcVersionRuntime ? "glibc" : "musl") : undefined };
+    const collect = (name: string, optional = false): void => {
+      if (dependencies.has(name) || name.startsWith("@openlup/")) return;
+      const directory = join(checkout, "node_modules", name);
+      assert(lstatSync(directory, { throwIfNoEntry: false })?.isDirectory(), "Missing locked starter dependency: " + name);
+      const dependency = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+      if (!starterDependencyMatchesPlatform(dependency, optional, platform)) return;
+      dependencies.add(name);
+      for (const child of Object.keys(dependency.dependencies ?? {})) collect(child);
+      for (const child of Object.keys(dependency.optionalDependencies ?? {})) {
+        if (lstatSync(join(checkout, "node_modules", child), { throwIfNoEntry: false })) collect(child, true);
+      }
+    };
+    for (const name of [...Object.keys(metadata.dependencies), ...Object.keys(metadata.devDependencies), "zod"]) collect(name);
+    localPacks.push(...[...dependencies].sort().map(packInstalled));
+    run("npm", ["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--fund=false", "--no-save", ...localPacks]);
+    assertInstalledPackages(extracted, ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
+    run("npm", ["test"]);
+    run("npm", ["run", "typecheck"]);
+    run("npm", ["run", "build"]);
+    console.log("Neutral starter required cold-consumer addition PASS: " + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
+  } finally {
+    rmSync(extracted, { recursive: true, force: true });
+    rmSync(environment.npm_config_cache, { recursive: true, force: true });
+  }
+}
+
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
   const packs = readCurrentPackManifest(checkout, resolve(manifest), commit); // Refuse before install or service startup.
+  const projectionErrors = checkPlatformMigrationProjection(checkout);
+  if (projectionErrors.length) throw new Error(projectionErrors.join("\n"));
   const inputs = ["@openlup/core", "@openlup/platform"].map(name => {
     const pack = packs.get(name);
     if (!pack) throw new Error(`Verified manifest has no ${name} tarball (platform must be publishable in the package inventory)`);
@@ -2055,6 +2233,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
       const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
       return join(artifacts, info.filename);
     };
+    proveNeutralStarterConsumer(checkout, packs, packInstalled);
     install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
     assertConsumerIsolation(consumer, checkout);
     const entries = assertExportInventory(consumer);
@@ -2189,6 +2368,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     consumerNode(consumer, MARKET_DESCRIPTOR_CONSUMER_PROOF);
     consumerNode(consumer, REFERENCE_DELEGATION_CONSUMER_PROOF);
+    consumerNode(consumer, readFileSync(join(root, "docs/platform/communications-conformance.mjs"), "utf8"));
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
@@ -2199,6 +2379,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveOperationsConsumer(consumer);
     provePortabilityConsumer(consumer);
     proveLifecycleConsumer(consumer);
+    proveDistributionCliConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
@@ -2215,6 +2396,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveSelfServiceConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
+    proveG10FulfillmentConsumer(consumer);
     installPartnerAcquisitionHostBinding(consumer, checkout);
     provePartnerAcquisitionBindingConsumer(consumer);
     installA1HostBinding(consumer, checkout);
@@ -2416,4 +2598,51 @@ void [handled, slot, trusted, untrusted, missingActor, contribution];
     strict: true, skipLibCheck: true, noEmit: true, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")],
   }, files: [file] }));
   process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+}
+
+/** G10: offline captured dispatch and explicit native preparation from installed bytes. */
+export function proveG10FulfillmentConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createFulfillmentContribution } from "@openlup/platform/composition";
+import { createCapturedFulfillmentAdapter, runFulfillmentAdapterConformance, createNativeUnsupportedFulfillmentPorts, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
+import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
+assert(import.meta.resolve("@openlup/platform/fulfillment/native").startsWith(new URL("./node_modules/",import.meta.url).href));
+const request = { requestKey:"legacy-request-a",fulfillmentRef:"fulfillment-a",orderRef:"order-a",orderNumber:null,parcelRef:null,
+  contactRevision:{schemaVersion:1,source:"contact",revision:1},
+  recipient:{name:null,email:null,phone:null,line1:"Synthetic 1",line2:null,city:"Example",postalCode:"00000",country:"XX",deliveryInstructions:null,courierInstructions:null},
+  lines:[{skuRef:"sku-a",title:null,quantity:1,productRef:null,packRef:null}],
+  selection:{providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null}};
+const captures=[{request,outcome:{kind:"accepted",externalRef:"captured-external"}}];
+const off=createCapturedFulfillmentAdapter({providerRef:"warehouse-a",captures});
+assert.equal((await off.dispatch.prepare(request)).refusal.reason,"disabled");
+const adapter=createCapturedFulfillmentAdapter({providerRef:"warehouse-a",selected:true,captures});
+const fingerprint="16d2b4609da4b2dc83f3bd7668aecad400a7dd0436ac3bf7099f81ba804e3bad";
+const evidence={commandFingerprint:fingerprint,contactRevision:request.contactRevision,providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a"};
+const acceptance={kind:"accepted",externalRef:"captured-external",evidence,providerAttemptKey:"captured-attempt:"+fingerprint,labelKey:"captured-receipt:"+fingerprint};
+const proof=await runFulfillmentAdapterConformance([{subjectId:"captured-installed",adapter,readIoCount:adapter.readSubmissionCount,sensitiveValues:["Synthetic 1"],fixtures:{dispatch:[
+  {input:request,expectedPrepare:{kind:"prepared",evidence},expectedDispatch:acceptance,replay:true},
+  {input:{...request,lines:[]},expectedPrepare:{kind:"refused",refusal:{reason:"not_dispatchable",phase:"prepare",retryable:false}}}
+]}}]);
+assert.equal(proof.subjects.length,1);assert.equal(adapter.readSubmissionCount(),1);
+const calls=[];
+const db={query:async(sql,values)=>{calls.push([sql,values]);return {rows:sql.includes("SELECT id, order_id")?[{id:request.fulfillmentRef,order_id:request.orderRef}]:[]};}};
+const options={transactions:{run:async work=>work(db),close:async()=>{}},preparation:{readAuthoritative:async()=>({candidate:request,withheld:false})},
+  services:{selection:request.selection,capability:adapter.capabilities,provider:adapter.dispatch,readiness:async()=>({ready:true}),listCandidates:async()=>[],
+    keys:{request:value=>value.requestKey,mappedAttempt:key=>key,acceptance:ref=>({providerAttemptKey:"attempt:"+ref,labelKey:"receipt:"+ref})},config:{mode:"stage",batchLimit:1}},
+  version:"fixture",requiredSchema:{version:"fixture",migration:"fixture",objects:[]}};
+const disabled=createNativeFulfillmentBinding(options);
+assert.equal((await disabled.prepare(request.fulfillmentRef)).refusal.reason,"disabled");assert.equal(calls.length,0);
+const binding=createNativeFulfillmentBinding({...options,enabled:true});
+assert.deepEqual(await binding.prepare(request.fulfillmentRef),{disposition:"ready",contactRevision:1});
+assert(calls[0][0].includes("pg_advisory_xact_lock"));assert(calls[1][0].includes("FOR UPDATE"));assert(calls[2][0].includes("INSERT INTO public.fulfillment_dispatch_contexts"));
+assert.deepEqual(JSON.parse(calls[2][1][1]),request.contactRevision);
+assert(!("contributions" in binding));
+const contribution=createFulfillmentContribution({version:binding.version,requiredSchema:binding.requiredSchema,fulfillment:{dispatch:binding.dispatch},handlers:[],schedules:[],routes:[]});
+assert.deepEqual(contribution.contributions[0].schedules,[]);
+assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],binding.services.runDispatch);
+const unsupported=createNativeUnsupportedFulfillmentPorts();
+assert.equal(await unsupported.listCommerceFulfillmentOrders({page:1,pageSize:25}),FULFILLMENT_NATIVE_UNSUPPORTED);
+assert.equal(await unsupported.getCommerceFulfillmentOrderDetail({orderId:"order-a"}),FULFILLMENT_NATIVE_UNSUPPORTED);
+`);
 }

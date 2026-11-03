@@ -52,6 +52,11 @@
     "zod": "^4.6.6"
   },
   "exports": {
+    "./fulfillment/native": {
+      "types": "./dist/fulfillment/native/index.d.ts",
+      "import": "./dist/fulfillment/native/index.js",
+      "default": "./dist/fulfillment/native/index.js"
+    },
     "./http": {
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js",
@@ -247,6 +252,11 @@
       "import": "./dist/invoicing/index.js",
       "default": "./dist/invoicing/index.js"
     },
+    "./invoicing/postgres": {
+      "types": "./dist/invoicing/postgres/index.d.ts",
+      "import": "./dist/invoicing/postgres/index.js",
+      "default": "./dist/invoicing/postgres/index.js"
+    },
     "./invoicing/contracts": {
       "types": "./dist/invoicing/contracts/index.d.ts",
       "import": "./dist/invoicing/contracts/index.js",
@@ -356,6 +366,21 @@
       "types": "./dist/channels/server/index.d.ts",
       "import": "./dist/channels/server/index.js",
       "default": "./dist/channels/server/index.js"
+    },
+    "./commerce/server/postgres": {
+      "types": "./dist/commerce/server/postgres/index.d.ts",
+      "import": "./dist/commerce/server/postgres/index.js",
+      "default": "./dist/commerce/server/postgres/index.js"
+    },
+    "./account-support/postgres": {
+      "types": "./dist/account-support/postgres/index.d.ts",
+      "import": "./dist/account-support/postgres/index.js",
+      "default": "./dist/account-support/postgres/index.js"
+    },
+    "./account-support/read-contracts": {
+      "types": "./dist/account-support/read-contracts/index.d.ts",
+      "import": "./dist/account-support/read-contracts/index.js",
+      "default": "./dist/account-support/read-contracts/index.js"
     }
   },
   "repository": {
@@ -367,5 +392,8 @@
     "access": "public",
     "provenance": true,
     "tag": "preview"
+  },
+  "bin": {
+    "openlup": "./src/lifecycle/openlup.mjs"
   }
 }

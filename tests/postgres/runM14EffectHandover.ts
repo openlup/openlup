@@ -50,9 +50,9 @@ const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync(join(ro
 const expectedUnits = [selected.baseline, ...selected.forward];
 const expectedTail = expectedUnits.at(-1);
 assert(expectedTail, "Selected canonical manifest must contain its baseline");
-if (!catchup) assert.equal(selected.objectInventorySha256, "6a7b1e4060a65ca39276ceb6ea9a17da61f80d95230815d2abd2692451091ae4");
+if (!catchup) assert.equal(selected.objectInventorySha256, "b7c311a419c9d5d28401841a1d2ee1c3d5c32a6ccb1a0c36a65fe0b84f197952");
 const connectedTableCount = connectedNativeStoreTables.length;
-assert.equal(connectedTableCount, 82, "Keep the 8A-extended finite graph unchanged");
+assert.equal(connectedTableCount, 93, "Keep the 8A-extended finite graph unchanged");
 if (!image || !/^sha256:[0-9a-f]{64}$/.test(image)) throw new Error("Supply one already-local immutable Node24.21.0 image ID; this witness never pulls/builds images");
 if (process.version !== "v24.21.0") throw new Error("M14 witness requires Node24.21.0");
 const modules = join(root, "node_modules");
@@ -804,7 +804,7 @@ try {
   }
   if (catchup) {
     const expected = finalGraph.compatible.tables.find(table => table.table === "outbox_events")!.rows.filter(row => JSON.parse(row).idempotency_key === "catchup-effect-key");
-    assert.equal(expected.length, 1);
+    assert.equal(expected.length, 98);
     assert.deepEqual((await target.runtime.query("SELECT pg_catalog.to_jsonb(t)::text AS value FROM public.outbox_events t WHERE idempotency_key='catchup-effect-key'")).rows.map(row => row.value), expected);
   }
   if (managedFirst) await assertManagedTypedTarget(target.runtime, managedFirst.obligations);

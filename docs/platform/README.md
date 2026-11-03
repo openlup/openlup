@@ -11,6 +11,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 - [Testing — run, place, add and keep tests fast](../../CONTRIBUTING.md#test-scope-and-diagnostics).
 - [Platform package reference](PLATFORM_PACKAGE_REFERENCE.md) — longer identity and communications module recipes linked from the package README.
+- [Distribution evidence](DISTRIBUTION_EVIDENCE.md) — generated partial outcome projection, package-set BOM and current neutrality limits.
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
 - [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
@@ -30,6 +31,7 @@ partner privacy export/erasure and hosted qualification are not supplied.
 
 Plans and task records are plain Markdown under `plans/`. There is no plan template, generator or Plan Protocol validator; reviewing the record is its acceptance, and limits a plan states are enforced only where a named check runs them.
 
+- [Public delivery workflow](plans/delivery-workflow.md) — shared local obligations, read-only explanation and early neutrality checks; later proof reuse and delivery improvements remain pending.
 - [Partner acquisition R1](plans/oss-m18-r1-partner-acquisition.md) — unchanged contribution, frozen witnesses, explicit privacy and later-phase limits.
 - [Partner reference delegation R2](plans/oss-m18-r2-reference-delegation.md) — thin source bindings, installed-artifact proof and preserved host behavior.
 - [Partner package set S1](plans/oss-m18-s1-0-36-0.md) — coherent 0.36.0 source preparation and publication boundary.
