@@ -1,9 +1,9 @@
 # Native lifecycle notice dispatch
 
-Status: READY_FOR_REVIEW. Local implementation, accepted maintainer read and
-focused proof are complete. Forward admission, the authorized real destination-
-writer join at main integration, native review and lead-selected verification
-remain pending. No publication or live-provider qualification is claimed.
+Status: IN_PROGRESS. The existing notice implementation is being integrated with
+its pinned predecessor before a private donor map, measured pre-implementation
+package and the authorized shipping and promotion-lock ports. No new review,
+submission or publication is authorized in this run.
 
 ## Outcome, scope and authority
 
@@ -845,3 +845,47 @@ new production seam. The complete pack measured the bounded repair at 27 bytes.
 Running the exact neutrality command also caught provider names in public audit
 labels; neutral prose plus the exact private inventory preserved both the
 publication boundary and complete execution evidence without a ratchet change.
+
+
+## Current bounded continuation
+
+Policy revision: 2a59da4be321f6413ae384f49e66ae3145f881d4, fetched and read
+at task start, separately from the exact stack base
+935481eaef20fd3e736211d38b015c91c0ff3fa3. The assigned worker acts under the
+money-stream supervisor. This run authorizes the pinned local DCO merge,
+private donor mapping, a real pre-implementation package measurement, shipping
+threshold/charge/display/invoice parity and the named acquisition-lock repair,
+with restricted-runtime concurrency and refusal proofs. Values remain
+configuration. No refund work, managed/adopter change, native review, push or
+pull request. The final SQL delta remains staged for the coordinator's read;
+only the permitted non-SQL work may be signed after its applicable checks.
+
+Integration preserves both parents' additions. The captured 31 conflict hunks
+span 17 shared paths: publication catalogue, canonical and packaged manifests,
+three owner pages, adapter guidance, generated context/API, transfer order,
+six composition/count proof files and the handover witness. No SQL text or
+review/control script conflicted. Duplicate dunning transfer entries are
+removed only where the predecessor already supplies them. All five catalogue
+inventories were measured on real PostgreSQL after checking the predecessor's
+old digest before applying the unchanged notice forward; cleanup completed.
+Selections are 97 legacy, 101 qualified and 100 restricted units. The combined
+finite capture profile has 109 distinct tables; restore order retains both
+parents' cases and relations. Historic pins remain unchanged.
+
+Own-delta stable patch-id before integration (task record excluded):
+98598cca0e65f647a4de9d11ed1d509b4f724c2f. Exact before/after diffs, changed-line hashes
+and conflict hunks are retained in local scratch. Changed derived pins and
+registry context mean this manual integration claims no byte-identical delta
+or checked-integration exemption. The original supervisor-recorded address
+repair and all historical proof limits remain; no native session, counter,
+expiry or continuation is created or reset by this run.
+
+Self-retro for integration: a scratch import path caused one launch failure
+before database work; correcting the relative path allowed all five real
+catalogue measurements to complete. Recomputing from the combined tree avoided
+choosing either parent's stale inventory/count literals.
+
+Own-delta stable patch-id after integration (task record excluded):
+a5473271da51304226236cc9879af40c88ca45d5. The before/after identities differ for the documented
+manual registry, projection and measured witness integration; no source equality
+exemption is claimed.

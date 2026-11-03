@@ -1,0 +1,100 @@
+{
+  "prefix": "CREATE TABLE public.fulfillment_inventory_reservations (id uuid, renewal_operation_id uuid NOT NULL);",
+  "g4Statements": [
+    "ALTER TABLE public.fulfillment_inventory_reservations\n  ALTER COLUMN renewal_operation_id DROP NOT NULL,\n  ADD COLUMN purchase_order_id uuid;",
+    "ALTER TABLE public.fulfillment_inventory_reservations\n  ADD CONSTRAINT fulfillment_inventory_reservations_purchase_order_fkey\n    FOREIGN KEY (purchase_order_id) REFERENCES public.commerce_orders(id) ON DELETE RESTRICT NOT VALID,\n  ADD CONSTRAINT fulfillment_inventory_reservations_owner_check\n    CHECK ((renewal_operation_id IS NULL) = (purchase_order_id IS NOT NULL)) NOT VALID;",
+    "ALTER TABLE public.fulfillment_inventory_reservations\n  VALIDATE CONSTRAINT fulfillment_inventory_reservations_purchase_order_fkey,\n  VALIDATE CONSTRAINT fulfillment_inventory_reservations_owner_check;"
+  ],
+  "refusals": [
+    {
+      "label": "extra existing-table ADD",
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations ADD COLUMN unlisted text;"
+    },
+    {
+      "label": "extra existing-table statement on another table",
+      "sql": "ALTER TABLE public.payment_truth_events ADD COLUMN unlisted text;"
+    },
+    {
+      "label": "changed column",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\n  ALTER COLUMN renewal_operation_id DROP NOT NULL,\n  ADD COLUMN another_order_id uuid;"
+    },
+    {
+      "label": "changed constraint name",
+      "replace": 1,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\n  ADD CONSTRAINT another_purchase_order_fkey\n    FOREIGN KEY (purchase_order_id) REFERENCES public.commerce_orders(id) ON DELETE RESTRICT NOT VALID,\n  ADD CONSTRAINT fulfillment_inventory_reservations_owner_check\n    CHECK ((renewal_operation_id IS NULL) = (purchase_order_id IS NOT NULL)) NOT VALID;"
+    },
+    {
+      "label": "extra action",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\n  ALTER COLUMN renewal_operation_id DROP NOT NULL,\n  ADD COLUMN purchase_order_id uuid, ADD COLUMN unlisted text;"
+    },
+    {
+      "label": "reordered action",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\n  ADD COLUMN purchase_order_id uuid,\n  ALTER COLUMN renewal_operation_id DROP NOT NULL;"
+    },
+    {
+      "label": "DROP NOT NULL on another column",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\n  ALTER COLUMN id DROP NOT NULL,\n  ADD COLUMN purchase_order_id uuid;"
+    },
+    {
+      "label": "VALIDATE another constraint",
+      "replace": 2,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\n  VALIDATE CONSTRAINT fulfillment_inventory_reservations_purchase_order_fkey,\n  VALIDATE CONSTRAINT another_owner_check;"
+    },
+    {
+      "label": "additive variant cannot fall through",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations ADD COLUMN purchase_order_id uuid;"
+    },
+    {
+      "label": "quoted additive variant cannot fall through",
+      "replace": 0,
+      "sql": "ALTER TABLE \"public\".\"fulfillment_inventory_reservations\" ADD COLUMN purchase_order_id uuid;"
+    },
+    {
+      "label": "NBSP separator cannot masquerade as a listed table target",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations\u00a0\n  ALTER COLUMN renewal_operation_id DROP NOT NULL,\n  ADD COLUMN purchase_order_id uuid;"
+    }
+  ],
+  "writerDoTerminatorRefusal": "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fixture_created_3() FROM anon'; END IF; END $$;",
+  "listRefusals": [
+    {
+      "label": "changed list (G4G3-ALTER-001: ADD UNIQUE suffix)",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations ADD COLUMN fixture text, ADD UNIQUE (fixture);"
+    },
+    {
+      "label": "changed list (G4G3-B-001: ADD CHECK suffix)",
+      "replace": 0,
+      "sql": "ALTER TABLE public.fulfillment_inventory_reservations ADD COLUMN fixture text, ADD CHECK (renewal_operation_id IS NOT NULL);"
+    },
+    {
+      "label": "reordered list",
+      "order": [
+        1,
+        0,
+        2
+      ]
+    },
+    {
+      "label": "extra list entry (duplicate)",
+      "order": [
+        0,
+        1,
+        2,
+        0
+      ]
+    },
+    {
+      "label": "missing list entry",
+      "order": [
+        0,
+        1
+      ]
+    }
+  ]
+}

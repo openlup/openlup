@@ -115,3 +115,13 @@ With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, s
   authorize every admitted event and its data. Queue admission does not grant
   storage consent or establish delivery or attribution. No SQL migration is
   introduced by this set.
+
+## Unreleased native account reads
+
+- Extend account-support with explicit native reads for owned order persistence,
+  subscription evidence, existing actor snapshots and newsletter withdrawal.
+  Missing saved profile/events sources refuse by section. Historical summaries
+  retain recorded amounts while detail without captured money refuses. Paid
+  activation gaps appear on owned orders, without invented subscriptions.
+  Complete consent choices/grants await their separate change; saved flags
+  never establish evaluator consent.

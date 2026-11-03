@@ -76,7 +76,7 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
     expect((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
       [selection.bootstrapLogin])).rows).toEqual([{ rolsuper: false, rolcreaterole: true, rolcreatedb: true }]);
     await expect(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
-    expect(1 + manifest.forward.length).toBe(95);
+    expect(1 + manifest.forward.length).toBe(100);
     expect((await runner.status()).pending).toHaveLength(1 + manifest.forward.length);
     if (apply) {
       expect((await runner.apply()).applied).toHaveLength(1 + manifest.forward.length);
@@ -246,5 +246,6 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       if (target) await closePostgres(target.container, target.pools);
       if (source) await closePostgres(source.container, source.pools);
     }
-  }, postgresSetupTimeoutMs * 2);
+  // Solo without coverage: 14.36–17.12 s across restore modes; 60 s gives about three times the maximum.
+  }, 60_000);
 }

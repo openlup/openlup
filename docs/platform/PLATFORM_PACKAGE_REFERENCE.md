@@ -953,6 +953,54 @@ differ from legacy host counts. An item-capable recorder/resolver produces disti
 store/job results and durable state against the pinned SQL, including retry and
 terminal outcomes; it makes no live transport or inbox-delivery claim.
 
+### Captured native invoices
+
+`@openlup/platform/invoicing/postgres` adds explicit sandbox composition over the
+existing native accounting/invoicing tables on the qualified-v2 chain:
+
+```ts
+import { createInvoiceAccess } from "@openlup/platform/account-support";
+import { createCapturedPostgresInvoiceProvider,
+  createPostgresInvoiceAccountHistory } from "@openlup/platform/invoicing/postgres";
+
+const captured = createCapturedPostgresInvoiceProvider(runtimeExecutor, {
+  enabled: true, providerRef: "captured-sandbox",
+});
+const historyPort = createPostgresInvoiceAccountHistory(runtimeExecutor);
+const invoices = createInvoiceAccess({ accountHistory: historyPort, artifacts: captured.artifacts });
+// accountRef comes from host authentication and is a principal UUID, not a client ID.
+const history = await invoices.history({ accountRef: authenticatedPrincipalId, orderId });
+const pdf = await invoices.download({ accountRef: authenticatedPrincipalId, orderId, documentRef });
+```
+
+Pass `captured.provider` to the existing `runNativeInvoiceIssueJob` with the
+explicit seller and payment evidence required by the native store. The provider
+stores one full-identity receipt and non-fiscal PDF in an append-only artifact
+observation before returning success; replay and a new provider instance reuse
+that receipt. Conflicting facts/identity refuse, failed reads stay unknown,
+unprepared claims cannot create receipts, and remote void stays unsupported.
+Clearance-required facts refuse: the captured provider supplies no real fiscal
+invoice, external provider, submission, email or jurisdictional qualification.
+Its PDFs visibly state that they are non-fiscal test documents. Disabled or
+foreign provider selections refuse without SQL. Artifact persistence through the
+returned host port is unsupported; provider receipt creation owns those bytes.
+
+History joins the authenticated principal to the stored order owner in the same
+query as document selection. It includes pending and voided documents and keeps
+stored currency, signed correction amounts and parent document identity.
+Missing artifacts remain unavailable, with no fabricated URL or bytes.
+Compose the history port with the existing `createInvoiceAccess` to retain its
+independent history-membership check before resolving a ticket. The lower-level history port
+also enforces ownership and document membership. Artifact-only reads require
+prior host authorization and do not themselves authenticate a customer.
+
+No managed adapter behaviour, database object or grant is changed. The existing
+qualified runtime table permissions suffice; the host owns the driver,
+authentication, route for the email's account-documents URL and schedules.
+The [installed/native witness](../../tests/postgres/invoicingCaptured.test.ts)
+exercises the packed entry through a restricted login; it is local sandbox proof,
+not live-provider or hosted qualification.
+
 ## OMS composition
 
 Use browser-safe commerce for OMS schemas and pure read builders. Use the
@@ -963,6 +1011,68 @@ provider evidence, identity extensions and presentation in the host and bind the
 host schema through the final response validation. A structural RPC client and
 separate query capability preserve one executor per order operation. Replacement
 creation delegates to fulfillment and leaves alignment pending actual arrival.
+
+### Native OMS and support stores
+
+The development-preview PostgreSQL stores are available at
+`@openlup/platform/commerce/server/postgres` and
+`@openlup/platform/account-support/postgres`. The host supplies a connection using
+the selected installation's restricted runtime role, authenticates the principal
+and authorizes the requested action. A store factory does not create authority.
+Install the package's optional `pg` peer when selecting a connection-owning store.
+
+```ts
+import { createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane,
+  createPostgresCommerceReturnsPort, createPostgresProviderExceptionHealPort,
+} from "@openlup/platform/commerce/server/postgres";
+import { createPostgresCustomerSupportJourneyPort } from "@openlup/platform/account-support/postgres";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+
+declare const executor: PgQueryExecutor; // host-owned restricted runtime session
+const commands = createPostgresCommerceOmsPort(executor);
+const reads = createPostgresCommerceOmsControlPlane(executor);
+const returns = createPostgresCommerceReturnsPort(executor);
+const heal = createPostgresProviderExceptionHealPort(executor);
+// operatorId comes from the host's admitted operator context, never request input.
+declare const connectionString: string, operatorId: string;
+const journey = createPostgresCustomerSupportJourneyPort({ connectionString, operatorId });
+// Host scope teardown: await journey.close(). The executor remains host-owned.
+```
+
+OMS commands preserve existing SQL, idempotency keys and error mapping. The
+control-plane factory supplies operator resolution and reduced `control_plane_v1`
+list/detail reads; it supplies neither rich OMS projections nor customer/payment
+history. The command port retains its existing rich-read, note, address and
+replacement refusals. Return request/approve/reject record lifecycle intent;
+there is no receive, restock or refund execution. Hosts can select their reason
+vocabulary through `createPostgresCommerceReturnsPort<Reason>`; the existing SQL
+still owns which reasons it accepts.
+
+System-hold recovery reads only actually delivered shipments with earlier
+exception evidence, excludes human holds and terminal orders, and reuses the
+existing deterministic release key. Call `releaseDelivered` only on a row from
+that selection; it is not a delivery evidence validator for arbitrary caller
+objects and never confirms a subscription replacement.
+
+Support journey reads, recovery issue and lead absorption preserve their current
+SQL and refusal boundaries. The journey store still throws
+`operator_subscription_authority_unavailable` for subscription actions and
+contact corrections. Its `close()` owns the connection lane; custom lanes retain
+the existing `createLane` option. Error constructors are shared with the package's
+account/support entry, including through the source reference facades.
+
+`@openlup/platform/account-support/read-contracts` exposes the unchanged
+portable-client and Customer 360 schemas and inferred read types. It is
+browser-safe and initializes Zod's CSP-safe mode; the existing type-only
+`account-support/contracts` boundary is preserved. Diagnostic history remains an
+independently injected port of `createCustomer360ReadFacade`, with host-owned
+admission and governance. This promotion adds no diagnostic store or route.
+
+The [installed-store witness](../../tests/postgres/m19StorePromotion.test.ts)
+selects compiled tarball exports and the complete `qualified-v2` chain with a
+restricted runtime login; [identity assertions](../../tests/postgres/m19StorePromotionIdentity.test.ts)
+cover reference facades and refusal constructors. Their presence is not a passing
+qualification result; the [task record](plans/oss-m19-g12.md) carries executed proof.
 
 ## Account and support contracts
 
@@ -1008,6 +1118,20 @@ or thrown refusal remains the owner's result for the host to map to HTTP.
 The facade adds no query, authorization, pagination, retry or diagnostic policy.
 The reference `createM12AccountReadBinding` specializes it to the existing customer
 ports; it registers no route or default selection.
+
+The existing `@openlup/platform/account-support` entry also provides
+owned native order-store/account-source factories, an owned account identity
+lookup, and actor-bound subscription snapshot/newsletter read-withdrawal ports.
+The [native persistence boundary](../../packages/platform/README.md#native-account-persistence-reads)
+describes host inputs and named section refusals. Detail uses captured money
+and promoted allocations; historical summaries keep recorded total/currency.
+Missing captured detail money refuses explicitly. The native
+`readPaidActivationGaps` order companion identifies paid provisional activations
+by owned order ID, before any subscription exists. Missing saved profile or
+event sections refuse `host_binding_required`, including the private-profile
+view. Complete consent grants/choices await their separate change; a saved flag
+is not effective consent. See the [bounded task record](plans/oss-m19-g11.md)
+for proof and the remaining delivery boundary.
 
 Import types from `@openlup/platform/account-support/contracts`. The five envelopes
 are `AccountReadPort`, `Customer360ReadPort`, `SelfServiceCommandFacade`,
@@ -1200,3 +1324,71 @@ last-updated text. Processor disclosures are types only. The package supplies
 no document wording or processor inventory and does not validate content or
 imply any legal outcome. The cold installed consumer exercises the runtime
 entry and compiles its content types.
+
+
+## Native bundle admin writes
+
+The experimental `@openlup/platform/catalog` entry exports
+`createPostgresBundleAdminWriteStore`, the existing shared
+`createBundleAdminWriteStore`, `BundleRpcError` and its `DomainRpcError` base.
+The constructor takes the existing data connection/options and exposes `close()`;
+it retains one role-free pooled transaction per operation. Bind only after the
+host's verified human authorization and existing mutation/activation gates.
+An actor identifier is routine input, not authorization. Importing this entry
+installs no routes, credentials, SQL or grant.
+
+Apply the complete selected canonical chain, not the sparse bundle SQL list.
+The existing native routines retain their invoker privilege requirements and
+sequential idempotency recognition; this export adds no concurrency guarantee.
+The browser entry remains `catalog/contracts`. Reference error paths re-export
+the same constructors, preserving instanceof and the existing SQLSTATE mapper;
+managed transport composition and response mapping remain host-owned.
+
+The source witness `tests/postgres/m19BundleWriteExport.test.ts` exercises the
+installed tarball on qualified-v2 through a restricted runtime login. Its local
+result is recorded in the task record, not a hosted or provider qualification.
+The identity witness is `tests/postgres/m19BundleWriteIdentity.test.ts`.
+
+## Native fulfillment preparation and captured dispatch
+
+The experimental `@openlup/platform/fulfillment/native` entry exports
+`createNativeFulfillmentBinding`. Supply the existing capability-local
+transaction lane, selected fulfillment services and an authoritative reader.
+Preparation acquires the dispatch advisory lock before the shipment row lock,
+reads authoritative contact/selection/withholding facts inside that transaction,
+and synchronizes only redacted dispatch context. All authoritative edits must
+use `editAuthoritative` with host authorization and replay receipts. Actor/key
+presence is not authorization. The host owns closing its lane. Construction is
+inert and the default is disabled; no route or schedule is registered.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
+
+`createCapturedFulfillmentAdapter` from `@openlup/platform/fulfillment` accepts
+`{ providerRef, selected, captures }`. Each synthetic capture contains a complete
+`FulfillmentDispatchRequest` and an outcome: `{ kind: "accepted", externalRef }`,
+`{ kind: "not_dispatched" }` or `{ kind: "unknown" }`. Explicitly set
+`selected: true`, then call `dispatch.prepare(request)` before
+`dispatch.dispatch(request, evidence)`. Canonical JSON fingerprints include all
+command fields, sorting object keys by code unit and preserving array order.
+Unknown/modified commands and mismatched evidence refuse before submission.
+Provider references must be lowercase opaque IDs; accepted external references
+use the existing opaque-ID grammar. Duplicate capture request keys are rejected
+at construction. Returned results
+are copied; mutating them cannot alter replay. `readSubmissionCount()` reports
+distinct captured submissions, including refused/unknown captures, and stays
+unchanged on replay. It measures synthetic execution, not provider network I/O.
+
+Use only synthetic data in captures. This factory has no transport, provider
+credentials or durable ledger. Its accepted outcome asserts no physical packing,
+label creation, handoff or arrival. It exposes dispatch only; label operations,
+observation verification, readback, stock/product synchronization, cancellation
+and pickup operations remain unavailable. The existing conformance runner checks
+these declared capabilities using host-owned offline fixtures. Restricted-role
+PostgreSQL evidence is separate from offline conformance and installed-tarball
+proof. Native list/detail reads still return `host_binding_required`; they wait
+for destination and reservation facts in a separate change.

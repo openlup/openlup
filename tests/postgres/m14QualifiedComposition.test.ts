@@ -11,10 +11,10 @@ import {
 
 const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
-// The current complete 96-unit installation includes the shared suffix.
+// The current complete 101-unit installation includes the shared suffix.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "3280c765be6ae0af73e826207c07bce0dfae98cee9604e90503f659c621d7a4d", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "f230b54b465126402a2ba7a22793e70b80b0bea3da6ca5d1c10502224dffce7b", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "c06bdfac390c28c9165bcf661c64a59bb5db931ca3df7383d82d5e56252c3fc0", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "d7fdafb57261945776e5749ef2a51d095d7af563c0d6ba3da268d8c6b70706ee", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -55,7 +55,7 @@ for (const profile of profiles) for (const shape of shapes) {
         migrationIsBootstrap: !shape.separate, hasRestore: true,
       });
       const count = 1 + current.forward.length;
-      expect(count).toBe(96);
+      expect(count).toBe(101);
       expect(current.objectInventorySha256).toBe(shape.currentSha256);
       expect(result).toMatchObject({
         inventorySha256: shape.currentSha256, issuedInventorySha256: shape.sha256, issuedLedgerRows: 92,
@@ -70,5 +70,6 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  }, postgresSetupTimeoutMs);
+  // Solo without coverage: 11.64 s ordinarily, 22.45 s for target/separate; allow about three times each.
+  }, profile.name === "target" && shape.separate ? 75_000 : 40_000);
 }

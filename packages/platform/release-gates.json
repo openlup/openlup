@@ -5,6 +5,16 @@
     "internal-candidate": "Development-preview API; no stable compatibility claim."
   },
   "packageSurface": {
+    "./fulfillment/native": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/fulfillment/nativePreparation.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/native/index.d.ts",
+      "snapshot": "api/fulfillment-native.api.md"
+    },
     "./bff": {
       "role": "rail",
       "maturity": "experimental",
@@ -40,6 +50,7 @@
         "test/catalog/catalogMediaResolution.test.ts",
         "test/catalog/catalogLifecycleContracts.test.ts",
         "test/catalog/bundleRules.test.ts",
+        "test/catalog/bundleAdminWriteStore.test.ts",
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
@@ -94,6 +105,14 @@
       "entrypoint": "dist/commerce/contracts/index.d.ts",
       "snapshot": "api/commerce-contracts.api.md"
     },
+    "./commerce/server/destinations": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
+      "entrypoint": "dist/commerce/server/destinations/index.d.ts",
+      "snapshot": "api/commerce-destinations.api.md"
+    },
     "./commerce/server": {
       "role": "capability",
       "maturity": "experimental",
@@ -105,6 +124,16 @@
       ],
       "entrypoint": "dist/commerce/server/index.d.ts",
       "snapshot": "api/commerce-server.api.md"
+    },
+    "./commerce/server/native-checkout": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts"
+      ],
+      "entrypoint": "dist/commerce/server/native-checkout/index.d.ts",
+      "snapshot": "api/commerce-native-checkout.api.md"
     },
     "./communications": {
       "role": "capability",
@@ -475,6 +504,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "test/fulfillment/capturedAdapter.test.ts",
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
         "test/fulfillment/portFit.test.ts",
@@ -563,6 +593,16 @@
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"
     },
+    "./invoicing/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/invoicing/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/postgres/index.d.ts",
+      "snapshot": "api/invoicing-postgres.api.md"
+    },
     "./invoicing/contracts": {
       "role": "capability",
       "maturity": "experimental",
@@ -580,6 +620,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "test/account-support/postgresAccountReads.test.ts",
         "test/account-support/contracts.test.ts",
         "test/account-support/accountReadFacade.test.ts",
         "test/account-support/browserSafety.test.ts",
@@ -878,11 +919,42 @@
       ],
       "entrypoint": "dist/channels/server/index.d.ts",
       "snapshot": "api/channels-server.api.md"
+    },
+    "./commerce/server/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/commerce/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/commerce/server/postgres/index.d.ts",
+      "snapshot": "api/commerce-server-postgres.api.md"
+    },
+    "./account-support/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/account-support/nativePostgres.test.ts"
+      ],
+      "entrypoint": "dist/account-support/postgres/index.d.ts",
+      "snapshot": "api/account-support-postgres.api.md"
+    },
+    "./account-support/read-contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/account-support/readContracts.test.ts",
+        "test/account-support/readContractsBrowserSafety.test.ts"
+      ],
+      "entrypoint": "dist/account-support/read-contracts/index.d.ts",
+      "snapshot": "api/account-support-read-contracts.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1970000,
+      "maxPackedBytes": 2054458,
       "maxFiles": 3039
     },
     "docs": {

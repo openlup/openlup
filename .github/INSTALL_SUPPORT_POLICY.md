@@ -47,6 +47,49 @@ required to certify reproduction on a full install that does not exist. The
 stable support obligation activates only for a release that names a supported
 BOM and artifacts; until then no install is supported.
 
+The portable rail takes sandbox payments only. Real money currently runs only
+on the managed rail. A portable real-money store without vendor lock-in is not
+yet available; payment contracts and optional adapter source do not close that
+gap. The portable [payment schema descriptor](../packages/platform/src/payments/schemaCapabilities.ts)
+still refuses the durable prepared store, payment-method setup and other named
+operations.
+
+The [public outcome projection](../docs/platform/OUTCOME_PROJECTION.md) is
+generated from existing public package instruments. It is partial: witness
+source is not an executed result, and the package instruments do not enumerate
+every composed-store outcome. Partial, missing or unresolved evidence blocks
+the affected claim. A generated package-set BOM binds artifact identities; it
+does not establish installation, publication, provenance or support evidence.
+See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md).
+
+The starter host currently boots pending bindings, accepts only local
+Host authorities and does not connect a database. Only local offer validation
+and application-status reporting are bound; configuration health does not
+establish a live store. The [image quickstart](../deploy/neutral-store/README.md) is limited to local
+image build and rollback; its local A → B → A run passed. Public hosting remains
+blocked on starter-owned
+binding and public-origin work; the binder stays application-owned.
+
+The native account readers need explicit host sources for saved addresses,
+billing profiles, payment/delivery preferences, account events and private-profile
+views. A missing section refuses `host_binding_required`, rather than returning
+an empty success. Complete consent choices and grants remain unavailable;
+newsletter read/withdrawal is available, but a saved grant without evaluator
+evidence refuses `host_binding_required`. Historical order detail without
+captured money refuses `native_account_order_money_unavailable`; summaries retain
+recorded total/currency and the line reader retains recorded amounts. Paid
+provisional activation is read through its owned order companion, with no
+subscription association invented before activation completes. See the
+[native account boundary](../packages/platform/README.md#native-account-persistence-reads).
+
+The portable rail takes sandbox payments only; real money currently runs only
+on the managed rail. No supported, stable or production-ready store deployment
+is claimed.
+
+No hosting account or resource is supplied. Root `ui-*` counts remain shrink-only
+reference-source debt. New neutral presentation is constrained to system fonts;
+the root reference's font choices are not an inherited starter requirement.
+
 ## What is refused, in writing
 
 The following are outside the bounded preview reference today and outside the

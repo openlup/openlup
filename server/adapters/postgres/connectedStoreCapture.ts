@@ -18,12 +18,24 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
+  "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "subscription_dunning_cases", "subscription_dunning_notifications",
+  "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
+  "commerce_checkout_recovery_tokens", "subscription_stock_wait_cases",
+  "subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations",
+
+  // Private companion rows of the compatible payment_truth_events above.
+  "payment_simulator_attempts", "payment_simulator_observations",
+  "commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts",
+  "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   "catalog_products", "catalog_skus", "price_lists", "price_entries", "subscription_lines",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "commerce_operators", "commerce_order_holds", "commerce_order_operations",
+  "commerce_checkout_compensations",
+  "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
   "fulfillment_provider_archetypes", "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations",
   "fulfillment_provider_attempts", "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions",
   "fulfillment_dispatch_contexts", "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
@@ -35,7 +47,7 @@ const owned = [
   "platform_alerts", "platform_alert_notifications", "platform_job_controls", "platform_job_runs",
   "sales_channels", "commerce_settings", "client_absorption_policy", "subscriber_retention_activation_watermarks",
   "subscription_delivery_alignment_control", "outbox_dormant_event_types",
-  "subscription_dunning_cases", "subscription_dunning_notifications", "subscription_reminder_ledger", "transactional_delivery_receipts",
+  "subscription_reminder_ledger", "transactional_delivery_receipts",
 ] as const;
 
 export const connectedNativeStoreTables = [...compatible, ...owned] as const;
