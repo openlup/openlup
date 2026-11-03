@@ -1714,6 +1714,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-r1d-pkg.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-recipes.md",
       "class": "public-output"
     },
@@ -27807,6 +27811,14 @@
     },
     {
       "path": "tests/postgres/accountSupportUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/acquisitionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/acquisitionAdmissionFixture.ts",
       "class": "public-output"
     },
     {
