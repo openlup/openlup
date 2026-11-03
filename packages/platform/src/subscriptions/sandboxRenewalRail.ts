@@ -1,3 +1,4 @@
+import { nativeInstant } from "./nativeInstant.js";
 import type { RenewalExecutionRequest, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
 import type { AutomaticRenewalPolicy } from "./automaticRenewal.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -45,7 +46,7 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
       let externalAttemptRef = typeof op.external_attempt_ref === "string" ? op.external_attempt_ref : null;
       if (externalAttemptRef && !externalAttemptRef.startsWith(prefix)) throw new Error("subscription_sandbox_scenario_conflict");
       if (!externalAttemptRef) {
-        externalAttemptRef = `${prefix}${new Date(now()).toISOString()}`;
+        externalAttemptRef = `${prefix}${nativeInstant(now())}`;
         await executor.query("SELECT public.commerce_acknowledge_subscription_renewal_attempt($1::uuid,$2::text,$3::text,$4::timestamptz)",
           [op.id, op.operation_fingerprint, externalAttemptRef, now()]);
       }
@@ -66,16 +67,18 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
       const op = await operation(input.settlementIntentId);
       if (op.external_attempt_ref !== input.externalAttemptRef || op.order_id !== input.orderId || op.subscription_id !== input.subscriptionId
         || Number(op.amount_minor) !== input.amountMinor || op.currency_code !== input.currency) throw new Error("subscription_sandbox_readback_mismatch");
-      const event = (await executor.query(`SELECT * FROM public.subscription_renewal_outcomes
+      const event = (await executor.query(`SELECT *,
+        to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at,
+        to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
+        FROM public.subscription_renewal_outcomes
         WHERE renewal_operation_id=$1::uuid AND event_key=$2::text`, [op.id, `sandbox-observation:${String(op.id)}`])).rows[0];
       if (event && (event.operation_fingerprint !== op.operation_fingerprint || event.external_ref !== input.externalAttemptRef)) throw new Error("subscription_sandbox_observation_mismatch");
-      const stamp = (value: unknown) => value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
       return { status: event ? event.outcome === "succeeded" ? "succeeded" : "failed" : "unknown",
         disposition: event ? "observed" : "ambiguous", operationId: String(op.id),
         eventKey: event ? String(event.event_key) : `sandbox-observation:${String(op.id)}`,
         requestFingerprint: String(op.operation_fingerprint), verifiedEvidenceRef: event ? `sandbox:${String(event.id)}` : "",
-        externalAttemptRef: input.externalAttemptRef, occurredAt: event ? stamp(event.occurred_at) : null,
-        observedAt: event ? stamp(event.created_at) : now(), firstRecordedAt: event ? stamp(event.created_at) : now(),
+        externalAttemptRef: input.externalAttemptRef, occurredAt: event ? String(event.occurred_at) : null,
+        observedAt: event ? String(event.created_at) : nativeInstant(now()), firstRecordedAt: event ? String(event.created_at) : nativeInstant(now()),
         amountMinor: input.amountMinor, currency: input.currency, reason: event?.outcome === "refused" ? "sandbox_declined" : null };
     },
   };
@@ -86,7 +89,7 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
  * identities and authorization remain the frozen operation's own facts. */
 export function createSandboxRenewalPolicy(methodRef: string): AutomaticRenewalPolicy {
   return {
-    identityKey: due => `subscription:${due.subscriptionId}:cycle:${due.scheduledAt}`,
+    identityKey: due => `subscription:${due.subscriptionId}:cycle:${nativeInstant(due.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`,
     classifyFailure: () => "temporary",
     validateInput(input) {
       if (!input.paymentMethodRef || input.recurringModel !== "sandbox") throw new Error("subscription_sandbox_method_required");

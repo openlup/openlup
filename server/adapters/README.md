@@ -86,6 +86,12 @@ census. No registration or channel business row enters the typed projection;
 empty baseline metadata keeps its original unsupported-empty disposition.
 Unknown or drifted registrations and nonempty channel relations refuse.
 
+The native bundle admin write binding now uses a factory re-export from
+`@openlup/platform/catalog`. The package preserves its per-operation pooled,
+role-free transaction and shared managed/native argument and error translation.
+The reference authorization and response mapper still own the served boundary;
+this relocation is not installation or actor-kind qualification.
+
 ## Restricted PostgreSQL installation binding
 
 The [migration runner binding](postgres/migrationRunner.ts) explicitly selects
@@ -114,6 +120,15 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+Native destination transfer includes commerce_destinations (full immutable postal addresses and contact phone numbers), commerce_destination_bindings (scoped owner/destination references),
+subscription_command_receipts and the support command/audit ledgers. Restore
+parents precede documents/bindings and ledger actors. Owner snapshot authority,
+writer exclusion, unknown-table refusal, PostgreSQL row encoding and cumulative
+row/byte limits remain required. Both address relations have table-specific
+limit and filtered-login witnesses. Reference strings may identify people; use
+opaque values. This retained transfer is not address privacy export or erasure;
+no such path exists yet. The most sensitive stream relation is the address table.
+
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
 [target restore](postgres/connectedStoreRestore.ts) compose one finite native
 profile for explicitly selected qualified PostgreSQL 16 installations with a
@@ -130,6 +145,32 @@ tables, including acquisition-private business data, refuse rather than being
 omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
+
+Native checkout draft receipts are included in this finite profile. Their order
+and client UUIDs are preserved by native restore, so the stored SQL fingerprint
+and response order reference remain consistent without a JavaScript rewrite.
+Creation timestamps retain PostgreSQL microseconds. Idempotency keys,
+fingerprints and response payloads are customer-linked order data: opaque host
+context is carried with the same privacy boundary as the order's quote/draft
+metadata, not scrubbed into nonpersonal telemetry. The existing owner-only
+capture/restore path and row/byte limits apply; no runtime or browser grant is
+added. A fresh-process checkout replay after restore returns the same order.
+The unchanged exact-set guard expects the receipt table even when empty; this
+change does not convert packets from an earlier finite profile.
+
+The purchase-hold draft adds observed current stock, reservation headers/lines
+and purchase command receipts, plus aggregate compensation history and provisional
+activation state, to the fixed capture and ordered restore lists.
+Headers follow their order and renewal-operation parents; lines follow headers.
+Receipts preserve exact PostgreSQL command/result JSON, including arbitrary
+metadata that may contain personal data. Existing whole-packet row/byte bounds,
+owner-only snapshot/restore authority, unknown-table refusal and target-writer
+exclusion still apply; the transfer read covers these six additions. A focused
+real-PostgreSQL witness checks unchanged rows, matching replay after restore,
+changed-input refusal and table-specific bounded capture for activation,
+compensation and command receipts. Restored cancellation replays its original
+answer and preserves released holds. This is local draft evidence, not a
+whole purchase-journey or hosted qualification claim.
 
 Ordinary outbox rows use this pinned owner insertion path while the generic
 compatible-row importer keeps its INSERT-trigger refusal. The exact
@@ -191,6 +232,25 @@ fingerprint, source key, SKU and creation time. It has no address/contact body,
 but free-form keys can identify people; the same limits apply. The remaining
 inventory history requires its finite transfer entries before the joined journey
 is transferable.
+
+The sandbox payment companions `payment_simulator_attempts` and
+`payment_simulator_observations` travel with payment truth, including
+`payment_truth_events.review_required_at`. Restore stages an attempt's state as
+`dispatched` and its observation pointer as null, inserts observations, then
+restores both captured values before the locked transaction's exact final census.
+This satisfies the immediate cyclic references and state CHECK without disabling
+constraints or exposing intermediate state. Inactive attempt history, unresolved
+fences and terminal review facts remain part of the restored store.
+
+These tables contain linkable order/attempt identities, opaque request/event keys,
+fingerprints, timestamps, synthetic method references and synthetic outcomes.
+The bounded writers expose no payer-contact or raw-payload column/argument;
+method facts accept exactly five named keys and sandbox-prefixed references.
+Reference/key strings are not a general personal-data scrubber: the host must not
+embed contact details or secrets in them. Treat these rows as personal data under
+the transfer's existing operator access, retention and erasure responsibilities.
+The existing 10,000-row and 64-MiB transfer ceilings include both tables; capture
+also checks the caller's lower row/byte limits. This adds no transfer budget.
 
 The host supplies the actual migration owner connection, a freshly installed
 inactive target and its pristine capture, and excludes every source and target
@@ -496,8 +556,10 @@ projections of existing canonical SQL, not another migration history.
 The native bundle read store and query statements are implemented by
 `@openlup/platform/catalog`. The former PostgreSQL paths retain named exports;
 runtime callers still supply the executor, with no pool or role-switch change.
-The native write store, pooled transaction/RPC binding and managed adapters remain
-here. Catalog's SQL descriptor projects canonical units 16/19 unchanged; it is not
+The native write store and shared routine marshalling now delegate through
+re-export facades to that same catalog entry. Its pooled transaction lane and
+SQLSTATE errors retain their existing behavior and constructor identity; managed
+transport binding, authorization and response mapping remain here. Catalog's SQL descriptor projects canonical units 16/19 unchanged; it is not
 an installation chain. Real PostgreSQL tests characterize incumbent reads,
 write-routine rollback/replay and grants, without mounted or actor-kind parity.
 

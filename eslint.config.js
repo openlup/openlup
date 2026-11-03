@@ -161,18 +161,18 @@ export const PLATFORM_MODULE_GRAPH = {
   marketing: { contracts: true, values: [], types: [] },
   "marketing/server": { values: ["marketing", "identity/contracts"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] },
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
-  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] },
+  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] },
   invoicing: { contracts: true, values: [], types: [] },
-  fulfillment: { contracts: true, values: [], types: [] },
+  fulfillment: { contracts: true, values: [], types: ["data"] },
   subscriptions: { contracts: true, values: [], types: [] },
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
   pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
-  // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
+  // Bundle factories bind host schemas/admin kit; native reads use the data executor type, writes its transaction lane.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
-  catalog: { contracts: true, values: ["pricing"], types: ["data", "bff", "http"] },
+  catalog: { contracts: true, values: ["pricing", "data"], types: ["bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },
@@ -186,7 +186,7 @@ export const PLATFORM_MODULE_GRAPH = {
   // The generic composer over the other modules' public ports and factories.
   composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: [] },
   inventory: { contracts: true, values: [], types: [] },
-  "account-support": { contracts: true, values: ["commerce", "invoicing", "shipping"], types: ["commerce/contracts", "invoicing/contracts"] },
+  "account-support": { contracts: true, values: ["commerce", "invoicing", "shipping", "data"], types: ["commerce/contracts", "invoicing/contracts"] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";
 

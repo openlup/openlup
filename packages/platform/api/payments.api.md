@@ -941,6 +941,7 @@ export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, Pa
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
 export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
+export type { SandboxPaymentOutcome, SandboxMethodFacts, SandboxPaymentObservation, SandboxPaymentAttempt, SandboxPaymentSimulator, SandboxPaymentSimulatorOptions } from "./sandbox.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -1418,6 +1419,73 @@ export interface PaymentServices {
     run<T>(work: (port: import("./truth.js").PaymentTruthPort) => Promise<T>): Promise<T>;
 }
 ```
+## dist/payments/contracts/sandbox.d.ts
+
+```ts
+import type { PaymentIngressPort } from "./evidence.js";
+import type { PostgresPaymentTruthOptions } from "./truth.js";
+export type SandboxPaymentOutcome = "captured" | "refused" | "expired" | "indeterminate";
+/** Synthetic references only; these confer no real mandate or method-setup capability. */
+export interface SandboxMethodFacts {
+    authorizationRef: string;
+    unattendedChargeAuthorizedAt: string;
+    payerAccountRef: string | null;
+    methodRef: string;
+    methodEvidenceRef: string;
+}
+export interface SandboxPaymentObservation {
+    id: string;
+    eventKey: string;
+    fingerprint: string;
+    outcome: SandboxPaymentOutcome;
+    occurredAt: string;
+    recordedAt: string;
+}
+export interface SandboxPaymentAttempt {
+    id: string;
+    settlementIntentId: string;
+    orderId: string;
+    settlementChannelKey: "sandbox";
+    orderStatus: string;
+    settlementStatus: string;
+    requestKey: string;
+    requestFingerprint: string;
+    active: boolean;
+    state: "dispatched" | SandboxPaymentOutcome;
+    dispatchedAt: string;
+    methodFacts: SandboxMethodFacts;
+    latestObservation: SandboxPaymentObservation | null;
+}
+export interface SandboxPaymentSimulator {
+    /** A fresh row conservatively records dispatch. Replayed rows never authorize redispatch. */
+    beginAttempt(input: {
+        settlementIntentId: string;
+        idempotencyKey: string;
+        requestFingerprint: string;
+        methodFacts?: SandboxMethodFacts;
+        at: string;
+    }): Promise<SandboxPaymentAttempt & {
+        replayed: boolean;
+    }>;
+    /** Host-authorized synthetic source. Recording alone never pays an order. */
+    recordObservation(input: {
+        attemptId: string;
+        idempotencyKey: string;
+        outcome: SandboxPaymentOutcome;
+        occurredAt: string;
+    }): Promise<{
+        id: string;
+        replayed: boolean;
+    }>;
+    readAttempt(input: {
+        settlementIntentId: string;
+        attemptId?: string;
+    }): Promise<SandboxPaymentAttempt | null>;
+    /** Original body identifies { settlementIntentId, attemptId, observationId }; no browser status is accepted. */
+    ingress: PaymentIngressPort;
+}
+export type SandboxPaymentSimulatorOptions = PostgresPaymentTruthOptions;
+```
 ## dist/payments/contracts/truth.d.ts
 
 ```ts
@@ -1470,6 +1538,9 @@ export type PaymentTruthReadback = {
         fingerprint: string;
         state: "open" | "settled";
         outcome: PaymentTruthOutcome;
+        /** Present on the sandbox-attempt forward; state remains open for a terminal review fact. */
+        reviewRequiredAt?: string | null;
+        applicationStatus?: "awaiting_evidence" | "applied" | "review_required";
         replayed: boolean;
     };
     effects: {
@@ -1549,6 +1620,7 @@ export { createCheckoutActivePaymentActionResolver } from "./checkoutActivePayme
 export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPaymentResolver.js";
 export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";
 export { createPaymentServices } from "./bindings.js";
+export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentSimulator.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1681,6 +1753,19 @@ interface PgQueryExecutor {
 }
 /** Direct-PG caller for the provider-neutral payment truth public forward. */
 export declare function createPostgresPaymentTruthPort(executor: PgQueryExecutor, options: PostgresPaymentTruthOptions): PaymentTruthPort;
+export {};
+```
+## dist/payments/postgresSandboxPaymentSimulator.d.ts
+
+```ts
+import type { SandboxPaymentSimulator, SandboxPaymentSimulatorOptions } from "./contracts/sandbox.js";
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Server-only no-key simulator. The host authorizes commands; durable observations are its verifier's source. */
+export declare function createPostgresSandboxPaymentSimulator(db: Executor, options: SandboxPaymentSimulatorOptions): SandboxPaymentSimulator;
 export {};
 ```
 ## dist/payments/preparedAttempt.d.ts

@@ -10393,6 +10393,33 @@ import type { FulfillmentServices, FulfillmentServicesOptions } from './contract
 /** Explicit selection; no environment readers, implicit provider or automatic dispatch. */
 export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;
 ```
+## dist/fulfillment/capturedAdapter.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./contracts/index.js";
+/** Synthetic, host-owned captures only. No command is sent to a provider. */
+export interface CapturedFulfillmentCommand {
+    request: FulfillmentDispatchRequest;
+    outcome: {
+        kind: "accepted";
+        externalRef: string;
+    } | {
+        kind: "not_dispatched";
+    } | {
+        kind: "unknown";
+    };
+}
+/** An offline adapter, selected explicitly; captures are immutable after construction. */
+export declare function createCapturedFulfillmentAdapter(options: {
+    providerRef: string;
+    selected?: boolean;
+    captures: readonly CapturedFulfillmentCommand[];
+}): {
+    capabilities: FulfillmentCapabilityDescriptor;
+    dispatch: FulfillmentDispatchPort;
+    readSubmissionCount(): number;
+};
+```
 ## dist/fulfillment/commerceFulfillmentHandlers.d.ts
 
 ```ts
@@ -12474,6 +12501,7 @@ export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrd
 export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
+export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 

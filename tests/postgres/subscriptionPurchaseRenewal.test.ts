@@ -1,6 +1,7 @@
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsumer.js";
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,7 +19,6 @@ const exec = promisify(execFile);
 const scratch = resolve(".context/scratch/g2/installed");
 const at = "2026-09-01T12:00:00.000Z";
 const now = "2026-09-29T12:01:00.000Z", later = "2026-09-29T12:08:00.000Z";
-const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 let api: typeof import("@openlup/platform/subscriptions");
 let payments: typeof import("@openlup/platform/payments");
 let identity: typeof import("@openlup/platform/identity");
@@ -80,7 +80,7 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await closePostgres(container, [admin, migration, runtime].filter(Boolean)); });
 
-async function purchase(captured = true, declared = true) {
+async function purchase(captured = true, declared = true, paidAt = at) {
   const accounts = identity.createPostgresAccountLinkStore({ connectionString: runtimeUrl });
   let clientId: string;
   try { clientId = (await accounts.createAccount({ email: `${randomUUID()}@example.invalid`, principalId: randomUUID(), acquisitionSource: "fixture", lifecycleStage: "customer" })).id; }
@@ -95,10 +95,9 @@ async function purchase(captured = true, declared = true) {
   const made = await rpc<{ orderDraft: { orderId: string } }>("commerce_create_order_draft_with_outbox", [key, JSON.stringify({ quote }), JSON.stringify(draft), clientId]);
   const orderId = String(made.orderDraft.orderId).replace(/^order_/, "");
   const intent = await rpc<{ settlement: { id: string } }>("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", "{}", at]);
-  const truth = payments.createPostgresPaymentTruthPort(executor, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
-  if (captured) await truth.ingestEvent({ sourceEventId: `purchase:${key}`, idempotencyKey: `truth:${key}`, settlementIntentId: intent.settlement.id,
-    outcome: "captured", amountMinor: 200, currency: "XXX", occurredAt: at, failure: null,
-    evidence: { sourceKind: "accepted_event", sourceReference: `sandbox:${key}`, observedStatus: "captured", observedAt: at, payloadFingerprint: hash(key) } });
+  if (captured) await captureSandboxPurchase(payments.createPostgresSandboxPaymentSimulator(executor,
+    { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" }),
+  { settlementIntentId: intent.settlement.id, key, at: paidAt });
   if (declared) await rpc("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, at]);
   const settled = (await runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
   return { orderId, clientId, capturedReference: settled.external_ref ?? settled.id, idempotencyKey: `activate:${key}` };
@@ -129,6 +128,87 @@ async function deps(subscriptionId: string, scenario: "succeeded" | "declined" |
   expect(due).toBeDefined();
   return { input, due, codec, rail, execute };
 }
+
+it("replays purchase time facts and freezes equivalent instants with one identity spelling", async () => {
+  const p = await purchase(), writer = api.createPostgresPurchaseRenewalWriter(executor);
+  const preciseFacts = { ...facts, unattendedChargeAuthorizedAt: "2026-09-01T12:00:00.123456Z" };
+  await writer.register(p.orderId, preciseFacts);
+  expect(await writer.register(p.orderId, { ...preciseFacts, unattendedChargeAuthorizedAt: "2026-09-01T14:00:00.123456+02:00" }))
+    .toMatchObject({ replayed: true });
+  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...p, facts: preciseFacts });
+  const d = await deps(String(activated.activation.subscriptionId), "succeeded");
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  const spelling = { ...snapshot, scheduledAt: "2026-09-29T14:00:00.000000+02:00",
+    unattendedChargeAuthorizedAt: "2026-09-01T14:00:00.123456+02:00" };
+  expect(d.codec.fingerprint(spelling)).toBe(d.codec.fingerprint(snapshot));
+  expect(d.codec.identity(spelling)).toBe(d.codec.identity(snapshot));
+  expect(d.input.policy.identityKey({ ...d.due, scheduledAt: spelling.scheduledAt })).toBe(d.codec.identity(snapshot));
+  const utc = await runtime.connect(), offset = await runtime.connect();
+  try {
+    await utc.query("SET TimeZone='UTC'"); await offset.query("SET TimeZone='Etc/GMT-9'");
+    const first = await api.activateNativePurchaseWithRenewal(utc, { ...p, facts: preciseFacts });
+    const replay = await api.activateNativePurchaseWithRenewal(offset, { ...p, facts: preciseFacts });
+    expect(replay).toEqual(first);
+    await d.input.store.claimDue({ snapshot, workerId: "canonical-readback", now });
+    const identityKey = d.codec.identity(snapshot);
+    expect(await api.createPostgresRenewalStore(offset, d.codec).readRenewal(identityKey))
+      .toEqual(await api.createPostgresRenewalStore(utc, d.codec).readRenewal(identityKey));
+  } finally {
+    await utc.query("RESET TimeZone"); await offset.query("RESET TimeZone"); utc.release(); offset.release();
+  }
+});
+
+it("renews a sub-millisecond captured purchase without losing the stored cycle or evidence instant", async () => {
+  const paidAt = "2026-09-01T12:00:00.123456Z", scheduledAt = "2026-09-29T12:00:00.123456Z";
+  const p = await purchase(true, true, paidAt);
+  expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  expect((await runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE order_id=$1", [p.orderId])).rows[0].status).toBe("settled");
+  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...p,
+    facts: { ...facts, unattendedChargeAuthorizedAt: paidAt } });
+  expect(activated.renewalAttachment).toBe("complete");
+  const subscriptionId = String(activated.activation.subscriptionId);
+  expect((await runtime.query("SELECT next_cycle_at=$2::timestamptz AS precise FROM public.subscriptions WHERE id=$1", [subscriptionId, scheduledAt])).rows[0].precise).toBe(true);
+  const d = await deps(subscriptionId, "succeeded");
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.scheduledAt).toBe(scheduledAt);
+  expect(snapshot.scheduledInstant).toBe(Date.parse(scheduledAt));
+  expect(snapshot.unattendedChargeAuthorizedAt).toBe(paidAt);
+  expect(d.codec.identity(snapshot)).toBe(d.input.policy.identityKey(d.due));
+  for (const fraction of ["123456", "123999", "999999", "000000"]) {
+    const exact = `2026-09-29T12:00:00.${fraction}Z`;
+    const key = (await runtime.query("SELECT public.subscription_renewal_identity($1::uuid,$2::timestamptz) AS key", [subscriptionId, exact])).rows[0].key;
+    expect(key).toBe(`subscription:${subscriptionId}:cycle:2026-09-29T12:00:00.${fraction.slice(0, 3)}Z`);
+    expect(d.codec.identity({ ...snapshot, scheduledAt: exact })).toBe(key);
+    expect(d.input.policy.identityKey({ ...d.due, scheduledAt: exact })).toBe(key);
+  }
+  expect(d.codec.decode(d.codec.encode(snapshot))).toEqual(snapshot);
+  const observedAt = "2026-09-29T12:01:00.654321Z";
+  const rail = api.createPostgresSandboxRenewalRail(executor, { scenario: "succeeded", now: () => observedAt });
+  const execute = vi.spyOn(rail, "execute"); d.input.paymentRails = { resolve: () => rail };
+  expect(await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now)).toMatchObject({ status: "succeeded" });
+  const op = (await d.input.store.readRenewal(d.codec.identity(snapshot)))!;
+  expect(await d.input.store.buildCycleSnapshots(d.due)).toEqual(snapshot);
+  const evidence = await rail.readOutcome({ externalAttemptRef: op.externalAttemptRef!, settlementIntentId: op.settlementIntentId!,
+    orderId: op.orderId!, subscriptionId, amountMinor: 200, currency: "XXX" });
+  expect(Date.parse(evidence.occurredAt!)).toBe(Date.parse(observedAt));
+  expect((await runtime.query("SELECT occurred_at=$2::timestamptz AS precise FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1 AND event_key=$3",
+    [op.operationId, evidence.occurredAt, evidence.eventKey])).rows[0].precise).toBe(true);
+  expect((await runtime.query("SELECT created_at=$2::timestamptz AND created_at=$3::timestamptz AS precise FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1 AND event_key=$4",
+    [op.operationId, evidence.observedAt, evidence.firstRecordedAt, evidence.eventKey])).rows[0].precise).toBe(true);
+  const effects = async () => (await runtime.query(`SELECT
+    (SELECT count(*)::int FROM public.subscription_renewal_operations WHERE subscription_id=$1) AS operations,
+    (SELECT count(*)::int FROM public.subscription_cycles WHERE subscription_id=$1) AS cycles,
+    (SELECT count(*)::int FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$2) AS outcomes,
+    (SELECT next_cycle_at::text FROM public.subscriptions WHERE id=$1) AS next`, [subscriptionId, op.operationId])).rows[0];
+  const before = await effects(); expect(before).toMatchObject({ operations: 1, cycles: 2 });
+  expect((await runtime.query("SELECT state,claim_token IS NOT NULL AS claimed FROM public.subscription_renewal_operations WHERE id=$1", [op.operationId])).rows[0])
+    .toEqual({ state: "succeeded", claimed: true });
+  expect((await runtime.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [op.cycleId])).rows[0].status).toBe("paid");
+  // The terminal public-run replay repair belongs to the subsequent renewal work.
+  await expect(api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).rejects.toThrow("subscription_renewal_claim_not_due");
+  expect(await effects()).toEqual(before); expect(execute).toHaveBeenCalledTimes(1);
+});
 
 it("repairs a real paid activation gap through the production binding's unswitched runtime login", async () => {
   // The direct cron resolves this binding over DATABASE_URL; it does not use

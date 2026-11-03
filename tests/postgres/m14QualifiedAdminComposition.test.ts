@@ -5,8 +5,8 @@ import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresCont
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
 const modes = [
-  { roleMode: "installer-managed", currentInventory: "49883a2c0356a3a830e628e5bf65959f098132021473dc6b700209c98afe2295", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
-  { roleMode: "operator-provisioned", currentInventory: "f9fc41f424acbf15909ad99e4d22a5558d92f6665f5e71dd75c246534fb0354e", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
+  { roleMode: "installer-managed", currentInventory: "e4a3f5ef652b53ff660a2e6482bf38f6ef52a56ca5b8e6adabdc5e6d8a50c579", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
+  { roleMode: "operator-provisioned", currentInventory: "48ff5cdf496de44fb889bb05c01ab15b7b4f75d85e7e7bae76af169023887f9d", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
 ] as const;
 
 beforeAll(async () => {
@@ -17,7 +17,7 @@ for (const mode of modes) {
   it(`qualifies the restricted issued prefix and current production suffix in ${mode.roleMode} mode`, async () => {
     const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-admin", { roleMode: mode.roleMode });
     const count = 1 + current.forward.length;
-    expect(count).toBe(96);
+    expect(count).toBe(99);
     expect(current.objectInventorySha256).toBe(mode.currentInventory);
     const result = await runQualifiedAdminCompositionProof(mode);
     expect(result).toMatchObject({
@@ -27,5 +27,6 @@ for (const mode of modes) {
       refusalsProved: true,
     });
     console.info(`restricted-bootstrap ${mode.roleMode} ${JSON.stringify(result)}`);
-  }, postgresSetupTimeoutMs);
+  // Solo without coverage: 14.76 s; 45 s gives about three times the measured case.
+  }, 45_000);
 }

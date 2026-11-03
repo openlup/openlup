@@ -19,10 +19,12 @@ import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
+import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./distribution-cli-proof.ts";
 
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
 export const NON_ADAPTER_ENTRIES = [
+  "account-support/read-contracts",
   "channels",
   "channels/contracts",
   "channels/server",
@@ -44,8 +46,11 @@ export const NON_ADAPTER_ENTRIES = [
   "commerce",
   "commerce/contracts",
   "commerce/server",
+  "commerce/server/destinations",
+  "commerce/server/native-checkout",
   "invoicing",
   "invoicing/contracts",
+  "invoicing/postgres",
   "subscriptions",
   "subscriptions/contracts",
   "fulfillment",
@@ -72,6 +77,9 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "account-support/postgres",
+  "commerce/server/postgres",
+  "fulfillment/native",
   "operations/server",
   "risk/server",
   "marketing/server/postgres",
@@ -835,7 +843,7 @@ import {promises as fs} from "node:fs";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
 import * as lifecycle from "@openlup/platform/lifecycle";
-assert.deepEqual(Object.keys(lifecycle).sort(),["AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade"]);
+assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade","verifyApp"]);
 const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
 const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
 const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
@@ -1830,6 +1838,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
       process.exit(0);
     `,connectionString],root,isolatedConsumerEnv()));
     proveApplicationUpgradePostgres(consumer,connectionString,schemaObservation.schemaVersion);
+    proveDistributionCliPostgres(consumer,connectionString);
     proveNativeCommunicationsOperations(consumer,connectionString);
     proveOperationsPostgres(consumer,connectionString);
     provePortabilityPostgres(consumer,connectionString);
@@ -2114,6 +2123,78 @@ export function platformConsumerInstallArgs(packages: string[], sdkPresent = fal
   return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
 }
 
+/** Required dependencies remain explicit inputs even when npm will refuse their platform. */
+export function starterDependencyMatchesPlatform(manifest: { os?: string | string[]; cpu?: string | string[]; libc?: string | string[] }, optional: boolean, target: { os: string; cpu: string; libc?: string }): boolean {
+  return !optional || (["os", "cpu", "libc"] as const).every(key => {
+    if (key === "libc" && target.os !== "linux") return true;
+    const constraint = manifest[key];
+    if (constraint === undefined) return true;
+    const values = typeof constraint === "string" ? [constraint] : constraint;
+    return (values.length === 1 && values[0] === "any") || (!values.includes("!" + target[key]) &&
+      (values.every(value => value.startsWith("!")) || values.includes(target[key] ?? "")));
+  });
+}
+
+/** Starter source/extraction witness in the existing required cold consumer. No browser download. */
+export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap<string, { path: string; sha256: string }>, packInstalled: (name: string) => string): void {
+  const started = performance.now();
+  const starter = join(checkout, "examples/neutral-store");
+  const extracted = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-"));
+  const environment = isolatedConsumerEnv();
+  environment.npm_config_cache = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-cache-"));
+  delete environment.NODE_TEST_CONTEXT;
+  const run = (name: string, args: string[], cwd = extracted) => process.stdout.write(command(name, args, cwd, environment));
+  try {
+    run(process.execPath, ["--experimental-strip-types", "--test"], starter);
+    run(process.execPath, [join(starter, "extract.mjs"), extracted]);
+    assert.equal(command("git", ["rev-parse", "--show-toplevel"], extracted, environment).trim(), realpathSync(extracted));
+    for (let parent = dirname(extracted); ; parent = dirname(parent)) {
+      assert(!lstatSync(join(parent, "node_modules"), { throwIfNoEntry: false }), "Starter ancestor can supply dependencies");
+      if (parent === dirname(parent)) break;
+    }
+    const metadata = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"));
+    assert.equal(metadata.workspaces, undefined);
+    const localPacks: string[] = [];
+    for (const name of ["core", "outbox", "platform"]) {
+      const pack = packs.get("@openlup/" + name);
+      assert(pack, "Starter needs the complete locally packed set");
+      const bytes = readFileSync(pack.path);
+      assert.equal(createHash("sha256").update(bytes).digest("hex"), pack.sha256);
+      const target = join(extracted, "artifacts", "openlup-" + name + ".tgz");
+      writeFileSync(target, bytes);
+      localPacks.push(target);
+    }
+    // Every selected dependency comes from the root's already locked ordinary install.
+    // Supplying its complete installed closure as tarballs avoids registry metadata resolution.
+    const dependencies = new Set<string>();
+    const platform = { os: process.platform, cpu: process.arch, libc: process.platform === "linux"
+      ? ((process.report.getReport() as { header: { glibcVersionRuntime?: string } }).header.glibcVersionRuntime ? "glibc" : "musl") : undefined };
+    const collect = (name: string, optional = false): void => {
+      if (dependencies.has(name) || name.startsWith("@openlup/")) return;
+      const directory = join(checkout, "node_modules", name);
+      assert(lstatSync(directory, { throwIfNoEntry: false })?.isDirectory(), "Missing locked starter dependency: " + name);
+      const dependency = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+      if (!starterDependencyMatchesPlatform(dependency, optional, platform)) return;
+      dependencies.add(name);
+      for (const child of Object.keys(dependency.dependencies ?? {})) collect(child);
+      for (const child of Object.keys(dependency.optionalDependencies ?? {})) {
+        if (lstatSync(join(checkout, "node_modules", child), { throwIfNoEntry: false })) collect(child, true);
+      }
+    };
+    for (const name of [...Object.keys(metadata.dependencies), ...Object.keys(metadata.devDependencies), "zod"]) collect(name);
+    localPacks.push(...[...dependencies].sort().map(packInstalled));
+    run("npm", ["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--fund=false", "--no-save", ...localPacks]);
+    assertInstalledPackages(extracted, ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
+    run("npm", ["test"]);
+    run("npm", ["run", "typecheck"]);
+    run("npm", ["run", "build"]);
+    console.log("Neutral starter required cold-consumer addition PASS: " + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
+  } finally {
+    rmSync(extracted, { recursive: true, force: true });
+    rmSync(environment.npm_config_cache, { recursive: true, force: true });
+  }
+}
+
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
@@ -2154,6 +2235,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
       const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
       return join(artifacts, info.filename);
     };
+    proveNeutralStarterConsumer(checkout, packs, packInstalled);
     install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
     assertConsumerIsolation(consumer, checkout);
     const entries = assertExportInventory(consumer);
@@ -2299,6 +2381,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveOperationsConsumer(consumer);
     provePortabilityConsumer(consumer);
     proveLifecycleConsumer(consumer);
+    proveDistributionCliConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
@@ -2315,6 +2398,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveSelfServiceConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
+    proveG10FulfillmentConsumer(consumer);
     installPartnerAcquisitionHostBinding(consumer, checkout);
     provePartnerAcquisitionBindingConsumer(consumer);
     installA1HostBinding(consumer, checkout);
@@ -2516,4 +2600,51 @@ void [handled, slot, trusted, untrusted, missingActor, contribution];
     strict: true, skipLibCheck: true, noEmit: true, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")],
   }, files: [file] }));
   process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+}
+
+/** G10: offline captured dispatch and explicit native preparation from installed bytes. */
+export function proveG10FulfillmentConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createFulfillmentContribution } from "@openlup/platform/composition";
+import { createCapturedFulfillmentAdapter, runFulfillmentAdapterConformance, createNativeUnsupportedFulfillmentPorts, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
+import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
+assert(import.meta.resolve("@openlup/platform/fulfillment/native").startsWith(new URL("./node_modules/",import.meta.url).href));
+const request = { requestKey:"legacy-request-a",fulfillmentRef:"fulfillment-a",orderRef:"order-a",orderNumber:null,parcelRef:null,
+  contactRevision:{schemaVersion:1,source:"contact",revision:1},
+  recipient:{name:null,email:null,phone:null,line1:"Synthetic 1",line2:null,city:"Example",postalCode:"00000",country:"XX",deliveryInstructions:null,courierInstructions:null},
+  lines:[{skuRef:"sku-a",title:null,quantity:1,productRef:null,packRef:null}],
+  selection:{providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null}};
+const captures=[{request,outcome:{kind:"accepted",externalRef:"captured-external"}}];
+const off=createCapturedFulfillmentAdapter({providerRef:"warehouse-a",captures});
+assert.equal((await off.dispatch.prepare(request)).refusal.reason,"disabled");
+const adapter=createCapturedFulfillmentAdapter({providerRef:"warehouse-a",selected:true,captures});
+const fingerprint="16d2b4609da4b2dc83f3bd7668aecad400a7dd0436ac3bf7099f81ba804e3bad";
+const evidence={commandFingerprint:fingerprint,contactRevision:request.contactRevision,providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a"};
+const acceptance={kind:"accepted",externalRef:"captured-external",evidence,providerAttemptKey:"captured-attempt:"+fingerprint,labelKey:"captured-receipt:"+fingerprint};
+const proof=await runFulfillmentAdapterConformance([{subjectId:"captured-installed",adapter,readIoCount:adapter.readSubmissionCount,sensitiveValues:["Synthetic 1"],fixtures:{dispatch:[
+  {input:request,expectedPrepare:{kind:"prepared",evidence},expectedDispatch:acceptance,replay:true},
+  {input:{...request,lines:[]},expectedPrepare:{kind:"refused",refusal:{reason:"not_dispatchable",phase:"prepare",retryable:false}}}
+]}}]);
+assert.equal(proof.subjects.length,1);assert.equal(adapter.readSubmissionCount(),1);
+const calls=[];
+const db={query:async(sql,values)=>{calls.push([sql,values]);return {rows:sql.includes("SELECT id, order_id")?[{id:request.fulfillmentRef,order_id:request.orderRef}]:[]};}};
+const options={transactions:{run:async work=>work(db),close:async()=>{}},preparation:{readAuthoritative:async()=>({candidate:request,withheld:false})},
+  services:{selection:request.selection,capability:adapter.capabilities,provider:adapter.dispatch,readiness:async()=>({ready:true}),listCandidates:async()=>[],
+    keys:{request:value=>value.requestKey,mappedAttempt:key=>key,acceptance:ref=>({providerAttemptKey:"attempt:"+ref,labelKey:"receipt:"+ref})},config:{mode:"stage",batchLimit:1}},
+  version:"fixture",requiredSchema:{version:"fixture",migration:"fixture",objects:[]}};
+const disabled=createNativeFulfillmentBinding(options);
+assert.equal((await disabled.prepare(request.fulfillmentRef)).refusal.reason,"disabled");assert.equal(calls.length,0);
+const binding=createNativeFulfillmentBinding({...options,enabled:true});
+assert.deepEqual(await binding.prepare(request.fulfillmentRef),{disposition:"ready",contactRevision:1});
+assert(calls[0][0].includes("pg_advisory_xact_lock"));assert(calls[1][0].includes("FOR UPDATE"));assert(calls[2][0].includes("INSERT INTO public.fulfillment_dispatch_contexts"));
+assert.deepEqual(JSON.parse(calls[2][1][1]),request.contactRevision);
+assert(!("contributions" in binding));
+const contribution=createFulfillmentContribution({version:binding.version,requiredSchema:binding.requiredSchema,fulfillment:{dispatch:binding.dispatch},handlers:[],schedules:[],routes:[]});
+assert.deepEqual(contribution.contributions[0].schedules,[]);
+assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],binding.services.runDispatch);
+const unsupported=createNativeUnsupportedFulfillmentPorts();
+assert.equal(await unsupported.listCommerceFulfillmentOrders({page:1,pageSize:25}),FULFILLMENT_NATIVE_UNSUPPORTED);
+assert.equal(await unsupported.getCommerceFulfillmentOrderDetail({orderId:"order-a"}),FULFILLMENT_NATIVE_UNSUPPORTED);
+`);
 }

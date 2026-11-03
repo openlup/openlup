@@ -795,6 +795,16 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Native OMS and returns PostgreSQL adapters belong to the `commerce/server`
+module; it admits the public `data` entry as types and the pure
+`pricing/contracts` entry as values. The native customer-support journey adapter
+and portable read codecs belong to `account-support`, whose public `data` edge
+is a value dependency. These permissions apply to the enclosing modules, so the
+codec directory has no separate empty-edge graph row. Its browser bundle witness
+permits inputs only from `src/account-support/read-contracts/` and the `zod`
+package; a data, server or Node dependency must not enter that bundle. The
+existing type-only `account-support/contracts` boundary remains separate.
+
 Risk's browser module has no server edge. `risk/server` consumes risk contracts as types
 and the public pure commerce money projection; its data executor dependency
 is type-only through the public data entry. The type-only `risk/contracts`
@@ -865,8 +875,9 @@ Inventory remains a non-adapter entry with no catalog import; its bundle-stock s
 Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its data/http/bff inputs remain type-only: the native read
-store takes the data entry's executor without constructing a driver or pool.
+entry. Its http/bff inputs remain type-only. The native read store takes the data
+entry's executor without constructing a driver or pool; the native writer uses
+data's role-free pooled transaction lane at runtime.
 The physical-table availability projection also lives at commerce/server over a
 structural query client and a required host provider predicate. Its pure ladder
 is browser-safe commerce; SDK narrowing stays in the reference adapter. The
@@ -876,15 +887,17 @@ composition passes its selected port through unchanged; PostgreSQL binds the
 native ATP reader when the host supplies `stockSourceKey`. Private preview
 transport remains host-owned.
 
-Effective bundle selection alone adds the pricing value edge described above;
+Effective bundle selection adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose
 plain bundle DTO types. Catalog server is now an adapter because its declarations
 reach optional pg types; runtime import and executor reads still work without
-peers. Contracts remains a non-adapter. The native writer, pooled transaction
-binding and transport remain reference-owned; sparse SQL projections add no
+peers. Contracts remains a non-adapter. Catalog owns the native writer, pooled
+transaction binding, shared RPC marshalling and error constructors. Host
+authorization, response mapping and managed transport remain reference-owned;
+sparse SQL projections add no
 installation chain or migration.
 
 The experimental promotions module has value edges to pricing through
@@ -1567,6 +1580,22 @@ conflicts. Evidence handlers retain GET/authorization/validation/read order with
 injected parsers/responders and safe product authorization/read refusal details;
 they expose no resolving mutation.
 
+The offline `createCapturedFulfillmentAdapter` factory at
+`@openlup/platform/fulfillment` selects only explicitly supplied synthetic command
+captures. It is default-off, fingerprints canonical command JSON (object keys in
+code-unit order, array order preserved), refuses an uncaptured or changed command,
+and requires exact prepared evidence before returning its configured accepted,
+refused or unknown outcome. In-memory submission cardinality does not increase on
+replay, including an unknown outcome. Captures are fixed at construction and are
+not a durable provider ledger. The factory performs no network or database I/O;
+an accepted capture proves no physical dispatch or arrival. Its receipt key is
+an acceptance identifier, not a generated parcel label. Label operations,
+observation verification, readback, stock/product sync, cancellation and pickups
+are not exposed. Hosts can separately exercise existing native shipment-spine
+label/tracking recording with synthetic evidence; this adapter adds no provider
+qualification. Native commerce list/detail and the other existing unsupported
+ports retain their `host_binding_required` refusals.
+
 The [conformance runner](../../packages/platform/src/fulfillment/adapterConformance.ts)
 accepts readonly FulfillmentAdapterConformanceSubject[] and returns sanitized
 FulfillmentAdapterConformanceEvidence containing subject/provider references and
@@ -1666,6 +1695,11 @@ has an explicit fulfillment slot with no default binder.
 Native dispatch uses host-supplied contact preparation and candidate data.
 The [reference binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 uses one transaction lane and selected store/provider/readiness observer.
+The experimental `@openlup/platform/fulfillment/native` entry also exposes
+`createNativeFulfillmentBinding` for installed hosts. Its implementation
+preserves the reference binding's transaction and refusal semantics; the host
+still owns the transaction lane, authoritative reader and authorized edit callback.
+The entry mounts no route or schedule and provisions no SQL or privileges.
 It acquires the native dispatch advisory lock, then locks the shipment row before
 reading authoritative data. Its edit callback requires actor and idempotency
 attribution; the host owns authorization and replay receipts. Source edits and
@@ -1681,6 +1715,13 @@ share a dispatch lock; direct submission supersedes only pristine, never-claimed
 queued commands, while effect-bearing history refuses it. ACK records native
 `dispatch` evidence, fencing cancellation without asserting an owned label or
 physical packing.
+The package return contains `services`, `version`, `requiredSchema`, nullable
+`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
+`dispatch` is null when the transaction lane or authoritative reader is absent.
+The host passes the returned version/schema and `{ dispatch: binding.dispatch }` to
+`createFulfillmentContribution` from `@openlup/platform/composition`, with empty
+handlers, schedules and routes. The reference host facade keeps its prior result
+shape and delegates services and methods to the package binding.
 
 The native stores implement G14 mapped-attempt persistence, G15 coverage-gap
 cursors, G16 injected timed inventory-line reads with native reservation reads,
@@ -1745,7 +1786,10 @@ and the flat SQL fields, with no `_host` metadata. Its fingerprint is lowercase
 UTF-8 SHA-256 over JSON with object keys sorted by JavaScript string order and
 array order retained, excluding only the fingerprint field. The revision owns
 these bytes; existing database snapshots always take precedence over current
-terms and decode without host closure state.
+terms and decode without host closure state. Schedule and authorization identity
+fields use UTC ISO strings with six fraction digits. The SQL millisecond cycle
+key truncates the fraction to three digits without rounding; it is a label,
+while row lookup and comparison retain the full microsecond instant.
 
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` are explicit,
 no-key simulation, with `succeeded`, `declined` and `ambiguous` scenarios. They
@@ -2048,6 +2092,16 @@ precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 ## Invoicing contracts
+
+The optional `@openlup/platform/invoicing/postgres` composition supplies a captured
+sandbox provider and native owned invoice history/tickets. Its append-only
+artifact observations retain repeat-safe full-identity receipts and explicitly
+non-fiscal PDF bytes; no real fiscal provider or clearance is supplied. History
+uses the authenticated principal/order join and preserves signed correction
+lineage and stored currency. The host retains authentication, seller/money
+selection, scheduling and routes; managed adapters are unchanged. See
+[captured native invoices](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for the exact selection and refusal boundaries.
 
 `createInvoiceServices` and `createInvoiceContribution` are exported through
 `@openlup/platform/invoicing`. Explicit provider selection and host readiness
@@ -2534,6 +2588,101 @@ limited to `legacy-fresh-bootstrap-role-prerequisites` and
 readiness decision. The [data owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
 defines the legacy prerequisites and actual PostgreSQL refusal evidence.
 
+### Application command-line tooling
+
+The tool-only Node executable
+[`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside
+`@openlup/platform`. It is separate from imported engine entries and adds no
+package, host bundle or dependency installer. Use the executable from your exact
+installed package set; a source candidate does not establish availability in an
+older release. `openlup --help` gives the installed syntax.
+
+For a local npm installation, run `npm exec --no -- openlup --help` from the
+application root. The examples and report rechecks below use the bin name, as
+inside an npm script; use that same npm prefix in an ordinary shell. `--no`
+prevents fetching an unrelated package when the local executable is absent.
+
+```sh
+openlup upgrade plan --root ./my-app --from ./previous.json --to ./candidate.json --schema-version 53 --json
+# State-changing: exclusive access to my-app is required.
+openlup upgrade apply --root ./my-app --from ./previous.json --to ./candidate.json --schema-version 53 --json
+```
+
+Each JSON input is an `AppVersionSnapshot`, with `version`, an inclusive
+`schema: { min, max }` ordinal range, and `files`, a map of relative paths to exact
+UTF-8 content. The ordinal above is illustrative: observe your database's actual
+applied chain before supplying it. These inputs describe application files,
+including dependency declarations when explicitly managed; they are not tarball
+paths. `openlup` neither installs dependencies nor runs migrations. Acquire and
+verify release artifacts through the existing package/provenance route.
+
+Plan reports `application-owned` for every unlisted path, `locally-customizable`
+for unchanged upstream paths, and `upgrade-managed` for paths changed between the
+explicit snapshots. The existing lifecycle rules above govern every write.
+Apply re-inspects the whole tree and refuses conflicts before its first write.
+Keep the same snapshots when recovering an interrupted run; exact completed bytes
+become `already-applied`. Reconcile divergent files explicitly and repeat plan.
+Do not start the application while the file set is partially upgraded.
+
+`openlup verify` is the composed application's single diagnosis command:
+
+```sh
+openlup verify
+openlup verify --app ./application-observations.mjs
+openlup verify --app ./application-observations.mjs --json
+```
+
+With no `--app`, it returns `unknown` and loads no application code. The explicit
+module must export `createVerificationInput()`, returning the existing
+[`ReadinessInput`](../../packages/core/src/readiness/contracts.ts) from the
+application's actual composition. Reuse its selected contributions, complete
+loaded package inventory, binding objects/callable identities, event vocabulary,
+owned exemptions and bounded read-only schema observer. Do not build a second
+module catalogue or mark a declared name as a bound adapter. Binding keys retain
+the existing `package/module:port-or-job` identity (or `package:subject` when no
+module is selected). A trigger observation must reference the actual `run`
+function and match the declared cadence.
+
+The application owns this module. Importing it explicitly trusts its code; the
+CLI provides no sandbox. The module must not write stdout. It must assemble
+observations without booting a server,
+registering timers, replaying migrations or sending effects. Its schema observer
+must use read-only credentials/operations, return the observed database and
+migration identity, and close resources it opens within each observation. The
+CLI neither discovers application modules nor reads a `.env` file implicitly.
+Candidate identities must be sanitized identifiers, never credentials or URLs
+containing credentials.
+
+[`verifyApp`](../../packages/platform/src/lifecycle/appVerification.ts), exported
+through `./lifecycle`, calls the existing `checkReadiness` evaluator. It invokes
+only that supplied schema observer, never an adapter operation, handler, route or
+schedule. Each finding includes observed state, cause, fix, recheck and separate
+declared/bound/checked/unknown evidence. A missing port names the exact binding
+key; an unwired schedule names its actual callable/cadence relationship; a schema
+mismatch names the existing migration requirement. Fix composition in application
+source or apply the appropriate migration through its owner, then rerun the same
+command. Probe failure or wrong database identity stays `unknown`; catalog
+presence does not establish SQL behavior, authorization or provider delivery.
+`ready` means the supplied readiness observations agree, with those limits.
+
+Text and JSON share the same findings. JSON is one stdout object with
+`formatVersion: 1`, `command`, `state` and `exitCode`; diagnosis adds its boundary
+and findings, upgrade adds its plan/applied paths or conflicts. Exit codes are
+`0` for satisfied/completed, `1` for unsatisfied/conflict, `2` for unknown, `64`
+for invalid invocation/JSON and `74` for operation or application-loading failure.
+Raw application exceptions are withheld. An I/O failure during apply may follow
+completed writes; rerun the identical snapshots under exclusive access.
+
+The [diagnosis witnesses](../../packages/platform/test/lifecycle/appVerification.test.ts)
+and [installed CLI witness](../../scripts/packages/distribution-cli-proof.ts)
+exercise the three repair reports, read-only effect boundary, exit codes,
+ownership, conflict refusal and interruption/resume. The CLI witness acquires integrity-pinned published `0.35.0` and `0.36.0`
+platform archives before running the command. Its application executes each
+version's public lifecycle entry, refuses a divergent touched file before writes,
+stops after a real replacement and resumes without changing local theme/policy.
+The fixture harness prepares dependencies; the upgrade command never installs
+them. Registry unavailability or an integrity mismatch fails the proof.
+
 ## Existing-store transfer and recovery
 
 The finite connected profile includes subscription retry obligations and receipts,
@@ -2789,3 +2938,20 @@ commercial decisions and outbound publication remain excluded. Portable source
 capture/read/CAS and named physical refusal are distinct from managed full
 normalized ingest. No installed export implies a mounted handler or an enabled
 job, simulator or provider.
+
+## Own-stack integration sample
+
+The [own-stack catalog example](../../examples/own-stack/README.md) adds draft
+authoring to a small application with its own Node HTTP routes and local
+operator-session verifier. It composes the released catalog handler/store and
+PostgreSQL data gateway through public exports; no starter is involved. The
+application supplies its verified operator ID without email inference. Copy the
+private, non-workspace example outside the monorepo and install its pinned
+registry packages. Its HTTP/real-PostgreSQL witness checks a durable write,
+conflict refusal and receipt replay. Runtime credentials and the local token stay
+in a gitignored JSON configuration file outside the platform checkout, without
+being passed as command-line values. The runner consumes that file on standard
+input; the witness reads it from the application directory. A complete portable
+catalogue and restricted
+runtime login are explicit prerequisites; the local session and witness establish
+no hosted-authentication or production qualification.

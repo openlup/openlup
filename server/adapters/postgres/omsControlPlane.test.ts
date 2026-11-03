@@ -20,20 +20,23 @@ describe("Postgres OMS control-plane adapter", () => {
     await expect(port.getOrderDetail({ view: "control_plane_v1", orderId: orderRow().id }))
       .resolves.toMatchObject({ holds: [{ reason: "risk_review" }], operations: [{ action: "hold_created" }] });
     expect(query.mock.calls.map(([sql]) => sql).join("\n")).not.toMatch(/customer|address|payment_attempt|provider_/i);
-    // Bundle parity: the managed queue RPC hides withdrawn checkout rows in
-    // scoped_orders (20260903190000). Both the list AND the count query here
-    // must carry the same predicate, or control_plane_v1 answers with different
-    // rows and a different totalCount depending on which bundle serves it.
-    // Only the two listOrders queries - getOrderDetail reads one order by id and
-    // correctly carries no visibility scope.
+    // Both list queries must use the native fail-closed money facts.
+    // Detail deliberately remains an unscoped read by id.
     const listSql = query.mock.calls.map(([sql]) => String(sql))
       .filter((sql) => /\$1::text IS NULL OR orders\.status = \$1/.test(sql));
     expect(listSql.length).toBeGreaterThanOrEqual(2);
     for (const sql of listSql) {
       expect(sql).toMatch(/supersededByStableJourneyKey/);
       expect(sql).toMatch(/checkout_journey_consumed/);
-      // Fails closed: a captured payment keeps the row visible.
-      expect(sql).toMatch(/partially_refunded/);
+      expect(sql).toContain("orders.renewal_operation_id IS NULL");
+      // Settled or possibly captured money keeps the row visible.
+      expect(sql).toMatch(/commerce_settlement_intents intent/);
+      expect(sql).toMatch(/intent\.order_id = orders\.id/);
+      expect(sql).toMatch(/intent\.status = 'settled'/);
+      expect(sql).toMatch(/payment_truth_events event/);
+      expect(sql).toMatch(/intent\.id = event\.settlement_intent_id/);
+      expect(sql).toMatch(/event\.outcome IN \('captured', 'indeterminate'\)/);
+      expect(sql).not.toContain('commerce_payments');
     }
   });
 

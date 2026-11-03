@@ -158,8 +158,8 @@ it("renews projected managed terms without a method row after connected restore 
           externalAttemptRef: "retained-host-attempt", occurredAt: now, observedAt: now, firstRecordedAt: now, amountMinor: 200, currency: "XXX", reason: null }) }) },
       policy: renewal.createSandboxRenewalPolicy("retained-method"), failureHandoff: { handoffFailure: async () => { throw new Error("unexpected_failure"); } }, workerId: "retained-health" }, due, now);
     expect(result.status).toBe("succeeded"); expect(execute).toHaveBeenCalledTimes(1);
-    expect((await runtime.query("SELECT status,next_cycle_at::text FROM public.subscriptions WHERE id=$1", [subscription])).rows)
-      .toEqual([{ status: "active", next_cycle_at: "2026-10-27 12:00:00+00" }]);
+    expect((await runtime.query(`SELECT status,to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS next_cycle_at FROM public.subscriptions WHERE id=$1`, [subscription])).rows)
+      .toEqual([{ status: "active", next_cycle_at: "2026-10-27T12:00:00.000000Z" }]);
     expect((await runtime.query("SELECT * FROM public.subscription_method_states WHERE subscription_id=$1", [subscription])).rows).toEqual([]);
   } finally {
     await Promise.all(pools.map(db => db.end()));

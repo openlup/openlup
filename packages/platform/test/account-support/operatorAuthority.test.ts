@@ -66,3 +66,14 @@ it("managed recovery sends Web Crypto hashes and a fresh opaque token to the aut
   await port.issueRecovery(input);
   expect(rpc.mock.calls[1]![1]).not.toHaveProperty("p_token_hash", args.p_token_hash);
 });
+
+it("names the partial native outcome and refuses malformed scope without widening managed decoding", () => {
+  const partial = { outcome: "applied_from_next_parcel", subscriptionStatus: "active", nextCycleAt: null,
+    templateVersion: 2, eventId: "event", appliedBy: null, appliesFrom: "next_parcel",
+    futureDestinationId: "destination", replayed: false };
+  expect(nativeSubscriptionCommand(partial)).toEqual(partial);
+  expect(() => subscriptionCommand(partial)).toThrow("response_invalid");
+  for (const change of [{ appliesFrom: "current_parcel" }, { futureDestinationId: "" }, { replayed: undefined }]) {
+    expect(() => nativeSubscriptionCommand({ ...partial, ...change })).toThrow("response_invalid");
+  }
+});

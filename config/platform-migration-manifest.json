@@ -366,15 +366,27 @@
       "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
     },
     {
+      "file": "db/platform/migrations/20261101222000_sandbox_payment_attempts.sql",
+      "sha256": "7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29"
+    },
+    {
       "file": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
       "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34"
+    },
+    {
+      "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+      "sha256": "86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c"
+    },
+    {
+      "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+      "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6"
     },
     {
       "file": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
       "sha256": "a26bbf0cce449b231931ede0906bc117ded4f2b8838e1904642b7261ebdc8a63"
     }
   ],
-  "objectInventorySha256": "ddeb608984636056076576bbd5c1eedb7d612e09f1b9073910e425c6078daeae",
+  "objectInventorySha256": "9fe1bd58503d7d40bb76ceabbdc4209d3e539485bb1dcd26b6359acd2f0e693d",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -420,10 +432,6 @@
       {
         "file": "db/platform/migrations/20260810180000_payment_settlement_rail.sql",
         "sha256": "af153aadedc09c07b25f69300d335d8928526cad126646c1b9bf25341f1c2d0e"
-      },
-      {
-        "file": "db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql",
-        "sha256": "fc34acc762a8650d7b707aa7f81e4ceef97324991854fec6a795c9e222ee43a5"
       },
       {
         "file": "db/platform/migrations/20260810204057_customer_identity_read.sql",
@@ -528,10 +536,6 @@
       {
         "file": "db/platform/migrations/20260816100000_order_review_capability.sql",
         "sha256": "82a9f2d9c1de7eb95ccd9214cc52eef854ebadfd1f848a2d00e1008e3b090de4"
-      },
-      {
-        "file": "db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql",
-        "sha256": "a70d598f6c5f1d5e82381a37949159726868db79701fa531cf76e40b0ace31cb"
       },
       {
         "file": "db/platform/migrations/20260817100000_oms_control_plane_operator_bridge.sql",
@@ -730,6 +734,46 @@
         "sha256": "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508"
       },
       {
+        "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
+        "sha256": "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf"
+      },
+      {
+        "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
+        "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
+      },
+      {
+        "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
+        "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
+      },
+      {
+        "file": "db/platform/migrations/20261101222000_sandbox_payment_attempts.sql",
+        "sha256": "7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29"
+      },
+      {
+        "file": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
+        "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34"
+      },
+      {
+        "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+        "sha256": "86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c"
+      },
+      {
+        "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+        "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6"
+      },
+      {
+        "file": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
+        "sha256": "a26bbf0cce449b231931ede0906bc117ded4f2b8838e1904642b7261ebdc8a63"
+      },
+      {
+        "file": "db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql",
+        "sha256": "fc34acc762a8650d7b707aa7f81e4ceef97324991854fec6a795c9e222ee43a5"
+      },
+      {
+        "file": "db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql",
+        "sha256": "a70d598f6c5f1d5e82381a37949159726868db79701fa531cf76e40b0ace31cb"
+      },
+      {
         "file": "db/platform/migrations/q2_20261026130000_runtime_capabilities.sql",
         "sha256": "96879ff19e14771704dbad14a016bccdc8dbb50518717342c1ebdc4e8afcfbcb"
       },
@@ -744,34 +788,14 @@
       {
         "file": "db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
         "sha256": "33b0bc85b0c0fe55b2beb08fb121e4fdc891f14f9e1ab276563ffa72a88bb7d3"
-      },
-      {
-        "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
-        "sha256": "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf"
-      },
-      {
-        "file": "db/platform/migrations/20261030121000_channel_retained_basis.sql",
-        "sha256": "fcb9197f9a52eca3f7197669cb4ee615551654039a9394d22af80e53d61f33cf"
-      },
-      {
-        "file": "db/platform/migrations/20261030122000_channel_purchased_source.sql",
-        "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
-      },
-      {
-        "file": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
-        "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34"
-      },
-      {
-        "file": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
-        "sha256": "a26bbf0cce449b231931ede0906bc117ded4f2b8838e1904642b7261ebdc8a63"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "fa01fb224f80816f0cf417a1ba4009b4b787d2b5fc1fe16fb11cfdc0b4fe93cd"
+        "withRestore": "4fe0c05097d3b96136eb916cc70c9d7b640cc41ac2a4f9cd5b566f1b8d692314"
       },
       "separateMigrator": {
-        "withRestore": "7beb13019362398921baa5c83bf0abee3f4454a325e4dce872ddc625504944ad"
+        "withRestore": "c3aaa8787575a8d12a86d85ceef50306a0668722987a1df351d2e1885fb2cf81"
       }
     }
   },
@@ -822,10 +846,6 @@
         "sha256": "af153aadedc09c07b25f69300d335d8928526cad126646c1b9bf25341f1c2d0e"
       },
       {
-        "file": "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
-        "sha256": "3290eaabbc0c7ec946c837d42023e2534abfea71ad09369ac4ee06ed1c18503e"
-      },
-      {
         "file": "db/platform/migrations/20260810204057_customer_identity_read.sql",
         "sha256": "1aa626c0187a4ed9d08f152540e0d17c68cd678d2caf3e896ac444b5a38aafe3"
       },
@@ -928,10 +948,6 @@
       {
         "file": "db/platform/migrations/20260816100000_order_review_capability.sql",
         "sha256": "82a9f2d9c1de7eb95ccd9214cc52eef854ebadfd1f848a2d00e1008e3b090de4"
-      },
-      {
-        "file": "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
-        "sha256": "e7ea29581b2c960c217b6a13d7474f13c7ea98a735339a264607ceecc0d351f2"
       },
       {
         "file": "db/platform/migrations/20260817100000_oms_control_plane_operator_bridge.sql",
@@ -1130,18 +1146,6 @@
         "sha256": "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508"
       },
       {
-        "file": "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
-        "sha256": "04bb75899f7850f997c79474194d63bd22dfdd20ce8ab88c0aaff6409712a56b"
-      },
-      {
-        "file": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
-        "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
-      },
-      {
-        "file": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
-        "sha256": "ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e"
-      },
-      {
         "file": "db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql",
         "sha256": "1c5f00eb9481bc8ffa3bae3527c08ffa2ae7eacff3b05932c116930690d575bf"
       },
@@ -1154,17 +1158,49 @@
         "sha256": "4dfe2fe885a047b3a56026ef85db43f89042a3e7e336d656cf4ed5931438ffe2"
       },
       {
+        "file": "db/platform/migrations/20261101222000_sandbox_payment_attempts.sql",
+        "sha256": "7cbe956e51c16eb2f88ca0430e60a5a3bb9b67e4ebee10f9463723e776852b29"
+      },
+      {
         "file": "db/platform/migrations/20261101223000_subscription_purchase_renewal.sql",
         "sha256": "2105ad7893148dfe5556bdc5eb605df8d42bf679ac127bb789bcf3c42863fc34"
       },
       {
+        "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+        "sha256": "86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c"
+      },
+      {
+        "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+        "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6"
+      },
+      {
         "file": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
         "sha256": "a26bbf0cce449b231931ede0906bc117ded4f2b8838e1904642b7261ebdc8a63"
+      },
+      {
+        "file": "db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql",
+        "sha256": "ec05d0e86a570724fad21916a6fd06976a5e32ae0d0323b1ff902f69c2ae189e"
+      },
+      {
+        "file": "db/platform/migrations/qb_20260810180001_self_host_actor_auth.sql",
+        "sha256": "3290eaabbc0c7ec946c837d42023e2534abfea71ad09369ac4ee06ed1c18503e"
+      },
+      {
+        "file": "db/platform/migrations/qb_20260816140000_acquisition_case_foundation.sql",
+        "sha256": "e7ea29581b2c960c217b6a13d7474f13c7ea98a735339a264607ceecc0d351f2"
+      },
+      {
+        "file": "db/platform/migrations/qb_20261026130000_runtime_capabilities.sql",
+        "sha256": "04bb75899f7850f997c79474194d63bd22dfdd20ce8ab88c0aaff6409712a56b"
+      },
+      {
+        "file": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+        "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "49883a2c0356a3a830e628e5bf65959f098132021473dc6b700209c98afe2295",
-      "operatorProvisioned": "f9fc41f424acbf15909ad99e4d22a5558d92f6665f5e71dd75c246534fb0354e"
+      "installerManaged": "e4a3f5ef652b53ff660a2e6482bf38f6ef52a56ca5b8e6adabdc5e6d8a50c579",
+      "operatorProvisioned": "48ff5cdf496de44fb889bb05c01ab15b7b4f75d85e7e7bae76af169023887f9d"
     }
   }
 }

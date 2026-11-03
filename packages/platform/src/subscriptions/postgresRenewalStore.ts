@@ -21,7 +21,8 @@ export const subscriptionCorrelationSql = `o.subscription_cycle_id AS activation
 export const subscriptionCorrelationJoin = `LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id
  LEFT JOIN public.commerce_orders o ON o.id=a.order_id
  LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id`;
-const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,s.next_cycle_at::text AS scheduled_at,t.*,
+const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,t.*,
+ to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
  ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_facts(s.id) AS purchase_facts,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,
  'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l
@@ -48,7 +49,8 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     transactions: { graph: "native", prepare: "cycle_order_items_settlement_reservation_attempt",
       outcome: "settlement_outcome_schedule_counter_reservation", recovery: "settlement_cycle_receipt_case_counter" },
     async listDue(limit, asOf) {
-      const result = await executor.query(`SELECT due.*,due.scheduled_at::text AS scheduled_at,${subscriptionCorrelationSql}
+      const result = await executor.query(`SELECT due.*,to_char(due.scheduled_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,
+        to_char(due.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,${subscriptionCorrelationSql}
         FROM public.subscription_list_due_renewals($1::timestamptz,$2::integer) due
         JOIN public.subscriptions s ON s.id=due.subscription_id ${subscriptionCorrelationJoin}`, [asOf, limit]);
       return result.rows.map(row => codec.due(row));
@@ -61,8 +63,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     async readMandateEvidence(input) {
       const row = await header(input);
       return { authorized: row.health_state == null || row.health_state === "healthy", authorizationRef: String(row.authorization_ref),
-        authorizedAt: row.unattended_charge_authorized_at instanceof Date
-          ? row.unattended_charge_authorized_at.toISOString() : String(row.unattended_charge_authorized_at) };
+        authorizedAt: String(row.unattended_charge_authorized_at) };
     },
     async admitDeliveryAlignment(input) {
       const row = await header(input);
