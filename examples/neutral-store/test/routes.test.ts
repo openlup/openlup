@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { messageDestinations, resolveRoute, routes } from '../shared/routes.ts';
 import { nativeLimits } from '../shared/limits.ts';
+import { operations, isOperation } from '../shared/api.ts';
 import { copy } from '../owned/copy.ts';
 
 test('accepted method setup and saved account draft limitations retain named actions', () => {
@@ -69,4 +70,15 @@ test('operator select choices use copy keys present in both languages', async ()
   assert.equal(checkChoices(source), 7);
   // Negative witness: a wire value planted as visible text must be rejected.
   assert.throws(() => checkChoices(source.replace("context.t('reviewPublish')", "'publish'")), /owned copy keys/);
+});
+
+
+test('the message intake destination opens the operator partner panel; support is static', () => {
+  assert.deepEqual(messageDestinations.find(item => item.id === 'T07-12'),
+    { id: 'T07-12', route: 'admin', hash: 'partners' });
+  assert.deepEqual(messageDestinations.find(item => item.id === 'T07-13'),
+    { id: 'T07-13', route: 'support' });
+  for (const path of ['/inquiry', '/zapytanie']) assert.equal(resolveRoute(path).key, 'notFound');
+  assert.equal(operations.length, 52);
+  assert.equal(isOperation(['inquiry', 'submit'].join('.')), false);
 });

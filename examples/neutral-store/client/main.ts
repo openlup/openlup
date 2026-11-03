@@ -12,7 +12,7 @@ import { checkoutPage, completionPage, repairPage } from './pages/checkout.ts';
 import { accountPage, invoicesPage, authPage, callbackPage } from './pages/account.ts';
 import { operatorPage } from './pages/operator.ts';
 import { acquisitionPage, partnersPage, researchPage } from './pages/participation.ts';
-import { returnsPage, termsPage, reviewPage, unsubscribePage, inquiryPage,
+import { returnsPage, termsPage, reviewPage, unsubscribePage, supportPage,
   trackingPage, destinationsPage, limitsPage } from './pages/destinations.ts';
 
 const root = document.querySelector<HTMLElement>('#app');
@@ -36,8 +36,7 @@ const pages: Record<RouteKey | 'product' | 'notFound', (context: PageContext) =>
   legacyUnsubscribe: unsubscribePage,
   auth: authPage,
   callback: callbackPage,
-  inquiry: inquiryPage,
-  support: inquiryPage,
+  support: supportPage,
   tracking: trackingPage,
   review: reviewPage,
   acquisition: acquisitionPage,

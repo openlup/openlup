@@ -60,18 +60,11 @@ export function unsubscribePage(context: PageContext): HTMLElement {
     }));
 }
 
-export function inquiryPage(context: PageContext): HTMLElement {
-  const support = context.route.key === 'support';
-  return el('div', {}, el('h1', {}, context.t(support ? 'support' : 'inquiry')),
+export function supportPage(context: PageContext): HTMLElement {
+  return el('div', {}, el('h1', {}, context.t('support')),
     el('p', {}, context.t('supportBody')),
-    actionForm(context, {
-      operation: 'inquiry.submit', submit: 'sendInquiry',
-      fields: [
-        { name: 'email', label: 'email', type: 'email', value: 'customer@example.test' },
-        { name: 'subject', label: 'subject' },
-        { name: 'message', label: 'message', type: 'textarea' },
-      ], input: () => ({ source: support ? 'support' : 'inquiry' }),
-    }));
+    el('p', { 'data-support-contact': '' }, context.config.supportEmail ?? context.t('supportContactAbsent')),
+    link(context.t('account'), routes.account[context.locale]));
 }
 
 export function trackingPage(context: PageContext): HTMLElement {
@@ -88,7 +81,7 @@ const destinationLabels: Record<string, CopyKey> = {
   builder: 'builder', account: 'account', repair: 'repair', completion: 'completion',
   returns: 'returns', terms: 'terms', invoices: 'invoices', admin: 'admin',
   unsubscribe: 'unsubscribe', legacyUnsubscribe: 'legacyUnsubscribe', auth: 'signIn',
-  inquiry: 'inquiry', support: 'support', tracking: 'tracking', review: 'review',
+  support: 'support', tracking: 'tracking', review: 'review',
 };
 
 export function destinationsPage(context: PageContext): HTMLElement {
@@ -100,7 +93,7 @@ export function destinationsPage(context: PageContext): HTMLElement {
     append(body, el('tr', {}, el('th', { scope: 'row' }, destination.id),
       ...(['en', 'pl'] as const).map(locale => el('td', {},
         link(context.t(destinationLabels[destination.route] ?? 'open'),
-          routes[destination.route][locale] + (destination.query ? `?${destination.query}` : ''))))));
+          routes[destination.route][locale] + (destination.query ? `?${destination.query}` : '') + (destination.hash ? `#${destination.hash}` : ''))))));
   }
   append(list, body);
   return el('div', {}, el('h1', {}, context.t('destinations')),

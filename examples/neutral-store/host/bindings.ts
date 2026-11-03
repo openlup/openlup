@@ -9,6 +9,8 @@ export interface VerifiedActor {
   /** Server-derived values, never populated from action payloads. */
   principalRef?: string;
   sessionToken?: string;
+  /** Host-derived peer fingerprint for public intake quotas; never a payload value. */
+  requesterKey?: string;
 }
 
 export interface ActionContext {

@@ -17,7 +17,6 @@ export const routes = {
   legacyUnsubscribe: { en: '/unsubscribe/legacy', pl: '/pl/unsubscribe/legacy' },
   auth: { en: '/auth/sign-in', pl: '/pl/auth/sign-in' },
   callback: { en: '/auth/callback', pl: '/pl/auth/callback' },
-  inquiry: { en: '/inquiry', pl: '/zapytanie' },
   support: { en: '/support', pl: '/pomoc' },
   tracking: { en: '/tracking', pl: '/przesylka' },
   review: { en: '/review', pl: '/opinia' },
@@ -61,7 +60,7 @@ export function productPath(slug: string, locale: Locale): string {
 }
 
 /** These host destinations are also used in captured demo messages. */
-export const messageDestinations: readonly { id: string; route: RouteKey; query?: string }[] = [
+export const messageDestinations: readonly { id: string; route: RouteKey; query?: string; hash?: string }[] = [
   { id: 'T07-01', route: 'builder' },
   { id: 'T07-02', route: 'account' },
   { id: 'T07-03', route: 'repair', query: 'token=invalid-demo-token' },
@@ -73,7 +72,7 @@ export const messageDestinations: readonly { id: string; route: RouteKey; query?
   { id: 'T07-09', route: 'unsubscribe', query: 'token=invalid-demo-token' },
   { id: 'T07-10', route: 'legacyUnsubscribe' },
   { id: 'T07-11', route: 'auth' },
-  { id: 'T07-12', route: 'inquiry' },
+  { id: 'T07-12', route: 'admin', hash: 'partners' },
   { id: 'T07-13', route: 'support' },
   { id: 'T07-14', route: 'tracking', query: 'shipment=invalid-demo-shipment' },
   { id: 'T07-15', route: 'review', query: 'grant=invalid-demo-grant' },
