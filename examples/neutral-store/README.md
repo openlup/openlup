@@ -89,6 +89,54 @@ Compose path, use `./lifecycle up --configuration coffee`. With no flags,
 `./lifecycle up` uses the owned default.
 `./lifecycle down` stops this Compose project without deleting persistent data.
 
+## Host origin and local sessions
+
+`StoreConfig.publicOrigin` is an optional owned input. Without it, the host
+accepts only `127.0.0.1:<listening-port>` and `localhost:<listening-port>` over
+HTTP. With it, the host accepts exactly that origin's canonical Host authority
+and requires its exact scheme, host and port in Origin on every method other
+than GET/HEAD. The request marker and JSON content type remain required.
+Unknown or ambiguous Host/Origin headers refuse; forwarded headers grant no
+trust. A TLS terminator must pass the original Host through. This setting opens
+no port and provides no deployment qualification: the demonstration Compose
+publication stays loopback-only, and its passwordless HBA is never a deployment
+recipe. See [customization](docs/customization.md#public-origin).
+
+`./lifecycle up` supplies the passwordless runtime URL as a non-secret host
+argument; the application receives no install connection or socket. `npm start`
+without `--database-url` is still the UI-only preview with pending bindings.
+The native runtime composition binds customer challenge request/redemption,
+sign-out, reduced customer profile/subscription-control and owned order reads,
+newsletter read/withdraw, and the reduced operator order control-plane view.
+Invoice artifacts, the full account projection and shipment reads remain named
+refusals. Purchase persistence and the purchase/account/operator journey remain
+pending; the required purchase browser assertion is unchanged.
+
+The demonstration captured mailbox is `.context/captured-messages/identity.jsonl` inside
+the application container, readable only with that runtime's filesystem
+access. The container runs as `node` in `/application`; read the 0600
+file with this exact command from the extracted application directory:
+
+```sh
+docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+```
+
+This demonstration mailbox is not a real mailbox. It is never served by HTTP or
+printed in application logs. Native redemption accepts
+its token through `auth.verify` or `auth.callback`; `auth.operator` accepts email
+for a challenge and token for redemption. The native stores must already contain
+the customer or an invited operator. There is no public operator bootstrap.
+Opaque sessions are limited to a single process, expire after one hour, have a
+capacity of 1000 and are lost on restart. This is not a production session store;
+operator membership and customer ownership are rechecked on requests.
+Cookies are host-only, HttpOnly, SameSite=Lax, scoped to `/api/actions`, and Secure
+exactly for a configured HTTPS origin. The local mailbox is a demonstration
+transport, not proof of access to a real mailbox.
+
+With `publicOrigin` set, a probe using the ordinary loopback Host receives
+`starter_local_host_required`. Lifecycle's internal probe connects privately and
+sends the configured Host; any external health probe must also send that Host.
+
 ## Customize and upgrade
 
 Read [customization](docs/customization.md), [ownership](docs/ownership.md) and

@@ -62,3 +62,8 @@ never adopted or marked. A customer environment must use its
 own data onboarding, never this seed or demonstration marker. Clients, stock and
 settings use native writers; renewal terms and method states are purchase truth,
 not demo seed inputs.
+
+The optional public origin and insecure-HTTP opt-in are owned configuration and
+upgrade inputs. Origin policy, session handling and native composition stay
+managed. The private captured mailbox and process sessions are generated local
+runtime state, not owned configuration or installed package sources.

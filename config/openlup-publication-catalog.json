@@ -1662,6 +1662,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-r1.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-up.md",
       "class": "public-output"
     },
@@ -1822,7 +1826,23 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/healthcheck.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/native-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/origin-policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/server.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/sessions.ts",
       "class": "public-output"
     },
     {
@@ -1934,6 +1954,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/healthcheck.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/import-boundary.test.ts",
       "class": "public-output"
     },
@@ -1946,7 +1970,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/origin-http.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/origin-policy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/routes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/sessions.test.ts",
       "class": "public-output"
     },
     {
