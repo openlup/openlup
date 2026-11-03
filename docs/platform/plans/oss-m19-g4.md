@@ -885,3 +885,15 @@ Self-retro: run the exact main co-location preflight immediately after every
 admission-relevant path edit. A conceptual data-only union ruling and a blanket
 machine path guard can disagree; a pre-edit PASS cannot cover that later edit.
 This was found late after DCO completion; no reviewer or delivery consumed it.
+
+## Destination entry predecessor integration
+
+Merged the exact destination-entry predecessor with one signed merge commit.
+Five conflict files contain only disjoint catalog, nested-entry, cold-consumer
+and transfer-document additions, plus the handover count. Both sides' complete
+transfer test additions survive unchanged, verified by sorted added-line hashes.
+The actual exported transfer inventory is 99 tables, including the native
+checkout draft receipt; the witness count is recomputed to 99. Five real-engine
+inventory digests and selected chain counts are unchanged. Source SQL and its
+packaged copies are unchanged. The bundle makes the destination routines
+available after the preceding entry-only change.

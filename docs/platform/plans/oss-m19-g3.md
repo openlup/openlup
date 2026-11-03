@@ -1284,6 +1284,13 @@ export still present. The only generated change is the eight-line union addition
 in `packages/platform/api/account-support-postgres.api.md`; the complete API check passes for every
 entry. No source, SQL, gate, checker or other snapshot changed.
 
+The accepted-read authority is CD-M19-74/-75, read packet `reads/g3.md:140-148`,
+with register rows CD-M19-64 and CD-M19-61 and the lead's additive operator-outcome
+ruling. The eight generated lines match that accepted wording exactly:
+`applied_from_next_parcel`, `appliesFrom: "next_parcel"`, `futureDestinationId`,
+`replayed`, and the inherited optional `ownerReceipt`. No additional outcome
+or field was introduced.
+
 Execution lesson: run the complete API report check immediately after a public
 type changes. Boundary tests do not establish that transitive reports are current.
 The public destination entry remains scheduled for a separate no-SQL change;
@@ -1318,3 +1325,11 @@ reach a consumer run; its incomplete build supplies no timing evidence.
 Self-retro: run the complete API report immediately after a public-type change,
 and check existing installed-subpath imports as soon as an export split is
 proposed. A passing export inventory does not prove its existing tests can compile.
+
+## Destination entry predecessor integration
+
+The destination public entry now lands first as a separate no-SQL change. This
+bundle stacks on that exact entry change and supplies the routines, internal
+operator integration, SQL pins and real-database proofs. Release tooling is
+identical to the predecessor. The public owner text now states that the routines
+are included; the predecessor-only undefined-function interval ends here.
