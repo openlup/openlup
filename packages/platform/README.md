@@ -778,6 +778,10 @@ Omission preserves incumbent behavior. See [parity seams](https://github.com/ope
 
 ## Pricing
 
+The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
+reader described under [Catalog](#catalog); the quote engine consumes its
+existing `CommerceQuoteCatalogReadPort`.
+
 `./pricing` provides the existing OpenLup strict commerce price authority,
 subscription-price-policy schemas, canonical digest and integer math, signed
 pricing-policy assignment tokens and safe refusal mapping. Hosts inject exact
@@ -894,6 +898,25 @@ semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
 projects canonical positions 1, 8, 58, 59 and 61 byte for byte; these assets are
 sparse references, never a standalone install chain. No canonical migration or
 manifest entry changes.
+
+`createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the
+strict quote catalog port using existing runtime `service_role` SELECT grants.
+`options.verifyDocument(document, envelope)` is required host policy: admit the
+opaque schema, check semantic identity against the envelope and verify its
+canonical digest. It rejects with the existing `CommerceQuoteCatalogReadError`
+from `./pricing`; unknown failures become `catalog_authority_unavailable`.
+Current product/slug/pointer and revision id/product/number/schema/digest are
+checked before inactive products are excluded; host verification then runs only
+for included products. The adapter returns active SKUs sellable in at least one mode,
+with positive physical grams and one primary unit GTIN. Prices remain separate.
+
+Scans use keyset pages of 100 and `maxItems` (default 500, a positive safe
+integer). Excess items or page budget, duplicate variant/code and repeated
+cursor refuse the entire read. Missing verifier refuses configuration; missing
+or changed authority never falls back to legacy data or an empty success.
+Each call reads afresh; any shared promise must live within one host request.
+Current-direct consistency does not establish a publication-wide snapshot or
+qualify a publication head; that protocol remains a separate catalog boundary.
 
 The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
