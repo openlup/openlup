@@ -299,7 +299,7 @@ neither rollback after an upgrade nor complete-store qualification. The binder
 stays application-owned.
 
 The starter runs on its local demonstration database only; a hosted database
-connection is not part of this release and comes in a later round.
+connection is not part of this release.
 See the [starter’s limits](examples/neutral-store/docs/limits.md).
 
 The native account readers need explicit host sources for saved addresses,
@@ -321,7 +321,7 @@ is claimed.
 Root `ui-*` neutrality counts remain shrink-only reference-source debt; copying
 root pages takes on that debt. The new neutral starter and deployment examples
 are constrained to system fonts only. Complete-store evidence, public hosting and broader neutrality qualification
-remain pending at this source revision.
+are not claimed at this source revision.
 
 Self-hosting and provider integrations need their own composition and evidence.
 The repository includes adapters for payment, carrier/3PL, email, accounting,

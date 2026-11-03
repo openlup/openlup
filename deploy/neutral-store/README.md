@@ -104,7 +104,7 @@ production-ready deployment is claimed.
 ## Current limits
 
 The starter runs on its local demonstration database only; a hosted database
-connection is not part of this release and comes in a later round.
+connection is not part of this release.
 See the [starter’s limits](../../examples/neutral-store/docs/limits.md).
 
 ## Executed data proof
