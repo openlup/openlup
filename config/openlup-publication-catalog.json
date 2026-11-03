@@ -1726,6 +1726,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-r2.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-r2a.md",
       "class": "public-output"
     },
@@ -1994,6 +1998,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/notice-artifact.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/operator-composition.ts",
       "class": "public-output"
     },
@@ -2203,6 +2211,10 @@
     },
     {
       "path": "examples/neutral-store/test/interim-pricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/notice-artifact.test.ts",
       "class": "public-output"
     },
     {

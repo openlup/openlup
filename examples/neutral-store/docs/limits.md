@@ -64,8 +64,10 @@ certification. Normalized ingest has no real marketplace connector.
 
 Demonstration sessions run in a single process, expire after one hour, have
 capacity 1000 and are lost on restart. This is not a production session store.
-The captured demonstration mailbox is not a real mailbox; its private file
-contains sign-in tokens and requires runtime filesystem access.
+The capture is a developer mailbox with no real recipients. Its files stay in
+the git-ignored `.context` directory with 0700 mailbox directories and 0600 files.
+Tokens, recovery URLs and recipient email addresses require private filesystem
+access and stay out of application logs and recovery responses.
 
 With the runtime URL supplied by lifecycle, native customer challenges and
 opaque host sessions bind reduced profile/subscription-control reads, selected
@@ -198,8 +200,8 @@ operator correction is not offered through this customer action.
 
 Generic subscription commands remain unmounted pending a complete native fit.
 Authenticated payment recovery authorizes the same native unpaid obligation.
-Operator recovery requires its native restricted-runtime receipt-lock permission;
-its successful capture/replay proof is currently blocked. No refusal
+Operator recovery requires the native command receipt-lock completion and
+revalidates active human membership and support authority on replay. No refusal
 pauses or freezes an active subscription or confirms an undelivered replacement.
 
 

@@ -2,16 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, stat, writeFile, chmod, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile, chmod, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { createPrivateCapture } from '../host/private-capture.ts';
 
 const messageKey = 'subscription-notice:dunning:example';
 const record = { kind: 'recovery', body: 'Private rendered content', context: { order: 'example-order' } };
 const filename = createHash('sha256').update(messageKey).digest('hex') + '.json';
 async function fixture(work: (root: string, mailbox: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), 'starter-capture-'));
+  const scratch = fileURLToPath(new URL('../.context/', import.meta.url));
+  await mkdir(scratch, { recursive: true, mode: 0o700 });
+  const root = await mkdtemp(join(scratch, 'starter-capture-'));
   try { await work(root, join(root, 'mailbox')); } finally { await rm(root, { recursive: true, force: true }); }
 }
 

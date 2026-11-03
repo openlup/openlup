@@ -167,10 +167,12 @@ async function restartedRetry(at: string, configuration: string) {
         ...host.retry,validateInput:host.policy.validateInput,classifyFailure:host.policy.classifyFailure,failureTemplate:'failed',recoveryPath:'/recover'});
       process.stdout.write(JSON.stringify(await driver.run(input.at,10)));
     }finally{await pool.end();}`;
-  const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', code], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', code], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let errors = ''; child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { errors += chunk; });
   let output = ''; child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { output += chunk; });
   child.stdin.end(JSON.stringify({ url: runtimeUrl, at, configuration }));
   const [exit] = await once(child, 'exit');
+  expect(/https?:\/\/|(?:rcv_)?[A-Za-z0-9_-]{43}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/.test(output + errors)).toBe(false);
   if (exit !== 0 || output.length > 65536) throw new Error('starter_restart_worker_unavailable');
   return JSON.parse(output);
 }

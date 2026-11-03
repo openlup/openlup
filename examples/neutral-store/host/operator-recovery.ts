@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { createOperatorRecovery, createPostgresOperatorAuthority } from '@openlup/platform/account-support';
 import type { ApplicationBindings } from './bindings.ts';
-import { createPrivateCapture, type CaptureValue } from './private-capture.ts';
+import { createPrivateCapture } from './private-capture.ts';
+import { createNoticeArtifacts, type NoticeArtifactV1 } from './notice-artifact.ts';
 import { isUuid, sameUuid } from './recurring-fence.ts';
 import { routes } from '../shared/routes.ts';
 import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
@@ -64,7 +65,7 @@ export function composeOperatorRecovery(pool: Pool): ApplicationBindings['action
         raw = url.searchParams.get('token') ?? undefined;
         if (!isRecoveryToken(raw) || url.origin !== context.actor.requestOrigin || url.pathname !== routes.repair[language]) return refused();
         const row = (await db.query(`SELECT token.id AS token_id,orders.id AS order_id,client.id AS client_id,client.email,
-            obligation.id AS obligation_id,operation.id AS operation_id,cases.id AS case_id,
+            obligation.id AS obligation_id,obligation.subscription_id,operation.id AS operation_id,cases.id AS case_id,
             to_char(token.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS expires_at
           FROM public.commerce_checkout_recovery_tokens token
           JOIN public.commerce_orders orders ON orders.id=token.order_id AND orders.client_id=token.client_id
@@ -81,16 +82,17 @@ export function composeOperatorRecovery(pool: Pool): ApplicationBindings['action
         [createHash('sha256').update(raw).digest('hex'), customerId, caseId])).rows[0];
         if (!row || !sameUuid(row.client_id, payload.customerRef)) return refused();
         const key = `subscription-notice:dunning:${notice.id}`;
-        const capture = createPrivateCapture();
+        const capture = createNoticeArtifacts(createPrivateCapture());
         const priorArtifact = await capture.read(key);
         if (prior && !priorArtifact) return refused();
         const copy = context.config.recovery ?? demoRecoveryConfiguration;
-        const record: CaptureValue = { kind: 'subscription-recovery', messageKey: key, locale: language,
-          email: row.email, subject: copy.message.subject[language],
+        const record: NoticeArtifactV1 = { schemaVersion: 1, kind: 'payment_recovery', messageKey: key, locale: language,
+          noticeId: notice.id, subscriptionId: row.subscription_id, recipient: row.email, subject: copy.message.subject[language],
           body: [copy.message.body[language], url.href, `${copy.message.expiryLabel[language]} ${row.expires_at}`].join('\n'),
-          recoveryUrl: url.href, expiresAt: row.expires_at, tokenRef: row.token_id,
-          clientRef: row.client_id, orderRef: row.order_id, caseRef: row.case_id,
-          operationRef: row.operation_id, obligationRef: row.obligation_id };
+          recoveryUrl: url.href, token: raw, expiresAt: row.expires_at,
+          clientId: row.client_id, orderId: row.order_id, caseId: row.case_id,
+          operationId: row.operation_id, obligationId: row.obligation_id,
+          recipientReference: `client:${row.client_id}`, templateReference: `template:subscription-payment-recovery:${language}` };
         await capture.writeOnce(key, record);
         if (!await capture.read(key)) return refused();
         await db.query('COMMIT');

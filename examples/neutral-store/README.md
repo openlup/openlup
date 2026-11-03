@@ -427,8 +427,10 @@ Checkout applies the configured attempt window, e-mail and requester counts, ret
 
 ## Recovery admission and private capture
 
-Rendered recovery messages use one keyed JSON artifact in the private captured
-message directory. The filename is the SHA-256 of the message key; permissions
+The capture is a developer mailbox with no real recipients. Rendered messages
+stay under the git-ignored `.context/captured-messages` directory. Operator and
+scheduled notices share [NoticeArtifactV1](host/notice-artifact.ts), with one
+version, kind discriminator and validating reader/writer through private capture. The filename is the SHA-256 of the message key; permissions
 are 0700 for the directory and 0600 for each file. Publication uses an exclusive
 temporary file, file sync, exclusive link and directory sync, followed by
 committed readback. Identical writes reuse the artifact; differing or corrupt
@@ -484,9 +486,8 @@ returns pending state; only native retry execution and readback establish
 recovery. Initial checkout reads, simulator completion and acquisition
 activation refuse a recurring relation for both guests and matching owners.
 
-The human operator recovery action uses the native command and its own eligible
-customer/case rules. The current restricted installation lacks the command
-receipt row-lock permission, so its successful capture/replay proof is blocked.
-No extra grant or privileged fallback is installed by the starter. The missing runtime
-permission remains an installation prerequisite; this draft claims no complete
-operator recovery journey.
+The human operator recovery action uses the native command and its eligible
+customer/case rules. The selected installation must include its native command
+receipt-lock completion. Active human authority is revalidated on replay. The
+scheduled notice host reads the original operator artifact and preserves its
+rendered content, token and expiry across process restarts.

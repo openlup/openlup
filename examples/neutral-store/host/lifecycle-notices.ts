@@ -4,41 +4,25 @@ import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server
 import { createTransactionalDelivery, TransactionalDeliveryConflictError } from '@openlup/platform/communications';
 import type { NativeLifecycleNotice } from '@openlup/platform/subscriptions';
 import type { TransactionalDeliveryCommand, TransactionalDeliveryReceiptStore } from '@openlup/platform/communications/contracts';
-import type { PrivateCapture, CaptureValue } from './private-capture.ts';
+import type { PrivateCapture } from './private-capture.ts';
+import { createNoticeArtifacts, isNoticeKind, type NoticeArtifactV1 } from './notice-artifact.ts';
 import { assertRenewalConfig } from '../shared/renewal-config.ts';
-import type { Locale, StoreConfig } from '../shared/config.ts';
+import type { StoreConfig } from '../shared/config.ts';
 import { routes } from '../shared/routes.ts';
 
 interface Executor { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }
-export interface NoticeArtifact {
-  schemaVersion: 1; messageKey: string; noticeId: string; subscriptionId: string; clientId: string;
-  caseId: string | null; orderId: string | null; operationId: string | null;
-  token: string | null; expiresAt: string | null; recipient: string;
-  recipientReference: string; templateReference: string;
-  subject: string; body: string; locale: Locale;
-}
 const fail = (): never => { throw new Error('starter_notice_identity_unavailable'); };
 const sameId = (left: string | null, right: string | null) => left === null || right === null
   ? left === right : left.replace(/[{}-]/g, '').toLowerCase() === right.replace(/[{}-]/g, '').toLowerCase();
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
-function artifact(value: unknown, key: string): NoticeArtifact {
-  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== 1
-    || !('messageKey' in value) || value.messageKey !== key) return fail();
-  const row = value as NoticeArtifact;
-  if (typeof row.subject !== 'string' || typeof row.body !== 'string' || typeof row.recipient !== 'string'
-    || typeof row.recipientReference !== 'string' || typeof row.templateReference !== 'string'
-    || !['en', 'pl'].includes(row.locale)
-    || (row.token !== null && (typeof row.token !== 'string' || !/^(?:rcv_)?[A-Za-z0-9_-]{43}$/.test(row.token)))) return fail();
-  return row;
-}
-
 /** One native binding owns each fact. No outbox delivery handler is mounted alongside it. */
 export function createLifecycleNoticeHost(input: {
   config: StoreConfig; publicOrigin: string;
   withTransaction<T>(work: (db: Executor) => Promise<T>): Promise<T>;
   capture: PrivateCapture; receipts: TransactionalDeliveryReceiptStore;
 }) {
-  const { capture, config } = input;
+  const { config } = input;
+  const capture = createNoticeArtifacts(input.capture);
   assertRenewalConfig(config.renewal);
   const origin = new URL(input.publicOrigin);
   if (origin.origin !== input.publicOrigin || origin.username || origin.password) throw new Error('starter_notice_origin_invalid');
@@ -78,7 +62,7 @@ export function createLifecycleNoticeHost(input: {
       || row.obligation_state === 'recovered' || row.notification_kind !== notice.kind) return fail();
     return row;
   }
-  async function readToken(db: Executor, record: NoticeArtifact) {
+  async function readToken(db: Executor, record: NoticeArtifactV1) {
     if (!record.token || !record.orderId || !record.expiresAt) return fail();
     const rows = (await db.query(`SELECT token.id FROM public.commerce_checkout_recovery_tokens token
       JOIN public.commerce_orders o ON o.id=token.order_id AND o.client_id=token.client_id AND o.status='pending_payment'
@@ -95,6 +79,8 @@ export function createLifecycleNoticeHost(input: {
     return String(rows[0]!.id);
   }
   async function bind(notice: NativeLifecycleNotice, recipient: { email: string; firstName: string | null; country: string | null }) {
+    if (!isNoticeKind(notice.kind)) return fail();
+    const kind = notice.kind;
     return input.withTransaction(async db => {
       const owner = (await db.query('SELECT status FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid',
         [notice.subscriptionId, notice.clientId])).rows[0];
@@ -108,14 +94,15 @@ export function createLifecycleNoticeHost(input: {
           if (Number(claim?.attempt_count) !== 1) return fail();
         }
       }
-      let record = existing === null ? null : artifact(existing, notice.messageKey);
+      let record = existing;
       const needsToken = notice.source === 'dunning' && ['payment_failed', 'payment_expired', 'payment_recovery'].includes(notice.kind);
       const current = needsToken ? await authority(db, notice) : null;
-      if (record && (!sameId(record.noticeId, notice.id) || !sameId(record.subscriptionId, notice.subscriptionId)
+      if (record && (record.kind !== kind || !sameId(record.noticeId, notice.id) || !sameId(record.subscriptionId, notice.subscriptionId)
         || !sameId(record.clientId, notice.clientId) || record.recipient !== recipient.email
         || !sameId(record.caseId, current ? String(current.case_id) : null)
         || !sameId(record.operationId, current ? String(current.operation_id) : null)
-        || !sameId(record.orderId, current ? String(current.order_id) : null))) return fail();
+        || !sameId(record.orderId, current ? String(current.order_id) : null)
+        || !sameId(record.obligationId, current ? String(current.obligation_id) : null))) return fail();
       if (!record) {
         // A reclaimed command cannot regenerate missing private bearer material.
         if (needsToken && Number(current?.attempt_count) !== 1) return fail();
@@ -155,15 +142,17 @@ export function createLifecycleNoticeHost(input: {
         if (notice.kind === 'subscription.address_changed') lines.push(payload.outcome === 'applied' ? copy.addressApplied
           : payload.outcome === 'applied_from_next_parcel' ? copy.addressNextParcel : copy.address);
         if (url) lines.push(`${copy.repair}: ${url.href}`, `${copy.expires}: ${expiresAt}`);
-        record = { schemaVersion: 1, messageKey: notice.messageKey, noticeId: notice.id,
+        record = { schemaVersion: 1, kind, messageKey: notice.messageKey, noticeId: notice.id,
           subscriptionId: notice.subscriptionId, clientId: notice.clientId,
           caseId: current ? String(current.case_id) : null, operationId: current ? String(current.operation_id) : null,
-          orderId: current ? String(current.order_id) : null, token, expiresAt, recipient: recipient.email,
+          orderId: current ? String(current.order_id) : null,
+          obligationId: current ? String(current.obligation_id) : null, token, recoveryUrl: url?.href ?? null, expiresAt, recipient: recipient.email,
           recipientReference: `client:${notice.clientId}`, templateReference: `template:${notice.templateSlug}:${locale}`,
           locale, subject, body: lines.join('\n') };
-        await capture.writeOnce(notice.messageKey, { ...record } satisfies CaptureValue);
-        const committed = artifact(await capture.read(notice.messageKey), notice.messageKey);
-        if (Object.keys(record).some(key => committed[key as keyof NoticeArtifact] !== record![key as keyof NoticeArtifact])) return fail();
+        await capture.writeOnce(notice.messageKey, record);
+        const committed = await capture.read(notice.messageKey);
+        if (!committed) return fail();
+        if (Object.keys(record).some(key => committed[key as keyof NoticeArtifactV1] !== record![key as keyof NoticeArtifactV1])) return fail();
       }
       let tokenId: string | undefined;
       if (needsToken) {
@@ -182,7 +171,8 @@ export function createLifecycleNoticeHost(input: {
   }
   const engine = createTransactionalDelivery({ store: input.receipts, delivery: {
     async deliver(command: TransactionalDeliveryCommand) {
-      const record = artifact(await capture.read(command.idempotencyKey), command.idempotencyKey);
+      const record = await capture.read(command.idempotencyKey);
+      if (!record) return fail();
       if (record.recipientReference !== command.recipientReference || record.templateReference !== command.templateReference) return fail();
       if (record.token) {
         const tokenId = await input.withTransaction(db => readToken(db, record));
@@ -192,7 +182,7 @@ export function createLifecycleNoticeHost(input: {
     },
   } });
   return { bind, delivery: { async send(command: TransactionalDeliveryCommand) {
-    artifact(await capture.read(command.idempotencyKey), command.idempotencyKey);
+    if (!await capture.read(command.idempotencyKey)) return fail();
     try { return await engine.send(command); }
     catch (error) {
       if (error instanceof TransactionalDeliveryConflictError) return { state: 'failed' as const, deliveryReference: null, retryable: false };
@@ -200,7 +190,7 @@ export function createLifecycleNoticeHost(input: {
     }
   }, async readReceipt(key: string) {
     const receipt = await input.receipts.readReceipt(key);
-    if (receipt?.state === 'accepted') artifact(await capture.read(key), key);
+    if (receipt?.state === 'accepted' && !await capture.read(key)) return fail();
     return receipt;
   } } };
 }

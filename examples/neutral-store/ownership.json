@@ -22,11 +22,13 @@
   "managed": [
     "host/account-renewal.ts",
     "host/lifecycle-notices.ts",
+    "host/notice-artifact.ts",
     "host/renewal-job.ts",
     "host/renewal-sandbox.ts",
     "host/scheduled-renewal.ts",
     "shared/renewal-config.ts",
     "test/renewal.test.ts",
+    "test/notice-artifact.test.ts",
     ".dockerignore",
     ".gitignore",
     ".npmrc",

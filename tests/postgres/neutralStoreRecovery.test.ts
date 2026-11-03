@@ -12,7 +12,10 @@ import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions 
 import * as subscriptions from '@openlup/platform/subscriptions';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
-import { createPostgresOperatorIdentityStore, createPostgresAccountLinkStore } from '@openlup/platform/identity';
+import { createPostgresTransactionalDeliveryStore } from '@openlup/platform/communications';
+import { createLifecycleNoticeHost } from '../../examples/neutral-store/host/lifecycle-notices.ts';
+import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
+import { createPostgresOperatorIdentityStore, createPostgresAccountLinkStore, createDirectOperatorInvitationStore } from '@openlup/platform/identity';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
 import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import type { ActionResult, Operation } from '../../examples/neutral-store/shared/api.ts';
@@ -32,6 +35,8 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   let host: ChildProcess | undefined;
   let base: string, state: string, runtimeUrl: string, port: number;
   let logs = '';
+  const outputs: string[] = [];
+  const privateValues = new Set<string>();
   const cookies = new Map<string, string>();
 
   async function call(operation: Operation, payload: Record<string, unknown>, actor?: string, key = randomUUID()) {
@@ -41,7 +46,9 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     }, body: JSON.stringify(payload) });
     const cookie = response.headers.get('set-cookie');
     if (actor && cookie) cookies.set(actor, cookie.split(';')[0]!);
-    return await response.json() as ActionResult;
+    const result = await response.json() as ActionResult;
+    if (operation === 'operator.recovery' || operation === 'payment.recover') outputs.push(JSON.stringify(result));
+    return result;
   }
   async function stopHost() {
     if (host && host.exitCode === null && host.signalCode === null) {
@@ -71,24 +78,27 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     });
   }
   async function signIn(email: string, operator = false) {
-    if (!operator) {
-      // Honor the native one-minute challenge cadence across real host restarts.
-      const wait = Number((await runtime.query(`SELECT GREATEST(0,extract(epoch FROM
-        (max(challenge.created_at)+interval '60.1 seconds'-now()))*1000) AS wait_ms
-        FROM public.customer_identity_challenges challenge JOIN public.clients client ON client.id=challenge.client_id
-        WHERE client.email=$1`, [email])).rows[0].wait_ms);
-      for (let remaining = Math.ceil(wait); remaining > 0; remaining -= 30_000) {
-        await new Promise(done => setTimeout(done, Math.min(remaining, 30_000)));
-      }
+    privateValues.add(email);
+    // Honor both native one-minute challenge cadences across real host restarts.
+    const source = operator
+      ? 'public.operator_identity_challenges challenge JOIN public.platform_human_principals client ON client.principal_id=challenge.principal_id'
+      : 'public.customer_identity_challenges challenge JOIN public.clients client ON client.id=challenge.client_id';
+    const wait = Number((await owner.query(`SELECT GREATEST(0,extract(epoch FROM
+      (max(challenge.created_at)+interval '60.1 seconds'-now()))*1000) AS wait_ms
+      FROM ${source} WHERE client.email=$1`, [email])).rows[0].wait_ms);
+    for (let remaining = Math.ceil(wait); remaining > 0; remaining -= 30_000) {
+      await new Promise(done => setTimeout(done, Math.min(remaining, 30_000)));
     }
     const requested = await call(operator ? 'auth.operator' : 'auth.request', { email }, email);
     expect(requested.ok).toBe(true);
     const lines = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8')).trim().split('\n');
     const message = lines.map(line => JSON.parse(line)).filter(row => row.email === email).at(-1);
     if (!message || typeof message.token !== 'string') throw new Error('recovery_challenge_missing');
+    privateValues.add(message.token);
     expect((await call(operator ? 'auth.operator' : 'auth.verify', { token: message.token }, email)).ok).toBe(true);
   }
   async function createOrder(email: string, mode: 'one_time' | 'subscription' = 'subscription') {
+    privateValues.add(email);
     const result = await call('checkout.create', { locale: 'en', email, configuration: config.id,
       country: config.market.country, termsAccepted: true, termsRevision: config.legal.revision,
       firstName: 'Example', lastName: 'Buyer', phone: '000000000', line1: '1 Example Lane',
@@ -97,6 +107,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
         lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } });
     if (!result.ok || !isRecord(result.value) || typeof result.value.orderRef !== 'string'
       || typeof result.value.token !== 'string') throw new Error('recovery_checkout_required');
+    privateValues.add(result.value.token);
     return { orderRef: result.value.orderRef, token: result.value.token };
   }
   async function transaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T> {
@@ -137,6 +148,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   }
   async function issue(f: Awaited<ReturnType<typeof declined>>, expires = 86400) {
     const raw = 'rcv_' + randomBytes(32).toString('base64url');
+    privateValues.add(raw);
     const result = await runtime.query('SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,now()+$3*interval \'1 second\') AS result', [f.row.caseId, sha(raw), expires]);
     expect(result.rows[0].result.issued).toBe(true);
     return raw;
@@ -174,7 +186,11 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     await startHost();
   }, 60_000);
   afterAll(async () => {
-    try { await stopHost(); } finally {
+    try {
+      await stopHost();
+      const output = [logs, ...outputs].join('\n');
+      for (const value of privateValues) expect(output.includes(value), 'private mailbox material in output').toBe(false);
+    } finally {
       await closePostgres(container, [owner, migration, runtime].filter(Boolean));
       if (state) await rm(state, { recursive: true, force: true });
     }
@@ -319,22 +335,66 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     const notice = (await runtime.query("SELECT id,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND notification_kind='payment_recovery'", [f.row.caseId])).rows[0];
     const messageKey = `subscription-notice:dunning:${notice.id}`, path = resolve(state, '.context/captured-messages', sha(messageKey) + '.json');
     const bytes = await readFile(path, 'utf8');
+    const original = JSON.parse(bytes).record;
+    expect(original.kind).toBe('payment_recovery');
+    expect(original.schemaVersion).toBe(1);
+    privateValues.add(original.token); privateValues.add(original.recoveryUrl); privateValues.add(original.recipient);
     const before = await digest();
     expect((await call('operator.recovery', { ...input, customerRef: clientId, caseRef: f.row.caseId }, operatorEmail, key)).ok).toBe(true);
-    expect(await digest()).toBe(before); expect(await readFile(path, 'utf8')).toBe(bytes);
+    expect(await digest()).toBe(before); expect((await readFile(path, 'utf8')) === bytes).toBe(true);
     await stopHost(); await startHost(); await signIn(operatorEmail, true);
+    expect((await call('operator.recovery', input, operatorEmail, key)).ok).toBe(true);
+    expect((await readFile(path, 'utf8')) === bytes).toBe(true);
+    const receipts = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+    try {
+      const claimed = (await runtime.query('SELECT * FROM public.subscription_dunning_claim_batch(100,60,6)')).rows
+        .find(row => row.id === notice.id);
+      expect(Boolean(claimed)).toBe(true);
+      const notices = createLifecycleNoticeHost({ config, publicOrigin: base, withTransaction: transaction,
+        capture: createPrivateCapture(resolve(state, '.context/captured-messages')), receipts });
+      const command = { ...await notices.bind({ id: notice.id, messageKey, source: 'dunning',
+        subscriptionId: f.subscriptionId, clientId, kind: 'payment_recovery',
+        templateSlug: 'subscription-payment-recovery', payload: {}, recoveryUrlPath: notice.recovery_url_path },
+      { email: f.email, firstName: null, country: null }), idempotencyKey: messageKey };
+      const tokenBefore = (await runtime.query('SELECT id,revoked_at,xmin::text FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1', [sha(original.token)])).rows;
+      expect((await notices.delivery.send(command)).state).toBe('accepted');
+      outputs.push(JSON.stringify(command), JSON.stringify(await notices.delivery.readReceipt(messageKey)));
+      expect((await readFile(path, 'utf8')) === bytes).toBe(true);
+      expect((await runtime.query('SELECT id,revoked_at,xmin::text FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1', [sha(original.token)])).rows).toEqual(tokenBefore);
+      await rm(path);
+      await expect(notices.delivery.send(command)).rejects.toThrow('starter_notice_identity_unavailable');
+      await writeFile(path, bytes, { mode: 0o600 });
+    } finally { await receipts.close(); }
     await rm(path);
     expect((await call('operator.recovery', input, operatorEmail, key)).ok).toBe(false);
     expect((await readdir(resolve(state, '.context/captured-messages'))).includes(sha(messageKey) + '.json')).toBe(false);
     await writeFile(path, bytes, { mode: 0o600 });
-    const changed = JSON.parse(bytes); changed.record.body = 'Changed context';
-    await writeFile(path, JSON.stringify(changed));
+    const changed = JSON.parse(bytes); changed.record.orderId = randomUUID();
+    const changedBytes = JSON.stringify(changed) + '\n';
+    await writeFile(path, changedBytes, { mode: 0o600 });
+    const beforeChanged = await digest();
     expect((await call('operator.recovery', input, operatorEmail, key)).ok).toBe(false);
+    expect(await digest()).toBe(beforeChanged);
+    expect((await readFile(path, 'utf8')) === changedBytes).toBe(true);
     await owner.query('UPDATE public.platform_communication_operators SET active=false WHERE principal_id=$1', [operator]);
+    expect((await call('operator.recovery', input, operatorEmail, key)).ok).toBe(false);
+    await writeFile(path, bytes, { mode: 0o600 });
+    await owner.query('UPDATE public.platform_communication_operators SET active=true WHERE principal_id=$1', [operator]);
+    const backup = randomUUID(), backupEmail = `backup-${config.id}@example.test`;
+    await owner.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)', [backup, backupEmail]);
+    const invitations = createDirectOperatorInvitationStore({ connectionString: container!.connectionString });
+    try {
+      expect((await invitations.issue({ actorPrincipalId: operator, targetPrincipalId: backup,
+        email: backupEmail, role: 'admin', ttlSeconds: 3600 })).code).toBe('INVITATION_CREATED');
+      await signIn(backupEmail, true);
+      expect((await invitations.read(backup))?.membershipState).toBe('active');
+      expect(await invitations.remove({ actorPrincipalId: backup, targetPrincipalId: operator,
+        reason: 'Synthetic recovery revalidation' })).toEqual({ revoked: true });
+    } finally { await invitations.close(); }
     expect((await call('operator.recovery', input, operatorEmail, key)).ok).toBe(false);
     const raw = new URL(notice.recovery_url_path, base).searchParams.get('token')!;
     expect(logs.includes(raw)).toBe(false);
-  }, 60_000);
+  }, 180_000);
   // Measured 9.13–9.92 s; 30 s allows approximately three times the observed duration.
   it('runs the unchanged required browser journey and authenticated recovery against this real store', async () => {
     const f = await declined(), raw = await issue(f);
@@ -351,9 +411,13 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
       projects: [{name:${JSON.stringify(config.id)}}], reporter:[['json',{outputFile:${JSON.stringify(resolve('.context/scratch/r2a', `browser-${config.id}.json`))}}]]
     };`, { mode: 0o600 });
     try {
-      await promisify(execFile)(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', browserConfig],
+      const browser = await promisify(execFile)(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', browserConfig],
         { maxBuffer: 8 * 1024 * 1024 });
-    } catch {
+      outputs.push(browser.stdout, browser.stderr,
+        await readFile(resolve('.context/scratch/r2a', `browser-${config.id}.json`), 'utf8'));
+    } catch (error) {
+      const captured = error as { stdout?: string; stderr?: string };
+      outputs.push(captured.stdout ?? '', captured.stderr ?? '');
       throw new Error('starter_browser_recovery_proof_failed');
     }
     expect(logs.includes(raw)).toBe(false);
