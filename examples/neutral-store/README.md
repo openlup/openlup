@@ -39,6 +39,20 @@ case ownership and ingest needs a complete native binding; those two actions
 remain unmounted and refuse `host_binding_required`.
 Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
 
+## Order controls and documents
+
+Hold and release retain their typed forms and configured reasons. Both remain
+unbound and return `starter_order_hold_unavailable` after operator admission.
+The host composes
+customer invoice history, owned captured PDF downloads and local operator
+document summaries. The session supplies the actor and invoice
+owner. The captured provider produces explicitly non-fiscal sandbox documents.
+The download stays behind authenticated POST, Origin admission and no-store.
+The browser saves the decoded PDF through a short-lived local object URL.
+Deferred operations share one bilingual catalogue with the limits page and stay
+unbound. The operator returns reader is removed. Shipment list/detail dependency
+proof is pending. See [limits](docs/limits.md).
+
 ## Start from an exact source archive
 
 The release route is a source archive, followed by the small extraction script.

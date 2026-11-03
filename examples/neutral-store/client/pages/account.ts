@@ -3,6 +3,7 @@ import type { CopyKey } from '../../owned/copy.ts';
 import { isRecord } from '../../shared/offer.ts';
 import type { Operation } from '../../shared/api.ts';
 import { routes } from '../../shared/routes.ts';
+import { downloadInvoice } from '../invoice-download.ts';
 import { el, link } from '../dom.ts';
 import { actionForm, nativeActions, readPanel, type FieldSpec } from '../forms.ts';
 
@@ -24,9 +25,14 @@ export function accountPage(context: PageContext): HTMLElement {
 export function invoicesPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('orders')),
     readPanel(context, 'orders', 'account.orders'),
+    el('p', {}, context.t('sandboxInvoice')),
+    actionForm(context, { operation: 'account.invoice', title: 'invoiceHistory', submit: 'read',
+      fields: [{ name: 'orderRef', label: 'orderRef' }] }),
     actionForm(context, {
       operation: 'account.invoice', title: 'invoices', submit: 'download',
-      fields: [{ name: 'orderRef', label: 'orderRef' }],
+      fields: [{ name: 'orderRef', label: 'orderRef' }, { name: 'documentRef', label: 'documentRef' }],
+      onSuccess: downloadInvoice,
+      display: value => isRecord(value) ? { contentType: value.contentType, fileName: value.fileName } : value,
     }),
     link(context.t('account'), routes.account[context.locale]));
 }

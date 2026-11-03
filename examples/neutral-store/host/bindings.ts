@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { StoreConfig } from '../shared/config.ts';
 import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
+import { operationLimits } from '../shared/limits.ts';
 import { evaluateOffer } from '../shared/offer.ts';
 
 export interface VerifiedActor {
@@ -57,6 +58,8 @@ export async function dispatchAction(
   if (customerOperations.has(operation) && context.actor.customerRef === null) {
     return { ok: false, code: 'customer_session_required' };
   }
+  const limit = operationLimits[operation];
+  if (limit) return { ok: false, code: limit.code };
   if (operation === 'offer.validate') {
     const result = evaluateOffer(context.config, input.cart);
     return result.ok ? { ok: true, value: result.quote } : { ok: false, code: result.issues[0]!.code };

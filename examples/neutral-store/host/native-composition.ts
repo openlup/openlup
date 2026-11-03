@@ -16,6 +16,7 @@ import { createSessions } from './sessions.ts';
 import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
 import { createCheckoutRecoveryDelivery } from './checkout-recovery.ts';
 import { composePurchaseCapabilities } from './purchase-composition.ts';
+import { composeE4Capabilities } from './e4-composition.ts';
 import { composeExistingCapabilities } from './e-composition.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
@@ -66,7 +67,11 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       await createCheckoutRecoveryDelivery(admittedOrigin)(input);
     },
   };
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions,
+    ...composeE4Capabilities(pool, async context => {
+      const authorization = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
+      return authorization.ok && authorization.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
+    }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown): value is string => typeof value === 'string' && value.length <= 160

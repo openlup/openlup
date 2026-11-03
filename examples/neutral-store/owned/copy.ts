@@ -1,6 +1,11 @@
 /** Application copy; both locales have exactly the same keys. */
 export const copy = {
   en: {
+    documentRef: 'Document reference', invoiceHistory: 'Invoice history',
+    sandboxInvoice: 'NON-FISCAL sandbox documents', orderItemRef: 'Order item reference',
+    reasonCode: 'Reason code', note: 'Note', refundMode: 'Refund intent',
+    refundFull: 'Full refund intent', refundPartial: 'Partial refund intent', refundNone: 'No refund intent',
+
     attemptLimitsInterim: "Attempt limits live in one process's memory and reset on restart.",
     renewalShippingInterim: "For now this release does not charge shipping on renewals.",
     acquisitionInterim: "The first-subscription offer is not offered yet and comes in a later part of this release.",
@@ -201,7 +206,7 @@ export const copy = {
     label: "Record captured label",
     handoff: "Record sandbox handoff",
     delivery: "Record sandbox delivery",
-    invoiceRequest: "Request captured invoice",
+    invoiceRequest: "Read invoice summary",
     returnsBody: "This fictional store demonstrates the return request destination. It is not a seller policy for a customer environment.",
     returnDays: "Demo request period in days",
     returnReason: "Return reason",
@@ -313,6 +318,11 @@ export const copy = {
     amount_overflow: "The amount cannot be represented safely.",
   },
   pl: {
+    documentRef: 'Numer dokumentu', invoiceHistory: 'Historia faktur',
+    sandboxInvoice: 'Dokumenty testowe, NIEFISKALNE', orderItemRef: 'Numer pozycji zamówienia',
+    reasonCode: 'Kod powodu', note: 'Notatka', refundMode: 'Zamiar zwrotu środków',
+    refundFull: 'Zamiar pełnego zwrotu', refundPartial: 'Zamiar częściowego zwrotu', refundNone: 'Bez zamiaru zwrotu',
+
     attemptLimitsInterim: "Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.",
     renewalShippingInterim: "Na razie to wydanie nie pobiera opłat za dostawę odnowień.",
     acquisitionInterim: "Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.",
@@ -513,7 +523,7 @@ export const copy = {
     label: "Zapisz przechwyconą etykietę",
     handoff: "Zapisz testowe przekazanie",
     delivery: "Zapisz testowe doręczenie",
-    invoiceRequest: "Poproś o przechwyconą fakturę",
+    invoiceRequest: "Odczytaj podsumowanie faktur",
     returnsBody: "Ten fikcyjny sklep pokazuje miejsce składania zwrotów. Nie jest to polityka sprzedawcy dla środowiska klienta.",
     returnDays: "Testowy okres zgłoszenia w dniach",
     returnReason: "Powód zwrotu",
