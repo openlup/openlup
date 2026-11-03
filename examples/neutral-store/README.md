@@ -23,6 +23,20 @@ An accepted native limit and a missing required purchase binding are different:
 the former is documented acceptance, the latter still blocks completion.
 See [limits](docs/limits.md) and [proof](docs/proof.md).
 
+No generic contact form; the partner inquiry is the durable intake.
+With the native runtime connection, public partner submissions use the native
+idempotency, contact deduplication and rate limits. Operator partner list and
+status transitions use the existing native human operator session. Public review
+read/submit require an order review grant; operator review list/moderation use
+that same operator authority. The purchase composition contribution retains
+acceptance for expired-grant refusal, positive review submit/read, publish/hide
+with a real review, grant expiry/revocation and purchase-generated grant ownership.
+None of those outcomes is proved by this starter composition slice.
+Tester applications still need a verified native address-reference binding;
+research needs case ownership and ingest needs a complete native binding. Those
+three actions remain unmounted and refuse `host_binding_required`.
+Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
+
 ## Start from an exact source archive
 
 The release route is a source archive, followed by the small extraction script.

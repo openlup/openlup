@@ -21,14 +21,16 @@ verified by the host binding; no route infers authority from a typed reference.
 | Signed unsubscribe | `/unsubscribe` | `/pl/unsubscribe` |
 | Legacy unsubscribe | `/unsubscribe/legacy` | `/pl/unsubscribe/legacy` |
 | Host sign-in | `/auth/sign-in` | `/pl/auth/sign-in` |
-| Inquiry | `/inquiry` | `/zapytanie` |
-| Support | `/support` | `/pomoc` |
+| Partner inquiry operator view (T07-12) | `/admin#partners` | `/pl/admin#partners` |
+| Static support (T07-13) | `/support` | `/pomoc` |
 | Tracking | `/tracking` | `/przesylka` |
 | Review | `/review` | `/opinia` |
 
 The terms and returns pages explicitly describe a fictional demonstration.
-Inquiry and support capture locally through their bound capability; they do not
-send real email. Tracking is captured sandbox evidence, not a carrier claim.
+The inquiry message opens the operator partner panel, which requires a native
+operator session to read intake. Support is static contact text and an account
+link; it contains no form. Public partner intake lives at `/partners` and
+`/partnerzy` and persists through the native partner port. Tracking is captured sandbox evidence, not a carrier claim.
 Signed unsubscribe requires an explicit user action and changes only the signed
 permission. Legacy unsubscribe returns
 `native_legacy_tester_source_unavailable`. Review submission requires a live

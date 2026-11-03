@@ -23,6 +23,7 @@
     "README.md",
     "artifacts/README.md",
     "browser/journey.spec.ts",
+    "browser/native-intake.proof.ts",
     "client/api.ts",
     "client/cart.ts",
     "client/context.ts",
@@ -71,6 +72,7 @@
     "test/origin-http.test.ts",
     "test/origin-policy.test.ts",
     "test/sessions.test.ts",
+    "test/support.test.ts",
     "test/routes.test.ts",
     "tsconfig.json"
   ],

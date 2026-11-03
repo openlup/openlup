@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { createOrderReviewHandlers, createPostgresOrderReviewLifecyclePort } from '@openlup/platform/commerce/server';
-import { createPostgresPartnerAcquisitionPort, createPostgresAcquisitionEvidencePort } from '@openlup/platform/marketing/server/postgres';
+import { createOrderReviewHandlers, createPostgresOrderReviewLifecyclePort,
+  createOrderReviewAdminHandlers, createPostgresOrderReviewAdminReadPort } from '@openlup/platform/commerce/server';
+import { createPostgresPartnerAcquisitionPort } from '@openlup/platform/marketing/server/postgres';
 import type { PartnersB2BInquirySubmitRequest } from '@openlup/platform/marketing/contracts';
-import { isRecord } from '../shared/offer.ts';
 import type { ActionBinding, ApplicationBindings } from './bindings.ts';
 
 interface QueryExecutor {
@@ -13,11 +13,11 @@ interface QueryExecutor {
 export function composeExistingCapabilities(input: {
   executor: QueryExecutor;
   connectionString: string;
-  authorizeResearchCase?: (customerRef: string, caseReference: string) => Promise<boolean>;
 }): Pick<ApplicationBindings, 'actions' | 'close'> {
-  const reviews = createOrderReviewHandlers(createPostgresOrderReviewLifecyclePort(input.executor));
+  const lifecycle = createPostgresOrderReviewLifecyclePort(input.executor);
+  const reviews = createOrderReviewHandlers(lifecycle);
+  const admin = createOrderReviewAdminHandlers(lifecycle, createPostgresOrderReviewAdminReadPort(input.executor));
   const partners = createPostgresPartnerAcquisitionPort({ connectionString: input.connectionString });
-  const evidence = createPostgresAcquisitionEvidencePort({ connectionString: input.connectionString });
   const actions: ApplicationBindings['actions'] = {};
 
   actions['review.read'] = async payload => {
@@ -27,9 +27,13 @@ export function composeExistingCapabilities(input: {
   };
   actions['review.submit'] = async payload => {
     if (typeof payload.grant !== 'string' || !payload.grant) return refused('access_grant_unavailable');
+    if (typeof payload.rating !== 'number' || !Number.isInteger(payload.rating)
+      || payload.rating < 1 || payload.rating > 5
+      || (payload.comment !== undefined && typeof payload.comment !== 'string')) return refused('starter_input_invalid');
+    const comment = typeof payload.comment === 'string' ? payload.comment.trim() : '';
     const command = { grant: payload.grant, rating: payload.rating,
-      ...(typeof payload.comment === 'string' && payload.comment ? { comment: payload.comment } : {}),
-      fingerprint: createHash('sha256').update(JSON.stringify([payload.rating, payload.comment ?? null])).digest('hex') };
+      ...(comment ? { comment } : {}),
+      fingerprint: createHash('sha256').update(`${payload.rating}\n${comment}`).digest('hex') };
     const result = await reviews.submit(command);
     return result.ok ? { ok: true, value: result.value, ...(result.replayed ? { replayed: true } : {}) }
       : refused(`order_review_${result.error.kind}`);
@@ -37,14 +41,15 @@ export function composeExistingCapabilities(input: {
   actions['partners.submit'] = async (payload, context) => {
     const request = partnerRequest(payload);
     if (!request) return refused('starter_input_invalid');
+    if (!context.actor.requesterKey) return refused('starter_requester_unavailable');
     const result = await partners.submit({
       idempotencyKey: context.commandKey,
-      requesterKey: createHash('sha256').update(request.email.toLowerCase()).digest('hex'),
+      requesterKey: context.actor.requesterKey,
       policyVersion: context.config.legal.revision, sourcePath: '/partners/b2b-inquiries',
       acceptedAt: new Date().toISOString(), request,
     });
-    return result.ok ? { ok: true, value: result.value, ...(result.replayed ? { replayed: true } : {}) }
-      : refused(`partner_acquisition_${result.error.kind}`);
+    return result.ok ? { ok: true, value: { caseRef: result.value.caseRef },
+      ...(result.replayed ? { replayed: true } : {}) } : refused(`partner_acquisition_${result.error.kind}`);
   };
   actions['operator.partners'] = async (_payload, context) => {
     if (!context.actor.operatorRef) return refused('operator_required');
@@ -60,28 +65,30 @@ export function composeExistingCapabilities(input: {
       request: { id: payload.id, expectedVersion: payload.expectedVersion, status: payload.status } });
     return result.ok ? { ok: true, value: result.value } : refused(`partner_acquisition_${result.error.kind}`);
   };
-  actions['research.submit'] = async (payload, context) => {
-    // A case reference alone is not authority to attach evidence to another participant.
-    if (!context.actor.customerRef) return refused('customer_session_required');
-    if (typeof payload.caseReference !== 'string' || !isRecord(payload.responseData)
-      || (payload.surveyType !== 'producer' && payload.surveyType !== 'consumer')) return refused('starter_input_invalid');
-    // Ownership lookup is a separate required host binding, not inferred from a customer session.
-    if (!input.authorizeResearchCase || !await input.authorizeResearchCase(context.actor.customerRef, payload.caseReference)) {
-      return refused('starter_research_case_authority_unavailable');
-    }
-    const result = await evidence.submitSurvey({ view: 'acquisition_survey_v1',
-      caseReference: payload.caseReference, surveyType: payload.surveyType,
-      responseData: payload.responseData, idempotencyKey: context.commandKey });
-    return result.ok ? { ok: true, value: result.value } : refused(`acquisition_evidence_${result.error.kind}`);
+  actions['operator.reviews'] = async (_payload, context) => {
+    if (!context.actor.operatorRef) return refused('operator_required');
+    const result = await admin.list(context.actor.operatorRef, { limit: 30 });
+    return result.ok ? { ok: true, value: result.value } : refused(`order_review_${result.error.kind}`);
   };
-
-  return { actions, close: async () => { await Promise.all([partners.close(), evidence.close()]); } };
+  actions['operator.reviewModerate'] = async (payload, context) => {
+    if (!context.actor.operatorRef) return refused('operator_required');
+    const result = await admin.moderate(context.actor.operatorRef, {
+      reviewRef: payload.reviewRef, action: payload.action, idempotencyKey: context.commandKey,
+    });
+    return result.ok ? { ok: true, value: result.value, ...(result.replayed ? { replayed: true } : {}) }
+      : refused(`order_review_${result.error.kind}`);
+  };
+  // Acquisition requires a verified native address reference; research additionally
+  // requires case ownership. Neither is inferred from a browser-supplied reference.
+  return { actions, close: () => partners.close() };
 }
 
 function partnerRequest(payload: Record<string, unknown>): PartnersB2BInquirySubmitRequest | null {
   if (typeof payload.company !== 'string' || typeof payload.country !== 'string'
     || typeof payload.firstName !== 'string' || typeof payload.lastName !== 'string'
-    || typeof payload.email !== 'string') return null;
+    || typeof payload.email !== 'string'
+    || (payload.phone !== undefined && payload.phone !== null && typeof payload.phone !== 'string')
+    || (payload.notes !== undefined && payload.notes !== null && typeof payload.notes !== 'string')) return null;
   return { company: payload.company, country: payload.country,
     firstName: payload.firstName, lastName: payload.lastName, email: payload.email,
     phone: typeof payload.phone === 'string' ? payload.phone : null,

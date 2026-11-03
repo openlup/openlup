@@ -54,6 +54,16 @@ updating the typed configuration. Add that file to the ownership inventory.
 Product media paths must remain local; remote tracking images are not part of
 this demo. Theme tokens are six-digit hex colors, and system fonts are used.
 
+## Support contact
+
+Set optional `supportEmail: 'help@example.test'` in the owned configuration.
+The shared validator beside `assertConfig` accepts a bounded ASCII email address
+and refuses whitespace, HTML, URL schemes and other invalid values with
+`starter_support_email_invalid`. Omit the field to show that no support contact
+is configured. Both localized support pages render it as plain text, with no
+HTML interpretation or generated email link, and link to the account page.
+Restart after editing configuration. This field is an owned upgrade input.
+
 ## Public origin
 
 `publicOrigin?: string` and `allowInsecurePublicOrigin?: boolean` are optional

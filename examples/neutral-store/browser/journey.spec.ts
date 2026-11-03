@@ -9,6 +9,10 @@ for (const locale of ['en', 'pl'] as const) {
       const row = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: destination.id, exact: true }) });
       await row.getByRole('link').nth(locale === 'en' ? 0 : 1).click();
       await expect(page.locator('main h1')).toBeVisible();
+      if (destination.hash) {
+        await expect(page).toHaveURL(new RegExp(`#${destination.hash}$`));
+        await expect(page.locator(`#${destination.hash}`)).toBeVisible();
+      }
       await expect(page.locator('html')).toHaveAttribute('lang', locale);
       await expect(page.locator('main')).not.toContainText(copy[locale].notFound);
     });
@@ -71,6 +75,25 @@ for (const locale of ['en', 'pl'] as const) {
     await expect(page.getByLabel(text.lastName, { exact: true })).toHaveValue(text.demoCustomer);
     await expect(page.getByLabel(text.address, { exact: true })).toHaveValue(text.demoStreet);
     await expect(page.getByLabel(text.city, { exact: true })).toHaveValue(text.demoCity);
+  });
+
+  test(`${locale}: static support shows only text contact and the account link`, async ({ page }) => {
+    for (const contact of [undefined, 'help@example.test']) {
+      await page.route('**/api/config', async route => {
+        const response = await route.fetch();
+        const body = await response.json();
+        if (contact === undefined) delete body.config.supportEmail;
+        else body.config.supportEmail = contact;
+        await route.fulfill({ response, json: body });
+      });
+      await page.goto(routes.support[locale]);
+      await expect(page.locator('[data-support-contact]')).toHaveText(contact ?? copy[locale].supportContactAbsent);
+      await expect(page.locator('main form')).toHaveCount(0);
+      await expect(page.locator('[data-support-contact] a')).toHaveCount(0);
+      await expect(page.locator('main').getByRole('link', { name: copy[locale].account, exact: true }))
+        .toHaveAttribute('href', routes.account[locale]);
+      await page.unroute('**/api/config');
+    }
   });
 
   test(`${locale}: configuration failure uses only the active language`, async ({ page }) => {
