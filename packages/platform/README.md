@@ -712,7 +712,9 @@ definer entries, with no runtime helper or table grant.
 routine closes the pending order, created intents and provisional activation,
 then releases its purchase holds in the same transaction. It retains strict
 keyed replay, refuses renewal orders and leaves existing payment/uncertainty
-facts untouched. The host withholds this operation for uncertain dispatch.
+facts untouched. A dispatched simulator attempt refuses without writes with
+`provider_attempt_in_flight`; captured or indeterminate attempts retain the money
+refusal. The host withholds this operation for uncertain dispatch.
 Dedicated promotion cancellation (`cancelUnstartedPromotionOrder`) remains
 unbound on native PostgreSQL. No table grant, withdrawal marker or provider
 dispatch is added. Install the complete catalogue and compose the binding

@@ -1078,3 +1078,65 @@ remain historical evidence, not final-hash reruns in this bounded resume.
 
 Self-retro: reuse the module's existing error and test its actual caller
 projection; a cross-module constructor was unnecessary to preserve that result.
+
+
+## In-flight compensation guard read
+
+The cancellation routine now ports the reference adopter's root-first guard.
+It locks the subscription root (when present), order, intents, simulator attempts,
+observations and truth evidence before deciding. The root hint is rechecked under
+the order lock; a changed aggregate refuses. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without any persisted write.
+A terminal refused or expired attempt permits the existing cancel/release path;
+captured or indeterminate attempt evidence keeps the existing `money_recorded`
+refusal. The native active flag also remains true on terminal observations, so it
+is not used as a proxy for in-flight state. No public type or signature changes.
+The routine's successful cancel/release body and the admission call remain intact.
+
+New restricted-runtime PostgreSQL proofs cover refusal snapshots, cancellation
+following a failed attempt, all other terminal/uncertain outcomes, and both
+concurrent begin/cancel winners. Blocking is observed on the actual order lock,
+not inferred from call order. Existing cancel/release/late-capture/restart tests
+are unchanged. A source-pinned characterization witness lives in the native test;
+private provenance and the full rule/refusal mapping remain in the maintainer
+packet. No managed SQL, OMS metadata, attempt store or G7 code changes.
+
+Time classification is unchanged: stored timestamps remain VALUEs; the reserve
+expiry is a PostgreSQL-built SQL-only identity, no TypeScript key. The new guard
+introduces no clock, timestamp conversion or identity. The new lock-wait test's
+wall clock bounds only its diagnostic poll, not a durable operation.
+
+The new forward SHA256 is
+`7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f`.
+The feature pin keeps its approved order (helper fifth). Only cancellation's
+function hash changes; the complete forward, packaged copy, manifests and
+measured current inventories are regenerated. This delta is staged for the
+maintainer read; no DCO commit or native review is authorized yet.
+
+Self-retro: reconcile the current cancellation guard with its child attempt
+state before treating a late-capture recovery test as complete cancellation proof.
+
+
+Final guard-read evidence: real PostgreSQL native 40/40 in each of UTC,
+Etc/GMT-9, Etc/GMT+5 and alternating UTC/Etc/GMT-9 sessions (160 cases).
+Seven new cases also pass solo without coverage; body times are 9.820–72.385 ms,
+with explicit 30,000 ms limits on the two concurrent cases. The unchanged old
+33-case file remains an exact 71,777-byte prefix. Four-bound catalog 130/130,
+full transfer 17/17 and the 99-table handover witness reach the qualified-target
+ready outcome with one fenced uncertain operation. Five actual inventory
+profiles install and replay with zero new writes. Current inventory literals are
+measured; historical pins and chain/table counts stay unchanged.
+
+Typecheck (five projects), lint (zero errors, 33 unchanged warnings), ast-grep,
+all 68 API reports and both neutrality checks pass. Policy and docs-update report
+11 obligations, of which two require refreshed scoped no-impact trailers for
+the changed test/inventory digests in the eventual signed commit. Those exact
+answers are prepared in the maintainer packet; policy is not claimed green
+before that authorized commit. No contributor-policy text is changed.
+
+Official Node v24.21.0 pack against the exact stack leaf: +12,056 B packed,
++2,889 B code-gzip, +69,151 B unpacked and +5 files. Absolute packed size is
+2,453,943 B, code-gzip 1,957,647 B; no cap changes. Growth over the prior gate
+packet is 298 B packed and zero code-gzip, due to the guard SQL and its public
+explanation. Packaged SQL and generated manifest are included. The final
+staged identities and exact patch are in the maintainer packet, awaiting read.

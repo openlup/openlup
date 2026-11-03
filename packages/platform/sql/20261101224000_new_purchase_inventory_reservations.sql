@@ -218,6 +218,7 @@ DECLARE
   receipt public.fulfillment_purchase_reservation_receipts%ROWTYPE;
   target public.commerce_orders%ROWTYPE;
   command jsonb; answer jsonb; held record; released integer:=0; donor_key text;
+  subscription_hint uuid; locked_subscription uuid; hint_found boolean;
 BEGIN
   IF p_idempotency_key IS NULL OR length(p_idempotency_key) NOT BETWEEN 8 AND 200
     OR length(btrim(p_idempotency_key))<8 OR p_order_id IS NULL
@@ -235,14 +236,44 @@ BEGIN
     END IF;
     RETURN receipt.result||jsonb_build_object('replayed',true);
   END IF;
+  SELECT COALESCE(c.subscription_id,a.subscription_id) INTO subscription_hint
+    FROM public.commerce_orders o
+    LEFT JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
+    LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE o.id=p_order_id;
+  hint_found:=FOUND;
+  IF subscription_hint IS NOT NULL THEN
+    PERFORM 1 FROM public.subscriptions WHERE id=subscription_hint FOR UPDATE;
+  END IF;
   SELECT * INTO target FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE;
   IF NOT FOUND THEN
     answer:=jsonb_build_object('cancelled',false,'reason','order_not_found','orderStatus',NULL);
   ELSIF target.renewal_operation_id IS NOT NULL THEN
     RAISE EXCEPTION 'commerce_checkout_compensation_renewal_order_unsupported' USING ERRCODE='22023';
   ELSE
-    -- Match the payment slot: order, all its intents, then truth/aggregate work.
+    SELECT COALESCE(c.subscription_id,a.subscription_id) INTO locked_subscription
+      FROM public.commerce_orders o
+      LEFT JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
+      LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE o.id=p_order_id;
+    IF NOT hint_found OR locked_subscription IS DISTINCT FROM subscription_hint THEN
+      RAISE EXCEPTION 'commerce_checkout_compensation_aggregate_changed' USING ERRCODE='55000';
+    END IF;
+    -- Root first, then every intent and attempt before their evidence.
     PERFORM id FROM public.commerce_settlement_intents WHERE order_id=p_order_id ORDER BY id FOR UPDATE;
+    PERFORM a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i
+      ON i.id=a.settlement_intent_id WHERE i.order_id=p_order_id ORDER BY a.id FOR UPDATE OF a;
+    PERFORM e.id FROM public.payment_simulator_observations e JOIN public.payment_simulator_attempts a
+      ON a.id=e.attempt_id JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id
+      WHERE i.order_id=p_order_id ORDER BY e.id FOR UPDATE OF e;
+    PERFORM e.id FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i
+      ON i.id=e.settlement_intent_id WHERE i.order_id=p_order_id ORDER BY e.id FOR UPDATE OF e;
+    IF EXISTS(SELECT 1 FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i
+      ON i.id=a.settlement_intent_id WHERE i.order_id=p_order_id AND a.state='dispatched') THEN
+      RETURN jsonb_build_object('cancelled',false,'reason','provider_attempt_in_flight');
+    END IF;
+    IF EXISTS(SELECT 1 FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i
+      ON i.id=a.settlement_intent_id WHERE i.order_id=p_order_id AND a.state IN ('captured','indeterminate')) THEN
+      RETURN jsonb_build_object('cancelled',false,'reason','money_recorded','orderStatus',target.status);
+    END IF;
     IF EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE order_id=p_order_id AND status='settled')
       OR EXISTS(SELECT 1 FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i
         ON i.id=e.settlement_intent_id WHERE i.order_id=p_order_id AND e.outcome IN ('captured','indeterminate')) THEN

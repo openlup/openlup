@@ -3210,7 +3210,7 @@
     },
     {
       "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
-      "sha256": "86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c",
+      "sha256": "7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f",
       "functions": [
         {
           "signature": "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)",
@@ -3230,7 +3230,7 @@
         {
           "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "03ccfcf7129ddfcfeb3ed03f5eb6fc9969705c0d54c0856cb07e503cb136ed5c"
+          "afterSha256": "778ee6094bc0fd59e3fd73693fd7c2c1f68c07f921ebcd3a89774753cb3c6d44"
         },
         {
           "signature": "public.inventory_admission_try_enter()",
