@@ -1,5 +1,6 @@
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput } from "@openlup/platform/inventory";
+import { createPostgresDestinationPort, type DestinationDocument } from "@openlup/platform/commerce/server/destinations";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
@@ -46,6 +47,8 @@ let identity: Awaited<ReturnType<typeof identityFixture>>;
 let payments: Awaited<ReturnType<typeof paymentTransferFixture>>;
 const paymentOptions = { dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered" };
 const paymentAt = "2026-10-30T12:00:00.123Z";
+let retainedDestination: DestinationDocument;
+let destinationCommand: { operator: string; subscription: string; payload: object; key: string; version: number };
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
@@ -353,6 +356,14 @@ beforeAll(async () => {
     items: [{ orderItemId: cancelledItem, skuId: sku, quantity: 2 }] });
   retainedCancellation = { idempotencyKey: "retained-cancellation", orderId: cancelledOrder, reason: "retained@example.invalid" };
   expect(await createPostgresAbandonedCheckoutCompensationPort(source.runtime, () => "2026-09-01T12:00:00Z").cancelAbandonedOrder(retainedCancellation)).toEqual({ cancelled: true });
+  const destinations = createPostgresDestinationPort(source.runtime);
+  retainedDestination = await destinations.registerOrder({ idempotencyKey: `destination-${graph.order}`, orderId: graph.order,
+    address: { recipientName: "Synthetic personal recipient", line1: "Synthetic personal street", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: "2026-09-01T12:00:00Z" });
+  await source.owner.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [admin]);
+  destinationCommand = { operator: admin, subscription: graph.subscription, key: `address-${graph.order}`,
+    version: Number((await source.runtime.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows[0].template_version),
+    payload: { newAddress: { recipientName: "Synthetic future recipient", line1: "Synthetic future street", city: "Fixture", postalCode: "00000", country: "ZZ" } } };
+  await source.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-01T12:00:00Z')", [admin, graph.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -516,6 +527,13 @@ it("refuses a native capture login that row security would silently filter", asy
       // The baseline dump can leave a pooled session with this setting off.
       await client.query("SET LOCAL row_security = on");
       expect((await client.query("SELECT count(*)::int AS rows FROM public.clients")).rows).toEqual([{ rows: 0 }]);
+      for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
+        expect(Number((await source.owner.query(`SELECT count(*) n FROM public.${table}`)).rows[0].n)).toBeGreaterThan(0);
+        expect((await client.query(`SELECT count(*)::int AS rows FROM public.${table}`)).rows).toEqual([{ rows: 0 }]);
+        await client.query("SAVEPOINT address_filter; SET LOCAL row_security=off");
+        await expect(client.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });
+        await client.query("ROLLBACK TO SAVEPOINT address_filter");
+      }
       await expect(captureConnectedNativeStore({ sourceId: "native-filtered-login", catalogueId: selected.objectInventorySha256,
         maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
         source: { withSnapshot: work => work({ query: async (sql, values) => {
@@ -906,6 +924,42 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   freshTarget: pristine, targetOwner: target.owner })).rejects.toMatchObject({ code: "target_conflict", table: "clients" });
   expect(before.clients).toEqual([]);
 }, 30_000);
+
+it("retains private destinations, scoped bindings, support replay and exact address data after restore", async () => {
+  await restore();
+  for (const table of ["commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts", "customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
+    const read = (db: Pool) => db.query(`SELECT to_jsonb(t)::text value FROM public.${table} t ORDER BY to_jsonb(t)::text`);
+    expect((await read(target.owner)).rows).toEqual((await read(source.owner)).rows);
+  }
+  const original = await createPostgresDestinationPort(target.runtime).registerOrder({ idempotencyKey: `destination-${graph.order}`, orderId: graph.order,
+    address: { recipientName: "Synthetic personal recipient", line1: "Synthetic personal street", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: "2026-09-02T12:00:00Z" });
+  expect(original).toEqual(retainedDestination);
+  const replay = await target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z') result", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
+  expect(replay.rows[0].result).toMatchObject({ replayed: true });
+  await expect(target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z')", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version + 1, destinationCommand.key])).rejects.toMatchObject({ code: "23505" });
+});
+
+it("enforces actual cumulative row and byte limits at EACH address relation", async () => {
+  for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
+    const index = packet.owned.findIndex(t => t.table === table);
+    const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+    const rowsBefore = prior.reduce((n, t) => n + t.rows.length, 0);
+    const bytesBefore = prior.reduce((n, t) => n + t.rows.reduce((m, row) => m + Buffer.byteLength(row), 0), 0);
+    const relation = packet.owned[index]!;
+    expect(relation.rows.length).toBeGreaterThan(0);
+    for (const limits of [
+      { maximumRows: rowsBefore + relation.rows.length - 1, maximumBytes: 64 * 1024 * 1024 },
+      { maximumRows: 10000, maximumBytes: bytesBefore + relation.rows.reduce((n, row) => n + Buffer.byteLength(row), 0) - 1 },
+    ]) {
+      await expect(captureConnectedNativeStore({ sourceId: "address-bounded", catalogueId: selected.objectInventorySha256, ...limits,
+        source: { async withSnapshot(work) { const client = await source.owner.connect();
+          try { await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); return await work({ query: (sql, args) => client.query(sql, args ? [...args] : undefined) }); }
+          finally { await client.query("ROLLBACK"); client.release(); }
+        } } })).rejects.toMatchObject({ code: "limit_exceeded", table });
+    }
+  }
+});
+
 
 it("drains every target acquisition command before opening a new installation-key namespace", async () => {
   const sourcePort = createPostgresPartnerAcquisitionPort({ connectionString: source.ownerUrl });

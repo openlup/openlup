@@ -263,3 +263,15 @@ it("R7 selected commerce effects join the existing registry without eager execut
   expect(start).toHaveBeenCalledTimes(1);
   expect(f.readiness).toHaveBeenLastCalledWith(binding.schema);
 });
+
+it("names next-parcel applicability on the reference route and the donor browser refuses that unsupported outcome", async () => {
+  const result = { outcome: "applied_from_next_parcel", appliesFrom: "next_parcel", futureDestinationId: "future-address", replayed: false,
+    ...settled } as const;
+  const execute = vi.fn(async (_request: typeof operatorRequest) => result);
+  const response = await createM12OperatorSubscriptionActionRoute(execute)(operatorRequest);
+  expect(response.outcome).toBe("applied_from_next_parcel");
+  expect(operatorSubscriptionActionResponseSchema.safeParse(response).success).toBe(false);
+  await expect(requestBff("/api/bff/admin/support/customer-journey", operatorSubscriptionActionResponseSchema, {
+    fetcher: async () => Response.json({ ok: true, data: response }),
+  })).rejects.toThrow();
+});

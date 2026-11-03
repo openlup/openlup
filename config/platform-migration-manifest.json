@@ -376,9 +376,13 @@
     {
       "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
       "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323"
+    },
+    {
+      "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+      "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6"
     }
   ],
-  "objectInventorySha256": "854fc3055e00fda914c1ff6584a848f454e8bbbdca2fdb2a79ac826f098e3607",
+  "objectInventorySha256": "877bdd3d4db0e71da014647e6e8a884f8626ea59206dc6c70c4cad2477719a61",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -772,14 +776,18 @@
       {
         "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
         "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323"
+      },
+      {
+        "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+        "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "b27b9b58a35f7e12f87578a8e457326ad5a6bdc8f034899a378e3da3c64854f6"
+        "withRestore": "e578feac21e0329e3dd17f8188ad42c6ff522672708d23c7c6bdf236a6e65819"
       },
       "separateMigrator": {
-        "withRestore": "b7c311a419c9d5d28401841a1d2ee1c3d5c32a6ccb1a0c36a65fe0b84f197952"
+        "withRestore": "f0723c366ccbc4de21ea433efe880a286a2b3d09aa74114eb823faa6157848dd"
       }
     }
   },
@@ -1172,11 +1180,15 @@
       {
         "file": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
         "sha256": "0fe4c20229e3635d61f820788e7d2b98148c8fd46daede44260f71da121e9323"
+      },
+      {
+        "file": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+        "sha256": "104ef7f72085166dcfe48f5b1622faf2946b5eb95f31a1b56c8e81ca599c69d6"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "594c0c08fbf172081b03c0363418346c7c69221f7ede6dafb47d924828b93142",
-      "operatorProvisioned": "703a038f974166f878bf9e62026fd198080eda92d72800119a8d0c3ce5d09dad"
+      "installerManaged": "6930bc93c7975858d1357cb0801b840eb4590571330c796cf1020a8b0a356a60",
+      "operatorProvisioned": "0f51f4ee95a8d756e62352443d79f1fde45c41dafc62279a5c12bf05eaeb67e7"
     }
   }
 }

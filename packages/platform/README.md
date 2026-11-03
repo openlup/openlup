@@ -445,6 +445,12 @@ remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction and replacement requests retain their existing refusal. Returns record
 intent; they do not receive, restock or execute a refund. The host authenticates
 and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+Native destinations use `./commerce/server/destinations` and the complete SQL
+catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
+The confirmation outbox is durable; native mail dispatch is unbound.
+Addresses and identifying reference strings persist. Use opaque references;
+address export/erasure is unavailable. No saved address book is provided.
+
 
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;
@@ -1590,6 +1596,8 @@ Customer 360 read schemas with CSP-safe initialization; it selects no Node drive
 `./account-support/contracts` remains type-only. Authentication, machine-read
 governance and optional diagnostic ports remain host composition. No diagnostic
 store or HTTP route is installed by these entries.
+`applied_from_next_parcel` leaves the frozen parcel unchanged; show that scope to
+the customer.
 
 Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner

@@ -22,6 +22,8 @@ const owned = [
 
   // Private companion rows of the compatible payment_truth_events above.
   "payment_simulator_attempts", "payment_simulator_observations",
+  "commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts",
+  "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   "catalog_products", "catalog_skus", "price_lists", "price_entries", "subscription_lines",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
