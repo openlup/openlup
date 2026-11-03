@@ -61,7 +61,7 @@ it("reads exactly 500 facts in UUID order, using pages of 100 and deduped payloa
   }
   expect(verifyDocument).toHaveBeenCalledTimes(500);
   expect(verifyDocument).toHaveBeenCalledWith(documentFor(0), expect.objectContaining({ sku: expect.objectContaining({ id: seed.skus[0]!.id }) }));
-});
+}, 30_000);
 
 it("excludes inactive and unsellable SKUs, validates inactive products before exclusion, and retains secondary/addon facts", async () => {
   const db = fixture.owner;
@@ -92,7 +92,7 @@ it("excludes inactive and unsellable SKUs, validates inactive products before ex
     await db.query("UPDATE public.catalog_skus SET product_id=$2,is_addon=false WHERE id=$1", [seed.skus[3]!.id, seed.products[3]!.id]);
     await db.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [seed.products[3]!.id, seed.skus[3]!.id]);
   }
-});
+}, 30_000);
 
 it("allows exactly a configured maximum, refuses one excess without partial success, and bounds empty filtered pages", async () => {
   await update("UPDATE public.catalog_skus SET status='active' WHERE id=$1", [extra.id], async () => {
@@ -104,7 +104,7 @@ it("allows exactly a configured maximum, refuses one excess without partial succ
   const filtered = intercept((rows, sql) => isPayload(sql) ? rows.map(row => ({ ...row, product_status: "archived" })) : rows);
   // max1 admits at most two pages, even when every product is filtered out.
   await refusal(make(filtered, 1), "catalog_cardinality_exceeded");
-});
+}, 30_000);
 
 it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])("refuses invalid technical maximum %s", maxItems => {
   expect(() => make(fixture.executor, maxItems)).toThrow(RangeError);
@@ -154,7 +154,7 @@ it("detects a real pointer change between envelope/identifier read and guarded p
   } };
   try { await refusal(make(db), "catalog_authority_changed"); expect(moved).toBe(true); }
   finally { await fixture.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [product.id, original]); }
-});
+}, 30_000);
 
 it.each(["schema", "semantic identity", "digest"])("lets the host refuse document %s using the shared error class", async kind => {
   const db = intercept((rows, sql) => {

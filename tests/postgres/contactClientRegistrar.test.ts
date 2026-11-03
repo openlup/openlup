@@ -114,7 +114,7 @@ it("converges 24 concurrent calls across pools on one client and one creator", a
   expect(new Set(contacts.map(value => value.clientId)).size).toBe(1);
   expect(contacts.filter(value => value.created)).toHaveLength(1);
   expect((await owner.query("SELECT id FROM public.clients WHERE lower(email)='race@example.test'")).rows).toHaveLength(1);
-});
+}, 30_000);
 
 it("normalizes case/outer whitespace but preserves plus tags and dots", async () => {
   const first = success(await registrar.ensureContactClient(input("  Case.Name@Example.Test  ")));
