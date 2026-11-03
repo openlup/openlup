@@ -206,6 +206,61 @@ it("replays begin/observations/capture after a fresh process and commits one fin
   expect((await admin.query("SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1", [f.intent])).rows).toHaveLength(1);
 });
 
+function methodFacts(unattendedChargeAuthorizedAt: string) {
+  return { authorizationRef: "sandbox:authorization:explicit", unattendedChargeAuthorizedAt,
+    payerAccountRef: "sandbox:payer:explicit", methodRef: "sandbox:method:explicit", methodEvidenceRef: "sandbox:evidence:explicit" };
+}
+async function attemptRows(intent: string) {
+  return (await admin.query(`SELECT id,xmin::text AS version,dispatched_at::text AS dispatched_at,state,
+    (SELECT count(*)::int FROM public.payment_simulator_observations WHERE attempt_id=a.id) AS observations
+    FROM public.payment_simulator_attempts a WHERE settlement_intent_id=$1`, [intent])).rows;
+}
+it.each([
+  "2026-10-30T12:00:00.123456Z", "2026-10-30T12:00:00.000Z", "2026-10-30T14:00:00.123456+02:00",
+])("replays explicit method facts without redispatch for %s", async authorizationAt => {
+  expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  const f = await fixture(), input = { ...begin(f.intent), methodFacts: methodFacts(authorizationAt) };
+  const first = await simulator().beginAttempt(input), before = await attemptRows(f.intent);
+  expect(first.replayed).toBe(false); expect(before).toHaveLength(1);
+  expect(before[0]).toMatchObject({ id: first.id, state: "dispatched", observations: 0 });
+  expect(await simulator().beginAttempt(input)).toMatchObject({ id: first.id, replayed: true });
+  expect(await attemptRows(f.intent)).toEqual(before);
+});
+it("replays explicit method facts read in a different session TimeZone", async () => {
+  const f = await fixture(), input = begin(f.intent), utc = await runtime.connect(), offsetSession = await runtime.connect();
+  try {
+    await utc.query("SET TimeZone='UTC'"); await offsetSession.query("SET TimeZone='Etc/GMT-9'");
+    const source = createPostgresSandboxPaymentSimulator(utc, options);
+    const target = createPostgresSandboxPaymentSimulator(offsetSession, options);
+    const first = await source.beginAttempt(input), saved = (await source.readAttempt({ settlementIntentId: f.intent }))!.methodFacts;
+    const before = await attemptRows(f.intent);
+    expect(await target.beginAttempt({ ...input, methodFacts: saved })).toMatchObject({ id: first.id, replayed: true });
+    const other = (await target.readAttempt({ settlementIntentId: f.intent }))!.methodFacts;
+    expect(await source.beginAttempt({ ...input, methodFacts: other })).toMatchObject({ id: first.id, replayed: true });
+    expect(await attemptRows(f.intent)).toEqual(before);
+  } finally {
+    await utc.query("RESET TimeZone"); await offsetSession.query("RESET TimeZone"); utc.release(); offsetSession.release();
+  }
+});
+it.each([
+  { unattendedChargeAuthorizedAt: "2026-10-30T12:00:00.123457Z" }, { methodRef: "sandbox:method:changed" },
+])("refuses changed explicit method facts %j", async changed => {
+  const f = await fixture(), input = { ...begin(f.intent), methodFacts: methodFacts("2026-10-30T12:00:00.123456Z") };
+  await simulator().beginAttempt(input); const before = await attemptRows(f.intent);
+  await expect(simulator().beginAttempt({ ...input, methodFacts: { ...input.methodFacts, ...changed } }))
+    .rejects.toMatchObject({ code: "23505", message: "payment_simulator_request_conflict" });
+  expect(await attemptRows(f.intent)).toEqual(before);
+});
+it("refuses invalid explicit authorization timestamp strings on creation and replay", async () => {
+  const f = await fixture(), input = begin(f.intent), invalid = methodFacts("not-a-timestamp");
+  await expect(simulator().beginAttempt({ ...input, methodFacts: invalid })).rejects.toMatchObject({ code: "22007" });
+  expect(await attemptRows(f.intent)).toEqual([]);
+  await simulator().beginAttempt(input); const before = await attemptRows(f.intent);
+  await expect(simulator().beginAttempt({ ...input, methodFacts: invalid })).rejects.toMatchObject({ code: "22007" });
+  expect(await attemptRows(f.intent)).toEqual(before);
+});
+
 it("preserves sub-millisecond observation times through fresh ingress and replay", async () => {
   expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
     .toEqual([{ rolsuper: false, rolbypassrls: false }]);

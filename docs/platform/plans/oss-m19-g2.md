@@ -1290,3 +1290,114 @@ No prior native session exists; the first full review still starts at 0/3.
 The merged tree requires its updated build, integration proof, real pack,
 policy and trusted-main admission before review. The earlier anchor's tests
 are retained as source proof and are not relabelled as this integration's run.
+
+
+### Timestamp representation audit and first native repair
+
+The comparison base for provenance is `31423ca5`. The audit uses
+`rg` for time fields, comparisons, ordering, SQL strings and fingerprints,
+then follows their callers and checks `git blame --line-porcelain` ancestry
+against that base. New package files have no base-path blame; the promoted
+payment-truth implementation is additionally compared with the incumbent
+`server/adapters/postgres/paymentTruth.ts` on that base.
+
+Forms: **1** parses/compares full microsecond instants in PostgreSQL;
+**2** preserves the exact database/request text without a JavaScript date
+round trip; **3** canonicalizes JSON timestamp text in the same PostgreSQL
+statement; **4** is the previously decided SQL millisecond identity label,
+never a timestamp lookup. Column order in the archive and schema-ledger
+position order are not chronological order. Rows below include time-bearing
+SQL bindings and selections as well as actual decisions.
+
+| Site | Form | Use and comparison | Provenance against base |
+| --- | --- | --- | --- |
+| `server/adapters/postgres/connectedStoreCapture.ts:101` | 2 | Captured rows are database JSON text under UTC; timestamp strings do not pass through JavaScript dates.  | main dcd8971d |
+| `server/adapters/postgres/connectedStoreCapture.ts:69` | 2 | Server-incarnation fingerprint consumes PostgreSQL-rendered postmaster-start epoch text; no JavaScript timestamp round trip.  | main 99dab83b |
+| `server/adapters/postgres/connectedStoreCapture.ts:149` | 2 | ORDER BY to_jsonb(row)::text is deterministic archive byte ordering, not chronological ordering; timestamp strings are opaque.  | main dcd8971d |
+| `packages/platform/src/subscriptions/nativePurchaseRenewal.ts:32` | 2 | Purchase authorization time is serialized unchanged in facts JSON and replayed against the originally saved JSON, not a timestamp reconstructed by PostgreSQL.  | bundle-owned |
+| `packages/platform/src/subscriptions/nativePurchaseRenewal.ts:9` | 2 | Purchase facts declare a string; complete/pending/readMethod/transition/activation calls contain no explicit time argument or time decision.  | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:20` | 1 | Correlation counts paid cycles using PostgreSQL timestamp ordering, preserving microseconds.  | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:24` | 2 | Header selects next_cycle_at as UTC ISO with six fraction digits; authorization time uses the same projection on the next line.  | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:33` | 1 | Header lookup compares the stored next_cycle_at with input.scheduledAt parsed by PostgreSQL; caller passes the precise string unchanged.  | main 41239eb7 |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:52` | 2 | Due-list schedule and authorization override driver-parsed fields with UTC ISO microsecond text.  | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:54` | 1 | Due cutoff binds asOf as timestamptz without JavaScript conversion.  | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:60` | 1 | Frozen-operation lookup uses exact input.scheduledAt through timestamptz; database JSON snapshot is decoded unchanged.  | main 41239eb7 |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:66` | 2 | Method evidence returns the projected authorization timestamp unchanged.  | bundle-owned |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:76` | 1 | Claim binds input.now as timestamptz and encodes full scheduledAt/authorization strings in the immutable snapshot JSON.  | main 41239eb7 |
+| `packages/platform/src/subscriptions/postgresRenewalStore.ts:84` | 1 | Preflight refusal binds occurredAt as timestamptz unchanged.  | main 41239eb7 |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:55` | 2 | due/freeze/decode/readback preserve UTC ISO schedule and authorization strings; only six-digit zero-microsecond suffix .ddd000Z is reduced to the already-decided .dddZ wire spelling, with no instant change.  | bundle-owned |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:80` | 2 | Snapshot body, canonical JSON and SHA identity preserve full exact schedule and authorization text; wire replay compares the same canonical bytes.  | bundle-owned |
+| `packages/platform/src/subscriptions/nativeRenewalCodec.ts:154` | 4 | Identity label truncates fraction text to three digits, matching SQL SS.MS without rounding. This label is never the timestamp lookup.  | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:28` | 1 | Observed occurredAt is passed unchanged to the database timestamp comparison/writer.  | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:49` | 1 | ACK binds a fresh host-clock string as timestamptz; no stored instant is rounded.  | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:70` | 2 | Outcome selects occurred_at and created_at as UTC ISO microsecond text (next line too), then copies occurredAt/observedAt/firstRecordedAt unchanged.  | bundle-owned |
+| `packages/platform/src/subscriptions/sandboxRenewalRail.ts:91` | 4 | Policy identity uses the same string truncation as the codec and native SQL millisecond label; full schedule remains in the snapshot.  | bundle-owned |
+| `server/adapters/postgres/connectedStoreRestore.ts:283` | 2 | Restore pins UTC before timestamp serialization and comparisons.  | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:212` | 3 | Retained lifecycle rows are parsed with jsonb_populate_record and emitted as database JSON in UTC.  | main a508a23f |
+| `server/adapters/postgres/connectedStoreRestore.ts:298` | 2 | Schema-ledger JSON captures timestamp strings under UTC and compares unchanged JSON at lines 329 and 417; ordering is by position, not time.  | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:358` | 1 | Retained cycle/client import binds typed created/updated/scheduled times from jsonb_populate_record; generic insert uses the same typed record route.  | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:571` | 3 | Cleanup compares JSON occurredAt with PostgreSQL-rendered created_at in the UTC restore transaction.  | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:574` | 1 | Cleanup compares created_at/available_at with the exact transaction timestamp, in PostgreSQL.  | main dcd8971d |
+| `server/adapters/postgres/connectedStoreRestore.ts:144` | donor follow-up | Unchanged donor compares nested audit revokedAt spelling with a membership timestamp string. Equivalent instants in different spellings can refuse projection; investigate under the identity-transfer owner, outside this bundle acceptance.  | main 99321e13 |
+
+Non-decision coverage: the simulator's `instant()` at line 8 is used only
+for envelope `providerOccurredAt` and display/audit `recordedAt` (lines 38
+and 46), never for its SQL comparisons, lookup, dispatch key or payment
+fingerprint. The accepted-row SELECT also reads an unused driver timestamp;
+authoritative application/evidence time comes from `source_evidence.observedAt`.
+Its read/observation contracts return PostgreSQL JSON time strings.
+The truth codec only copies optional `reviewRequiredAt` as a string.
+The payment adapter facade and index barrels contain no timestamp operation.
+
+The renewal codec's `Date.parse` at lines 29,98,106,136,146 is the required
+legacy `scheduledInstant` millisecond compatibility projection and its
+internal consistency/finite checks; it does not match stored rows, identify
+cycles or compare two distinct stored instants. `scheduledAt` remains full
+precision. The sandbox rail's fresh host-clock Date at lines 14 and 48 only
+creates a dispatch-reference suffix; operation UUID and existing ACK fence
+supply its identity. The operation wildcard selects unused driver timestamp
+columns; none feeds comparison or identity. Purchase completion and method
+transitions have no caller-supplied timestamp. Transfer preserves all table
+rows through database JSON text and typed record insertion, including the
+newly owned tables; unused row timestamps never enter JavaScript dates.
+
+The only additional bundle-owned comparison defect found is explicit
+method-facts replay: PostgreSQL now canonicalizes the authorization timestamp
+inside the begin-attempt statement. No SQL, forward hash, pin or class data
+changes. Omitted facts and non-string values pass unchanged. An invalid
+string on a replay now fails at the timestamp cast with `22007`, where the
+old raw-JSON comparison returned `23505`; both refuse without a new dispatch.
+The unchanged donor audit/membership lexical comparison above is recorded as
+a follow-up, not repaired or included in this bundle's acceptance.
+
+Restricted-role regressions before the repair: three explicit spellings and
+the session-zone replay failed with request conflict; the one-microsecond
+change and changed method reference already refused correctly. Invalid-string
+creation already refused with `22007`; its replay returned `23505`.
+After the repair all seven added cases pass, with the same durable attempt
+row/version, dispatch timestamp and zero observations after successful replays.
+The zone witness uses separate UTC and Etc/GMT-9 connections in both
+directions. The first native repair cycle is one of three; both original
+replay finding cards remain open until fresh independent reports close them.
+
+Own-delta identity proof is extended by one authorized production repair:
+`packages/platform/src/payments/postgresSandboxPaymentSimulator.ts:77–81`
+canonicalizes only a string authorization timestamp before the existing SQL
+function call. The new repair-only +/- line SHA-256 is
+`996048ebe5cd68d5f08388c3c64b7e8cad781ee5093131d510fc1dae6ac6fe0f`.
+The earlier two repair hashes remain fixed; applying all three authorized
+line deltas to the accepted reads yields the same production/SQL +/- line
+multisets as this candidate against `31423ca5`. The admission test's only
+delta is the separately authorized pin-path expectation and slow-case timeout.
+No other production or SQL line difference is admitted by the proof script.
+Commands and line inventories are retained in worktree scratch under
+`.context/scratch/g2/method-replay-repair/`, including `read_identity.py`,
+`timestamp-audit.json`, direct/symbol importer searches and base blame output.
+
+The cross-session regression now uses the neutral fixed-offset zone
+`Etc/GMT-9` (UTC+09:00, no daylight saving). Repeating that case with the
+previously packed factory whose source is byte-identical to the pre-repair
+signed head reproduces `23505`; restoring the repaired factory passes all
+23 simulator cases. Both neutrality checks report zero increases. The repair
+adds 240 bytes to source and 240 bytes to emitted JavaScript, with no new
+package file. The real compressed measure remains a separate required proof.

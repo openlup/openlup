@@ -74,7 +74,10 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
   return {
     ingress,
     async beginAttempt(input) {
-      return await call("SELECT public.payment_simulator_begin_attempt($1,$2::uuid,$3,$4::jsonb,$5::timestamptz) AS response",
+      return await call(`SELECT public.payment_simulator_begin_attempt($1,$2::uuid,$3,
+        CASE WHEN jsonb_typeof($4::jsonb->'unattendedChargeAuthorizedAt')='string'
+          THEN jsonb_set($4::jsonb,'{unattendedChargeAuthorizedAt}',to_jsonb(($4::jsonb->>'unattendedChargeAuthorizedAt')::timestamptz))
+          ELSE $4::jsonb END,$5::timestamptz) AS response`,
         [input.idempotencyKey, input.settlementIntentId, input.requestFingerprint, JSON.stringify(input.methodFacts ?? {}), input.at]) as SandboxPaymentAttempt & { replayed: boolean };
     },
     async recordObservation(input) {
