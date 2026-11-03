@@ -3267,12 +3267,17 @@
     },
     {
       "path": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
-      "sha256": "92b4dc0b4b4ce9ef34c4c81339e59227c0c9f71e1ddb3d97f855d0411bc0353b",
+      "sha256": "ab163b2f79a804fa190efd738ae9982d5d4a3a98f7ce661bfaedb510e486f215",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
           "beforeSha256": "4814d98dbc9e6495af8d1d4d411a6a40d68cb5bcbd53aa41006bea6a34189af8",
           "afterSha256": "b73637d95950ca72d32c1649b98ef774c2a2c9c2e377c2ae58fd051b3979660e"
+        },
+        {
+          "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+          "beforeSha256": "76578042f03f95f7599fa5fc84b0c720fbc8cb17d4031b0a0be6a5c5ce0019fe",
+          "afterSha256": "fdf5dd6e73764a6404aeb9ed5e05dfc6e66b28044c464905b6f5375410c496e0"
         },
         {
           "signature": "public.commerce_view_shipment_destination(uuid)",

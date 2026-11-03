@@ -198,3 +198,147 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_view_shipment_destination(uuid), public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz), public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz), public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer), public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz) FROM authenticated'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_view_shipment_destination(uuid), public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz), public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz), public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer), public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz) TO service_role'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz), public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz), public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz) FROM service_role'; END IF; END; $$;
+
+CREATE OR REPLACE FUNCTION public.commerce_prepare_subscription_renewal(
+  p_operation_id uuid,
+  p_claim_token uuid,
+  p_now timestamptz DEFAULT now()
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_operation public.subscription_renewal_operations%ROWTYPE;
+  v_reservation public.fulfillment_inventory_reservations%ROWTYPE;
+  v_cycle_id uuid;
+  v_order_id uuid;
+  v_intent_id uuid;
+  v_line jsonb;
+  v_line_ordinal integer := 0;
+  v_sku_id uuid;
+  v_quantity integer;
+  v_unit_amount bigint;
+  v_total bigint;
+  v_currency text;
+  v_channel text;
+BEGIN
+  SELECT subscription_id INTO v_operation.subscription_id
+    FROM public.subscription_renewal_operations WHERE id = p_operation_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'commerce_renewal_operation_not_found' USING ERRCODE = '22023';
+  END IF;
+  PERFORM id FROM public.subscriptions
+   WHERE id = v_operation.subscription_id FOR UPDATE;
+
+  SELECT * INTO v_operation FROM public.subscription_renewal_operations
+   WHERE id = p_operation_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'commerce_renewal_operation_not_found' USING ERRCODE = '22023';
+  END IF;
+  IF v_operation.claim_token <> p_claim_token
+    OR v_operation.lease_expires_at <= COALESCE(p_now, now())
+  THEN
+    RAISE EXCEPTION 'commerce_renewal_stale_claim' USING ERRCODE = '40001';
+  END IF;
+
+  SELECT cycle.id, order_row.id, intent.id
+    INTO v_cycle_id, v_order_id, v_intent_id
+    FROM public.subscription_cycles cycle
+    JOIN public.commerce_orders order_row ON order_row.subscription_cycle_id = cycle.id
+    JOIN public.commerce_settlement_intents intent ON intent.order_id = order_row.id
+   WHERE cycle.renewal_operation_id = p_operation_id;
+  IF FOUND THEN
+    IF v_operation.state <> 'attempt_prepared' THEN
+      RAISE EXCEPTION 'commerce_renewal_artifact_state_conflict' USING ERRCODE = '23505';
+    END IF;
+    RETURN jsonb_build_object(
+      'contractVersion', 'platform.subscription.renewal.v1', 'replayed', true,
+      'operationId', p_operation_id, 'operationFingerprint', v_operation.operation_fingerprint,
+      'cycleId', v_cycle_id, 'orderId', v_order_id, 'settlementIntentId', v_intent_id,
+      'state', v_operation.state);
+  END IF;
+  IF v_operation.state <> 'reserved' THEN
+    RAISE EXCEPTION 'commerce_renewal_reservation_required' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_reservation FROM public.fulfillment_inventory_reservations
+   WHERE renewal_operation_id = p_operation_id FOR UPDATE;
+  IF NOT FOUND OR v_reservation.status <> 'held'
+    OR v_reservation.expires_at <= COALESCE(p_now, now())
+    OR v_reservation.operation_fingerprint <> v_operation.operation_fingerprint
+  THEN
+    RAISE EXCEPTION 'commerce_renewal_active_reservation_required' USING ERRCODE = '22023';
+  END IF;
+
+  v_currency := v_operation.cycle_snapshot->>'currency';
+  v_channel := v_operation.cycle_snapshot->>'settlementChannelKey';
+  v_total := (v_operation.cycle_snapshot->>'totalAmountMinor')::bigint;
+  IF v_currency !~ '^[A-Z]{3}$' OR btrim(COALESCE(v_channel, '')) = '' OR v_total < 1 THEN
+    RAISE EXCEPTION 'commerce_renewal_invalid_snapshot' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.subscription_cycles (
+    subscription_id, scheduled_at, status, renewal_operation_id,
+    renewal_operation_fingerprint, updated_at
+  ) VALUES (
+    v_operation.subscription_id, v_operation.scheduled_at, 'payment_pending', p_operation_id,
+    v_operation.operation_fingerprint, COALESCE(p_now, now())
+  ) RETURNING id INTO v_cycle_id;
+
+  INSERT INTO public.commerce_orders (
+    client_id, subscription_cycle_id, status, currency_code, total_amount_minor,
+    source_kind, metadata, renewal_operation_id, renewal_operation_fingerprint, updated_at
+  ) SELECT subscription.client_id, v_cycle_id, 'pending_payment', v_currency, v_total,
+           'storefront', jsonb_build_object(
+             'source', 'subscription.renewal',
+             'renewalIdentityKey', v_operation.identity_key,
+             'renewalOperationFingerprint', v_operation.operation_fingerprint,
+             'cycleSnapshot', v_operation.cycle_snapshot),
+           p_operation_id, v_operation.operation_fingerprint, COALESCE(p_now, now())
+      FROM public.subscriptions subscription WHERE subscription.id = v_operation.subscription_id
+  RETURNING id INTO v_order_id;
+
+  FOR v_line IN SELECT value FROM jsonb_array_elements(v_operation.cycle_snapshot->'lines')
+  LOOP
+    v_line_ordinal := v_line_ordinal + 1;
+    v_quantity := (v_line->>'quantity')::integer;
+    v_unit_amount := (v_line->>'unitAmountMinor')::bigint;
+    SELECT id INTO v_sku_id FROM public.catalog_skus WHERE sku = v_line->>'sku';
+    IF NOT FOUND OR v_quantity < 1 OR v_unit_amount < 0 THEN
+      RAISE EXCEPTION 'commerce_renewal_invalid_line' USING ERRCODE = '22023';
+    END IF;
+    INSERT INTO public.commerce_order_items (
+      order_id, sku_id, line_ordinal, quantity, unit_amount_minor, line_amount_minor
+    ) VALUES (
+      v_order_id, v_sku_id, v_line_ordinal, v_quantity, v_unit_amount,
+      v_quantity * v_unit_amount);
+  END LOOP;
+
+  PERFORM public.commerce_open_settlement_intent(
+    v_operation.identity_key || ':settlement', v_order_id, v_channel, v_total, v_currency,
+    jsonb_build_object(
+      'renewalOperationId', p_operation_id,
+      'renewalOperationFingerprint', v_operation.operation_fingerprint),
+    COALESCE(p_now, now()));
+  SELECT id INTO v_intent_id FROM public.commerce_settlement_intents WHERE order_id = v_order_id;
+  UPDATE public.commerce_settlement_intents
+     SET renewal_operation_id = p_operation_id,
+         renewal_operation_fingerprint = v_operation.operation_fingerprint,
+         updated_at = COALESCE(p_now, now())
+   WHERE id = v_intent_id;
+  UPDATE public.fulfillment_inventory_reservations
+     SET status = 'committed', expires_at = NULL, updated_at = COALESCE(p_now, now())
+   WHERE id = v_reservation.id;
+  UPDATE public.subscription_renewal_operations
+     SET state = 'attempt_prepared', attempt_prepared_at = COALESCE(p_now, now()),
+         updated_at = COALESCE(p_now, now())
+   WHERE id = p_operation_id RETURNING * INTO v_operation;
+
+  RETURN jsonb_build_object(
+    'contractVersion', 'platform.subscription.renewal.v1', 'replayed', false,
+    'operationId', p_operation_id, 'operationFingerprint', v_operation.operation_fingerprint,
+    'cycleId', v_cycle_id, 'orderId', v_order_id, 'settlementIntentId', v_intent_id,
+    'state', v_operation.state);
+END;
+$$;
