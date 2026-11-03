@@ -46,6 +46,23 @@ export async function captureSessionCandidate(cwd, base, { runGit = git, env = p
 async function ancestor(runGit, cwd, base, head) {
   try { await runGit(cwd, 'merge-base', '--is-ancestor', base, head); return true; } catch { return false; }
 }
+// Normalize lineage evidence only; the candidate/receipt still binds the actual tip.
+async function integrationParents(cwd, head) {
+  const [parentLine, tree] = (await git(cwd, 'show', '-s', '--format=%P%n%T', head)).trimEnd().split('\n');
+  const parents = parentLine.split(' ').filter(Boolean);
+  if (parents.length !== 1) return parents;
+  // Pretty-printed %B truncates at NUL; validate the complete raw message instead.
+  const commit = await git(cwd, 'cat-file', 'commit', head); const boundary = commit.indexOf('\n\n');
+  if (boundary < 0 || commit.includes('\0')) return parents;
+  const [subject, ...body] = commit.slice(boundary + 2).trimEnd().split('\n');
+  if (!subject?.trim() || body[0] !== '' ||
+    !body.some(line => /^OpenLup-Doc-Impact:[ \t]*\S/u.test(line)) ||
+    !body.every(line => line === '' || /^(?:OpenLup-Doc-Impact|Signed-off-by):[ \t]*\S[^\r\n]*$/u.test(line))) return parents;
+  const [mergeParents, mergeTree] = (await git(cwd, 'show', '-s', '--format=%P%n%T', parents[0])).trim().split('\n');
+  const joined = mergeParents.split(' ').filter(Boolean);
+  // Do not recurse: two trailer commits, or a trailer on a non-merge, cannot qualify.
+  return tree === mergeTree && joined.length === 2 ? joined : parents;
+}
 export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
   const baseAncestor = await ancestor(runGit, cwd, candidate.base, group.base);
   let predictedTree; let movedPaths = []; const manifests = {};
@@ -143,7 +160,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       await assertMergePreflight(cwd, observed, { env });
       const now = Date.now();
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
-        const parents = (await git(cwd, 'show', '-s', '--format=%P', observed.head)).trim().split(' ');
+        const parents = await integrationParents(cwd, observed.head);
         const baseAncestor = await ancestor(git, cwd, session.candidate.base, observed.base) &&
           await ancestor(git, cwd, observed.base, 'origin/main');
         const integration = integrationReviewContext(session, observed, { parents, baseAncestor }, now);

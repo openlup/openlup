@@ -32,6 +32,20 @@ function sources(directory: string): string[] {
       ? [join(directory, entry.name)] : []);
 }
 
+function violatesBinding(path: string, specifier: string, adapterNames: string[]): boolean {
+  const target = (specifier.startsWith(".") ? relative(root, resolve(dirname(path), specifier))
+    : specifier.replace(/^@\//, "src/")).split(sep).join("/");
+  // K3a owns this neutral managed-adapter root; remaining donor names still refuse.
+  let adapterTarget = target.replace(/^packages\/platform\/src\/commerce\/adapters\/managed\//, "commerce/");
+  // commerce/server/postgres is the neutral public store root; only its own imports qualify.
+  const storeRoot = "packages/platform/src/commerce/server/postgres/";
+  if (relative(root, path).split(sep).join("/").startsWith(storeRoot) && target.startsWith(storeRoot)) {
+    adapterTarget = target.replace(/^packages\/platform\/src\/commerce\/server\/postgres\//, "commerce/server/");
+  }
+  return /(?:^|\/)src\/domains\/channels(?:\/|$)|(?:^|\/)server\/adapters(?:\/|$)/.test(target)
+    || adapterTarget.replace(/^packages\/platform\/src\//, "").replace(/^@openlup\/platform(?:\/|$)/, "").split("/").some((part) => adapterNames.includes(part));
+}
+
 describe("neutral sales-channel envelope (W9)", () => {
   it("retains opaque source identity byte-exact through the real OMS list projection", () => {
     const list = buildOmsOrderListResponse({ orders: [order], paymentIntents: [], paymentAttempts: [],
@@ -76,18 +90,25 @@ describe("neutral sales-channel envelope (W9)", () => {
         if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || node.expression.getText(source) === "require")
           && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) specifier = node.arguments[0].text;
         if (specifier) {
-          const target = (specifier.startsWith(".") ? relative(root, resolve(dirname(path), specifier))
-            : specifier.replace(/^@\//, "src/")).split(sep).join("/");
-          // K3a owns this neutral managed-adapter root; remaining donor names still refuse.
-          const adapterTarget = target.replace(/^packages\/platform\/src\/commerce\/adapters\/managed\//, "commerce/");
-          if (/(?:^|\/)src\/domains\/channels(?:\/|$)|(?:^|\/)server\/adapters(?:\/|$)/.test(target)
-            || adapterTarget.replace(/^packages\/platform\/src\//, "").replace(/^@openlup\/platform(?:\/|$)/, "").split("/").some((part) => adapterNames.includes(part))) violations.push(`${relative(root, path)}:${specifier}`);
+          if (violatesBinding(path, specifier, adapterNames)) violations.push(`${relative(root, path)}:${specifier}`);
         }
         ts.forEachChild(node, visit);
       };
       visit(source);
     }
     expect(violations).toEqual([]);
+  });
+
+  it("accepts imports within the neutral public store directory", () => {
+    expect(violatesBinding(join(commerce, "server/postgres/index.ts"), "./omsControl.js", ["postgres"])).toBe(false);
+  });
+
+  it("refuses commerce imports into the neutral public store directory from outside it", () => {
+    expect(violatesBinding(join(commerce, "server/index.ts"), "./postgres/omsControl.js", ["postgres"])).toBe(true);
+  });
+
+  it("refuses imports from the neutral public store directory into root adapters", () => {
+    expect(violatesBinding(join(commerce, "server/postgres/index.ts"), "../../../../../../server/adapters/postgres/omsControl.js", ["postgres"])).toBe(true);
   });
 
   it("accepts only an injected inventory exposure read and defines no exposure SQL", async () => {

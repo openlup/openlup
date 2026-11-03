@@ -6,6 +6,13 @@ agent tools from loading them here.
 
 ## Start with npm
 
+For a complete application-shaped starting point, the
+[neutral store draft](../../../examples/neutral-store/README.md) supplies owned
+configuration, UI fragments and localized pages. It is separate source, not an
+npm package or workspace. Its exact-release extraction route and owned/managed
+inventory are described there. Installer, purchase and upgrade qualification are
+still pending; do not treat the draft as a completed cold-install recipe.
+
 No OpenLup clone is needed. In a new disposable application, use Node 24 and
 npm 11.19.0:
 

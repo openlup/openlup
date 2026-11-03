@@ -65,6 +65,7 @@ it("keeps injected capabilities default-off with independent selection, readines
   expect(fulfillment.currentParcel).toBe(coreFulfillment.currentParcel);
   expect(fulfillment.parseFulfillmentFact).toBe(coreFulfillment.parseFulfillmentFact);
   expect(Object.keys(fulfillment).sort()).toEqual([
+    "createCapturedFulfillmentAdapter",
     "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_MAP",
     "buildCommerceFulfillmentOrdersListResponse", "buildCommerceFulfillmentOrderDetailResponse", "createFulfillmentShipmentsOverviewHandler", "fulfillmentProgressPresentation",
     "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentServices", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",

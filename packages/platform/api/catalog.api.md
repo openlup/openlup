@@ -386,6 +386,61 @@ export interface AdminBundleWritePort {
     deactivate(actorId: string, input: DeactivateBundleRequest): Promise<BundleWriteResult>;
 }
 ```
+## dist/catalog/bundleAdminWriteStore.d.ts
+
+```ts
+import type { AdminBundleWritePort } from "./adminBundleWritePort.js";
+/**
+ * The marshalling both bundle write adapters share.
+ *
+ * The two shipped adapters differ in exactly one thing: which client executes a
+ * named routine call. Everything else — argument names, result normalization,
+ * error translation — is identical, so it lives here once rather than being
+ * copied and left to drift. Each adapter supplies its own client and owns its own
+ * lifecycle; neither owns a rule.
+ */
+/** What a client returns, in the one shape both chains already speak. */
+type ClientResult = {
+    data: unknown;
+    error: {
+        code?: string;
+        message?: string;
+    } | null;
+};
+/**
+ * The two capabilities an adapter must supply: execute a named routine, and read
+ * one column by equality. The second exists only for the constraint envelope the
+ * composition rules must be validated against before anything is written; every
+ * decision still belongs to a routine or to the rules port.
+ */
+export interface BundleWriteRoutineClient {
+    rpc(name: string, args: Record<string, unknown>): PromiseLike<ClientResult>;
+    from(table: string): {
+        select(columns: string): {
+            eq(column: string, value: unknown): PromiseLike<ClientResult>;
+        };
+    };
+}
+/** The routine names the write boundary publishes, in both chains. */
+export declare const BUNDLE_WRITE_ROUTINES: {
+    readonly upsertDraft: "admin_upsert_bundle_draft";
+    readonly setComposition: "admin_set_bundle_composition";
+    readonly setTargetPrice: "admin_set_bundle_target_price";
+    readonly archive: "admin_archive_bundle";
+    readonly restore: "admin_restore_bundle";
+    readonly activate: "admin_activate_bundle";
+    readonly deactivate: "admin_deactivate_bundle";
+};
+/** The relation the constraint envelope is read from, identical in both chains. */
+export declare const BUNDLE_RELATION = "catalog_bundles";
+/**
+ * Build the bundle write port over one routine client. Errors are translated to
+ * `BundleRpcError` so the handler's shared mapper turns 42501 into FORBIDDEN,
+ * P0001 into a rule conflict and P0002 into NOT_FOUND, identically on both chains.
+ */
+export declare function createBundleAdminWriteStore(client: BundleWriteRoutineClient): AdminBundleWritePort;
+export {};
+```
 ## dist/catalog/bundleAvailability.d.ts
 
 ```ts
@@ -794,6 +849,20 @@ export declare function selectEffectiveBundleTargetPrice(rows: readonly {
     mode: string;
     atTime: string;
 }): BundleTargetPriceRow | null;
+```
+## dist/catalog/bundleRpcError.d.ts
+
+```ts
+import { DomainRpcError } from "./rpcErrors.js";
+/**
+ * Error carrying the SQLSTATE + message the write boundary raised, so the handler
+ * maps it onto the BFF envelope (42501 -> FORBIDDEN, P0001 -> CONFLICT/rule,
+ * P0002 -> NOT_FOUND). A thin alias of the generic kit `DomainRpcError` so
+ * `mapRpcError` handles it uniformly.
+ */
+export declare class BundleRpcError extends DomainRpcError {
+    constructor(sqlstate: string | undefined, message: string);
+}
 ```
 ## dist/catalog/bundleRuleCodes.d.ts
 
@@ -1571,6 +1640,7 @@ export type { CatalogVariantState, CatalogHeadRef, CatalogLifecycleObservation, 
 export type { CreateBundleDraftRequest, CreateBundleDraftResponse, UpdateBundleDraftRequest, UpdateBundleDraftResponse, BundleComponent, SetBundleCompositionRequest, SetBundleCompositionResponse, SetBundleTargetPriceRequest, SetBundleTargetPriceResponse, ArchiveBundleRequest, ArchiveBundleResponse, RestoreBundleRequest, RestoreBundleResponse, CloneBundleDraftRequest, CloneBundleDraftResponse, ActivateBundleRequest, ActivateBundleResponse, DeactivateBundleRequest, DeactivateBundleResponse } from "./bundleAdmin.js";
 export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBundleRequest, GetBundleResponse, BundleDetailView, BundleAvailabilityView, BundleHistoryRequest, BundleHistoryResponse, PreviewBundlePriceRequest, PreviewBundlePriceResponse, BundlePricePreview } from "./bundleRead.js";
 export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
+export type { AgentReason } from "./rpcErrors.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -1798,6 +1868,11 @@ export declare function canonicalCatalogOption(value: CatalogOptionValue): strin
 import { type ProductMediaManifest, type ProductMediaRequest, type ResolvedProductMedia } from "./productMediaContracts.js";
 /** Resolve only declared variant/product material; no filename, SKU or provider inference. */
 export declare function resolveProductMedia(value: ProductMediaManifest, request: ProductMediaRequest, assetUrls: Readonly<Record<string, string>>): ResolvedProductMedia;
+```
+## dist/catalog/contracts/rpcErrors.d.ts
+
+```ts
+export type AgentReason = "actor_required" | "actor_unknown" | "actor_kind_not_allowed" | "publish_requires_human" | "draft_only_for_machine" | "price_required_to_sell" | "not_found" | "already_exists" | "feature_flag_disabled" | (string & {});
 ```
 ## dist/catalog/contracts/sellable.d.ts
 
@@ -2478,6 +2553,10 @@ export { SUMMARY_COLUMNS, LIST_FILTER, LIST_SQL, COUNT_SQL, DETAIL_SQL, REFERENC
 export { createPostgresCatalogSkuEnvelopeReadPort } from "./catalogSkuEnvelope.js";
 export { createPostgresCatalogDraftStore } from "./catalogDraftStore.js";
 export { selectEffectiveBundleTargetPrice } from "./bundlePriceSelection.js";
+export { DomainRpcError } from "./rpcErrors.js";
+export { BundleRpcError } from "./bundleRpcError.js";
+export { createBundleAdminWriteStore, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, type BundleWriteRoutineClient } from "./bundleAdminWriteStore.js";
+export { createPostgresBundleAdminWriteStore, type PostgresBundleAdminWriteStore } from "./postgresBundleAdminWriteStore.js";
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -2533,6 +2612,28 @@ export type CatalogMediaImportOutcome = {
     failedKey: string;
 };
 export declare function importCatalogMediaSourcePack(root: string, storage: BlobStoragePort): Promise<CatalogMediaImportOutcome>;
+```
+## dist/catalog/postgresBundleAdminWriteStore.d.ts
+
+```ts
+import { type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import type { AdminBundleWritePort } from "./adminBundleWritePort.js";
+/**
+ * Direct-Postgres adapter for the bundle write port: one role-free transaction per
+ * operation, calling the same named routines under the same argument names as its
+ * managed twin. It is a real adapter, not a placeholder — it opens a pooled
+ * connection, runs the routine inside BEGIN/COMMIT, and surfaces the routine's own
+ * SQLSTATE through the shared marshalling, so the port contract cannot tell the two
+ * chains apart.
+ *
+ * The platform manifest creates no service role, so this lane never changes the
+ * connection role; the adopter's own database user is the caller, exactly as the
+ * outbox and delivery-receipt adapters do it.
+ */
+export interface PostgresBundleAdminWriteStore extends AdminBundleWritePort {
+    close(): Promise<void>;
+}
+export declare function createPostgresBundleAdminWriteStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresBundleAdminWriteStore;
 ```
 ## dist/catalog/productTypeSchemas.d.ts
 
@@ -2787,6 +2888,20 @@ export interface ResolvedSkuProjectionInput {
     pricing: ResolvedSkuProjection["pricing"];
 }
 export declare function buildResolvedSkuProjection(input: ResolvedSkuProjectionInput): ResolvedSkuProjection;
+```
+## dist/catalog/rpcErrors.d.ts
+
+```ts
+import type { AgentReason } from "./contracts/rpcErrors.js";
+export declare class DomainRpcError extends Error {
+    readonly sqlstate: string | undefined;
+    readonly pgMessage: string;
+    /** Optional named token a RAISE carries (e.g. `publish_requires_human`). */
+    readonly raiseToken?: AgentReason | undefined;
+    constructor(sqlstate: string | undefined, pgMessage: string,
+    /** Optional named token a RAISE carries (e.g. `publish_requires_human`). */
+    raiseToken?: AgentReason | undefined);
+}
 ```
 ## dist/catalog/sellableBundleHandler.d.ts
 

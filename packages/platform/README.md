@@ -10,6 +10,8 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
+The `openlup` Node bin provides [application upgrade and diagnosis](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-command-line-tooling); check your installed `openlup --help` for the versioned syntax.
+
 Repository-source links in this README are optional navigation to current public
 `main`; the linked files are not part of this package tarball and may describe a
 different revision than the version installed. For version-specific behavior,
@@ -32,8 +34,8 @@ commerce schemas and ports use `./commerce` and `./commerce/contracts`;
 handlers, adapters and checkout engines use the Node-only `./commerce/server`.
 The commerce contribution and reference binding remain inert and default-off.
 Install the complete native chain through the M17 purchased-source forward
-(`20261030122000_channel_purchased_source.sql`). Sparse SQL projections
-are not an install chain. Native runtime
+(`20261030122000_channel_purchased_source.sql`). Use the complete packaged installer described below; individual module SQL
+projections are not an install chain. Native runtime
 roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
 the release notes.
 Managed hosts apply the complete prefix through `20261030122000`, including
@@ -84,6 +86,61 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+## Install the portable PostgreSQL schema
+
+`@openlup/platform/migrations` exports `createPlatformPostgresMigrationRunner`.
+It uses the existing executor with the complete packaged catalogue, canonical
+ledger paths, SHA-256 hashes, order and host-admission checks. No source checkout
+is required. Install the optional `pg` peer in the application. Call `status()`,
+`apply({ dryRun: true })` or `apply()` explicitly; imports install nothing.
+
+```ts
+import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
+
+const migrations = createPlatformPostgresMigrationRunner({ connectionString: directUrl }, {
+  installation: {
+    generation: "qualified-admin", roleMode: "installer-managed",
+    migrationLogin: "app_migrator", bootstrapLogin: "postgres",
+    runtimeLogin: "app_runtime", restoreLogin: "app_restore",
+  },
+});
+await migrations.apply();
+const status = await migrations.status();
+```
+
+Provision the selected PostgreSQL 16 host profile first. `qualified-v2` retains
+its privileged migration principal; `qualified-admin` uses the restricted
+principal. Both retain `installer-managed` and `operator-provisioned` role modes;
+`qualified-admin` in `operator-provisioned` mode also requires a distinct
+`operatorLogin`.
+These options observe and admit the existing profiles; they do not create host
+logins, qualify a provider or authorize access. Follow the source
+[data and migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+for the exact provisioning boundary and use the matching installed release.
+
+The package factory requires an explicit `installation`; omitting it refuses
+before catalogue or pool work. Select a qualified generation for a fresh qualified
+installation. `legacy` is a separate history; histories cannot be switched in place.
+The repository facade retains its legacy default. SQL resolves relative to
+the installed module, independent of the application's working directory.
+Missing or tampered units are refused by their canonical path before connection.
+A completed chain reports every selected unit applied; another apply is a no-op.
+`createPostgresMigrationRunner` keeps its original explicit source/options API.
+The convenience factory also retains `poolFactory`, `root` and
+`catalogProjectionPayload`, and accepts a `catalog` reader for repository-layout
+compatibility. Supplying a pool factory retains responsibility for startup
+options and pool lifetime. These are trusted host seams, not sandbox boundaries.
+
+The selection/validator in `src/migrations/catalog.ts` is an exact generated
+copy of the source tooling owner, checked by the same gate: source policy tools
+run before workspace build output exists. Do not edit the copy.
+`sql/manifest.json` is generated from the canonical source manifest and its
+issued SQL, following the outbox asset pattern. Do not edit it or its SQL copies.
+The required installed-consumer gate refuses drift. In a source checkout, run
+`node --experimental-strip-types --input-type=module -e "import { checkPlatformMigrationProjection } from './scripts/packages/platform-migration-projection.ts'; const errors = checkPlatformMigrationProjection(process.cwd(), true); if (errors.length) throw new Error(errors.join('\n'));"`
+to regenerate exact copies after an authorized canonical change.
+This packaging change adds no migration and changes no SQL bytes.
 
 ## Installed agent context
 
@@ -154,12 +211,16 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
+| `./commerce/server/postgres` | Existing native OMS control, reduced control-plane, delivered system-hold recovery and return lifecycle stores; host executor |
+| `./account-support/postgres` | Existing native support journey factory; host runtime connection and operator context |
+| `./account-support/read-contracts` | Browser-safe portable-client and Customer 360 read schemas, preserving validation and defaults |
 | `./marketing/server/postgres` | Tester acquisition, partner inquiry and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe tester history, partner inquiry lifecycle, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and tester/partner/research ports |
@@ -373,6 +434,17 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 `pg` or `@types/pg`. Select `./marketing/server/postgres` explicitly for those ports.
 
 ## Commerce contracts
+
+`./commerce/server/postgres` exposes the existing native
+`createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
+`createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
+Supply an executor using the installation's restricted runtime login. These are
+unchanged store bindings: holds, exact release, unpaid cancellation, completed
+external-refund marking and return request/approve/reject. Control-plane reads
+remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
+correction and replacement requests retain their existing refusal. Returns record
+intent; they do not receive, restock or execute a refund. The host authenticates
+and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
 
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;
@@ -794,7 +866,7 @@ The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
 those existing module identities, with no environment discovery, client creation
 or registration. It imports only readiness types: composition gains no catalog
-edge, and catalog keeps its type-only data edge plus one pricing value edge for
+edge. Catalog uses data at runtime for the native bundle writer and pricing for
 the effective-window selector. Package boundary
 checks pin those imports and peer-free composition declarations. The packed
 consumer exercises both new stores and the descriptor without optional peers;
@@ -816,11 +888,16 @@ SKUs across compositions, calls the injected port once when SKUs are present and
 skips it otherwise; the host port owns its query strategy, and missing answers
 remain unknown. Named reference wrappers inject lifecycle and stock
 helpers, existing admin kit/spec/flags, validators, responder, wire versions and
-the reference-owned RPC error constructor. The read error has one package identity.
+the packaged RPC error constructor. Read and write errors retain one package identity.
 `createPostgresBundleCatalogStore` now accepts the data entry's injected
 `PgQueryExecutor`; it renders the incumbent list/detail/feed/history SELECTs
-without constructing a pool or switching roles. The writer, pooled transaction
-binding and transport adapters remain reference-owned. `BUNDLE_MIGRATIONS`
+without constructing a pool or switching roles. `createPostgresBundleAdminWriteStore`
+binds the unchanged shared writer to the data entry's pooled role-free transaction
+lane; it encodes the routines' three JSON arguments for the native driver while
+preserving SQL null/default behavior. Hosts retain authorization, response mapping
+and transport composition.
+`BundleRpcError` and its `DomainRpcError` base are exported by this entry;
+reference paths re-export those same constructors. `BUNDLE_MIGRATIONS`
 projects canonical units 16 and 19 with their original paths, positions, hashes
 and byte-identical SQL. These sparse projections are not an installation chain:
 apply the complete canonical manifest. No new migration or activation is added.
@@ -1092,6 +1169,13 @@ See [disposable identity composition](https://github.com/openlup/openlup/blob/ma
 
 ## Communications import
 
+The Node-only communications entry includes `runCommunicationsAdapterConformance`
+for adapter-owned offline email and marketing-sync fixtures. It returns passed
+case labels or throws a sanitized finding with a fix and recheck instruction.
+This fixture proof does not qualify live providers or consent-push lifecycles.
+See the [extension-kit recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#run-an-adapter-conformance-check)
+at a source revision matching the installed export.
+
 The sparse `COMMUNICATIONS_MIGRATIONS` inventory includes the portable account
 newsletter withdrawal forward; install the complete canonical chain. Account
 opt-out denies only `marketing_newsletter` and preserves suppression. Opt-in
@@ -1132,6 +1216,45 @@ absence reopen and cumulative refund. Refunds are purely financial. Seven real
 PostgreSQL cases cover fresh/prefix installs, replay/conflict, unknown readback,
 lost acknowledgement, rollback, denied access, dunning/recovery, concurrency and
 later-only dates; this does not claim managed-store parity or host activation.
+
+The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
+native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
+commands use the existing `sandbox` settlement channel only. The host authorizes
+`beginAttempt`, `recordObservation` and `readAttempt`; do not expose those commands
+as unauthenticated browser actions. No key or provider SDK is needed. Beginning
+records dispatch conservatively; a replay returns the same row with `replayed`
+and never authorizes another dispatch. An unresolved/indeterminate attempt
+blocks a replacement. Terminal ingress also resolves older unknown truth for the
+same attempt; replacement waits while such truth is still open. A definite refusal or expiry may be followed by a new
+attempt; a still-active refused/expired attempt can instead receive late capture.
+
+The simulator's `ingress` composes the existing verified ingress and PostgreSQL
+truth port. Deliver original JSON bytes containing exactly `settlementIntentId`,
+`attemptId` and `observationId`. Verification reads a server-recorded observation;
+a browser return/status without that fact refuses. Recording an observation
+alone never marks an order paid. A stale durable observation is acknowledged with
+the existing `result_attempt_mismatch` skip and cannot apply money. Exact identity, money, observation and active
+attempt checks use only durable database state. Accepted event replay preserves
+the original fact after a later observation or attempt, including after restart.
+No generic prepared provider store, real mandate or real money is enabled;
+`paymentSchemaDescriptor` and real-provider refusals keep their meaning.
+
+Attempt readback includes `settlementChannelKey` and `methodFacts`:
+`authorizationRef`, `unattendedChargeAuthorizedAt`, nullable `payerAccountRef`,
+`methodRef` and `methodEvidenceRef`. Empty initial facts request synthetic server
+references. Subsequent renewal/retry/recovery can pass the saved facts explicitly,
+retaining the original authorization time. Attach purchase terms only after the
+exact active captured attempt's order is paid and its settlement settled. Renewal
+composition reuses the attempt store with its existing settlement transaction;
+it must not also settle that renewal through purchase ingress.
+
+A verified capture after cancellation remains an operator-visible captured truth
+row with `reviewRequiredAt` and `applicationStatus: "review_required"`. Its stored
+state remains `open` with no settlement transition, but it is terminal for the
+open-event sweep and reconciliation. The order stays cancelled; no automatic
+refund or fiscal work is created. Recovery-notice contention can still roll back
+ordinary capture settlement: retain the observation and redeliver the same event
+after contention clears. The simulator never redispatches that captured attempt.
 
 Attempt input adds optional method selection with opaque, persistable channelRef
 and transient payer email/name. Payer contact is dispatch-only: never persist,
@@ -1310,6 +1433,20 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+The native purchase-renewal forward adds bounded attachment and method-state
+writers through `createPostgresPurchaseRenewalWriter`, plus the independently
+committed `activateNativePurchaseWithRenewal` convenience call. A completion
+failure leaves an enumerable durable duty while paid service remains active.
+`createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
+`createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
+renewal success, decline and ambiguity using the existing native operation fence.
+Hosts supply trusted purchase facts and current method identity and retry pending
+attachment duties. These source-preview exports require the selected database
+forward; they claim no real PSP, mandate, automatic repair, default runner or
+published complete migration chain. See the
+[subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+for the fingerprint dialect, transaction boundaries and recovery limits.
+
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor; `./subscriptions/contracts` is
 browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
@@ -1419,7 +1556,29 @@ legacy fallback and forward-only migration limits are owned by the
 
 OMS read projections are optional. Omitting the host health classifier preserves the original unprojected empty health snapshot (`ok`, no reasons or evidence IDs); it does not evaluate provider health. The reference composition injects its existing classifier and evidence readers.
 
+### Captured native invoice composition
+
+Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabled
+captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
+owned invoice-history/ticket reader. The host passes a restricted runtime
+executor and authenticated principal UUID. See the
+[invoicing reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+for composition, refusal and sandbox limits. Construction installs no route,
+schedule or provider connection.
+
 ## Account and support contracts
+
+`./account-support/postgres` exposes the existing
+`createPostgresCustomerSupportJourneyPort`. Supply a restricted runtime connection
+and a trusted operator ID; close the port when its host scope ends. The native
+search, summary, detail and snapshot reads preserve their existing codecs and
+refusals. The existing recovery and lead-absorption commands keep their limits;
+subscription actions and contact correction still refuse by name. The separate
+`./account-support/read-contracts` entry exposes the existing portable-client and
+Customer 360 read schemas with CSP-safe initialization; it selects no Node driver.
+`./account-support/contracts` remains type-only. Authentication, machine-read
+governance and optional diagnostic ports remain host composition. No diagnostic
+store or HTTP route is installed by these entries.
 
 Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner
@@ -1516,6 +1675,50 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](https://github.com/openlup/openlup/blob/main/docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+### Native account persistence reads
+
+`@openlup/platform/account-support` supplies
+`createPostgresCustomerOrderHistoryReadStore`, `createPostgresAccountReadSources`
+and `readPostgresCustomerAccountClient`. Supply a host-authenticated principal
+and client pair plus a server-authorized query executor on the restricted runtime
+lane. Every native query rechecks that pair, including order/subscription
+companion reads. The factories create no connection, route or default binding.
+Order presentation and invoice summaries remain selected owner ports.
+
+The detail translator uses captured quote money and native promoted-line
+allocations. Historical summaries retain the recorded total and currency, and
+the store's line reader retains recorded line amounts. Detail without captured
+money refuses `native_account_order_money_unavailable`: required tax, discount
+and shipping fields cannot express absence. It invents no zero amounts, backfill
+or current prices. Native observations supply tracking links; external tracking
+IDs alone carry no invented URL. Existing replacement selection is retained.
+`readPaidActivationGaps(orderIds)` on both native reader factories returns an
+owned order companion keyed by order ID, with `orderId` and `paidAt`. Use it on
+the order view; no provisional subscription association is invented. The shared
+order-summary DTO remains unchanged.
+
+`createPostgresAccountReadSources` implements native subscriptions, accepted line
+prices, blockers, pause windows, method/stock-wait evidence, delivery alignment
+and dunning/cycle action states. Extension and next-charge policy are required
+host inputs. Saved addresses, billing profiles, payment/delivery preferences and
+account events are optional explicit sources: each missing section throws
+`host_binding_required` with its section name. The same limit applies to the
+private-profile view. These refusals do not prevent independent reads of owned
+profile identity, orders and native subscription evidence. The aggregate account
+snapshot requires every selected section; a missing section refuses that call.
+No new native profile table or empty-array success is supplied.
+
+For existing actor routines, bind `createPostgresCustomerSubscriptionSnapshotPort`
+or `createPostgresCustomerNewsletterPreferencesPort` to a verified actor gateway.
+They validate the existing snapshot/newsletter DTOs and retain SQL errors and
+null ownership results. Their DTO types are available from the isolated
+`account-support/contracts` entry. Newsletter read and withdrawal are available;
+a saved true flag exposed as granted without evaluator evidence throws
+`host_binding_required` for `newsletterConsent`. Complete purpose choices and
+grants remain named refusals until the separate consent change lands. No true
+command is advertised. No managed constructor or managed behaviour changes, and
+no release is implied.
 
 ## Operations and diagnostics
 

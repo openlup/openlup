@@ -386,7 +386,7 @@ export declare function consentStateFromBoolean(value: boolean | null | undefine
 import type { CommunicationPurpose } from "./contracts/types.js";
 import type { CommunicationPurposeDefinition, CommunicationPurposeRegistry } from "./contracts/consent.js";
 export declare function createCommunicationPurposeRegistry<const Purpose extends string = never>(additions?: readonly CommunicationPurposeDefinition<Purpose>[]): CommunicationPurposeRegistry<CommunicationPurpose | Purpose>;
-export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"subscription_dunning" | "transactional" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "admin_notification">;
+export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"marketing_newsletter" | "subscription_dunning" | "transactional" | "marketing_launch_offer" | "tester_program" | "admin_notification">;
 ```
 ## dist/communications/contracts/authEmail.d.ts
 
@@ -1562,6 +1562,7 @@ export * from "./postgresCommunicationSync.js";
 export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
+export * from "./testing/adapterConformance.js";
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
@@ -1697,8 +1698,8 @@ export declare const defaultNewsletterProviderCapabilities: NewsletterProviderCa
 export declare const fullNewsletterProviderCapabilities: NewsletterProviderCapabilities;
 export declare const newsletterProviderKindSchema: z.ZodString;
 export declare const newsletterMarketingPurposeSchema: z.ZodEnum<{
-    marketing_launch_offer: "marketing_launch_offer";
     marketing_newsletter: "marketing_newsletter";
+    marketing_launch_offer: "marketing_launch_offer";
 }>;
 export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
     suppress: "suppress";
@@ -1746,8 +1747,8 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     remoteListId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     purpose: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        marketing_launch_offer: "marketing_launch_offer";
         marketing_newsletter: "marketing_newsletter";
+        marketing_launch_offer: "marketing_launch_offer";
     }>>>;
     explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
     doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
@@ -2208,6 +2209,56 @@ export declare function decideEmailSend(input: {
     existingNonFailedMessageId: string | null;
     templateAvailable: boolean;
 }): EmailSendDecision;
+```
+## dist/communications/testing/adapterConformance.d.ts
+
+```ts
+import type { EmailMessage, EmailSendResult, EmailTransport } from "../emailTransport.js";
+import type { MarketingSyncProvider, SyncRequest, SyncResult } from "../contracts/marketingSync.js";
+type Fixture<Input, Result> = {
+    readonly input: Input;
+    readonly expected: Result;
+    /** Total external mutations performed by this one invocation. */
+    readonly expectedEffects: number;
+};
+type OfflineAdapter<Adapter> = {
+    readonly adapter: Adapter;
+    readonly readEffectCount: () => number;
+};
+type EmailSubject = {
+    readonly kind: "email";
+    readonly subjectId: string;
+    /** Fresh offline adapter and counter for each fixture; never use live credentials. */
+    readonly create: (input: EmailMessage) => OfflineAdapter<EmailTransport> | Promise<OfflineAdapter<EmailTransport>>;
+    readonly fixtures: readonly Fixture<EmailMessage, EmailSendResult>[];
+};
+type SyncFixture = {
+    [O in SyncRequest["operation"]]: Fixture<SyncRequest<O>, SyncResult<O>> & {
+        /** Reinvoke this exact mutation and prove no second external effect. */
+        readonly replay?: boolean;
+    };
+}[SyncRequest["operation"]];
+type MarketingSubject = {
+    readonly kind: "marketing-sync";
+    readonly subjectId: string;
+    readonly create: (input: SyncRequest) => OfflineAdapter<MarketingSyncProvider> | Promise<OfflineAdapter<MarketingSyncProvider>>;
+    readonly fixtures: readonly SyncFixture[];
+};
+export type CommunicationsAdapterConformanceSubject = EmailSubject | MarketingSubject;
+export interface CommunicationsAdapterConformanceEvidence {
+    readonly subjects: readonly {
+        readonly subjectId: string;
+        readonly kind: CommunicationsAdapterConformanceSubject["kind"];
+        readonly cases: readonly string[];
+    }[];
+}
+/** Offline fixture proof, following the payment/invoice/fulfillment runners.
+ * No provider access, fixture discovery or test framework is supplied here.
+ * Only subject labels and passed case labels leave the runner; raw results and
+ * adapter exceptions are never included in findings. Not full provider qualification.
+ */
+export declare function runCommunicationsAdapterConformance(subjects: readonly CommunicationsAdapterConformanceSubject[]): Promise<CommunicationsAdapterConformanceEvidence>;
+export {};
 ```
 ## dist/communications/transactionalDelivery.d.ts
 

@@ -22,6 +22,9 @@ const PG_ADAPTERS = new Set([
   "marketing/server/postgres/partnerAcquisitionRoutines.ts",
   "data/queryBuilder.ts",
   "migrations/postgresRunner.ts",
+  "migrations/platformRunner.ts",
+  "migrations/qualifiedInstall.ts",
+  "migrations/selectedCatalogProjection.ts",
   "scheduler/advisoryLock.ts",
 ]);
 
@@ -285,7 +288,7 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/native-checkout", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack", "fulfillment/native"]);
   });
 
   it("bundles the marketing server entry without PostgreSQL adapters or the optional pg peer", async () => {
