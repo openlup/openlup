@@ -134,7 +134,7 @@ helps define the future install contract and may be handled as a feature request
 
 ## If you need something else supported
 
-Nothing today buys a supported variant. No hosted or supported offering is
-claimed here. Any such offering must be additive and announced in the repository,
-never by narrowing what the open path already does. The rule that guarantees
-that is in `.github/TIER_POLICY.md`.
+Nothing today buys a supported variant. If a hosted or supported offering exists
+later, it will be additive and will be announced in the repository - never by
+narrowing what the open path already does. The rule that guarantees that is in
+`.github/TIER_POLICY.md`.
