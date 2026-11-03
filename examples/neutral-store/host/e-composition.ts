@@ -4,6 +4,7 @@ import { createOrderReviewHandlers, createPostgresOrderReviewLifecyclePort,
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { createPostgresAcquisitionCasePort, createPostgresPartnerAcquisitionPort } from '@openlup/platform/marketing/server/postgres';
 import type { PartnersB2BInquirySubmitRequest } from '@openlup/platform/marketing/contracts';
+import { composeOperatorCapabilities } from './operator-composition.ts';
 import type { ActionBinding, ApplicationBindings } from './bindings.ts';
 
 interface QueryExecutor {
@@ -20,7 +21,8 @@ export function composeExistingCapabilities(input: {
   const admin = createOrderReviewAdminHandlers(lifecycle, createPostgresOrderReviewAdminReadPort(input.executor));
   const partners = createPostgresPartnerAcquisitionPort({ connectionString: input.connectionString });
   const acquisition = createPostgresAcquisitionCasePort({ connectionString: input.connectionString });
-  const actions: ApplicationBindings['actions'] = {};
+  const operatorCapabilities = composeOperatorCapabilities(input);
+  const actions: ApplicationBindings['actions'] = { ...operatorCapabilities.actions };
 
   actions['acquisition.submit'] = async (payload, context) => {
     if (Object.keys(payload).some(key => !['email', 'consent', 'addressChoiceId', 'locale'].includes(key))
@@ -100,8 +102,9 @@ export function composeExistingCapabilities(input: {
     return result.ok ? { ok: true, value: result.value, ...(result.replayed ? { replayed: true } : {}) }
       : refused(`order_review_${result.error.kind}`);
   };
-  // Research still requires host-authorized case ownership. Catalogue awaits its limit decision.
-  return { actions, close: async () => { await Promise.all([partners.close(), acquisition.close()]); } };
+  // Research still requires host-authorized case ownership; ingest has no complete native composition.
+  // No browser-supplied reference is trusted.
+  return { actions, close: async () => { await Promise.all([partners.close(), acquisition.close(), operatorCapabilities.close()]); } };
 }
 
 function partnerRequest(payload: Record<string, unknown>): PartnersB2BInquirySubmitRequest | null {

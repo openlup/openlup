@@ -452,6 +452,14 @@ Addresses and identifying reference strings persist. Use opaque references;
 address export/erasure is unavailable. No saved address book is provided.
 
 
+Native destinations use `./commerce/server/destinations` and the complete SQL
+catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
+The confirmation outbox is durable; native mail dispatch is unbound.
+Full postal addresses, contact phone numbers and identifying reference strings persist. Use opaque references;
+there is no address export or erasure path. No saved address book is provided.
+The port's PostgreSQL routines are included in the native migration chain.
+The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
+
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;
 the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
@@ -501,6 +509,24 @@ money, and separate continuation, expiry policy and refused token states. Applic
 recovery projection, routes and destinations stay in the host. SQL atomicity and
 active-subscription guards require real PostgreSQL integration; the C2 handoff
 release check is **to be released**.
+
+`./commerce/server/native-checkout` exports
+`createPostgresNativeCheckoutPersistence` for the `qualified-v2` draft rail.
+Bind a restricted runtime executor, pass a server-produced `quoteSnapshot`, and
+supply the route-authorized `clientId` through the separate options argument.
+The port validates quote money, derives the draft snapshot, and calls the
+existing guarded native draft routine with explicitly encoded JSON. It retains
+`metadata.quoteSnapshot` and `metadata.orderDraftSnapshot`, including line tax,
+totals and host context, for order-detail readers. A matching replay returns the
+durable draft receipt; changed input conflicts without superseding the order.
+The receipt's `not_started` field describes draft creation, not current payment
+truth. Neither creating nor replaying it settles an order or dispatches payment.
+Browser return handling and authenticated quote production belong to the host.
+Existing native refusals for net shipping, line discounts and zero-payable
+orders still apply. Catalogue and prices are install-time seed data on this
+rail; this port adds no price writer or managed-rail behavior.
+The [installed PostgreSQL witness](../../tests/postgres/nativeCheckoutPersistence.test.ts)
+checks snapshot retention, refusal, concurrent replay and fresh-process recovery.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and

@@ -141,6 +141,7 @@ printed in application logs. Native redemption accepts
 its token through `auth.verify` or `auth.callback`; `auth.operator` accepts email
 for a challenge and token for redemption. The native stores must already contain
 the customer or an invited operator. There is no public operator bootstrap.
+After activation, support reads require the [owner roster step](#operator-support-roster-and-catalogue-authoring), including its deactivation recipe.
 Opaque sessions are limited to a single process, expire after one hour, have a
 capacity of 1000 and are lost on restart. This is not a production session store;
 operator membership and customer ownership are rechecked on requests.
@@ -177,7 +178,7 @@ registry. The catalogue builder reads the same
 `StoreConfig` as the UI: deterministic product/SKU/list/price identifiers and
 parameterized catalogue upserts populate `catalog_products`, `catalog_skus`,
 `price_lists` and `price_entries`. Repeating installation updates the same rows.
-There is no runtime catalogue/price writer on this portable rail (N1).
+Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.
 
 The bootstrap must mark a newly created demonstration database with database
 comment `openlup-neutral-store-demo-v1`. The applier reads that marker from
@@ -268,6 +269,77 @@ bootstrap uses only its isolated Unix socket; the runtime has only its fixed,
 passwordless private-network URL. Neither connection is selected from starter
 process environment reads. An absent installed migration API still refuses by
 name. No customer environment is selected by a demonstration flag.
+
+## Operator support roster and catalogue authoring
+
+Activate a native human operator through the native invitation and challenge
+redemption described in [Host origin and local sessions](#host-origin-and-local-sessions)
+first. On the operator page (`/admin` or `/pl/admin`), enter the invited email
+and request a sign-in token. Read the token from the private demonstration mailbox
+with the documented `docker compose exec -T --user node application cat
+/application/.context/captured-messages/identity.jsonl` command above, then enter
+the exact 43-character URL-safe token in the separate operator token form and
+sign in. The password field hides the token and clears after successful
+redemption; the response does not echo it. Keep mailbox access private.
+There is no HTTP bootstrap or roster writer. The database owner then runs
+this **one owner-connection step**, never with the runtime login or application
+connection. From the extracted demonstration application directory:
+
+```sh
+docker compose exec -T database psql -U starter_install -d neutral_store
+```
+
+Find the activated principal using its normalized invitation email:
+
+```sql
+SELECT p.principal_id, p.email, m.role, m.membership_state
+FROM public.platform_human_principals p
+JOIN public.platform_human_memberships m USING (principal_id)
+WHERE lower(btrim(p.email)) = lower(btrim('operator@example.test'))
+  AND m.membership_state = 'active' AND m.role IN ('admin', 'distributor')
+  AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o
+                  WHERE o.principal_id = p.principal_id);
+```
+
+Require exactly one row. Copy its `principal_id` unchanged below; this is exactly
+the principal passed by the host as `operatorRef`, never a customer/client ID:
+
+```sql
+INSERT INTO public.platform_communication_operators (principal_id, active)
+VALUES ('<activated-principal-id>'::uuid, true)
+ON CONFLICT (principal_id) DO UPDATE SET active = true, updated_at = now();
+```
+
+To withdraw support access through the same owner connection:
+
+```sql
+UPDATE public.platform_communication_operators
+SET active = false, updated_at = now()
+WHERE principal_id = '<activated-principal-id>'::uuid;
+```
+
+This roster is an additional native support precondition, not human membership
+or sign-in authority. The host checks active native human membership on every
+request **before** the support action. A roster row alone admits no request;
+no session, customer sessions, inactive human members and supplied actor IDs
+cannot become operators. Do not seed this table during installation: the human
+principal does not yet exist. Native `customer_support_read_failed` intentionally
+hides the SQL cause; the UI names the roster prerequisite without asserting that
+every read failure means not provisioned. No second authority is built here.
+
+With the runtime connection, operator customer search/detail and bundle
+list/detail/commands plus catalogue draft list/detail/create/revise/abandon are
+composed. Bundle commands and catalogue draft writes are restricted to a native
+human admin/distributor session, rechecked per request; actor identity and command
+key come only from the accepted host context. `owned/catalogue.ts` owns the
+fictional authoring type. The support port is constructed per request for that
+operator and closed in `finally`, including failed reads; it has no operator cache.
+
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application's storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+
+The following acquisition baseline predates support and catalogue composition;
+its unbound-operator statements describe that earlier baseline only. The current
+operator composition and its prerequisites are documented above.
 
 ## Acquisition and unbound operator actions
 

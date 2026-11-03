@@ -125,6 +125,16 @@
       "entrypoint": "dist/commerce/server/index.d.ts",
       "snapshot": "api/commerce-server.api.md"
     },
+    "./commerce/server/native-checkout": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts"
+      ],
+      "entrypoint": "dist/commerce/server/native-checkout/index.d.ts",
+      "snapshot": "api/commerce-native-checkout.api.md"
+    },
     "./communications": {
       "role": "capability",
       "maturity": "experimental",

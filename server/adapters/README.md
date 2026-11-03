@@ -146,6 +146,18 @@ omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
 
+Native checkout draft receipts are included in this finite profile. Their order
+and client UUIDs are preserved by native restore, so the stored SQL fingerprint
+and response order reference remain consistent without a JavaScript rewrite.
+Creation timestamps retain PostgreSQL microseconds. Idempotency keys,
+fingerprints and response payloads are customer-linked order data: opaque host
+context is carried with the same privacy boundary as the order's quote/draft
+metadata, not scrubbed into nonpersonal telemetry. The existing owner-only
+capture/restore path and row/byte limits apply; no runtime or browser grant is
+added. A fresh-process checkout replay after restore returns the same order.
+The unchanged exact-set guard expects the receipt table even when empty; this
+change does not convert packets from an earlier finite profile.
+
 The purchase-hold draft adds observed current stock, reservation headers/lines
 and purchase command receipts, plus aggregate compensation history and provisional
 activation state, to the fixed capture and ordered restore lists.
