@@ -1698,6 +1698,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-rec.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-up.md",
       "class": "public-output"
     },
@@ -4971,6 +4975,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgres/returnsControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryTokenPort.ts",
       "class": "public-output"
     },
     {
@@ -8363,6 +8371,10 @@
     },
     {
       "path": "packages/platform/test/commerce/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/postgresCheckoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
     {
@@ -27731,6 +27743,10 @@
     },
     {
       "path": "tests/postgres/channelPurchase.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
     {
