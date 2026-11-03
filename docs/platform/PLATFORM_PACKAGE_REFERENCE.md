@@ -1422,3 +1422,64 @@ these declared capabilities using host-owned offline fixtures. Restricted-role
 PostgreSQL evidence is separate from offline conformance and installed-tarball
 proof. Native list/detail reads still return `host_binding_required`; they wait
 for destination and reservation facts in a separate change.
+
+## PostgreSQL checkout recovery tokens
+
+Development preview, Node only, through `@openlup/platform/commerce/server`.
+A trusted host supplies a dedicated `PostgresRoleFreeTransactionLane` using the
+installed runtime login's effective service-role privileges. Each method owns one
+transaction; an actor lane is refused. The host owns and closes the lane:
+
+```ts
+import { createPostgresRoleFreeTransactionLane } from "@openlup/platform/data";
+import { createPostgresCheckoutRecoveryTokenPort,
+  generateCheckoutRecoveryToken } from "@openlup/platform/commerce/server";
+
+const lane = createPostgresRoleFreeTransactionLane({ connectionString });
+const recovery = createPostgresCheckoutRecoveryTokenPort(lane);
+// admittedOrder belongs to this host-authorized purchase.
+const rawToken = generateCheckoutRecoveryToken();
+const tokenId = await recovery.issue({
+  orderId: admittedOrder.id, rawToken,
+  expiresAt: admittedOrder.recoveryDeadline, // retained shared interface field
+});
+const inspection = await recovery.inspect(rawToken);
+const payable = await recovery.validate(rawToken);
+await lane.close();
+```
+
+Issuance locks the order then its contact, requires pending payment and a non-null
+contact, and permits a contact with no customer principal. It never accepts a
+client ID, principal or bare email as authority. The host must already have
+admitted the order; arbitrary order IDs are not public issuance authorization.
+The `expiresAt` input is ignored: PostgreSQL computes and stores exactly
+`order.created_at + 24 hours`, retaining sub-millisecond precision and refusing
+an elapsed deadline. Only the SHA-256 hash reaches storage. The caller retains
+the raw credential for its separately authorized delivery and never logs it.
+
+Issuing a new link ends the previous link of the same order. Identical hash/order
+replay returns its original token ID without rotating or reactivating links;
+reuse for another order refuses. The unique unrevoked-order index remains.
+
+Inspection uses the installed native routine's priority: revoked, expired,
+consumed, active. `consumed` becomes `order_not_recoverable`; unknown states
+become `unknown` and refuse continuation. A paid link can therefore provide a
+confirmation using its scoped order ID/status, while `validate` returns null.
+Inspection does not authorize payment: validation returns a context only for an
+active token on a pending order. Payment ingress must still recheck its own
+canonical authority and current order state.
+
+`PostgresCheckoutRecoveryTokenInspection` adds `cadenceDays: number | null` to
+the existing inspection. Initial subscription mode/cadence come from the order's
+stored draft and quote contexts and provisional activation declaration, before a
+paid cycle exists. Contradictory or missing required subscription facts refuse;
+no browser field supplies them. One-time cadence is null. No customer email,
+arbitrary order reader, payment execution or settlement shortcut is exposed.
+The captured rehearsal settlement routine is not wrapped and cannot replace a
+sandbox observation and verified-ingress payment path.
+
+Failures use static messages (`checkout_recovery_service_required`,
+`checkout_recovery_order_not_recoverable`, `checkout_recovery_hash_conflict`,
+`checkout_recovery_response_invalid`, `checkout_recovery_storage_failed`), without
+driver details, raw credentials or attached causes. This adapter adds no SQL,
+grants, reminder producer, mail sender or automatic binding.

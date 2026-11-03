@@ -435,6 +435,17 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 
 ## Commerce contracts
 
+`./commerce/server` also exports `createPostgresCheckoutRecoveryTokenPort` for a
+trusted host's already admitted order. Inject a dedicated transaction lane with
+effective service-role privileges. The port supports contacts without a principal,
+stores only token hashes and computes expiry as order creation plus 24 hours;
+the shared `expiresAt` argument cannot choose a deadline. Issuing a new link ends
+the previous link of the same order. Inspection preserves initial subscription
+mode and cadence from stored quote/activation facts, normalizes consumed links
+for paid confirmation, and grants payment continuation only through validation
+of an active pending order. It sends no mail and performs no settlement. See the
+[recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens).
+
 `./commerce/server/postgres` also exports
 `createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
 request and pass it to `createConcurrentCommercePriceAuthorityPort` from
