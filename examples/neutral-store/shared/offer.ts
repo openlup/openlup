@@ -1,4 +1,5 @@
 import type { PurchaseMode, StoreConfig } from './config.ts';
+import { priceInterimOffer } from './interim-pricing.ts';
 
 export interface CartLine {
   sku: string;
@@ -14,9 +15,10 @@ export interface Cart {
 }
 
 export interface OfferQuote {
-  lines: Array<CartLine & { unitMinor: number; lineMinor: number }>;
+  lines: Array<CartLine & { baseUnitMinor: number; unitMinor: number; lineMinor: number }>;
   subtotalMinor: number;
   discountMinor: number;
+  modeDiscountMinor: number;
   shippingMinor: number;
   totalMinor: number;
   currency: string;
@@ -50,7 +52,7 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
   if (mode === 'subscription' && (typeof cadenceDays !== 'number'
     || !config.offer.cadenceDays.includes(cadenceDays))) return fail('cadence_unavailable');
   const issues: OfferIssue[] = [];
-  const lines: OfferQuote['lines'] = [];
+  const lines: CartLine[] = [];
   const seen = new Set<string>();
   for (const raw of input.lines) {
     if (!isRecord(raw) || typeof raw.sku !== 'string' || typeof raw.quantity !== 'number') {
@@ -72,20 +74,14 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
     if (!product.permittedPurchaseModes.includes(mode)) {
       issues.push({ code: 'purchase_mode_unavailable', sku });
     }
-    lines.push({ sku, quantity: raw.quantity, unitMinor: product.unitPrice.amountMinor,
-      lineMinor: product.unitPrice.amountMinor * raw.quantity });
+    lines.push({ sku, quantity: raw.quantity });
   }
   const units = lines.reduce((total, line) => total + line.quantity, 0);
   if (units < config.offer.minUnits) issues.push({ code: 'minimum_units', limit: config.offer.minUnits });
   if (units > config.offer.maxUnits) issues.push({ code: 'maximum_units', limit: config.offer.maxUnits });
-  const subtotalMinor = lines.reduce((total, line) => total + line.lineMinor, 0);
-  const discountMinor = mode === 'subscription'
-    ? Math.floor(subtotalMinor * config.offer.subscriptionDiscountBps / 10000) : 0;
-  const net = subtotalMinor - discountMinor;
-  const shippingMinor = net >= config.offer.freeShippingFromMinor ? 0 : config.offer.shippingMinor;
-  const totalMinor = net + shippingMinor;
-  if (![subtotalMinor, subtotalMinor * config.offer.subscriptionDiscountBps,
-    discountMinor, shippingMinor, totalMinor].every(Number.isSafeInteger)) {
+  const quote = priceInterimOffer(config, mode, lines);
+  if (![quote.subtotalMinor, quote.modeDiscountMinor, quote.shippingMinor, quote.totalMinor,
+    ...quote.lines.flatMap(line => [line.unitMinor, line.lineMinor])].every(Number.isSafeInteger)) {
     issues.push({ code: 'amount_overflow' });
   }
   const cart: Cart = { schemaVersion: 1, configuration: config.id, mode,
@@ -97,8 +93,7 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
       ? { ok: false, issues, selection: cart }
       : { ok: false, issues };
   }
-  return { ok: true, cart, quote: { lines, subtotalMinor, discountMinor, shippingMinor,
-    totalMinor, currency: config.market.currency, mode, cadenceDays: cart.cadenceDays } };
+  return { ok: true, cart, quote: { ...quote, mode, cadenceDays: cart.cadenceDays } };
 }
 
 export function emptyCart(config: StoreConfig): Cart {

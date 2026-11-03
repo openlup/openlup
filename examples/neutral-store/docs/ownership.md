@@ -93,3 +93,46 @@ state after a keyed conflict. The runtime host only reads the owned list, maps a
 choice ID and submits through the native port; it never loads the registry.
 Support customer reads and catalogue administration remain unbound. Their
 composition is outside this acquisition change.
+
+
+`host/purchase-composition.ts` composes public native drafts, stock, holds,
+compensation, sandbox settlement, renewal attachment and destinations. Its typed
+contact-client dependency is injected at this root, never reimplemented as
+application INSERTs. Checkout does not import the install-only seed.
+`host/checkout-recovery.ts` composes the separate private recovery mailbox;
+the host owns and closes the native token transaction lane.
+`client/purchase.ts` owns tab continuation and visible-response redaction. Neither
+is an account authority. No demo customer seed or mandatory purchase sign-in exists.
+
+`playwright.database.config.ts` is the managed real-database UI recipe. Its
+ignored `.context/database-ui-hosts.json` contains two non-secret loopback UI
+origins, never database URLs or capabilities. The proof operator starts those
+hosts with installed runtime connections. Browser tracing is disabled because
+request bodies carry private capabilities. The required purchase spec remains
+byte-identical. Focused regressions live in `test/checkout-recovery.test.ts`.
+
+
+The one temporary mode-price function is managed in `shared/interim-pricing.ts`.
+Its rate/quantum and demonstration purchase values are owned typed configuration;
+`owned/demo-seed.ts` uses the same function for distinct per-mode price entries.
+The installer compares existing authored price facts and refuses a changed-price
+conflict. This changes no native schema and introduces no runtime price writer.
+The later installed quote-engine composition removes this temporary function.
+
+Attempt limits live in one process's memory and reset on restart.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay precedes quotas; denied attempts add nothing. The synchronous process-local callback fails closed. Unpurchased contact retention belongs to the host.
+
+An admitted new checkout issues a 256-bit recovery token through the native
+PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
+order creation plus 24 hours; this is a database rule, not a configurable value.
+One live link per order: a new link ends the previous link of the same order.
+The token is returned only in the creating response and a separate private
+captured checkout-recovery message, never an authentication challenge or event.
+The completion page reads the URL token once and replaces history synchronously
+before configuration fetch or rendering. Request bodies carry the token; memory
+and session storage preserve reload convenience but grant no authority.
+Native inspection allows payment only for an active pending order, recognizes
+an already-paid order without payment controls, and refuses expired, cancelled
+or unavailable links. Indexed hash lookup makes no constant-time claim.
+Owning sessions retain order ownership checks. An email alone mints no link for
+an existing order. Recovery grants no account or subscription-command access.

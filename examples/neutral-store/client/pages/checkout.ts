@@ -1,10 +1,12 @@
 import type { PageContext } from '../context.ts';
-import type { ActionInput } from '../../shared/api.ts';
 import { evaluateOffer, isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
 import { append, el, link } from '../dom.ts';
-import { actionForm, nativeActions, readPanel } from '../forms.ts';
+import { actionForm, nativeActions } from '../forms.ts';
+import { act } from '../api.ts';
+import { renderValue } from '../dom.ts';
 import { offerIssues } from './storefront.ts';
+import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
 
 export function checkoutPage(context: PageContext): HTMLElement {
   const result = evaluateOffer(context.config, context.getCart());
@@ -32,11 +34,12 @@ export function checkoutPage(context: PageContext): HTMLElement {
       ],
       input: () => ({ cart: context.getCart(), configuration: context.config.id,
         country: context.config.market.country, termsRevision: context.config.legal.revision }),
+      display: visiblePurchase,
       onSuccess: value => {
-        if (!isRecord(value) || typeof value.orderRef !== 'string' || typeof value.accessGrant !== 'string') return;
-        const query = new URLSearchParams({ order: value.orderRef, grant: value.accessGrant });
+        if (!isRecord(value) || typeof value.orderRef !== 'string') return;
+        rememberPurchase(context.config.id, value);
         continuation.replaceChildren(link(context.t('completion'),
-          `${routes.completion[context.locale]}?${query}`, 'button-link'));
+          routes.completion[context.locale], 'button-link'));
       },
     }), context.fragments.checkoutSummary(context, result.quote)),
     continuation,
@@ -47,21 +50,38 @@ export function checkoutPage(context: PageContext): HTMLElement {
 }
 
 export function completionPage(context: PageContext): HTMLElement {
-  const reference = context.query.get('order') ?? '';
-  const grant = context.query.get('grant') ?? '';
-  const input = (): ActionInput => ({ orderRef: reference, accessGrant: grant });
-  return el('div', {}, el('h1', {}, context.t('completion')),
-    el('p', {}, context.t('completionBody')),
-    el('p', { class: 'notice' }, context.t('sandboxOnly')),
-    readPanel(context, 'order', 'checkout.read', input()),
-    el('section', { class: 'panel' }, el('h2', {}, context.t('payment')),
-      ...(['succeeded', 'declined', 'expired'] as const).map(outcome =>
-        actionForm(context, {
-          operation: 'payment.simulate',
-          submit: outcome === 'succeeded' ? 'simulatePaid' : outcome === 'declined' ? 'simulateDeclined' : 'simulateExpired',
-          input: () => ({ ...input(), outcome }),
-        }))),
+  const state = el('section', { class: 'panel', 'aria-live': 'polite' }, el('p', {}, context.t('loading')));
+  const page = el('div', {}, el('h1', {}, context.t('completion')), state,
     link(context.t('account'), routes.account[context.locale]));
+  const inspect = async () => {
+    const result = await act('checkout.read', { ...currentPurchase(context.config.id) }, crypto.randomUUID());
+    if (!page.isConnected) return;
+    if (!result.ok || !isRecord(result.value)) {
+      const code = result.ok ? 'starter_recovery_unavailable' : result.code;
+      state.replaceChildren(el('p', {}, context.t(code === 'starter_recovery_expired' ? 'recoveryExpired'
+        : code === 'starter_recovery_cancelled' ? 'recoveryCancelled' : 'recoveryUnavailable')), el('code', {}, code));
+      return;
+    }
+    if (result.value.status === 'paid') {
+      state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue({ status: 'paid' }));
+      return;
+    }
+    if (result.value.status !== 'pending_payment') {
+      state.replaceChildren(el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : 'recoveryUnavailable')));
+      return;
+    }
+    rememberPurchase(context.config.id, { ...currentPurchase(context.config.id), orderRef: result.value.orderRef });
+    state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue(result.value),
+      el('h2', {}, context.t('payment')),
+      ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome => actionForm(context, {
+        operation: 'payment.simulate',
+        submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
+        input: () => ({ ...currentPurchase(context.config.id), outcome }),
+        onSuccess: () => { void inspect(); },
+      })));
+  };
+  void inspect();
+  return page;
 }
 
 export function repairPage(context: PageContext): HTMLElement {

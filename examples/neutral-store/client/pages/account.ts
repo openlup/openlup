@@ -1,5 +1,6 @@
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
+import { isRecord } from '../../shared/offer.ts';
 import type { Operation } from '../../shared/api.ts';
 import { routes } from '../../shared/routes.ts';
 import { el, link } from '../dom.ts';
@@ -71,6 +72,7 @@ function subscriptionCommands(context: PageContext): HTMLElement {
 export function addressForm(context: PageContext, operation: Operation): HTMLElement {
   return actionForm(context, {
     operation, title: 'changeAddress', submit: 'save',
+    resultMessage: addressOutcomeMessage,
     fields: [
       { name: 'subscriptionRef', label: 'subscriptionRef' },
       { name: 'recipientName', label: 'firstName' },
@@ -83,6 +85,12 @@ export function addressForm(context: PageContext, operation: Operation): HTMLEle
   });
 }
 
+export function addressOutcomeMessage(value: unknown): CopyKey | undefined {
+  if (!isRecord(value)) return undefined;
+  return value.outcome === 'applied' ? 'addressApplied'
+    : value.outcome === 'applied_from_next_parcel' ? 'addressNextParcel' : undefined;
+}
+
 export function authPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('signIn')),
     el('p', {}, context.t('signInBody')),
@@ -92,7 +100,7 @@ export function authPage(context: PageContext): HTMLElement {
     }),
     actionForm(context, {
       operation: 'auth.verify', submit: 'verifyOtp',
-      fields: [{ name: 'challengeRef', label: 'actionRef' }, { name: 'code', label: 'otp', maxLength: 12 }],
+      fields: [{ name: 'token', label: 'otp', type: 'password', maxLength: 43 }],
     }),
     nativeActions(context, ['N10']));
 }

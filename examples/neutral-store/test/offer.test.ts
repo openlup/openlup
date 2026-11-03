@@ -13,8 +13,8 @@ function cart(config: StoreConfig): Cart {
 // Managed algorithm tests own their rule boundaries; adopter settings remain mutable.
 function offerFixture(original: StoreConfig): StoreConfig {
   const config = structuredClone(original);
-  Object.assign(config.offer, { minUnits: 1, maxUnits: 12, shippingMinor: 1200,
-    freeShippingFromMinor: 15000, subscriptionDiscountBps: 500,
+  Object.assign(config.offer, { minUnits: 1, maxUnits: 12, shippingMinor: 0,
+    freeShippingFromMinor: 0, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
     cadenceDays: [14, 28, 56], defaultCadenceDays: 28 });
   config.offer.products = config.offer.products.map(product => ({ ...product,
     unitPrice: { amountMinor: 3901, currency: config.market.currency },
@@ -41,8 +41,10 @@ for (const config of Object.values(configurations).map(offerFixture)) {
     const result = evaluateOffer(config, input);
     assert.equal(result.ok, true);
     if (!result.ok) return;
-    assert.equal(result.quote.discountMinor,
-      Math.floor(result.quote.subtotalMinor * config.offer.subscriptionDiscountBps / 10000));
+    assert.equal(result.quote.discountMinor, 0);
+    assert.equal(result.quote.lines[0]!.unitMinor, 3700);
+    assert.equal(result.quote.subtotalMinor, 7400);
+    assert.equal(result.quote.modeDiscountMinor, 402);
     assert.equal(result.quote.cadenceDays, config.offer.defaultCadenceDays);
     assert.equal(result.cart.mode, 'subscription');
   });
@@ -78,15 +80,13 @@ for (const config of Object.values(configurations).map(offerFixture)) {
     assert.equal(evaluateOffer(config, { ...cart(config), mode: 'subscription', cadenceDays: 999 }).ok, false);
   });
 
-  test(`${config.id}: free shipping threshold uses the post-discount subtotal`, () => {
-    const custom: StoreConfig = structuredClone(config);
-    custom.offer.freeShippingFromMinor = config.offer.products[0]!.unitPrice.amountMinor * 2;
-    const oneTime = evaluateOffer(custom, cart(config));
-    const recurring = evaluateOffer(custom, { ...cart(config), mode: 'subscription', cadenceDays: 28 });
-    assert.ok(oneTime.ok && recurring.ok);
-    if (!oneTime.ok || !recurring.ok) return;
-    assert.equal(oneTime.quote.shippingMinor, 0);
-    assert.equal(recurring.quote.shippingMinor, custom.offer.shippingMinor);
+  test(`${config.id}: initial and recurring offers charge zero shipping`, () => {
+    for (const mode of ['one_time', 'subscription'] as const) {
+      const result = evaluateOffer(config, { ...cart(config), mode, cadenceDays: mode === 'subscription' ? 28 : null });
+      assert.ok(result.ok);
+      assert.equal(result.quote.shippingMinor, 0);
+      assert.equal(result.quote.totalMinor, result.quote.subtotalMinor - result.quote.discountMinor);
+    }
   });
 }
 
@@ -186,8 +186,9 @@ for (const original of Object.values(configurations)) {
     assert.equal(result.quote.shippingMinor, 0);
     const recurring = evaluateOffer(config, { ...selected, mode: 'subscription', cadenceDays: 28 });
     assert.ok(recurring.ok);
-    assert.equal(recurring.quote.discountMinor, 585);
-    assert.equal(recurring.quote.totalMinor, 11118);
+    assert.equal(recurring.quote.discountMinor, 0);
+    assert.equal(recurring.quote.modeDiscountMinor, 603);
+    assert.equal(recurring.quote.totalMinor, 11100);
   });
 }
 

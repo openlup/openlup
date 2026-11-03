@@ -60,8 +60,22 @@ export interface StoreConfig {
     shippingMinor: number;
     freeShippingFromMinor: number;
     subscriptionDiscountBps: number;
+    subscriptionRoundingQuantumMinor: number;
+    renewalShippingMinor: number;
     cadenceDays: readonly number[];
     defaultCadenceDays: number;
+  };
+  purchase: {
+    recoveryMessage: { subject: Localized; body: Localized; expiryLabel: Localized; orderLabel: Localized };
+    acceptLinkedContacts: boolean;
+    inputLimits: { text: number; postalCode: number; email: number; name: number; phone: number };
+    contact: { acquisitionSource: string; lifecycleStage: 'lead' | 'customer' | 'inactive' };
+    responseFloorMs: number;
+    attemptLimits: { windowMs: number; maxPerRequester: number; maxPerEmail: number; retentionMs: number; maxEntries: number };
+    reservationMinutes: number;
+    stock: { quantities: Record<string, number>; collectedAt: string; staleAfter: string; providerRef: string; syncRunId: string };
+    tax: { vatRateBps: number; legalBasis: string; category: string };
+    sandbox: { dunningTemplateSlug: string; recoveryTemplateSlug: string; recoveryUrlPath: string };
   };
   legal: {
     revision: string;
@@ -98,15 +112,43 @@ export function assertConfig(config: StoreConfig): void {
     if (!/^#[0-9a-f]{6}$/i.test(token)) throw new Error('starter_theme_invalid');
   }
   for (const amount of [offer.minUnits, offer.maxUnits, offer.shippingMinor,
-    offer.freeShippingFromMinor, offer.subscriptionDiscountBps]) {
+    offer.freeShippingFromMinor, offer.subscriptionDiscountBps, offer.renewalShippingMinor,
+    offer.subscriptionRoundingQuantumMinor]) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
   }
-  if (offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
+  if (offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
     || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 366)) {
     throw new Error('starter_offer_invalid');
   }
+  if (offer.renewalShippingMinor !== 0) throw new Error('starter_renewal_shipping_unsupported');
+  const purchase = config.purchase;
+  if (!purchase?.recoveryMessage || (['subject', 'body', 'expiryLabel', 'orderLabel'] as const).some(key => {
+    const value = purchase.recoveryMessage[key];
+    return !value || ['en', 'pl'].some(locale => typeof value[locale as Locale] !== 'string' || !value[locale as Locale].trim());
+  })) {
+    throw new Error('starter_recovery_message_invalid');
+  }
+  if (!purchase || typeof purchase.acceptLinkedContacts !== 'boolean'
+    || !Number.isSafeInteger(purchase.responseFloorMs) || purchase.responseFloorMs < 0
+    || !purchase.contact.acquisitionSource.trim() || purchase.contact.acquisitionSource.length > 100
+    || !['lead', 'customer', 'inactive'].includes(purchase.contact.lifecycleStage)
+    || Object.values(purchase.attemptLimits).some(value => !Number.isSafeInteger(value) || value < 1)
+    || purchase.attemptLimits.retentionMs < purchase.attemptLimits.windowMs
+    || purchase.inputLimits.email > 320 || purchase.inputLimits.name > 80 || purchase.inputLimits.phone > 64
+    || !Number.isSafeInteger(purchase.reservationMinutes) || purchase.reservationMinutes < 1
+    || !Number.isSafeInteger(purchase.tax.vatRateBps) || purchase.tax.vatRateBps < 0 || purchase.tax.vatRateBps > 10000
+    || !/^[a-z][a-z0-9_]*$/.test(purchase.tax.category)
+    || !purchase.stock.providerRef.trim()
+    || !purchase.stock.syncRunId.trim()
+    || !purchase.tax.legalBasis.trim()
+    || Object.values(purchase.inputLimits).some(value => !Number.isSafeInteger(value) || value < 1)
+    || !/^[a-z0-9-]+$/.test(purchase.sandbox.dunningTemplateSlug)
+    || !/^[a-z0-9-]+$/.test(purchase.sandbox.recoveryTemplateSlug)
+    || !/^\/[a-zA-Z0-9/_-]+$/.test(purchase.sandbox.recoveryUrlPath)
+    || !Number.isFinite(Date.parse(purchase.stock.collectedAt)) || !Number.isFinite(Date.parse(purchase.stock.staleAfter))
+    || Date.parse(purchase.stock.staleAfter) <= Date.parse(purchase.stock.collectedAt)) throw new Error('starter_purchase_configuration_invalid');
   const seen = new Set<string>();
   const slugs = new Set<string>();
   if (offer.products.length === 0) throw new Error('starter_catalog_empty');
@@ -122,9 +164,13 @@ export function assertConfig(config: StoreConfig): void {
       || !product.media.startsWith('/media/')) {
       throw new Error('starter_product_invalid');
     }
+    if (!Number.isSafeInteger(purchase.stock.quantities[product.sku]) || purchase.stock.quantities[product.sku]! < 0) {
+      throw new Error('starter_purchase_configuration_invalid');
+    }
     seen.add(product.sku);
     slugs.add(product.slug);
   }
+  if (Object.keys(purchase.stock.quantities).some(sku => !seen.has(sku))) throw new Error('starter_purchase_configuration_invalid');
 }
 
 /** One validator for the optional public contact; no URL or HTML is accepted. */

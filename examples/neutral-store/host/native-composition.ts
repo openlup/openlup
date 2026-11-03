@@ -5,14 +5,17 @@ import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { resolveCustomerSessionBinding, createCapturedCustomerChallengeDelivery,
   createOperatorSessionService, createPostgresOperatorIdentityStore,
-  createPostgresCustomerMePort, createOperatorAdminAuth } from '@openlup/platform/identity';
-import { createPostgresDataGateway, type PgGatewayClient } from '@openlup/platform/data';
+  createPostgresCustomerMePort, createOperatorAdminAuth, createPostgresContactClientRegistrar } from '@openlup/platform/identity';
+import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane, type PgGatewayClient } from '@openlup/platform/data';
 import { createPostgresCustomerOrderHistoryReadStore, createPostgresCustomerSubscriptionSnapshotPort,
   createPostgresCustomerNewsletterPreferencesPort } from '@openlup/platform/account-support';
 import { createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
 import type { ActionBinding, ApplicationBindings, VerifiedActor } from './bindings.ts';
 import type { OriginPolicy } from './origin-policy.ts';
 import { createSessions } from './sessions.ts';
+import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
+import { createCheckoutRecoveryDelivery } from './checkout-recovery.ts';
+import { composePurchaseCapabilities } from './purchase-composition.ts';
 import { composeExistingCapabilities } from './e-composition.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
@@ -53,7 +56,17 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     },
   } });
   const capabilities = composeExistingCapabilities({ executor: pool, connectionString });
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions };
+  const contacts = createPostgresContactClientRegistrar({ connectionString });
+  const recoveryLane = createPostgresRoleFreeTransactionLane({ connectionString });
+  const recovery = {
+    tokens: createPostgresCheckoutRecoveryTokenPort(recoveryLane),
+    deliver: async (input: Parameters<ReturnType<typeof createCheckoutRecoveryDelivery>>[0]) => {
+      const admittedOrigin = input.context.actor.requestOrigin;
+      if (!admittedOrigin) throw new Error('starter_recovery_origin_required');
+      await createCheckoutRecoveryDelivery(admittedOrigin)(input);
+    },
+  };
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown): value is string => typeof value === 'string' && value.length <= 160
@@ -142,7 +155,9 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       // This local host trusts its socket peer only, never forwarding headers or
       // a contact supplied by the caller. Proxies share their peer's quota.
       const peer = request.socket.remoteAddress;
-      const requester = peer ? { requesterKey: createHash('sha256').update(peer.toLowerCase()).digest('hex') } : {};
+      const admittedOrigin = origin.originFor(request.headers.host ?? '');
+      const requester = { ...(peer ? { requesterKey: createHash('sha256').update(peer.toLowerCase()).digest('hex') } : {}),
+        ...(admittedOrigin ? { requestOrigin: admittedOrigin } : {}) };
       const found = sessions.read(request);
       if (!found) return { ...nobody(), ...requester };
       const { session, token } = found;
@@ -156,6 +171,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       const profile = await asCustomer(session.principalId, db => createPostgresCustomerMePort(db).getCustomerMe(session.principalId));
       return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
-    async close() { sessions.close(); await Promise.all([capabilities.close(), operators.close(), pool.end()]); },
+    async close() { sessions.close(); await Promise.all([capabilities.close(), recoveryLane.close(), contacts.close(), operators.close(), pool.end()]); },
   };
 }

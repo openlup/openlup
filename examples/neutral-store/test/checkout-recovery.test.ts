@@ -1,0 +1,79 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { configurations } from '../owned/store.config.ts';
+import { assertConfig } from '../shared/config.ts';
+import { createCheckoutRecoveryDelivery, type CheckoutRecoveryMessage } from '../host/checkout-recovery.ts';
+import { captureCompletionEntry, currentPurchase, visiblePurchase } from '../client/purchase.ts';
+
+test('recovery message values are typed configuration in both configurations and locales', async () => {
+  for (const original of Object.values(configurations)) {
+    const config = structuredClone(original);
+    for (const locale of ['en', 'pl'] as const) {
+      config.purchase.recoveryMessage = {
+        subject: { en: 'Changed subject', pl: 'Zmieniony temat' }, body: { en: 'Changed body', pl: 'Zmieniona treść' },
+        expiryLabel: { en: 'Until', pl: 'Do' }, orderLabel: { en: 'Reference', pl: 'Numer' },
+      };
+      assertConfig(config);
+      const messages: CheckoutRecoveryMessage[] = [];
+      await createCheckoutRecoveryDelivery('http://127.0.0.1:4319', async message => { messages.push(message); })({
+        email: 'buyer@example.test', rawToken: 'private-value', orderRef: 'order-reference', expiresAt: '2030-01-01T00:00:00.000Z', locale,
+        context: { config, actor: { customerRef: null, operatorRef: null }, commandKey: 'test-command' },
+      });
+      const message = messages[0]!;
+      assert.equal(message.kind, 'checkout-recovery');
+      assert.equal(message.subject, config.purchase.recoveryMessage.subject[locale]);
+      assert.ok(message.body.includes(config.purchase.recoveryMessage.body[locale]));
+      assert.ok(message.body.includes(config.purchase.recoveryMessage.expiryLabel[locale]));
+      assert.ok(message.body.includes(config.purchase.recoveryMessage.orderLabel[locale]));
+      assert.equal(new URL(message.completionUrl).origin, 'http://127.0.0.1:4319');
+      assert.equal(new URL(message.completionUrl).searchParams.get('token'), 'private-value');
+    }
+    Reflect.deleteProperty(config.purchase.recoveryMessage, 'expiryLabel');
+    assert.throws(() => assertConfig(config), /starter_recovery_message_invalid/);
+    config.purchase.recoveryMessage.expiryLabel = { en: '', pl: 'Do' };
+    assert.throws(() => assertConfig(config), /starter_recovery_message_invalid/);
+  }
+});
+
+test('captured checkout mail is separate and private', async () => {
+  const cwd = process.cwd(), directory = await mkdtemp(join(tmpdir(), 'starter-recovery-'));
+  try {
+    process.chdir(directory);
+    await createCheckoutRecoveryDelivery('http://127.0.0.1:4319')({ email: 'buyer@example.test', rawToken: 'private-value',
+      orderRef: 'order-reference', expiresAt: '2030-01-01T00:00:00.000Z', locale: 'en',
+      context: { config: Object.values(configurations)[0]!, actor: { customerRef: null, operatorRef: null }, commandKey: 'test-command' } });
+    const mailbox = join(directory, '.context/captured-messages');
+    assert.equal((await stat(mailbox)).mode & 0o777, 0o700);
+    assert.equal((await stat(join(mailbox, 'checkout-recovery.jsonl'))).mode & 0o777, 0o600);
+    assert.equal(JSON.parse(await readFile(join(mailbox, 'checkout-recovery.jsonl'), 'utf8')).kind, 'checkout-recovery');
+    await assert.rejects(readFile(join(mailbox, 'identity.jsonl')), { code: 'ENOENT' });
+  } finally { process.chdir(cwd); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('entry removes URL token synchronously and retains a private reload convenience', () => {
+  const saved = ['location', 'history', 'sessionStorage'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
+  const data = new Map<string, string>();
+  const location = { pathname: '/account/complete-payment', search: '?token=private-value&other=kept', hash: '#anchor' };
+  let replaced = '';
+  try {
+    Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
+    Object.defineProperty(globalThis, 'history', { configurable: true, value: { replaceState: (_: unknown, __: string, url: string) => {
+      replaced = url; location.search = '?other=kept';
+    } } });
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+      getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value),
+    } });
+    captureCompletionEntry();
+    assert.equal(replaced, '/account/complete-payment?other=kept#anchor');
+    assert.deepEqual(currentPurchase('entry-test'), { token: 'private-value' });
+    assert.deepEqual(visiblePurchase({ token: 'private-value', status: 'pending_payment' }), { status: 'pending_payment' });
+    assert.ok([...data.values()].some(value => JSON.parse(value).token === 'private-value'));
+  } finally {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
+    }
+  }
+});

@@ -1730,6 +1730,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-r1b.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-rec.md",
       "class": "public-output"
     },
@@ -1870,6 +1874,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/purchase.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/style.css",
       "class": "public-output"
     },
@@ -1906,6 +1914,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/checkout-attempts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/checkout-recovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/e-composition.ts",
       "class": "public-output"
     },
@@ -1923,6 +1939,10 @@
     },
     {
       "path": "examples/neutral-store/host/origin-policy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/purchase-composition.ts",
       "class": "public-output"
     },
     {
@@ -1986,6 +2006,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/playwright.database.config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/public/media/coffee.svg",
       "class": "public-output"
     },
@@ -2026,6 +2050,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/interim-pricing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/limits.ts",
       "class": "public-output"
     },
@@ -2042,7 +2070,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/address-outcomes.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-attempts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-recovery.test.ts",
       "class": "public-output"
     },
     {
@@ -2059,6 +2099,10 @@
     },
     {
       "path": "examples/neutral-store/test/installation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/interim-pricing.test.ts",
       "class": "public-output"
     },
     {
