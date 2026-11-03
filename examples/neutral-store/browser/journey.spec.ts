@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { messageDestinations, routes } from '../shared/routes.ts';
+import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { copy } from '../owned/copy.ts';
 
 for (const locale of ['en', 'pl'] as const) {
@@ -83,8 +84,9 @@ for (const locale of ['en', 'pl'] as const) {
     await expect(page.getByRole('columnheader').nth(1)).toHaveText(text.languageEnglish);
     await expect(page.getByRole('columnheader').nth(2)).toHaveText(text.languagePolish);
     await page.goto(routes.acquisition[locale]);
-    await expect(page.getByLabel(text.firstName, { exact: true })).toHaveValue(text.demoFirstName);
-    await expect(page.getByLabel(text.lastName, { exact: true })).toHaveValue(text.demoApplicant);
+    await expect(page.getByLabel(text.acquisitionAddress, { exact: true })).toHaveValue(acquisitionAddresses[0]!.id);
+    await expect(page.locator('main')).toContainText(acquisitionAddresses[0]!.label[locale]);
+    await expect(page.locator('main [name=firstName], main [name=lastName]')).toHaveCount(0);
     await page.goto(routes.partners[locale]);
     await expect(page.getByLabel(text.company, { exact: true })).toHaveValue(text.demoCompany);
     await expect(page.getByLabel(text.lastName, { exact: true })).toHaveValue(text.demoPartner);

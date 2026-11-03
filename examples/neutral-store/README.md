@@ -32,9 +32,10 @@ that same operator authority. The purchase composition contribution retains
 acceptance for expired-grant refusal, positive review submit/read, publish/hide
 with a real review, grant expiry/revocation and purchase-generated grant ownership.
 None of those outcomes is proved by this starter composition slice.
-Tester applications still need a verified native address-reference binding;
-research needs case ownership and ingest needs a complete native binding. Those
-three actions remain unmounted and refuse `host_binding_required`.
+Tester applications are public durable writes through the native acquisition
+case port and an install-seeded adopter-owned opaque registry. Research needs
+case ownership and ingest needs a complete native binding; those two actions
+remain unmounted and refuse `host_binding_required`.
 Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
 
 ## Start from an exact source archive
@@ -172,9 +173,10 @@ They do not replace it with an application-owned upgrade engine. A real
 
 `./lifecycle up` calls `installation/install.ts` in a one-shot container before
 starting the host. The installed bootstrap obtains a dedicated install connection and
-applies **one** owned `owned/demo-seed.ts` step. The pure builder reads the same
+applies one transaction using `owned/demo-seed.ts` and the owned acquisition
+registry. The catalogue builder reads the same
 `StoreConfig` as the UI: deterministic product/SKU/list/price identifiers and
-parameterized upserts populate only `catalog_products`, `catalog_skus`,
+parameterized catalogue upserts populate `catalog_products`, `catalog_skus`,
 `price_lists` and `price_entries`. Repeating installation updates the same rows.
 Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.
 
@@ -334,3 +336,24 @@ fictional authoring type. The support port is constructed per request for that
 operator and closed in `finally`, including failed reads; it has no operator cache.
 
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application's storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+
+The following acquisition baseline predates support and catalogue composition;
+its unbound-operator statements describe that earlier baseline only. The current
+operator composition and its prerequisites are documented above.
+
+## Acquisition and unbound operator actions
+
+With the runtime connection, acquisition.submit is a public durable write through
+the native acquisition case port and an install-seeded fictional location choice.
+Only email, application
+consent and the choice are collected; names are not stored. The owned registry
+in `owned/acquisition-addresses.ts` follows the acquisition migration's
+owner-loaded opaque reference contract in
+`packages/platform/sql/20260816140000_acquisition_case_foundation.sql:16-17`.
+It is applied only in the marked demo
+installation, never by the runtime host. Conflicting registry data fails install
+loudly. Replace this fictional registry and its onboarding for a customer environment.
+
+Operator customer search/detail remain unbound because the native reader
+requires a separate communications operator roster entry. The host does not
+provision that authority. Recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
