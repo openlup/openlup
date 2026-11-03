@@ -1,11 +1,9 @@
 # Native lifecycle notice dispatch
 
-Status: NEEDS_READ (shipping and lock delta). Local implementation and the
-required focused proofs are complete on the pinned predecessor. The SQL forward
-and its co-located pins remain staged for the coordinator. The native caller
-classification and the separately observed settlement ACL limitation below are
-named read items. No review, submission or activation is claimed. No new review,
-submission or publication is authorized in this run.
+Status: HOLD (accepted delta committed). The accepted SQL and co-located pins
+are DCO committed. Focused proofs stand for the accepted tree. Final predecessor
+integration awaits a later instruction. No review, verification, submission or
+activation is authorized during this hold.
 
 ## Outcome, scope and authority
 
@@ -1163,3 +1161,14 @@ annotations cost a 182-second failed lint pass; fixing them needed no tracked
 production repair. The additional settlement attempt was kept distinct from
 the required draft/conservation proof, preserving its actual failure for the
 coordinator instead of widening privileges or fabricating payment truth.
+
+
+## Known limits and out-of-scope follow-up
+
+`F-QUALIFIED-PROMOTION-CLAIM-EVENTS` records a pre-existing qualified-runtime
+`42501` limit on `commerce_promotion_claim_events` during promotion settlement.
+G8 neither causes nor closes it. Its repair remains outside this row; no grant
+or test is added here.
+
+Commit handoff self-retro: the accepted tree matched exactly; scoped trailers
+kept the accepted source unchanged and required no heavy proof rerun.
