@@ -1,8 +1,10 @@
 # Native fulfillment commerce reads
 
-Status: local proof complete; staged for the required public API read.
+Status: destination reader rebind staged for the required public API read.
 The row packed limit is 9,000 bytes; behavior and accepted limits remain unchanged.
-No commit, DCO, prepare, review, canonical verification, rebind or push is authorized.
+Only the frozen predecessor merge is committed in this step. The destination
+rebind stays staged and uncommitted; DCO, prepare, review, canonical verification
+and push require a later grant.
 
 ## Outcome and boundary
 
@@ -13,16 +15,22 @@ adopter's read mechanisms with the explicit native limits in
 [Native parity boundaries](../ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
 No additional package entry or default route binding is introduced.
 
-The worker implements under the store supervisor. Public API reading precedes
-any commit or DCO; committed review and canonical verification need their later
+Public API reading precedes
+any rebind commit or DCO; committed review and canonical verification need their later
 explicit grants. No publication, release, hosted resource, external mutation or
 settings action is granted. Other worktrees and branches are outside scope.
 
 Policy pin and original base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
-Pinned stacked base/HEAD: `a220cee45180172432dad6931ae7af40c3061982`.
+Frozen predecessor and documentation stack pin:
+`0cda7f75379a7a01300e53d464dff7fa46e5eb1e`.
 The shipment destination and purchase reservation facts depend on the SQL stream.
-The destination reader remains injected; its nonmutating shipment reader is owned
-by that stream and will be rebound only after a later explicit head handoff.
+The default destination reader calls the predecessor's nonmutating
+`commerce_view_shipment_destination(uuid)` through the supplied executor. An
+explicitly injected reader retains precedence. Routine unavailable and
+owner-mismatch errors map to the existing native refusals; all other errors
+propagate unchanged. The port retains its own client ownership check. Restricted
+runtime execution and before/after counts of every public table prove that an
+unprepared shipment read creates no binding or other row.
 No SQL, migration, grant, routine, checkout, returns, starter composition,
 subscription/inventory/payment source, managed operation or default unsupported
 behavior changes belong to this row. No table or transfer-set addition is made.
@@ -105,7 +113,9 @@ test files stay byte-identical to HEAD and run unchanged alongside the new suite
 Required additional evidence: API snapshots, source-tree scanners, strict
 published-tree typecheck, lint, neutrality with zero increases, ast-grep, publication
 policy/navigation and official packed/code comparison against the pinned base.
-The row stop is 9,000 packed bytes and the code-class ceiling is 1,970,000 bytes.
+The comparison base is the frozen predecessor above. The row stop remains 9,000
+packed bytes. Absolute ceilings come from `packages/platform/release-gates.json`:
+`pack.code.maxPackedBytes` is 2,055,017 and `pack.maxPackedBytes` is 2,595,000.
 Do not trim behavior to fit. Canonical verification is not part of this run.
 
 ## Evidence history and execution boundary
@@ -175,8 +185,8 @@ Candidate: 2,461,312 packed / 1,965,298 code / 11,591,512 unpacked / 3,035 files
 Base: 2,452,826 packed / 1,957,251 code / 11,538,316 unpacked / 3,032 files.
 This is below the accepted 9,000-byte row stop and 1,970,000-byte code ceiling.
 The final official comparison is repeated after the last tracked evidence edit.
-Nothing is trimmed, and the destination reader remains injected until its later
-explicit SQL-stream head handoff.
+That historical comparison predates the frozen predecessor merge and default
+destination view binding; the fresh read packet records their final measurement.
 
 Publication policy/navigation completed against the explicit stacked base: three
 documentation obligations, with only the uncommitted `tests` obligation at
@@ -206,3 +216,22 @@ OpenLup-Doc-Impact: {"unit":"tests","digest":"sha256-33de92948b14764ccb90f335e56
 No commit or DCO is created to answer that obligation before the API read. The
 source/tests are frozen; final staged identity and exact binary patch are recorded
 in the read packet after the last tracked edit and final official measurement.
+
+## Destination view rebind
+
+The frozen predecessor merge is conflict-free and preserves the row's own delta.
+Only the destination option becomes optional; its existing shape and all other
+public inputs and response schemas remain unchanged. FR01–FR08 and FR10–FR18
+retain their identifiers and meaning. The default view returns the existing
+reader facts only; revision and pinned metadata are not exposed. No SQL, routine,
+grant or managed-rail change is included in the rebind.
+
+The row's two new test files exercise default reads, both mapped refusals,
+unchanged unmapped errors and injected precedence. The PostgreSQL suite runs in
+the default session zone, Etc/GMT-9 and Etc/GMT+5, verifies the effective zone on
+both connections, and uses explicit UTC instants in fixtures. Existing fulfillment
+tests remain byte-identical to the frozen predecessor. Strict typecheck command:
+`npm run oss:published-tree -- --typecheck`.
+
+Self-retro: using the predecessor's existing view removes the pinning dependency
+without a second destination mechanism or a wider public type change.

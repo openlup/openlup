@@ -18,13 +18,18 @@ const operationStatuses: Record<string, CommerceFulfillmentOperationRow['operati
 const limit = (name: string): never => { throw new Error(`native_fulfillment_${name}`); };
 
 /** Native shipment commerce projection. Supply the existing eligibility policy and
- * a nonmutating shipment destination reader; the preparation reader may pin state.
+ * optionally override the nonmutating shipment destination view reader.
  * The host owns authorization, connection lifetime and snapshot transaction. */
 export function createPostgresFulfillmentCommerceReadPort(input: {
-  executor: Executor; destinations: DestinationReader; policy: FulfillmentCommerceReadPolicy;
+  executor: Executor; destinations?: DestinationReader; policy: FulfillmentCommerceReadPolicy;
   orderMode(input: { orderId: string; subscriptionCycleId: string | null; capturedMode: string | null }): Parameters<FulfillmentCommerceReadPolicy['evaluateCommerceFulfillmentEligibility']>[0]['orderMode'];
 }): NativeFulfillmentCommerceReadPort {
   const rows = async (sql: string, values: unknown[]) => (await input.executor.query(sql, values)).rows;
+  const destinations: DestinationReader = input.destinations ?? { async read(_scope, id) {
+    const [result] = await rows('SELECT public.commerce_view_shipment_destination($1::uuid) AS value', [id]);
+    const value = result.value as Awaited<ReturnType<DestinationReader['read']>>;
+    return { destinationId: value.destinationId, clientId: value.clientId, address: value.address };
+  } };
   async function project(shipment: Row) {
     const [facts] = await rows(`SELECT to_jsonb(o) AS order_context,
       (SELECT to_jsonb(i) FROM public.commerce_settlement_intents i WHERE i.order_id=o.id) AS payment,
@@ -43,9 +48,10 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
     const order = record(facts.order_context), payment = record(facts.payment);
     if (!payment.id) return limit('payment_intent_unavailable');
     let destination: Awaited<ReturnType<DestinationReader['read']>>;
-    try { destination = await input.destinations.read('shipment', String(shipment.id)); }
+    try { destination = await destinations.read('shipment', String(shipment.id)); }
     catch (error) {
       if (error instanceof Error && error.message === 'commerce_destination_unavailable') return limit('destination_unavailable');
+      if (error instanceof Error && error.message === 'commerce_destination_owner_mismatch') return limit('destination_owner_mismatch');
       throw error;
     }
     if (destination.clientId !== order.client_id) return limit('destination_owner_mismatch');

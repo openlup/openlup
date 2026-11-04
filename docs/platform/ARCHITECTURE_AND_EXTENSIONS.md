@@ -1410,14 +1410,17 @@ The existing `@openlup/platform/fulfillment/native` entry exposes
 `createPostgresFulfillmentCommerceReadPort`. It reads the native shipment spine,
 order items, settlement intent, holds, cycle and inventory reservation facts.
 The host supplies the existing `FulfillmentCommerceReadPolicy`, authentication,
-a consistent snapshot transaction and a shipment destination reader. Reuse
+and a consistent snapshot transaction. An optional shipment destination reader
+overrides the default nonmutating SQL view reader. Reuse
 `evaluateCommerceFulfillmentEligibility` from the commerce entry; fulfillment
 contains no second eligibility implementation.
 
-**Integration limit:** the destination preparation reader pins the first shipment
-binding and must not serve side-effect-free operator reads. A nonmutating
-shipment destination reader stays injected until its SQL dependency is supplied.
-The [task record](plans/oss-m19-g10r.md) records this dependency. The explicit
+**Destination reads:** the default reader calls
+`commerce_view_shipment_destination(uuid)` through the supplied executor without
+creating a binding. An explicitly injected reader wins. The preparation reader
+can pin a shipment binding and must not serve side-effect-free operator reads.
+Unavailable and owner-mismatch routine errors map to the corresponding
+`native_fulfillment_destination_*` refusals; other routine errors propagate unchanged. The explicit
 native reader is a reduced projection with the named limits below; it does not
 activate a route or change the unsupported-port factory. The existing commerce
 eligibility function remains injected, and the host explicitly maps captured
@@ -1458,7 +1461,7 @@ entry; its additive order type permits a null saved-address id. The managed orde
 type and its address validation remain unchanged. Builders also accept an explicit
 `hasShippingAddress` fact (an order-id map for lists, a boolean for detail); absent
 that option, they retain the saved-address pointer's truthiness. No route is enabled
-by these options, and the native destination reader remains injected.
+by these options; an optional injected destination reader overrides the SQL view.
 
 The explicit native commerce reader has these named limits. These limits do not
 change the managed reader or enable a separate parcel address display. Reservation

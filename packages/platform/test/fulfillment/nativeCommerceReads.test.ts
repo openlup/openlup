@@ -241,7 +241,7 @@ it('executes the compiled public factory from local tarballs offline with an emp
         import {evaluateCommerceFulfillmentEligibility} from '@openlup/platform/commerce';
         const f=${JSON.stringify(fixture())};
         assert(import.meta.resolve('@openlup/platform/fulfillment/native').startsWith(new URL('./node_modules/',import.meta.url).href));
-        const port=createPostgresFulfillmentCommerceReadPort({executor:{async query(sql){return {rows:sql.startsWith('SELECT to_jsonb(s)')?[{shipment:f.shipment}]:[f.facts]}}},destinations:{async read(){return f.destination}},policy:{evaluateCommerceFulfillmentEligibility},orderMode:()=> 'one_time'});
+        const port=createPostgresFulfillmentCommerceReadPort({executor:{async query(sql){return {rows:sql.startsWith('SELECT to_jsonb(s)')?[{shipment:f.shipment}]:sql.startsWith('SELECT public.commerce_view_shipment_destination')?[{value:{...f.destination,revision:1,pinned:false}}]:[f.facts]}}},policy:{evaluateCommerceFulfillmentEligibility},orderMode:()=> 'one_time'});
         const result=await port.getCommerceFulfillmentOrderDetail({orderId:f.shipment.order_id});
         assert.equal(result.order.id,f.shipment.id);
         assert.equal(result.order.shippingAddress.addressId,null);
@@ -466,4 +466,32 @@ it('refuses a destination that cannot be resolved without manufacturing an addre
   const port = createPostgresFulfillmentCommerceReadPort({ executor: { async query(sql) { const f = fixture(); return { rows: sql.startsWith('SELECT to_jsonb(s)') ? [{ shipment: f.shipment }] : [f.facts] }; } },
     destinations: { async read() { throw new Error('commerce_destination_unavailable'); } }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
   await expect(port.getCommerceFulfillmentOrderDetail({ orderId: id(2) })).rejects.toThrow('native_fulfillment_destination_unavailable');
+});
+
+it('uses the default shipment view and keeps routine-only fields out of the response', async () => {
+  const f = fixture(), query = vi.fn(async (sql: string, values?: unknown[]) => {
+    if (sql.startsWith('SELECT public.commerce_view_shipment_destination')) {
+      expect(sql).toBe('SELECT public.commerce_view_shipment_destination($1::uuid) AS value');
+      expect(values).toEqual([f.shipment.id]);
+      return { rows: [{ value: { ...f.destination, revision: 1, pinned: false } }] };
+    }
+    return { rows: sql.startsWith('SELECT to_jsonb(s)') ? [{ shipment: f.shipment }] : [f.facts] };
+  });
+  const port = createPostgresFulfillmentCommerceReadPort({ executor: { query }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+  const detail = nativeFulfillmentCommerceResponseSchemas.detail.parse(await port.getCommerceFulfillmentOrderDetail({ orderId: id(2) }));
+  expect(detail.order.shippingAddress).toEqual({ addressId: null, clientId: f.destination.clientId, ...f.destination.address });
+});
+it.each([
+  ['commerce_destination_unavailable', 'native_fulfillment_destination_unavailable'],
+  ['commerce_destination_owner_mismatch', 'native_fulfillment_destination_owner_mismatch'],
+  ['commerce_destination_frozen_ref_invalid', null],
+] as const)('handles the default view refusal %s', async (message, mapped) => {
+  const failure = new Error(message), f = fixture();
+  const port = createPostgresFulfillmentCommerceReadPort({ executor: { async query(sql) {
+    if (sql.startsWith('SELECT public.commerce_view_shipment_destination')) throw failure;
+    return { rows: sql.startsWith('SELECT to_jsonb(s)') ? [{ shipment: f.shipment }] : [f.facts] };
+  } }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+  const result = port.getCommerceFulfillmentOrderDetail({ orderId: id(2) });
+  if (mapped) await expect(result).rejects.toThrow(mapped);
+  else await expect(result).rejects.toBe(failure);
 });
