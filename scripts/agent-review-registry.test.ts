@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
-import { digest, coverageState, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { digest, coverageState, receiptSummary, renewCoverage, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, captureRenewalProof, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -494,12 +494,14 @@ describe('portable review on real Git objects', () => {
     });
   }
 
-  it.each(['dependency resolution', 'workflow', 'later admission edit'])('refuses a material base change to %s', async kind => {
+  it.each(['dependency resolution', 'npm shrinkwrap', 'npm policy', 'workflow', 'later admission edit'])('refuses a material base change to %s', async kind => {
     const f = await fixture(true, [], oldFiles);
     const prior = await f.review();
     const rollout = await f.mainMove(() => f.write('scripts/agent-review-session.mjs', policy));
     const main = await f.mainMove(async () => {
       if (kind === 'dependency resolution') await f.write('package-lock.json', lock('>=24', '2.0.0'));
+      if (kind === 'npm shrinkwrap') await f.write('npm-shrinkwrap.json', lock('24.x', '2.0.0'));
+      if (kind === 'npm policy') await f.write('.npmrc', 'engine-strict=false\n');
       if (kind === 'workflow') await f.write('.github/workflows/admission.yml', 'jobs: {}\n');
       if (kind === 'later admission edit') await f.write('scripts/agent-review-session.mjs', policy + '// later edit\n');
     }, rollout);
@@ -537,18 +539,53 @@ describe('portable review on real Git objects', () => {
     vi.spyOn(Date, 'now').mockReturnValue(oldReceipt.expires);
     await expect(f.cli('receipt', '12')).rejects.toThrow('review expired');
   });
-  it('checks a recorded renewal at its original main and still checks the later base move', async () => {
+  it('refuses a renewal claiming an earlier main after protected movement', async () => {
     const f = await fixture(true, [], oldFiles);
-    await f.review();
-    await f.cli('renew');
-    const renewed = await f.state();
-    const expiry = coverageState(renewed).expires;
-    const rollout = await f.mainMove(() => f.write('scripts/agent-review-session.mjs', policy));
-    await expect(f.cli('receipt', '12')).resolves.toBe(0);
-    expect(coverageState(await f.state()).expires).toBe(expiry);
+    const prior = await f.review();
+    await f.mainMove(() => f.write('scripts/agent-review-session.mjs', policy));
+    const forged = renewCoverage(prior, { main: f.base, untouched: true }, coverageState(prior).earliest + DAY + 1);
+    await expect(validateEconomySession(f.cwd, forged)).rejects.toThrow('main touched candidate or machinery path');
     await expect(f.cli('renew')).rejects.toThrow('main touched candidate or machinery path');
-    await f.mainMove(() => f.write('.github/workflows/admission.yml', 'jobs: {}\n'), rollout);
-    await expect(f.cli('receipt', '12')).rejects.toThrow('.github/workflows/admission.yml');
   });
 
+  it.each(REGISTRY_PATHS)('refuses an unproved base edit to the shared registry %s', async path => {
+    const f = await fixture();
+    const source = await f.review();
+    const original = f.git('show', f.base + ':' + path);
+    const changed = path.endsWith('.json') ? original.replace('"schemaVersion": 3', '"schemaVersion": 4') : original + '\n// guard changed';
+    const main = await f.mainMove(() => f.write(path, changed + '\n'));
+    const tree = f.git('merge-tree', '--write-tree', main, f.head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
+  });
+
+  it.each(['caps', 'required files'])('keeps pack proof across only the bounded %s delta', async kind => {
+    const path = 'packages/core/release-gates.json';
+    const file = { audit: { allowance: 1 }, retained: { witness: true }, pack: {
+      maxPackedBytes: 500, maxUnpackedBytes: 1000, maxFiles: 10, code: { maxPackedBytes: 400, maxFiles: 9 },
+      capReason: 'existing caps', requiredFiles: ['SECURITY.md'], baseline: { version: '0.1.0' },
+    } };
+    const format = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
+    const f = await fixture(true, [], { [path]: format(file) });
+    await f.write(path, format({ ...file, audit: { allowance: 0 } }));
+    const head = f.commit();
+    const source = await f.review();
+    const pack = kind === 'caps' ? { ...file.pack, maxFiles: 20, capReason: 'measured addition' } : { ...file.pack, requiredFiles: [] };
+    const main = await f.mainMove(() => f.write(path, format({ ...file, pack })));
+    const tree = f.git('merge-tree', '--write-tree', main, head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: kind === 'caps' });
+  });
+
+  it.each(['exports', 'publish tag'])('limits versioning-guide independence for manifest changes to additive exports: %s', async kind => {
+    const path = 'packages/core/package.json';
+    const before = { exports: { '.': './dist/index.js' }, publishConfig: { tag: 'preview' } };
+    const f = await fixture(true, [], { ...oldFiles, [path]: JSON.stringify(before) + '\n' });
+    const after = kind === 'exports' ? { ...before, exports: { ...before.exports, './entry': './dist/entry.js' } }
+      : { ...before, publishConfig: { tag: 'latest' } };
+    await f.write(path, JSON.stringify(after) + '\n');
+    const head = f.commit();
+    const source = await f.review();
+    const main = await f.mainMove(() => f.write('.github/VERSIONING_AND_EOL.md', 'Changed publication instructions.\n'));
+    const tree = f.git('merge-tree', '--write-tree', main, head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: kind === 'exports' });
+  });
 });

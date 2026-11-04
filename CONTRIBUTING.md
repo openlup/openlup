@@ -1734,20 +1734,26 @@ or migrations blocks carry-over unless the applicable Git proof below succeeds.
 Unrelated check configuration is exercised on the group.
 
 - The three named registry carriers accept the exact union of disjoint
-  additions. Package manifests retain the disjoint additive `exports` proof.
+  additions. Other changes to these shared controls refuse carry-over.
+  Package manifests retain the disjoint additive `exports` proof.
   Contributor prose and package READMEs may overlap when the complete contextual
   diff of the PR is identical apart from line offsets.
 - Publication metadata accepts a package's `N.x` to `>=N` declaration while
   the repository stays on the identical pinned Node version. A package's explicit
   file list can add `AGENTS.md`. A lockfile must be identical after removing the
   proved engine delta from the designated workspace records. On a shared pack
-  budget file the reviewed change must leave `pack` unchanged and retain its
-  entire contribution outside `pack`. A disjoint change to the versioning guide
-  is eligible for candidates outside workflow and release scripts.
+  budget file the base may change the aggregate packed and unpacked byte caps,
+  aggregate file cap, packed code byte and file caps, and the cap explanation.
+  The reviewed change must leave `pack` unchanged and retain its contribution
+  outside it. A versioning guide move refuses a PR that changes release controls.
+  Independently proved registry and export additions, and package evidence with
+  unchanged pack rules, are eligible.
 - The portable review rollout is recognized from its introduction on trusted
   main's first-parent history. For each named rollout path the old base
   must have the pre-rollout blob and the new base must have the exact landed
-  rollout blob. The PR must leave that path alone.
+  rollout blob. The PR must leave that path alone. If another protected change
+  lands first, use the already active rules to integrate and fully review the
+  rollout PR before it can land.
 
 The existing v2 and v3 formats, report identities, original expiry and open
 findings govern admission. The six required checks run on the exact group.
@@ -2887,9 +2893,7 @@ carry an eligible v2 or v3 review across the proved base deltas listed above.
 The exact two-parent tree (or exact registry union), approved intent, author,
 expiry and full prior reviewer floor are required. The local integration proof
 keeps the broader protected machinery checks outside those proofs. Existing
-integration and repair edges are replayed under their original rules. Renewal
-history is checked against the main commit it originally covered. Subsequent
-queue moves are checked separately.
+integration, repair and renewal proofs keep their existing requirements.
 
 Exactly one existing qualifying trailer-only tip may remain recognized under its unchanged message, tree and parent restrictions. It does not let new tracked content escape coverage. No reduced-coverage route applies to a delta touching protected controls, SQL, migrations, public API or security semantics.
 

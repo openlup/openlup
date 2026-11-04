@@ -1,6 +1,7 @@
 // Native supervisor process evidence, not a signature or remote attestation.
 import { createHash } from 'node:crypto';
 import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
+import { REGISTRY_PATHS } from './agent-review-registry.mjs';
 
 export const REVIEW_RULES_VERSION = 3;
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
@@ -283,7 +284,7 @@ export function admit({ receipt, observed, now }) {
   if (receipt.reviewers.length < floor) return result(false, 'needs_agent_review', `${floor} independent reviewers required by the diff`);
   return result(true, 'reviewed', 'reviewed');
 }
-const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
+const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?(?:package(?:-lock)?\.json|npm-shrinkwrap\.json|\.npmrc)$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
 const plainObject = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 export function exportAdditions(before, after) {
   if (!plainObject(before) || !plainObject(after) || !plainObject(before.exports) || !plainObject(after.exports)) return null;
@@ -306,7 +307,7 @@ export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree
       groupAdded.length === mainAdded.length + prAdded.length && [...mainAdded, ...prAdded].every(key => groupAdded.includes(key));
   });
   if (predictedTree !== groupTree) return result(false, 'stale', 'group does not carry over; merge main and re-review');
-  const blocked = movedPaths.filter(path => !exempt.includes(path) && !provenPaths.includes(path) && (changedPaths.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))));
+  const blocked = movedPaths.filter(path => !exempt.includes(path) && !provenPaths.includes(path) && (changedPaths.includes(path) || REGISTRY_PATHS.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))));
   if (blocked.length) return result(false, 'stale', `group does not carry over; merge main and re-review (${blocked.slice(0, 8).join(', ')})`);
   return result(true, 'reviewed', provenPaths.length ? 'base move with proved independent changes' : exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');
 }

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, coverageState, digest, protectedCoveragePath, ordinaryRepairPath, renewCoverage, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, coverageState, digest, exportAdditions, protectedCoveragePath, ordinaryRepairPath, renewCoverage, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
 
 const execute = promisify(execFile);
@@ -116,6 +116,43 @@ function normalizePackageMetadata(before, after, head, group, path, pinnedNode) 
   return changed && JSON.stringify(before) === JSON.stringify(after) && JSON.stringify(head) === JSON.stringify(group);
 }
 
+function packLimitsOnly(before, after) {
+  const comparable = structuredClone(after);
+  const resetLimits = (oldLimits, newLimits, names) => {
+    if (!oldLimits || !newLimits) return false;
+    for (const name of names) {
+      if (oldLimits[name] === newLimits[name]) continue;
+      if (![oldLimits[name], newLimits[name]].every(value => Number.isSafeInteger(value) && value > 0)) return false;
+      newLimits[name] = oldLimits[name];
+    }
+    return true;
+  };
+  if (!resetLimits(before, comparable, ['maxPackedBytes', 'maxUnpackedBytes', 'maxFiles'])) return false;
+  if ((before.code || comparable.code) && !resetLimits(before.code, comparable.code, ['maxPackedBytes', 'maxFiles'])) return false;
+  if (before.capReason !== comparable.capReason) {
+    if (typeof before.capReason !== 'string' || typeof comparable.capReason !== 'string' || !comparable.capReason.trim()) return false;
+    comparable.capReason = before.capReason;
+  }
+  return JSON.stringify(before) === JSON.stringify(comparable);
+}
+
+async function independentOfVersioningGuide(cwd, candidate, runGit) {
+  for (const path of candidate.changedPaths) {
+    if (PACKAGE_MANIFEST.test(path) || PACKAGE_BUDGET.test(path)) {
+      const [before, after] = await Promise.all([candidate.base, candidate.head].map(async rev =>
+        strictRegistryJson(await regularText(cwd, rev, path, runGit))));
+      if (PACKAGE_MANIFEST.test(path)) {
+        if (!exportAdditions(before, after)?.length) return false;
+      } else if (!before.pack || JSON.stringify(before.pack) !== JSON.stringify(after.pack)) return false;
+    } else if (/^\.github\/|^scripts\/packages\/|^packages\/[^/]+\/scripts\//u.test(path)) {
+      if (!REGISTRY_PATHS.includes(path)) return false;
+      const original = await regularText(cwd, candidate.base, path, runGit);
+      registryUnion(path, original, await regularText(cwd, candidate.head, path, runGit), original);
+    } else if (['package.json', '.nvmrc', '.npmrc'].includes(path) || PACKAGE_LOCK.test(path)) return false;
+  }
+  return true;
+}
+
 async function unchangedProseDelta(cwd, base, head, target, tree, path, runGit) {
   // Compare the exact contextual patch. Moving a hunk is allowed, changing its
   // text, surrounding context, mode or file identity is not.
@@ -139,13 +176,7 @@ async function proveBasePath(cwd, candidate, target, tree, path, rollout, runGit
     if (SHARED_PROSE.test(path) && overlap) return await unchangedProseDelta(cwd, base, head, target, tree, path, runGit);
     if (path === '.github/VERSIONING_AND_EOL.md' && !overlap) {
       await Promise.all([base, target].map(rev => regularText(cwd, rev, path, runGit)));
-      const releasePaths = changedPaths.filter(item => /^\.github\/|^scripts\/packages\/|^packages\/[^/]+\/scripts\//u.test(item));
-      for (const releasePath of releasePaths) {
-        if (!REGISTRY_PATHS.includes(releasePath)) return false;
-        const original = await regularText(cwd, base, releasePath, runGit);
-        registryUnion(releasePath, original, await regularText(cwd, head, releasePath, runGit), original);
-      }
-      return true;
+      return await independentOfVersioningGuide(cwd, candidate, runGit);
     }
     if (!PACKAGE_LOCK.test(path) && !PACKAGE_MANIFEST.test(path) && !PACKAGE_BUDGET.test(path) && !REGISTRY_PATHS.includes(path)) return false;
     const source = await Promise.all([base, head, target, tree].map(rev => regularText(cwd, rev, path, runGit)));
@@ -158,7 +189,8 @@ async function proveBasePath(cwd, candidate, target, tree, path, rollout, runGit
     if (PACKAGE_BUDGET.test(path)) {
       // Preserve any reviewed change outside pack limits. A PR editing the limits
       // themselves needs a new reading of the resulting budget.
-      if (!before.pack || !main.pack || !pr.pack || !merged.pack ||
+      if (!before.pack || !main.pack || !packLimitsOnly(before.pack, main.pack) ||
+        changedPaths.some(item => item.startsWith('.github/workflows/')) ||
         JSON.stringify(before.pack) !== JSON.stringify(pr.pack) || JSON.stringify(main.pack) !== JSON.stringify(merged.pack)) return false;
       main.pack = before.pack; merged.pack = pr.pack;
       return JSON.stringify(before) === JSON.stringify(main) && JSON.stringify(pr) === JSON.stringify(merged);
@@ -337,11 +369,10 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
   return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
     delta: digest(await git(cwd, 'diff', '--binary', '--no-renames', session.candidate.head, observed.head)), proof };
 }
-export async function captureRenewalProof(cwd, session, runGit = git, recordedMain) {
+export async function captureRenewalProof(cwd, session, runGit = git) {
   const candidate = session.candidate; const rules = await captureReviewRules(cwd, candidate, runGit);
   demand(rules && digest(rules) === digest(candidate.rules), 'renewal tree policy changed');
-  const main = recordedMain ?? (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
-  demand(SHA.test(main), 'renewal main is invalid');
+  const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
   const anchor = coverageState(session);
   demand(await ancestor(runGit, cwd, anchor.base, main), 'renewal base is not on main');
   const touched = (await runGit(cwd, 'log', '--full-history', '--diff-merges=separate', '--format=', '--name-only', '--no-renames', '-z', `${anchor.base}..${main}`)).split('\0').filter(Boolean);
@@ -369,10 +400,7 @@ export async function validateEconomySession(cwd, session, runGit = git) {
     } else if (event.type === 'renew') {
       const history = session.history.slice(0, index); const prior = history.findLast(item => item.type === 'prepare');
       const prefix = { ...session, history, candidate: prior.candidate, preparedAt: prior.at, cycle: prior.cycle };
-      const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
-      demand(await ancestor(runGit, cwd, event.proof.main, main), 'renewal main ancestry changed');
-      const proof = await captureRenewalProof(cwd, prefix, runGit, event.proof.main);
-      demand(digest(proof) === digest(event.proof), 'recorded renewal proof differs');
+      const proof = await captureRenewalProof(cwd, prefix, runGit); demand(await ancestor(runGit, cwd, event.proof.main, proof.main), 'renewal main ancestry changed');
     }
   }
 }
