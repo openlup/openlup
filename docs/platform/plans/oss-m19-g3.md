@@ -1672,3 +1672,36 @@ the broad scanner, and pass scope variables only to commands that own that scope
 The initial empty-branch-slot fixture was replaced with the three already approved
 classification prerequisites, making the actual dependency explicit. These are
 test and invocation corrections, not additional production fixes or review cycles.
+
+### Frozen prerequisite integration and pre-review stop
+
+The frozen export prerequisite merged cleanly at
+`8e6f426d8096c7436a6275d955db5fe0b802aab1`. The comparison base remains
+`addfaf98e4d4016d77033459090996d0d44d2dad` for this run.
+The official Node real pack measures 2,471,602 packed B, 1,972,863 code-gzip B,
+11,615,363 unpacked B and 3,047 files. Against that predecessor the deltas are
++12,614 packed B, +2,828 code-gzip B, +70,042 unpacked B and +5 files.
+
+The dedicated scanner gate admitted the full set, which passed 2,889 cases with
+zero failures and one existing unconfigured opt-in concurrency case. Both
+neutrality checks, lint, typecheck and the complete API report check passed.
+The built dist and module selection, including the complete commerce directory,
+passed all 4,311 cases. The default real-PostgreSQL selection passed all 319.
+
+Each full non-UTC PostgreSQL profile passed 316 cases and failed three.
+The managed address characterization supplies a date-only cycle against a UTC
+anchor, so its lock expectation resolves successfully in either non-UTC zone.
+Two transfer assertions compare session-rendered timestamp text with retained
+UTC text. The explicit schedule comparison renders 21:00 +09 or 07:00 -05 for
+the same retained 12:00 UTC instant. Both affected test files byte-match the
+pre-merge head. These are the diagnostic limits already recorded above, now
+encountered by the required complete profiles. Native writer, absorption,
+catalogue, composition, restore and upgrade cases pass in all three profiles.
+The restricted absorption count retains its 42501 zero-effect pin and qlock-3
+closer. Full-profile acceptance requires an owner decision before review.
+
+Self-retro: the complete timezone profiles expose fixture timestamp spelling
+assumptions that a native-only profile cannot distinguish. Explicit fixture
+instants and typed instant comparisons are the relevant repair boundary.
+
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-edffdbc49ceda50cd686a36c275a54ee547093b3c4e974a66da125babaf71434","reason":"The integrated forward-registry test changes only its existing title and feature-binding expectation from two bound slots to four. The newly inherited absorption classification assertion is preserved. Reader, admission, review and release control logic and the documented test commands and trust boundaries retain their existing behavior, so the development-preview guidance remains correct."} -->
