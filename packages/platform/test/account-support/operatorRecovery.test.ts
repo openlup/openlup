@@ -88,3 +88,13 @@ it.each([true, false])("resolves only an eligible stored identity (linked=%s)", 
   expect(result).toEqual({ outcome: "noop" }); expect(resolve).toHaveBeenCalledTimes(linked ? 0 : 1);
   expect(write).toHaveBeenCalledExactlyOnceWith({ subjectId: "subject", expectedEmail: "a@example.invalid", authUserId: linked ? null : "resolved", operatorId: "operator", idempotencyKey: "link-key" });
 });
+
+it.each([false, true])("names next-parcel applicability after link without reporting completed (replayed=%s)", async replayed => {
+  const link = { outcome: "applied" } as const;
+  const subscription = { outcome: "applied_from_next_parcel", appliesFrom: "next_parcel", futureDestinationId: "destination-future",
+    replayed, subscriptionStatus: "active", nextCycleAt: null, templateVersion: 2, eventId: "address-event", appliedBy: "customer_self_service_delegate" } as const;
+  const onLinked = vi.fn();
+  expect(await linkThenApply({ link: async () => link, apply: async () => subscription, onLinked }))
+    .toEqual({ outcome: "partial", link, subscription });
+  expect(onLinked).toHaveBeenCalledOnce();
+});
