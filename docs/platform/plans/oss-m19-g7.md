@@ -668,7 +668,7 @@ and separate test-deadline ownership from the accepted package-budget commit.
 
 <!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-acce7bc4bfffcccf2554c29d5b2383f9f6853caf058a66a896d4eeb975046958","reason":"The own delta on the frozen control predecessor binds the exact native renewal forward, ordered function hashes and measured installation inventories. The predecessor supplies the separate inline-gate class amendment. Issued migration identities, original role grants, class and admission rules and installation authority stay unchanged; Compatibility posture remains accurate and the runtime owners describe the behavior."} -->
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-c5f7928b3d623be6be412eeaa2d80caad17856b01cfd8a25cb2ed8d322c9b6a2","reason":"The own delta adds installed restricted-role renewal, gate and UUID-value readback witnesses, with measured current catalogue literals and one authorized sequential accounting setup. Every existing accounting assertion and historic pin remains unchanged. The new UUID case uses real writer-created stock-wait state, preserves exact engine keys and checks no-effect refusals under UTC and a non-UTC zone. Existing offline consumers, measured per-case deadlines, required phases, coverage controls, selection and global timeouts remain unchanged, so Development-preview checks stays accurate."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-9f234b6f4f642d0a6b4ec2894c1353b688135dc6ff8b137d005775e5a1119bac","reason":"The own delta adds installed restricted-role renewal, gate and UUID-value readback witnesses, with measured current catalogue literals and one authorized sequential accounting setup. Every existing accounting assertion and historic pin remains unchanged. The new UUID case uses real writer-created stock-wait state, preserves exact engine keys and checks no-effect refusals under UTC and a non-UTC zone. Existing offline consumers, measured per-case deadlines, required phases, coverage controls, selection and global timeouts remain unchanged, so Development-preview checks stays accurate."} -->
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-284d80900906e59f6b50819c534a61f1d5ccb6749298b2fba68030d36f76dcd3","reason":"Relative to the frozen control predecessor, the only tooling delta extends the admission suite data expectation from the first four bound slots to the first five for this feature pin. The predecessor owns the class-amendment fixture changes. Reader logic, refusal fixtures, test selection and admission workflow stay unchanged, so Development-preview checks remains accurate."} -->
 
@@ -910,13 +910,13 @@ versioned byte identity. No SQL, ACL, import-map edge or public type changes.
 |---|---|---|
 | nativeRetryDriver.ts:40-50,147 — propagateFailure.operationId | subscription FOR UPDATE by `$1::uuid`; retry.failureProgress/applyFailure/openCase; SQL 20261022160000:74-116 uses uuid argument and uuid FK comparisons | Typed PostgreSQL value; no spelling match. |
 | nativeRetryDriver.ts:147-148 — propagateFailure.input.externalRef | apply_failure immutable receipt `r.input<>p_input`, settlement JSON; main retry SQL :92/:123-130 | IDENTITY: raw externalRef retained at both public failure and stored receipt replay boundaries; whole-input equality must preserve historical bytes. |
-| nativeRetryDriver.ts:91,100-101 — readFrozenMandate.authorizationRef | Compared with frozen snapshot.authorizationRef | Fixed: parse both as UUID when possible; otherwise compare exact opaque references. |
+| nativeRetryDriver.ts:91,100-101 — readFrozenMandate.authorizationRef | Compared with frozen snapshot.authorizationRef | Raw provider reference: compare exact text as main; the current audit supersedes the initial normalization. |
 | nativeRetryDriver.ts:91,100-110 — readFrozenMandate.paymentMethodRef, retryInput.paymentMethodRef | Compared with live recovery authorization method_ref or frozen mandate; retry.prepare JSON paymentMethodRef, main SQL 20261022160000:247; host execute | IDENTITY + TEXT-VALUE: keep the stored authorization or mandate spelling raw; the reference contract below retains fail-closed spelling refusals. |
 | nativeRetryDriver.ts:92-115 — retryInput.paymentIntentId | Compared with obligation.settlementIntentId; retry.prepare JSON vs UUID::text at main SQL :238; host execute -> selected simulator begin_attempt uuid parameter | Existing strict canonical check; outgoing request and execution now use canonical UUID value. Invalid UUID still refuses before prepare. |
 | nativeRetryDriver.ts:92-115 — retryInput.orderRef | Compared with obligation.orderId; prepare JSON vs UUID::text at main SQL :239; execute callback | Existing strict canonical check; canonical outgoing value; invalid UUID refuses. |
-| nativeRetryDriver.ts:93-95,115 — retryInput.orderId, clientId | Host execute callback; reference sandbox rail (unchanged main sandboxRenewalRail.ts:35-38) compares to database order/client UUID text | Fixed at G7 dispatch boundary: canonical valid UUIDs, invalid/non-UUID values retain downstream validation. |
+| nativeRetryDriver.ts:93-95,115 — retryInput.orderId, clientId | Host execute callback; reference sandbox rail (unchanged main sandboxRenewalRail.ts:35-38) compares to database order/client UUID text | Raw original request fields, as main. Only the prepare intent/order pair is normalized by the current audit. |
 | nativeRetryDriver.ts:95,115 — retryInput.customerRef | Host execute; simulator methodFacts.payerAccountRef stored as opaque text/read back in method facts JSON | IDENTITY/opaque data: raw customerRef retained, including UUID-shaped references and null. |
-| nativeRetryDriver.ts:117-118 — payments.readOutcome.operationId | Compared with database operation UUID | Already canonicalized. |
+| nativeRetryDriver.ts:117-118 — payments.readOutcome.operationId | Compared with database operation UUID | Raw correlation spelling, as main, under the current narrow normalization set. |
 | nativeRetryDriver.ts:127 — readOutcome.sourceEvidence.sourceReference | retry.recordRecovery JSON -> 20261024184500:30-34 payment_truth_ingest_event -> 20261101222000:186 observation.id::text comparison, :467 sandbox source-event label and truth receipt/fingerprint | IDENTITY + TEXT-VALUE: raw sourceReference retained under the canonical-only evidence contract below. |
 | nativeRetryDriver.ts:128 — readOutcome.sourceEvidence.attemptRef | Same chain -> 20261101222000:187 attempt.id::text; truth prior-attempt matching at :309/:411; receipt JSON/fingerprint | IDENTITY + TEXT-VALUE: raw attemptRef retained under the canonical-only evidence contract below. |
 | nativeRetryDriver.ts:129,136 — readOutcome.externalAttemptRef | Recovery/failure receipt JSON and settlement evidence; main retry SQL 20261024184500:25/:33 and 20261022160000:92/:123-130 | IDENTITY: raw externalAttemptRef becomes raw failure/recovery externalRef; no identity transform. |
@@ -926,11 +926,11 @@ versioned byte identity. No SQL, ACL, import-map edge or public type changes.
 | nativeSubscriptionBinding.ts:59-63 — inventory.reserve operationId, claimToken | `$1::uuid` operation lookup; stock.admit -> SQL uuid casts | Typed PostgreSQL value. |
 | nativeSubscriptionBinding.ts:118-121 — realizationAdmitted.orderId | stock.markResumed -> stock_wait_mark_resumed(uuid), main stock SQL :269-278 uuid joins | Typed PostgreSQL value. |
 | postgresRenewalSettlement.ts:18-20 — prepareRenewal.operationId, claimToken | commerce_prepare_subscription_renewal(uuid,uuid,timestamptz), operation/subscription locks and token comparison | Typed PostgreSQL value. |
-| postgresRenewalSettlement.ts:37-44 — acknowledgeExternalAttempt.operationId, externalAttemptRef | UUID argument; main 20260815120000:958-966 compares/stores external_attempt_ref text | Fixed UUID-shaped external reference before ACK; opaque references retain trimmed spelling as before. |
-| postgresRenewalSettlement.ts:48-55 — recordTerminalOutcome.operationId, externalRef | UUID argument; main 20260815120000:1009-1020 ACK/outcome external_ref text comparisons | Fixed UUID-shaped external reference; null and opaque strings unchanged. |
+| postgresRenewalSettlement.ts:37-44 — acknowledgeExternalAttempt.operationId, externalAttemptRef | UUID argument; main 20260815120000:958-966 compares/stores external_attempt_ref text | Raw reference with exactly main's existing ACK trim and nonempty-check order; retained uppercase text replays unchanged. |
+| postgresRenewalSettlement.ts:48-55 — recordTerminalOutcome.operationId, externalRef | UUID argument; main 20260815120000:1009-1020 ACK/outcome external_ref text comparisons | Raw terminal reference with exactly main's null fallback and no trim on the bound value. |
 | postgresRenewalSettlement.ts:42,53 — operationFingerprint, eventKey | SQL fingerprint/receipt key comparisons | Exact byte labels, not UUID row values. |
 | postgresRenewalStore.ts:57-61,79-91 — schedule/snapshot.subscriptionId | Header/operation lookup `$1::uuid`; subscription lock; commerce_read_destination subscription UUID; G7 claim snapshot ID cast at forward:42 | Typed SQL UUID values. Existing codec label and wire byte consumers are reported separately below. |
-| postgresRenewalStore.ts:83-89, nativeRenewalCodec.ts:163-168 — prior/current destinationId/shippingAddressRef | withDestination -> encode fingerprint -> claim snapshot -> prepare's UUID destination read | Existing UUID parser/canonicalizer on new destination assignment; snapshot retains existing canonical whole-wire validation. |
+| postgresRenewalStore.ts:83-89, nativeRenewalCodec.ts:163-168 — prior/current destinationId/shippingAddressRef | withDestination -> encode fingerprint -> claim snapshot -> prepare's UUID destination read | UUID validation without re-spelling on the new destination assignment; frozen wire identity remains exact. |
 | postgresRenewalStore.ts:103-105 — refuseBeforePayment.operationId, claimToken | subscription_refuse_renewal_preflight(uuid,uuid,text,timestamptz) | Typed PostgreSQL UUID/token comparison. |
 | postgresDeliveryAlignmentStore.ts:16-32 — admitDeliveryAlignment.subscriptionId | UUID casts for existing-cycle/case queries and subscription_delivery_alignment_admit_renewal(uuid,...) | Typed PostgreSQL value. |
 | postgresStockWaitStore.ts:54-79 — caseId and returned binding/notice keys | Read c.id=$1::uuid; binding.caseId and notice keys from DB c.id; frozen reads case by bound ID | Already canonical database UUID in return and notice identity. |
@@ -938,7 +938,7 @@ versioned byte identity. No SQL, ACL, import-map edge or public type changes.
 | postgresStockWaitStore.ts:82-110,135-146 — recoverRefusedSchedule/reserveAndTransition caseId/operationId | UUID casts in operation/subscription/case lock query; recover_refusal(uuid,...); all called SQL UUID joins | Typed PostgreSQL value. |
 | postgresStockWaitStore.ts:153-157 — readFrozen.subscriptionId | stock_wait_frozen(uuid,timestamptz), main stock SQL :51-67 | Typed PostgreSQL value. |
 | postgresStockWaitStore.ts:169-177 — deficits/admit.operationId/claimToken | deficits UUID argument; admit JSON operationId/claimToken cast at forward:440/:451 | Typed PostgreSQL value. |
-| postgresStockWaitStore.ts:175-176 — admit.recovery caseId/cycleId/orderId/paymentId | G7 stock_wait_admit forward:445 compares whole frozen binding JSONB | Already canonicalized valid UUIDs; null/invalid preserved for existing SQL refusal; engine key exact. |
+| postgresStockWaitStore.ts:175-176 — admit.recovery caseId/cycleId/orderId/paymentId | G7 stock_wait_admit forward:445 compares whole frozen binding JSONB | Original recovery JSON unchanged, exactly as main; frozen JSONB identity and engine key stay exact. |
 | postgresStockWaitStore.ts:181-188 — enqueue.caseId, markResumed.orderId | UUID WHERE/function parameter, stock_wait_enqueue and mark_resumed uuid joins | Typed PostgreSQL value. |
 | nativeSubscriptionSchema.ts; services.ts | Catalogue/version/population/readiness/control labels and opaque callback result only | No UUID consumer added. |
 | server/runtime/public-reference/m10SubscriptionBinding.ts:9-12; retry/schema facades | Delegate the exact native arguments/callbacks above, add no UUID comparison/key | Same native boundary, no second normalizer. |
@@ -997,7 +997,7 @@ API, SQL or access grant was changed to make the witnesses pass. The remaining
 pre-review set, fresh full reviews and final verification still bind this tree.
 
 
-## Adoption fixes: receipt identity and canonical UUID values
+## Historical adoption fixes: receipt identity and canonical UUID values
 
 The second candidate's source-evidence card G7-UUID-SOURCE-EVIDENCE-001 is
 disposed of by the opaque-method and canonical-only evidence contracts. The receipt
@@ -1006,7 +1006,7 @@ original failure/recovery JSON bytes. The table below supersedes the initial
 candidate's normalization dispositions and historical seven-witness results.
 No SQL, ACL, API or immutable snapshot protocol changes.
 
-The payment-method reference is opaque, case-sensitive text. Callers send the stored reference unchanged; a re-spelled reference after a recovery authorization is refused.
+External provider references (attempt, outcome, evidence and payment-method references) are opaque text; they are stored and compared exactly as received.
 
 Sandbox evidence references are canonical-only. The simulator generates them in lowercase; other spellings are refused, fail closed, with no settlement.
 
@@ -1027,7 +1027,7 @@ before preparing. Preserve the selected authorization or mandate method spelling
 | readOutcome.externalAttemptRef mapped to recovery.externalRef | driver :126-129; active recovery :20 whole input and :31 hash | IDENTITY: raw |
 | retryInput.customerRef | driver :92-115; host method facts opaque payer reference | IDENTITY/opaque reference: raw |
 | retryInput.orderId/clientId | driver :92-115; unchanged selected sandbox rail :37 text match | TEXT-VALUE: retain canonical outgoing values |
-| frozen mandate authorizationRef | driver :101 compares snapshot reference text | TEXT-VALUE: retain canonical value comparison when UUID-shaped; opaque refs exact |
+| frozen mandate authorizationRef | driver :101 compares snapshot reference text | Caller-written provider identity: raw exact comparison, superseding the initial candidate |
 | readOutcome.operationId | driver :118 compares stored operation ID | TEXT-VALUE: retain canonical value comparison |
 | direct operationId/claimToken/subscriptionId/caseId/orderId/tokenId/authorizationId parameters | renewal store :57-105; settlement :5-10; retry store :48-86; stock store :125,138,154,170-177,182-187; alignment :16-32; bound SQL uuid arguments/casts | CAST-VALUE: raw, unchanged |
 | stock readFrozenCase.caseId/cycleId/orderId/paymentId | stock store :126-130, SQL case lookup :125 | TEXT-VALUE readback comparisons: existing canonical matcher unchanged |
@@ -1069,3 +1069,92 @@ default and fixed non-UTC sessions. Historical uppercase receipt fixtures retain
 failure, prepare-method and all recovery-reference bytes; fresh sandbox evidence
 still requires the simulator's lowercase references. Changed UUIDs continue to
 refuse without any extra effect. No SQL, ACL or API report changed.
+
+
+## Adoption fixes: opaque provider references and retained replay
+
+The current audit below supersedes earlier normalization dispositions. Only
+the proved prepare paymentIntentId/orderRef pair and the stock readback ids
+retain canonical UUID matching. Every other operation returns to main's exact
+behavior, including trim/no-trim, null/empty handling and validation order.
+The shared helper remains because those three approved call-site lines use it.
+
+External provider references (attempt, outcome, evidence and payment-method references) are opaque text; they are stored and compared exactly as received.
+
+Sandbox evidence references are canonical-only. The simulator generates them in lowercase; other spellings are refused, fail closed, with no settlement.
+
+Receipt replay identity is exact: a byte-identical replay returns the stored result.
+
+The simulator validates its opaque evidence handles; the adapter does not
+re-spell them. G7-UUID-SOURCE-EVIDENCE-001 is disposed of by that unchanged
+contract. G7-UUID-LEGACY-FAILURE-REPLAY-001 is closed by preserving the raw
+failure/recovery JSON. G7-UUID-LEGACY-SETTLEMENT-ACK-001 is closed by restoring
+main's ACK trim and untrimmed terminal binding: old uppercase ACKs and terminal
+outcomes can replay, and a pending old ACK can complete without false 23505.
+
+The audit is of the pre-edit a05837ba candidate against main 9a3a324c; site
+numbers identify that immutable snapshot. In the main-behavior column R is
+server/runtime/public-reference/m10RetryDriver.ts, B is
+server/runtime/public-reference/m10SubscriptionBinding.ts, S is
+server/adapters/postgres/commerce/renewalSettlement.ts, C is
+packages/platform/src/subscriptions/nativeRenewalCodec.ts and W is
+packages/platform/src/subscriptions/postgresStockWaitStore.ts. Candidate file
+paths below start with packages/platform/src/subscriptions/.
+
+| Site (candidate file:line) / field | Main behavior at that site | Stored or compared side | Decision |
+|---|---|---|---|
+| nativeRenewalCodec.ts:165 canonicalUuid(destinationId) | C:160-162 has no withDestination method; existing snapshot encoding preserves the reference text. Destination assignment is new G7 wiring, not a main normalization seam. Keep its existing z.uuid validation but no value re-spelling. | Frozen caller-written snapshot text/fingerprint; later SQL uuid cast | Revert to raw validated string |
+| nativeRetryDriver.ts:36 canonicalUuid wrapper uuidReference(value) | R:75-98 has no wrapper. No blanket re-spelling of callback fields. | Depends on caller, enumerated below | Remove wrapper; raw at unapproved uses, direct calls at approved prepare pair |
+| nativeRetryDriver.ts:93-95 retryInput.paymentIntentId, uuidReference map and canonicalUuid direct | R:76,82,87 sends input spelling unchanged, compares to DB UUID text. Prepare SQL's unconditional validation rejects noncanonical text before receipt insert. | Database uuid / proved-canonical prepare receipt | Keep canonical (approved field 1) |
+| nativeRetryDriver.ts:93-95 retryInput.orderRef, uuidReference map and canonicalUuid direct | R:76,82,87 unchanged text; same unconditional prepare validation before insert. | Database uuid / proved-canonical prepare receipt | Keep canonical (approved field 2) |
+| nativeRetryDriver.ts:93-94 retryInput.orderId/clientId, shared uuidReference map callback | R:76,95 executes the original request without normalizing these fields. | Host request; platform-ID consumers on unchanged selected rail | Revert to main-identical raw; no request-wide map |
+| nativeRetryDriver.ts:100 uuidReference(mandate.authorizationRef) and uuidReference(snapshot.authorizationRef) | R:81 compares the two raw references exactly. R:80 also selects the authorization or mandate method without String coercion. | Caller-written/provider reference text | Revert to main-identical raw comparison and selected method |
+| nativeRetryDriver.ts:117 canonicalUuid(evidence.operationId) | R:98 compares evidence.operationId directly with operationId, no trim or transform. | Database uuid compared to host callback correlation ID | Revert to main-identical raw, per the approved narrow canonical set |
+| nativeSubscriptionBinding.ts:87 canonicalUuid(candidate.subscriptionId) | B:83 inserts candidate.subscriptionId into Set unchanged. | Database-read id / host-injected codec projection | Revert to main-identical raw Set key |
+| nativeSubscriptionBinding.ts:111 canonicalUuid(row.subscriptionId) | B:107 performs raw Set membership. | Database-read uuid projection / prior Set key | Revert to main-identical raw membership |
+| postgresStockWaitStore.ts:129-130 canonicalUuid(expected), canonicalUuid(actual), caseId/cycleId/orderId/paymentId | W:115-120 previously compared input/readback text directly. This is the explicitly approved stock-readback fix; null, invalid strings and engine key retain their existing handling. | Database uuid column readback | Keep canonical (approved field group 3) |
+| postgresStockWaitStore.ts:175-176 canonicalUuid(value) for admit.recovery binding ids | W:154 sends recovery JSON unchanged; no trim, normalization or field reconstruction. | Database-built frozen JSON binding, whole JSONB equality | Revert to main-identical raw recovery object |
+| postgresRenewalSettlement.ts:40 canonicalUuid(input.externalAttemptRef.trim()) and both trim calls | S:40 applies trim ONCE, then S:41 nonempty check, then S:42-44 binds it. Do not drop trim or alter validation order. | Caller-written text ACK / provider reference | Revert to exactly S:40 input.externalAttemptRef.trim(); keep existing guard/bind order |
+| postgresRenewalSettlement.ts:49 input.externalRef?.trim() | S:49-50 checks a succeeded outcome's reference for nonblank text; does not replace the bound value. Null/empty behavior and check order identical. | Provider reference; validation only | Retain main-identical guard, no normalization of value |
+| postgresRenewalSettlement.ts:54 canonicalUuid(input.externalRef) | S:54 binds input.externalRef ?? null WITHOUT trim. Empty string stays empty where main accepts it. | Caller-written text outcome / provider reference | Revert to exactly input.externalRef ?? null |
+| postgresRenewalSettlement.ts:71 value.trim() in requiredText | S:70-73 trims returned required text and then checks nonempty; already identical, including the order. | Database response fields, including row ids and fingerprint | Retain main-identical readback validation; no UUID normalization |
+| nativeSubscriptionBinding.ts:37 input.population.trim() (actual line identified by the whole-diff search; guard is at candidate :37) | B:33 has the same nonblank population guard and retains the original population value for lease selection. | None: population namespace/lease configuration, validation only | Retain main-identical guard; outside entity UUID matching |
+| nativeRetryDriver.ts:32 raw.replaceAll(...).toLowerCase() inside canonicalUuid | Main has no helper. The helper remains needed by the approved prepare pair and stock readback. It is not an additional input boundary or a provider-reference consumer. | Helper implementation for database uuid matching only | Retain shared helper implementation; remove only dead imports/usages elsewhere |
+
+
+Audit counts: 17 rows; 3 approved canonical field groups; 10 reversion
+decisions; 3 already main-identical validation rows; 1 helper implementation.
+The original 11 physical call-site lines become exactly 3 remaining lines;
+8 unapproved call-site lines and every uuidReference wrapper call are removed.
+Whole-diff test trims parse ports or normalize SQL whitespace; they do not
+transform ids/references. Existing restore normalizations are outside this
+delta and remain F-UUID-OUTSIDE-G7. No SQL, API, ACL or import-map change.
+
+Both regroup lessons:
+canonicalizing an identifier at a boundary → first classify each consumer as VALUE or IDENTITY; canonicalize only for VALUE, keep stored identity bytes exact (as for time)
+
+"SQL compares text" is not enough to canonicalize → canonicalize only when the other side is a database uuid; caller-written stored text and provider references are identity, so keep them exact.
+
+Self-retro: the old-writer transition is now the settlement witness's starting
+point. Fresh normalized rows alone cannot prove compatibility with retained
+provider handles. The smaller correction removes blanket normalizers rather
+than adding a second identity protocol or changing pinned SQL.
+
+
+This correction's pre-commit installed suite passes 38/38 in default and
+Etc/GMT-9 sessions. The two old-writer ACK/outcome witnesses measure at most
+0.78 seconds each and retain an explicit 30-second per-case bound. Their
+uppercase ACKs are written through main's unchanged port; both identical ACK
+replay and terminal success are accepted through the promoted port. Historical
+terminal rows replay once, changed references refuse, and all public rows stay
+unchanged on replay/refusal. Exactly one cycle, order, intent and outcome remain;
+there is no provider execution from the persistence port. The raw receipt,
+prepare-ID and stock-readback witnesses retain their money/effect assertions.
+
+Official pre-commit pack against the frozen control predecessor:
++21,209 packed bytes, +14,709 code bytes, +109,466 unpacked bytes, +16 files.
+Absolute packed/code/unpacked totals are 2,492,811 / 1,987,572 / 11,724,829 bytes,
+with 3,063 files. The row stop is 22,500; the unchanged total/code caps are
+2,595,000 / 2,055,017. Complete API reports remain identical. No SQL, role grant,
+checker, baseline or budget was edited. Full pre-review and fresh native review
+still follow on the committed candidate.

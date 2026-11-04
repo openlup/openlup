@@ -1,3 +1,4 @@
+import { createPostgresRenewalSettlementPort as mainSettlement } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -163,13 +164,13 @@ function retryDriver(d: Awaited<ReturnType<typeof deps>>, observation: "ambiguou
   return { driver: api.createNativeRetryDriver(options), execute, options };
 }
 
-it.each(["canonical", "uppercase", "compact", "braced", "grouped"] as const)("matches host UUIDs by value for retry and recovery (%s)", async spelling => {
+it.each(["canonical", "uppercase", "compact", "braced", "grouped"] as const)("matches prepare UUIDs by value for retry and recovery (%s)", async spelling => {
   const f = await active(), d = await deps(f.subscriptionId, "declined");
   const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now), store = api.createPostgresRetryStore(executor);
   const row = (await store.read(first.operationId))!, retryAt = row.nextRetryAt!;
   if (spelling === "uppercase") {
     const snapshot = await d.input.store.buildCycleSnapshots(d.due);
-    expect(d.codec.withDestination!(snapshot, snapshot.orderSnapshot.shippingAddressRef!.toUpperCase())).toEqual(snapshot);
+    expect(d.codec.withDestination!(snapshot, snapshot.orderSnapshot.shippingAddressRef!.toUpperCase())).toMatchObject({ orderSnapshot: { shippingAddressRef: snapshot.orderSnapshot.shippingAddressRef!.toUpperCase() }, pricingSnapshot: snapshot.pricingSnapshot });
     expect(() => d.codec.withDestination!(snapshot, "not-a-uuid")).toThrow();
   }
   const spell = (id: string) => spelling === "canonical" ? id : spelling === "uppercase" ? id.toUpperCase()
@@ -182,8 +183,6 @@ it.each(["canonical", "uppercase", "compact", "braced", "grouped"] as const)("ma
   const retry = api.createNativeRetryDriver({ ...original,
     retryInput: (snapshot, obligation) => ({ ...original.retryInput(snapshot, obligation),
       paymentIntentId: spell(obligation.settlementIntentId), orderRef: spell(obligation.orderId) }),
-    payments: { ...original.payments, readOutcome: async (prepared, snapshot) => ({ ...await original.payments.readOutcome(prepared, snapshot),
-      operationId: spell(first.operationId) }) },
   });
   expect(await retry.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "succeeded" }]);
   expect(recovery.execute).toHaveBeenCalledTimes(1);
@@ -627,7 +626,7 @@ it("matches frozen stock-wait UUID bindings by value and keeps changed identitie
 }, 30_000);
 
 // Admission mutations measured below one second; retain a 30 s installed-consumer bound.
-it("canonicalizes frozen recovery UUIDs before the SQL binding comparison", async () => {
+it("preserves exact frozen recovery JSON and keeps changed bindings refused", async () => {
   const f = await active(), d = await deps(f.subscriptionId, "succeeded");
   await stock(0);
   expect(await binding(d, () => now).services.run()).toMatchObject({ renewals: [{ status: "refused", reason: "inventory_unavailable" }] });
@@ -641,7 +640,7 @@ it("canonicalizes frozen recovery UUIDs before the SQL binding comparison", asyn
     const local = api.createPostgresStockWaitStore({ executor: db, codec: d.codec, withTransaction: transaction, workerId: "uuid-recovery" });
     const original = await local.admit({ ...input, recovery: frozen.binding });
     expect(original).toMatchObject({ waiting: true, caseId: frozen.binding.caseId });
-    expect(await local.admit({ ...input, recovery: { ...frozen.binding, caseId: frozen.binding.caseId!.toUpperCase() } })).toEqual(original);
+    expect(await local.admit({ ...input, recovery: frozen.binding })).toEqual(original);
     await db.query("COMMIT");
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
@@ -707,35 +706,48 @@ it.each(["sourceReference", "attemptRef", "externalAttemptRef", "all"] as const)
   expect(recovery.execute).toHaveBeenCalledTimes(1);
 }, 30_000);
 
-// The two ACK/outcome mutations are subsecond; allow 30 s for the installed artifact.
-it("matches UUID-shaped external settlement references and preserves opaque reference spelling", async () => {
-  for (const ref of [randomUUID(), "Opaque-Attempt-Ref"]) {
+// ACK/outcome mutations measured below one second; allow 30 s for the installed artifact.
+it.each(["new completion", "historical outcome"] as const)("replays an old uppercase ACK and accepts %s with exact provider references", async terminalPath => {
+  for (const ref of [randomUUID().toUpperCase(), "Opaque-Attempt-Ref"]) {
     const f = await active(), d = await deps(f.subscriptionId, "succeeded");
     const snapshot = await d.input.store.buildCycleSnapshots(d.due);
-    const claim = await d.input.store.claimDue({ snapshot, workerId: "uuid-ack", now });
+    const claim = await d.input.store.claimDue({ snapshot, workerId: "raw-ack", now });
     expect(await d.input.inventory.reserve({ operationId: claim.operationId, claimToken: claim.claimToken, now })).toMatchObject({ reserved: true });
-    const port = settlement(d.codec);
+    const port = settlement(d.codec), old = mainSettlement(executor);
     await port.prepareRenewal({ operationId: claim.operationId, claimToken: claim.claimToken, now });
-    await port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: ref, acknowledgedAt: now });
-    const equivalent = ref === "Opaque-Attempt-Ref" ? ref : ref.toUpperCase();
-    expect(await port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: equivalent, acknowledgedAt: now })).toMatchObject({ replayed: true, externalAttemptRef: ref });
+    const ack = { operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: ` ${ref} `, acknowledgedAt: now };
+    await old.acknowledgeExternalAttempt(ack);
+    expect((await runtime.query("SELECT external_attempt_ref FROM public.subscription_renewal_operations WHERE id=$1", [claim.operationId])).rows).toEqual([{ external_attempt_ref: ref }]);
     const acknowledged = await allPublicRows(admin);
-    await expect(port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: randomUUID(), acknowledgedAt: now })).rejects.toMatchObject({ code: "23505" });
+    expect(await port.acknowledgeExternalAttempt(ack)).toMatchObject({ replayed: true, externalAttemptRef: ref });
+    await expect(port.acknowledgeExternalAttempt({ ...ack, externalAttemptRef: randomUUID() })).rejects.toMatchObject({ code: "23505" });
+    await expect(port.acknowledgeExternalAttempt({ ...ack, externalAttemptRef: "  " })).rejects.toThrow("subscription_renewal_external_attempt_ref_required");
     expect(await allPublicRows(admin)).toEqual(acknowledged);
-    const terminal = { operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, eventKey: `uuid-ref:${claim.operationId}`, outcome: "refused" as const, reason: "fixture", occurredAt: now };
-    await port.recordTerminalOutcome({ ...terminal, externalRef: equivalent });
+    const terminal = { operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, eventKey: `raw-ref:${claim.operationId}`, outcome: "succeeded" as const, externalRef: ref, occurredAt: now };
+    await expect(port.recordTerminalOutcome({ ...terminal, externalRef: ` ${ref} ` })).rejects.toMatchObject({ code: "23505" });
+    await expect(port.recordTerminalOutcome({ ...terminal, externalRef: null })).rejects.toThrow("subscription_renewal_success_external_ref_required");
+    expect(await allPublicRows(admin)).toEqual(acknowledged);
+    if (terminalPath === "historical outcome") await old.recordTerminalOutcome(terminal);
+    expect(await port.recordTerminalOutcome(terminal)).toMatchObject({ state: "succeeded", replayed: terminalPath === "historical outcome" });
     const before = await allPublicRows(admin);
-    expect(await port.recordTerminalOutcome({ ...terminal, externalRef: ref })).toMatchObject({ replayed: true });
-    await expect(port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: randomUUID(), acknowledgedAt: now })).rejects.toThrow();
-    if (ref === "Opaque-Attempt-Ref") await expect(port.recordTerminalOutcome({ ...terminal, externalRef: ref.toUpperCase() })).rejects.toMatchObject({ code: "23505" });
+    expect(await port.recordTerminalOutcome(terminal)).toMatchObject({ replayed: true });
+    await expect(port.recordTerminalOutcome({ ...terminal, externalRef: randomUUID() })).rejects.toMatchObject({ code: "23505" });
+    await expect(port.recordTerminalOutcome({ ...terminal, externalRef: ref.toLowerCase() })).rejects.toMatchObject({ code: "23505" });
     expect(await allPublicRows(admin)).toEqual(before);
+    expect((await runtime.query(`SELECT
+      (SELECT count(*)::integer FROM public.subscription_cycles WHERE renewal_operation_id=$1) AS cycles,
+      (SELECT count(*)::integer FROM public.commerce_orders WHERE renewal_operation_id=$1) AS orders,
+      (SELECT count(*)::integer FROM public.commerce_settlement_intents WHERE renewal_operation_id=$1) AS intents,
+      (SELECT count(*)::integer FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1) AS outcomes,
+      (SELECT status FROM public.commerce_settlement_intents WHERE renewal_operation_id=$1) AS status`, [claim.operationId])).rows[0])
+      .toEqual({ cycles: 1, orders: 1, intents: 1, outcomes: 1, status: "settled" });
     expect(d.execute).not.toHaveBeenCalled();
   }
 }, 30_000);
 
 // This maps synthetic platform references to the simulator namespace; each DB mutation is subsecond.
-it("matches UUID-shaped mandate references and dispatches canonical request UUIDs", async () => {
-  const p = await purchase(), authorizationRef = randomUUID(), methodRef = randomUUID(), payerAccountRef = randomUUID();
+it("preserves stored uppercase provider references and canonicalizes only prepare ids", async () => {
+  const p = await purchase(), authorizationRef = randomUUID().toUpperCase(), methodRef = randomUUID().toUpperCase(), payerAccountRef = randomUUID().toUpperCase();
   const activation = await api.activateNativePurchaseWithRenewal(executor, { ...p, facts: { ...facts, authorizationRef, methodRef, payerAccountRef } });
   const subscriptionId = String(activation.activation.subscriptionId), d = await deps(subscriptionId, "declined");
   const first = await api.runOneAutomaticSubscriptionRenewal({ ...d.input, policy: api.createSandboxRenewalPolicy(methodRef) }, d.due, now);
@@ -756,7 +768,7 @@ it("matches UUID-shaped mandate references and dispatches canonical request UUID
     retryInput: (snapshot: Parameters<typeof original.retryInput>[0], obligation: Parameters<typeof original.retryInput>[1]) => {
       const supplied = original.retryInput(snapshot, obligation);
       return { ...supplied, paymentIntentId: supplied.paymentIntentId.toUpperCase(), orderRef: supplied.orderRef.toUpperCase(),
-        orderId: supplied.orderId.toUpperCase(), clientId: supplied.clientId.toUpperCase(), customerRef: supplied.customerRef!.toUpperCase(), paymentMethodRef: supplied.paymentMethodRef };
+        orderId: supplied.orderId, clientId: supplied.clientId, customerRef: supplied.customerRef, paymentMethodRef: supplied.paymentMethodRef };
     }, payments: { ...original.payments, execute } };
   const before = await allPublicRows(admin);
   for (const key of ["authorizationRef", "paymentMethodRef"] as const) {

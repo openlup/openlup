@@ -33,8 +33,6 @@ export function canonicalUuid(value: unknown): string | null {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
-const uuidReference = (value: string): string => canonicalUuid(value) ?? value;
-
 export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
   const store = createPostgresRetryStore(options.executor);
   async function propagateFailure(operationId: string, key: string, input: NativeRetryFailure) {
@@ -90,14 +88,13 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           if (!row.nextRetryAt || nativeInstant(row.nextRetryAt) > nativeInstant(now)) continue;
           const mandate = await options.readFrozenMandate(snapshot);
           const supplied = options.retryInput(snapshot, row);
-          const input = { ...supplied, ...Object.fromEntries(["paymentIntentId", "orderRef", "orderId", "clientId"].map(key =>
-            [key, uuidReference(supplied[key as keyof typeof supplied] as string)])) };
-          const paymentIntentId = canonicalUuid(input.paymentIntentId), orderRef = canonicalUuid(input.orderRef);
+          const paymentIntentId = canonicalUuid(supplied.paymentIntentId), orderRef = canonicalUuid(supplied.orderRef);
+          const input = { ...supplied, paymentIntentId: paymentIntentId ?? supplied.paymentIntentId, orderRef: orderRef ?? supplied.orderRef };
           const authorizations = (await options.executor.query(`SELECT a.method_ref FROM public.subscription_retry_recovery_authorizations a
             JOIN public.subscription_retry_obligations o ON o.id=a.obligation_id
             WHERE o.renewal_operation_id=$1::uuid AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL`, [operationId])).rows;
-          const method = String(authorizations[0]?.method_ref ?? mandate.paymentMethodRef);
-          if (!mandate.authorized || uuidReference(mandate.authorizationRef) !== uuidReference(snapshot.authorizationRef) || input.paymentMethodRef !== method
+          const method = authorizations[0]?.method_ref ?? mandate.paymentMethodRef;
+          if (!mandate.authorized || mandate.authorizationRef !== snapshot.authorizationRef || input.paymentMethodRef !== method
             || paymentIntentId !== row.settlementIntentId || orderRef !== row.orderId
             || input.amountMinor !== snapshot.pricingSnapshot.totalAmountMinor || input.currency !== snapshot.pricingSnapshot.currency) {
             throw new Error("subscription_retry_frozen_mandate_mismatch");
@@ -106,15 +103,15 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           const request: NativeRetryRequest = { paymentIntentId, orderRef,
             amountMinor: input.amountMinor, currency: input.currency, idempotencyKey: input.executionIdempotencyKey,
             providerIdempotencyKey: input.externalIdempotencyKey, providerRequestFingerprint: input.requestFingerprint,
-            paymentMethodRef: method };
+            paymentMethodRef: input.paymentMethodRef };
           prepareKey = input.executionIdempotencyKey;
           prepared = await store.prepare(operationId, prepareKey, request, now);
           // A committed prepare is an irreversible execution fence. A replay or
           // uncertain dispatch only reads the exact attempt through the host port.
-          if (prepared.execute) await options.payments.execute({ ...input, paymentMethodRef: method });
+          if (prepared.execute) await options.payments.execute(input);
         }
         const evidence = await options.payments.readOutcome(prepared, snapshot);
-        if (canonicalUuid(evidence.operationId) !== operationId || evidence.requestFingerprint !== row.requestFingerprint
+        if (evidence.operationId !== operationId || evidence.requestFingerprint !== row.requestFingerprint
           || !evidence.verifiedEvidenceRef || !evidence.eventKey || !evidence.occurredAt || !evidence.externalAttemptRef
           || !evidence.firstRecordedAt || !evidence.observedAt || evidence.disposition === "ambiguous"
           || (evidence.amountMinor !== null && evidence.amountMinor !== snapshot.pricingSnapshot.totalAmountMinor)

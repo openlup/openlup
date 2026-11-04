@@ -75,12 +75,12 @@ it("keeps missing UUID bindings distinct from invalid strings and compares the e
   await expect(f.store.readFrozenCase({ ...input, engineIdempotencyKey: "ORIGINAL-KEY" })).rejects.toThrow("stock_wait_frozen_binding_changed");
 });
 
-it("canonicalizes recovery UUIDs at the JSON binding boundary without changing invalid values or engine keys", async () => {
+it("preserves exact recovery binding JSON including invalid values and engine keys", async () => {
   const f = fixture(), id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   f.query.mockResolvedValue({ rows: [{ response: { waiting: true, caseId: id } }] });
   const recovery = { caseId: id.toUpperCase(), cycleId: id.toUpperCase(), orderId: id.toUpperCase(), paymentId: id.toUpperCase(), engineIdempotencyKey: "Case-Sensitive" };
   await f.store.admit({ operationId: "op", claimToken: "token", snapshot: f.snapshot, recovery, now: f.at });
-  expect(f.query.mock.calls[0][1]?.[1]).toEqual({ stockWaitRecovery: { caseId: id, cycleId: id, orderId: id, paymentId: id, engineIdempotencyKey: "Case-Sensitive" } });
+  expect(f.query.mock.calls[0][1]?.[1]).toEqual({ stockWaitRecovery: recovery });
   expect(recovery.caseId).toBe(id.toUpperCase());
   await f.store.admit({ operationId: "op", claimToken: "token", snapshot: f.snapshot, recovery: { ...f.binding, caseId: "invalid-uuid" }, now: f.at });
   expect(f.query.mock.calls[1][1]?.[1]).toEqual({ stockWaitRecovery: { ...f.binding, caseId: "invalid-uuid" } });
