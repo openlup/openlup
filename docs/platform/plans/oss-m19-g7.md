@@ -14,8 +14,9 @@ No new price writer, payment-attempt store, SQL routine or managed behavior.
 ## Scope and authority
 
 Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Current frozen
-predecessor: `387b430f9edf2e1d4b276051d8fa1307efab6d0d`, merged without
-rebasing as `e67b2c55`. Documentation and later native prepare/verification use
+predecessor: `c6248bf295dbdb474f86bd8c0fcf5f4e49c64470`, merged without
+rebasing as `43d135c9`. This adds the predecessor-owned measured replay
+deadlines to the earlier frozen stack. Documentation and later native prepare/verification use
 that exact `OPENLUP_STACK_BASE`; focused test children receive no stack pin.
 The earlier predecessor history below remains provenance, not the current base.
 
@@ -662,6 +663,6 @@ and separate test-deadline ownership from the accepted package-budget commit.
 
 <!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-3a4c80b63340888c3bdcbfbdc2bc4bb12ceb4b743ee38a8f2b5ee56bc6e6a794","reason":"The exact native renewal forward is appended after the frozen predecessor with whole-file and ordered function pins, and the five current catalogue digests are measured on PostgreSQL. Prior migration identities and historic pins remain unchanged. The compatibility posture still requires closed-class and co-located approval; these bindings add no installation authority, managed-rail change, provider qualification or stable compatibility claim. The subscriptions owner and task record describe the forward behavior."} -->
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-f7041c7b71ba6e75096290b7e69e245710ffb8d2e4328f50fbc0ace3312779c8","reason":"The own delta adds installed-artifact restricted-role renewal, repair, stock-wait, destination, transfer, replay and lock-order witnesses, plus the literal chain counts and measured current catalogues for the appended forward. Historic pins and existing behavioral assertions remain intact. The offline consumer, focused gate and measured existing case deadlines use the documented test boundaries; required phases, selection, coverage and global timeouts do not change, so Development-preview checks remains accurate."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-e07d8416c634f90ad682086adcc4d3ea67301c729de1305cb0a3693b5763c4ae","reason":"The own delta adds installed-artifact restricted-role renewal, repair, stock-wait, destination, transfer, replay and lock-order witnesses, plus the literal chain counts and measured current catalogues for the appended forward. Historic pins and existing behavioral assertions remain intact. The offline consumer, focused gate and measured existing case deadlines use the documented test boundaries; required phases, selection, coverage and global timeouts do not change, so Development-preview checks remains accurate."} -->
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-cf3c768d301e67030ee71b1f4a29ffe6ef86d6257e2fa9b3cae72830b063c01b","reason":"The only tooling delta changes the admission suite data expectation from the first four bound native slots to the first five after this feature pin is present. The reader, class rules, refusal fixtures, test selection and admission workflow are unchanged. Development-preview checks remains accurate because this follows the authorized feature data rather than changing a control mechanism."} -->
