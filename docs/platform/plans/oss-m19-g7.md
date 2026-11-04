@@ -13,7 +13,13 @@ No new price writer, payment-attempt store, SQL routine or managed behavior.
 
 ## Scope and authority
 
-Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Signed predecessor:
+Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Current frozen
+predecessor: `387b430f9edf2e1d4b276051d8fa1307efab6d0d`, merged without
+rebasing as `e67b2c55`. Documentation and later native prepare/verification use
+that exact `OPENLUP_STACK_BASE`; focused test children receive no stack pin.
+The earlier predecessor history below remains provenance, not the current base.
+
+Earlier signed predecessor:
 `9ac0992776bbe5f295c3698fe28e732202b36fa3`, including main `09cd599b`, the
 retained-method compatibility fix and the offline installed-consumer correction.
 Earlier unsigned work was consolidated as signed `63f9d783`; that signed commit
