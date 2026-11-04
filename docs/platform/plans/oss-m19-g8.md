@@ -1243,3 +1243,10 @@ The two named F-ZONED-TRANSFER-TEXT sites in `connectedStoreTransfer.test.ts` re
 - Main line 773 is now line 819. The complete retained-graph/replay `it(...)` body has SHA-256 `14eb4ed5df58266bf74e84ed7383d302188b7a8a87c84fc8581ade25914232af` on both main and the candidate. Under `Etc/GMT-9`, its schedule text is `2027-04-07 21:00:00.654321+09`, compared with `2027-04-07 12:00:00.654321+00`: the same instant and microseconds.
 
 The whole test file includes additive consent fixtures and tests. That does not change these two named-site authorizations; the whole-file identity rule continues to apply to newly discovered sites.
+
+The other two named sites are also retained without assertion changes:
+
+- `retainedClientSubscriptionImport.test.ts:127` has the same complete case body on main and the candidate, SHA-256 `794054beef71ab11cf9bfdf3e7df95753869a6f0b3f3d666dab15e551ad9a030`. The dump contains the same single lifecycle row and differs only in `occurred_at`: `2025-01-02 12:04:05.123456+09` or `2025-01-01 22:04:05.123456-05`, against `2025-01-02 03:04:05.123456+00`. PostgreSQL confirms the same instant and microseconds.
+- `subscriptionRetryLifecycleCases.ts:107` has the same complete case body on main and the candidate, SHA-256 `40f0da2713a0e09fb47f522baa8be13864bdd12cc99642c2fee515c18ad9dd78`. It seeds the offset-free SQL date `2027-06-01` but compares with the UTC constant `2027-06-01T00:00:00.000Z`. The observed values are `2027-05-31T15:00:00.000Z` under `Etc/GMT-9` and `2027-06-01T05:00:00.000Z` under `Etc/GMT+5`, matching the seed interpreted in each session zone. This is the named fixture-zone assumption; the assertion stays unchanged.
+
+The additional managed-transfer dump under `Etc/GMT+5` again found only equal-instant `created_at` and `updated_at` renderings: `2026-11-04T16:17:59.489385-05:00` versus `2026-11-04T21:17:59.489385+00:00`, with one row on each side and no other key difference.
