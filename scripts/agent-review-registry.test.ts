@@ -620,7 +620,7 @@ describe('portable review on real Git objects', () => {
   it.each([
     'config/openlup-packages.json', 'config/openlup-source-release-contract.json', REGISTRY_PATHS[0],
     'packages/outbox/npm-shrinkwrap.json', 'packages/platform/tsconfig.build.json',
-    'scripts/source-preview-release.ts', 'scripts/source-release-preparation.ts',
+    'scripts/source-preview-release.ts', 'scripts/source-release-preparation.ts', 'scripts/oss-public-typecheck.ts',
   ])('refuses versioning-guide carry-over when the PR changes %s', async path => {
     const f = await fixture(true, [], oldFiles);
     const changed = path === REGISTRY_PATHS[0]

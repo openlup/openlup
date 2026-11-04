@@ -140,10 +140,6 @@ const SOURCE_RELEASE_CONTROLS = new Set([
   'config/openlup-policy-registry.json',
   'config/openlup-source-release-contract.json',
   'config/platform-migration-manifest.json',
-  'scripts/oss-publication-contract.ts',
-  'scripts/oss-publication-policy.ts',
-  'scripts/oss-published-tree-check.ts',
-  'scripts/oss-source-release-contract.ts',
   'scripts/platform-migration-manifest.ts',
   'scripts/reviewed-platform-forward.ts',
   'scripts/source-preview-release.ts',
@@ -163,7 +159,7 @@ async function independentOfVersioningGuide(cwd, candidate, runGit) {
       registryUnion(path, original, await regularText(cwd, candidate.head, path, runGit), original);
     } else if (path === 'package.json' || PACKAGE_LOCK.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) ||
       SOURCE_RELEASE_CONTROLS.has(path) ||
-      /^(?:\.github\/|scripts\/packages\/|packages\/[^/]+\/(?:scripts\/|tsconfig\.build\.json$))/u.test(path)) return false;
+      /^(?:\.github\/|scripts\/(?:packages\/|oss-)|packages\/[^/]+\/(?:scripts\/|tsconfig\.build\.json$))/u.test(path)) return false;
   }
   return true;
 }
