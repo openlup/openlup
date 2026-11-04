@@ -227,8 +227,7 @@ Required verification still runs on the actual new tree. The existing selected
 local-integration proof alternative retains its own full-anchor, two-fresh-review
 and interaction-check conditions; inherited model coverage alone does not waive
 full local verification. Receipt export and hosted admission rederive the
-coverage chain from Git objects. No new merge-group carry-over exception is
-created. Existing trailer-only lineage recognition remains narrowly bounded.
+coverage chain from Git objects. The separate portable carry-over rule is owned by Merge queue below. Existing trailer-only lineage recognition remains narrowly bounded.
 
 When criteria, required review and checks pass, stop optional edits and continue
 only authorized delivery. Missing, stale, expired, dirty, partial or unclosed
@@ -252,23 +251,13 @@ as a PR comment with `gh pr comment <PR> --body-file -`, within delivery authori
 as soon as the pull request is open and ready, and waits for actual admission.
 Admission checks the live PR head, tree, reviewer floor and expiry.
 
-A source review carries over to a merge group when either:
-- the group tree equals the reviewed tree; or
-- the group is exactly the reviewed change on its queue base, which admission
-  checks with `git merge-tree`, and the base's net change since the reviewed
-  base touches neither the change's paths nor the admission, identity-binding,
-  dependency and migration machinery (`.github/`, the review scripts, the
-  identity fence, package manifests and lockfiles, migrations). Other check
-  configuration is not on this list; the group's mechanical checks run with it.
-  A moved `packages/<name>/package.json` does not block carry-over when main's
-  and the change's edits to it only add new, disjoint subpath `exports` keys,
-  preserve existing values with order-sensitive comparison, and leave every
-  other key unchanged. The merged manifest must preserve those values and contain
-  exactly both additions; root manifests and lockfiles still block.
-
-The source receipt then admits the group without a new receipt or live session;
-the six mechanical checks on the group tree cover behavioural interaction.
-Otherwise the group is rejected: merge `main` and re-review. Queue rebuild
+The [canonical carry-over rule](../../CONTRIBUTING.md#merge-queue) checks the
+exact group tree and the effect of the base change. Trusted main and the local
+preflight recognize proved independent metadata and registry additions and the
+exact landed portable-review transition. Existing v2/v3 receipts retain their
+identity and expiry. All six checks run on the actual group. A refused group
+uses a proved committed integration if eligible, or a fresh review otherwise.
+Queue rebuild
 recovery remains bounded at two retries and does not reset repair cycles.
 Settings remain a maintainer action; see [Deliver a change](../../CONTRIBUTING.md#deliver-a-change)
 and [Merge queue](../../CONTRIBUTING.md#merge-queue).
