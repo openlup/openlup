@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPostgresFulfillmentCommerceReadPort } from '@openlup/platform/fulfillment/native';
+import { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
+import { createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentOrdersListHandler } from '@openlup/platform/fulfillment';
+import { createBffResponder } from '@openlup/platform/bff';
+import type { HttpResponse } from '@openlup/platform/http';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { evaluateCommerceFulfillmentEligibility } from '@openlup/platform/commerce';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
@@ -29,8 +32,8 @@ beforeAll(async () => {
 afterAll(async () => { await closePostgres(container, [owner, runtime]); }, postgresTeardownTimeoutMs);
 const destinations = () => createPostgresDestinationPort(runtime);
 const port = () => createPostgresFulfillmentCommerceReadPort({ executor: runtime, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
-async function fixture(status = 'created') {
-  const order = randomUUID(), shipment = randomUUID(), client = randomUUID(), sku = randomUUID(), product = randomUUID();
+async function fixture(status = 'created', client = randomUUID()) {
+  const order = randomUUID(), shipment = randomUUID(), sku = randomUUID(), product = randomUUID();
   await owner.query('BEGIN');
   try {
     await owner.query('INSERT INTO public.clients(id,email) VALUES($1,$2)', [client, `${client}@example.invalid`]);
@@ -127,6 +130,37 @@ it('maps routine owner mismatch, preserves an unmapped routine error and permits
     return { ...f.destination, address: { ...f.destination.address, line1: 'Override street' } };
   } }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
   expect(await injected.getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { shippingAddress: { line1: 'Override street' } } });
+});
+
+it('serves equivalent uppercase client UUIDs unchanged and refuses another owner', async () => {
+  const f = await fixture('in_transit', 'abcdefab-cdef-4abc-8def-abcdefabcdef');
+  const stored = (await runtime.query('SELECT client_id::text AS client_id FROM public.commerce_orders WHERE id=$1::uuid', [f.order])).rows[0].client_id;
+  expect(stored).toBe(f.client);
+  let clientId = stored.toUpperCase();
+  expect(clientId).not.toBe(stored);
+  const injected = createPostgresFulfillmentCommerceReadPort({ executor: runtime,
+    destinations: { async read(scope, id) {
+      expect([scope, id]).toEqual(['shipment', f.shipment]);
+      return { ...f.destination, clientId };
+    } }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+  const deps = { respond: createBffResponder(), authorizeAdmin: async () => ({ ok: true as const, userId: 'operator' }),
+    fulfillmentPort: injected, responseSchemas: nativeFulfillmentCommerceResponseSchemas };
+  const detail = createAdminCommerceFulfillmentOrderDetailHandler(deps);
+  const list = createAdminCommerceFulfillmentOrdersListHandler(deps);
+  let output: unknown;
+  const response = { setHeader() {}, status() { return this; }, json(value: unknown) { output = value; return this; } } as unknown as HttpResponse;
+  const res = { response, output: () => output };
+  await detail({ method: 'GET', query: { fulfillmentOrderId: f.shipment } }, res.response);
+  expect(res.output()).toMatchObject({ ok: true, data: { order: { id: f.shipment, shippingAddress: { clientId } } } });
+  await list({ method: 'GET', query: { page: '1', pageSize: '25', status: 'in_transit' } }, res.response);
+  expect(res.output()).toMatchObject({ ok: true, data: { orders: [{ id: f.shipment, shippingAddress: { clientId } }] } });
+  clientId = randomUUID().toUpperCase();
+  await expect(injected.getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+  await expect(injected.listCommerceFulfillmentOrders({ page: 1, pageSize: 25, status: 'in_transit' })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+  await detail({ method: 'GET', query: { fulfillmentOrderId: f.shipment } }, res.response);
+  expect(res.output()).toMatchObject({ ok: false, error: { code: 'UPSTREAM_UNAVAILABLE' } });
+  await list({ method: 'GET', query: { page: '1', pageSize: '25', status: 'in_transit' } }, res.response);
+  expect(res.output()).toMatchObject({ ok: false, error: { code: 'UPSTREAM_UNAVAILABLE' } });
 });
 
 it('selects the highest sequence then id, with an explicit id taking precedence over an order id', async () => {

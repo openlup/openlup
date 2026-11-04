@@ -17,6 +17,14 @@ const array = (value: unknown): Row[] => Array.isArray(value) ? value.map(record
 const operationStatuses: Record<string, CommerceFulfillmentOperationRow['operation_type']> = { packed: 'packed', label_created: 'label_created', handed_over: 'handed_over', in_transit: 'tracking_event_recorded', delivered: 'tracking_event_recorded' };
 const limit = (name: string): never => { throw new Error(`native_fulfillment_${name}`); };
 
+function canonicalUuidKey(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const body = value.startsWith('{') && value.endsWith('}') ? value.slice(1, -1) : value;
+  if (/^[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}$/i.exec(body)?.[0] !== body) return value;
+  const hex = body.replaceAll('-', '').toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** Native shipment commerce projection. Supply the existing eligibility policy and
  * optionally override the nonmutating shipment destination view reader.
  * The host owns authorization, connection lifetime and snapshot transaction. */
@@ -54,7 +62,7 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       if (error instanceof Error && error.message === 'commerce_destination_owner_mismatch') return limit('destination_owner_mismatch');
       throw error;
     }
-    if (destination.clientId !== order.client_id) return limit('destination_owner_mismatch');
+    if (canonicalUuidKey(destination.clientId) !== canonicalUuidKey(order.client_id)) return limit('destination_owner_mismatch');
     const reservations: CommerceFulfillmentInventoryReservationRow[] = array(facts.reservations).map(row => ({
       id: String(row.id), order_id: String(order.id), status: row.status === 'held' || row.status === 'committed' ? 'reserved' : row.status as 'consumed' | 'released' | 'expired',
       expires_at: row.expires_at ? String(row.expires_at) : null, location_id: null,

@@ -2,10 +2,9 @@
 
 Status: destination reader rebind committed after the accepted public API read.
 The row packed limit is 9,000 bytes; behavior and accepted limits remain unchanged.
-The final frozen predecessor is merged and contains current main. This step
-authorizes the documentation pin update, official size comparison, pre-review
-checks and update of the existing draft. Prepare, review, canonical verification
-and landing require a later grant.
+The predecessor has landed and the row is based on main. This step authorizes
+the bounded UUID comparison repair, its checks, the existing draft update and
+two independent full reviews. Canonical verification and landing remain later steps.
 
 ## Outcome and boundary
 
@@ -16,16 +15,15 @@ adopter's read mechanisms with the explicit native limits in
 [Native parity boundaries](../ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
 No additional package entry or default route binding is introduced.
 
-The public API read and rebind commit are complete. Committed review, canonical
-verification and landing need their later explicit grants. Only the existing
-draft update is authorized externally; no publication, release, hosted resource
-or settings action is granted. Other worktrees and branches are outside scope.
+The public API read and rebind commit are complete. The bounded comparison repair,
+DCO commit, checks, existing draft update and independent full review are authorized.
+Canonical verification and landing need their later explicit grants. No release,
+hosted resource or settings action is granted. Other worktrees and branches are
+outside scope.
 
 Policy pin and original base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
-Frozen predecessor and documentation stack pin:
-`84f146305d99cf3f30831ab1cc6fb65de1ffe1ca`.
-The merged base contains current main at
-`76d8a415a5bb96331e5f81832670138df17b2536`.
+The predecessor has landed at `0c9e80633c6eca879346459bcf832ba372751a67`.
+That commit is the row's merge base with main; no stack pin is used.
 The shipment destination and purchase reservation facts depend on the SQL stream.
 The default destination reader calls the predecessor's nonmutating
 `commerce_view_shipment_destination(uuid)` through the supplied executor. An
@@ -116,7 +114,7 @@ test files stay byte-identical to HEAD and run unchanged alongside the new suite
 Required additional evidence: API snapshots, source-tree scanners, strict
 published-tree typecheck, lint, neutrality with zero increases, ast-grep, publication
 policy/navigation and official packed/code comparison against the pinned base.
-The comparison base is the frozen predecessor above. The row stop remains 9,000
+The current comparison base is the landed main commit above. The row stop remains 9,000
 packed bytes. Absolute ceilings come from `packages/platform/release-gates.json`:
 `pack.code.maxPackedBytes` is 2,055,017 and `pack.maxPackedBytes` is 2,595,000.
 Do not trim behavior to fit. Canonical verification is not part of this run.
@@ -241,3 +239,70 @@ without a second destination mechanism or a wider public type change.
 
 Self-retro: a clean predecessor merge preserves the accepted behavior while
 refreshing its documentation comparison base; no implementation repair is needed.
+
+## Canonical UUID matching
+
+The destination owner check compared UUID spellings and could falsely refuse a
+correctly owned destination supplied by an injected reader. A private helper
+now forms comparison-only UUID keys, accepting case differences, optional braces
+and hyphen-less hexadecimal spelling, with exact comparison for other text.
+The check alone uses these keys; stored values and echoed fields remain unchanged.
+The response contract accepts only the hyphenated form and therefore never echoes
+the other two spellings. Different owner values retain the same named refusal;
+injected-reader precedence and unmapped-error propagation are unchanged.
+There is no public API, SQL, export, dependency or budget change in this repair.
+This is recorded as a permitted defect fix for the adoption receipt list.
+
+The sweep below covers the new native source and the optional seam edits.
+Line numbers identify the repaired source; grouped SQL sites retain each separate
+operand's classification. No site consumes both a database UUID and an identity
+text value. Existing managed associations outside the optional seam are unchanged.
+
+| Site (file:line) | Type of the other side | Decision |
+| --- | --- | --- |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:37` | database uuid | Destination lookup already casts the request id through `$1::uuid`; preserve SQL value matching. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:43` | database uuid | Settlement order join is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:44` | database uuid | Cycle lookup is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:45` | database uuid | Hold order lookup is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:46` | database uuid | Item order lookup is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:47` | database uuid | Operation shipment lookup casts `$2::uuid`; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:49` | database uuid | Tracking shipment join is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:50` | database uuid | Tracking order lookup is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:52` | database uuid | Purchase reservation lookup is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:53` (renewal id) | database uuid | Renewal reservation lookup is UUID-to-UUID in SQL; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:53` (fingerprint) | caller-written stored text | Fingerprint equality is identity; preserve exact bytes. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:54` | database uuid | Order lookup casts `$1::uuid`; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:65` | database uuid | Compare the reader client id with the order client id using private comparison-only keys. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:124` | database uuid | Both detail selectors reach SQL through `$n::uuid` casts; unchanged. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:96` | none | Echo the reader client id without rewriting; destination id is not compared or substituted. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:104` | provider reference | Forward the payment reference unchanged; no UUID interpretation. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:106` | provider reference | Forward the tracking reference unchanged; role selection remains a literal SQL filter. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:73` | none | Snapshot lookup uses an ordinal, not an identifier. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:87` | none | Operation map keys are status vocabulary, not identifiers. |
+| `packages/platform/src/fulfillment/native/commerceReads.ts:88` | none | Evidence role comparisons select vocabulary, not provider-reference values. |
+| `packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts:105` | none | The optional gate map uses the host projection's own order-id key; no stored-side comparison or transformation is added. |
+| `packages/platform/src/fulfillment/handlerSchemas.ts:107`; `packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts:49,94`; `packages/platform/src/fulfillment/contracts/read.ts:20`; `packages/platform/src/fulfillment/native/index.ts:88` | none | Schema selection, generic containers and re-exports add no identifier comparison or lookup; existing UUID validation remains unchanged. |
+
+Package witnesses exercise detail and list success for the exact uppercase and
+lowercase finding pair with unchanged echoes. Braced and hyphen-less matching
+owners reach the existing schema refusal; different owners retain the ownership
+refusal. A real PostgreSQL witness supplies the fixture client's uppercase UUID
+through the served detail and list handlers and verifies different-owner refusal.
+The database suite retains its default, Etc/GMT-9 and Etc/GMT+5 sessions.
+Existing fulfillment tests remain unchanged; the two existing new test roots
+contain the added witnesses.
+
+Self-retro: separating ownership acceptance from response representation avoids
+widening a schema to prove a private comparison repair. The first brief's witness
+ambiguity was resolved before any repair or review cycle was consumed.
+
+The first pre-commit lint run refused a test import across the package export
+boundary. The database witness now keeps its response stub local and imports
+only declared package entries; no shared fixture or lint exception is added.
+Self-retro: use a local structural response stub for an isolated served-handler
+witness instead of importing another test root's fixture.
+
+Strict typechecking then identified numeric page values in the new HTTP witness.
+The served calls now use query-string values, while direct port calls retain
+numeric paging. Self-retro: model the actual HTTP request boundary in served
+witnesses and check its types before the final repair commit is frozen.

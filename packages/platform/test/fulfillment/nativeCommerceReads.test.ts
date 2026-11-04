@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 import { adminCommerceFulfillmentOrderDetailResponseSchema as managedDetailSchema, adminCommerceFulfillmentOrdersListResponseSchema as managedListSchema, commerceFulfillmentOrderSchema, createCommerceFulfillmentResponseSchemas, commerceFulfillmentShippingAddressSnapshotSchema, adminCommerceFulfillmentOrdersListRequestSchema, adminCommerceFulfillmentOrderDetailRequestSchema } from '../../src/fulfillment/handlerSchemas.js';
 import { createAdminCommerceFulfillmentOrdersListHandler, createAdminCommerceFulfillmentOrderDetailHandler, buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from '../../src/fulfillment/index.js';
 import { createBffResponder } from '../../src/bff/index.js';
@@ -495,3 +496,39 @@ it.each([
   if (mapped) await expect(result).rejects.toThrow(mapped);
   else await expect(result).rejects.toBe(failure);
 });
+
+const ownerId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+it.each([ownerId, 'ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF'])(
+  'matches the client UUID value and echoes the reader spelling %s', async spelling => {
+    const h = harness();
+    h.f.facts.order_context.client_id = ownerId;
+    h.f.destination.clientId = spelling;
+    expect(await h.port.getCommerceFulfillmentOrderDetail({ orderId: id(2) })).toMatchObject({ order: { shippingAddress: { clientId: spelling } } });
+    expect(await h.port.listCommerceFulfillmentOrders({ page: 1, pageSize: 25 })).toMatchObject({ orders: [{ shippingAddress: { clientId: spelling } }] });
+  },
+);
+it.each([`{${ownerId}}`, ownerId.replaceAll('-', '')])(
+  'accepts the owner value before the response schema refuses %s', async spelling => {
+    const h = harness();
+    h.f.facts.order_context.client_id = ownerId;
+    h.f.destination.clientId = spelling;
+    for (const result of [
+      () => h.port.getCommerceFulfillmentOrderDetail({ orderId: id(2) }),
+      () => h.port.listCommerceFulfillmentOrders({ page: 1, pageSize: 25 }),
+    ]) {
+      const error = await result().catch(error => error);
+      expect(error).toBeInstanceOf(ZodError);
+      expect(error).not.toMatchObject({ message: 'native_fulfillment_destination_owner_mismatch' });
+      expect(error.issues).toContainEqual(expect.objectContaining({ code: 'invalid_format', format: 'guid', path: ['order', 'shippingAddress', 'clientId'] }));
+    }
+  },
+);
+it.each([id(99), `{${id(99)}}`, id(99).replaceAll('-', '')])(
+  'keeps the destination refusal for a different owner value %s', async spelling => {
+    const h = harness();
+    h.f.facts.order_context.client_id = ownerId;
+    h.f.destination.clientId = spelling;
+    await expect(h.port.getCommerceFulfillmentOrderDetail({ orderId: id(2) })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+    await expect(h.port.listCommerceFulfillmentOrders({ page: 1, pageSize: 25 })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+  },
+);
