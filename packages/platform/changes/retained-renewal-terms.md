@@ -4,6 +4,8 @@ before delivery three, while add-ons and customer-selected normal cadences remai
 Shipping is paid below and free at or above the retained threshold after product
 discounts. Frozen retry/terminal history takes precedence over current terms.
 
+Readers of `shippingQuoteRef` can now receive the `retained_shipping` marker because its output union gained a member, and purchase-facts `shippingAmountMinor` widened from `0` to `number`.
+
 Migration: install the selected account-choice forward and its prior SQL approval
 before selecting the new reader/writer. Supply a single-connection transaction
 runner to both the renewal store and settlement port for retained snapshots.
