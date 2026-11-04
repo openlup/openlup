@@ -90,6 +90,46 @@ client with no erased history. No erased-address suppression lookup is added.
 The separate legacy account-link lookup can still diagnose padded-row ambiguity;
 the existing exact-match challenge continuation is proved to remain usable.
 
+## Measured per-case deadline
+
+A predecessor's hosted full-root shard reached 10,726 ms on a PostgreSQL case
+that measured 2,759.601 ms locally, a 3.886794× observed ratio; see the
+[price-read measurement](oss-m19-st-qa.md#execution-evidence). One focused run
+of this suite on Node 24.21.0/npm 11.19.0, one Vitest worker and real PostgreSQL
+passed all 15 unchanged cases in 7.84 seconds. The table records each case;
+scaled hosted values are estimates, not hosted measurements of this suite.
+
+The required explicit 24-call cross-pool race deadline uses the existing third
+argument convention. Its 45.220417-ms local cost × 3.886793779 = 175.762 ms estimated
+hosted cost; approximately 4× headroom, as used by the existing heavy PostgreSQL
+transfer and price-reader witnesses, gives 703.050 ms. The explicit 30,000-ms
+deadline is max(703.050 ms, the existing 30,000-ms coverage floor), preserving
+the coverage budget while using the existing PostgreSQL deadline value instead
+of an arbitrary larger value. No other case exceeds 5,000 ms locally or an
+estimated 5,000 ms, half the ordinary default. Their deadlines stay unchanged.
+The optional duration manifest's 1.5× factor weighs whole-file pins; this
+workflow supplies no manifest, so the explicit per-case argument is sufficient.
+Global deadlines and retry: 0 are unchanged. This timeout-only edit changes no
+assertion, fixture or production behavior; the measurement is not rerun.
+
+| Case | Local ms | Scaled hosted estimate ms | Explicit deadline ms |
+| --- | ---: | ---: | ---: |
+| Creation / provenance | 13.364 | 51.943 | — |
+| 24-call cross-pool race | 45.220 | 175.762 | 30,000 |
+| Case / whitespace / aliases | 8.006 | 31.118 | — |
+| Linked-row byte and version equality | 11.987 | 46.589 | — |
+| Unlinked profile / journey refresh | 10.124 | 39.350 | — |
+| Previously blank defaults | 3.653 | 14.200 | — |
+| Absent-journey opaque metadata | 4.484 | 17.429 | — |
+| Concurrent challenge redemption | 19.686 | 76.514 | — |
+| Invalid input before connection | 0.286 | 1.113 | — |
+| Canonical peer absent | 19.514 | 75.846 | — |
+| Canonical peer present | 16.379 | 63.662 | — |
+| Deferred commit rollback | 5.790 | 22.504 | — |
+| Native draft / owned-account continuation | 9.887 | 38.428 | — |
+| Erased shell / freed address | 26.452 | 102.812 | — |
+| Concurrent erasure | 26.058 | 101.281 | — |
+
 ## Self-retro
 
 Source and retained identity data resolved two initially inconsistent

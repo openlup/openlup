@@ -472,6 +472,7 @@ export interface OperatorAuthorityCapabilities {
     email: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     phone: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     link: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    /** Native supports new addresses only; saved-address selection remains unavailable. */
     address: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     shortBand: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     unpaidResume: AccountSupportCapability<"operator_subscription_authority_unavailable">;

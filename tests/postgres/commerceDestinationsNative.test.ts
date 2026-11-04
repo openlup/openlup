@@ -8,9 +8,9 @@ import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/
 import { fixture as shipmentFixture, openCase, replacement, executor } from "../helpers/fulfillmentNative.js";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresDeliveryAlignmentPort } from "@openlup/platform/fulfillment";
-import { createPostgresOperatorAuthority, createOperatorRecovery } from "@openlup/platform/account-support";
+import { createPostgresOperatorAuthority, createOperatorRecovery, operatorAuthorityCapabilities } from "@openlup/platform/account-support";
 import { createM12OperatorSubscriptionActionRoute } from "../../server/runtime/public-reference/m12AccountSupportBinding.js";
-import { AT, later, call, alignmentInvariant } from "./subscriptionNativeFixture.js";
+import { AT, later, call, alignmentInvariant, renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, owner: Pool, runtime: Pool;
@@ -409,4 +409,302 @@ it("reports the stored microsecond next-cycle VALUE through the real restricted 
   } finally { await db.query("RESET TIME ZONE"); db.release(); }
  }
  console.info("destination-time-value", JSON.stringify(observations));
+});
+
+
+it("keeps a retained foreign client's newest parcel and contact revision untouched", async () => {
+ const a = await fixture(), b = await fixture();
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_catalog.pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ const bDocument = await port().read("shipment", b.shipment);
+ const revision = { schemaVersion: 1, source: `commerce-destination:${bDocument.destinationId}`, revision: 1 };
+ await owner.query("INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref) VALUES($1,$2,'warehouse-a')", [b.shipment, revision]);
+ await owner.query(`UPDATE public.commerce_orders SET
+  subscription_cycle_id=(SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1),
+  created_at=(SELECT created_at FROM public.commerce_orders WHERE id=$1)+interval '1 hour'
+  WHERE id=$2`, [a.order,b.order]);
+ const snapshot = async () => (await owner.query(`SELECT to_jsonb(o) order_row,to_jsonb(sh) parcel,
+  to_jsonb(binding) binding,to_jsonb(destination) destination,to_jsonb(context) context
+  FROM public.commerce_orders o JOIN public.fulfillment_shipments sh ON sh.order_id=o.id
+  JOIN public.commerce_destination_bindings binding ON binding.shipment_id=sh.id
+  JOIN public.commerce_destinations destination ON destination.id=binding.destination_id
+  JOIN public.fulfillment_dispatch_contexts context ON context.shipment_id=sh.id WHERE o.id=$1`, [b.order])).rows;
+ const before = await snapshot();
+ expect(before).toHaveLength(1);
+ expect(before[0].order_row.client_id).toBe(b.client);
+ const result = await change(a, `owner-scope-${randomUUID()}`);
+ expect(result).toMatchObject({ outcome: "applied", currentParcel: { outcome: "updated", orderId: a.order, shipmentId: a.shipment } });
+ expect(await snapshot()).toEqual(before);
+ expect(await port().read("shipment", b.shipment)).toEqual(bDocument);
+ expect((await port().read("order", b.order)).destinationId).toBe(bDocument.destinationId);
+ expect((await port().read("shipment", a.shipment)).destinationId).toBe(result.futureDestinationId);
+});
+
+// The exact characterized lookup and its private provenance are in the maintainer packet.
+it("pins and executes the characterized current-parcel ownership lookup", async () => {
+ const lookup = String.raw`          SELECT parcel_row.* INTO v_parcel
+            FROM public.commerce_fulfillment_orders AS parcel_row
+            JOIN public.commerce_orders AS order_row ON order_row.id = parcel_row.order_id
+           WHERE order_row.subscription_id = p_subscription_id
+             AND order_row.mode = 'subscription_cycle'
+             AND order_row.client_id = v_subject.id
+           ORDER BY order_row.created_at DESC, parcel_row.sequence_no DESC, parcel_row.id DESC
+           LIMIT 1
+           FOR UPDATE OF parcel_row;`;
+ expect(createHash("sha256").update(lookup).digest("hex")).toBe("04ddd8f33afc339df4362eff570ff70f8ca3be6d6c9f599b7114e697ba10bfa4");
+ const db = await owner.connect();
+ try {
+  await db.query("BEGIN");
+  await db.query("CREATE TEMP TABLE commerce_orders(id uuid,subscription_id uuid,client_id uuid,mode text,created_at timestamptz) ON COMMIT DROP");
+  await db.query("CREATE TEMP TABLE commerce_fulfillment_orders(id uuid,order_id uuid,sequence_no integer) ON COMMIT DROP");
+  await db.query(`CREATE FUNCTION pg_temp.g3_characterized_lookup(p_subscription_id uuid,p_client_id uuid) RETURNS uuid LANGUAGE plpgsql AS $$
+   DECLARE v_parcel record; v_subject record;
+   BEGIN SELECT p_client_id AS id INTO v_subject;
+   ${lookup.replaceAll("public.", "pg_temp.")}
+   RETURN v_parcel.id; END; $$`);
+  const sub = randomUUID(), a = randomUUID(), b = randomUUID(), first = randomUUID(), latest = randomUUID(), foreign = randomUUID();
+  await db.query(`INSERT INTO pg_temp.commerce_orders VALUES($1,$4,$5,'subscription_cycle',$7),($2,$4,$5,'subscription_cycle',$7),($3,$4,$6,'subscription_cycle',$7::timestamptz+interval '1 hour')`, [first,latest,foreign,sub,a,b,AT]);
+  await db.query("INSERT INTO pg_temp.commerce_fulfillment_orders VALUES($1,$1,1),($2,$2,2),($3,$3,3)", [first,latest,foreign]);
+  expect((await db.query("SELECT pg_temp.g3_characterized_lookup($1,$2) id", [sub,a])).rows).toEqual([{ id: latest }]);
+  expect((await db.query("SELECT pg_temp.g3_characterized_lookup($1,$2) id", [sub,b])).rows).toEqual([{ id: foreign }]);
+ } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+
+it.each(["customer", "operator"] as const)("retains the optional reason in the %s event without inventing one", async (kind) => {
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_catalog.pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ for (const reason of ["  Synthetic correction reason  ", "", undefined]) {
+  const f = await fixture(), key = `reason-${randomUUID()}`;
+  const payload = { newAddress: address("Reason recipient"), ...(reason === undefined ? {} : { reason }) };
+  const invoke = () => kind === "operator" ? call(runtime, "customer_support_change_shipping_destination", [f.operator, f.subscription, payload, 1, key, AT])
+   : port().changeShippingAddress({ actorId: f.principal, clientId: f.client, idempotencyKey: key, subscriptionId: f.subscription,
+    newAddress: payload.newAddress, expectedVersion: 1, ...(reason === undefined ? {} : { reason }), now: AT });
+  const result = await invoke();
+  expect(result.outcome).toBe(kind === "operator" ? "applied" : "applied_from_next_parcel");
+  const readEvent = async () => (await runtime.query("SELECT payload FROM public.subscription_events WHERE subscription_id=$1", [f.subscription])).rows;
+  const events = await readEvent();
+  expect(events).toHaveLength(1);
+  // The characterized top-level NULLIF yields JSON null for missing/empty reason;
+  // the nested original payload preserves a supplied empty string and omits an absent key.
+  expect(events[0].payload.reason).toBe(reason === undefined || reason === "" ? null : reason);
+  expect(events[0].payload.payload).toEqual({ shippingAddressId: result.futureDestinationId, ...(reason === undefined ? {} : { reason }) });
+  await invoke();
+  expect(await readEvent()).toEqual(events);
+  if (kind === "operator") await expect(call(runtime, "customer_support_change_shipping_destination", [f.operator, f.subscription,
+   { ...payload, reason: "Changed reason" }, 1, key, AT])).rejects.toMatchObject({ code: "23505" });
+  expect(await readEvent()).toEqual(events);
+ }
+});
+
+// Exact event expression; its source identity and private citation are in the maintainer packet.
+it("pins the characterized optional-reason event expression", async () => {
+ const expression = String.raw`    jsonb_build_object(
+      'action', p_action,
+      'payload', CASE
+        WHEN p_action IN ('update_bundle', 'resize_bundle') THEN
+          ((((((v_payload - 'repricedLines') - 'coreLines') - 'recipeLines') - 'addonLines') - 'expectedTemplateVersion') - 'acceptedQuoteHash')
+        ELSE
+          (((((v_payload - 'repricedLines') - 'recipeLines') - 'addonLines') - 'expectedTemplateVersion') - 'acceptedQuoteHash')
+      END,
+      'quotePreviewId', v_quote_preview_id,
+      'reason', v_reason,
+      'priceAgreementPolicy', jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')
+    )`;
+ expect(createHash("sha256").update(expression).digest("hex")).toBe("62c0583f570f61cab766281131fa9d19e7ee097f80f6cd03b311c44e32f18bad");
+ const db = await owner.connect();
+ try {
+  await db.query("BEGIN");
+  await db.query(`CREATE FUNCTION pg_temp.g3_characterized_event(v_payload jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+   DECLARE p_action text := 'change_shipping_address'; v_reason text := NULLIF(v_payload->>'reason',''); v_quote_preview_id uuid;
+   BEGIN RETURN ${expression}; END; $$`);
+  for (const reason of ["  Synthetic correction reason  ", "", undefined]) {
+   const input = { shippingAddressId: randomUUID(), ...(reason === undefined ? {} : { reason }) };
+   const event = (await db.query("SELECT pg_temp.g3_characterized_event($1) result", [input])).rows[0].result;
+   expect(event.reason).toBe(reason === undefined || reason === "" ? null : reason);
+   expect(event.payload).toEqual(input);
+  }
+ } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("matches native address and unsupported subcases through the restricted writer", async () => {
+ const cap = operatorAuthorityCapabilities("native");
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ const observed: Record<string, unknown> = {}, expected: Record<string, unknown> = {};
+ for (const name of ["address", "email", "phone", "link", "shortBand", "unpaidResume-expired", "unpaidResume-residual",
+  "preparedAttemptPause"] as const) {
+  const f = await fixture();
+  let subscriptionId: string = f.subscription, clientId: string = f.client;
+  if (name === "preparedAttemptPause") {
+   const r = await renewal(owner), principal = randomUUID();
+   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+   await owner.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [r.client, principal]);
+   await prepareOriginal(owner, r);
+   subscriptionId = r.subscription; clientId = r.client;
+  }
+  await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [subscriptionId, later(240)]);
+  await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy') ON CONFLICT(subscription_id) DO NOTHING", [subscriptionId]);
+  if (name.startsWith("unpaidResume")) await owner.query("UPDATE public.subscriptions SET status='paused' WHERE id=$1", [subscriptionId]);
+  if (name.startsWith("unpaidResume")) {
+   const cycle = randomUUID(), expired = name.endsWith("expired");
+   await owner.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3,$4)", [cycle, subscriptionId, AT, expired ? "paid" : "payment_pending"]);
+   if (expired) await owner.query("INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,status,opened_at,expired_at,idempotency_key) VALUES($1::uuid,$2,$3,$4,'expired',$5,$5,$1::uuid::text)", [randomUUID(), subscriptionId, cycle, clientId, AT]);
+  }
+  const authority = createPostgresOperatorAuthority({ run: work => work(runtime) },
+   { operatorId: f.operator, now: () => Date.parse(AT), recoveryPath: () => "/repair" });
+  const key = `capability-${randomUUID()}`, field = name.startsWith("unpaidResume") ? "unpaidResume" : name;
+  expected[name] = cap[field as Exclude<keyof typeof cap, "graph">];
+  try {
+   const result = name === "email" ? await authority.correctSubjectEmail({ operatorId: f.operator, subjectId: clientId, expectedEmail: "old@example.invalid", newEmail: "new@example.invalid", idempotencyKey: key })
+    : name === "phone" ? await authority.correctSubjectPhone({ operatorId: f.operator, subjectId: clientId, expectedPhone: "old", newPhone: "new", idempotencyKey: key })
+    : name === "link" ? await authority.linkSubjectAccount({ operatorId: f.operator, subjectId: clientId, expectedEmail: "old@example.invalid", authUserId: null, idempotencyKey: key })
+    : await authority.applySubscriptionAction({ operatorId: f.operator, subscriptionId: subscriptionId,
+      subscriptionAction: name === "address" ? "change_shipping_address" : name === "shortBand" ? "slide_next_cycle" : name.startsWith("unpaidResume") ? "resume" : "pause",
+      payload: name === "address" ? { newAddress: address("Advertised synthetic recipient") } : name === "shortBand" ? { slideMinDays: 1, newNextCycleAt: later(48) } : {},
+      expectedVersion: 1, idempotencyKey: key });
+   observed[name] = result.outcome === "refused" && result.refusalCode === "operator_subscription_authority_unavailable"
+    ? { supported: false, refusalCode: result.refusalCode }
+    : ["applied", "noop", "replayed", "applied_from_next_parcel"].includes(result.outcome) ? { supported: true } : result;
+   if (name === "address") expect(await port().read("subscription", subscriptionId))
+    .toMatchObject({ address: { ...address("Advertised synthetic recipient"), country: "ZZ" } });
+  } catch (error) { observed[name] = { error: error instanceof Error ? error.message : String(error) }; }
+ }
+ expect(observed, JSON.stringify({ observed, expected })).toEqual(expected);
+});
+
+// Pre-existing qualified-runtime limit; closed by F-QUALIFIED-LIFECYCLE-LOCK.
+it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-runtime %s lock limit for F-QUALIFIED-LIFECYCLE-LOCK", async name => {
+ const f = await fixture();
+ await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(240)]);
+ await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+ let version = 1;
+ if (name === "resume") {
+  const paused = await call(owner, "customer_support_apply_subscription_action_v1",
+   [f.operator, f.subscription, "pause", {}, 1, `fixture-pause-${randomUUID()}`, AT]);
+  expect(paused).toMatchObject({ outcome: "applied" });
+  version = paused.templateVersion;
+ }
+ let sqlFailure: unknown;
+ const authority = createPostgresOperatorAuthority({ run: work => work({ query: async (sql, values) => {
+  try { return await runtime.query(sql, values); }
+  catch (error) { sqlFailure = error; throw error; }
+ } }) },
+  { operatorId: f.operator, now: () => Date.parse(AT), recoveryPath: () => "/repair" });
+ const before = await counts(f), key = `known-limit-${randomUUID()}`;
+ await expect(authority.applySubscriptionAction({ operatorId: f.operator, subscriptionId: f.subscription,
+  subscriptionAction: name === "slide" ? "slide_next_cycle" : name,
+  payload: name === "slide" ? { newNextCycleAt: later(72) } : {}, expectedVersion: version,
+  idempotencyKey: key })).rejects.toThrow("managed_customer_support_operator_inactive");
+ expect(sqlFailure).toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
+ expect(await counts(f)).toEqual(before);
+ expect((await owner.query("SELECT count(*)::int n FROM public.customer_support_subscription_commands WHERE target_id=$1 AND idempotency_key=$2", [f.subscription, key])).rows).toEqual([{ n: 0 }]);
+});
+
+// Focused solo measured 161ms; real PostgreSQL cases keep the explicit 30s floor.
+it("witnesses every next-cycle lock branch through the public address port", async () => {
+ expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+ for (const branch of [
+  { cycle: "paid", order: "pending_payment", blocked: true },
+  { cycle: "planned", order: "paid", blocked: true },
+  { cycle: "planned", order: "fulfillment_pending", blocked: true },
+  { cycle: "planned", order: "fulfilled", blocked: true },
+  { cycle: "planned", order: "pending_payment", blocked: false },
+ ]) {
+  const f = await fixture(), label = `${branch.cycle}/${branch.order}`;
+  await owner.query("UPDATE public.subscription_cycles SET scheduled_at=(SELECT next_cycle_at FROM public.subscriptions WHERE id=$2),status=$3 WHERE id=$1", [f.cycle, f.subscription, branch.cycle]);
+  await owner.query("UPDATE public.commerce_orders SET status=$2 WHERE id=$1", [f.order, branch.order]);
+  const parcel = await port().read("shipment", f.shipment), before = await counts(f);
+  const bindings = async () => (await owner.query("SELECT to_jsonb(b) value FROM public.commerce_destination_bindings b WHERE order_id=$1 OR shipment_id=$2 OR subscription_id=$3 ORDER BY id", [f.order, f.shipment, f.subscription])).rows;
+  const beforeBindings = await bindings();
+  const result = await port().changeShippingAddress({ actorId: f.principal, clientId: f.client,
+   idempotencyKey: `cycle-lock-${randomUUID()}`, subscriptionId: f.subscription,
+   newAddress: address("Future after unlocked cycle"), expectedVersion: 1, now: AT });
+  if (branch.blocked) {
+   expect.soft(result, label).toMatchObject({ outcome: "refused", refusalCode: "payment_blocked" });
+   expect.soft(await counts(f), label).toEqual(before);
+   expect.soft(await bindings(), label).toEqual(beforeBindings);
+  } else {
+   expect.soft(result, label).toMatchObject({ outcome: "applied_from_next_parcel", appliesFrom: "next_parcel" });
+   expect.soft(await port().read("subscription", f.subscription), label).toMatchObject({ address: { ...address("Future after unlocked cycle"), country: "ZZ" } });
+  }
+  expect.soft(await port().read("shipment", f.shipment), label).toEqual(parcel);
+  expect.soft(await port().read("order", f.order), label).toEqual(f.original);
+ }
+}, 30_000);
+
+async function absorptionFixture(withDestination: boolean) {
+ // Full-chain prerequisite: these three existing approved classifications land in G11-c.
+ // G3 contributes only its own destination classification, through its real forward.
+ const prerequisites = [
+  ["subscription_stock_wait_cases", "A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead."],
+  ["identity_privacy_erasures", "A privacy erasure is a legal process on one named record; absorption never moves or bypasses it."],
+  ["subscription_command_receipts", "Subscription command receipts belong to the subscriptions they answer, which already block absorption; never carry or rebind them."],
+ ];
+ for (const [table, note] of prerequisites) {
+  await owner.query("INSERT INTO public.client_absorption_policy(table_name,disposition,note) VALUES($1,'block',$2) ON CONFLICT(table_name) DO NOTHING", [table, note]);
+  expect((await owner.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [table])).rows).toEqual([{ disposition: "block" }]);
+ }
+ const f = await fixture(), lead = randomUUID(), email = `${lead}@example.invalid`;
+ await owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [lead, email]);
+ if (withDestination) await owner.query("INSERT INTO public.commerce_destinations(client_id,address) VALUES($1,$2)", [lead, address("Retained lead recipient")]);
+ return { ...f, lead, email, key: `absorption-${randomUUID()}` };
+}
+async function absorptionSnapshot() {
+ const db = await owner.connect();
+ try {
+  await db.query("BEGIN READ ONLY; SET LOCAL TIME ZONE 'UTC'");
+  const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+  const result: Record<string, unknown[]> = {};
+  for (const { tablename } of tables) {
+   const name = String(tablename).replaceAll('"', '""');
+   result[name] = (await db.query(`SELECT to_jsonb(t) row,xmin::text xmin FROM public."${name}" t ORDER BY to_jsonb(t)::text`)).rows;
+  }
+  return result;
+ } finally { await db.query("ROLLBACK"); db.release(); }
+}
+const absorb = (f: Awaited<ReturnType<typeof absorptionFixture>>, db: Pool) => call(db,
+ "customer_support_absorb_lead_v1", [f.operator, f.client, f.lead, f.email, f.key, AT]);
+
+it("absorbs a destination-free lead on the complete owner chain and replays once", async () => {
+ const f = await absorptionFixture(false);
+ expect((await owner.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name='commerce_destinations'")).rows)
+  .toEqual([{ disposition: "block" }]);
+ const applied = await absorb(f, owner);
+ expect(applied, JSON.stringify(applied)).toMatchObject({ outcome: "applied", leadId: f.lead, customerId: f.client });
+ expect((await owner.query("SELECT email,metadata #>> '{absorption,absorbedIntoClientId}' customer FROM public.clients WHERE id=$1", [f.lead])).rows)
+  .toEqual([{ email: `absorbed+${f.lead.replaceAll("-", "")}@absorbed.invalid`, customer: f.client }]);
+ const before = await absorptionSnapshot();
+ expect(await absorb(f, owner)).toEqual({ ...applied, outcome: "replayed" });
+ expect(await absorptionSnapshot()).toEqual(before);
+});
+
+it("refuses a lead destination by name without carrying or rebinding any row", async () => {
+ const f = await absorptionFixture(true), before = await absorptionSnapshot();
+ const refused = await absorb(f, owner);
+ expect(refused, JSON.stringify(refused)).toEqual({ outcome: "refused", action: "absorb_lead", leadId: f.lead,
+  refusalCode: "lead_has_commercial_footprint", blockingTables: ["commerce_destinations"] });
+ const after = await absorptionSnapshot();
+ for (const table of ["customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
+  expect(after[table].length - before[table].length, table).toBe(1);
+  delete after[table]; delete before[table];
+ }
+ expect(after).toEqual(before);
+ const replayBefore = await absorptionSnapshot();
+ expect(await absorb(f, owner)).toEqual(refused);
+ expect(await absorptionSnapshot()).toEqual(replayBefore);
+});
+
+// Pre-existing restricted absorption read limit; closer qlock-3. This is not availability proof.
+it.each([false, true])("pins restricted absorption 42501 at the destinations count (destination=%s), closer qlock-3", async withDestination => {
+ const f = await absorptionFixture(withDestination), before = await absorptionSnapshot();
+ expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+  .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
+ try { await absorb(f, runtime); throw new Error("expected_restricted_absorption_read_limit"); }
+ catch (error) {
+  expect(error).toMatchObject({ code: "42501", message: "permission denied for table commerce_destinations" });
+  expect((error as { where?: string }).where).toContain('SELECT count(*) FROM public.commerce_destinations');
+ }
+ expect(await absorptionSnapshot()).toEqual(before);
 });

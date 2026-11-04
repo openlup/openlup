@@ -154,6 +154,8 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Only `packages/platform/src/catalog/commerceQuoteCatalogRead.ts` permits a pinned, unread payload handoff to `verifyDocument`, with refusal witnesses for extra reads, inspection, interpretation and logging.
+
 Native review tooling records exact candidate, policy and Git coverage edges.
 Its versioned session commands distinguish complete first review, checked
 integration, ordinary repair and explicit renewal. Verification/admission
@@ -2342,6 +2344,14 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+The root `ROADMAP.md` provider matrix has a scoped exception in the existing
+opt-in adapter vocabulary allowances: at most two matches each for categories
+`ui-12`, `ui-13`, `ui-14` and `ui-15` at that exact path. A third match, those
+terms at other paths outside their existing adapter allowances, and every other
+counted term or category remain checked. The baseline and scanner pins stay
+unchanged. The neutrality CLI witnesses cover the current matrix and these
+refusals.
 
 The named **bounded debt C94 — M10 reviewed packet vocabulary** is the coordinator-approved
 bounded recalibration for immutable managed SQL and its pinned registry COMMENT,

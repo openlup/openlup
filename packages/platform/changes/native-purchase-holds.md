@@ -8,3 +8,7 @@ and movement history remain outside this slice. Hosts bind the checkout seam
 and schedule expiry; dedicated promotion cancellation remains unbound. References
 may identify people; hosts should use opaque values. No erasure path is provided.
 Managed behavior is unchanged. No npm release or automatic host wiring is included.
+
+Fresh stock writes retain shared admission, READ COMMITTED isolation and a
+transaction-local 50 ms lock bound. Busy admission remains a named persistence
+refusal; committed replay needs no fresh admission. No automatic retry is added.

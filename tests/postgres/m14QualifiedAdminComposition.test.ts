@@ -5,8 +5,8 @@ import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresCont
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
 const modes = [
-  { roleMode: "installer-managed", currentInventory: "6930bc93c7975858d1357cb0801b840eb4590571330c796cf1020a8b0a356a60", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
-  { roleMode: "operator-provisioned", currentInventory: "0f51f4ee95a8d756e62352443d79f1fde45c41dafc62279a5c12bf05eaeb67e7", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
+  { roleMode: "installer-managed", currentInventory: "f15a163085768f911a5b5858e0f41d46fa0fef440692c8c6123968328b3a7dab", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
+  { roleMode: "operator-provisioned", currentInventory: "a87debe7ef05177317d3841040b7b056edc8ec70d7b5278af2fd0e5c0ba98440", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
 ] as const;
 
 beforeAll(async () => {
@@ -27,6 +27,7 @@ for (const mode of modes) {
       refusalsProved: true,
     });
     console.info(`restricted-bootstrap ${mode.roleMode} ${JSON.stringify(result)}`);
-  // Solo without coverage: 14.76 s; 45 s gives about three times the measured case.
-  }, 45_000);
+  // Hosted maximum 46.174 s: fourfold 184.696 s rounds to the existing 240 s qualified bound.
+  // Five-row tail estimates leave at least 185.091 s across both role modes.
+  }, 240_000);
 }
