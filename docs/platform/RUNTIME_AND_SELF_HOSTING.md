@@ -895,8 +895,10 @@ Local draft resume/discard behavior is unchanged. M04 receives subscription life
 descriptors with `messageKey === idempotencyKey`; R4's issue-recovery notice is
 already queued by its owner. M12 adds no renewal, reminder or delivery worker.
 
-The opt-in [M10 native subscription binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
-returns schema, readiness, one job descriptor and its guarded executor; it mounts
+The opt-in `createNativeSubscriptionBinding` from `@openlup/platform/subscriptions`
+returns services, schema and realization admission. The [reference facade](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
+joins it to public `createSubscriptionContribution`, preserving readiness,
+one job descriptor and its guarded executor; it mounts
 nothing. Supply a complete catalogue identity and Core readiness observation,
 the existing population's durable job lease, native transaction lane, codec and
 explicit M07 payment/correlation policy. Renewals, stock recovery and dunning
@@ -960,11 +962,13 @@ all precede worker invocation. Source edits
 and context updates commit together; an error rolls both back. Credentials remain
 host closures. Construction adds no route, schedule or automatic dispatch, and
 the public reference server does not select this binding by default. Renewal
-admission uses the [host store decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-around the automatic runner's existing hook. A host that composes the native
+admission uses public `withNativeDeliveryAlignmentRenewalAdmission` around the
+native automatic runner's existing hook; the [legacy decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+retains its existing hosted port. A host that composes the native
 automatic-renewal runner must wrap its store port with this decorator; until it
-does, native delivery-alignment mode stays off or shadow. This boundary stops at
-the decorator and supplies no runner composer, factory or production entrypoint.
+does, native delivery-alignment mode stays off or shadow. The public native
+composition factory includes this decorator; hosts using the primitives compose
+it explicitly.
 Construction installs no route or schedule. It preserves the
 static terms gate, skips admission for off with no non-terminal captured case,
 and processes captured cases through native admission even after rollback to off.

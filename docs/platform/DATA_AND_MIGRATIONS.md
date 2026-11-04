@@ -5,6 +5,11 @@ it does not certify a migration path or an upgrade service.
 
 ## Data ownership
 
+Native terminal replay replaces only `subscription_claim_due_renewal` while
+retaining its header, ACL, frozen-input comparison and subscription-first lock
+order. Terminal history precedes due eligibility; cancelled new work refuses.
+The subscription owner below defines the public behavior and proof.
+
 The native `20261101223000_subscription_purchase_renewal.sql` forward records
 purchase facts and renewal-attachment duties beside the existing activation
 spine. Activation commits service plus the duty; renewal header/lines/method
@@ -1710,6 +1715,15 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The native terminal-renewal replay forward preserves the claim routine's
+signature, defaults, invoker rights, search path, ownership and ACL. It moves a
+matching stored succeeded/refused answer before current due eligibility, under
+the same subscription-then-operation locks and full frozen-input comparison.
+Changed replay input remains 23505. Cancellation permits historical terminal
+readback but never new or nonterminal claims. Apply this ordered forward before
+selecting that public replay behavior; the managed chain and separate adopter
+native copies require their own adoption rather than changing implicitly.
+
 The source preview's sandbox-attempt suffix adds nullable review metadata without
 rewriting existing truth rows or changing the open/settled checks. Existing
 non-sandbox truth does not read or require simulator storage. New sandbox truth
@@ -1788,8 +1802,12 @@ runtime/browser roles separately from function ACLs; it introduces neither RLS
 nor table grants. The existing reservation-table ACL stays unchanged. Local lots, locations,
 balance counters and movement history are outside this slice.
 
-The native abandoned-checkout wrapper locks the order then its intents, matching
-the preceding payment slot. It delegates aggregate cleanup to the existing
+The native abandoned-checkout wrapper locks the subscription root, order, intents,
+simulator attempts and their evidence, in that order. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without writing a receipt or
+changing the order, intent or holds. Terminal refused/expired attempts permit
+cancellation; captured or indeterminate attempts retain the money refusal.
+It delegates aggregate cleanup to the existing
 compensation routine and purchase transitions to the existing release routine in
 one transaction. Strict command receipts reject changed keyed input; paid,
 captured or indeterminate evidence prevents cancellation. It rejects renewal

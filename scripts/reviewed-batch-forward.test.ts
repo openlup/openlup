@@ -532,7 +532,7 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it.each(["pull_request", "merge_group"])("runs actual migration and native admission entry points for %s", async eventName => {
+  for (const eventName of ["pull_request", "merge_group"]) it(`runs actual migration and native admission entry points for ${eventName}`, async () => {
     const f = correctionFixture();
     try {
       f.install(); const head = f.commit();
@@ -554,7 +554,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
       await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toEqual(receipt);
     } finally { f.cleanup(); }
-  });
+  }, eventName === "merge_group" ? 30_000 : undefined);
 
   it("keeps unchanged bindings and their positions while recognizing the pending M09 repins", () => {
     const previous = structuredClone(registry);

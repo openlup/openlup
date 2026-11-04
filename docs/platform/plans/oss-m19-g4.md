@@ -1,21 +1,22 @@
 # Native purchase holds
 
-Status: BLOCKED on co-located SQL/pin admission. Functional proofs, policy,
-size and DCO are complete; the main reader rejects the approved cold-consumer
-registry addition as release machinery. No checker or SQL repair is authorized.
-Native review, verification and submission have not started. See the final stop.
+Current status: G4 and G3 form one native bundle in this worktree. The SQL,
+feature pins, admission gate and compensation guard have their accepted reads;
+the draft cycle-2 repair checks delivered writers against capability and
+documentation claims. Runtime agreement has an owner-gated gap; no commit,
+new review or delivery is authorized until it is resolved. Earlier
+local-stage entries below retain their historical evidence, not current grants.
 
 ## Outcome, authority and scope
 
-The supervisor authorized G4 only: purchase hold, release and expiry on the
+The original separate-row scope authorized G4: purchase hold, release and expiry on the
 existing native reservation table, through a public factory and restricted
 runtime. Local implementation, focused checks and a clean DCO-signed history are permitted.
 The narrowed donor slice and existing-table ownership alteration cannot land
 until a separate prior control admits them; the stabilized owner read is accepted.
 The coordinator accepted the ownership shape in principle for this slot and
-accepted the donor slice; neither remains an unanswered design decision. No
-review/admission machinery or approval pin changes. G3 remains a later task in
-its own worktree; no destination, activation or codec implementation is included.
+accepted the donor slice; neither remains an unanswered design decision. No review/admission control logic changes. The later bundle grant includes G3
+and its feature pins; activation and codec implementations remain outside G4.
 
 Branch: `codex/oss-m19-g4`. Code review base and freshly fetched policy pin are
 separate identities, both initially
@@ -69,14 +70,18 @@ VALID then validated, with no data backfill or old CHECK replacement. The existi
 expiry CHECK remains intact. One new command-receipt table binds reserve/release/cancel.
 Purchase-order and elapsed-lease indexes support the two bounded access paths.
 
-Four new routines implement reserve batch, per-reservation release, expiry and
-aggregate abandoned-order compensation.
+Five new routines implement owner-only admission, reserve batch, per-reservation
+release, expiry and aggregate abandoned-order compensation.
 Reserve, release and compensation are definers with `search_path = pg_catalog, pg_temp` to avoid
 new runtime receipt-table writes; compensation also avoids a ledger UPDATE
 grant. Reserve locks actual order items.
-Expiry is invoker-rights because existing runtime permissions already suffice.
-All new routines revoke PUBLIC before the exact conditional anon/authenticated
-revokes and service_role execute grant. The new receipt table also has a bare PUBLIC revoke and separate conditional
+Expiry is definer-rights so the bounded entry can call owner-only admission.
+Its migration-role ownership and EXECUTE access match the pre-admission version;
+its purchase predicate, finite-time check and 1..1000 bound retain their meaning.
+Every expiry reference is schema-qualified and its search path remains pinned.
+All new routines revoke PUBLIC before the exact conditional role revokes.
+The four entry points retain their service_role execute grant. The admission
+helper has no runtime grant and explicitly revokes service_role execution. The new receipt table also has a bare PUBLIC revoke and separate conditional
 table revokes for anon, authenticated and service_role. Table and function
 blocks remain separate. No RLS, table grant, role or default privilege
 statement is introduced; the existing reservation table has no privilege statement. Existing native table ACLs retain their trusted-runtime
@@ -897,3 +902,270 @@ checkout draft receipt; the witness count is recomputed to 99. Five real-engine
 inventory digests and selected chain counts are unchanged. Source SQL and its
 packaged copies are unchanged. The bundle makes the destination routines
 available after the preceding entry-only change.
+
+## Donor mapping
+
+Each rule is ported from the reference adopter's behaviour; the rule-by-rule mapping and witnesses are in the maintainer packet.
+
+The current mapping remains incomplete; this statement describes the required
+porting boundary, not a completed parity certification. The inventory
+admission-gate ruling is pending. No gate rework or native review has started.
+Listing exposure is deferred to a registered follow-up and is outside this
+bundle: native available-to-promise does not subtract retained listing exposure.
+
+Accepted differences and limits:
+
+- Lots, locations and stock movements are outside the native slice.
+- Changed input under the same key and an elapsed initial expiry refuse.
+- Native key, source, finite-time, metadata and order-item validation is bounded.
+- Purchase and renewal holds share the existing table with exclusive ownership;
+  the ownership constraint and foreign key are validated.
+- Durable receipts and narrowed privileges preserve native replay and access.
+- Abandonment compensation releases purchase holds atomically, protects paid or
+  uncertain orders and renewal orders, and uses its own receipt namespace.
+  Dedicated promotion cancellation remains unbound.
+
+The completed 158 focused files and 4568 passing cases remain retained evidence;
+current-source parity and the remaining proofs are not certified. No SQL,
+signature, runtime behavior, test expectation or control changes in this repair.
+
+Self-retro: keep donor citations and unfinished adoption tracing in the private
+maintainer packet; public task records retain only neutral outcomes and limits.
+
+## Admission gate draft for maintainer read
+
+The coordinator admitted the shared inventory-admission helper. The five-function
+slot amendment belongs to the prior control change; this feature updates only
+its whole-file/function pins. The helper is owner-only, with public and named
+runtime/browser execution revoked, and no grants. Reserve, release and expiry
+enter after input validation and before locking or writing. Unsupported isolation
+refuses with 22023; occupied admission refuses with 55P03; lock waits are capped
+at the lower of the existing timeout and 50 ms (zero becomes 50 ms), transaction
+locally. Protected native calls retain the characterized persistence-error
+mapping and never retry or fall back.
+
+Expiry must become SECURITY DEFINER with the same pinned search path so the
+restricted runtime can reach the owner-only helper. Keeping it invoker-rights
+would fail with permission denied for the helper. Its purchase-only predicate,
+finite clock, bounded batch and existing terminal transition remain unchanged;
+no table grant or helper runtime grant is added. This security delta is included
+in the pending read. Renewal stock writes must enter the same helper in the
+following renewal change; that dependency is not implemented here.
+
+Listing exposure remains deferred outside this bundle: native stock accounting
+does not subtract retained listing exposure. The complete source mapping,
+characterization pin and caller citations remain in the maintainer packet.
+No native review, canonical verification or delivery is authorized in this run.
+
+### Existing-suite stop on the admission draft
+
+The four added restricted-runtime admission cases pass: source-pinned body and
+owner-only ACL; all three entries refuse occupied admission without durable
+writes; both unsupported isolation levels refuse through all three entries; and
+0/25/75 ms caller settings cap correctly with a real blocked order lock and
+transaction-local restoration. In-suite durations were 2/57/27/70 ms rounded.
+These are not solo-timeout or non-UTC sweep results.
+
+The full 32-case run reports 28 passes and four failures. Three existing cases
+conflict with the new draft: the upgrade case pins expiry as invoker-rights;
+the hold/release/expiry race expects every concurrent call to succeed; and the
+cancel/reserve race accepts only its older order-invalid refusal, not the admitted
+busy persistence refusal. Those existing expectations and implementation were
+not repaired after the finding. A fourth failure was an accidental test-only
+edit in the nullable-owner case; every pre-existing test body has been restored
+byte-for-byte from HEAD, and the suite has not been rerun. This is not a green
+existing-suite claim. Further transfer, handover, time sweeps, solo timing and API
+proofs stop pending the maintainer ruling. No source/SQL repair or commit follows
+this failure.
+
+Self-retro: preserve existing test bodies exactly when appending new proofs;
+never use a broad textual replacement to edit a similar new assertion.
+
+The size probe also stopped before producing a pack: the first launch used a
+loader that refuses TypeScript beneath node_modules; the one permitted recovery
+then found the empty output directory left by that launch and refused EEXIST.
+No third attempt is made. A new package delta is therefore unmeasured; the last
+accepted measurement does not measure this draft. The read packet is blocked on
+these proof gaps and does not certify readiness.
+
+## Admission expectation resume and remaining module-boundary read
+
+The supervisor accepted expiry's definer mode and aligning the three own test
+expectations with admitted busy outcomes. Deterministic runtime transactions now
+hold admission while competing calls refuse with no partial writes. The model
+checks release-only state before completing refused operations serially; the
+original stock, terminality and one-effect assertions remain byte-identical.
+Only two original explicit assertions change (security mode and cancellation
+refusal), plus the implicit all-success concurrency wait. All other 145 original
+explicit assertions are retained exactly. A new no-write stock snapshot uses
+the existing UTC reader for both observations, retaining every field and
+microsecond; an initial mixed-session display mismatch is preserved as history.
+
+G4 passes 32 cases in each of four time modes; destinations pass 24 in each.
+Transfer passes 17 by default; each non-UTC/mixed run has 15 passes and the two
+previously classified main timestamp observations, with no new failure. The
+99-table standalone handover completes with one fenced uncertain operation and
+zero cleanup failures. Seven affected native cases pass solo below 0.111 seconds;
+the existing restart case measures 2.439 seconds with its existing 60-second
+limit. Three own transfer cases measure 6.749/5.207/3.639 seconds, within their
+existing measured 30-second limits. Four-bound catalogue130 and amended-slot1
+pass against the scratch prior-control amendment; temporary test patches are
+restored. The complete API68, five-project typecheck, ast-grep and both neutrality
+checks pass in the tested phase.
+
+Lint then found the new error mapping's cross-module import. Both the internal
+path and commerce's public entry are refused: inventory declares no cross-module
+value dependencies. The staged preview uses the public entry, but remains lint
+blocked at its first line. The public-entry runtime probe confirms it is the
+existing commerce error class; the earlier PostgreSQL proofs used the internal
+path to that same class. No claim is made that all checks pass on the final draft.
+Using the existing inventory persistence error would preserve semantic details
+but change the class/name; accepting that mechanism or another adapter seam
+requires a ruling. No boundary, checker, export or API signature was changed,
+and no duplicate/lookalike error class was introduced.
+
+Official pack against the destination-entry predecessor: +11764 packed,
++2911 code-gzip, +66764 unpacked and +5 files; absolute2453651 packed and1957669
+code-gzip. SQL and its projection are included. This is +825 packed/+418 code
+over the pre-gate measurement, explained by the admitted helper, error mapping
+and owner documentation. No cap changes. The complete draft stays staged for the
+maintainer packet; no DCO, native review, verify, push or PR runs.
+
+Self-retro: inspect the module's dependency declaration before choosing an error
+constructor, rather than assuming its public entry is an admitted dependency.
+
+## Inventory-owned mapping and expiry access read
+
+The staged mapping uses the existing InventoryPersistenceError in inventory's
+own ports. There is no commerce import, new class, public export or declaration
+change. Three unit cases compare the actual checkout start-failure projection
+with its existing reference error: admission and lock contention leave compensation
+unrequested; unsupported isolation retains the existing compensation candidate.
+Messages and semantic code/reason details remain equal. No retry is added.
+
+Final focused checks: lint PASS (zero errors, 33 unchanged warnings), import-map
+123, package boundary 2,951, all nine inventory files 48, native PostgreSQL
+33, all 68 API reports, and five typecheck projects PASS.
+The real PostgreSQL ACL probe installs the frozen pre-admission expiry under a
+temporary test name in a rolled-back migration transaction and compares raw ACL
+and effective EXECUTE access for every installed role against the actual expiry.
+Both are owned by the configured migration role; access is equal. The actual
+restricted login is not superuser or bypass-RLS and direct helper execution
+refuses with 42501. Expiry references are schema-qualified; its pinned search
+path, purchase predicate, finite-time semantics and 1..1000 limit are retained.
+
+The three aligned expectation groups retain 145 of 147 original explicit
+assertions byte-for-byte; the two changed explicit expectations and the implicit
+all-success expectation are shown beside their replacements in the maintainer
+packet. Deterministic held admission makes competitors refuse without visible
+partial state; stock and terminal results equal the successful serial subset.
+Receipts stay one per key and replay does not write again. The cancellation race
+now also proves a deterministic busy refusal, committed cancellation, one cancel
+receipt, no failed-reserve receipt, and unchanged terminal rows on replay.
+
+Forward SHA256: `86ef99f65945a78a48cafa2c81d3f2bfdea94fb536c908cb620864c31249775c`. Five created functions, no replacements; the
+prior control must admit the helper before landing. The actual class slot and
+all boundary/checker files remain unchanged. The exact feature pin and final
+staged identities are in the maintainer packet.
+
+Official Node v24.21.0 real pack, including SQL and manifest, against the exact
+leaf: +11,758 B packed, +2,889 B code-gzip,
++66,735 B unpacked, +5 files. Absolute packed
+2,453,645 B and code 1,957,647 B.
+No budget changes. The full delta remains staged for the maintainer read; no
+commit, native review, verify, push or PR. Earlier zone/transfer/handover results
+remain historical evidence, not final-hash reruns in this bounded resume.
+
+Self-retro: reuse the module's existing error and test its actual caller
+projection; a cross-module constructor was unnecessary to preserve that result.
+
+
+## In-flight compensation guard read
+
+The cancellation routine now ports the reference adopter's root-first guard.
+It locks the subscription root (when present), order, intents, simulator attempts,
+observations and truth evidence before deciding. The root hint is rechecked under
+the order lock; a changed aggregate refuses. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without any persisted write.
+A terminal refused or expired attempt permits the existing cancel/release path;
+captured or indeterminate attempt evidence keeps the existing `money_recorded`
+refusal. The native active flag also remains true on terminal observations, so it
+is not used as a proxy for in-flight state. No public type or signature changes.
+The routine's successful cancel/release body and the admission call remain intact.
+
+New restricted-runtime PostgreSQL proofs cover refusal snapshots, cancellation
+following a failed attempt, all other terminal/uncertain outcomes, and both
+concurrent begin/cancel winners. Blocking is observed on the actual order lock,
+not inferred from call order. Existing cancel/release/late-capture/restart tests
+are unchanged. A source-pinned characterization witness lives in the native test;
+private provenance and the full rule/refusal mapping remain in the maintainer
+packet. No managed SQL, OMS metadata, attempt store or G7 code changes.
+
+Time classification is unchanged: stored timestamps remain VALUEs; the reserve
+expiry is a PostgreSQL-built SQL-only identity, no TypeScript key. The new guard
+introduces no clock, timestamp conversion or identity. The new lock-wait test's
+wall clock bounds only its diagnostic poll, not a durable operation.
+
+The new forward SHA256 is
+`7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f`.
+The feature pin keeps its approved order (helper fifth). Only cancellation's
+function hash changes; the complete forward, packaged copy, manifests and
+measured current inventories are regenerated. This delta is staged for the
+maintainer read; no DCO commit or native review is authorized yet.
+
+Self-retro: reconcile the current cancellation guard with its child attempt
+state before treating a late-capture recovery test as complete cancellation proof.
+
+
+Final guard-read evidence: real PostgreSQL native 40/40 in each of UTC,
+Etc/GMT-9, Etc/GMT+5 and alternating UTC/Etc/GMT-9 sessions (160 cases).
+Seven new cases also pass solo without coverage; body times are 9.820–72.385 ms,
+with explicit 30,000 ms limits on the two concurrent cases. The unchanged old
+33-case file remains an exact 71,777-byte prefix. Four-bound catalog 130/130,
+full transfer 17/17 and the 99-table handover witness reach the qualified-target
+ready outcome with one fenced uncertain operation. Five actual inventory
+profiles install and replay with zero new writes. Current inventory literals are
+measured; historical pins and chain/table counts stay unchanged.
+
+Typecheck (five projects), lint (zero errors, 33 unchanged warnings), ast-grep,
+all 68 API reports and both neutrality checks pass. Policy and docs-update report
+11 obligations, of which two require refreshed scoped no-impact trailers for
+the changed test/inventory digests in the eventual signed commit. Those exact
+answers are prepared in the maintainer packet; policy is not claimed green
+before that authorized commit. No contributor-policy text is changed.
+
+Official Node v24.21.0 pack against the exact stack leaf: +12,056 B packed,
++2,889 B code-gzip, +69,151 B unpacked and +5 files. Absolute packed size is
+2,453,943 B, code-gzip 1,957,647 B; no cap changes. Growth over the prior gate
+packet is 298 B packed and zero code-gzip, due to the guard SQL and its public
+explanation. Packaged SQL and generated manifest are included. The final
+staged identities and exact patch are in the maintainer packet, awaiting read.
+
+
+## UUID item identity repair (read pending)
+
+Full native review found that alternate UUID spellings could bypass the batch's
+existing duplicate-item refusal and allocate two holds for one finalized item.
+The repair compares parsed UUID identity in that same guard. Single uppercase,
+braced and hyphenless UUID inputs remain valid; raw command replay stays strict.
+No signature, privilege, owner shape or G3 change is needed. The native regression
+requires an atomic invalid-item refusal for duplicate aliases, one effect for a
+single alias, unchanged stock, and exact replay. The reference witness records
+one per-item effect across aliases; the existing native duplicate refusal remains
+a deliberate stricter boundary. Provenance and the full repair are in the private
+maintainer packet. Read acceptance and fresh full review remain required.
+
+Self-retro: validate identity using the database type used by ownership checks;
+text uniqueness can otherwise admit a second effect for the same item.
+
+
+Repair proof: native PostgreSQL 41/41 in each of the four session profiles,
+destinations 29/29 in each profile, catalog 130/130, transfer 17/17,
+composition 6/6, inventory unit 48/48 and donor 4/4. The 99-table handover
+reaches the qualified-target ready outcome with one fenced uncertain operation.
+Both new cases pass solo below three seconds. All 68 API reports, five-project
+typecheck, lint, ast-grep and both neutrality checks pass. Official Node v24.21.0
+pack against the frozen leaf: +12,196 B packed, +2,889 B code-gzip,
++69,461 B unpacked, +5 files; absolute 2,454,083 B packed / 1,957,647 B code.
+The repair adds 21 B packed and zero code-gzip over the prior candidate.
+The staged repair still needs its maintainer read before DCO and fresh full review.

@@ -1,4 +1,5 @@
 import { nativeInstant } from "./nativeInstant.js";
+import { canonicalUuid } from "./nativeRetryDriver.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { RenewalCycleCorrelation, RenewalFrozenSnapshot, RenewalLine, RenewalReadback, RenewalSchedule } from "./contracts/renewal.js";
@@ -18,7 +19,7 @@ const snapshotSchema = z.object({
   templateSnapshot: z.object({ templateId: ref, version: whole.positive(), cadenceDays: whole.positive(), lines: basket }).strict(),
   pricingSnapshot: z.object({ currency: z.string().regex(/^[A-Z]{3}$/), totalAmountMinor: whole.positive(), shippingAmountMinor: z.literal(0),
     agreementPolicy: z.literal("lock_until_edit"), proration: z.literal("none") }).strict(),
-  orderSnapshot: z.object({ shippingAddressRef: ref.nullable(), shippingQuoteRef: ref.nullable(), acquisitionRef: ref.nullable(), lines: basket }).strict(),
+  orderSnapshot: z.object({ shippingAddressRef: ref.nullable(), shippingQuoteRef: z.union([ref, z.object({ kind: z.literal("zero_shipping"), shippingAmountMinor: z.literal(0) }).strict()]).nullable(), acquisitionRef: ref.nullable(), lines: basket }).strict(),
   stockSourceKey: ref, settlementChannelKey: z.literal("sandbox"), authorizationRef: ref, payerAccountRef: ref.nullable(),
   unattendedChargeAuthorizedAt: z.iso.datetime(),
 }).strict();
@@ -159,6 +160,13 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     },
     identity(snapshot: RenewalSchedule) { return `subscription:${snapshot.subscriptionId}:cycle:${instant(snapshot.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`; },
     fingerprint,
+    withDestination(snapshot, destinationId) {
+      codec.encode(snapshot);
+      const next = { ...snapshot, orderSnapshot: { ...snapshot.orderSnapshot, shippingAddressRef: canonicalUuid(z.uuid().parse(destinationId)),
+        shippingQuoteRef: snapshot.orderSnapshot.shippingQuoteRef ?? { kind: "zero_shipping" as const, shippingAmountMinor: 0 as const } } };
+      next.frozenFingerprint = fingerprint(next);
+      return next;
+    },
   };
   return codec;
 }
