@@ -227,3 +227,38 @@ boundary. Token-bearing diagnostic objects are projected to hashes or outcomes
 before assertions.
 
 <!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-18a632091e88ff1efbc43d9f600c5ea2240a71b23e7a386d8e3928da904821b7","reason":"The added characterization uses the existing package and PostgreSQL test discovery, canonical qualified installer, restricted runtime and disposable container helper. Owner access prepares synthetic fixtures and observes fixed-zone rows with xmin. Existing suites retain their assertions. The three configured zones and local captured artifacts add no collector, grant, role profile or required job. The inherited operator locking refusal is pinned as a named known limit; owner-created queued inputs are explicitly preconditions, and delivery assertions use the restricted runtime. Thirty-second per-case budgets follow the existing measured-timeout rule. Contributor commands, required proof and retry rules remain applicable."} -->
+
+
+## Combined candidate after renewal integration
+
+The current delivery combines native order notices, paid shipping, payment
+recovery notices, retained renewal terms and account communication choices in
+one candidate and draft pull request #534. The exact review and documentation
+predecessor is `84f146305d99cf3f30831ab1cc6fb65de1ffe1ca`. The policy revision read for
+this continuation is main `76d8a415a5bb96331e5f81832670138df17b2536`.
+
+The assigned worktree now uses `codex/oss-m19-g8`. The authorized delivery covers
+the signed predecessor merge, measured inventory and literal regeneration,
+complete caller and pre-review checks, two fresh full reviews, exact-tree local
+verification, draft fast-forward publication and the existing landing command.
+The source behaviour, SQL statements and public API remain bound to their
+accepted reads. A needed SQL, API or TypeScript change returns for the lead's
+read. An open material review finding returns to the owner.
+
+The integration keeps both renewal test sets byte-for-byte, the predecessor's
+240-second qualified bounds and 40-second released-upgrade bound, and the
+historic schema pins. Five current inventories were derived on PostgreSQL
+through the canonical projectors. The merged installations contain 98 legacy,
+102 qualified-v2 and 101 qualified-admin migration units. The transfer graph
+contains 112 tables. Current-main class and co-location checks pass, including
+all three native forwards and 17 recomputed function preimages.
+
+The remaining acceptance before review is the complete gated scanner set,
+caller sweep in three PostgreSQL session zones, composition, handover, catalog,
+static and package checks, and the cumulative package checkpoint. The combined
+packed delta must fit 32,500 bytes and the absolute code measure must leave at
+least 10,000 bytes below 2,055,017 bytes. Native review, final verification and
+landing follow only after that evidence is complete.
+
+Self-retro. Preserving the selected migration order and recomputing the current
+inventory keeps an integration from rewriting historic schema expectations.
