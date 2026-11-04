@@ -84,7 +84,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
-        decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree }, runGit);
+        decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree, trustedMain: main }, runGit);
         demand(decision.ok, decision.reason, decision.code);
         if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
       }
