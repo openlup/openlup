@@ -70,6 +70,7 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  // Solo without coverage: 11.64 s ordinarily, 22.45 s for target/separate; allow about three times each.
-  }, profile.name === "target" && shape.separate ? 75_000 : 40_000);
+  // Hosted maximum 54.315 s: fourfold 217.260 s rounds to the existing 240 s child bound.
+  // Five-row tail estimate leaves at least 122.907 s of case headroom.
+  }, 240_000);
 }

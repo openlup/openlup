@@ -1752,3 +1752,106 @@ All packaged inputs remain identical to the measured merged tree.
 Self-retro: session-local midnight and an explicit UTC anchor denote different
 instants. Spell fixture instants explicitly before exercising an instant-equality
 guard, while recording inherited display-only failures under their actual owner.
+
+## Measured deadlines for the complete replay family
+
+The merge-group run [41763619755](https://github.com/openlup/openlup/actions/runs/41763619755)
+exceeded the 45-second admin installer case and the 40-second reference bootstrap
+case. The single authorized hosted retry is consumed. The current draft changes
+only explicit case deadlines and their measurement comments across the entire
+chain-growing family, with this record. It remains staged for the lead's read.
+
+The reference, target and admin compositions, four connected-restore shapes and
+released legacy upgrade replay the selected current migration chain. All eleven
+cases receive the fourfold hosted-maximum rule. The six qualified baseline cases
+use fixed baseline SQL; the fifteen qualified-session cases examine admission
+and catalog races without replaying an installed chain. Those bounds remain
+unchanged. The other eleven connected-restore cases cover authority/refusal or
+pre-install status observation without applying the chain, and retain their
+existing bounds. Their four status-only shapes are distinct from the four full
+restore cases extended here.
+
+A measured successor tree contains this reviewed head and one additional SQL
+forward. Its three isolated and three loaded samples for each production
+composition case, plus three loaded full-file sibling runs, are reused. Across
+its primary isolated samples load1 was 1.22–2.75 and CPU idle 84.32–98.90 percent;
+loaded samples observed load1 1.47–2.88 and idle 68.20–98.11 percent. Every reused
+local maximum is lower than the corresponding hosted maximum. New baseline
+measurements would duplicate that conservative evidence.
+
+The hosted columns below are milliseconds from the last relevant source runs
+and the failed group. A timed-out printed duration is a censored lower bound,
+not a completed execution. The second source attempt reused successful sibling
+jobs; its repeated sibling numbers are retained as that run's evidence rather
+than treated as independent samples.
+
+| Case | Bound before | #527 | #529 | #530 attempt 1 | #530 attempt 2 | Merge group |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| neon-shaped installer-managed | 60000 | 38807 | 31717 | 57203 | 57203 | 32199 |
+| neon-shaped operator-provisioned | 60000 | 33778 | 26635 | 50725 | 50725 | 27424 |
+| rds-shaped installer-managed | 60000 | 33775 | 26048 | 50303 | 50303 | 26330 |
+| rds-shaped operator-provisioned | 60000 | 33679 | 26211 | 48408 | 48408 | 27361 |
+| reference bootstrap-restore | 40000 | 38118 | 22495 | 40033 | 31513 | 40038 |
+| reference separate-restore | 40000 | 30625 | 18962 | 35042 | 24634 | 35760 |
+| target bootstrap-restore | 40000 | 24653 | 14984 | 27089 | 20088 | 26791 |
+| target separate-restore | 75000 | 49452 | 29204 | 54210 | 40400 | 54315 |
+| released legacy upgrade | 30000 | 7855 | 6449 | 4993 | 4993 | 7870 |
+| admin installer | 45000 | 46174 | 42680 | 28221 | 28221 | 45410 |
+| admin operator | 45000 | 33910 | 32820 | 20816 | 20816 | 36273 |
+
+For each case, let H be its maximum across those five hosted observations and L
+its reused loaded maximum. The initial requirement is four times max(H,L).
+The selected 240-second value already bounds each qualified-composition child
+process; 40 seconds is an existing qualified case value. The child deadlines and
+global defaults retain their values.
+
+The source control/export prefix has two fewer forwards than this bundle.
+For a conservative estimate, the per-forward growth envelope is
+`max(0, (H - min(#527, #529)) / 2)`. Five remaining SQL units consume five times
+that envelope. This intentionally includes hosted-load variation and the older
+control run, rather than attributing the entire difference to SQL execution.
+It estimates future growth; it does not measure future forwards. Headroom below
+is the new deadline minus H minus that five-unit growth. Each selected bound
+covers four times the currently observed maximum and leaves positive headroom
+after the full tail estimate.
+
+| Case | Loaded local max ms | 4 × H ms | New bound ms | Tail growth ms | Headroom after growth ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| neon-shaped installer-managed | 16025.694 | 228812 | 240000 | 63715.0 | 119082.0 |
+| neon-shaped operator-provisioned | 13445.680 | 202900 | 240000 | 60225.0 | 129050.0 |
+| rds-shaped installer-managed | 13793.466 | 201212 | 240000 | 60637.5 | 129059.5 |
+| rds-shaped operator-provisioned | 13799.661 | 193632 | 240000 | 55492.5 | 136099.5 |
+| reference bootstrap-restore | 11425.177 | 160152 | 240000 | 43857.5 | 156104.5 |
+| reference separate-restore | 11137.656 | 143040 | 240000 | 41995.0 | 162245.0 |
+| target bootstrap-restore | 11104.339 | 108356 | 240000 | 30262.5 | 182648.5 |
+| target separate-restore | 21628.916 | 217260 | 240000 | 62777.5 | 122907.5 |
+| released legacy upgrade | 3656.365 | 31480 | 40000 | 3552.5 | 28577.5 |
+| admin installer | 14248.897 | 184696 | 240000 | 8735.0 | 185091.0 |
+| admin operator | 13954.731 | 145092 | 240000 | 8632.5 | 195094.5 |
+
+The operator-provisioned admin and all four full restore cases are included by
+the whole-family rule, including those with more room under their earlier bounds.
+The released upgrade grows from 30 to 40 seconds because 4 × 7.870 = 31.480
+seconds. Assertions, fixtures and child processes keep their existing behavior.
+Each changed file will run once in full through focused admission before the
+staged read packet is finalized.
+
+Self-retro: a replay-family deadline must account for every role/restore shape
+and the remaining chain, rather than only the cases that crossed a timer today.
+The direct per-case change keeps this recovery within the existing proof entry
+points and preserves the assertion duty.
+
+<!-- openlup-task-doc-impact {"unit":"portability-capability","doc":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","anchor":"#existing-store-transfer-and-recovery","digest":"sha256-63c49a9a2a4df89f1036f4dfdc2baa3638d6fadbbc6ad57d18c537e1fd584830","reason":"The bundle retains its measured current inventory/count expectations and existing transfer protocol. The only new portability-owned edit is the qualified composition case deadline and its measurement comment. Transport encoding, cumulative bounds, owner admission, retained graph and replay assertions keep their exact behavior, so the store transfer and recovery section remains correct."} -->
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-77e4caa22080ba78f2255f03a4cb1be8a292f8b3216b5f68eb6351407946e83e","reason":"This draft changes only explicit per-case replay deadlines and measurement comments, retaining every test body, fixture, assertion and global default. Bounds use four times the observed hosted maxima and record capacity after the five-unit tail estimate, with focused full-file proof. Existing test commands, role boundaries, gate lanes and sufficient-evidence guidance remain correct."} -->
+
+The staged draft passes one complete focused invocation of every changed file
+on the assigned tree, without coverage and with the official Node toolchain.
+Production composition passes 4 cases in 52.458 seconds, admin composition 2 in
+27.347 seconds, connected restore 15 in 71.164 seconds and released upgrade 1 in
+3.942 seconds. Total is 22 passed, zero failed and zero skipped. A TypeScript AST
+comparison removes comments and only each case's third deadline argument before
+proving equality with the reviewed head for all four files. Every test body,
+assertion, fixture, test title, child deadline and global setting is retained.
+The AST structural check passes. The final read packet binds the staged tree and
+binary diff identity. The draft remains uncommitted for the lead's read.

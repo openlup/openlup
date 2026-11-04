@@ -27,6 +27,7 @@ for (const mode of modes) {
       refusalsProved: true,
     });
     console.info(`restricted-bootstrap ${mode.roleMode} ${JSON.stringify(result)}`);
-  // Solo without coverage: 14.76 s; 45 s gives about three times the measured case.
-  }, 45_000);
+  // Hosted maximum 46.174 s: fourfold 184.696 s rounds to the existing 240 s qualified bound.
+  // Five-row tail estimates leave at least 185.091 s across both role modes.
+  }, 240_000);
 }
