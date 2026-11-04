@@ -1404,6 +1404,28 @@ or historical paid account payment spelling. Terminal, draft, expired and off-tr
 orders have no progress spine. OrdersScreen uses this projection with its existing
 labels, step resolution and payment recovery controls.
 
+### Native commerce read projection
+
+The existing `@openlup/platform/fulfillment/native` entry exposes
+`createPostgresFulfillmentCommerceReadPort`. It reads the native shipment spine,
+order items, settlement intent, holds, cycle and inventory reservation facts.
+The host supplies the existing `FulfillmentCommerceReadPolicy`, authentication,
+and a consistent snapshot transaction. An optional shipment destination reader
+overrides the default nonmutating SQL view reader. Reuse
+`evaluateCommerceFulfillmentEligibility` from the commerce entry; fulfillment
+contains no second eligibility implementation.
+
+**Destination reads:** the default reader calls
+`commerce_view_shipment_destination(uuid)` through the supplied executor without
+creating a binding. An explicitly injected reader wins. The preparation reader
+can pin a shipment binding and must not serve side-effect-free operator reads.
+Unavailable and owner-mismatch routine errors map to the corresponding
+`native_fulfillment_destination_*` refusals; other routine errors propagate unchanged. The explicit
+native reader is a reduced projection with the named limits below; it does not
+activate a route or change the unsupported-port factory. The existing commerce
+eligibility function remains injected, and the host explicitly maps captured
+order-mode values instead of the reader choosing application policy.
+
 ### Native parity boundaries
 
 | Capability | Native installation boundary | Required host binding |
@@ -1430,6 +1452,64 @@ capability selection/readiness and dispatch support before returning the shared
 typed refusal for a missing host binding, all before invoking a worker.
 Supplying a host fixture proves that seam's
 handler behavior; it does not establish native parity or activate any route.
+
+Commerce list/detail builders and served handlers accept optional `responseSchemas`.
+Their default remains the managed schemas, constructed from the unchanged managed
+address schema by an internal schema factory. The explicit native
+reader uses `nativeFulfillmentCommerceResponseSchemas` from the existing native
+entry; its additive order type permits a null saved-address id. The managed order
+type and its address validation remain unchanged. Builders also accept an explicit
+`hasShippingAddress` fact (an order-id map for lists, a boolean for detail); absent
+that option, they retain the saved-address pointer's truthiness. No route is enabled
+by these options; an optional injected destination reader overrides the SQL view.
+
+The explicit native commerce reader has these named limits. These limits do not
+change the managed reader or enable a separate parcel address display. Reservation
+summaries use the unchanged newest-first builder, including for multiple rows;
+no quantity-coverage override is applied.
+
+1. **FR01 — Reservation locations:** reservation location id and code are null;
+   this native rail does not carry local lots, locations or stock movements.
+2. **FR02 — Captured header identity:** shipment ids identify native shipments;
+   captured fulfillment client and provider kind are unavailable and remain null.
+3. **FR03 — Parcel lines:** lines are native order items in creation order with
+   captured order-draft product data; parcel-line identity and parcel-specific
+   frozen line data are unavailable, and parcel-line ids are null.
+4. **FR04 — Item reservation links:** exact persisted per-item reservation links
+   are unavailable to the runtime reader, so line reservation-id arrays are empty.
+5. **FR05 — Payment projection:** payment identity and external reference come
+   from the settlement intent, whose recorded states do not include the complete
+   payment-control lifecycle such as refunds and disputes.
+6. **FR06 — Address authority:** a null saved-address id means no saved-address
+   record in this store's native model. A resolved shipment destination does not
+   establish a captured fulfillment-address snapshot or its saved-address identity.
+7. **FR07 — Tracking activity:** tracking uses the newest order-linked tracking
+   reference; the native ledger has no separate active/deactivated flag.
+8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger,
+   retains its native payload and has no actor id; required vocabulary conversions
+   do not reconstruct unavailable operator evidence, and unrepresentable types refuse.
+9. **FR10 — Order mode:** captured draft mode and cycle identity are supplied to
+    the host's mode mapping; legacy rows without captured mode do not prove the
+    original stored order-mode value.
+10. **FR11 — Orders without shipments:** fulfillment detail returns null when no
+    shipment exists and does not provide an order-contact display or fallback.
+11. **FR12 — Contact provenance:** delivery-contact resolution scope labels are
+    not part of this fulfillment projection.
+12. **FR13 — Contact revision:** this projection does not expose a revision for
+    operator contact corrections.
+13. **FR14 — Contact digest:** this projection does not expose a contact digest
+    for identifying or fencing a correction.
+14. **FR15 — Contact comparison:** baseline-versus-effective contact comparison
+    is not available through this projection.
+15. **FR16 — Contact correction scope:** this reader supplies no correction target,
+    correction action or legacy contact-resolution fence.
+16. **FR17 — Unavailable required facts:** native projection errors fail closed
+    when order, payment, destination, line or operation facts cannot be expressed;
+    selected rows are never silently omitted from a page.
+17. **FR18 — Shipping gate fact:** the native eligibility gate uses successful
+    shipment destination resolution instead of a non-null order saved-address
+    pointer; a resolved destination can therefore satisfy this gate without a
+    saved-address record.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
 and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts)
