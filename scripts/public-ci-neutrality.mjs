@@ -76,6 +76,8 @@ const coldProofLines = Object.fromEntries(Object.entries({
   path, new Set(lines.map((line) => line.replaceAll("$ADAPTER", adapterNames[0]).replaceAll("$Adapter", "Res" + "end"))),
 ]));
 function allowedAdapterWords(path, contents) {
+  // public provider matrix of shipped opt-in adapters requested by the project owner; the same names the package API and README already publish
+  if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(adapterWord)].length);
   if (adapterPaths.test(path) || adapterReports.has(path) || path === adapterLedger) return [...contents.matchAll(adapterWord)].length;
   if (adapterSubpathFiles.has(path) || /^packages\/platform\/changes\/[^/]+\.md$/.test(path)) {
     const tokens = [...contents.matchAll(adapterSubpath)];
@@ -152,6 +154,8 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   if (!name) return 0;
   const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/${name}/`);
   const word = new RegExp(`\\b${name}\\b`, "gi");
+  // public provider matrix of shipped opt-in adapters requested by the project owner; the same names the package API and README already publish
+  if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(word)].length);
   // Exact-file exception for the cross-adapter parity witness.
   if (category === "ui-13" && path === `packages/platform/test/payments/${paymentAdapterNames[1]}/tpayFailureEvidence.test.ts`) {
     return [...contents.matchAll(word)].length;
@@ -173,6 +177,8 @@ const fulfillmentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/fulf
 const fulfillmentAdapterSubpath = new RegExp(`(?<![\\w-])fulfillment/${fulfillmentAdapterName}(?![\\w-])`, "g");
 const fulfillmentAdapterReport = new RegExp(`(?<![\\w.-])fulfillment-${fulfillmentAdapterName}\\.api\\.md(?![\\w./-])`, "g");
 export function allowedFulfillmentAdapterWords(path, contents) {
+  // public provider matrix of shipped opt-in adapters requested by the project owner; the same names the package API and README already publish
+  if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(fulfillmentAdapterWord)].length);
   if (fulfillmentAdapterPaths.test(path) || path === `packages/platform/api/fulfillment-${fulfillmentAdapterName}.api.md`
     || path === "docs/platform/plans/oss-a3-fulfillment-adapter.md") return [...contents.matchAll(fulfillmentAdapterWord)].length;
   if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;

@@ -223,21 +223,20 @@ describe("native store SQL shapes and pins", () => {
     expect(slots.find(slot => slot.row === "G6")!.createdFunctions).toHaveLength(4);
     expect(slots.find(slot => slot.row === "G2")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)"]);
     expect(slots.find(slot => slot.row === "G2")!.createdFunctions).toHaveLength(7);
-    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)", "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)"]);
+    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual([
+      "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+      "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+      "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
+      "public.fulfillment_release_subscription_renewal(uuid,uuid,text,timestamptz)",
+      "public.fulfillment_expire_subscription_renewals(timestamptz,integer)",
+      "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+      "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+      "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+    ]);
     expect(slots.find(slot => slot.row === "G7")!.createdFunctions).toEqual([
       { signature: "public.commerce_view_shipment_destination(uuid)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)", searchPath: "pg_catalog, pg_temp" },
     ]);
-    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([
-      { signature: "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-      { signature: "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-      { signature: "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-    ]);
+    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([]);
     expect(slots.find(slot => slot.row === "G8")!.replacedFunctions).toEqual([
       { signature: "public.commerce_order_emit_paid_notification()", beforeSha256: "6352247a869fda2812d3e83fbcd9b7a0bd9106d27bec22296492e06a15f78bee", searchPath: "public, pg_catalog" },
       { signature: "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)", beforeSha256: "2dd59a4f2eb7603e2a1714a97ccfad3d078990cb8978a4db16c130ff9db43364", searchPath: "pg_catalog" },

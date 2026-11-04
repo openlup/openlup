@@ -87,8 +87,9 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         } else {
           if (!row.nextRetryAt || nativeInstant(row.nextRetryAt) > nativeInstant(now)) continue;
           const mandate = await options.readFrozenMandate(snapshot);
-          const input = options.retryInput(snapshot, row);
-          const paymentIntentId = canonicalUuid(input.paymentIntentId), orderRef = canonicalUuid(input.orderRef);
+          const supplied = options.retryInput(snapshot, row);
+          const paymentIntentId = canonicalUuid(supplied.paymentIntentId), orderRef = canonicalUuid(supplied.orderRef);
+          const input = { ...supplied, paymentIntentId: paymentIntentId ?? supplied.paymentIntentId, orderRef: orderRef ?? supplied.orderRef };
           const authorizations = (await options.executor.query(`SELECT a.method_ref FROM public.subscription_retry_recovery_authorizations a
             JOIN public.subscription_retry_obligations o ON o.id=a.obligation_id
             WHERE o.renewal_operation_id=$1::uuid AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL`, [operationId])).rows;
@@ -110,7 +111,7 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           if (prepared.execute) await options.payments.execute(input);
         }
         const evidence = await options.payments.readOutcome(prepared, snapshot);
-        if (canonicalUuid(evidence.operationId) !== operationId || evidence.requestFingerprint !== row.requestFingerprint
+        if (evidence.operationId !== operationId || evidence.requestFingerprint !== row.requestFingerprint
           || !evidence.verifiedEvidenceRef || !evidence.eventKey || !evidence.occurredAt || !evidence.externalAttemptRef
           || !evidence.firstRecordedAt || !evidence.observedAt || evidence.disposition === "ambiguous"
           || (evidence.amountMinor !== null && evidence.amountMinor !== snapshot.pricingSnapshot.totalAmountMinor)

@@ -12,7 +12,7 @@ export function nativeSubscriptionSchema(catalogue: { version: string; migration
       ["subscription_delivery_alignment_admit_renewal", "uuid,timestamp with time zone,timestamp with time zone"],
       ["subscription_retry_apply_failure", "uuid,text,jsonb"], ["subscription_retry_open_case", "uuid,text,text"],
       ["subscription_retry_prepare", "uuid,text,jsonb,timestamp with time zone"], ["subscription_retry_record_recovery", "uuid,text,jsonb"],
-      ["subscription_stock_wait_admit_gated", "jsonb,jsonb,timestamp with time zone"],
+      ["subscription_stock_wait_admit", "jsonb,jsonb,timestamp with time zone"],
       ["subscription_stock_wait_candidates", "integer,timestamp with time zone"],
       ["subscription_stock_wait_normal_due", "integer,timestamp with time zone"],
       ["subscription_stock_wait_mark_resumed", "uuid"],
