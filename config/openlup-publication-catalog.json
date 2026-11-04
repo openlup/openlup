@@ -142,6 +142,10 @@
       "class": "entrypoint"
     },
     {
+      "path": "ROADMAP.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "SECURITY.md",
       "class": "policy"
     },
@@ -1699,6 +1703,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g7ctl.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7ctl3.md",
       "class": "public-output"
     },
     {

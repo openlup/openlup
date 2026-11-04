@@ -3018,61 +3018,45 @@
             "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
             "beforeSha256": "76578042f03f95f7599fa5fc84b0c720fbc8cb17d4031b0a0be6a5c5ce0019fe",
             "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
+            "beforeSha256": "8522895db5e82b0900035d70ddce950e8013a54c7805667a8a17b3e1c853e337",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_release_subscription_renewal(uuid,uuid,text,timestamptz)",
+            "beforeSha256": "3ad78c01755d5879415bb02dafa401c47d6ba8d462da04c151f629711dd60c01",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_expire_subscription_renewals(timestamptz,integer)",
+            "beforeSha256": "7606e13fc32ff9c1019208a754bd3aa0f21f0e9f08aa709ab8f668bfc60b4452",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+            "beforeSha256": "88f568ea334ed92df15f9149d2574fb06f5a56e82ee4d0c6740533ddfb882b4f",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+            "beforeSha256": "050d976918ac85e7c2583a90cd54a2e4af644b344583d69eeea5134ff106f294",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+            "beforeSha256": "77e0cfbdfc87bf15b09b91e68a32229ef8db2db8c9ebd04b27ce9a2666211661",
+            "searchPath": "pg_catalog"
           }
         ],
         "createdFunctions": [
           {
             "signature": "public.commerce_view_shipment_destination(uuid)",
             "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
           }
         ],
-        "grantOnlyFunctions": [
-          {
-            "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
-            "grantTo": [],
-            "revokeFrom": [
-              "service_role"
-            ]
-          },
-          {
-            "signature": "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
-            "grantTo": [],
-            "revokeFrom": [
-              "service_role"
-            ]
-          },
-          {
-            "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
-            "grantTo": [],
-            "revokeFrom": [
-              "service_role"
-            ]
-          }
-        ],
+        "grantOnlyFunctions": [],
         "dataStatements": []
       },
       {
