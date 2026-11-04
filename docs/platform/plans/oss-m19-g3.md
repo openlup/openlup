@@ -1,11 +1,14 @@
 # Native order, subscription and parcel destinations
 
 Current status: G3 is combined with G4 in the assigned bundle worktree. The
-cycle-3 repair adds the destination absorption classification and regression
-evidence. Its SQL remains staged for the coordinator's read; native review and
-delivery are outside this worker's authority. The accepted cycle-2 scope
-correction separates the named lifecycle runtime limit from address agreement. Earlier
-separate-row stage notes below are historical evidence, not current grants.
+cycle-3 SQL repair has its accepted read and DCO commit. The current comparison
+and review base is the frozen G3x head
+`addfaf98e4d4016d77033459090996d0d44d2dad`, integrated by a clean signed merge.
+The absorption classification control is on main at
+`8b48b5f0956530d59e2182ac28f6ab78d85f8381`, the current policy revision.
+The resumed grant authorizes the pre-review set, the final automatic cycle-3
+full review, verification and the stacked draft/landing route. Earlier stage
+notes below retain their original bases, evidence and grants.
 
 ## Outcome, authority and boundaries
 
