@@ -1226,3 +1226,5 @@ SQLSTATE, destination-count context and unchanged public-row snapshot. The same
 cases run an owner regression for empty-lead absorption and replay, and refusal
 naming each of the three blocking tables. The existing qlock-3 closer owns the
 transition from these pins to positive restricted-runtime proofs.
+
+The generated API projection exposes the already-read shipping threshold export through the catalog and PostgreSQL commerce graphs introduced by main `371f25d0`; source, SQL and runtime behaviour are unchanged.
