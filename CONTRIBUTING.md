@@ -2895,8 +2895,9 @@ Once the portable rule is on the new base, a committed integration can also
 carry an eligible v2 or v3 review across the proved base deltas listed above.
 The exact two-parent tree (or exact registry union), approved intent, author,
 expiry and full prior reviewer floor are required. The local integration proof
-keeps the broader protected machinery checks outside those proofs. Existing
-integration, repair and renewal proofs keep their existing requirements.
+keeps the broader protected machinery checks outside those proofs. The landed
+rule selects the proof for a new integration. Earlier integration records replay
+against their original base, and repair and renewal keep their existing checks.
 
 Exactly one existing qualifying trailer-only tip may remain recognized under its unchanged message, tree and parent restrictions. It does not let new tracked content escape coverage. No reduced-coverage route applies to a delta touching protected controls, SQL, migrations, public API or security semantics.
 

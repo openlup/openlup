@@ -597,8 +597,30 @@ describe('portable review on real Git objects', () => {
   });
 
   it.each([
+    ['legacy workspace npm policy', false, 'packages/outbox/.npmrc', 'git'],
+    ['portable workspace npm policy', true, 'packages/outbox/.npmrc', undefined],
+    ['portable unrelated source', true, 'unrelated.ts', 'portable-git'],
+  ])('selects the committed integration proof from its landed base: %s', async (_name, landed, path, expected) => {
+    const f = await fixture(true, [], landed ? { 'scripts/agent-review-session.mjs': policy } : {});
+    await f.review();
+    const main = await f.mainMove(() => f.write(path, 'fixture change\n'));
+    f.git('merge', '--no-ff', '--no-commit', main);
+    f.commit();
+    await f.cli('prepare', f.request);
+    const prepared = await f.state();
+    expect(prepared.candidate.coverage?.proof.kind).toBe(expected);
+    if (expected) {
+      await validateEconomySession(f.cwd, prepared);
+      await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    } else {
+      await expect(f.cli('receipt', '12')).rejects.toThrow('independent PASS reports required');
+    }
+  });
+
+  it.each([
     'config/openlup-packages.json', 'config/openlup-source-release-contract.json', REGISTRY_PATHS[0],
-    'packages/outbox/npm-shrinkwrap.json',
+    'packages/outbox/npm-shrinkwrap.json', 'packages/platform/tsconfig.build.json',
+    'scripts/source-preview-release.ts', 'scripts/source-release-preparation.ts',
   ])('refuses versioning-guide carry-over when the PR changes %s', async path => {
     const f = await fixture(true, [], oldFiles);
     const changed = path === REGISTRY_PATHS[0]

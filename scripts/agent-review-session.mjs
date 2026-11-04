@@ -135,6 +135,21 @@ function packLimitsOnly(before, after) {
   return JSON.stringify(before) === JSON.stringify(comparable);
 }
 
+const SOURCE_RELEASE_CONTROLS = new Set([
+  'config/openlup-packages.json',
+  'config/openlup-policy-registry.json',
+  'config/openlup-source-release-contract.json',
+  'config/platform-migration-manifest.json',
+  'scripts/oss-publication-contract.ts',
+  'scripts/oss-publication-policy.ts',
+  'scripts/oss-published-tree-check.ts',
+  'scripts/oss-source-release-contract.ts',
+  'scripts/platform-migration-manifest.ts',
+  'scripts/reviewed-platform-forward.ts',
+  'scripts/source-preview-release.ts',
+  'scripts/source-release-preparation.ts',
+]);
+
 async function independentOfVersioningGuide(cwd, candidate, runGit) {
   for (const path of candidate.changedPaths) {
     if (PACKAGE_MANIFEST.test(path) || PACKAGE_BUDGET.test(path)) {
@@ -146,9 +161,9 @@ async function independentOfVersioningGuide(cwd, candidate, runGit) {
     } else if (REGISTRY_PATHS.includes(path)) {
       const original = await regularText(cwd, candidate.base, path, runGit);
       registryUnion(path, original, await regularText(cwd, candidate.head, path, runGit), original);
-    } else if (['package.json', 'config/openlup-packages.json', 'config/openlup-source-release-contract.json'].includes(path) ||
-      PACKAGE_LOCK.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) ||
-      /^(?:\.github\/|scripts\/(?:packages\/|oss-source-release-contract\.)|packages\/[^/]+\/scripts\/)/u.test(path)) return false;
+    } else if (path === 'package.json' || PACKAGE_LOCK.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) ||
+      SOURCE_RELEASE_CONTROLS.has(path) ||
+      /^(?:\.github\/|scripts\/packages\/|packages\/[^/]+\/(?:scripts\/|tsconfig\.build\.json$))/u.test(path)) return false;
   }
   return true;
 }
@@ -351,18 +366,17 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
   let proof; let kind;
   if (session.candidate.base !== observed.base) {
     kind = 'integration';
-    if (sameRules && !historicalKind?.startsWith('portable-')) {
-      try { proof = await proveReviewIntegration(cwd, session.candidate, observed); } catch { /* Try the landed portable rule. */ }
-    }
-    if (!proof && (!historicalKind || historicalKind.startsWith('portable-'))) {
-      try {
-        const source = await git(cwd, 'show', `${observed.base}:${SESSION_PATH}`);
-        demand(source.includes(`const PORTABLE_REVIEW = '${PORTABLE_REVIEW}';`), 'portable rule not present in the new base');
-        proof = await proveReviewIntegration(cwd, session.candidate, observed, true);
-      } catch { return undefined; }
-    }
-    if (!proof) return undefined;
+    try {
+      const entry = await git(cwd, 'ls-tree', observed.base, '--', SESSION_PATH);
+      const source = entry ? await git(cwd, 'show', `${observed.base}:${SESSION_PATH}`) : '';
+      const portable = source.includes(`const PORTABLE_REVIEW = '${PORTABLE_REVIEW}';`);
+      // The landed base selects the proof. A receipt cannot opt into the old
+      // selector after the rollout, even when historical fingerprints match.
+      if ((historicalKind && historicalKind.startsWith('portable-') !== portable) || (!portable && !sameRules)) return undefined;
+      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable);
+    } catch { return undefined; }
   } else {
+    if (!sameRules) return undefined;
     const delta = await captureCommittedReviewCandidate(cwd, session.candidate.head, observed.head);
     const commits = (await git(cwd, 'rev-list', '--merges', `${session.candidate.head}..${observed.head}`)).trim();
     if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || delta.modeChanged || !delta.changedPaths.length || !delta.changedPaths.every(ordinaryRepairPath) || await hasProductionConsumer(cwd, observed.head, delta.changedPaths)) return undefined;
