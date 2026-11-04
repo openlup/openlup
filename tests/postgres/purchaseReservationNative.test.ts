@@ -76,6 +76,7 @@ beforeAll(async () => {
   beforeUpgradeAcl = (await admin.query("SELECT relacl::text acl FROM pg_class WHERE oid='public.fulfillment_inventory_reservations'::regclass")).rows[0].acl;
   // Existing command cancellation cannot lock term lines as this runtime on
   // the issued prefix. Record the same refusal before introducing G4.
+  // Pre-existing qualified-runtime limit; closed by F-QUALIFIED-LIFECYCLE-LOCK.
   await expect(call(runtime, "subscription_command_apply", [randomUUID(), inherited.client, randomUUID(), inherited.subscription, "cancel", {}, later(1)]))
     .rejects.toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
   expect((await admin.query("SELECT has_table_privilege('service_role','public.commerce_promotion_claim_events','SELECT') allowed")).rows).toEqual([{ allowed: false }]);
@@ -558,6 +559,7 @@ it.each(["preflight", "cancel", "succeeded", "refused", "late_recovery"])("%s mu
   if (action === "preflight") await call(runtime, "subscription_refuse_renewal_preflight", [f.operation, f.token, "synthetic", AT]);
   else if (action === "cancel") {
     const args = [randomUUID(), f.client, randomUUID(), f.subscription, "cancel", {}, later(1)];
+    // Pre-existing qualified-runtime limit; closed by F-QUALIFIED-LIFECYCLE-LOCK.
     await expect(call(runtime, "subscription_command_apply", args))
       .rejects.toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
     await admin.query("UPDATE public.subscriptions SET created_at=$2,started_at=$2 WHERE id=$1", [f.subscription, AT]);
@@ -878,4 +880,158 @@ it("caps lock waits inside the call and restores transaction-local settings", as
     expect((await db.query("SHOW lock_timeout")).rows).toEqual([{ lock_timeout: "0" }]);
     expect(await rows(input.orderId)).toEqual([]);
   } finally { await db.query("ROLLBACK"); await blocker.query("ROLLBACK"); db.release(); blocker.release(); }
+});
+
+// Exact characterized predicate; private provenance and carrier digest are in the maintainer packet.
+it("pins the characterized cancellation in-flight predicate and terminal unpaid allowlist", async () => {
+  const predicate = String.raw`  IF EXISTS (
+    SELECT 1
+      FROM public.commerce_payment_attempts payment_attempt
+      JOIN public.commerce_payment_intents payment_intent
+        ON payment_intent.id = payment_attempt.payment_intent_id
+     WHERE payment_intent.order_id = p_order_id
+       AND payment_attempt.status IN (
+         'created', 'sent_to_provider', 'requires_action', 'processing'
+       )
+  ) THEN
+    RETURN 'provider_attempt_in_flight';
+  END IF;`;
+  expect(createHash("sha256").update(predicate).digest("hex")).toBe("7e5a72572a60a84f52f79111335657088d1a7ac922f73f7a02ef169970f019c0");
+  const db = await admin.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("CREATE TEMP TABLE commerce_payment_intents(id uuid,order_id uuid) ON COMMIT DROP");
+    await db.query("CREATE TEMP TABLE commerce_payment_attempts(payment_intent_id uuid,status text) ON COMMIT DROP");
+    await db.query(`CREATE FUNCTION pg_temp.g4_characterized_guard(p_order_id uuid) RETURNS text LANGUAGE plpgsql AS $$
+      BEGIN ${predicate.replaceAll("public.", "pg_temp.")} RETURN NULL; END; $$`);
+    const order = randomUUID(), intent = randomUUID();
+    await db.query("INSERT INTO pg_temp.commerce_payment_intents VALUES($1,$2)", [intent, order]);
+    for (const status of ["created", "sent_to_provider", "requires_action", "processing", "blocked_preflight", "failed", "cancelled", "expired"]) {
+      await db.query("TRUNCATE pg_temp.commerce_payment_attempts");
+      await db.query("INSERT INTO pg_temp.commerce_payment_attempts VALUES($1,$2)", [intent, status]);
+      expect((await db.query("SELECT pg_temp.g4_characterized_guard($1) result", [order])).rows[0].result)
+        .toBe(["created", "sent_to_provider", "requires_action", "processing"].includes(status) ? "provider_attempt_in_flight" : null);
+    }
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+async function simulatorCheckout() {
+  const f = await abandoned();
+  await admin.query("UPDATE public.commerce_settlement_intents SET channel_key='sandbox' WHERE id=$1", [f.intent]);
+  return { ...f, begin: [randomUUID(), f.intent, "d".repeat(64), {}, AT] };
+}
+const cancelCheckout = (db: Pool | PoolClient, f: Awaited<ReturnType<typeof simulatorCheckout>>) =>
+  call(db, "commerce_cancel_abandoned_purchase_checkout", [f.cancel.idempotencyKey, f.input.orderId, f.cancel.reason, AT]);
+async function attemptState(f: Awaited<ReturnType<typeof simulatorCheckout>>) {
+  return { compensation: await compensationState(f.input.orderId), stock: await budget(f.f),
+    attempts: (await readSnapshot("SELECT to_jsonb(a) row FROM public.payment_simulator_attempts a WHERE settlement_intent_id=$1 ORDER BY id", [f.intent])).rows,
+    observations: (await readSnapshot(`SELECT to_jsonb(e) row FROM public.payment_simulator_observations e JOIN public.payment_simulator_attempts a
+      ON a.id=e.attempt_id WHERE a.settlement_intent_id=$1 ORDER BY e.id`, [f.intent])).rows };
+}
+it("refuses a dispatched attempt without any write and permits cancellation after terminal failure", async () => {
+  const f = await simulatorCheckout();
+  const attempt = await call(runtime, "payment_simulator_begin_attempt", f.begin);
+  expect(attempt).toMatchObject({ state: "dispatched", active: true });
+  const before = await attemptState(f);
+  expect(await cancelCheckout(runtime, f)).toEqual({ cancelled: false, reason: "provider_attempt_in_flight" });
+  expect(await compensate().cancelAbandonedOrder(f.cancel)).toEqual({ cancelled: false });
+  expect(await attemptState(f)).toEqual(before);
+  await call(runtime, "payment_simulator_record_observation", [attempt.id, randomUUID(), "e".repeat(64), "refused", AT]);
+  expect(await cancelCheckout(runtime, f)).toMatchObject({ cancelled: true, releasedCount: 2, replayed: false });
+  expect(await cancelCheckout(runtime, f)).toMatchObject({ cancelled: true, releasedCount: 2, replayed: true });
+  expect(await budget(f.f)).toMatchObject({ hard_hold_quantity: 0, available_quantity: 10 });
+  expect((await rows(f.input.orderId)).map(r => r.header.status)).toEqual(["released", "released"]);
+  expect((await admin.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows).toEqual([{ status: "failed" }]);
+});
+it.each(["expired", "captured", "indeterminate"])("maps the simulator %s outcome without cancelling live or uncertain money", async state => {
+  const f = await simulatorCheckout(), attempt = await call(runtime, "payment_simulator_begin_attempt", f.begin);
+  await call(runtime, "payment_simulator_record_observation", [attempt.id, randomUUID(), "e".repeat(64), state, AT]);
+  const before = await attemptState(f);
+  if (state === "expired") {
+    expect(await cancelCheckout(runtime, f)).toMatchObject({ cancelled: true, releasedCount: 2 });
+    expect(await budget(f.f)).toMatchObject({ hard_hold_quantity: 0, available_quantity: 10 });
+  } else {
+    expect(await cancelCheckout(runtime, f)).toEqual({ cancelled: false, reason: "money_recorded", orderStatus: "pending_payment" });
+    expect(await attemptState(f)).toEqual(before);
+  }
+});
+async function blockedBy(pid: number, blocker: number) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if ((await admin.query("SELECT $2::int=ANY(pg_catalog.pg_blocking_pids($1)) blocked", [pid, blocker])).rows[0].blocked) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error("compensation_race_did_not_block_on_order");
+}
+// Two committed interleavings include observable blocking; allow container scheduling headroom.
+it.each(["begin", "cancel"])("serializes simulator begin versus compensation with %s winning", async winner => {
+  const f = await simulatorCheckout(), first = await runtime.connect(), second = await runtime.connect();
+  let pending: Promise<unknown> | undefined;
+  try {
+    const firstPid = (await first.query("SELECT pg_backend_pid() pid")).rows[0].pid;
+    const secondPid = (await second.query("SELECT pg_backend_pid() pid")).rows[0].pid;
+    await first.query("BEGIN");
+    if (winner === "begin") {
+      expect(await call(first, "payment_simulator_begin_attempt", f.begin)).toMatchObject({ state: "dispatched" });
+      pending = cancelCheckout(second, f);
+    } else {
+      expect(await cancelCheckout(first, f)).toMatchObject({ cancelled: true });
+      pending = call(second, "payment_simulator_begin_attempt", f.begin).then(value => ({ value }), error => ({ error }));
+    }
+    await blockedBy(secondPid, firstPid);
+    await first.query("COMMIT");
+    if (winner === "begin") {
+      expect(await pending).toEqual({ cancelled: false, reason: "provider_attempt_in_flight" });
+      expect((await admin.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.input.orderId])).rows).toEqual([{ status: "pending_payment" }]);
+      expect(await budget(f.f)).toMatchObject({ hard_hold_quantity: 5, available_quantity: 5 });
+      expect((await admin.query("SELECT count(*)::int n FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1 AND state='dispatched'", [f.intent])).rows).toEqual([{ n: 1 }]);
+      expect((await admin.query("SELECT count(*)::int n FROM public.commerce_checkout_compensations WHERE order_id=$1", [f.input.orderId])).rows).toEqual([{ n: 0 }]);
+    } else {
+      expect(await pending).toMatchObject({ error: { code: "22023", message: "payment_simulator_order_not_payable" } });
+      expect((await admin.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.input.orderId])).rows).toEqual([{ status: "cancelled" }]);
+      expect(await budget(f.f)).toMatchObject({ hard_hold_quantity: 0, available_quantity: 10 });
+      expect((await admin.query("SELECT count(*)::int n FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1", [f.intent])).rows).toEqual([{ n: 0 }]);
+      expect((await admin.query("SELECT count(*)::int n FROM public.commerce_checkout_compensations WHERE order_id=$1", [f.input.orderId])).rows).toEqual([{ n: 1 }]);
+    }
+  } finally {
+    await first.query("ROLLBACK");
+    if (pending) await pending;
+    first.release(); second.release();
+  }
+}, 30_000);
+
+it("refuses duplicate UUID identities atomically while retaining single alias inputs and exact replay", async () => {
+  expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=session_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  for (const spelling of ["uppercase", "braced", "hyphenless"] as const) {
+    const f = await stock(), input = await purchase(f);
+    const canonical = "a" + input.items[0].orderItemId.slice(1);
+    await admin.query("UPDATE public.commerce_order_items SET id=$2 WHERE id=$1", [input.items[0].orderItemId, canonical]);
+    const item = { ...input.items[0], orderItemId: canonical };
+    const alias = spelling === "uppercase" ? canonical.toUpperCase()
+      : spelling === "braced" ? `{${canonical}}` : canonical.replaceAll("-", "");
+    const aliased = { ...item, orderItemId: alias };
+    const stockBefore = (await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows;
+    for (const items of [[item, aliased], [aliased, item]]) {
+      await expect(port().reserveOrderItems({ ...input, items }))
+        .rejects.toMatchObject({ code: "22023", message: "inventory_reservation_item_invalid" });
+      expect(await rows(input.orderId)).toEqual([]);
+      expect((await admin.query("SELECT count(*)::int receipts FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$1", [input.idempotencyKey])).rows)
+        .toEqual([{ receipts: 0 }]);
+      expect(await budget(f)).toMatchObject({ hard_hold_quantity: 0, available_quantity: 10 });
+      expect((await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows).toEqual(stockBefore);
+    }
+    const single = { ...input, items: [aliased] }, first = await port().reserveOrderItems(single);
+    expect(first).toMatchObject({ replayed: false, reservations: [{ orderItemId: alias, replayed: false }] });
+    const persisted = await rows(input.orderId);
+    expect(persisted).toHaveLength(1);
+    expect(await port().reserveOrderItems(single)).toMatchObject({ replayed: true,
+      reservations: [{ reservationId: first.reservations[0].reservationId, replayed: true }] });
+    await expect(port().reserveOrderItems({ ...single, items: [item] }))
+      .rejects.toThrow("fulfillment_purchase_reservation_idempotency_conflict");
+    expect(await rows(input.orderId)).toEqual(persisted);
+    expect((await admin.query("SELECT count(*)::int receipts FROM public.fulfillment_purchase_reservation_receipts WHERE idempotency_key=$1", [input.idempotencyKey])).rows)
+      .toEqual([{ receipts: 1 }]);
+    expect(await budget(f)).toMatchObject({ hard_hold_quantity: 2, available_quantity: 8 });
+    expect((await readSnapshot("SELECT to_jsonb(s) row FROM public.fulfillment_stock_current s WHERE source_key=$1", [f.source])).rows).toEqual(stockBefore);
+  }
 });

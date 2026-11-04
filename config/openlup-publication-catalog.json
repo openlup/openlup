@@ -1634,6 +1634,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g11cctl.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g12.md",
       "class": "public-output"
     },
@@ -1690,6 +1694,18 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g7bctl.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7ctl.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g8ctl.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g9.md",
       "class": "public-output"
     },
@@ -1726,7 +1742,23 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-qa.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-qb.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-rec.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-reg.md",
       "class": "public-output"
     },
     {
@@ -4106,6 +4138,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/bundleAdmin.ts",
       "class": "public-output"
     },
@@ -5006,6 +5042,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceReadPreparation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgres/index.ts",
       "class": "public-output"
     },
@@ -5023,6 +5067,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgres/returnsControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryTokenPort.ts",
       "class": "public-output"
     },
     {
@@ -6163,6 +6211,10 @@
     },
     {
       "path": "packages/platform/src/identity/postgresAccountLinkStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresContactClientRegistrar.ts",
       "class": "public-output"
     },
     {
@@ -8443,6 +8495,10 @@
     },
     {
       "path": "packages/platform/test/commerce/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/postgresCheckoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
     {
@@ -27822,6 +27878,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceComposition.test.ts",
       "class": "public-output"
     },
@@ -27838,6 +27898,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteCatalogFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/communicationsNative.test.ts",
       "class": "public-output"
     },
@@ -27847,6 +27919,10 @@
     },
     {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/contactClientRegistrar.test.ts",
       "class": "public-output"
     },
     {

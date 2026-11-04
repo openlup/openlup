@@ -128,3 +128,26 @@ it("serializes competing holds and racing release/expiry with exactly one stock 
   expect(await budget(f)).toEqual({ hard_hold_quantity: "0", available_quantity: "2" });
   expect(await release(id)).toMatchObject({ replayed: true });
 });
+
+it("shares one per-item effect across equivalent UUID spellings within a batch", async () => {
+  for (const spelling of ["uppercase", "braced", "hyphenless"] as const) {
+    const f = await fixture(), canonical = "a" + f.items[0].orderItemId.slice(1);
+    await admin.query("UPDATE public.commerce_order_items SET id=$2 WHERE id=$1", [f.items[0].orderItemId, canonical]);
+    const item = { ...f.items[0], orderItemId: canonical };
+    const alias = spelling === "uppercase" ? canonical.toUpperCase()
+      : spelling === "braced" ? `{${canonical}}` : canonical.replaceAll("-", "");
+    const key = randomUUID(), items = [item, { ...item, orderItemId: alias }];
+    const first = await reserve(f, key, null, items), id = first.reservations[0].reservationId;
+    expect(first.reservations).toMatchObject([{ reservationId: id, replayed: false }, { reservationId: id, replayed: true }]);
+    expect((await admin.query(`SELECT count(*)::int holds,sum(quantity)::int quantity,
+      (SELECT count(*)::int FROM public.inventory_stock_movements WHERE reservation_id=$2) movements
+      FROM public.inventory_reservations WHERE order_id=$1`, [f.order, id])).rows)
+      .toEqual([{ holds: 1, quantity: 2, movements: 1 }]);
+    expect(await budget(f)).toEqual({ hard_hold_quantity: "2", available_quantity: "3" });
+    expect(await reserve(f, key, null, items)).toMatchObject({ reservations: [
+      { reservationId: id, replayed: true }, { reservationId: id, replayed: true },
+    ] });
+    expect((await admin.query("SELECT count(*)::int movements FROM public.inventory_stock_movements WHERE reservation_id=$1", [id])).rows)
+      .toEqual([{ movements: 1 }]);
+  }
+});
