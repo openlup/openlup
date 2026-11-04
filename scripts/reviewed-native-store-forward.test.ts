@@ -682,7 +682,7 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     const slots = production.nativeStoreForwardClass!.slots;
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 4).map(slot => slot.path));
+    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 5).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
     expect(slots[3]!.dataStatements).toEqual(["INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');"]);
     expect(slots[2]!.createdFunctions).toEqual([
