@@ -9390,7 +9390,7 @@ export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
-export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping, summarizeThresholdShipping } from "./thresholdPolicy.js";
 /** Sparse canonical projections, never an install chain. */
 export declare const SHIPPING_MIGRATIONS: readonly [{
     readonly id: "20260807140000_read_parity_catalog";
@@ -9519,6 +9519,20 @@ export declare function resolveShippingPolicy(settings: ShippingSettings, asOf: 
 /** Only product payable after discounts counts; equality receives free delivery. */
 export declare function resolveThresholdShipping(terms: ShippingTerms, productPayableMinor: number): {
     grossMinor: number;
+    remainingMinor: number;
+};
+/** Presentation of one quote's money; stale terms never produce a remaining-spend helper. */
+export declare function summarizeThresholdShipping(input: {
+    productPayableMinor: number | null;
+    totalMinor: number | null;
+    shippingGrossMinor: number | null;
+    shippingDiscountMinor: number;
+    terms?: ShippingTerms | null;
+    stale?: boolean;
+}): {
+    hasShipping: boolean;
+    effectiveShippingMinor: number;
+    shippingIsFree: boolean;
     remainingMinor: number;
 };
 ```
