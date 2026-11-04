@@ -262,3 +262,7 @@ landing follow only after that evidence is complete.
 
 Self-retro. Preserving the selected migration order and recomputing the current
 inventory keeps an integration from rewriting historic schema expectations.
+
+## Combined candidate after native fulfillment-read integration
+
+The current combined delivery is based on main `313eda258c8a8afa90e053623dea91922d1a2baa`, integrated by merge `dd9e7080295c0fb8a8678a641a99082a9a363029`. No stack pin applies to documentation, native review or verification from this point. The merge is the exact conflict-free Git merge-tree prediction; API regeneration adds no changes and the catalogue is the exact sorted union. The approved combined scope and remaining review and delivery gates continue to apply, including the explicit train-front check before landing.
