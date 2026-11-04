@@ -1228,3 +1228,7 @@ naming each of the three blocking tables. The existing qlock-3 closer owns the
 transition from these pins to positive restricted-runtime proofs.
 
 The generated API projection exposes the already-read shipping threshold export through the catalog and PostgreSQL commerce graphs introduced by main `371f25d0`; source, SQL and runtime behaviour are unchanged.
+
+## Zoned transfer text assertions
+
+The unchanged main assertion at `tests/postgres/connectedManagedRetained.test.ts:487` is in the F-ZONED-TRANSFER-TEXT family. A scratch dump under `Etc/GMT-9` found one actual and one expected `clients` row, no missing or extra IDs, and differences only in `created_at` and `updated_at`: `2026-11-05T05:13:47.787045+09:00` versus `2026-11-04T20:13:47.787045+00:00`. PostgreSQL confirmed equality as `timestamptz` for both pairs, including their microseconds. Capture and restore serialize at UTC; the assertion renders JSON in the session zone. The row adds no `clients` restore behaviour, and the assertion stays unchanged.
