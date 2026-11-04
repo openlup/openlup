@@ -107,3 +107,37 @@ test('continuation keeps same-order credentials across replay without transferri
     if (descriptor) Object.defineProperty(globalThis, 'sessionStorage', descriptor); else Reflect.deleteProperty(globalThis, 'sessionStorage');
   }
 });
+
+
+test('second submit continues through completion and a cold module reload without UI assets', async () => {
+  const saved = ['location', 'history', 'sessionStorage'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
+  const data = new Map<string, string>();
+  const location = { pathname: '/account/complete-payment', search: '', hash: '' };
+  try {
+    Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
+    Object.defineProperty(globalThis, 'history', { configurable: true, value: { replaceState: () => { location.search = ''; } } });
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+      getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value),
+    } });
+    const configuration = 'completion-reload';
+    rememberPurchase(configuration, { orderRef: 'created', token: 'creating-token' });
+    rememberPurchase(configuration, { orderRef: 'created' });
+    captureCompletionEntry();
+    assert.deepEqual(currentPurchase(configuration), { orderRef: 'created', token: 'creating-token' });
+    const reloaded = await import(new URL('../client/purchase.ts?continuation-reload', import.meta.url).href);
+    reloaded.captureCompletionEntry();
+    assert.deepEqual(reloaded.currentPurchase(configuration), { orderRef: 'created', token: 'creating-token' });
+    reloaded.rememberPurchase(configuration, { orderRef: 'different' });
+    assert.deepEqual(reloaded.currentPurchase(configuration), { orderRef: 'different' });
+    reloaded.rememberPurchase(configuration, { orderRef: 'different', token: 'replacement-token' });
+    assert.deepEqual(reloaded.currentPurchase(configuration), { orderRef: 'different', token: 'replacement-token' });
+    location.search = '?token=entry-token';
+    reloaded.captureCompletionEntry();
+    assert.deepEqual(reloaded.currentPurchase(configuration), { token: 'entry-token' });
+    assert.equal(location.search, '');
+  } finally {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
+    }
+  }
+});

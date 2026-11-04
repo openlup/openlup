@@ -76,3 +76,27 @@ test('nonzero renewal shipping refuses while the native contract requires zero',
   config.offer.renewalShippingMinor = 300;
   assert.throws(() => assertConfig(config), /starter_renewal_shipping_unsupported/);
 });
+
+
+for (const original of Object.values(configurations)) test(`${original.id}: native configuration boundaries refuse before composition`, () => {
+  const valid = structuredClone(original);
+  valid.offer.cadenceDays = [120]; valid.offer.defaultCadenceDays = 120;
+  valid.purchase.tax.legalBasis = 'x'.repeat(200);
+  valid.legal.revision = 'x'.repeat(64);
+  valid.purchase.stock.quantities[valid.offer.products[0]!.sku] = 2147483647;
+  assertConfig(valid);
+  for (const mutate of [
+    (config: typeof valid) => { config.offer.cadenceDays = [121]; config.offer.defaultCadenceDays = 121; },
+    (config: typeof valid) => { config.offer.cadenceDays = [120, 121]; },
+    (config: typeof valid) => { config.offer.defaultCadenceDays = 121; },
+    (config: typeof valid) => { config.purchase.stock.quantities[config.offer.products[0]!.sku] = 2147483648; },
+    (config: typeof valid) => { config.offer.products[0]!.unitPrice.amountMinor = 2147483648; },
+    (config: typeof valid) => { config.offer.subscriptionDiscountBps = 10000; },
+    (config: typeof valid) => { config.purchase.tax.legalBasis = 'x'.repeat(201); },
+    (config: typeof valid) => { config.legal.revision = 'x'.repeat(65); },
+    (config: typeof valid) => { config.legal.revision = ' padded '; },
+  ]) {
+    const invalid = structuredClone(valid); mutate(invalid);
+    assert.throws(() => assertConfig(invalid), /starter_(offer|purchase_configuration|product|configuration)_invalid/);
+  }
+});

@@ -1,3 +1,4 @@
+import { priceInterimOffer } from './interim-pricing.ts';
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 
 export type Locale = 'en' | 'pl';
@@ -104,6 +105,8 @@ export function assertConfig(config: StoreConfig): void {
   catch { throw new Error('starter_market_invalid'); }
   if (typeof config.id !== 'string' || config.id.length > 80
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');
+  if (typeof config.legal.revision !== 'string' || config.legal.revision !== config.legal.revision.trim()
+    || config.legal.revision.length < 1 || config.legal.revision.length > 64) throw new Error('starter_configuration_invalid');
   if (!config.brand.name.trim() || !config.legal.demoOnly || config.features.risk !== false) {
     throw new Error('starter_configuration_invalid');
   }
@@ -118,7 +121,8 @@ export function assertConfig(config: StoreConfig): void {
   if (offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
-    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 366)) {
+    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 120
+    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 120)) {
     throw new Error('starter_offer_invalid');
   }
   if (offer.renewalShippingMinor !== 0) throw new Error('starter_renewal_shipping_unsupported');
@@ -142,7 +146,7 @@ export function assertConfig(config: StoreConfig): void {
     || !/^[a-z][a-z0-9_]*$/.test(purchase.tax.category)
     || !purchase.stock.providerRef.trim()
     || !purchase.stock.syncRunId.trim()
-    || !purchase.tax.legalBasis.trim()
+    || !purchase.tax.legalBasis.trim() || purchase.tax.legalBasis.trim().length > 200
     || Object.values(purchase.inputLimits).some(value => !Number.isSafeInteger(value) || value < 1)
     || !/^[a-z0-9-]+$/.test(purchase.sandbox.dunningTemplateSlug)
     || !/^[a-z0-9-]+$/.test(purchase.sandbox.recoveryTemplateSlug)
@@ -157,15 +161,19 @@ export function assertConfig(config: StoreConfig): void {
       || !/^[A-Z0-9-]{1,80}$/.test(product.sku)
       || !/^[a-z0-9-]{1,80}$/.test(product.slug)
       || !Number.isSafeInteger(product.unitPrice.amountMinor)
-      || product.unitPrice.amountMinor < 1
+      || product.unitPrice.amountMinor < 1 || product.unitPrice.amountMinor > 2147483647
       || product.unitPrice.currency !== config.market.currency
       || product.permittedPurchaseModes.length === 0
       || product.permittedPurchaseModes.some(mode => mode !== 'one_time' && mode !== 'subscription')
       || !product.media.startsWith('/media/')) {
       throw new Error('starter_product_invalid');
     }
-    if (!Number.isSafeInteger(purchase.stock.quantities[product.sku]) || purchase.stock.quantities[product.sku]! < 0) {
+    if (!Number.isSafeInteger(purchase.stock.quantities[product.sku]) || purchase.stock.quantities[product.sku]! < 0 || purchase.stock.quantities[product.sku]! > 2147483647) {
       throw new Error('starter_purchase_configuration_invalid');
+    }
+    for (const mode of product.permittedPurchaseModes) {
+      const amount = priceInterimOffer(config, mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor;
+      if (amount < 1 || amount > 2147483647) throw new Error('starter_product_invalid');
     }
     seen.add(product.sku);
     slugs.add(product.slug);

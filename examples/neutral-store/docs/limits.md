@@ -228,3 +228,12 @@ by configuration validation. Both demonstrations use 160. Longer purchase e-mail
 receive `starter_email_invalid` before contact resolution. Checkout and subscription
 address changes share the configured phone and postal-code limits; configuration
 cannot exceed the native destination bounds. Browser fields use those same limits.
+
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.

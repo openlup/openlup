@@ -46,10 +46,10 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
   }
   if (input.configuration !== config.id) return fail('cart_configuration_changed');
   if (input.lines.length === 0) return fail('cart_empty');
-  if (input.lines.length > config.offer.products.length) return fail('cart_invalid');
+  if (input.lines.length > 50 || input.lines.length > config.offer.products.length) return fail('cart_invalid');
   const mode = input.mode;
   const cadenceDays = mode === 'subscription' ? input.cadenceDays : null;
-  if (mode === 'subscription' && (typeof cadenceDays !== 'number'
+  if (mode === 'subscription' && (typeof cadenceDays !== 'number' || !Number.isSafeInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > 120
     || !config.offer.cadenceDays.includes(cadenceDays))) return fail('cadence_unavailable');
   const issues: OfferIssue[] = [];
   const lines: CartLine[] = [];
@@ -67,7 +67,7 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
     }
     if (seen.has(sku)) issues.push({ code: 'duplicate_sku', sku });
     seen.add(sku);
-    if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > config.offer.maxUnits) {
+    if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > 99 || raw.quantity > config.offer.maxUnits) {
       issues.push({ code: 'quantity_invalid', sku });
       continue;
     }

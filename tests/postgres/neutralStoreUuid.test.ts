@@ -1,6 +1,3 @@
-import { chromium, expect as browserExpect } from '@playwright/test';
-import { copy } from '../../examples/neutral-store/owned/copy.ts';
-import { routes } from '../../examples/neutral-store/shared/routes.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -64,14 +61,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return (await exchange(operation, payload, signedIn, key)).body;
   }
 
-  async function control(permissive: boolean | null, emailLimit?: number) {
+  async function control(permissive: boolean | null, emailLimit?: number, cadenceDays?: number[]) {
     return new Promise<{ registrations: number }>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('host_control_timeout')), 5_000);
       host!.once('message', message => {
         clearTimeout(timer);
         resolve(message as { registrations: number });
       });
-      host!.send({ permissive, emailLimit });
+      host!.send({ permissive, emailLimit, cadenceDays });
     });
   }
 
@@ -168,6 +165,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       let registrations = 0;
       const contacts = { ensureContactClient: input => { registrations++; return registrar.ensureContactClient(input); }, close: async () => {} };
       process.on('message', message => {
+        if (message.cadenceDays !== undefined) config.offer.cadenceDays = message.cadenceDays;
         if (message.emailLimit !== undefined) config.purchase.inputLimits.email = message.emailLimit;
         if (message.permissive !== null) {
           config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 2, maxPerRequester: 2, maxEntries: 8 };
@@ -270,46 +268,21 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   }
 
   // New cases measured locally; each retains the existing 30 s hosted bound.
-  it('unchanged browser resubmission retains a payable continuation through reload', async () => {
-    const browser = await chromium.launch({ headless: true });
+  it('native cadence boundary accepts 120 and refuses 121 before contact resolution', async () => {
+    const before = Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count);
     try {
-      const page = await browser.newPage();
-      await page.goto(base + routes.builder.en);
-      await page.getByRole('spinbutton').first().fill('1');
-      await page.getByRole('button', { name: copy.en.addBox, exact: true }).click();
-      await page.getByRole('button', { name: copy.en.checkout, exact: true }).click();
-      await page.getByLabel(copy.en.email, { exact: true }).fill(`repeat-${config.id}@example.test`);
-      await page.getByLabel(copy.en.termsAccept).check();
-      const submit = async () => {
-        const response = page.waitForResponse(response => response.url().endsWith('/api/actions/checkout.create'));
-        await page.getByRole('button', { name: copy.en.placeOrder, exact: true }).click();
-        const body = await (await response).json() as ActionResult;
-        expect(body.ok).toBe(true);
-        if (!body.ok || !isRecord(body.value)) throw new Error('browser_purchase_required');
-        await browserExpect(page.getByRole('button', { name: copy.en.placeOrder, exact: true })).toBeEnabled();
-        return body.value;
-      };
-      const first = await submit();
-      expect(typeof first.token).toBe('string');
-      const repeated = await submit();
-      expect(repeated.orderRef).toBe(first.orderRef);
-      expect(repeated.token).toBeUndefined();
-      const stored = await page.evaluate(id => JSON.parse(sessionStorage.getItem(`neutral-store:purchase:v2:${id}`) ?? 'null'), config.id);
-      expect(stored).toEqual({ orderRef: first.orderRef, token: first.token });
-      await page.locator('main').getByRole('link', { name: copy.en.completion, exact: true }).click();
-      await browserExpect(page.getByRole('button', { name: copy.en.simulatePaid, exact: true })).toBeVisible();
-      await page.reload();
-      await browserExpect(page.getByRole('button', { name: copy.en.simulatePaid, exact: true })).toBeVisible();
-      // A different native order gets its own credential, including after reload.
-      await page.goto(base + routes.checkout.en);
-      await page.getByLabel(copy.en.email, { exact: true }).fill(`other-${config.id}@example.test`);
-      await page.getByLabel(copy.en.termsAccept).check();
-      const other = await submit();
-      expect(other.orderRef).not.toBe(first.orderRef);
-      expect(other.token).not.toBe(first.token);
-      expect(await page.evaluate(id => JSON.parse(sessionStorage.getItem(`neutral-store:purchase:v2:${id}`) ?? 'null'), config.id))
-        .toEqual({ orderRef: other.orderRef, token: other.token });
-    } finally { await browser.close(); }
+      // Bypass configuration validation to exercise the independent HTTP admission guard.
+      await control(null, undefined, [120, 121]);
+      const input = checkout(`cadence-${config.id}@example.test`);
+      const refused = await call('checkout.create', { ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 121 } });
+      expect(refused).toEqual({ ok: false, code: 'cadence_unavailable' });
+      expect(Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count)).toBe(before);
+      const accepted = await call('checkout.create', { ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 120 } });
+      expect(accepted.ok).toBe(true);
+      if (!accepted.ok || !isRecord(accepted.value)) throw new Error('cadence_purchase_required');
+      const read = await call('checkout.read', { orderRef: accepted.value.orderRef, token: accepted.value.token });
+      expect(read.ok && isRecord(read.value) && read.value.cadenceDays).toBe(120);
+    } finally { await control(null, undefined, [...config.offer.cadenceDays]); }
   }, 30_000);
 
   it('padded customer challenge email preserves the normalized address, public shape and floor', async () => {

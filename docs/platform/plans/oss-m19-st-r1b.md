@@ -185,3 +185,26 @@ specification remains byte-identical.
 Self-retro: separate successful actions missed cross-action continuity. Preserve
 same-order credentials on weaker replay and derive shared boundaries from their
 existing configuration values; test the transition as well as each action.
+
+
+## Staged native-boundary and proof-location repair
+
+A complete sweep of forwarded configuration and required-job prerequisites
+preceded this repair. Cadence choices and the default are restricted to 1..120;
+admission independently refuses unsupported cadences before contact resolution.
+The same sweep aligns per-line quantities (99), selected lines (50), stock and
+seeded price integer ranges, tax legal-basis length (200), and the shared legal
+revision (trimmed, 1..64) with their native consumers. Catalog size is unchanged.
+
+The root PostgreSQL regression no longer launches a browser or reads ignored UI
+output. Existing source tests prove create/replay/completion/reload credential
+continuity with storage and location stubs, including different-order separation
+and replacement tokens. The committed continuity proof consists of these source
+tests and the clean-index root proof. A real-browser second-submit check was
+confirmed in a local run that is not part of the committed suite. A staged-index checkout
+with only npm ci and the root three-package pretest build proves the root tests
+without starter dist or a browser. The required journey spec remains unchanged.
+
+Self-retro: prepared local output and a partial boundary inventory hid two new
+classes. Trace each forwarded value to its native consumer and each test to the
+prerequisites its actual runner provides before selecting proof.

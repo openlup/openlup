@@ -425,9 +425,15 @@ Attempt limits live in one process's memory and reset on restart.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
 
 
-The existing real-HTTP PostgreSQL starter regression includes an unchanged second
-browser submit followed by the completion link and reload, and isolation of the
-next order's credential. The shared e-mail boundary checks a 160-character guest
+Existing source continuation tests use storage and location stubs to check an
+unchanged second submit, completion, a cold module reload, different-order
+separation and a replacement token. The committed continuity proof consists of
+these source tests and the clean-index root proof. A real-browser second-submit
+check was confirmed in a local run that is not part of the committed suite.
+The root real-HTTP PostgreSQL regression needs only the three package builds;
+it uses neither starter UI assets nor a browser. It checks cadence 120 acceptance
+and cadence 121 refusal before any contact write. The shared e-mail boundary
+checks a 160-character guest
 purchase through payment, native challenge, sign-in and account order visibility;
 161 characters refuse before any contact write. A lower configured value governs
 both purchase and challenge requests. Address changes check the same phone and
