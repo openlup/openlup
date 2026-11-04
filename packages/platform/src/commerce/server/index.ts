@@ -160,6 +160,7 @@ export type { CompensationRpcClient } from "./checkoutCompensation.js";
 export { hashCheckoutRecoveryToken, generateCheckoutRecoveryToken, CHECKOUT_RECOVERY_TOKEN_PREFIX, classifyCheckoutRecoveryTokenState } from "./checkoutRecoveryToken.js";
 /** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
 export type { CheckoutRecoveryTokenContext, CheckoutRecoveryTokenInspection, CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
+export { createPostgresCheckoutRecoveryTokenPort, type PostgresCheckoutRecoveryTokenInspection, type PostgresCheckoutRecoveryTokenPort } from "./postgresCheckoutRecoveryTokenPort.js";
 /** @consumer server/domains/commerce/checkoutRecoveryOrderPort.ts */
 export type { CheckoutRecoveryOrderSnapshot, CheckoutRecoveryOrderReadPort, CheckoutRecoveryPriorPaymentEvidence } from "./checkoutRecoveryOrderPort.js";
 /** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */

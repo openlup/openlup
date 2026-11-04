@@ -1306,9 +1306,21 @@ remaining source contents and modes. This is preview evidence, not stability.
 
 ## M05 parity seams
 
-Development-preview hosts may select five independent seams; omission preserves
+Development-preview hosts may select independent seams; omission preserves
 incumbent behavior. No route, policy, provider or new financial default is selected
 by importing them. These additive APIs need a minor package set.
+
+The existing catalog entry also supplies the opt-in
+`createPostgresCommerceQuoteCatalogReadPort`. It reuses strict SKU envelopes,
+then guards the current payload against the product/slug/pointer and complete
+revision tuple before excluding inactive products. Included products then undergo
+required host schema, semantic identity and canonical digest verification.
+Bounded keyset scanning refuses excess cardinality/pages, duplicate variant or
+code and repeated cursor without partial success. Known quote catalog errors
+retain their class; unexpected failures become authority unavailable. This is
+current-direct authority, without a publication-wide snapshot or head-qualified
+publication. See the [catalog package contract](../../packages/platform/README.md#catalog)
+for the callback, limits and existing runtime SELECT capability.
 
 `createPromotionQuoteAcceptance` accepts explicit `shippingTerms` on each issue
 and verify input. `projectPromotionQuoteMoney(quote, acquisitionTerms?, shippingTerms?)`
