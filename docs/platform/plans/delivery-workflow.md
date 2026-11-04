@@ -27,6 +27,49 @@ observed value, cost and KEEP / ADJUST / DROP decision in existing task evidence
 A dropped technique does not satisfy its undelivered outcome. A changed goal,
 weaker gate, new risk or external authority boundary needs its owning decision.
 
+## Schedule checks before review
+
+Keep the approved working-tree checks and scoped tests for the changed
+contract. If a committed candidate still needs a broad pre-review diagnostic,
+refresh `origin/main` once at that boundary and run the early preflight before
+requesting the resource slot. Run the planner from the candidate worktree using
+the script from a separate checkout of trusted main when the candidate predates
+it. Export the candidate's existing `OPENLUP_STACK_BASE` for a stacked change.
+
+```sh
+git fetch origin main && node --input-type=module - "$OPENLUP_TRUSTED_CHECKOUT" <<'NODE'
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const planner = pathToFileURL(resolve(process.argv[2], 'scripts/verification-plan.mjs'));
+try {
+  const { preflightBeforeReview } = await import(planner);
+  console.log(await preflightBeforeReview());
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}
+NODE
+```
+
+Schedule the diagnostic only after the command succeeds. If a task script
+schedules the diagnostic, use the preflight command as the first operand of
+`&&` before the existing resource request. A failed prediction comes before
+heavy work. The local pending-predecessor result permits local work and still
+requires the exact predecessor to land before queue admission. The predictor
+uses the existing native decision against the fetched ref. Later native
+preflights remain the owner of current admission decisions.
+
+A prepared candidate continues at its first outstanding obligation. Keep its
+exact commit, stack pin, existing review history and valid local verification
+or installed stamp. The planner does not require a review or write review or
+verification records. Use it when there is still a broad diagnostic to schedule,
+and use the existing delivery checks for a candidate ready to submit. Reserve
+broad pre-review execution for a named interaction that the focused probes
+cannot establish. Complete the full required gate after native review, once on
+the actual candidate unless an existing recovery rule requires another run.
+
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-89f037cfc26b2be00b5c16b95618eb9e3740a8fed11cb0df9afb006094450349","reason":"The scheduling probe runs the existing native merge prediction before a resource request for an explicitly selected diagnostic. It is not part of the mandatory verification runner and does not change its phases, proof, receipt, stack-base or hosted admission rules. The development-preview checks section still describes those obligations. The scheduling procedure and its limits are explained in this delivery record."} -->
+
 ## S1–S2 delivery scope
 
 S1 supplies one local obligation catalogue and read-only explanation. S2 makes
