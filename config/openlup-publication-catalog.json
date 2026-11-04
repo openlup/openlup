@@ -142,6 +142,10 @@
       "class": "entrypoint"
     },
     {
+      "path": "ROADMAP.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "SECURITY.md",
       "class": "policy"
     },
