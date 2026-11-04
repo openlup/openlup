@@ -1,3 +1,4 @@
+import { canonicalUuid } from "./nativeRetryDriver.js";
 import type { RenewalSettlementPort } from "./contracts/renewal.js";
 import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
@@ -36,7 +37,7 @@ export function createPostgresRenewalSettlementPort(
     },
 
     async acknowledgeExternalAttempt(input) {
-      const externalAttemptRef = input.externalAttemptRef.trim();
+      const externalAttemptRef = canonicalUuid(input.externalAttemptRef.trim()) ?? input.externalAttemptRef.trim();
       if (!externalAttemptRef) throw new Error("subscription_renewal_external_attempt_ref_required");
       const result = await executor.query(ACKNOWLEDGE_ATTEMPT_SQL, [
         input.operationId, input.operationFingerprint, externalAttemptRef, input.acknowledgedAt,
@@ -50,7 +51,7 @@ export function createPostgresRenewalSettlementPort(
       }
       const result = await executor.query(TERMINAL_SQL, [
         input.operationId, input.eventKey, input.operationFingerprint, input.outcome,
-        input.externalRef ?? null, input.reason ?? null, input.occurredAt,
+        canonicalUuid(input.externalRef) ?? input.externalRef ?? null, input.reason ?? null, input.occurredAt,
       ]);
       return codec.readback(subscriptionRecord(result.rows[0]?.response));
     },

@@ -655,3 +655,135 @@ it("canonicalizes frozen recovery UUIDs before the SQL binding comparison", asyn
   expect(await allPublicRows(admin)).toEqual(before);
   expect(d.execute).not.toHaveBeenCalled();
 }, 30_000);
+
+// Prepared simulator recovery is subsecond per case; retain the measured 30 s consumer bound.
+it.each(["sourceReference", "attemptRef", "externalAttemptRef", "all"] as const)("matches sandbox recovery UUID evidence by value (%s)", async field => {
+  const f = await active(), d = await deps(f.subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now), store = api.createPostgresRetryStore(executor);
+  const row = (await store.read(first.operationId))!, retryAt = row.nextRetryAt!;
+  const recovery = retryDriver(d, "succeeded", retryAt), original = recovery.options;
+  let observed: Awaited<ReturnType<typeof original.payments.readOutcome>> | undefined;
+  const prepare = api.createNativeRetryDriver({ ...original, payments: { ...original.payments,
+    readOutcome: async (prepared, snapshot) => { observed = await original.payments.readOutcome(prepared, snapshot); return { ...observed, disposition: "ambiguous" }; } } });
+  expect(await prepare.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "awaiting_provider" }]);
+  expect(recovery.execute).toHaveBeenCalledTimes(1);
+  expect(await store.read(first.operationId)).toMatchObject({ state: "prepared" });
+  const evidence = observed!, errors: { code?: string; message?: string }[] = [];
+  const guarded = { query: async (sql: string, values?: unknown[]) => {
+    try { return await executor.query(sql, values); } catch (error) { errors.push(error as { code?: string; message?: string }); throw error; }
+  } };
+  const before = await allPublicRows(admin);
+  for (const key of ["sourceReference", "attemptRef"] as const) {
+    const refused = api.createNativeRetryDriver({ ...original, executor: guarded,
+      payments: { ...original.payments, readOutcome: async () => ({ ...evidence, sourceEvidence: { ...evidence.sourceEvidence!, [key]: randomUUID() } }) } });
+    expect(await refused.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "error" }]);
+    expect(errors.at(-1)).toMatchObject({ code: "22023", message: "wrong_attempt" });
+    expect(await allPublicRows(admin)).toEqual(before);
+  }
+  const upper = { ...evidence, sourceEvidence: { ...evidence.sourceEvidence! } };
+  if (field === "all" || field === "externalAttemptRef") upper.externalAttemptRef = evidence.externalAttemptRef!.toUpperCase();
+  for (const key of ["sourceReference", "attemptRef"] as const) if (field === "all" || field === key) upper.sourceEvidence[key] = evidence.sourceEvidence![key].toUpperCase();
+  const finish = api.createNativeRetryDriver({ ...original, payments: { ...original.payments, readOutcome: async () => upper } });
+  expect(await finish.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "succeeded" }]);
+  expect(await store.read(first.operationId)).toMatchObject({ state: "recovered", externalAttemptSequence: 1 });
+  expect((await runtime.query(`SELECT
+    (SELECT count(*)::integer FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured') AS captures,
+    (SELECT status FROM public.commerce_settlement_intents WHERE id=$1) AS status,
+    (SELECT count(*)::integer FROM public.subscription_dunning_cases WHERE id=$2 AND status='open') AS unpaid`, [row.settlementIntentId, row.caseId])).rows[0])
+    .toEqual({ captures: 1, status: "settled", unpaid: 0 });
+  const receipt = (await runtime.query("SELECT input FROM public.subscription_retry_receipts WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) AND kind='recovery'", [first.operationId])).rows;
+  expect(receipt).toHaveLength(1);
+  expect(receipt[0].input).toMatchObject({ sourceReference: evidence.sourceEvidence!.sourceReference, attemptRef: evidence.sourceEvidence!.attemptRef, externalRef: evidence.externalAttemptRef });
+  const after = await allPublicRows(admin);
+  expect(await finish.run(retryAt, 50)).toEqual([]);
+  expect(await allPublicRows(admin)).toEqual(after);
+  expect(recovery.execute).toHaveBeenCalledTimes(1);
+}, 30_000);
+
+// The two ACK/outcome mutations are subsecond; allow 30 s for the installed artifact.
+it("matches UUID-shaped external settlement references and preserves opaque reference spelling", async () => {
+  for (const ref of [randomUUID(), "Opaque-Attempt-Ref"]) {
+    const f = await active(), d = await deps(f.subscriptionId, "succeeded");
+    const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+    const claim = await d.input.store.claimDue({ snapshot, workerId: "uuid-ack", now });
+    expect(await d.input.inventory.reserve({ operationId: claim.operationId, claimToken: claim.claimToken, now })).toMatchObject({ reserved: true });
+    const port = settlement(d.codec);
+    await port.prepareRenewal({ operationId: claim.operationId, claimToken: claim.claimToken, now });
+    await port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: ref, acknowledgedAt: now });
+    const equivalent = ref === "Opaque-Attempt-Ref" ? ref : ref.toUpperCase();
+    expect(await port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: equivalent, acknowledgedAt: now })).toMatchObject({ replayed: true, externalAttemptRef: ref });
+    const acknowledged = await allPublicRows(admin);
+    await expect(port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: randomUUID(), acknowledgedAt: now })).rejects.toMatchObject({ code: "23505" });
+    expect(await allPublicRows(admin)).toEqual(acknowledged);
+    const terminal = { operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, eventKey: `uuid-ref:${claim.operationId}`, outcome: "refused" as const, reason: "fixture", occurredAt: now };
+    await port.recordTerminalOutcome({ ...terminal, externalRef: equivalent });
+    const before = await allPublicRows(admin);
+    expect(await port.recordTerminalOutcome({ ...terminal, externalRef: ref })).toMatchObject({ replayed: true });
+    await expect(port.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef: randomUUID(), acknowledgedAt: now })).rejects.toThrow();
+    if (ref === "Opaque-Attempt-Ref") await expect(port.recordTerminalOutcome({ ...terminal, externalRef: ref.toUpperCase() })).rejects.toMatchObject({ code: "23505" });
+    expect(await allPublicRows(admin)).toEqual(before);
+    expect(d.execute).not.toHaveBeenCalled();
+  }
+}, 30_000);
+
+// This maps synthetic platform references to the simulator namespace; each DB mutation is subsecond.
+it("matches UUID-shaped mandate references and dispatches canonical request UUIDs", async () => {
+  const p = await purchase(), authorizationRef = randomUUID(), methodRef = randomUUID(), payerAccountRef = randomUUID();
+  const activation = await api.activateNativePurchaseWithRenewal(executor, { ...p, facts: { ...facts, authorizationRef, methodRef, payerAccountRef } });
+  const subscriptionId = String(activation.activation.subscriptionId), d = await deps(subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal({ ...d.input, policy: api.createSandboxRenewalPolicy(methodRef) }, d.due, now);
+  const store = api.createPostgresRetryStore(executor), row = (await store.read(first.operationId))!, retryAt = row.nextRetryAt!;
+  const recovery = retryDriver(d, "succeeded", retryAt, methodRef), original = recovery.options;
+  const simulator = payments.createPostgresSandboxPaymentSimulator(executor, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+  const execute = vi.fn(async (input: Parameters<typeof original.payments.execute>[0]) => {
+    expect(input).toMatchObject({ paymentIntentId: row.settlementIntentId, orderRef: row.orderId, orderId: row.orderId,
+      clientId: p.clientId, customerRef: payerAccountRef, paymentMethodRef: methodRef });
+    const attempt = await simulator.beginAttempt({ settlementIntentId: input.paymentIntentId, idempotencyKey: input.executionIdempotencyKey,
+      requestFingerprint: input.requestFingerprint, methodFacts: { authorizationRef: `sandbox:${authorizationRef}`,
+        unattendedChargeAuthorizedAt: d.due.unattendedChargeAuthorizedAt, payerAccountRef: `sandbox:${input.customerRef}`,
+        methodRef: `sandbox:${input.paymentMethodRef}`, methodEvidenceRef: facts.methodEvidenceRef }, at: retryAt });
+    return { status: "pending" as const, externalAttemptRef: attempt.id };
+  });
+  const mandate = { authorized: true, authorizationRef: authorizationRef.toUpperCase(), paymentMethodRef: methodRef.toUpperCase() };
+  const options = { ...original, readFrozenMandate: async () => ({ ...mandate, authorized: (await api.createPostgresPurchaseRenewalWriter(executor).readMethod(subscriptionId))?.healthState === "healthy" }),
+    retryInput: (snapshot: Parameters<typeof original.retryInput>[0], obligation: Parameters<typeof original.retryInput>[1]) => {
+      const supplied = original.retryInput(snapshot, obligation);
+      return { ...supplied, paymentIntentId: supplied.paymentIntentId.toUpperCase(), orderRef: supplied.orderRef.toUpperCase(),
+        orderId: supplied.orderId.toUpperCase(), clientId: supplied.clientId.toUpperCase(), customerRef: supplied.customerRef!.toUpperCase(), paymentMethodRef: supplied.paymentMethodRef.toUpperCase() };
+    }, payments: { ...original.payments, execute } };
+  const before = await allPublicRows(admin);
+  for (const key of ["authorizationRef", "paymentMethodRef"] as const) {
+    const refused = api.createNativeRetryDriver({ ...options, readFrozenMandate: async () => ({ ...mandate, [key]: randomUUID() }) });
+    expect(await refused.run(retryAt, 50)).toEqual([{ operationId: first.operationId, status: "frozen_mandate_mismatch" }]);
+    expect(await allPublicRows(admin)).toEqual(before);
+  }
+  const driver = api.createNativeRetryDriver(options);
+  const result = await driver.run(retryAt, 50);
+  expect(result, JSON.stringify({ result, executed: execute.mock.calls.length })).toEqual([{ operationId: first.operationId, status: "succeeded" }]);
+  expect(execute).toHaveBeenCalledTimes(1);
+  expect(await store.read(first.operationId)).toMatchObject({ state: "recovered" });
+  expect((await runtime.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [row.settlementIntentId])).rows).toEqual([{ status: "settled" }]);
+  expect((await runtime.query("SELECT count(*)::integer AS n FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured'", [row.settlementIntentId])).rows).toEqual([{ n: 1 }]);
+  expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_dunning_cases WHERE id=$1 AND status='open'", [row.caseId])).rows).toEqual([{ n: 0 }]);
+  const after = await allPublicRows(admin); expect(await driver.run(retryAt, 50)).toEqual([]);
+  expect(await allPublicRows(admin)).toEqual(after); expect(execute).toHaveBeenCalledTimes(1);
+}, 30_000);
+
+// Retry failure and receipt replay are subsecond, with the same 30 s installed-consumer allowance.
+it("canonicalizes a failed retry's UUID-shaped external reference at the host boundary", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now), store = api.createPostgresRetryStore(executor);
+  const row = (await store.read(first.operationId))!, recovery = retryDriver(d, "declined", row.nextRetryAt!), original = recovery.options;
+  let externalRef = "";
+  const driver = api.createNativeRetryDriver({ ...original, payments: { ...original.payments, readOutcome: async (prepared, snapshot) => {
+    const evidence = await original.payments.readOutcome(prepared, snapshot); externalRef = evidence.externalAttemptRef!;
+    return { ...evidence, externalAttemptRef: externalRef.toUpperCase() };
+  } } });
+  expect(await driver.run(row.nextRetryAt!, 50)).toEqual([{ operationId: first.operationId, status: "refused" }]);
+  const receipt = (await runtime.query("SELECT receipt_key,input FROM public.subscription_retry_receipts WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) AND kind='failure' AND attempt_sequence=1", [first.operationId])).rows[0];
+  expect(receipt.input.externalRef).toBe(externalRef);
+  const before = await allPublicRows(admin);
+  expect(await driver.propagateFailure(first.operationId.toUpperCase(), receipt.receipt_key, { ...receipt.input, externalRef: externalRef.toUpperCase() })).toMatchObject({ replayed: true, caseAdvanced: true });
+  await expect(driver.propagateFailure(first.operationId, receipt.receipt_key, { ...receipt.input, externalRef: randomUUID() })).rejects.toMatchObject({ code: "23505" });
+  expect(await allPublicRows(admin)).toEqual(before); expect(recovery.execute).toHaveBeenCalledTimes(1);
+}, 30_000);
