@@ -124,7 +124,8 @@ it.each(["2026-01-01T00:00:00.123456Z", "2026-01-01T00:00:00.000Z"])("normalizes
   await expect(executor.query("SELECT purchase_facts FROM public.subscription_renewal_attachments")).rejects.toMatchObject({ code: "42501" });
 }, 30_000);
 
-it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "subscription_stock_wait_cases"] as const)("full-chain absorption classifies %s and names each blocking table", async table => {
+// Pre-existing restricted absorption read limit; closer qlock-3. This is not availability proof.
+it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "subscription_stock_wait_cases"] as const)("pins restricted absorption 42501 at the destinations count (block=%s), closer qlock-3", async table => {
   // Scratch fixture: pending the G3 policy row. Never part of this forward.
   // The null case still exercises the full, unmodified chain.
   const pending = table ? await admin.query(`INSERT INTO public.client_absorption_policy(table_name,disposition,note)
@@ -156,10 +157,29 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
       }
     }
     const key = `absorption:${randomUUID()}`;
-    const result = await rpc<{ outcome: string; blockingTables?: string[] }>("customer_support_absorb_lead_v1", [operator, customer, lead, email, key, at]);
+    const before = await allPublicRows(admin);
+    expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+      .toEqual([{ current_user: "service_role", session_user: "g7_runtime", rolsuper: false, rolbypassrls: false }]);
+    expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=session_user")).rows)
+      .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+    try {
+      await rpc("customer_support_absorb_lead_v1", [operator, customer, lead, email, key, at]);
+      throw new Error("expected_restricted_absorption_read_limit");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "42501", message: "permission denied for table commerce_destinations" });
+      expect((error as { where?: string }).where).toContain("SELECT count(*) FROM public.commerce_destinations");
+    }
+    expect(await allPublicRows(admin)).toEqual(before);
+    // Owner access proves the intended classification and exact empty-lead replay.
+    const absorbAsOwner = async () => {
+      const response = await admin.query("SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,$6) AS result",
+        [operator, customer, lead, email, key, at]);
+      return response.rows[0].result as { outcome: string; blockingTables?: string[] };
+    };
+    const result = await absorbAsOwner();
     expect(result.outcome).toBe(table ? "refused" : "applied");
     if (table) expect(result.blockingTables).toContain(table);
-    else expect((await rpc<{ outcome: string }>("customer_support_absorb_lead_v1", [operator, customer, lead, email, key, at])).outcome).toBe("replayed");
+    else expect((await absorbAsOwner()).outcome).toBe("replayed");
   } finally {
     if (pending?.rows.length) await admin.query("DELETE FROM public.client_absorption_policy WHERE table_name='commerce_destinations'");
   }
