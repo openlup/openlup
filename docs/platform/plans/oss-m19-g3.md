@@ -1705,3 +1705,50 @@ assumptions that a native-only profile cannot distinguish. Explicit fixture
 instants and typed instant comparisons are the relevant repair boundary.
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-edffdbc49ceda50cd686a36c275a54ee547093b3c4e974a66da125babaf71434","reason":"The integrated forward-registry test changes only its existing title and feature-binding expectation from two bound slots to four. The newly inherited absorption classification assertion is preserved. Reader, admission, review and release control logic and the documented test commands and trust boundaries retain their existing behavior, so the development-preview guidance remains correct."} -->
+
+### Cycle-3 UTC fixture correction and accepted zone limits
+
+The resumed disposition assigns the two transfer text failures to existing main
+assertions from `e58cbf12f6b5cd0283ba9adabcce823c127e4e96` and
+`dcd8971dc8042bfe99cd6be61a2371824b5d8eb3`, with follow-up
+**F-ZONED-TRANSFER-TEXT**. They are accepted failures for this row's non-UTC zone
+sweep. The complete three-zone profile retains both assertions.
+
+The managed address case belongs to this row, introduced in `0c953bbf`.
+A real PostgreSQL experiment compared its cycle literal with the source fixture's
+`next_cycle_at = '2026-09-15T00:00:00Z'`. In UTC the date-only cycle matches.
+In `Etc/GMT-9` it denotes an instant 32,400 seconds earlier, and in `Etc/GMT+5`
+it denotes one 18,000 seconds later. The managed
+`customer_self_service_assert_no_locked_cycle` compares typed instants with
+`scheduled_at = p_next_cycle_at`, so these different cycle instants miss the
+paid-cycle guard. Explicit `2026-09-15T00:00:00Z` matches in every zone.
+The same case's request instant now spells `2026-09-01T00:00:00Z` explicitly.
+Both values preserve the fixture's intended UTC instants.
+
+The fix changes only those two test data literals. All assertions and
+expectations are retained. The other own-suite date-only values are paired
+operation/cycle timestamps, a distant stock-staleness deadline and a subscription
+start preceding the exercised dates. Their zone shifts do not affect an observed
+result, so the correction remains confined to this managed case.
+The previously completed scanner evidence is retained under the resumed
+fixture-only exception. The final cycle-3 review follows the rerun profiles,
+lint, typecheck and policy evidence below.
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-7e65bd7200e5cdd6f73033341231445b57c080cc7b1525167947db4a769d3991","reason":"The existing cycle-3 owner admission/replay, destination-footprint refusal, restricted 42501 pin and complete managed-chain witnesses retain their assertions. The only new fixture correction gives the managed address case explicit UTC request and cycle instants matching its existing next-cycle anchor. The two inherited transfer timestamp-text failures are recorded with their assigned follow-up. Existing commands, gate lanes, privileges, timeout rules, baselines and test guidance remain correct for this delta."} -->
+
+Current instruction revision read on resumption is
+`cec0236b1c1742a4d6184c8ba4c750007bdc7709`. The explicit comparison and review
+base remains the frozen export prerequisite above.
+
+The corrected complete profile passes all 319 cases by default. Each non-UTC
+profile passes 317 cases with exactly the two accepted transfer-text failures.
+The complete managed destination file passes all five cases in every zone,
+including its original lock expectation and both absorption witnesses.
+The corrected case also passes alone in `Etc/GMT-9`, without coverage, in 17 ms.
+Lint and typecheck pass again. Policy has zero unanswered obligations after
+refreshing this fixture delta's documentation-impact record.
+All packaged inputs remain identical to the measured merged tree.
+
+Self-retro: session-local midnight and an explicit UTC anchor denote different
+instants. Spell fixture instants explicitly before exercising an instant-equality
+guard, while recording inherited display-only failures under their actual owner.

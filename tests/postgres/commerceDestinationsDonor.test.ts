@@ -39,7 +39,7 @@ it("characterizes the address exemption during dunning, cycle-lock precedence, a
   await db.query("UPDATE public.subscriptions SET payment_method_ref=NULL,payment_method_kind=NULL WHERE id=$1", [sub]);
   const before = (await db.query("SELECT cadence_days,next_cycle_at,template_version FROM public.subscriptions WHERE id=$1", [sub])).rows;
   const actor = "07000000-0000-4000-8000-000000000001", key = `donor-${randomUUID()}`;
-  const invoke = (k: string, address: string) => db.query("SELECT public.customer_self_service_apply_subscription_action($1,$2,$3,'change_shipping_address',jsonb_build_object('shippingAddressId',$4::text),'2026-09-01') result", [actor, k, sub, address]);
+  const invoke = (k: string, address: string) => db.query("SELECT public.customer_self_service_apply_subscription_action($1,$2,$3,'change_shipping_address',jsonb_build_object('shippingAddressId',$4::text),'2026-09-01T00:00:00Z') result", [actor, k, sub, address]);
   const address = "07300000-0000-4000-8000-000000000002";
   await invoke(key, address);
   // Managed replay is event/key-only, even with changed payload; native deliberately compares it.
@@ -47,7 +47,7 @@ it("characterizes the address exemption during dunning, cycle-lock precedence, a
   expect((await db.query("SELECT shipping_address_id FROM public.subscriptions WHERE id=$1", [sub])).rows[0].shipping_address_id).toBe(address);
   expect((await db.query("SELECT cadence_days,next_cycle_at,template_version FROM public.subscriptions WHERE id=$1", [sub])).rows).toEqual(before);
   expect((await db.query("SELECT count(*)::int n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.address_changed'", [sub])).rows).toEqual([{ n: 1 }]);
-  await db.query("INSERT INTO public.subscription_cycles(subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key) VALUES($1,2,'2026-09-15','paid','donor-locked-cycle')", [sub]);
+  await db.query("INSERT INTO public.subscription_cycles(subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key) VALUES($1,2,'2026-09-15T00:00:00Z','paid','donor-locked-cycle')", [sub]);
   await db.query("SAVEPOINT refusal");
   await expect(invoke(`locked-${randomUUID()}`, address)).rejects.toMatchObject({ message: "customer_self_service_payment_blocked" });
   await db.query("ROLLBACK TO SAVEPOINT refusal");
