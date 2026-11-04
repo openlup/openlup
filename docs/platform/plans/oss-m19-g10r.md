@@ -1,10 +1,11 @@
 # Native fulfillment commerce reads
 
-Status: destination reader rebind staged for the required public API read.
+Status: destination reader rebind committed after the accepted public API read.
 The row packed limit is 9,000 bytes; behavior and accepted limits remain unchanged.
-Only the frozen predecessor merge is committed in this step. The destination
-rebind stays staged and uncommitted; DCO, prepare, review, canonical verification
-and push require a later grant.
+The final frozen predecessor is merged and contains current main. This step
+authorizes the documentation pin update, official size comparison, pre-review
+checks and update of the existing draft. Prepare, review, canonical verification
+and landing require a later grant.
 
 ## Outcome and boundary
 
@@ -15,14 +16,16 @@ adopter's read mechanisms with the explicit native limits in
 [Native parity boundaries](../ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
 No additional package entry or default route binding is introduced.
 
-Public API reading precedes
-any rebind commit or DCO; committed review and canonical verification need their later
-explicit grants. No publication, release, hosted resource, external mutation or
-settings action is granted. Other worktrees and branches are outside scope.
+The public API read and rebind commit are complete. Committed review, canonical
+verification and landing need their later explicit grants. Only the existing
+draft update is authorized externally; no publication, release, hosted resource
+or settings action is granted. Other worktrees and branches are outside scope.
 
 Policy pin and original base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
 Frozen predecessor and documentation stack pin:
-`0cda7f75379a7a01300e53d464dff7fa46e5eb1e`.
+`84f146305d99cf3f30831ab1cc6fb65de1ffe1ca`.
+The merged base contains current main at
+`76d8a415a5bb96331e5f81832670138df17b2536`.
 The shipment destination and purchase reservation facts depend on the SQL stream.
 The default destination reader calls the predecessor's nonmutating
 `commerce_view_shipment_destination(uuid)` through the supplied executor. An
@@ -235,3 +238,6 @@ tests remain byte-identical to the frozen predecessor. Strict typecheck command:
 
 Self-retro: using the predecessor's existing view removes the pinning dependency
 without a second destination mechanism or a wider public type change.
+
+Self-retro: a clean predecessor merge preserves the accepted behavior while
+refreshing its documentation comparison base; no implementation repair is needed.
