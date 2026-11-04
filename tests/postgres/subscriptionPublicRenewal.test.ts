@@ -595,3 +595,33 @@ it.each(["generic", "native"] as const)("keeps %s reservation busy retryable wit
     expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_renewal_operations WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
   } finally { await a.query("ROLLBACK"); a.release(); }
 }, 30_000);
+
+
+// The existing stock-wait flow is subsecond per mutation; allow 30 s for the installed consumer.
+it("matches frozen stock-wait UUID bindings by value and keeps changed identities refused", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "succeeded");
+  await stock(0);
+  expect(await binding(d, () => now).services.run()).toMatchObject({ renewals: [{ status: "refused", reason: "inventory_unavailable" }] });
+  const waiting = (await runtime.query("SELECT id FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows[0];
+  await stock(1000);
+  expect(await binding(d, () => later).services.run()).toMatchObject({ renewals: [{ status: "succeeded" }] });
+  const row = (await runtime.query(`SELECT c.id AS "caseId",cycle.id AS "cycleId",ord.id AS "orderId",intent.id AS "paymentId",op.identity_key AS "engineIdempotencyKey"
+    FROM public.subscription_stock_wait_cases c JOIN public.subscription_renewal_operations op ON op.id=c.renewal_operation_id
+    JOIN public.subscription_cycles cycle ON cycle.renewal_operation_id=op.id
+    JOIN public.commerce_orders ord ON ord.renewal_operation_id=op.id
+    JOIN public.commerce_settlement_intents intent ON intent.renewal_operation_id=op.id WHERE c.id=$1::uuid`, [waiting.id])).rows[0];
+  const store = api.createPostgresStockWaitStore({ executor, codec: d.codec, withTransaction: transaction, workerId: "uuid-readback" });
+  const original = await store.readFrozenCase(row);
+  const before = await allPublicRows(admin);
+  expect(original).toMatchObject({ caseId: waiting.id, binding: row });
+  for (const key of ["cycleId", "orderId", "paymentId", "caseId"] as const) {
+    expect(await store.readFrozenCase({ ...row, [key]: row[key].toUpperCase() })).toEqual(original);
+  }
+  for (const key of ["cycleId", "orderId", "paymentId"] as const) {
+    await expect(store.readFrozenCase({ ...row, [key]: randomUUID() })).rejects.toThrow("stock_wait_frozen_binding_changed");
+    await expect(store.readFrozenCase({ ...row, [key]: "invalid-uuid" })).rejects.toThrow("stock_wait_frozen_binding_changed");
+  }
+  await expect(store.readFrozenCase({ ...row, engineIdempotencyKey: row.engineIdempotencyKey + ":changed" })).rejects.toThrow("stock_wait_frozen_binding_changed");
+  expect(await allPublicRows(admin)).toEqual(before);
+  expect(d.execute).toHaveBeenCalledTimes(1);
+}, 30_000);

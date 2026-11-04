@@ -668,7 +668,7 @@ and separate test-deadline ownership from the accepted package-budget commit.
 
 <!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-acce7bc4bfffcccf2554c29d5b2383f9f6853caf058a66a896d4eeb975046958","reason":"The own delta on the frozen control predecessor binds the exact native renewal forward, ordered function hashes and measured installation inventories. The predecessor supplies the separate inline-gate class amendment. Issued migration identities, original role grants, class and admission rules and installation authority stay unchanged; Compatibility posture remains accurate and the runtime owners describe the behavior."} -->
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-1f1ded72e28d685c30e310729f082b012c75fb5eb2baf8338316014c71bf260a","reason":"The own delta adds restricted-role gate-text, ACL, contention, isolation and retryability witnesses and remeasures current catalogue literals without changing historic pins. The one authorized purchase-accounting setup now reserves sequentially because deterministic gate witnesses cover concurrent refusal; every accounting assertion stays unchanged. The installed consumer and measured per-case deadlines remain within the documented test boundaries. Required phases, selection controls, coverage and global timeouts do not change; classified pre-existing non-UTC assertions are recorded without edits, so Development-preview checks stays accurate."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-e4577807ed5a823921a23dc7c782b9aa5c29a5d3bf82018e84235ebe00c2f9be","reason":"The own delta adds installed restricted-role renewal, gate and UUID-value readback witnesses, with measured current catalogue literals and one authorized sequential accounting setup. Every existing accounting assertion and historic pin remains unchanged. The new UUID case uses real writer-created stock-wait state, preserves exact engine keys and checks no-effect refusals under UTC and a non-UTC zone. Existing offline consumers, measured per-case deadlines, required phases, coverage controls, selection and global timeouts remain unchanged, so Development-preview checks stays accurate."} -->
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-284d80900906e59f6b50819c534a61f1d5ccb6749298b2fba68030d36f76dcd3","reason":"Relative to the frozen control predecessor, the only tooling delta extends the admission suite data expectation from the first four bound slots to the first five for this feature pin. The predecessor owns the class-amendment fixture changes. Reader logic, refusal fixtures, test selection and admission workflow stay unchanged, so Development-preview checks remains accurate."} -->
 
@@ -825,3 +825,57 @@ main assertions remain unchanged; they are not allowances for product defects.
 Self-retro: the actual control integration clears the admission failures without
 changing a reader or relaxing a test. Documentation bindings are refreshed only
 for this new predecessor comparison, before native review freezes the candidate.
+
+
+## Adoption fixes: frozen stock-wait UUID bindings
+
+The public frozen-case reader now compares case, cycle, order and payment IDs
+by UUID value using the existing private helper from nativeRetryDriver. Returned
+binding IDs and started/resumed notice keys derive from the database case ID,
+so equivalent host spellings cannot fork the readback or message identity.
+Engine idempotency keys remain exact strings; null values and invalid UUIDs
+remain distinct and genuinely changed identities still refuse. No new import-map
+edge, public API, SQL, grant or fingerprint dialect is introduced.
+
+The restricted-runtime installed PostgreSQL witness first fails on the old
+reader with stock_wait_frozen_binding_changed. It passes after the fix in the
+default zone and Etc/GMT-9: uppercase cycle/order/payment/case IDs return the
+same case, changed and invalid IDs refuse, and every public row remains exact
+with one charge only. The additional unit witness preserves null-vs-invalid
+and case-sensitive engine-key behavior (12 store cases pass). An intermediate
+own-draft run exposed the notice-key spelling site; that was fixed without
+changing the new assertions. Lint initially found the old untracked diagnostic's
+deep import; its source is now archived as text evidence, while the committed
+witness uses the installed public export. No lint rule or exemption changed.
+
+The source-wide sweep covers the complete changed platform/server file set
+against main 9a3a324c. Boolean/state comparisons, schema/table/SKU names and
+opaque authorization/method/engine references are not UUID matches. The
+relevant comparison and key sites are:
+
+| Site | Disposition |
+|---|---|
+| nativeRetryDriver.ts:91-98 | Host intent/order IDs already canonicalized before matching database IDs. |
+| nativeRetryDriver.ts:113 | Host evidence operation ID already canonicalized. |
+| nativeSubscriptionBinding.ts:85-111 | Both sides of the subscription seen-set already canonicalized. |
+| postgresStockWaitStore.ts:125-133 | Fixed UUID-valued binding equality; engine key retains exact string equality. |
+| postgresStockWaitStore.ts:63-73 | Fixed case-derived binding and notice identities to use the database case ID. |
+| nativeRenewalCodec.ts:165 | New destination UUID already canonicalized before freezing. |
+| postgresRenewalStore.ts:80-91; postgresRenewalSettlement.ts:4-55; postgresDeliveryAlignmentStore.ts:16-32 | UUID lookups use typed PostgreSQL casts rather than JS spelling matches. |
+| public-reference facades, schema declarations and services | No UUID comparison or key matching is added. |
+| connected capture/restore additions | Only table lists change; no UUID matcher is added. |
+
+Unchanged main sites are reported without edits: nativeRenewalCodec.ts:111
+compares due and schedule subscription IDs as text; :161 interpolates the host
+subscription ID into its existing label. The main restore hierarchy at
+connectedStoreRestore.ts:537-548 uses packet UUID strings as map/set keys;
+:519/:526 compare whole row JSON, and :568-594 builds shipment exception labels.
+The managed identity mapping at :68-101 already lowercases validated UUID keys.
+These implementations predate this delta; their noncanonical packet behavior
+is not newly qualified here. Frozen snapshot and transfer packet fingerprint
+comparisons bind whole documents, so their byte-identity protocols are retained.
+
+Self-retro: the real PostgreSQL witness exposed both the comparison and its
+adjacent case-derived notice identities. The systemic sweep reports baseline
+sites separately, preserving the approved boundary instead of expanding this
+repair into unrelated main code.

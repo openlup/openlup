@@ -1,3 +1,4 @@
+import { canonicalUuid } from "./nativeRetryDriver.js";
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding, StockWaitStorePort } from "./contracts/stockWait.js";
 import type { RenewalSchedule } from "./contracts/renewal.js";
 import { subscriptionCorrelationSql, subscriptionCorrelationJoin, subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -59,16 +60,17 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       LEFT JOIN public.commerce_settlement_intents intent ON intent.renewal_operation_id=op.id WHERE c.id=$1::uuid`, [caseId])).rows;
     if (!rows[0]) return null;
     const r = subscriptionRecord(rows[0].projection), snapshot = codec.decode(subscriptionRecord(rows[0].cycle_snapshot));
+    const canonicalCaseId = String(r.id);
     if (!["waiting", "stock_secured", "resumed", "closed"].includes(String(r.state))) throw new Error("stock_wait_state_invalid");
     return { subscriptionId: String(r.subscription_id), scheduledAt: snapshot.scheduledAt, scheduledInstant: snapshot.scheduledInstant,
-      caseId: String(r.id), clientId: String(r.client_id), state: r.state as StockWaitCase["state"],
+      caseId: canonicalCaseId, clientId: String(r.client_id), state: r.state as StockWaitCase["state"],
       frozenSnapshot: snapshot, frozenFingerprint: String(r.fingerprint),
-      binding: { caseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
+      binding: { caseId: canonicalCaseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
         paymentId: nullable(rows[0].payment_id), engineIdempotencyKey: String(rows[0].identity_key) },
       deficits: await deficits(db, r.deficits), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
       openedAt: String(r.opened_at), checkedAt: nullable(r.last_checked_at), selectedAt: nullable(r.last_selected_at),
       securedAt: nullable(r.stock_secured_at), resumedAt: nullable(r.resumed_at), closedAt: nullable(r.closed_at),
-      startedNoticeKey: `subscription_stock_wait:${caseId}:started`, resumedNoticeKey: `subscription_stock_wait:${caseId}:resumed`,
+      startedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:started`, resumedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:resumed`,
       noticeEligible: r.waitingNoticeRelevant === true };
   }
   async function frozen(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitFrozenCase> {
@@ -121,7 +123,12 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
     async readFrozenCase(input) {
       if (input.caseId === null) return null;
       const result = await readCase(executor, input.caseId);
-      if (result && Object.keys(input).some(key => input[key as keyof StockWaitRecoveryBinding] !== result.binding[key as keyof StockWaitRecoveryBinding])) {
+      if (result && Object.keys(input).some(key => {
+        const expected = input[key as keyof StockWaitRecoveryBinding], actual = result.binding[key as keyof StockWaitRecoveryBinding];
+        if (!["caseId", "cycleId", "orderId", "paymentId"].includes(key) || expected === null || actual === null) return expected !== actual;
+        const value = canonicalUuid(expected);
+        return value === null || value !== canonicalUuid(actual);
+      })) {
         throw new Error("stock_wait_frozen_binding_changed");
       }
       return result;
