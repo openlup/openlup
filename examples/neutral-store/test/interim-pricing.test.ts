@@ -26,7 +26,7 @@ for (const original of Object.values(configurations)) test(`${original.id}: owne
   config.offer.subscriptionDiscountBps = 700;
   config.offer.subscriptionRoundingQuantumMinor = 25;
   config.offer.shippingMinor = 900; config.offer.freeShippingFromMinor = 9000;
-  config.purchase.inputLimits = { text: 80, postalCode: 20, email: 180, name: 40, phone: 24 };
+  config.purchase.inputLimits = { text: 80, postalCode: 20, email: 140, name: 40, phone: 24 };
   config.purchase.reservationMinutes = 15;
   config.purchase.stock.quantities[config.offer.products[0]!.sku] = 27;
   config.purchase.stock.providerRef = 'changed-stock-source'; config.purchase.stock.syncRunId = 'changed-stock-revision';
@@ -58,6 +58,9 @@ test('invalid stock bounds, quantities, input limits and hold lifetime refuse', 
     (config: typeof configurations[string]) => { config.purchase.stock.staleAfter = config.purchase.stock.collectedAt; },
     (config: typeof configurations[string]) => { config.purchase.stock.quantities[config.offer.products[0]!.sku] = -1; },
     (config: typeof configurations[string]) => { config.purchase.inputLimits.text = 0; },
+    (config: typeof configurations[string]) => { config.purchase.inputLimits.email = 161; },
+    (config: typeof configurations[string]) => { config.purchase.inputLimits.text = 201; },
+    (config: typeof configurations[string]) => { config.purchase.inputLimits.postalCode = 33; },
     (config: typeof configurations[string]) => { config.purchase.reservationMinutes = 0; },
     (config: typeof configurations[string]) => { config.purchase.tax.vatRateBps = -1; },
     (config: typeof configurations[string]) => { config.purchase.sandbox.recoveryUrlPath = 'https://example.test'; },

@@ -157,3 +157,31 @@ The existing standalone limiter's changed-input characterization remains intact.
 Self-retro: isolated quota tests did not establish admission before independently
 committed contact writes. The repair proof observes that composed boundary and
 removes the account-dependent branch instead of adding another policy choice.
+
+
+## Staged continuation and shared input repair
+
+The maintainer authorized a second bounded repair, staged for a security read
+before any commit. Same-order tokenless checkout replay preserves the tab's
+existing credential; a different order inherits none, and a newly supplied token
+replaces the old credential. A completion-entry token without an order reference
+still replaces prior state. Storage remains convenience, and the creating
+response remains the only host response carrying the raw token.
+
+Purchase and sign-in use the same typed e-mail limit, with configuration refusing
+values above the native 160-character sign-in boundary. Both owned demonstrations
+use that maximum. A bounded composition sweep also aligns subscription address
+phone and postal limits with checkout, caps configured destination text and postal
+lengths at their native bounds, and makes browser field lengths use the same values.
+No package, SQL, catalog, callback, persistence or recovery-authority change is made.
+
+Existing proof files cover repeated browser submission, completion and reload,
+credential separation between orders, the 160-character guest payment-to-account
+journey, refusal of 161 characters before contact writes, a lower configured
+challenge limit, and address field boundaries. Mutation witnesses restore each
+failure mechanism in an isolated scratch copy. The required browser journey
+specification remains byte-identical.
+
+Self-retro: separate successful actions missed cross-action continuity. Preserve
+same-order credentials on weaker replay and derive shared boundaries from their
+existing configuration values; test the transition as well as each action.

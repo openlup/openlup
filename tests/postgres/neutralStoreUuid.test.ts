@@ -1,3 +1,6 @@
+import { chromium, expect as browserExpect } from '@playwright/test';
+import { copy } from '../../examples/neutral-store/owned/copy.ts';
+import { routes } from '../../examples/neutral-store/shared/routes.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -61,14 +64,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return (await exchange(operation, payload, signedIn, key)).body;
   }
 
-  async function control(permissive: boolean | null) {
+  async function control(permissive: boolean | null, emailLimit?: number) {
     return new Promise<{ registrations: number }>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('host_control_timeout')), 5_000);
       host!.once('message', message => {
         clearTimeout(timer);
         resolve(message as { registrations: number });
       });
-      host!.send({ permissive });
+      host!.send({ permissive, emailLimit });
     });
   }
 
@@ -165,6 +168,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       let registrations = 0;
       const contacts = { ensureContactClient: input => { registrations++; return registrar.ensureContactClient(input); }, close: async () => {} };
       process.on('message', message => {
+        if (message.emailLimit !== undefined) config.purchase.inputLimits.email = message.emailLimit;
         if (message.permissive !== null) {
           config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 2, maxPerRequester: 2, maxEntries: 8 };
           registrations = 0;
@@ -264,6 +268,118 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       }, 30_000);
     }
   }
+
+  // New cases measured locally; each retains the existing 30 s hosted bound.
+  it('unchanged browser resubmission retains a payable continuation through reload', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.goto(base + routes.builder.en);
+      await page.getByRole('spinbutton').first().fill('1');
+      await page.getByRole('button', { name: copy.en.addBox, exact: true }).click();
+      await page.getByRole('button', { name: copy.en.checkout, exact: true }).click();
+      await page.getByLabel(copy.en.email, { exact: true }).fill(`repeat-${config.id}@example.test`);
+      await page.getByLabel(copy.en.termsAccept).check();
+      const submit = async () => {
+        const response = page.waitForResponse(response => response.url().endsWith('/api/actions/checkout.create'));
+        await page.getByRole('button', { name: copy.en.placeOrder, exact: true }).click();
+        const body = await (await response).json() as ActionResult;
+        expect(body.ok).toBe(true);
+        if (!body.ok || !isRecord(body.value)) throw new Error('browser_purchase_required');
+        await browserExpect(page.getByRole('button', { name: copy.en.placeOrder, exact: true })).toBeEnabled();
+        return body.value;
+      };
+      const first = await submit();
+      expect(typeof first.token).toBe('string');
+      const repeated = await submit();
+      expect(repeated.orderRef).toBe(first.orderRef);
+      expect(repeated.token).toBeUndefined();
+      const stored = await page.evaluate(id => JSON.parse(sessionStorage.getItem(`neutral-store:purchase:v2:${id}`) ?? 'null'), config.id);
+      expect(stored).toEqual({ orderRef: first.orderRef, token: first.token });
+      await page.locator('main').getByRole('link', { name: copy.en.completion, exact: true }).click();
+      await browserExpect(page.getByRole('button', { name: copy.en.simulatePaid, exact: true })).toBeVisible();
+      await page.reload();
+      await browserExpect(page.getByRole('button', { name: copy.en.simulatePaid, exact: true })).toBeVisible();
+      // A different native order gets its own credential, including after reload.
+      await page.goto(base + routes.checkout.en);
+      await page.getByLabel(copy.en.email, { exact: true }).fill(`other-${config.id}@example.test`);
+      await page.getByLabel(copy.en.termsAccept).check();
+      const other = await submit();
+      expect(other.orderRef).not.toBe(first.orderRef);
+      expect(other.token).not.toBe(first.token);
+      expect(await page.evaluate(id => JSON.parse(sessionStorage.getItem(`neutral-store:purchase:v2:${id}`) ?? 'null'), config.id))
+        .toEqual({ orderRef: other.orderRef, token: other.token });
+    } finally { await browser.close(); }
+  }, 30_000);
+
+  it('padded customer challenge email preserves the normalized address, public shape and floor', async () => {
+    const address = `padded-${email}`;
+    expect((await call('checkout.create', checkout(address))).ok).toBe(true);
+    const padded = await exchange('auth.request', { email: `  ${address}  ` });
+    const plain = await exchange('auth.request', { email: address });
+    expect(plain.status).toBe(200);
+    expect(padded.status).toBe(plain.status);
+    expect(plain.body).toEqual({ ok: true, value: { accepted: true } });
+    expect(padded.body).toEqual(plain.body);
+    expect(plain.elapsed).toBeGreaterThanOrEqual(395);
+    expect(padded.elapsed).toBeGreaterThanOrEqual(395);
+    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
+      .trim().split('\n').map(line => JSON.parse(line) as { email: string });
+    expect(messages.at(-1)?.email).toBe(address);
+  }, 30_000);
+
+  it('shared email boundary preserves purchase, payment and later native sign-in', async () => {
+    const address = 'a'.repeat(60) + '@' + 'b'.repeat(49) + '.' + 'c'.repeat(44) + '.test';
+    expect(address.length).toBe(160);
+    const created = await call('checkout.create', checkout(address));
+    expect(created.ok).toBe(true);
+    if (!created.ok || !isRecord(created.value)) throw new Error('boundary_purchase_required');
+    expect((await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' })).ok).toBe(true);
+    expect(await call('auth.request', { email: ' ' + address.toUpperCase() + ' ' })).toEqual({ ok: true, value: { accepted: true } });
+    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
+      .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
+    const challenge = messages.filter(message => message.email === address).at(-1);
+    if (!challenge) throw new Error('boundary_challenge_required');
+    expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
+    const orders = await call('account.orders', {}, true);
+    expect(orders.ok).toBe(true);
+    expect(JSON.stringify(orders)).toContain(created.value.orderRef);
+    const count = async () => Number((await owner!.query('SELECT count(*) AS n FROM public.clients')).rows[0].n);
+    const before = await count();
+    expect(await call('checkout.create', checkout('a' + address)))
+      .toEqual({ ok: false, code: 'starter_email_invalid' });
+    expect(await count()).toBe(before);
+    // A lower owned value governs auth too; restoring a literal 160 fails here.
+    await control(null, 159);
+    try {
+      expect(await call('auth.request', { email: address })).toEqual({ ok: false, code: 'starter_input_invalid' });
+      expect(await call('checkout.create', checkout(address))).toEqual({ ok: false, code: 'starter_email_invalid' });
+      expect(await count()).toBe(before);
+    } finally { await control(null, config.purchase.inputLimits.email); }
+  }, 30_000);
+
+  it('subscription address uses the checkout phone and postal bounds', async () => {
+    const payload = checkout(`address-${config.id}@example.test`);
+    const cart = { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays };
+    const created = await call('checkout.create', { ...payload, cart });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !isRecord(created.value)) throw new Error('address_purchase_required');
+    expect((await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' })).ok).toBe(true);
+    expect((await call('auth.request', { email: payload.email })).ok).toBe(true);
+    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
+      .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
+    const challenge = messages.filter(message => message.email === payload.email).at(-1);
+    if (!challenge) throw new Error('address_challenge_required');
+    expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
+    const subscriptionRef = (await owner!.query('SELECT subscription_id FROM public.subscription_activations WHERE order_id=$1', [created.value.orderRef])).rows[0].subscription_id;
+    const address = { subscriptionRef, recipientName: 'Example Buyer', line1: '1 Example Lane', city: 'Example City',
+      postalCode: '0'.repeat(config.purchase.inputLimits.postalCode), phone: '0'.repeat(config.purchase.inputLimits.phone), countryCode: config.market.country };
+    expect((await call('subscription.address', address, true)).ok).toBe(true);
+    for (const field of ['phone', 'postalCode'] as const) {
+      expect(await call('subscription.address', { ...address, [field]: address[field] + '0' }, true))
+        .toEqual({ ok: false, code: 'starter_input_invalid' });
+    }
+  }, 30_000);
 
   it('guest creation has one observable shape and floor for new, unlinked and linked e-mails', async () => {
     const connection = new URL(runtimeConnection); connection.password = 'synthetic-conformance';

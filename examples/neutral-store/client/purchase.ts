@@ -20,8 +20,20 @@ export function captureCompletionEntry(): void {
 /** Browser storage is a reload convenience. Only native inspection grants access. */
 export function rememberPurchase(configuration: string, value: unknown): void {
   if (!isRecord(value)) return;
+  let previous = memory.get(configuration);
+  if (!previous) {
+    try {
+      const stored: unknown = JSON.parse(sessionStorage.getItem(key(configuration)) ?? 'null');
+      if (isRecord(stored)) previous = {
+        ...(typeof stored.orderRef === 'string' ? { orderRef: stored.orderRef } : {}),
+        ...(typeof stored.token === 'string' ? { token: stored.token } : {}),
+      };
+    } catch { /* Missing storage never grants access. */ }
+  }
   const purchase = { ...(typeof value.orderRef === 'string' ? { orderRef: value.orderRef } : {}),
-    ...(typeof value.token === 'string' ? { token: value.token } : {}) };
+    ...(typeof value.token === 'string' ? { token: value.token }
+      : typeof value.orderRef === 'string' && value.orderRef === previous?.orderRef && previous.token
+        ? { token: previous.token } : {}) };
   memory.set(configuration, purchase);
   try { sessionStorage.setItem(key(configuration), JSON.stringify(purchase)); } catch { /* Memory still serves this tab. */ }
 }

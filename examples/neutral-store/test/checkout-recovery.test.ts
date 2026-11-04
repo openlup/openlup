@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { configurations } from '../owned/store.config.ts';
 import { assertConfig } from '../shared/config.ts';
 import { createCheckoutRecoveryDelivery, type CheckoutRecoveryMessage } from '../host/checkout-recovery.ts';
-import { captureCompletionEntry, currentPurchase, visiblePurchase } from '../client/purchase.ts';
+import { captureCompletionEntry, currentPurchase, rememberPurchase, visiblePurchase } from '../client/purchase.ts';
 
 test('recovery message values are typed configuration in both configurations and locales', async () => {
   for (const original of Object.values(configurations)) {
@@ -75,5 +75,35 @@ test('entry removes URL token synchronously and retains a private reload conveni
     for (const [name, descriptor] of saved) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
+  }
+});
+
+
+test('continuation keeps same-order credentials across replay without transferring them to another order', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  const data = new Map<string, string>();
+  try {
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+      getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value),
+    } });
+    const configuration = 'continuation-replay';
+    rememberPurchase(configuration, { orderRef: 'first', token: 'first-token' });
+    rememberPurchase(configuration, { orderRef: 'first' });
+    assert.deepEqual(currentPurchase(configuration), { orderRef: 'first', token: 'first-token' });
+    assert.deepEqual(JSON.parse(data.get(`neutral-store:purchase:v2:${configuration}`)!), currentPurchase(configuration));
+    rememberPurchase(configuration, { orderRef: 'second' });
+    assert.deepEqual(currentPurchase(configuration), { orderRef: 'second' });
+    rememberPurchase(configuration, { orderRef: 'second', token: 'new-token' });
+    assert.deepEqual(currentPurchase(configuration), { orderRef: 'second', token: 'new-token' });
+    rememberPurchase(configuration, { token: 'entry-token' });
+    assert.deepEqual(currentPurchase(configuration), { token: 'entry-token' });
+    const storedConfiguration = 'continuation-storage-only';
+    data.set(`neutral-store:purchase:v2:${storedConfiguration}`, JSON.stringify({ orderRef: 'stored', token: 'stored-token' }));
+    rememberPurchase(storedConfiguration, { orderRef: 'stored' });
+    assert.deepEqual(currentPurchase(storedConfiguration), { orderRef: 'stored', token: 'stored-token' });
+    rememberPurchase(storedConfiguration, {});
+    assert.deepEqual(currentPurchase(storedConfiguration), {});
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'sessionStorage', descriptor); else Reflect.deleteProperty(globalThis, 'sessionStorage');
   }
 });

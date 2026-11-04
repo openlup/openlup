@@ -225,7 +225,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   actions['subscription.address'] = async (payload, context) => {
     if (!context.actor.customerRef || !context.actor.principalRef) return refused('customer_session_required');
     if (!only(payload, ['subscriptionRef', 'recipientName', 'line1', 'line2', 'postalCode', 'city', 'phone', 'countryCode'])
-      || !uuid(payload.subscriptionRef) || !['recipientName', 'line1', 'postalCode', 'city', 'phone'].every(key => text(payload[key], context.config.purchase.inputLimits.text))
+      || !uuid(payload.subscriptionRef) || !['recipientName', 'line1', 'postalCode', 'city', 'phone'].every(key => text(payload[key], key === 'postalCode' ? context.config.purchase.inputLimits.postalCode
+        : key === 'phone' ? context.config.purchase.inputLimits.phone : context.config.purchase.inputLimits.text))
       || (payload.line2 !== undefined && (typeof payload.line2 !== 'string' || payload.line2.length > context.config.purchase.inputLimits.text))
       || payload.countryCode !== context.config.market.country) return refused('starter_input_invalid');
     const subscription = (await db.query('SELECT template_version FROM public.subscriptions WHERE id=$1 AND client_id=$2', [payload.subscriptionRef, context.actor.customerRef])).rows[0];

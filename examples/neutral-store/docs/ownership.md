@@ -130,9 +130,15 @@ The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token, and a new token replaces the previous one.
 Native inspection allows payment only for an active pending order, recognizes
 an already-paid order without payment controls, and refuses expired, cancelled
 or unavailable links. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
+
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters
+by configuration validation. Both demonstrations use 160. Longer purchase e-mails
+receive `starter_email_invalid` before contact resolution. Checkout and subscription
+address changes share the configured phone and postal-code limits; configuration
+cannot exceed the native destination bounds. Browser fields use those same limits.

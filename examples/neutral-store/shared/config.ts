@@ -135,7 +135,8 @@ export function assertConfig(config: StoreConfig): void {
     || !['lead', 'customer', 'inactive'].includes(purchase.contact.lifecycleStage)
     || Object.values(purchase.attemptLimits).some(value => !Number.isSafeInteger(value) || value < 1)
     || purchase.attemptLimits.retentionMs < purchase.attemptLimits.windowMs
-    || purchase.inputLimits.email > 320 || purchase.inputLimits.name > 80 || purchase.inputLimits.phone > 64
+    || purchase.inputLimits.text > 200 || purchase.inputLimits.postalCode > 32
+    || purchase.inputLimits.email > 160 || purchase.inputLimits.name > 80 || purchase.inputLimits.phone > 64
     || !Number.isSafeInteger(purchase.reservationMinutes) || purchase.reservationMinutes < 1
     || !Number.isSafeInteger(purchase.tax.vatRateBps) || purchase.tax.vatRateBps < 0 || purchase.tax.vatRateBps > 10000
     || !/^[a-z][a-z0-9_]*$/.test(purchase.tax.category)
