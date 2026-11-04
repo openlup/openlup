@@ -57,9 +57,9 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   } });
   const capabilities = composeExistingCapabilities({ executor: pool, connectionString });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
-  const recoveryLane = createPostgresRoleFreeTransactionLane({ connectionString });
+  const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const recovery = {
-    tokens: createPostgresCheckoutRecoveryTokenPort(recoveryLane),
+    tokens: createPostgresCheckoutRecoveryTokenPort(checkoutRecoveryTokenLane),
     deliver: async (input: Parameters<ReturnType<typeof createCheckoutRecoveryDelivery>>[0]) => {
       const admittedOrigin = input.context.actor.requestOrigin;
       if (!admittedOrigin) throw new Error('starter_recovery_origin_required');
@@ -171,6 +171,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       const profile = await asCustomer(session.principalId, db => createPostgresCustomerMePort(db).getCustomerMe(session.principalId));
       return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
-    async close() { sessions.close(); await Promise.all([capabilities.close(), recoveryLane.close(), contacts.close(), operators.close(), pool.end()]); },
+    async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), pool.end()]); },
   };
 }

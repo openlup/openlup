@@ -208,3 +208,9 @@ without starter dist or a browser. The required journey spec remains unchanged.
 Self-retro: prepared local output and a partial boundary inventory hid two new
 classes. Trace each forwarded value to its native consumer and each test to the
 prerequisites its actual runner provides before selecting proof.
+
+
+## Staged lane confinement exception
+
+Verify found one repository confinement test; exact-file exception with a
+single-call bound; same intent.
