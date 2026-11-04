@@ -90,15 +90,14 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           if (!row.nextRetryAt || nativeInstant(row.nextRetryAt) > nativeInstant(now)) continue;
           const mandate = await options.readFrozenMandate(snapshot);
           const supplied = options.retryInput(snapshot, row);
-          const input = { ...supplied, ...Object.fromEntries(["paymentIntentId", "orderRef", "orderId", "clientId", "paymentMethodRef"].map(key =>
-            [key, uuidReference(supplied[key as keyof typeof supplied] as string)])),
-            customerRef: supplied.customerRef === null ? null : uuidReference(supplied.customerRef) };
+          const input = { ...supplied, ...Object.fromEntries(["paymentIntentId", "orderRef", "orderId", "clientId"].map(key =>
+            [key, uuidReference(supplied[key as keyof typeof supplied] as string)])) };
           const paymentIntentId = canonicalUuid(input.paymentIntentId), orderRef = canonicalUuid(input.orderRef);
           const authorizations = (await options.executor.query(`SELECT a.method_ref FROM public.subscription_retry_recovery_authorizations a
             JOIN public.subscription_retry_obligations o ON o.id=a.obligation_id
             WHERE o.renewal_operation_id=$1::uuid AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL`, [operationId])).rows;
-          const method = String(authorizations[0]?.method_ref ?? uuidReference(mandate.paymentMethodRef));
-          if (!mandate.authorized || uuidReference(mandate.authorizationRef) !== uuidReference(snapshot.authorizationRef) || input.paymentMethodRef !== uuidReference(method)
+          const method = String(authorizations[0]?.method_ref ?? mandate.paymentMethodRef);
+          if (!mandate.authorized || uuidReference(mandate.authorizationRef) !== uuidReference(snapshot.authorizationRef) || input.paymentMethodRef !== method
             || paymentIntentId !== row.settlementIntentId || orderRef !== row.orderId
             || input.amountMinor !== snapshot.pricingSnapshot.totalAmountMinor || input.currency !== snapshot.pricingSnapshot.currency) {
             throw new Error("subscription_retry_frozen_mandate_mismatch");
@@ -124,16 +123,15 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         }
         if (evidence.status === "succeeded" && evidence.amountMinor === snapshot.pricingSnapshot.totalAmountMinor
           && evidence.currency === snapshot.pricingSnapshot.currency) {
-          await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { sourceReference: uuidReference(evidence.sourceEvidence.sourceReference),
-            attemptRef: uuidReference(evidence.sourceEvidence.attemptRef), observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
-            occurredAt: nativeInstant(evidence.occurredAt), firstRecordedAt: nativeInstant(evidence.firstRecordedAt), externalRef: uuidReference(evidence.externalAttemptRef),
+          await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
+            occurredAt: nativeInstant(evidence.occurredAt), firstRecordedAt: nativeInstant(evidence.firstRecordedAt), externalRef: evidence.externalAttemptRef,
             amountMinor: evidence.amountMinor, currency: evidence.currency, template: options.recoveredTemplate });
           results.push({ operationId, status: "succeeded" });
         } else if (evidence.status === "failed" && evidence.disposition === "observed") {
           await propagateFailure(operationId, evidence.eventKey, { attemptSequence: prepared.attemptSequence,
             logicalCycleNumber: row.logicalCycleNumber, occurredAt: nativeInstant(evidence.occurredAt),
             failureClass: options.classifyFailure(evidence.reason ?? "provider_failed"), reason: evidence.reason ?? "provider_failed",
-            externalRef: uuidReference(evidence.externalAttemptRef), evidenceKey: evidence.verifiedEvidenceRef, firstRecordedAt: nativeInstant(evidence.firstRecordedAt) });
+            externalRef: evidence.externalAttemptRef, evidenceKey: evidence.verifiedEvidenceRef, firstRecordedAt: nativeInstant(evidence.firstRecordedAt) });
           results.push({ operationId, status: "refused" });
         } else results.push({ operationId, status: "awaiting_provider" });
       } catch (error) {
@@ -144,6 +142,5 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
     }
     return results;
   }
-  return { run, propagateFailure: (operationId: string, key: string, input: NativeRetryFailure) =>
-    propagateFailure(operationId, key, { ...input, externalRef: input.externalRef === null ? null : uuidReference(input.externalRef) }) };
+  return { run, propagateFailure };
 }
