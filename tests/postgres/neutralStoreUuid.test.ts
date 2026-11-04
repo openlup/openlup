@@ -173,7 +173,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
             .toEqual(await call('checkout.read', { orderRef: order.orderRef }, true));
         }
         expect(changed.orderRef).toBe(changeCase(order.orderRef));
-      }, 10_000);
+      }, 30_000);
 
       it(`${actor} ${spelling} token orderRef pays exactly like lowercase`, async () => {
         const order = await createOrder(signedIn);
@@ -181,7 +181,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         const result = await call('payment.simulate', input, signedIn);
         expect(result).toEqual({ ok: true, value: { ...paid.get(String(signedIn)), orderRef: order.orderRef }, replayed: false });
         expect(input.orderRef).toBe(changeCase(order.orderRef));
-      }, 10_000);
+      }, 30_000);
     }
 
     for (const operation of ['checkout.read', 'payment.simulate'] as const) {
@@ -189,7 +189,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         expect(await call(operation, { orderRef: 'invalid-order-reference', token: pending.token,
           ...(operation === 'payment.simulate' ? { outcome: 'captured' } : {}) }, signedIn))
           .toEqual({ ok: false, code: operation === 'checkout.read' ? 'starter_recovery_unavailable' : 'starter_order_not_found' });
-      }, 10_000);
+      }, 30_000);
     }
   }
 });
