@@ -18,7 +18,10 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
-  "commerce_order_draft_receipts",
+  "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "subscription_dunning_cases", "subscription_dunning_notifications",
+  "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
+  "commerce_checkout_recovery_tokens", "subscription_stock_wait_cases",
   "subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations",
 
   // Private companion rows of the compatible payment_truth_events above.

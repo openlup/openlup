@@ -240,8 +240,10 @@ export interface RenewalPricingSnapshot {
   currency: string; totalAmountMinor: number; shippingAmountMinor: number;
   agreementPolicy: "lock_until_edit"; proration: "none";
 }
+/** Explicit zero-shipping limit; this is not a quote issued by a quote authority. */
+export interface RenewalZeroShippingMarker { kind: "zero_shipping"; shippingAmountMinor: 0 }
 export interface RenewalOrderSnapshot {
-  shippingAddressRef: string | null; shippingQuoteRef: string | null;
+  shippingAddressRef: string | null; shippingQuoteRef: string | RenewalZeroShippingMarker | null;
   acquisitionRef: string | null; lines: readonly RenewalLine[];
 }
 export interface RenewalFrozenSnapshot extends RenewalSchedule {
