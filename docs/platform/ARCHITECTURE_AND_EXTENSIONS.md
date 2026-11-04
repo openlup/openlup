@@ -2080,12 +2080,13 @@ arrival alone cannot emit a resumed notice. No automatic renewal operation
 pauses, suspends or interrupts an active subscription. Managed stock descriptors
 continue to declare SQL surfaces and unavailable TypeScript recovery; the served
 managed runner and account aggregation are unchanged.
-The native reservation, release, expiry and stock-wait ports enter the shared
-inventory admission gate through owner-rights wrappers. Only the restricted
-service role receives wrapper execution; direct stock-wait calls and the helper
-are not runtime entry points. Original reservation, release and expiry routines
-retain their historical PUBLIC execution as a known narrowing follow-up. The
-shipment destination view reads the pinned document or the order's current
+The six native renewal reservation, release, expiry and stock-wait routines
+enter the same inventory admission gate inline, before lock-bearing work, with
+the shared helper's busy and isolation codes. Their invoker rights, original
+execution grants and caller relation privileges remain unchanged. Custom invoker
+runtimes need no new grant; the shared helper stays owner-only. Only stock-wait
+admit maps admission busy errors; the reservation adapter preserves raw errors.
+The shipment destination view reads the pinned document or the order's current
 document without writing or acquiring preparation locks.
 
 `subscriptionLifecycleTemplate` maps existing lifecycle events plus M5 stock-wait

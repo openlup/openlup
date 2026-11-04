@@ -371,11 +371,11 @@ Evidence: `.context/scratch/g7/offline-consumer/`.
 ## Current integration draft
 
 The prerequisite merge is signed at `4439fa0b`; subsequent work remains an
-unsigned draft. The native reservation, release, expiry and stock-wait entry
-points now have six owner-rights gated wrappers. The existing stock routines
-are unchanged. The three direct stock-wait grants narrow to the wrapper path;
-the helper remains owner-only. The original reserve, release and expiry PUBLIC
-EXECUTE is an accepted residual tracked as F-NATIVE-PUBLIC-EXECUTE.
+unsigned draft. The native reservation, release, expiry and stock-wait originals
+now carry the shared admission statements inline. Their invoker headers and
+original execution grants remain unchanged; no custom runtime needs a new grant.
+The helper remains owner-only. The earlier wrapper/revoke design is superseded
+by the inline adoption fix below.
 
 The new shipment destination view is stable and nonmutating. Native destination
 snapshot finalization and claim share the host transaction and subscription lock.
@@ -390,7 +390,7 @@ The five PostgreSQL inventory measurements used the exact predecessor order.
 A draft merge mistake had sorted the qualified bootstrap entries; the canonical
 manifest now preserves the predecessor lists and appends only this forward.
 No historic issued inventory pin, guard or validation rule changed. The connected
-transfer set remains 107 tables; these wrappers add no row-holding table.
+transfer set remains 107 tables; inline admission adds no row-holding table.
 
 Completed focused evidence: 18 restricted-runtime gate/ACL cases; three joined
 simulator recovery cases, including unhealthy repair, exhaustion, ambiguity,
@@ -661,8 +661,143 @@ submission is claimed here.
 Self-retro: retain the stated 5,000-byte rounding after the exact calculation,
 and separate test-deadline ownership from the accepted package-budget commit.
 
-<!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-3a4c80b63340888c3bdcbfbdc2bc4bb12ceb4b743ee38a8f2b5ee56bc6e6a794","reason":"The exact native renewal forward is appended after the frozen predecessor with whole-file and ordered function pins, and the five current catalogue digests are measured on PostgreSQL. Prior migration identities and historic pins remain unchanged. The compatibility posture still requires closed-class and co-located approval; these bindings add no installation authority, managed-rail change, provider qualification or stable compatibility claim. The subscriptions owner and task record describe the forward behavior."} -->
+<!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-12f57bd5635111cc682fb6176fb8e6bd3d786d0ec352655a2f2fdc55477690f7","reason":"The own delta recomputes the whole-file and ordered function pins for the existing unlanded renewal forward and projects its exact bytes into both manifests. Five current catalogues are remeasured on PostgreSQL; prior migration bytes and historic pins stay unchanged. Inline admission preserves the original invoker headers and grants, adds no host configuration or installation authority, and remains subject to the separate closed-class admission and SQL read. Compatibility posture stays accurate; the runtime and architecture owners describe the changed admission behavior."} -->
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-e07d8416c634f90ad682086adcc4d3ea67301c729de1305cb0a3693b5763c4ae","reason":"The own delta adds installed-artifact restricted-role renewal, repair, stock-wait, destination, transfer, replay and lock-order witnesses, plus the literal chain counts and measured current catalogues for the appended forward. Historic pins and existing behavioral assertions remain intact. The offline consumer, focused gate and measured existing case deadlines use the documented test boundaries; required phases, selection, coverage and global timeouts do not change, so Development-preview checks remains accurate."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-1f1ded72e28d685c30e310729f082b012c75fb5eb2baf8338316014c71bf260a","reason":"The own delta adds restricted-role gate-text, ACL, contention, isolation and retryability witnesses and remeasures current catalogue literals without changing historic pins. The one authorized purchase-accounting setup now reserves sequentially because deterministic gate witnesses cover concurrent refusal; every accounting assertion stays unchanged. The installed consumer and measured per-case deadlines remain within the documented test boundaries. Required phases, selection controls, coverage and global timeouts do not change; classified pre-existing non-UTC assertions are recorded without edits, so Development-preview checks stays accurate."} -->
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-cf3c768d301e67030ee71b1f4a29ffe6ef86d6257e2fa9b3cae72830b063c01b","reason":"The only tooling delta changes the admission suite data expectation from the first four bound native slots to the first five after this feature pin is present. The reader, class rules, refusal fixtures, test selection and admission workflow are unchanged. Development-preview checks remains accurate because this follows the authorized feature data rather than changing a control mechanism."} -->
+
+
+## Adoption fixes: preserve renewal invoker gate compatibility
+
+The maintainer approved entering shared inventory admission inline inside the
+six original renewal reserve, release, expiry, stock-wait admit, refusal-recovery
+and deficits routines. Each nested block has the shared helper's exact statements
+and ordering, including the isolation refusal, advisory try-lock and transaction
+lock timeout. The nested variable scope preserves its existing declaration.
+Original headers, invoker rights, ACLs and every other body byte stay unchanged.
+No helper grant is added; custom invoker runtimes need no new grant. Browser
+roles remain denied the helper. The earlier owner-rights wrappers and three
+original revokes are removed. The reservation adapter retains its original SQL
+and raw error identity; only stock-wait admit maps admission busy errors to the existing
+Error details shape. No SQL security-definer parity is claimed.
+No service pause, new money writer, table, price writer or attempt store is added.
+
+The class amendment is exercised through a scratch registry and main's unchanged
+reader until its separate control row lands. Repository admission logic and
+class data stay unchanged. All repair inputs remain staged for the SQL read;
+no committed repair or new native review has started.
+
+
+The inline draft passes main's unchanged class reader with the proposed scratch
+slot: all five bound forwards pass. Text proof confirms six exact nested gate
+blocks and unchanged claim, prepare and destination-view statements. Five real
+PostgreSQL inventory shapes were measured; only the three current-inventory
+literal sites changed, with historic pins untouched. Fresh core/platform builds
+and the complete API check pass, with no report edit.
+
+The default-zone caller sweep stopped after 66 passing and one failing case:
+18 gate/ACL witnesses and all eight inventory-native cases pass; the purchase
+reservation suite has 40 passes and one admission-busy refusal. Its unchanged
+concurrent purchase/renewal Promise.all expects both reservations to return,
+whereas both writers now enter the same advisory try gate. The renewal call
+raises inventory_admission_busy before those accounting assertions execute.
+No existing assertion was changed or retried; remaining proofs and measurement
+wait for maintainer disposition. Both named main test files are byte-identical
+to the starting head. All draft changes stay staged and uncommitted.
+
+Self-retro: the expanded caller sweep caught the shared-admission concurrency
+interaction before another review or canonical verification run. The repair
+keeps the admission refusal visible instead of hiding it with a retry.
+
+
+The maintainer then authorized one main-test exception: purchase reservation
+precedes renewal reservation in the shared-accounting case, while every
+accounting assertion stays unchanged. Concurrent admission is covered by two
+new restricted-role witnesses, alternating the winning purchase/renewal
+transaction. Each gets exactly one busy refusal with all public rows unchanged
+for the refused side, then succeeds on retry with ten total held units.
+
+The installed generic and native runner witnesses show admission busy causes no
+charge, dunning, terminal outcome or customer message. The durable operation
+stays claimed and service stays active; after the existing lease expires,
+retry settles that same operation with one charge. The native witness takes its
+all-public-row baseline at the reservation boundary because batch discovery has
+independent housekeeping. The initial wider batch-level snapshot observation
+is retained in scratch evidence; production code was not changed for it.
+
+The full scanner set reached a new module dependency finding: subscriptions now
+imports InventoryPersistenceError from the inventory entry, but the declared
+subscriptions value-dependency list is empty. The import-map witness rejects
+that edge. Pending slot-amendment scanner failures are separate. No graph,
+checker, test expectation or error-constructor workaround was changed; the run
+stopped for disposition, with no further suite launches or package measurement.
+
+Self-retro: an allowed public module entrance still requires a declared module
+edge. The full scanner set caught that distinction before another review or
+canonical verification run; transient-money behavior remains separately proved.
+
+
+The module dependency finding was resolved by retaining the previously reviewed
+plain Error with details.code and details.reason, without an inventory import.
+Only stock-wait admit applies this mapping; other calls preserve raw errors.
+The batch runner catches the thrown error as a technical per-row failure rather
+than a shortage, charge failure or terminal result. Its installed generic and
+native busy witnesses pass again with this shape, and the import-map scanner
+passes all 123 cases. No architecture graph or error-handling runner changed.
+
+
+The resumed caller sweep completed 33 default files with 527 passes. Under
+Etc/GMT-9, 30 PostgreSQL files produced 505 passes and four failures. Three
+failures are the previously classified lifecycle date-only and transfer-text
+sites. The fourth is an unchanged main assertion in
+retainedClientSubscriptionImport.test.ts:127: its query selects occurred_at::text
+and expects a +00 spelling for an explicitly zoned creation instant. That site
+is outside the allowed failure list, so the run stopped for disposition without
+editing it. No further zone, scanner, handover, cheap-check or pack launched.
+The import-map suite passes 123 cases and the installed renewal suite passes
+24 cases with the reviewed Error details shape; no error-class dependency is
+needed for the transient path. No source change beyond that disposition was made.
+
+Self-retro: the module-local existing error shape preserves the runner's thrown
+technical failure without adding an architecture edge. Expanding the caller
+sweep also exposed an additional existing UTC-text assertion; its permission
+to fail is kept separate from the already approved three sites.
+
+
+The retained-client assertion was subsequently confirmed as a pre-existing main
+zone-text site, owned by 7a82eeb2 (2026-10-27). It remains unchanged. The complete
+caller sweep now has 33 default files / 527 passes, and 30 PostgreSQL files /
+505 passes in each of Etc/GMT-9 and Etc/GMT+5. Each fixed zone has exactly four
+permitted main failures: the lifecycle date-only site, two transfer text sites,
+and retained-client import :127. All own busy and retryability witnesses pass.
+
+The full scanner set has 2,016 passes, 16 pending slot-amendment case failures,
+and two skips across 81 files; the three associated collection refusals have
+the same pending signature/preimage mismatch. The exact sixteen case names
+and messages match the recorded pending-control failures. No import-map failure
+remains. Main's byte-identical reader admits all five bound forwards against
+the proposed scratch class. The real PostgreSQL catalog passes 132 cases in
+both role modes, and the stock-wait store's 11 cases pass with the existing Error
+shape. Five catalog inventories were remeasured and agree with the staged
+current-inventory literals; historic pins remain unchanged. The finite handover
+reaches its terminal witness in default, Etc/GMT-9 and Etc/GMT+5 (100.79 s,
+99.67 s and 99.55 s). Lint, typecheck, ast-grep, both neutrality checks and the
+complete API check pass. Privacy scanning finds no private added text.
+
+Official Node 24.21.0 pack against c6248bf2: +21,005 packed bytes, +14,497 code
+bytes, +108,584 unpacked bytes and +16 files. Absolute: 2,492,607 packed,
+1,987,360 code, 11,723,947 unpacked bytes and 3,063 files. The total packed
+margin is 102,393 bytes; the code margin is 67,657 bytes. Against the prior
+17,490-byte own-row measure, the inline repair adds 3,515 packed and 19,419
+unpacked bytes with no new files; code-class compression drops by 120 bytes.
+The SQL copy grows 20,519 bytes; the six changed source/build files together
+shrink by 1,100 bytes. The own-row measure exceeds the earlier 18,400-byte
+line by 2,605 bytes and is presented explicitly for the lead's size disposition.
+No release-gate number changed. All repair inputs remain staged and uncommitted
+for the SQL read; the actual class integration and native review remain later.
+
+Self-retro: preserving the established Error details shape avoided an unwanted
+module edge without changing the technical refusal path. The complete callers
+sweep and its explicit zone exception list now distinguish inherited test-text
+assumptions from product failures and pending admission data.

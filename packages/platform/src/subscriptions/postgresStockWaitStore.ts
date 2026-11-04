@@ -29,7 +29,7 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
   const { executor, codec } = options;
   async function invoke(db: SubscriptionQueryExecutor, name: string, values: unknown[]) {
     return (await db.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values).catch((error: unknown) => {
-      if (error && typeof error === "object" && "code" in error && error.code === "55P03") {
+      if (name === "subscription_stock_wait_admit" && error && typeof error === "object" && "code" in error && error.code === "55P03") {
         throw Object.assign(new Error("Inventory admission temporarily unavailable"), { details: { code: "55P03",
           reason: "message" in error && error.message === "inventory_admission_busy" ? "inventory_admission_busy" : "inventory_lock_unavailable" } });
       }
@@ -105,7 +105,7 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       && [input.claimGeneration, input.claimGeneration + 1].includes(Number(row.claim_generation));
     if (!securedReplay && Number(row.claim_generation) !== input.claimGeneration) return { outcome: "refused", reason: "stale_snapshot" } as const;
     if (!securedReplay && new Date(String(row.lease_expires_at)).getTime() > Date.parse(input.now)) return { outcome: "refused", reason: "lease_active" } as const;
-    const result = subscriptionRecord(await invoke(db, "subscription_stock_wait_recover_refusal_gated", [input.operationId, input.frozenFingerprint, options.workerId, input.now]));
+    const result = subscriptionRecord(await invoke(db, "subscription_stock_wait_recover_refusal", [input.operationId, input.frozenFingerprint, options.workerId, input.now]));
     if (result.waiting === true) return { outcome: "refused", reason: "inventory_unavailable" } as const;
     return { outcome: "recovered", operation: codec.readback(result), replayed: result.replayed === true } as const;
   }
@@ -160,13 +160,13 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       return result.rows.map(row => codec.due(row));
     },
     async deficits(input: { snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; operationId: string; now: string }) {
-      return options.withTransaction(async db => deficits(db, await invoke(db, "subscription_stock_wait_deficits_gated", [codec.encode(input.snapshot), input.operationId, input.now])));
+      return options.withTransaction(async db => deficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now])));
     },
     async admit(input: { operationId: string; claimToken: string; snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; recovery?: StockWaitRecoveryBinding; now: string }): Promise<NativeStockWaitAdmission> {
       const request = { operationId: input.operationId, claimToken: input.claimToken, snapshot: codec.encode(input.snapshot),
         operationFingerprint: codec.fingerprint(input.snapshot), identityKey: codec.identity(input.snapshot), worker: options.workerId };
       const due = input.recovery ? { stockWaitRecovery: input.recovery } : {};
-      const response = subscriptionRecord(await invoke(executor, "subscription_stock_wait_admit_gated", [request, due, input.now]));
+      const response = subscriptionRecord(await invoke(executor, "subscription_stock_wait_admit", [request, due, input.now]));
       if (response.waiting === true && typeof response.caseId !== "string") throw new Error("stock_wait_case_identity_missing");
       return { waiting: response.waiting === true, caseId: nullable(response.caseId), response };
     },
