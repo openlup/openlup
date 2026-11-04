@@ -1,6 +1,6 @@
 # Renewal admission inventory amendment
 
-Status: development-preview preparation; staged maintainer read required.
+Status: accepted maintainer read; committed delivery continuation.
 
 ## Outcome and boundary
 
@@ -98,3 +98,40 @@ matched; the prior failed candidate remains part of this task's history.
 
 <!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-dccac30432e246d498ffb41995ee2379764976ae625dee2a99874374bcee01a4","reason":"Only the unbound renewal slot inventory changes: six original replacement identities and preimages replace wrapper approvals and three revocations; grant-only and data lists are empty. No SQL, ACL, binding, sealing or compatibility promise changes. The compatibility posture and data owner's exact header and preimage rules remain accurate; later inline SQL and caller/runtime proof are separate."} -->
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-4bb1a5d43ae4cbed449fc4fe21f0406bc4e8eddce2b8976ab213227fa52e5378","reason":"Only G7's production replacement, creation and grant-list expectations change. Other production rows, every synthetic refusal, the immutable-prefix cutoff and all generic preimage, absence, existence and role assertions are unchanged. No test command, reader grammar or required verification instruction changes; removal of the helper grant removes the earlier failed dependency without weakening its witness."} -->
+
+
+## Accepted read and delivery continuation
+
+The maintainer accepted the data amendment at tree
+`42e09055695d21f50ac62fa714a03261d43f6ece`, with full staged-diff SHA-256
+`d9b243538b2ef940de5e6515d1973b9e2f3d60a1618e8c86f63d29a14bd03bc6`.
+It was DCO-signed unchanged as `514b4a67bc8726150fda1ae70a012913fbea69f7`.
+The earlier local-only boundary and precommit observations above are historical.
+
+The direct continuation authorizes this assigned worker to supervise delivery:
+DCO sign-off, a mechanical integration after the shared catalogue prerequisite,
+merged-candidate checks, two fresh full independent native reviews, canonical
+verification, a plain-create push, a draft pull request against main, source
+receipt publication and the existing landing helper's readiness and auto-merge
+request for the exact reviewed head. The DCO signer remains the accountable
+author; independent reviewers hold no implementation or delivery authority.
+Stop at the first failed required check, conflict or material review finding.
+Release dispatch, npm publication, settings, credentials, production and adopter
+operations are excluded; no adopter endpoint is in this task.
+
+The shared catalogue prerequisite merged before source review. Current policy
+and review base are `6f7007598803c9bf2a00dc427d407f399d2c72df`. The signed merge
+`baf8743cb0e59d9281279fb44b9b5f5dbeffdf34` was conflict-free; its exact tree
+`61ef4de18c9025b3c6aacde7dac4fb175cb0844e` equals Git's merge-tree prediction.
+No manual integration edit occurred. This continuation updates only the task's
+status and effective authority; the accepted registry and test delta remain
+unchanged. Full first-review coverage and complete canonical verification apply;
+no inherited review, reduced route or prior verification stamp is claimed.
+
+Execution observations, actual reviewer identities/results and the final proof
+remain in ignored task evidence and the pull-request handoff to keep the final
+candidate frozen. Package inputs remain byte-identical to the review base, 0 B.
+
+Continuation retro: waiting for the shared catalogue change before review avoids
+a predictable overlapping-base refusal and repeated model review. The mechanical
+integration preserves the accepted inventory without a checker or ACL change.
