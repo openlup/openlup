@@ -51,3 +51,27 @@ export async function admitCheckoutAttempt(check: CheckoutRateLimit, ...input: P
       && Object.keys(result).every(key => key === 'allowed' || key === 'reason');
   } catch { return false; }
 }
+
+/** Host identity binding remains in force when the quota callback is replaced.
+ * Binding and capacity checks are synchronous; only identity digests are kept. */
+export function createCheckoutAttemptBindings(settings: Settings, now: () => number = Date.now) {
+  type Entry = { identity: string; at: number };
+  const entries = new Map<string, Entry>();
+  return {
+    bind(commandKey: string, email: string, requesterKey: string | undefined): Entry | null {
+      const at = now();
+      if (!Number.isFinite(at) || !commandKey || !email.trim() || !requesterKey || !hex(requesterKey)
+        || Object.values(settings).some(value => !Number.isSafeInteger(value) || value < 1)
+        || settings.retentionMs < settings.windowMs) return null;
+      for (const [key, entry] of entries) if (entry.at <= at - settings.retentionMs) entries.delete(key);
+      const key = hash(commandKey);
+      const identity = hash(JSON.stringify([email.trim().toLowerCase(), requesterKey]));
+      const existing = entries.get(key);
+      if (existing) return existing.identity === identity ? existing : null;
+      if (entries.size >= settings.maxEntries) return null;
+      const entry: Entry = { identity, at };
+      entries.set(key, entry);
+      return entry;
+    },
+  };
+}

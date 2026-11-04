@@ -4,6 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
+import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { env as processEnvironment } from 'node:process';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -38,21 +39,47 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   let base: string;
   let state: string;
   let cookie: string | undefined;
+  let runtimeConnection: string;
   let pending: { orderRef: string; token: string };
   const paid = new Map<string, Record<string, unknown>>();
   const email = `uuid-${config.id}@example.test`;
 
-  async function call(operation: Operation, payload: Record<string, unknown>, signedIn = false) {
+  async function exchange(operation: Operation, payload: Record<string, unknown>, signedIn = false, key = randomUUID()) {
+    const started = performance.now();
     const response = await fetch(`${base}/api/actions/${operation}`, {
       method: 'POST', headers: {
         Origin: base, 'Content-Type': 'application/json', 'X-Starter-Request': '1',
-        'Idempotency-Key': randomUUID(), ...(signedIn && cookie ? { Cookie: cookie } : {}),
+        'Idempotency-Key': key, ...(signedIn && cookie ? { Cookie: cookie } : {}),
       }, body: JSON.stringify(payload),
     });
     const issuedCookie = response.headers.get('set-cookie');
     if (issuedCookie) cookie = issuedCookie.split(';')[0];
-    return await response.json() as ActionResult;
+    return { body: await response.json() as ActionResult, status: response.status, elapsed: performance.now() - started };
   }
+
+  async function call(operation: Operation, payload: Record<string, unknown>, signedIn = false, key = randomUUID()) {
+    return (await exchange(operation, payload, signedIn, key)).body;
+  }
+
+  async function control(permissive: boolean | null) {
+    return new Promise<{ registrations: number }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('host_control_timeout')), 5_000);
+      host!.once('message', message => {
+        clearTimeout(timer);
+        resolve(message as { registrations: number });
+      });
+      host!.send({ permissive });
+    });
+  }
+
+  const checkout = (address: string) => ({
+    locale: 'en', email: address, configuration: config.id, country: config.market.country,
+    termsAccepted: true, termsRevision: config.legal.revision,
+    firstName: 'Example', lastName: 'Buyer', phone: '000000000',
+    line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
+    cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
+      lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] },
+  });
 
   async function createOrder(signedIn = false) {
     const result = await call('checkout.create', {
@@ -108,10 +135,55 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     // The starter owns its strict compiler profile; exercise its actual CLI and
     // HTTP host instead of importing its whole graph into the root test profile.
     const entry = resolve('examples/neutral-store/host/server.ts');
-    host = spawn(process.execPath, ['--experimental-strip-types', entry,
-      '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl.toString()],
-    { cwd: state, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' },
-      stdio: ['ignore', 'pipe', 'pipe'] });
+    runtimeConnection = runtimeUrl.toString();
+    // Child-only composition uses the real HTTP host and restricted native ports.
+    // IPC replaces only the existing callback seam and observes registrar calls.
+    const bootstrap = String.raw`
+      import { pathToFileURL } from 'node:url';
+      import { Pool } from 'pg';
+      import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
+      import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+      import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
+      const entry = ${JSON.stringify(entry)};
+      const load = relative => import(new URL(relative, pathToFileURL(entry)).href);
+      const { createApplication } = await load('./server.ts');
+      const { composeNativeBindings } = await load('./native-composition.ts');
+      const { composePurchaseCapabilities } = await load('./purchase-composition.ts');
+      const { createCheckoutRecoveryDelivery } = await load('./checkout-recovery.ts');
+      const { createOriginPolicy } = await load('./origin-policy.ts');
+      const { selectConfiguration } = await load('../owned/store.config.ts');
+      const config = selectConfiguration(${JSON.stringify(config.id)});
+      const port = ${port};
+      const connectionString = ${JSON.stringify(runtimeConnection)};
+      const base = 'http://127.0.0.1:' + port;
+      process.chdir(${JSON.stringify(state)});
+      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port));
+      const pool = new Pool({ connectionString });
+      const registrar = createPostgresContactClientRegistrar({ connectionString });
+      const lane = createPostgresRoleFreeTransactionLane({ connectionString });
+      const recovery = { tokens: createPostgresCheckoutRecoveryTokenPort(lane), deliver: createCheckoutRecoveryDelivery(base) };
+      let registrations = 0;
+      const contacts = { ensureContactClient: input => { registrations++; return registrar.ensureContactClient(input); }, close: async () => {} };
+      process.on('message', message => {
+        if (message.permissive !== null) {
+          config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 2, maxPerRequester: 2, maxEntries: 8 };
+          registrations = 0;
+          bindings.actions['checkout.create'] = composePurchaseCapabilities(pool, contacts,
+            message.permissive ? async () => ({ allowed: true }) : undefined, recovery)['checkout.create'];
+        }
+        process.send({ registrations });
+      });
+      const server = createApplication(bindings);
+      server.listen(port, '127.0.0.1', () => process.stdout.write('Neutral store local candidate: ' + base + '\n'));
+      process.once('SIGTERM', () => server.close(async () => {
+        await Promise.all([bindings.close(), pool.end(), registrar.close(), lane.close()]);
+        process.disconnect();
+      }));
+    `;
+    host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', bootstrap,
+      'starter-host-proof', '--configuration', config.id, '--port', String(port), '--database-url', runtimeConnection],
+    { cwd: resolve('.'), env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' },
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('uuid_host_start_timeout')), 10_000);
       const fail = () => { clearTimeout(timer); reject(new Error('uuid_host_start_failed')); };
@@ -192,4 +264,67 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       }, 30_000);
     }
   }
+
+  it('guest creation has one observable shape and floor for new, unlinked and linked e-mails', async () => {
+    const connection = new URL(runtimeConnection); connection.password = 'synthetic-conformance';
+    const registrar = createPostgresContactClientRegistrar({ connectionString: connection.toString() });
+    const unlinked = `unlinked-${config.id}@example.test`;
+    try { expect((await registrar.ensureContactClient({ email: unlinked, ...config.purchase.contact })).ok).toBe(true); }
+    finally { await registrar.close(); }
+    const before = (await owner!.query('SELECT row_to_json(c)::text AS bytes,xmin::text FROM public.clients c WHERE email=$1', [email])).rows[0];
+    expect((await owner!.query('SELECT principal_id FROM public.clients WHERE email=$1', [email])).rows[0].principal_id).not.toBeNull();
+    const results: ActionResult[] = [];
+    for (const address of [`new-${config.id}@example.test`, unlinked, email]) {
+      const result = await exchange('checkout.create', checkout(address));
+      expect(result.status).toBe(200);
+      expect(result.body.ok).toBe(true);
+      expect(result.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
+      if (!result.body.ok || !isRecord(result.body.value)) throw new Error('guest_checkout_required');
+      expect(typeof result.body.value.token).toBe('string');
+      expect(JSON.stringify(result.body)).not.toMatch(/"(?:linked|created|clientId|principalId|email|account)"/);
+      results.push({ ...result.body, value: { ...result.body.value, orderRef: '<order>', token: '<token>' } });
+    }
+    expect(results[1]).toEqual(results[0]);
+    expect(results[2]).toEqual(results[0]);
+    expect((await owner!.query('SELECT row_to_json(c)::text AS bytes,xmin::text FROM public.clients c WHERE email=$1', [email])).rows[0]).toEqual(before);
+  }, 30_000);
+
+  for (const permissive of [false, true]) it(`retained key binds identity before contact writes with ${permissive ? 'permissive' : 'interim'} quota`, async () => {
+    await control(permissive);
+    const count = async () => Number((await owner!.query('SELECT count(*) AS n FROM public.clients')).rows[0].n);
+    const before = await count();
+    const key = randomUUID();
+    const address = `bound-${permissive}-${config.id}@example.test`;
+    const first = await call('checkout.create', checkout(address), false, key);
+    expect(first.ok).toBe(true);
+    if (!first.ok || !isRecord(first.value)) throw new Error('bound_checkout_required');
+    expect(await count()).toBe(before + 1);
+    const original = { ...first.value }; delete original.token;
+    const changedResults: Array<Awaited<ReturnType<typeof exchange>>> = [];
+    for (let index = 0; index < 5; index++) {
+      const changed = await exchange('checkout.create', checkout(`changed-${permissive}-${index}-${config.id}@example.test`), false, key);
+      changedResults.push(changed);
+    }
+    expect(await count()).toBe(before + 1);
+    for (const changed of changedResults) {
+      expect(changed.body).toEqual({ ok: false, code: 'starter_attempt_limited' });
+      expect(changed.status).toBe(409);
+      expect(changed.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
+    }
+    expect((await control(null)).registrations).toBe(1);
+    expect(await call('checkout.create', checkout(address.toUpperCase()), false, key))
+      .toEqual({ ok: true, value: original, replayed: true });
+    // A fresh second key still fits the native requester quota after all refusals.
+    expect((await call('checkout.create', checkout(`second-${permissive}-${config.id}@example.test`))).ok).toBe(true);
+    await control(permissive);
+    const concurrentBefore = await count();
+    const concurrentKey = randomUUID();
+    const results = await Promise.all([0, 1].map(index => call('checkout.create',
+      checkout(`race-${permissive}-${index}-${config.id}@example.test`), false, concurrentKey)));
+    expect(results.filter(result => result.ok)).toHaveLength(1);
+    expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: 'starter_attempt_limited' }]);
+    expect(await count()).toBe(concurrentBefore + 1);
+    expect((await control(null)).registrations).toBe(1);
+  }, 30_000);
+
 });

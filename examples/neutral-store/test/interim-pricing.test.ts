@@ -28,7 +28,6 @@ for (const original of Object.values(configurations)) test(`${original.id}: owne
   config.offer.shippingMinor = 900; config.offer.freeShippingFromMinor = 9000;
   config.purchase.inputLimits = { text: 80, postalCode: 20, email: 180, name: 40, phone: 24 };
   config.purchase.reservationMinutes = 15;
-  config.purchase.acceptLinkedContacts = false;
   config.purchase.stock.quantities[config.offer.products[0]!.sku] = 27;
   config.purchase.stock.providerRef = 'changed-stock-source'; config.purchase.stock.syncRunId = 'changed-stock-revision';
   config.purchase.stock.collectedAt = '2020-01-01T00:00:00Z'; config.purchase.stock.staleAfter = '2990-01-01T00:00:00Z';

@@ -368,9 +368,9 @@ Checkout creation uses the public contact registrar after attempt admission. Sig
 session's native client, never a browser-supplied client identifier.
 
 An unverified e-mail does not authorize reading an existing order or changing a
-client. With the existing policy enabled, an already linked contact can receive
-another order without exposing its account. The single host condition
-`purchase.acceptLinkedContacts` can instead require sign-in for that case.
+client. A guest purchase for an e-mail whose contact already has an account
+attaches the order to that existing client, without an account read or rewrite.
+The public answer does not depend on whether an account exists.
 
 An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
@@ -423,4 +423,4 @@ refuse loudly. Resolve a deliberate price change through the application's
 onboarding decision rather than relying on a silent seed overwrite.
 
 Attempt limits live in one process's memory and reset on restart.
-Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay precedes quotas; denied attempts add nothing. The synchronous process-local callback fails closed. Unpurchased contact retention belongs to the host.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import type { createCheckoutAdmission } from '@openlup/platform/commerce/server';
-import { createInterimCheckoutLimiter, admitCheckoutAttempt } from '../host/checkout-attempts.ts';
+import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt } from '../host/checkout-attempts.ts';
 import { configurations } from '../owned/store.config.ts';
 import { assertConfig } from '../shared/config.ts';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -86,4 +86,30 @@ test('a retained exact replay precedes a later full window until retention expir
   assert.equal((await limiter.checkRateLimit(request, intent('old'), 0)).allowed, true);
   assert.deepEqual(limiter.snapshot(), before);
   assert.deepEqual(await limiter.checkRateLimit(request, intent('third'), 0), { allowed: false, reason: 'email_quota' });
+});
+
+
+test('host key binding rejects changed identities independently of the quota callback', async () => {
+  const bindings = createCheckoutAttemptBindings(settings, () => 1);
+  const first = bindings.bind('Key', 'Person@Example.test', request.requesterKey);
+  assert.ok(first);
+  assert.equal(bindings.bind('Key', ' person@example.test ', request.requesterKey), first);
+  assert.equal(bindings.bind('Key', 'other@example.test', request.requesterKey), null);
+  assert.equal(bindings.bind('Key', 'person@example.test', hash('other')), null);
+  const results = await Promise.all(Array.from({ length: 20 }, async (_, index) =>
+    bindings.bind('concurrent', `person-${index}@example.test`, request.requesterKey)));
+  assert.equal(results.filter(Boolean).length, 1);
+});
+
+test('host bindings expire, fail closed at capacity and require a valid requester', () => {
+  let now = 1;
+  const bindings = createCheckoutAttemptBindings({ ...settings, maxEntries: 1 }, () => now);
+  const first = bindings.bind('one', 'person@example.test', request.requesterKey);
+  assert.ok(first);
+  assert.equal(bindings.bind('two', 'other@example.test', request.requesterKey), null);
+  now = 202;
+  assert.ok(bindings.bind('two', 'other@example.test', request.requesterKey));
+  assert.equal(bindings.bind('two', 'other@example.test', undefined), null);
+  assert.equal(bindings.bind('two', 'other@example.test', 'raw-peer'), null);
+  assert.equal(createCheckoutAttemptBindings(settings, () => NaN).bind('key', 'person@example.test', request.requesterKey), null);
 });

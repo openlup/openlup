@@ -58,7 +58,8 @@ credential store or direct recovery-settlement shortcut remains.
 ## Preserved boundaries and exclusions
 
 The interim quota retains bounded process memory, hash-only attempt facts, exact
-replay before email/requester quotas, no count on denial and fail-closed behavior.
+replay of the same key and identity before further email/requester quota counts,
+no count on quota denial and fail-closed behavior.
 Restart resets it. Its existing decision callback is the replacement seam.
 The single interim price function resolves configured per-unit subscription
 prices before quantity; seeded mode prices match, discounts are empty and there
@@ -123,3 +124,36 @@ and exercises native authentication, origin admission and payment composition
 without importing the entire host graph into the root tests' compiler profile.
 A clean install, package build and public typecheck of the accepted composition
 passes; the earlier compiler error arose only from that test import graph.
+
+
+## Staged guest admission repair
+
+The maintainer authorized one bounded repair for the account-state admission and
+changed-identity replay findings. This continuation is staged for the maintainer's
+security read; it authorizes no commit, review, push or delivery action.
+
+Guest admission has no linked-contact option or branch. New, unlinked and linked
+contacts receive the same public result shape and configured response floor.
+The registrar alone decides whether an unlinked profile can be refreshed; its
+account and client facts remain internal to the host.
+
+After quota admission and before registration, one synchronous host section binds
+the command key to a digest of the normalized e-mail and requester fingerprint.
+A changed identity receives the existing admission refusal. The binding also
+applies with a permissive replacement callback. The existing retention and capacity values bound this process-local map;
+expired entries are dropped and full capacity refuses. There is no new service,
+package, SQL, public callback contract or persistence authority.
+
+The regression extends the existing real-HTTP PostgreSQL host suite: all three
+contact states, retained-key changes beyond the quota, exact replay, concurrent
+distinct identities, and a permissive callback. Contact counts and registration
+calls discriminate the two mechanisms. Both configurations pass the new cases
+in the default zone and both offset zones. Disabling the binding in scratch
+creates five extra contacts and fails all four replay cases; restoring the
+linked-contact denial fails both three-state cases. Every new heavy case has an
+explicit 30-second bound above four times its measured local duration.
+The existing standalone limiter's changed-input characterization remains intact.
+
+Self-retro: isolated quota tests did not establish admission before independently
+committed contact writes. The repair proof observes that composed boundary and
+removes the account-dependent branch instead of adding another policy choice.

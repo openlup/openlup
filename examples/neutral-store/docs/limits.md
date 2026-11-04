@@ -221,4 +221,4 @@ The accepted origin/session boundary retains its separate limits.
 
 Attempt limits live in one process's memory and reset on restart.
 Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.
-Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay precedes quotas; denied attempts add nothing. The synchronous process-local callback fails closed. Unpurchased contact retention belongs to the host.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.

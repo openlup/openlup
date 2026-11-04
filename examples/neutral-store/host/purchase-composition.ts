@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
-import { createInterimCheckoutLimiter, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
+import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
 import { createPostgresNativeCheckoutPersistence } from '@openlup/platform/commerce/server/native-checkout';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
@@ -31,6 +31,7 @@ const present = (order: Record<string, unknown>) => ({ orderRef: order.id, statu
 /** Existing request admission precedes each action; ownership is derived here. */
 export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactClientRegistrar, checkRateLimit: CheckoutRateLimit | undefined, recovery: PurchaseRecovery): ApplicationBindings['actions'] {
   let interimLimiter: ReturnType<typeof createInterimCheckoutLimiter> | undefined;
+  let attemptBindings: ReturnType<typeof createCheckoutAttemptBindings> | undefined;
   const drafts = createPostgresNativeCheckoutPersistence(db);
   const destinations = createPostgresDestinationPort(db);
   const reservations = createPostgresPurchaseReservationPort(db);
@@ -81,14 +82,16 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!await admitCheckoutAttempt(checkRateLimit ?? interimLimiter.checkRateLimit,
       { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
       { idempotencyKey: context.commandKey, contact: { email } }, 0)) return refused('starter_attempt_limited');
-    const contact = context.actor.customerRef ? { ok: true as const, clientId: context.actor.customerRef, linked: true }
-      : await contacts.ensureContactClient({ email, ...context.config.purchase.contact,
+    attemptBindings ??= createCheckoutAttemptBindings(context.config.purchase.attemptLimits);
+    const attempt = attemptBindings.bind(context.commandKey, email, context.actor.requesterKey);
+    if (!attempt) return refused('starter_attempt_limited');
+    const contact = await (context.actor.customerRef
+      ? Promise.resolve({ ok: true as const, clientId: context.actor.customerRef })
+      : contacts.ensureContactClient({ email, ...context.config.purchase.contact,
         profileDefaults: { firstName: String(payload.firstName), lastName: String(payload.lastName),
           phone: String(payload.phone), country: context.config.market.country },
-        journey: { idempotencyKey: context.commandKey, locale: payload.locale, mode: offer.cart.mode } });
+        journey: { idempotencyKey: context.commandKey, locale: payload.locale, mode: offer.cart.mode } }));
     if (!contact.ok) return refused('starter_purchase_unavailable');
-    // Single policy switch: a matching registered contact receives the new order, never an account read.
-    if (!context.actor.customerRef && contact.linked && !context.config.purchase.acceptLinkedContacts) return refused('starter_purchase_unavailable');
     const { quote } = offer;
     const money = (amountMinor: number) => ({ amountMinor, currency: quote.currency });
     const shipping = address(payload, context.config.market.country);

@@ -67,7 +67,6 @@ export interface StoreConfig {
   };
   purchase: {
     recoveryMessage: { subject: Localized; body: Localized; expiryLabel: Localized; orderLabel: Localized };
-    acceptLinkedContacts: boolean;
     inputLimits: { text: number; postalCode: number; email: number; name: number; phone: number };
     contact: { acquisitionSource: string; lifecycleStage: 'lead' | 'customer' | 'inactive' };
     responseFloorMs: number;
@@ -130,7 +129,7 @@ export function assertConfig(config: StoreConfig): void {
   })) {
     throw new Error('starter_recovery_message_invalid');
   }
-  if (!purchase || typeof purchase.acceptLinkedContacts !== 'boolean'
+  if (!purchase
     || !Number.isSafeInteger(purchase.responseFloorMs) || purchase.responseFloorMs < 0
     || !purchase.contact.acquisitionSource.trim() || purchase.contact.acquisitionSource.length > 100
     || !['lead', 'customer', 'inactive'].includes(purchase.contact.lifecycleStage)
