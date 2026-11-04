@@ -1,7 +1,8 @@
 # Local data-bearing image rollback
 
-Status: built ahead with local data-bearing execution and focused checks passed.
-Committed review, canonical verification and delivery are deferred.
+Status: local data-bearing execution is recorded below. The integrated candidate
+is authorized for draft submission, preparation and two fresh full reviews.
+Canonical verification and landing await a later continuation in the same session.
 
 ## Outcome and authority
 
@@ -11,13 +12,12 @@ public limits only with the executed result, one hosted-database limit sentence
 and a pointer to the starter limits. Part 1 remains the historical image-only
 witness. The public-reference descriptor is unrelated and unchanged.
 
-The distribution supervisor coordinates this worker. Bart Roszkowski is the
-accountable human. Local edits, isolated local Docker proof and a signed DCO
-commit are authorized in this assigned worktree only. Stop built ahead: no
-prepare, reviewers, canonical verify, push/upstream, PR, comment, queue,
-release or publication. The supervisor separately authorized the required local
-integration of main recorded below. Merge the starter predecessor only after
-the supervisor supplies its frozen head; never rebase or land before it.
+Bart Roszkowski is the accountable human. Work is confined to this assigned
+worktree and the six paths below. Local checks, signed-off commits, the required
+main integration, one draft pull request, native preparation and two independent
+full reviews are authorized. Stop after passing review; canonical verification,
+readiness, receipt submission, landing, release and publication are deferred.
+No stack pin applies.
 
 Original implementation base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`;
 base tree: `69ed6ac17997e1f824ab657abc4b862f79326b0a`.
@@ -184,7 +184,33 @@ local integration below, no merge, upstream, push, PR, comment, queue, release o
 publication was attempted. Stop built ahead; review/verification/delivery need
 the supervisor’s later continuation.
 
-## Required main integration before first review
+## Current integration and first-review boundary
+
+Policy revision and code review base are separately recorded as the same fetched
+main commit: `0c2fd40139d674e2f52c4b55b90364bfe21bb6f0`. The required
+signed-off merge is `be92cbb13c8cb330d9a7c8bcdf207bba12c68cfd`, with tree
+`e6bcc1a48edf71511ff81a381e5979667713021e` and parents
+`c1a2014c6ed5c1762bf82c2560115b416cd9a4a8` and that main commit.
+It exactly matches the successful pre-merge `git merge-tree --write-tree HEAD
+origin/main` prediction; no conflict resolution or source edit was needed.
+
+`git diff --name-only origin/main HEAD` after the merge lists exactly root
+README, the publication catalogue, this record and the three deployment recipe
+files. The catalogue equals main plus the single task-record row in path order;
+all main rows retain their bytes and order. There is no package, starter, server,
+database, workflow or existing-script delta. Package contribution is zero by
+input equality, without requiring a new pack.
+
+The earlier execution remains evidence for its recorded frozen inputs only.
+Main has since changed starter and package inputs; this integration does not
+claim a new Docker execution against those inputs. Deployment proof files are
+unchanged. First review covers the complete committed contribution against
+the base above, including this integration's interactions, with two fresh full
+reviews and no inherited coverage or reduced integration edge. The historical
+built-ahead restrictions and predecessor wait below describe earlier checkpoints;
+the current review boundary above supersedes them.
+
+## Earlier main integration evidence
 
 Current policy revision and integration base:
 `5054c53dc81b246b81fb77122aeb71f92cfbdd75`, fetched from `origin/main`.
