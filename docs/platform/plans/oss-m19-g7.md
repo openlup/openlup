@@ -14,22 +14,22 @@ price writer, payment-attempt store or managed behavior is introduced.
 
 ## Scope and authority
 
-Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Current frozen
-predecessor: `36ef901c970e533ae9310062fc2fbf058ad39c83`, merged without
-rebasing as `6e4676c8`. This integrates the admitted original-routine inline gate
-class and the roadmap changes. The earlier deadline predecessor
-`c6248bf295dbdb474f86bd8c0fcf5f4e49c64470` remains provenance.
-Documentation and later native prepare/verification use
-that exact `OPENLUP_STACK_BASE`; focused test children receive no stack pin.
-The earlier predecessor history below remains provenance, not the current base.
+Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Main
+`76d8a415a5bb96331e5f81832670138df17b2536` was merged without manual
+resolution as `c241a8becda68f969c366c384caebf54df8354ac` after the required
+merge preflight refused carry-over across the review-machinery update.
+Documentation, native prepare and verification now use the default fork point
+with main; `OPENLUP_STACK_BASE` is unset. The earlier frozen predecessor
+`36ef901c970e533ae9310062fc2fbf058ad39c83`, merged as `6e4676c8`, and deadline
+predecessor `c6248bf295dbdb474f86bd8c0fcf5f4e49c64470` remain provenance.
 
 Earlier signed predecessor:
 `9ac0992776bbe5f295c3698fe28e732202b36fa3`, including main `09cd599b`, the
 retained-method compatibility fix and the offline installed-consumer correction.
 Earlier unsigned work was consolidated as signed `63f9d783`; that signed commit
 is preserved. The new test-only predecessor is merged with signed `87ed500f`,
-without rebase or rewriting any signed commit. Later native review uses the
-new exact predecessor as `OPENLUP_STACK_BASE`.
+without rebase or rewriting any signed commit. That historical review used the
+then-current predecessor as `OPENLUP_STACK_BASE`; the current base is stated above.
 
 The supervisor authorizes this exact frozen-head merge, pre-review proof and
 record-only corrections, full independent native review, canonical verification,
@@ -1158,3 +1158,16 @@ with 3,063 files. The row stop is 22,500; the unchanged total/code caps are
 2,595,000 / 2,055,017. Complete API reports remain identical. No SQL, role grant,
 checker, baseline or budget was edited. Full pre-review and fresh native review
 still follow on the committed candidate.
+
+## Review-machinery integration
+
+The signed main merge changes only the landed review scripts and guidance.
+The full scanner set passes 3,696 tests with no failures and two skips. Lint,
+typecheck, API, structural rules and both neutrality checks pass. The existing
+PostgreSQL witnesses carry over because the main delta changes no database,
+package runtime, server or test path. Fresh full review and final verification
+remain required on the integrated candidate.
+
+Self-retro: the failed preflight exposed a real control-boundary change. Merging
+the landed rules and removing the obsolete stack pin follows the existing
+recovery route without changing the UUID contract or resetting review history.
