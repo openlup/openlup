@@ -639,3 +639,29 @@ handover launcher; the initial loader-only error was corrected without a source
 change. The new draft assertion was corrected to the raw RPC's acquired field
 before the passing run; its old-body counterexample stopped earlier at 40P01.
 About 44 minutes were spent waiting for exclusive scanner capacity.
+
+
+## Accepted stacked packed limit
+
+The official paired pack on the frozen predecessor measures 2,489,092 packed
+bytes. The itemized remaining-row reserve is 53,075 bytes. The exact ceiling
+of (2,489,092 + 53,075) × 1.02 is 2,593,011; rounding upward to the existing
+5,000-byte step gives the accepted total limit of 2,595,000. The capReason,
+code-class limit of 2,055,017 and every other budget stay unchanged. Only the
+total packed number changes in the signed budget commit.
+
+The predecessor-relative policy run requires fresh configuration, tests and
+admission-test data bindings after integration. The records below bind this
+exact delta without changing the canonical owner sections or any executable
+control. The measured deadline draft is backed up and removed from this row;
+the predecessor owns that delivery. No scanner, native review, verify or
+submission is claimed here.
+
+Self-retro: retain the stated 5,000-byte rounding after the exact calculation,
+and separate test-deadline ownership from the accepted package-budget commit.
+
+<!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-3a4c80b63340888c3bdcbfbdc2bc4bb12ceb4b743ee38a8f2b5ee56bc6e6a794","reason":"The exact native renewal forward is appended after the frozen predecessor with whole-file and ordered function pins, and the five current catalogue digests are measured on PostgreSQL. Prior migration identities and historic pins remain unchanged. The compatibility posture still requires closed-class and co-located approval; these bindings add no installation authority, managed-rail change, provider qualification or stable compatibility claim. The subscriptions owner and task record describe the forward behavior."} -->
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-f7041c7b71ba6e75096290b7e69e245710ffb8d2e4328f50fbc0ace3312779c8","reason":"The own delta adds installed-artifact restricted-role renewal, repair, stock-wait, destination, transfer, replay and lock-order witnesses, plus the literal chain counts and measured current catalogues for the appended forward. Historic pins and existing behavioral assertions remain intact. The offline consumer, focused gate and measured existing case deadlines use the documented test boundaries; required phases, selection, coverage and global timeouts do not change, so Development-preview checks remains accurate."} -->
+
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-cf3c768d301e67030ee71b1f4a29ffe6ef86d6257e2fa9b3cae72830b063c01b","reason":"The only tooling delta changes the admission suite data expectation from the first four bound native slots to the first five after this feature pin is present. The reader, class rules, refusal fixtures, test selection and admission workflow are unchanged. Development-preview checks remains accurate because this follows the authorized feature data rather than changing a control mechanism."} -->
