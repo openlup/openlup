@@ -1207,3 +1207,11 @@ landing follow only after that evidence is complete.
 
 Self-retro. Preserving the selected migration order and recomputing the current
 inventory keeps an integration from rewriting historic schema expectations.
+
+## Native binding inventory expectation
+
+The accepted one-line control-test correction recognizes the seven bound native
+store slots in their existing closed order. Its commit changes the expected
+prefix from five entries to seven. The contribution section's scanner commands,
+acceptance requirements and resource gates continue to apply. The next complete
+scanner set and runtime caller sweep must run before review and delivery.
