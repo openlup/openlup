@@ -668,7 +668,7 @@ and separate test-deadline ownership from the accepted package-budget commit.
 
 <!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-acce7bc4bfffcccf2554c29d5b2383f9f6853caf058a66a896d4eeb975046958","reason":"The own delta on the frozen control predecessor binds the exact native renewal forward, ordered function hashes and measured installation inventories. The predecessor supplies the separate inline-gate class amendment. Issued migration identities, original role grants, class and admission rules and installation authority stay unchanged; Compatibility posture remains accurate and the runtime owners describe the behavior."} -->
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-e4577807ed5a823921a23dc7c782b9aa5c29a5d3bf82018e84235ebe00c2f9be","reason":"The own delta adds installed restricted-role renewal, gate and UUID-value readback witnesses, with measured current catalogue literals and one authorized sequential accounting setup. Every existing accounting assertion and historic pin remains unchanged. The new UUID case uses real writer-created stock-wait state, preserves exact engine keys and checks no-effect refusals under UTC and a non-UTC zone. Existing offline consumers, measured per-case deadlines, required phases, coverage controls, selection and global timeouts remain unchanged, so Development-preview checks stays accurate."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-38eafea7e89e591822fcbcc32cb95a13dd3a2e16995cda0df557d21eb1f7edd3","reason":"The own delta adds installed restricted-role renewal, gate and UUID-value readback witnesses, with measured current catalogue literals and one authorized sequential accounting setup. Every existing accounting assertion and historic pin remains unchanged. The new UUID case uses real writer-created stock-wait state, preserves exact engine keys and checks no-effect refusals under UTC and a non-UTC zone. Existing offline consumers, measured per-case deadlines, required phases, coverage controls, selection and global timeouts remain unchanged, so Development-preview checks stays accurate."} -->
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-284d80900906e59f6b50819c534a61f1d5ccb6749298b2fba68030d36f76dcd3","reason":"Relative to the frozen control predecessor, the only tooling delta extends the admission suite data expectation from the first four bound slots to the first five for this feature pin. The predecessor owns the class-amendment fixture changes. Reader logic, refusal fixtures, test selection and admission workflow stay unchanged, so Development-preview checks remains accurate."} -->
 
@@ -859,6 +859,7 @@ relevant comparison and key sites are:
 | nativeRetryDriver.ts:113 | Host evidence operation ID already canonicalized. |
 | nativeSubscriptionBinding.ts:85-111 | Both sides of the subscription seen-set already canonicalized. |
 | postgresStockWaitStore.ts:125-133 | Fixed UUID-valued binding equality; engine key retains exact string equality. |
+| postgresStockWaitStore.ts:178-179 | Recovery binding sent to SQL JSONB equality now canonicalizes valid UUID fields while retaining invalid values for the existing SQL refusal. |
 | postgresStockWaitStore.ts:63-73 | Fixed case-derived binding and notice identities to use the database case ID. |
 | nativeRenewalCodec.ts:165 | New destination UUID already canonicalized before freezing. |
 | postgresRenewalStore.ts:80-91; postgresRenewalSettlement.ts:4-55; postgresDeliveryAlignmentStore.ts:16-32 | UUID lookups use typed PostgreSQL casts rather than JS spelling matches. |
@@ -879,3 +880,20 @@ Self-retro: the real PostgreSQL witness exposed both the comparison and its
 adjacent case-derived notice identities. The systemic sweep reports baseline
 sites separately, preserving the approved boundary instead of expanding this
 repair into unrelated main code.
+
+The extended consumer sweep also traced admit's recovery document into SQL's
+exact JSONB binding comparison. This public boundary now canonicalizes valid
+case/cycle/order/payment UUIDs without mutating the host document; nulls,
+invalid strings and engine keys retain their existing behavior. A separate
+restricted PostgreSQL counterexample fails before that fix and passes after it
+in the default and non-UTC sessions: an uppercase case ID reuses the same wait,
+changed/invalid IDs and a changed engine key keep the original 23505 refusal,
+and refused calls leave all public rows unchanged with no charge. A unit witness covers
+all four UUID fields and input immutability. No SQL or API byte changes.
+
+The new admission witness uses the same transaction for the two equivalent
+successful stock rechecks, retains one durable case and never executes payment.
+Its first draft incorrectly treated successful recheck audit timestamps as
+no-write replay, then tried table-wide observation through the restricted role.
+Only that new test setup was corrected: broad before/after observation uses the
+existing observer around refused calls, without adding a runtime table grant.

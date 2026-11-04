@@ -172,7 +172,8 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
     async admit(input: { operationId: string; claimToken: string; snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; recovery?: StockWaitRecoveryBinding; now: string }): Promise<NativeStockWaitAdmission> {
       const request = { operationId: input.operationId, claimToken: input.claimToken, snapshot: codec.encode(input.snapshot),
         operationFingerprint: codec.fingerprint(input.snapshot), identityKey: codec.identity(input.snapshot), worker: options.workerId };
-      const due = input.recovery ? { stockWaitRecovery: input.recovery } : {};
+      const due = input.recovery ? { stockWaitRecovery: Object.fromEntries(Object.entries(input.recovery).map(([key, value]) =>
+        [key, ["caseId", "cycleId", "orderId", "paymentId"].includes(key) ? canonicalUuid(value) ?? value : value])) } : {};
       const response = subscriptionRecord(await invoke(executor, "subscription_stock_wait_admit", [request, due, input.now]));
       if (response.waiting === true && typeof response.caseId !== "string") throw new Error("stock_wait_case_identity_missing");
       return { waiting: response.waiting === true, caseId: nullable(response.caseId), response };

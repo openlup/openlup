@@ -625,3 +625,33 @@ it("matches frozen stock-wait UUID bindings by value and keeps changed identitie
   expect(await allPublicRows(admin)).toEqual(before);
   expect(d.execute).toHaveBeenCalledTimes(1);
 }, 30_000);
+
+// Admission mutations measured below one second; retain a 30 s installed-consumer bound.
+it("canonicalizes frozen recovery UUIDs before the SQL binding comparison", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "succeeded");
+  await stock(0);
+  expect(await binding(d, () => now).services.run()).toMatchObject({ renewals: [{ status: "refused", reason: "inventory_unavailable" }] });
+  const store = api.createPostgresStockWaitStore({ executor, codec: d.codec, withTransaction: transaction, workerId: "uuid-recovery" });
+  const frozen = (await store.readFrozen(d.due))!;
+  const op = (await runtime.query("SELECT claim_token FROM public.subscription_renewal_operations WHERE id=$1", [frozen.operationId])).rows[0];
+  const input = { operationId: frozen.operationId, claimToken: op.claim_token, snapshot: frozen.frozenSnapshot, now: later };
+  const db = await runtime.connect();
+  try {
+    await db.query("BEGIN");
+    const local = api.createPostgresStockWaitStore({ executor: db, codec: d.codec, withTransaction: transaction, workerId: "uuid-recovery" });
+    const original = await local.admit({ ...input, recovery: frozen.binding });
+    expect(original).toMatchObject({ waiting: true, caseId: frozen.binding.caseId });
+    expect(await local.admit({ ...input, recovery: { ...frozen.binding, caseId: frozen.binding.caseId!.toUpperCase() } })).toEqual(original);
+    await db.query("COMMIT");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
+  const before = await allPublicRows(admin);
+  for (const caseId of [randomUUID(), "invalid-uuid"]) {
+    await expect(store.admit({ ...input, recovery: { ...frozen.binding, caseId } }))
+      .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
+  }
+  await expect(store.admit({ ...input, recovery: { ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" } }))
+    .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
+  expect(await allPublicRows(admin)).toEqual(before);
+  expect(d.execute).not.toHaveBeenCalled();
+}, 30_000);
