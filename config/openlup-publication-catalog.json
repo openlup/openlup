@@ -1210,6 +1210,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1654,7 +1662,15 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g3.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g3x.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g4.md",
       "class": "public-output"
     },
     {
@@ -3775,6 +3791,14 @@
     },
     {
       "path": "packages/platform/sql/20261101223000_subscription_purchase_renewal.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101224000_new_purchase_inventory_reservations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101225000_commerce_destinations.sql",
       "class": "public-output"
     },
     {
@@ -6283,6 +6307,10 @@
     },
     {
       "path": "packages/platform/src/inventory/postgresStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/purchaseReservation.ts",
       "class": "public-output"
     },
     {
@@ -27826,6 +27854,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceDestinationsDonor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceDestinationsNative.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceManagedRail.test.ts",
       "class": "public-output"
     },
@@ -28219,6 +28255,14 @@
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/purchaseReservationDonor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/purchaseReservationNative.test.ts",
       "class": "public-output"
     },
     {

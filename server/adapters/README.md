@@ -120,6 +120,15 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+Native destination transfer includes commerce_destinations (full immutable postal addresses and contact phone numbers), commerce_destination_bindings (scoped owner/destination references),
+subscription_command_receipts and the support command/audit ledgers. Restore
+parents precede documents/bindings and ledger actors. Owner snapshot authority,
+writer exclusion, unknown-table refusal, PostgreSQL row encoding and cumulative
+row/byte limits remain required. Both address relations have table-specific
+limit and filtered-login witnesses. Reference strings may identify people; use
+opaque values. This retained transfer is not address privacy export or erasure;
+no such path exists yet. The most sensitive stream relation is the address table.
+
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
 [target restore](postgres/connectedStoreRestore.ts) compose one finite native
 profile for explicitly selected qualified PostgreSQL 16 installations with a
@@ -148,6 +157,20 @@ capture/restore path and row/byte limits apply; no runtime or browser grant is
 added. A fresh-process checkout replay after restore returns the same order.
 The unchanged exact-set guard expects the receipt table even when empty; this
 change does not convert packets from an earlier finite profile.
+
+The purchase-hold draft adds observed current stock, reservation headers/lines
+and purchase command receipts, plus aggregate compensation history and provisional
+activation state, to the fixed capture and ordered restore lists.
+Headers follow their order and renewal-operation parents; lines follow headers.
+Receipts preserve exact PostgreSQL command/result JSON, including arbitrary
+metadata that may contain personal data. Existing whole-packet row/byte bounds,
+owner-only snapshot/restore authority, unknown-table refusal and target-writer
+exclusion still apply; the transfer read covers these six additions. A focused
+real-PostgreSQL witness checks unchanged rows, matching replay after restore,
+changed-input refusal and table-specific bounded capture for activation,
+compensation and command receipts. Restored cancellation replays its original
+answer and preserves released holds. This is local draft evidence, not a
+whole purchase-journey or hosted qualification claim.
 
 Ordinary outbox rows use this pinned owner insertion path while the generic
 compatible-row importer keeps its INSERT-trigger refusal. The exact
