@@ -37,6 +37,11 @@ of a separate checkout of trusted main that contains the planner. Run the comman
 from the candidate worktree. Export the candidate's existing
 `OPENLUP_STACK_BASE` for a stacked change.
 
+First run `git fetch origin main` through the existing authorized fetch path.
+After a successful refresh, run the following separately. The probe works
+with read-only Git metadata because its temporary merge objects use a
+disposable directory.
+
 ```sh
 pre_review() (
   : "${OPENLUP_TRUSTED_CHECKOUT:?set to the checkout of trusted main}"
@@ -58,12 +63,10 @@ try {
 }
 NODE
 )
-git fetch origin main && pre_review
+pre_review
 ```
 
-The merge prediction writes temporary Git objects to the disposable directory
-so the probe also works when the candidate's Git metadata is read-only. Refresh
-the ref through the existing fetch path first. Schedule the diagnostic only after the command succeeds. If a task script
+Schedule the diagnostic only after the command succeeds. If a task script
 schedules the diagnostic, use the preflight command as the first operand of
 `&&` before the existing resource request. A failed prediction comes before
 heavy work. The local pending-predecessor result permits local work and still
