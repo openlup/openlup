@@ -173,6 +173,7 @@ describe("native store SQL shapes and pins", () => {
       { signature: "public.customer_account_communication_choices_as_actor(uuid)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_renewal_purchase_terms(uuid)", searchPath: "pg_catalog, pg_temp" },
     ]);
     expect(slot.dataStatements).toEqual([
       "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_stock_wait_cases', 'block', 'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead.');",
@@ -222,24 +223,24 @@ describe("native store SQL shapes and pins", () => {
     expect(slots.find(slot => slot.row === "G6")!.createdFunctions).toHaveLength(4);
     expect(slots.find(slot => slot.row === "G2")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)"]);
     expect(slots.find(slot => slot.row === "G2")!.createdFunctions).toHaveLength(7);
-    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)"]);
+    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual([
+      "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+      "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+      "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
+      "public.fulfillment_release_subscription_renewal(uuid,uuid,text,timestamptz)",
+      "public.fulfillment_expire_subscription_renewals(timestamptz,integer)",
+      "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+      "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+      "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+    ]);
     expect(slots.find(slot => slot.row === "G7")!.createdFunctions).toEqual([
       { signature: "public.commerce_view_shipment_destination(uuid)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)", searchPath: "pg_catalog, pg_temp" },
     ]);
-    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([
-      { signature: "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-      { signature: "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-      { signature: "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-    ]);
+    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([]);
     expect(slots.find(slot => slot.row === "G8")!.replacedFunctions).toEqual([
       { signature: "public.commerce_order_emit_paid_notification()", beforeSha256: "6352247a869fda2812d3e83fbcd9b7a0bd9106d27bec22296492e06a15f78bee", searchPath: "public, pg_catalog" },
       { signature: "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)", beforeSha256: "2dd59a4f2eb7603e2a1714a97ccfad3d078990cb8978a4db16c130ff9db43364", searchPath: "pg_catalog" },
+      { signature: "public.commerce_order_assert_line_sum()", beforeSha256: "403236204ab35f1776bb1d43a0c9878872fc1547874772b7634b0216b8d837d4", searchPath: "public, pg_catalog" },
     ]);
     expect(slots.find(slot => slot.row === "G8")!.createdFunctions).toEqual([
       { signature: "public.commerce_promotion_lock_definition(text)", searchPath: "pg_catalog, pg_temp" },
@@ -676,12 +677,13 @@ function checkG4G3(index: number, text: string) {
 describe("G4 exact existing-table companions and G3 inventory", () => {
   const g4 = () => `${g4g3.g4Statements.join("\n")}\n${sql(2)}`;
   const g3 = () => fixture("g3-shape.sql").toString();
-  it("adds only two slots in order, without feature bindings, sealing or whole-file class pins", () => {
+  it("keeps the slots in order with four feature bindings, without sealing or whole-file class pins", () => {
     const slots = production.nativeStoreForwardClass!.slots;
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 2).map(slot => slot.path));
+    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 4).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
+    expect(slots[3]!.dataStatements).toEqual(["INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');"]);
     expect(slots[2]!.createdFunctions).toEqual([
       { signature: "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },

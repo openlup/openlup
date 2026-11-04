@@ -1307,20 +1307,35 @@ is durable even when another authorized human resumes execution.
 
 `createPostgresOperatorAuthority` takes an injected transaction executor. Pause,
 ordinary paid-up resume and 3–60-day slide delegate to M10 in the support SQL
-transaction. `NativeOperatorSubscriptionResult` adds the optional actual
-`OperatorOwnerReceipt` and the single capability refusal
+transaction. The qualified runtime currently refuses these lifecycle commands at
+the term-line row lock (42501); F-QUALIFIED-LIFECYCLE-LOCK tracks its repair.
+`NativeOperatorSubscriptionResult` carries the optional actual
+`OperatorOwnerReceipt` and capability refusal
 `operator_subscription_authority_unavailable`; the managed result stays unchanged.
-Native email, phone, account link and address refuse before opening SQL. SQL also
-refuses the unsupported short band, expired/residual-unpaid resume and prepared
-attempt pause. Inspect `operatorAuthorityCapabilities` for each action/subcase;
-a supported ordinary action does not promise all state-dependent subcases.
+Native email, phone and account link refuse before opening SQL. A subscription
+`change_shipping_address` command with `newAddress` calls the bounded
+`customer_support_change_shipping_destination` routine. Select it explicitly with
+host authorization and the complete native catalogue installed; construction
+mounts no route. The command checks its idempotency key and expected version,
+updates the future destination and records its audit and confirmation effects
+atomically. It provides no saved address book.
+
+If dispatch owns the current parcel, the result is `applied_from_next_parcel`,
+with `appliesFrom: "next_parcel"`, `futureDestinationId` and `replayed`. Tell the
+customer that the change applies from the next parcel; the current parcel keeps
+its frozen destination. SQL still refuses the unsupported short band,
+expired/residual-unpaid resume and prepared-attempt pause for other actions.
+Inspect `operatorAuthorityCapabilities` for each action/subcase; a supported
+ordinary action does not promise all state-dependent subcases.
 
 The host must supply `linkThenApply` with distinct idempotency keys and
 separately committed link and subscription commands. After a successful link
-it invokes `void onLinked()` before the subscription call. A refusal or
-transport failure then returns a partial result with the completed link; it
-never claims the link rolled back. The helper preserves this order and partial
-result but does not create or verify the keys or transactions.
+it invokes `void onLinked()` before the subscription call. A refusal,
+`applied_from_next_parcel` outcome or transport failure returns a partial result
+with the completed link; the next-parcel outcome retains the subscription result.
+It never claims the link rolled back or the current parcel changed. The helper
+preserves this order and partial result but does not create or verify the keys
+or transactions.
 `createM12OperatorRecoveryBinding` selects these package
 exports only with `enabled: true` and complete ports. The reference
 `AccountSupportRecoveryStatus` displays the partial result/capability refusal;

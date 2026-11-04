@@ -412,6 +412,7 @@ export type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js
 export { createNewPurchaseStockAvailabilityPort } from "./newPurchaseStockAvailability.js";
 export { MIN_CHECKOUT_RESERVATION_TTL_MINUTES, MAX_CHECKOUT_RESERVATION_TTL_MINUTES, DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES, reservationPolicyFor, normalizedTtlMinutes } from "./reservationPolicy.js";
 export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPort } from "./renewalReservation.js";
+export { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput, type PurchaseReservationResult, type PurchaseInventoryReservationPort } from "./purchaseReservation.js";
 export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
 export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
 export { INVENTORY_MIGRATIONS } from "./sql.js";
@@ -597,6 +598,76 @@ export declare function createPostgresStockAvailability(executor: StockQueryExec
 }): {
     readPort: NewPurchaseStockReadPort;
     availableToPromise(sku: string, asOf: string): Promise<NativeStockPromise>;
+};
+export {};
+```
+## dist/inventory/purchaseReservation.d.ts
+
+```ts
+interface PurchaseReservationExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface PurchaseReservationInput {
+    idempotencyKey: string;
+    orderId: string;
+    stockSourceKey: string;
+    items: readonly {
+        orderItemId: string;
+        skuId: string;
+        quantity: number;
+    }[];
+    paymentStatus: "created" | "requires_action" | "processing" | "succeeded";
+    /** Null selects the donor SQL default of thirty minutes. Checkout should use reservationPolicyFor. */
+    expiresAt: string | null;
+    metadata?: Record<string, unknown>;
+    now: string;
+}
+export interface PurchaseReservationResult {
+    contractVersion: "inventory.v0";
+    status: "reserved";
+    reservations: {
+        orderItemId: string;
+        reservationId: string;
+        status: "reserved" | "committed" | "consumed" | "released" | "expired";
+        replayed: boolean;
+    }[];
+    replayed: boolean;
+}
+export interface PurchaseInventoryReservationPort {
+    reserveOrderItems(input: PurchaseReservationInput): Promise<PurchaseReservationResult>;
+    releaseReservation(input: {
+        idempotencyKey: string;
+        reservationId: string;
+        reason: string;
+        metadata?: Record<string, unknown>;
+        now: string;
+    }): Promise<{
+        reservationId: string;
+        status: string;
+        replayed: boolean;
+    }>;
+    expireReservations(input: {
+        now: string;
+        limit?: number;
+    }): Promise<{
+        expiredCount: number;
+    }>;
+}
+/** Native purchase seam. The host authenticates the trusted runtime and wires
+ * checkout compensation/expiry. No provider dispatch, order cancellation or renewal mutation. */
+export declare function createPostgresPurchaseReservationPort(executor: PurchaseReservationExecutor): PurchaseInventoryReservationPort;
+/** Host-bound native cancellation and purchase release in one SQL transaction.
+ * The caller withholds abandoned-order compensation for uncertain dispatch. */
+export declare function createPostgresAbandonedCheckoutCompensationPort(executor: PurchaseReservationExecutor, now?: () => string): {
+    cancelAbandonedOrder(input: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }): Promise<{
+        cancelled: boolean;
+    }>;
 };
 export {};
 ```

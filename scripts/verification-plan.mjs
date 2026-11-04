@@ -1,5 +1,6 @@
 // One local obligation catalogue. Package discovery and tooling scope keep their owners.
 import { join } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 
 const npm = (...args) => ['npm', ...args];
 const node = (...args) => [process.execPath, ...args];
@@ -121,4 +122,26 @@ export function verificationPlan(candidate, build, packs, pgtap = false) {
       'An installed maintainer helper retains its separate verification stamp requirements.',
     ],
   };
+}
+
+export async function preflightBeforeReview({ cwd = process.cwd(), env = processEnvironment } = {}) {
+  const { assertMergePreflight, captureSessionCandidate, git } = await import('./agent-review-session.mjs');
+  const runGit = (root, ...args) => git(root, '--no-optional-locks', ...args);
+  const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
+  const candidate = await captureSessionCandidate(cwd, undefined, { env, runGit });
+  if (!candidate.clean) throw new Error('early preflight requires a clean committed candidate');
+  await assertMergePreflight(cwd, candidate, { env, runGit });
+
+  let result = 'merge prediction accepted';
+  if (env.OPENLUP_STACK_BASE === candidate.base) {
+    try { await runGit(cwd, 'merge-base', '--is-ancestor', candidate.base, main); }
+    catch (error) {
+      if (error.code !== 1) throw error;
+      result = 'local work allowed; queue still awaits the exact stack predecessor';
+    }
+  }
+  if ((await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim() !== main) {
+    throw new Error('origin/main moved during early preflight; run it again');
+  }
+  return `Pre-review ${candidate.head} on ${candidate.base} against ${main}: ${result}.`;
 }
