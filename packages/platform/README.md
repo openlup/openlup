@@ -435,6 +435,31 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 
 ## Commerce contracts
 
+`./commerce/server` also exports `createPostgresCheckoutRecoveryTokenPort` for a
+trusted host's already admitted order. Inject a dedicated transaction lane with
+effective service-role privileges. The port supports contacts without a principal,
+stores only token hashes and computes expiry as order creation plus 24 hours;
+the shared `expiresAt` argument cannot choose a deadline. Issuing a new link ends
+the previous link of the same order. Inspection preserves initial subscription
+mode and cadence from stored quote/activation facts, normalizes consumed links
+for paid confirmation, and grants payment continuation only through validation
+of an active pending order. It sends no mail and performs no settlement. See the
+[recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens).
+
+`./commerce/server/postgres` also exports
+`createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
+request and pass it to `createConcurrentCommercePriceAuthorityPort` from
+`./pricing`. It reads complete active price-list and exact unit-entry histories,
+plus the selected context's complete subscription-policy history. UUID demand
+waves are deduplicated and chunked at 500; result rows are never truncated.
+Matching keys use canonical UUID values; query arguments and returned identifiers
+keep their original spelling.
+Raw histories and failed promises are shared only within that request, with
+caller-owned copies. The existing authority selects half-open effective windows,
+validates policy digests and refuses ambiguity; the reader never chooses a newest
+winner or substitutes a fallback after a failed read. Supply the restricted
+runtime executor; the reader changes no role, grants, configuration or data.
+
 `./commerce/server/postgres` exposes the existing native
 `createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
 `createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
@@ -455,9 +480,10 @@ address export/erasure is unavailable. No saved address book is provided.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
-Full postal addresses, contact phone numbers and identifying reference strings persist. Use opaque references;
+Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
 there is no address export or erasure path. No saved address book is provided.
 The port's PostgreSQL routines are included in the native migration chain.
+Address-change events retain the optional command reason in their top-level and nested payloads.
 The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
 
 `./composition` exports the inert `createCommerceContribution` for the installed
@@ -719,7 +745,9 @@ definer entries, with no runtime helper or table grant.
 routine closes the pending order, created intents and provisional activation,
 then releases its purchase holds in the same transaction. It retains strict
 keyed replay, refuses renewal orders and leaves existing payment/uncertainty
-facts untouched. The host withholds this operation for uncertain dispatch.
+facts untouched. A dispatched simulator attempt refuses without writes with
+`provider_attempt_in_flight`; captured or indeterminate attempts retain the money
+refusal. The host withholds this operation for uncertain dispatch.
 Dedicated promotion cancellation (`cancelUnstartedPromotionOrder`) remains
 unbound on native PostgreSQL. No table grant, withdrawal marker or provider
 dispatch is added. Install the complete catalogue and compose the binding
@@ -730,7 +758,7 @@ identifying strings, as can receipt metadata. Hosts should use opaque references
 and keep personal details out of those fields. There is no erasure path for
 these retained reservations, receipts or compensation history yet.
 
-`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Preview availability subtracts all live holds, remaining subscription demand inside 14 days and channel exposure, clamped at zero. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
+`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand inside 14 days, clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
@@ -773,12 +801,20 @@ the managed adapter retains the underlying write fences. Adjacent shipping,
 catalog-price and subscription-band schemas and managed adapters remain reference-owned.
 
 `createPostgresCommercePromoDataPort` and `createPostgresPromotionClaimSweepPort`
-use an injected `PgQueryExecutor` from `./data`. They retain four evaluator reads
+use an injected `PgQueryExecutor` from `./data`. They retain five evaluator methods
 and bounded stale-claim sweep; they add no claim writer or reservation path.
 `PROMOTIONS_MIGRATIONS` identifies the byte-identical projections of canonical
 units 47/48 with paths, positions and hashes. These sparse units are not an
 installation chain: use the complete canonical catalogue. No migration or
 manifest identity changes in this move.
+
+Two native evidence limits remain: the device-redemption routine returns constant
+false because visitor evidence is not persisted; this does not establish device
+eligibility or implement a device guard. Redemption counts are keyed by individual
+promotion IDs and do not aggregate mirror families. Hosts must not assume either
+capability or claim full eligibility parity from these reads. The characterization
+tests preserve these limits without changing the reader or adding a default
+eligibility rule.
 
 The server entry is classified as an adapter because its executor declaration
 reaches the data entry and optional pg types. It imports at runtime without pg
@@ -803,6 +839,10 @@ resolves post-discount thresholds; optional `acquisition` bindings select host p
 Omission preserves incumbent behavior. See [parity seams](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams).
 
 ## Pricing
+
+The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
+reader described under [Catalog](#catalog); the quote engine consumes its
+existing `CommerceQuoteCatalogReadPort`.
 
 `./pricing` provides the existing OpenLup strict commerce price authority,
 subscription-price-policy schemas, canonical digest and integer math, signed
@@ -920,6 +960,25 @@ semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
 projects canonical positions 1, 8, 58, 59 and 61 byte for byte; these assets are
 sparse references, never a standalone install chain. No canonical migration or
 manifest entry changes.
+
+`createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the
+strict quote catalog port using existing runtime `service_role` SELECT grants.
+`options.verifyDocument(document, envelope)` is required host policy: admit the
+opaque schema, check semantic identity against the envelope and verify its
+canonical digest. It rejects with the existing `CommerceQuoteCatalogReadError`
+from `./pricing`; unknown failures become `catalog_authority_unavailable`.
+Current product/slug/pointer and revision id/product/number/schema/digest are
+checked before inactive products are excluded; host verification then runs only
+for included products. The adapter returns active SKUs sellable in at least one mode,
+with positive physical grams and one primary unit GTIN. Prices remain separate.
+
+Scans use keyset pages of 100 and `maxItems` (default 500, a positive safe
+integer). Excess items or page budget, duplicate variant/code and repeated
+cursor refuse the entire read. Missing verifier refuses configuration; missing
+or changed authority never falls back to legacy data or an empty success.
+Each call reads afresh; any shared promise must live within one host request.
+Current-direct consistency does not establish a publication-wide snapshot or
+qualify a publication head; that protocol remains a separate catalog boundary.
 
 The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
@@ -1211,6 +1270,11 @@ in both resolution modes with all three optional peers absent.
 ## Identity import candidate
 
 `./identity` provides server identity services; `./identity/contracts` supplies browser-shareable contracts.
+The host-only `createPostgresContactClientRegistrar` resolves guest purchase
+contacts and refreshes optional defaults only on unlinked rows; its result grants
+no account access and linked rows remain untouched.
+See [guest contact resolution](../../docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
+for host quotas, internal result fields and erasure boundaries.
 This is a development-preview import candidate, not an activated adopter contract.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
@@ -1752,7 +1816,7 @@ host may still inject its opaque-token generator. Managed email admission
 and claim precede identity mutation and settlement. Native lifecycle commands
 delegate to M10, with actual optional owner receipts and named unavailable
 subcases. Link-then-action reports a completed link separately when the second
-command refuses or fails. The reference binding is default-off and unmounted;
+command refuses, applies from the next parcel or fails. The reference binding is default-off and unmounted;
 no import provisions authority or activates a route.
 
 R5a adds `createAccountSupportBindings` and `createAccountSupportServices` here,

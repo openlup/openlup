@@ -1,4 +1,3 @@
-import { InventoryPersistenceError } from "./ports.js";
 import type { AutomaticRenewalReservationResult } from "./contracts/reservation.js";
 
 interface PgQueryExecutor {
@@ -21,29 +20,20 @@ export interface AutomaticRenewalInventoryPort {
   expireReservations(input: { now: string; limit?: number }): Promise<number>;
 }
 
-const RESERVE_SQL = `SELECT public.fulfillment_reserve_subscription_renewal_gated(
+const RESERVE_SQL = `SELECT public.fulfillment_reserve_subscription_renewal(
   $1::uuid, $2::uuid, $3::integer, $4::timestamptz) AS response`;
-const RELEASE_SQL = `SELECT public.fulfillment_release_subscription_renewal_gated(
+const RELEASE_SQL = `SELECT public.fulfillment_release_subscription_renewal(
   $1::uuid, $2::uuid, $3::text, $4::timestamptz) AS response`;
-const EXPIRE_SQL = `SELECT public.fulfillment_expire_subscription_renewals_gated(
+const EXPIRE_SQL = `SELECT public.fulfillment_expire_subscription_renewals(
   $1::timestamptz, $2::integer) AS expired`;
 
 /** ATP/reservation adapter; it can reserve only through the fenced public renewal function. */
 export function createPostgresRenewalReservationPort(
   executor: PgQueryExecutor,
 ): AutomaticRenewalInventoryPort {
-  async function query(sql: string, values: unknown[]) {
-    return executor.query(sql, values).catch((error: unknown) => {
-      if (error && typeof error === "object" && "code" in error && error.code === "55P03") {
-        throw new InventoryPersistenceError("Inventory admission temporarily unavailable", { code: "55P03",
-          reason: "message" in error && error.message === "inventory_admission_busy" ? "inventory_admission_busy" : "inventory_lock_unavailable" });
-      }
-      throw error;
-    });
-  }
   return {
     async reserve(input) {
-      const result = await query(RESERVE_SQL, [
+      const result = await executor.query(RESERVE_SQL, [
         input.operationId,
         input.claimToken,
         input.holdSeconds ?? 900,
@@ -64,7 +54,7 @@ export function createPostgresRenewalReservationPort(
     },
 
     async releaseReservation(input) {
-      const result = await query(RELEASE_SQL, [
+      const result = await executor.query(RELEASE_SQL, [
         input.operationId,
         input.claimToken,
         input.reason,
@@ -74,7 +64,7 @@ export function createPostgresRenewalReservationPort(
     },
 
     async expireReservations(input) {
-      const result = await query(EXPIRE_SQL, [input.now, input.limit ?? 100]);
+      const result = await executor.query(EXPIRE_SQL, [input.now, input.limit ?? 100]);
       const value = Number(record(result.rows[0])?.expired);
       if (!Number.isSafeInteger(value) || value < 0) {
         throw new Error("subscription_renewal_expiry_response_invalid");

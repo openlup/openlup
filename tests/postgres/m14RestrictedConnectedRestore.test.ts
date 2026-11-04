@@ -246,6 +246,7 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       if (target) await closePostgres(target.container, target.pools);
       if (source) await closePostgres(source.container, source.pools);
     }
-  // Solo without coverage: 15.12–21.05 s; 75 s exceeds three times the maximum.
-  }, 75_000);
+  // Hosted maximum 57.203 s: fourfold 228.812 s rounds to the existing 240 s qualified bound.
+  // Five-row tail estimates leave at least 119.082 s across all four restore shapes.
+  }, 240_000);
 }

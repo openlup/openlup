@@ -1,22 +1,22 @@
 # Native purchase holds
 
-Status: the admission port is staged for the maintainer's whole-delta read.
-The inventory-owned error mapping passes lint without a cross-module dependency.
-PostgreSQL proofs preserve expiry execution access and deny direct runtime entry
-to the owner-only helper. The prior control amendment remains required. No
-admission-delta commit, native review or delivery has started.
+Current status: G4 and G3 form one native bundle in this worktree. The SQL,
+feature pins, admission gate and compensation guard have their accepted reads;
+the draft cycle-2 repair checks delivered writers against capability and
+documentation claims. Runtime agreement has an owner-gated gap; no commit,
+new review or delivery is authorized until it is resolved. Earlier
+local-stage entries below retain their historical evidence, not current grants.
 
 ## Outcome, authority and scope
 
-The supervisor authorized G4 only: purchase hold, release and expiry on the
+The original separate-row scope authorized G4: purchase hold, release and expiry on the
 existing native reservation table, through a public factory and restricted
 runtime. Local implementation, focused checks and a clean DCO-signed history are permitted.
 The narrowed donor slice and existing-table ownership alteration cannot land
 until a separate prior control admits them; the stabilized owner read is accepted.
 The coordinator accepted the ownership shape in principle for this slot and
-accepted the donor slice; neither remains an unanswered design decision. No
-review/admission machinery or approval pin changes. G3 remains a later task in
-its own worktree; no destination, activation or codec implementation is included.
+accepted the donor slice; neither remains an unanswered design decision. No review/admission control logic changes. The later bundle grant includes G3
+and its feature pins; activation and codec implementations remain outside G4.
 
 Branch: `codex/oss-m19-g4`. Code review base and freshly fetched policy pin are
 separate identities, both initially
@@ -1078,3 +1078,94 @@ remain historical evidence, not final-hash reruns in this bounded resume.
 
 Self-retro: reuse the module's existing error and test its actual caller
 projection; a cross-module constructor was unnecessary to preserve that result.
+
+
+## In-flight compensation guard read
+
+The cancellation routine now ports the reference adopter's root-first guard.
+It locks the subscription root (when present), order, intents, simulator attempts,
+observations and truth evidence before deciding. The root hint is rechecked under
+the order lock; a changed aggregate refuses. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without any persisted write.
+A terminal refused or expired attempt permits the existing cancel/release path;
+captured or indeterminate attempt evidence keeps the existing `money_recorded`
+refusal. The native active flag also remains true on terminal observations, so it
+is not used as a proxy for in-flight state. No public type or signature changes.
+The routine's successful cancel/release body and the admission call remain intact.
+
+New restricted-runtime PostgreSQL proofs cover refusal snapshots, cancellation
+following a failed attempt, all other terminal/uncertain outcomes, and both
+concurrent begin/cancel winners. Blocking is observed on the actual order lock,
+not inferred from call order. Existing cancel/release/late-capture/restart tests
+are unchanged. A source-pinned characterization witness lives in the native test;
+private provenance and the full rule/refusal mapping remain in the maintainer
+packet. No managed SQL, OMS metadata, attempt store or G7 code changes.
+
+Time classification is unchanged: stored timestamps remain VALUEs; the reserve
+expiry is a PostgreSQL-built SQL-only identity, no TypeScript key. The new guard
+introduces no clock, timestamp conversion or identity. The new lock-wait test's
+wall clock bounds only its diagnostic poll, not a durable operation.
+
+The new forward SHA256 is
+`7b37352df5a100e224a9a33196b81a3fa31bdc7e24e0a76a6e583734946d755f`.
+The feature pin keeps its approved order (helper fifth). Only cancellation's
+function hash changes; the complete forward, packaged copy, manifests and
+measured current inventories are regenerated. This delta is staged for the
+maintainer read; no DCO commit or native review is authorized yet.
+
+Self-retro: reconcile the current cancellation guard with its child attempt
+state before treating a late-capture recovery test as complete cancellation proof.
+
+
+Final guard-read evidence: real PostgreSQL native 40/40 in each of UTC,
+Etc/GMT-9, Etc/GMT+5 and alternating UTC/Etc/GMT-9 sessions (160 cases).
+Seven new cases also pass solo without coverage; body times are 9.820–72.385 ms,
+with explicit 30,000 ms limits on the two concurrent cases. The unchanged old
+33-case file remains an exact 71,777-byte prefix. Four-bound catalog 130/130,
+full transfer 17/17 and the 99-table handover witness reach the qualified-target
+ready outcome with one fenced uncertain operation. Five actual inventory
+profiles install and replay with zero new writes. Current inventory literals are
+measured; historical pins and chain/table counts stay unchanged.
+
+Typecheck (five projects), lint (zero errors, 33 unchanged warnings), ast-grep,
+all 68 API reports and both neutrality checks pass. Policy and docs-update report
+11 obligations, of which two require refreshed scoped no-impact trailers for
+the changed test/inventory digests in the eventual signed commit. Those exact
+answers are prepared in the maintainer packet; policy is not claimed green
+before that authorized commit. No contributor-policy text is changed.
+
+Official Node v24.21.0 pack against the exact stack leaf: +12,056 B packed,
++2,889 B code-gzip, +69,151 B unpacked and +5 files. Absolute packed size is
+2,453,943 B, code-gzip 1,957,647 B; no cap changes. Growth over the prior gate
+packet is 298 B packed and zero code-gzip, due to the guard SQL and its public
+explanation. Packaged SQL and generated manifest are included. The final
+staged identities and exact patch are in the maintainer packet, awaiting read.
+
+
+## UUID item identity repair (read pending)
+
+Full native review found that alternate UUID spellings could bypass the batch's
+existing duplicate-item refusal and allocate two holds for one finalized item.
+The repair compares parsed UUID identity in that same guard. Single uppercase,
+braced and hyphenless UUID inputs remain valid; raw command replay stays strict.
+No signature, privilege, owner shape or G3 change is needed. The native regression
+requires an atomic invalid-item refusal for duplicate aliases, one effect for a
+single alias, unchanged stock, and exact replay. The reference witness records
+one per-item effect across aliases; the existing native duplicate refusal remains
+a deliberate stricter boundary. Provenance and the full repair are in the private
+maintainer packet. Read acceptance and fresh full review remain required.
+
+Self-retro: validate identity using the database type used by ownership checks;
+text uniqueness can otherwise admit a second effect for the same item.
+
+
+Repair proof: native PostgreSQL 41/41 in each of the four session profiles,
+destinations 29/29 in each profile, catalog 130/130, transfer 17/17,
+composition 6/6, inventory unit 48/48 and donor 4/4. The 99-table handover
+reaches the qualified-target ready outcome with one fenced uncertain operation.
+Both new cases pass solo below three seconds. All 68 API reports, five-project
+typecheck, lint, ast-grep and both neutrality checks pass. Official Node v24.21.0
+pack against the frozen leaf: +12,196 B packed, +2,889 B code-gzip,
++69,461 B unpacked, +5 files; absolute 2,454,083 B packed / 1,957,647 B code.
+The repair adds 21 B packed and zero code-gzip over the prior candidate.
+The staged repair still needs its maintainer read before DCO and fresh full review.

@@ -294,7 +294,7 @@ export function nativeSubscriptionCommand(value: unknown): NativeOperatorSubscri
 export function operatorAuthorityCapabilities(graph: "managed" | "native"): OperatorAuthorityCapabilities {
   const available = { supported: true } as const;
   const conditional = graph === "managed" ? available : { supported: false, refusalCode: "operator_subscription_authority_unavailable" } as const;
-  return { graph, email: conditional, phone: conditional, link: conditional, address: conditional,
+  return { graph, email: conditional, phone: conditional, link: conditional, address: available,
     shortBand: conditional, unpaidResume: conditional, preparedAttemptPause: conditional,
     pause: available, resume: available, slide: available };
 }

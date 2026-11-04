@@ -9619,6 +9619,7 @@ export type { CompensationRpcClient } from "./checkoutCompensation.js";
 export { hashCheckoutRecoveryToken, generateCheckoutRecoveryToken, CHECKOUT_RECOVERY_TOKEN_PREFIX, classifyCheckoutRecoveryTokenState } from "./checkoutRecoveryToken.js";
 /** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
 export type { CheckoutRecoveryTokenContext, CheckoutRecoveryTokenInspection, CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
+export { createPostgresCheckoutRecoveryTokenPort, type PostgresCheckoutRecoveryTokenInspection, type PostgresCheckoutRecoveryTokenPort } from "./postgresCheckoutRecoveryTokenPort.js";
 /** @consumer server/domains/commerce/checkoutRecoveryOrderPort.ts */
 export type { CheckoutRecoveryOrderSnapshot, CheckoutRecoveryOrderReadPort, CheckoutRecoveryPriorPaymentEvidence } from "./checkoutRecoveryOrderPort.js";
 /** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
@@ -10248,6 +10249,31 @@ export declare function createOutboxShipmentExceptionEmailHandler<Locale extends
     emailPort: TransactionalEmailPort<Locale>;
     recipientPort: OrderRecipientPort;
 }): OutboxHandler;
+```
+## dist/commerce/server/postgresCheckoutRecoveryTokenPort.d.ts
+
+```ts
+import { type CheckoutRecoveryTokenInspection, type CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
+export interface PostgresCheckoutRecoveryTokenInspection extends CheckoutRecoveryTokenInspection {
+    /** Persisted quote/activation cadence; null for a one-time order. */
+    cadenceDays: number | null;
+}
+export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryTokenPort {
+    inspect(rawToken: string, now?: Date): Promise<PostgresCheckoutRecoveryTokenInspection | null>;
+}
+/**
+ * Trusted-host service capability for an order the host has already admitted.
+ * Supply a dedicated transaction lane with effective service_role privileges;
+ * never share an actor lane or authorize issuance from an email or order ID alone.
+ * No principal or caller-selected client is accepted. The shared expiresAt input
+ * is ignored: PostgreSQL computes exactly order.created_at + 24 hours.
+ * Issuing a new link ends the previous link of the same order. Replaying the same
+ * hash returns its original ID without reactivating or rotating any link.
+ * This port neither settles payments nor sends mail.
+ */
+export declare function createPostgresCheckoutRecoveryTokenPort(executor: {
+    run<T>(work: (gateway: unknown) => Promise<T>): Promise<T>;
+}): PostgresCheckoutRecoveryTokenPort;
 ```
 ## dist/commerce/server/referenceCheckoutHandler.d.ts
 

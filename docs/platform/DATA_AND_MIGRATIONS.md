@@ -1909,8 +1909,12 @@ runtime/browser roles separately from function ACLs; it introduces neither RLS
 nor table grants. The existing reservation-table ACL stays unchanged. Local lots, locations,
 balance counters and movement history are outside this slice.
 
-The native abandoned-checkout wrapper locks the order then its intents, matching
-the preceding payment slot. It delegates aggregate cleanup to the existing
+The native abandoned-checkout wrapper locks the subscription root, order, intents,
+simulator attempts and their evidence, in that order. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without writing a receipt or
+changing the order, intent or holds. Terminal refused/expired attempts permit
+cancellation; captured or indeterminate attempts retain the money refusal.
+It delegates aggregate cleanup to the existing
 compensation routine and purchase transitions to the existing release routine in
 one transaction. Strict command receipts reject changed keyed input; paid,
 captured or indeterminate evidence prevents cancellation. It rejects renewal

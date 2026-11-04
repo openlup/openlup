@@ -10,5 +10,8 @@
 - Freeze the immutable destination inside the claim transaction. The current
   zero-shipping rail uses an explicit typed marker until cycle shipping quotes
   are available; non-zero renewal shipping remains refused.
-- Route renewal stock operations through owner-rights admission wrappers. The
-  shipment destination view is nonmutating and does not acquire dispatch locks.
+- Enter shared stock admission inline inside the six existing invoker renewal
+  and stock-wait routines, with the helper's busy and isolation codes. Grants
+  stay unchanged; custom invoker runtimes need nothing new. Reservation SQL and
+  raw errors stay unchanged. The shipment destination view is nonmutating and
+  does not acquire dispatch locks.
