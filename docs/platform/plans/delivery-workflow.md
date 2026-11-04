@@ -83,7 +83,7 @@ broad pre-review execution for a named interaction that the focused probes
 cannot establish. Complete the full required gate after native review, once on
 the actual candidate unless an existing recovery rule requires another run.
 
-<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-89f037cfc26b2be00b5c16b95618eb9e3740a8fed11cb0df9afb006094450349","reason":"The scheduling probe runs the existing native merge prediction before a resource request for an explicitly selected diagnostic. It is not part of the mandatory verification runner and does not change its phases, proof, receipt, stack-base or hosted admission rules. The development-preview checks section still describes those obligations. The scheduling procedure and its limits are explained in this delivery record."} -->
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-48bbe21827488d20e42be875ef86f715a4f43e46dce096fcbd2b8a43021adf3a","reason":"The scheduling probe runs the existing native merge prediction before a resource request for an explicitly selected diagnostic. It is not part of the mandatory verification runner and does not change its phases, proof, receipt, stack-base or hosted admission rules. The development-preview checks section still describes those obligations. The scheduling procedure and its limits are explained in this delivery record."} -->
 
 ## S1–S2 delivery scope
 

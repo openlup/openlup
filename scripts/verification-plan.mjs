@@ -1,5 +1,6 @@
 // One local obligation catalogue. Package discovery and tooling scope keep their owners.
 import { join } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 
 const npm = (...args) => ['npm', ...args];
 const node = (...args) => [process.execPath, ...args];
@@ -123,7 +124,7 @@ export function verificationPlan(candidate, build, packs, pgtap = false) {
   };
 }
 
-export async function preflightBeforeReview({ cwd = process.cwd(), env = process.env } = {}) {
+export async function preflightBeforeReview({ cwd = process.cwd(), env = processEnvironment } = {}) {
   const { assertMergePreflight, captureSessionCandidate, git } = await import('./agent-review-session.mjs');
   const runGit = (root, ...args) => git(root, '--no-optional-locks', ...args);
   const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();

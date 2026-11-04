@@ -107,7 +107,8 @@ describe('read-only public explain CLI', () => {
     const base = f.git('rev-parse', 'HEAD');
     const planner = resolve('scripts/verification-plan.mjs');
     const probe = `import { pathToFileURL } from 'node:url';
-      const { preflightBeforeReview } = await import(pathToFileURL(process.env.OPENLUP_TEST_PLANNER));
+      import { env } from 'node:process';
+      const { preflightBeforeReview } = await import(pathToFileURL(env.OPENLUP_TEST_PLANNER));
       try { console.log(await preflightBeforeReview()); }
       catch (error) { console.error(error.message); process.exitCode = 1; }`;
     const schedule = (stackBase?: string) => spawnSync('/bin/sh', [
