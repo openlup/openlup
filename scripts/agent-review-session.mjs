@@ -140,10 +140,6 @@ const SOURCE_RELEASE_CONTROLS = new Set([
   'config/openlup-policy-registry.json',
   'config/openlup-source-release-contract.json',
   'config/platform-migration-manifest.json',
-  'scripts/platform-migration-manifest.ts',
-  'scripts/reviewed-platform-forward.ts',
-  'scripts/source-preview-release.ts',
-  'scripts/source-release-preparation.ts',
 ]);
 
 async function independentOfVersioningGuide(cwd, candidate, runGit) {
@@ -157,9 +153,12 @@ async function independentOfVersioningGuide(cwd, candidate, runGit) {
     } else if (REGISTRY_PATHS.includes(path)) {
       const original = await regularText(cwd, candidate.base, path, runGit);
       registryUnion(path, original, await regularText(cwd, candidate.head, path, runGit), original);
+    } else if (path.startsWith('scripts/') && protectedCoveragePath(path)) {
+      const ordinaryTest = /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path);
+      if (!ordinaryTest || await hasProductionConsumer(cwd, candidate.head, [path])) return false;
     } else if (path === 'package.json' || PACKAGE_LOCK.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) ||
       SOURCE_RELEASE_CONTROLS.has(path) ||
-      /^(?:\.github\/|scripts\/(?:packages\/|oss-)|packages\/[^/]+\/(?:scripts\/|tsconfig\.build\.json$))/u.test(path)) return false;
+      /^(?:\.github\/|packages\/[^/]+\/(?:scripts\/|tsconfig\.build\.json$))/u.test(path)) return false;
   }
   return true;
 }
