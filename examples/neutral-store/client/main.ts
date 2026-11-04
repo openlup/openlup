@@ -1,4 +1,5 @@
 import './style.css';
+import { captureCompletionEntry } from './purchase.ts';
 import { copy, type CopyKey } from '../owned/copy.ts';
 import { fragments } from '../owned/fragments.ts';
 import { assertConfig } from '../shared/config.ts';
@@ -14,6 +15,8 @@ import { operatorPage } from './pages/operator.ts';
 import { acquisitionPage, partnersPage, researchPage } from './pages/participation.ts';
 import { returnsPage, termsPage, reviewPage, unsubscribePage, supportPage,
   trackingPage, destinationsPage, limitsPage } from './pages/destinations.ts';
+
+captureCompletionEntry();
 
 const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('starter_root_missing');

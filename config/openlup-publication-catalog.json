@@ -142,6 +142,10 @@
       "class": "entrypoint"
     },
     {
+      "path": "ROADMAP.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "SECURITY.md",
       "class": "policy"
     },
@@ -1210,6 +1214,18 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101224000_new_purchase_inventory_reservations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261101225000_commerce_destinations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261101230000_subscription_renewal_terminal_replay.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1618,7 +1634,15 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g10r.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g11.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g11cctl.md",
       "class": "public-output"
     },
     {
@@ -1650,6 +1674,18 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g3.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g3x.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g4.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g4g3-control.md",
       "class": "public-output"
     },
@@ -1659,6 +1695,26 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g6.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7bctl.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7ctl.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g7ctl3.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g8ctl.md",
       "class": "public-output"
     },
     {
@@ -1702,7 +1758,27 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-qa.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-qb.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-r1.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-r1b.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-rec.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-reg.md",
       "class": "public-output"
     },
     {
@@ -1838,6 +1914,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/purchase.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/style.css",
       "class": "public-output"
     },
@@ -1874,6 +1954,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/checkout-attempts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/checkout-recovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/e-composition.ts",
       "class": "public-output"
     },
@@ -1891,6 +1979,10 @@
     },
     {
       "path": "examples/neutral-store/host/origin-policy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/purchase-composition.ts",
       "class": "public-output"
     },
     {
@@ -1954,6 +2046,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/playwright.database.config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/public/media/coffee.svg",
       "class": "public-output"
     },
@@ -1994,6 +2090,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/interim-pricing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/limits.ts",
       "class": "public-output"
     },
@@ -2010,7 +2110,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/address-outcomes.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-attempts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-recovery.test.ts",
       "class": "public-output"
     },
     {
@@ -2027,6 +2139,10 @@
     },
     {
       "path": "examples/neutral-store/test/installation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/interim-pricing.test.ts",
       "class": "public-output"
     },
     {
@@ -3130,6 +3246,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/commerce-destinations.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/commerce-native-checkout.api.md",
       "class": "public-output"
     },
@@ -3742,6 +3862,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261101224000_new_purchase_inventory_reservations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101225000_commerce_destinations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101230000_subscription_renewal_terminal_replay.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -4063,6 +4195,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
       "class": "public-output"
     },
     {
@@ -4854,6 +4990,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/destinations/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/emailRuntime.ts",
       "class": "public-output"
     },
@@ -4962,6 +5102,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgres/commercePriceReadPreparation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgres/index.ts",
       "class": "public-output"
     },
@@ -4979,6 +5127,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgres/returnsControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryTokenPort.ts",
       "class": "public-output"
     },
     {
@@ -5630,6 +5782,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/commerceReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/native/index.ts",
       "class": "public-output"
     },
@@ -6122,6 +6278,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/postgresContactClientRegistrar.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/postgresCustomerMe.ts",
       "class": "public-output"
     },
@@ -6223,6 +6383,10 @@
     },
     {
       "path": "packages/platform/src/inventory/postgresStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/purchaseReservation.ts",
       "class": "public-output"
     },
     {
@@ -7634,11 +7798,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativeRetryDriver.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeSubscriptionBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativeSubscriptionSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/subscriptions/postgresCommandStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresDeliveryAlignmentStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresRenewalSettlement.ts",
       "class": "public-output"
     },
     {
@@ -8146,6 +8330,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/destinationPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/effects/commerceDomainEffects.test.ts",
       "class": "public-output"
     },
@@ -8371,6 +8559,10 @@
     },
     {
       "path": "packages/platform/test/commerce/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/postgresCheckoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
     {
@@ -8615,6 +8807,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/nativeCommerceReads.test.ts",
       "class": "public-output"
     },
     {
@@ -27750,11 +27946,35 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceComposition.test.ts",
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceDestinationsDonor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceDestinationsNative.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceManagedRail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteCatalogFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
       "class": "public-output"
     },
     {
@@ -27767,6 +27987,10 @@
     },
     {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/contactClientRegistrar.test.ts",
       "class": "public-output"
     },
     {
@@ -27811,6 +28035,10 @@
     },
     {
       "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentCommerceReads.test.ts",
       "class": "public-output"
     },
     {
@@ -28050,6 +28278,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStoreUuid.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/newPurchaseStockManaged.test.ts",
       "class": "public-output"
     },
@@ -28134,6 +28366,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/purchaseReservationDonor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/purchaseReservationNative.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
       "class": "public-output"
     },
@@ -28210,11 +28450,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionPublicRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPublicRenewalFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionPurchaseRenewal.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/subscriptionRenewalAdapterCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRenewalGate.test.ts",
       "class": "public-output"
     },
     {

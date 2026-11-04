@@ -1,3 +1,4 @@
+import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 /** Real portable-store subset. No managed or adopter stock-wait parity claim. */
 import { createHash, randomUUID } from "node:crypto";
@@ -164,11 +165,23 @@ it("fences stale claims and immutable identity conflicts without changing the ba
   await expect(pool.query("SELECT public.subscription_claim_due_renewal($1,$2,$3,'fixture',300,$4)", [f.identity, "c".repeat(64), f.snapshot, AT])).rejects.toMatchObject({ code: "23505" });
   expect(await durable(f.subscription)).toEqual(before);
 });
-it("serializes competing baskets without oversell and rolls back partial reservation effects", async () => {
+it("arbitrates competing baskets without oversell and rolls back partial reservation effects", async () => {
   const f = await fixture(6, 10), g = await fixture(6, 10);
   await pool.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=jsonb_set(jsonb_set(cycle_snapshot,'{stockSourceKey}',to_jsonb($2::text)),'{lines}', $3::jsonb) WHERE id=$1", [g.input.operationId, f.source, JSON.stringify([{ sku: f.sku, quantity: 6 }])]);
-  const results = await Promise.all([reserve().reserve(f.input), reserve().reserve(g.input)]);
-  expect(results.map(result => result.status).sort()).toEqual(["held", "refused"]);
+  const operationsBefore = (await pool.query("SELECT id,to_jsonb(o) AS row FROM public.subscription_renewal_operations o WHERE id=ANY($1::uuid[])", [[f.input.operationId,g.input.operationId]])).rows;
+  const attempts = await Promise.allSettled([reserve().reserve(f.input), reserve().reserve(g.input)]);
+  expect(attempts.filter(result => result.status === "fulfilled" && result.value.status === "held")).toHaveLength(1);
+  for (const [index,result] of attempts.entries()) {
+    if (result.status === "fulfilled") expect(["held","refused"]).toContain(result.value.status);
+    else {
+      expect(result.reason).toMatchObject({ code: "55P03", message: "inventory_admission_busy" });
+      const operationId = [f,g][index].input.operationId;
+      expect((await pool.query("SELECT to_jsonb(o) AS row FROM public.subscription_renewal_operations o WHERE id=$1", [operationId])).rows[0].row)
+        .toEqual(operationsBefore.find(row => row.id === operationId)!.row);
+      expect((await pool.query("SELECT * FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [operationId])).rows).toEqual([]);
+      expect((await pool.query("SELECT l.* FROM public.fulfillment_inventory_reservation_lines l JOIN public.fulfillment_inventory_reservations r ON r.id=l.reservation_id WHERE r.renewal_operation_id=$1", [operationId])).rows).toEqual([]);
+    }
+  }
   expect((await pool.query("SELECT sum(l.quantity)::int AS quantity FROM public.fulfillment_inventory_reservation_lines l JOIN public.fulfillment_inventory_reservations r ON r.id=l.reservation_id WHERE r.source_key=$1", [f.source])).rows).toEqual([{ quantity: 6 }]);
   const rollback = await fixture(), db = await pool.connect();
   try {
@@ -177,6 +190,23 @@ it("serializes competing baskets without oversell and rolls back partial reserva
   expect((await pool.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [rollback.input.operationId])).rows).toEqual([{ state: "claimed" }]);
   expect((await pool.query("SELECT * FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [rollback.input.operationId])).rows).toEqual([]);
 });
+// Held-gate refusal measured below 0.1 s; retain a bounded 10 s case deadline.
+it("refuses admission busy without effects, then reserves sequential baskets without oversell", async () => {
+  const f = await fixture(6,10), g = await fixture(6,10), a = await pool.connect();
+  await pool.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=jsonb_set(jsonb_set(cycle_snapshot,'{stockSourceKey}',to_jsonb($2::text)),'{lines}',$3::jsonb) WHERE id=$1", [g.input.operationId,f.source,JSON.stringify([{sku:f.sku,quantity:6}])]);
+  const before = await allPublicRows(pool);
+  try {
+    await a.query("BEGIN"); await a.query("SELECT pg_advisory_xact_lock(846832106,1)");
+    await expect(reserve().reserve(f.input)).rejects.toMatchObject({code:"55P03",message:"inventory_admission_busy"});
+    expect(await allPublicRows(pool)).toEqual(before);
+    expect((await pool.query("SELECT * FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [f.input.operationId])).rows).toEqual([]);
+    expect((await pool.query("SELECT l.* FROM public.fulfillment_inventory_reservation_lines l JOIN public.fulfillment_inventory_reservations r ON r.id=l.reservation_id WHERE r.renewal_operation_id=$1", [f.input.operationId])).rows).toEqual([]);
+  } finally { await a.query("ROLLBACK"); a.release(); }
+  expect((await reserve().reserve(f.input)).status).toBe("held");
+  expect((await reserve().reserve(g.input)).status).toBe("refused");
+  expect((await pool.query("SELECT sum(l.quantity)::int AS quantity FROM public.fulfillment_inventory_reservation_lines l JOIN public.fulfillment_inventory_reservations r ON r.id=l.reservation_id WHERE r.source_key=$1", [f.source])).rows).toEqual([{quantity:6}]);
+},10_000);
+
 it("requires explicit relation privileges under native invoker rights and refuses unauthorized writes", async () => {
   const f = await fixture();
   await pool.query("CREATE ROLE inventory_denied NOLOGIN; CREATE ROLE inventory_reader NOLOGIN; GRANT SELECT ON public.catalog_skus,public.fulfillment_stock_current,public.fulfillment_inventory_reservations,public.fulfillment_inventory_reservation_lines TO inventory_reader");

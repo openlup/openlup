@@ -360,6 +360,7 @@ bookmark it, and use **Watch → Custom → Releases** on
 
 - [Releases](https://github.com/openlup/openlup/releases) — published artifacts and release notes.
 - Package changelogs: [Core](packages/core/CHANGELOG.md), [Outbox](packages/outbox/CHANGELOG.md), [Platform](packages/platform/CHANGELOG.md) — package changes and upgrade notes.
+- [Roadmap](ROADMAP.md) — shipped modules, work in progress and planned rounds; plans are not release commitments.
 - [Implementation plans](docs/platform/README.md#implementation-plans) — bounded work, evidence and remaining gaps; plans are not release commitments.
 
 Useful preview feedback includes the use case you tried, the exact version and

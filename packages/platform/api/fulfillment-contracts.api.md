@@ -669,21 +669,21 @@ export interface FulfillmentOrderDetailRequest {
     fulfillmentOrderId?: string;
     orderId?: string;
 }
-export interface FulfillmentOrdersListResponse {
+export interface FulfillmentOrdersListResponse<Order = FulfillmentCommerceOrder> {
     contractVersion: 'commerce.fulfillment.v0';
-    orders: FulfillmentCommerceOrder[];
+    orders: Order[];
     totalCount: number;
     page: number;
     pageSize: number;
 }
-export interface FulfillmentOrderDetailResponse {
+export interface FulfillmentOrderDetailResponse<Order = FulfillmentCommerceOrder> {
     contractVersion: 'commerce.fulfillment.v0';
-    order: FulfillmentCommerceOrder;
+    order: Order;
 }
 /** Host-owned persisted projections. Payment statuses already come from the payments projection. */
-export interface FulfillmentCommerceReadPort {
-    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse | FulfillmentNativeUnsupported>;
-    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse | null | FulfillmentNativeUnsupported>;
+export interface FulfillmentCommerceReadPort<Order = FulfillmentCommerceOrder> {
+    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse<Order> | FulfillmentNativeUnsupported>;
+    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse<Order> | null | FulfillmentNativeUnsupported>;
 }
 export interface FulfillmentShipmentsOverviewRequest {
     shippedFilter: 'today' | '7d' | '30d' | 'all';

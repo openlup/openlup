@@ -205,8 +205,8 @@ it("renews a sub-millisecond captured purchase without losing the stored cycle o
   expect((await runtime.query("SELECT state,claim_token IS NOT NULL AS claimed FROM public.subscription_renewal_operations WHERE id=$1", [op.operationId])).rows[0])
     .toEqual({ state: "succeeded", claimed: true });
   expect((await runtime.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [op.cycleId])).rows[0].status).toBe("paid");
-  // The terminal public-run replay repair belongs to the subsequent renewal work.
-  await expect(api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).rejects.toThrow("subscription_renewal_claim_not_due");
+  // This renewal work lifts the purchase writer's stated terminal public-run replay limit.
+  await expect(api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).resolves.toMatchObject({ status: "terminal_replay", replayed: true, operationId: op.operationId, identityKey: op.identityKey });
   expect(await effects()).toEqual(before); expect(execute).toHaveBeenCalledTimes(1);
 });
 
@@ -442,7 +442,7 @@ it.each(["succeeded", "declined"] as const)("runs sandbox renewal %s from an ins
   expect((await runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].status).toBe("active");
   if (scenario === "succeeded") {
     // G7 owns this known terminal public-run replay defect; no second dispatch.
-    await expect(api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).rejects.toThrow("subscription_renewal_claim_not_due");
+    expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).status).toBe("terminal_replay");
   } else {
     expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later)).status).toBe("terminal_replay");
     expect((await runtime.query("SELECT count(*)::int n FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscriptionId])).rows[0].n).toBe(1);
