@@ -1,8 +1,8 @@
 # Neutral store
 
-Status: local application draft. Candidate compilation, browser navigation and
-local installed PostgreSQL bootstrap are checked. Sandbox purchase and upgrade
-qualification remain pending. This is not a stable or supported framework.
+Status: local application draft. Candidate compilation, installed PostgreSQL
+bootstrap and local sandbox purchase/recovery browser journeys are checked.
+Release and upgrade qualification remain pending. This is not a stable or supported framework.
 
 This is an application, not an npm package or a monorepo workspace. It uses the
 three OpenLup packages through public entries, ordinary TypeScript, a small
@@ -11,13 +11,14 @@ supplement and coffee catalogues use the same pages, validation and host seams.
 
 ## Current candidate
 
-The installer catalogue and purchase/account stores are being delivered by
-their package owners. Until they land, the app deliberately returns
-`host_binding_required` at dependent actions. The catalogue and UI can be
-inspected without pretending an order was persisted. `./lifecycle up` installs
+The installed native catalogue and account stores use the runtime connection.
+The composition root binds guest checkout, sandbox payment and customer
+subscription address changes through public native factories. Host and browser
+purchase/recovery proofs run on real PostgreSQL in both configurations. `./lifecycle up` installs
 the packaged PostgreSQL history and fictional catalogue before starting the UI.
 Final release pins and lockfile wait for the selected set.
-The single required purchase browser spec fails by design until the native purchase path lands.
+The unchanged required purchase spec must run against installed PostgreSQL;
+the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
 An accepted native limit and a missing required purchase binding are different:
 the former is documented acceptance, the latter still blocks completion.
@@ -28,10 +29,10 @@ With the native runtime connection, public partner submissions use the native
 idempotency, contact deduplication and rate limits. Operator partner list and
 status transitions use the existing native human operator session. Public review
 read/submit require an order review grant; operator review list/moderation use
-that same operator authority. The purchase composition contribution retains
-acceptance for expired-grant refusal, positive review submit/read, publish/hide
-with a real review, grant expiry/revocation and purchase-generated grant ownership.
-None of those outcomes is proved by this starter composition slice.
+that same operator authority. Positive review submission/read, moderation, revocation and grant ownership
+belong to the later review journey after delivered-shipment reads. Grants retain
+the native bearer-capability semantics. Their fixed thirty-day expiry has no
+application time seam; this contribution claims no additional review proof.
 Tester applications are public durable writes through the native acquisition
 case port and an install-seeded adopter-owned opaque registry. Research needs
 case ownership and ingest needs a complete native binding; those two actions
@@ -77,7 +78,7 @@ With the selected local candidate artifacts and generated lockfile in place,
 Compose builds the application, starts pinned PostgreSQL 16, runs the one-shot
 installed migration runner and fictional seed, then serves the application at
 `http://127.0.0.1:4319`. No keys, source edits or manual migration are needed.
-A healthy application does not establish the still-pending sandbox purchase.
+A healthy application does not by itself establish a completed sandbox purchase.
 
 For authorized UI development after importing the candidate and generating its
 lockfile, use the application directory and its own toolchain:
@@ -124,8 +125,9 @@ The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
 newsletter read/withdraw, and the reduced operator order control-plane view.
 Invoice artifacts, the full account projection and shipment reads remain named
-refusals. Purchase persistence and the purchase/account/operator journey remain
-pending; the required purchase browser assertion is unchanged.
+refusals. Guest purchase, account and operator order reads have real-database
+host and browser proofs. The database-backed suite passes the unchanged required
+purchase assertion in both configurations; this is local preview evidence.
 
 The demonstration captured mailbox is `.context/captured-messages/identity.jsonl` inside
 the application container, readable only with that runtime's filesystem
@@ -140,7 +142,7 @@ This demonstration mailbox is not a real mailbox. It is never served by HTTP or
 printed in application logs. Native redemption accepts
 its token through `auth.verify` or `auth.callback`; `auth.operator` accepts email
 for a challenge and token for redemption. The native stores must already contain
-the customer or an invited operator. There is no public operator bootstrap.
+the contact client from checkout or an invited operator. There is no public operator bootstrap.
 After activation, support reads require the [owner roster step](#operator-support-roster-and-catalogue-authoring), including its deactivation recipe.
 Opaque sessions are limited to a single process, expire after one hour, have a
 capacity of 1000 and are lost on restart. This is not a production session store;
@@ -356,4 +358,88 @@ loudly. Replace this fictional registry and its onboarding for a customer enviro
 
 Operator customer search/detail remain unbound because the native reader
 requires a separate communications operator roster entry. The host does not
-provision that authority. Recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+provision that authority. Broader payment/operator recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+
+
+## Guest purchase and later sign-in
+
+A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.
+Checkout creation uses the public contact registrar after attempt admission. Signed-in checkout uses the
+session's native client, never a browser-supplied client identifier.
+
+An unverified e-mail does not authorize reading an existing order or changing a
+client. A guest purchase for an e-mail whose contact already has an account
+attaches the order to that existing client, without an account read or rewrite.
+The public answer does not depend on whether an account exists.
+
+An admitted new checkout issues a 256-bit recovery token through the native
+PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
+order creation plus 24 hours; this is a database rule, not a configurable value.
+One live link per order: a new link ends the previous link of the same order.
+The token is returned only in the creating response and a separate private
+captured checkout-recovery message, never an authentication challenge or event.
+The completion page reads the URL token once and replaces history synchronously
+before configuration fetch or rendering. Request bodies carry the token; memory
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token, and a new token replaces the previous one.
+The committed continuity proof consists of the source continuity test and the
+clean-index root proof, which needs only npm ci and the three-package build,
+without a starter build or browser. A real-browser second-submit check was
+confirmed in a local run that is not part of the committed suite.
+Native inspection allows payment only for an active pending order, recognizes
+an already-paid order without payment controls, and refuses expired, cancelled
+or unavailable links. Indexed hash lookup makes no constant-time claim.
+Owning sessions retain order ownership checks. An email alone mints no link for
+an existing order. Recovery grants no account or subscription-command access.
+
+For now this release does not charge shipping on one-off orders.
+For now this release does not charge shipping on renewals.
+The first-subscription offer is not offered yet and comes in a later part of this release. Sandbox outcomes
+are `captured`, `refused`, `expired` and `indeterminate`; other values refuse.
+No real-money provider is selected by this composition.
+
+Duplicate or multi-valued Origin is refused even on GET and HEAD. An unambiguous
+Origin on GET or HEAD is not compared. Writes require the exact configured
+origin, the marker header and JSON. The accepted origin policy is unchanged.
+
+
+## Interim subscription pricing
+
+`shared/interim-pricing.ts` contains one temporary pricing function shared by the
+browser, host offer evaluation and owned price seed. Subscription units resolve
+from configured `subscriptionDiscountBps` and `subscriptionRoundingQuantumMinor`
+before multiplication by quantity. The native quote carries those reduced unit
+prices, explanatory `mode_discount` components, an empty discounts array and zero
+order discount. No promotion identifier or definition is invented for this mode
+price. The first-subscription acquisition offer is separate and comes later.
+
+Owned configuration also supplies initial/renewal shipping values and demonstration
+purchase input bounds, reservation minutes, per-SKU stock quantities and snapshot
+timestamps, fictional tax inputs and sandbox template/path choices. Validation
+rejects malformed values. Existing protocol/security constraints remain fixed.
+Recovery timing is the fixed native database rule; the existing session boundary is unchanged.
+
+Checkout order UUIDs match by UUID value across lowercase, uppercase and mixed-case
+input. The host preserves request fields and the existing native response identifiers.
+
+The install seed gives each SKU and purchase mode a deterministic distinct price
+identity. Identical installation adds no price rows; changed-price conflicts
+refuse loudly. Resolve a deliberate price change through the application's
+onboarding decision rather than relying on a silent seed overwrite.
+
+Attempt limits live in one process's memory and reset on restart.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
+
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters
+by configuration validation. Both demonstrations use 160. Longer purchase e-mails
+receive `starter_email_invalid` before contact resolution. Checkout and subscription
+address changes share the configured phone and postal-code limits; configuration
+cannot exceed the native destination bounds. Browser fields use those same limits.
+
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.
