@@ -22,6 +22,7 @@ config.offer.products = Array.from({ length: 501 }, (_, index) => ({
   slug: `row-${index}`, title: `Fixture ${index}`, name: { en: `Fixture ${index}`, pl: `Fixture ${index}` },
   permittedPurchaseModes: index % 3 === 0 ? ["one_time"] : index % 3 === 1 ? ["subscription"] : ["one_time", "subscription"],
 }));
+config.purchase.stock.quantities = Object.fromEntries(config.offer.products.map(product => [product.sku, 1]));
 export const seed = buildDemoSeed(config);
 export const digest = (value: unknown) => createHash("sha256").update(canonicalCatalogDraftJson(value)).digest("hex");
 export function documentFor(index: number, revisionNo = 1) {
