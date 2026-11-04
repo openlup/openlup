@@ -1729,8 +1729,8 @@ an older landed ancestor is refused. A new head needs a new receipt and either p
 A valid source receipt carries over when the reviewed base is an ancestor of the
 queue base and the group is the reviewed tree or exactly the clean
 `git merge-tree` result. The verifier also checks the net base delta. A changed
-reviewed path or a move in admission, identity binding, dependencies, workflows
-or migrations blocks carry-over unless the applicable Git proof below succeeds.
+reviewed path or a move in admission, identity binding, dependencies, workflows,
+runtime pins or migrations blocks carry-over unless the applicable Git proof below succeeds.
 Unrelated check configuration is exercised on the group.
 
 - The three named registry carriers accept the exact union of disjoint
@@ -1742,10 +1742,13 @@ Unrelated check configuration is exercised on the group.
   the repository stays on the identical pinned Node version. A package's explicit
   file list can add `AGENTS.md`. A lockfile must be identical after removing the
   proved engine delta from the designated workspace records. On a shared pack
-  budget file the base may change the aggregate packed and unpacked byte caps,
+  budget file a change to `pack` must be proved even when the PR leaves the file
+  alone. The base may change the aggregate packed and unpacked byte caps,
   aggregate file cap, packed code byte and file caps, and the cap explanation.
   The reviewed change must leave `pack` unchanged and retain its contribution
-  outside it. A versioning guide move refuses a PR that changes release controls.
+  outside it. A disjoint edit outside an identical `pack` keeps the existing
+  queue behavior. A versioning guide move refuses a PR that changes release
+  controls, including the package inventory and source release contract.
   Independently proved registry and export additions, and package evidence with
   unchanged pack rules, are eligible.
 - The portable review rollout is recognized from its introduction on trusted
@@ -3024,6 +3027,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-11-04, review portability: a narrow proof with a permissive fallback
+  admitted unproved base changes → test the final refusal for both overlapping
+  and disjoint source changes, and keep historical fingerprint selectors stable.
 
 - 2026-11-03, review-economy compatibility: replaying a preserved legacy
   prepare fed absent optional rules into a hash function → compare absence

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, coverageState, digest, exportAdditions, protectedCoveragePath, ordinaryRepairPath, renewCoverage, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, coverageState, digest, exportAdditions, PACKAGE_BUDGET, QUEUE_TOOLCHAIN_PATH, protectedCoveragePath, ordinaryRepairPath, renewCoverage, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
 
 const execute = promisify(execFile);
@@ -75,7 +75,6 @@ const ROLLOUT_PATHS = [
 ];
 const PACKAGE_MANIFEST = /^packages\/[\w.-]+\/package\.json$/u;
 const PACKAGE_LOCK = /^(?:package-lock\.json|packages\/[\w.-]+\/package-lock\.json)$/u;
-const PACKAGE_BUDGET = /^packages\/[\w.-]+\/release-gates\.json$/u;
 const SHARED_PROSE = /^(?:CONTRIBUTING\.md|packages\/[\w.-]+\/README\.md)$/u;
 
 async function rolloutOnMain(cwd, base, target, trustedMain, runGit) {
@@ -144,11 +143,12 @@ async function independentOfVersioningGuide(cwd, candidate, runGit) {
       if (PACKAGE_MANIFEST.test(path)) {
         if (!exportAdditions(before, after)?.length) return false;
       } else if (!before.pack || JSON.stringify(before.pack) !== JSON.stringify(after.pack)) return false;
-    } else if (/^\.github\/|^scripts\/packages\/|^packages\/[^/]+\/scripts\//u.test(path)) {
-      if (!REGISTRY_PATHS.includes(path)) return false;
+    } else if (REGISTRY_PATHS.includes(path)) {
       const original = await regularText(cwd, candidate.base, path, runGit);
       registryUnion(path, original, await regularText(cwd, candidate.head, path, runGit), original);
-    } else if (['package.json', '.nvmrc', '.npmrc'].includes(path) || PACKAGE_LOCK.test(path)) return false;
+    } else if (['package.json', 'config/openlup-packages.json', 'config/openlup-source-release-contract.json'].includes(path) ||
+      PACKAGE_LOCK.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) ||
+      /^(?:\.github\/|scripts\/(?:packages\/|oss-source-release-contract\.)|packages\/[^/]+\/scripts\/)/u.test(path)) return false;
   }
   return true;
 }
@@ -163,7 +163,7 @@ async function unchangedProseDelta(cwd, base, head, target, tree, path, runGit) 
   return /^diff --git .*\n--- .*\n\+\+\+ .*\n@@/u.test(reviewed) && reviewed === await patch(target, tree);
 }
 
-async function proveBasePath(cwd, candidate, target, tree, path, rollout, runGit) {
+async function proveBasePath(cwd, candidate, target, tree, path, rollout, runGit, queue = false) {
   const { base, head, changedPaths } = candidate;
   const overlap = changedPaths.includes(path);
   try {
@@ -187,11 +187,13 @@ async function proveBasePath(cwd, candidate, target, tree, path, rollout, runGit
     }
     const [before, pr, main, merged] = source.map(strictRegistryJson);
     if (PACKAGE_BUDGET.test(path)) {
-      // Preserve any reviewed change outside pack limits. A PR editing the limits
-      // themselves needs a new reading of the resulting budget.
-      if (!before.pack || !main.pack || !packLimitsOnly(before.pack, main.pack) ||
-        changedPaths.some(item => item.startsWith('.github/workflows/')) ||
+      const validPack = value => value && typeof value === 'object' && !Array.isArray(value);
+      if (![before.pack, main.pack, pr.pack, merged.pack].every(validPack) ||
         JSON.stringify(before.pack) !== JSON.stringify(pr.pack) || JSON.stringify(main.pack) !== JSON.stringify(merged.pack)) return false;
+      // A disjoint edit outside pack keeps the existing queue behavior. The
+      // local integration proof retains its broader protection of release gates.
+      if (queue && !overlap && JSON.stringify(before.pack) === JSON.stringify(main.pack)) return true;
+      if (!packLimitsOnly(before.pack, main.pack) || changedPaths.some(item => item.startsWith('.github/workflows/'))) return false;
       main.pack = before.pack; merged.pack = pr.pack;
       return JSON.stringify(before) === JSON.stringify(main) && JSON.stringify(pr) === JSON.stringify(merged);
     }
@@ -203,11 +205,11 @@ async function proveBasePath(cwd, candidate, target, tree, path, rollout, runGit
   }
 }
 
-async function proveBasePaths(cwd, candidate, target, tree, movedPaths, trustedMain, runGit) {
+async function proveBasePaths(cwd, candidate, target, tree, movedPaths, trustedMain, runGit, queue = false) {
   const rollout = movedPaths.some(path => ROLLOUT_PATHS.includes(path))
     ? await rolloutOnMain(cwd, candidate.base, target, trustedMain, runGit) : undefined;
   return (await Promise.all(movedPaths.map(async path =>
-    await proveBasePath(cwd, candidate, target, tree, path, rollout, runGit) ? path : null))).filter(Boolean);
+    await proveBasePath(cwd, candidate, target, tree, path, rollout, runGit, queue) ? path : null))).filter(Boolean);
 }
 
 export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
@@ -216,7 +218,7 @@ export async function carryOverSourceReview(cwd, candidate, group, runGit = git)
   if (baseAncestor && candidate.tree !== group.tree) {
     try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
     movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
-    if (predictedTree === group.tree) provenPaths = await proveBasePaths(cwd, candidate, group.base, group.tree, movedPaths, group.trustedMain, runGit);
+    if (predictedTree === group.tree) provenPaths = await proveBasePaths(cwd, candidate, group.base, group.tree, movedPaths, group.trustedMain, runGit, true);
     for (const path of movedPaths.filter(path => PACKAGE_MANIFEST.test(path) && !provenPaths.includes(path))) {
       const [base, queueBase, head, merged] = await Promise.all([candidate.base, group.base, candidate.head, group.tree].map(async sha => {
         try {
@@ -305,7 +307,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
     const source = { ...previous, changedPaths: own };
     const proved = await proveBasePaths(cwd, source, current.base, prediction, moved, current.base, git);
     const blocked = moved.filter(path => !registries.includes(path) && !proved.includes(path) &&
-      (own.includes(path) || protectedCoveragePath(path)));
+      (own.includes(path) || QUEUE_TOOLCHAIN_PATH.test(path) || protectedCoveragePath(path)));
     demand(!blocked.length, `integration changed reviewed paths or protected machinery: ${blocked.slice(0, 8).join(', ')}`);
   }
   const kind = conflicts.length ? 'registry-union' : 'git';

@@ -284,7 +284,10 @@ export function admit({ receipt, observed, now }) {
   if (receipt.reviewers.length < floor) return result(false, 'needs_agent_review', `${floor} independent reviewers required by the diff`);
   return result(true, 'reviewed', 'reviewed');
 }
-const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?(?:package(?:-lock)?\.json|npm-shrinkwrap\.json|\.npmrc)$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
+const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
+// Additional queue inputs must not change historical v3 fingerprints or floors.
+export const QUEUE_TOOLCHAIN_PATH = /^(?:\.nvmrc|(?:packages\/[^/]+\/)?(?:npm-shrinkwrap\.json|\.npmrc))$/u;
+export const PACKAGE_BUDGET = /^packages\/[\w.-]+\/release-gates\.json$/u;
 const plainObject = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 export function exportAdditions(before, after) {
   if (!plainObject(before) || !plainObject(after) || !plainObject(before.exports) || !plainObject(after.exports)) return null;
@@ -307,7 +310,7 @@ export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree
       groupAdded.length === mainAdded.length + prAdded.length && [...mainAdded, ...prAdded].every(key => groupAdded.includes(key));
   });
   if (predictedTree !== groupTree) return result(false, 'stale', 'group does not carry over; merge main and re-review');
-  const blocked = movedPaths.filter(path => !exempt.includes(path) && !provenPaths.includes(path) && (changedPaths.includes(path) || REGISTRY_PATHS.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))));
+  const blocked = movedPaths.filter(path => !exempt.includes(path) && !provenPaths.includes(path) && (changedPaths.includes(path) || REGISTRY_PATHS.includes(path) || PACKAGE_BUDGET.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) || TRUST_PATHS.some(pattern => pattern.test(path))));
   if (blocked.length) return result(false, 'stale', `group does not carry over; merge main and re-review (${blocked.slice(0, 8).join(', ')})`);
   return result(true, 'reviewed', provenPaths.length ? 'base move with proved independent changes' : exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');
 }

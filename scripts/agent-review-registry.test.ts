@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
-import { digest, coverageState, receiptSummary, renewCoverage, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { digest, coverageState, protectedCoveragePath, receiptSummary, renewCoverage, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, captureRenewalProof, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -494,7 +494,7 @@ describe('portable review on real Git objects', () => {
     });
   }
 
-  it.each(['dependency resolution', 'npm shrinkwrap', 'npm policy', 'workflow', 'later admission edit'])('refuses a material base change to %s', async kind => {
+  it.each(['dependency resolution', 'npm shrinkwrap', 'npm policy', 'runtime pin', 'workflow', 'later admission edit'])('refuses a material base change to %s', async kind => {
     const f = await fixture(true, [], oldFiles);
     const prior = await f.review();
     const rollout = await f.mainMove(() => f.write('scripts/agent-review-session.mjs', policy));
@@ -502,6 +502,7 @@ describe('portable review on real Git objects', () => {
       if (kind === 'dependency resolution') await f.write('package-lock.json', lock('>=24', '2.0.0'));
       if (kind === 'npm shrinkwrap') await f.write('npm-shrinkwrap.json', lock('24.x', '2.0.0'));
       if (kind === 'npm policy') await f.write('.npmrc', 'engine-strict=false\n');
+      if (kind === 'runtime pin') await f.write('.nvmrc', '24.22.2\n');
       if (kind === 'workflow') await f.write('.github/workflows/admission.yml', 'jobs: {}\n');
       if (kind === 'later admission edit') await f.write('scripts/agent-review-session.mjs', policy + '// later edit\n');
     }, rollout);
@@ -558,7 +559,10 @@ describe('portable review on real Git objects', () => {
     await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
   });
 
-  it.each(['caps', 'required files'])('keeps pack proof across only the bounded %s delta', async kind => {
+  it.each([
+    ['caps', true, true], ['required files', true, false],
+    ['caps', false, true], ['required files', false, false], ['non-pack evidence', false, true],
+  ])('checks %s with overlap %s', async (kind, overlap, allowed) => {
     const path = 'packages/core/release-gates.json';
     const file = { audit: { allowance: 1 }, retained: { witness: true }, pack: {
       maxPackedBytes: 500, maxUnpackedBytes: 1000, maxFiles: 10, code: { maxPackedBytes: 400, maxFiles: 9 },
@@ -566,13 +570,45 @@ describe('portable review on real Git objects', () => {
     } };
     const format = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
     const f = await fixture(true, [], { [path]: format(file) });
-    await f.write(path, format({ ...file, audit: { allowance: 0 } }));
+    if (overlap) await f.write(path, format({ ...file, audit: { allowance: 0 } }));
+    const head = overlap ? f.commit() : f.head;
+    const source = await f.review();
+    const pack = kind === 'caps' ? { ...file.pack, maxFiles: 20, capReason: 'measured addition' } : kind === 'required files' ? { ...file.pack, requiredFiles: [] } : file.pack;
+    const changed = kind === 'non-pack evidence' ? { ...file, audit: { allowance: 2 } } : { ...file, pack };
+    const main = await f.mainMove(() => f.write(path, format(changed)));
+    const tree = f.git('merge-tree', '--write-tree', main, head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: allowed });
+  });
+
+  it('preserves the v3 workspace npm policy fingerprint while guarding queue drift', async () => {
+    const f = await fixture();
+    const path = 'packages/outbox/.npmrc';
+    expect(protectedCoveragePath(path)).toBe(false);
+    await f.write(path, 'engine-strict=true\n');
+    f.commit();
+    const source = await f.review();
+    expect(source.candidate.rules.head).toBe(source.candidate.rules.base);
+    await validateEconomySession(f.cwd, source);
+    const other = await fixture();
+    const prior = await other.review();
+    const main = await other.mainMove(() => other.write(path, 'engine-strict=true\n'));
+    const tree = other.git('merge-tree', '--write-tree', main, other.head);
+    await expect(carryOverSourceReview(other.cwd, prior.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
+  });
+
+  it.each([
+    'config/openlup-packages.json', 'config/openlup-source-release-contract.json', REGISTRY_PATHS[0],
+    'packages/outbox/npm-shrinkwrap.json',
+  ])('refuses versioning-guide carry-over when the PR changes %s', async path => {
+    const f = await fixture(true, [], oldFiles);
+    const changed = path === REGISTRY_PATHS[0]
+      ? f.git('show', f.base + ':' + path).replace('"schemaVersion": 3', '"schemaVersion": 4') : '{}';
+    await f.write(path, changed + '\n');
     const head = f.commit();
     const source = await f.review();
-    const pack = kind === 'caps' ? { ...file.pack, maxFiles: 20, capReason: 'measured addition' } : { ...file.pack, requiredFiles: [] };
-    const main = await f.mainMove(() => f.write(path, format({ ...file, pack })));
+    const main = await f.mainMove(() => f.write('.github/VERSIONING_AND_EOL.md', 'Changed publication instructions.\n'));
     const tree = f.git('merge-tree', '--write-tree', main, head);
-    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: kind === 'caps' });
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
   });
 
   it.each(['exports', 'publish tag'])('limits versioning-guide independence for manifest changes to additive exports: %s', async kind => {
