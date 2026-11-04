@@ -1236,3 +1236,10 @@ The unchanged main assertion at `tests/postgres/connectedManagedRetained.test.ts
 ## Combined candidate after native fulfillment-read integration
 
 The current combined delivery is based on main `313eda258c8a8afa90e053623dea91922d1a2baa`, integrated by merge `dd9e7080295c0fb8a8678a641a99082a9a363029`. No stack pin applies to documentation, native review or verification from this point. The merge is the exact conflict-free Git merge-tree prediction; API regeneration adds no changes and the catalogue is the exact sorted union. The approved combined scope and remaining review and delivery gates continue to apply, including the explicit train-front check before landing.
+
+The two named F-ZONED-TRANSFER-TEXT sites in `connectedStoreTransfer.test.ts` remain authorized at their shifted lines; their assertions are unchanged:
+
+- Main line 613 is now line 659. The complete omission/nonpristine-target `it(...)` body has SHA-256 `c918e8c492b359b2666a3c927d85b807524f43d0945f6ebaf500717306c04953` on both main and the candidate. Its retained outbox JSON text comparison renders timestamps in the session zone.
+- Main line 773 is now line 819. The complete retained-graph/replay `it(...)` body has SHA-256 `14eb4ed5df58266bf74e84ed7383d302188b7a8a87c84fc8581ade25914232af` on both main and the candidate. Under `Etc/GMT-9`, its schedule text is `2027-04-07 21:00:00.654321+09`, compared with `2027-04-07 12:00:00.654321+00`: the same instant and microseconds.
+
+The whole test file includes additive consent fixtures and tests. That does not change these two named-site authorizations; the whole-file identity rule continues to apply to newly discovered sites.
