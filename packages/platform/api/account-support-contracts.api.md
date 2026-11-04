@@ -360,6 +360,7 @@ export interface OperatorAuthorityCapabilities {
     email: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     phone: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     link: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    /** Native supports new addresses only; saved-address selection remains unavailable. */
     address: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     shortBand: AccountSupportCapability<"operator_subscription_authority_unavailable">;
     unpaidResume: AccountSupportCapability<"operator_subscription_authority_unavailable">;
@@ -1050,6 +1051,14 @@ export interface OperatorOwnerReceipt {
 }
 /** Additive native superset. The managed transcription above remains unchanged. */
 export type NativeOperatorSubscriptionResult = (OperatorSubscriptionResult & {
+    ownerReceipt?: OperatorOwnerReceipt;
+}) | (Omit<Extract<OperatorSubscriptionResult, {
+    outcome: "applied" | "noop" | "replayed";
+}>, "outcome"> & {
+    outcome: "applied_from_next_parcel";
+    appliesFrom: "next_parcel";
+    futureDestinationId: string;
+    replayed: boolean;
     ownerReceipt?: OperatorOwnerReceipt;
 }) | {
     outcome: "refused";

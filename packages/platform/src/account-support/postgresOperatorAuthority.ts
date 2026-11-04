@@ -45,7 +45,10 @@ export function createPostgresOperatorAuthority(lane: OperatorTransactionExecuto
   return {
     async applySubscriptionAction(input) {
       check(input);
-      if (input.subscriptionAction === "change_shipping_address") return OPERATOR_AUTHORITY_UNAVAILABLE;
+      if (input.subscriptionAction === "change_shipping_address") return nativeSubscriptionCommand(await call(
+        "SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,$6) AS result", [operatorId,
+          input.subscriptionId, input.payload ?? {}, input.expectedVersion, input.idempotencyKey, new Date(options.now()).toISOString(),
+        ], "customer_support_subscription_command_failed"));
       const result = await call("SELECT public.customer_support_apply_subscription_action_v1($1,$2,$3,$4,$5,$6,$7) AS result", [
         operatorId, input.subscriptionId, input.subscriptionAction, input.payload ?? {}, input.expectedVersion,
         input.idempotencyKey, new Date(options.now()).toISOString(),

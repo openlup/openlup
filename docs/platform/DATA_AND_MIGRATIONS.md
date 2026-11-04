@@ -1721,6 +1721,54 @@ event replay retains its first fingerprint and instant after restart. Cancelled
 capture is terminal operator-review evidence, excluded from reconciliation work
 and the open sweep, while the order remains cancelled. See the sandbox forward
 in [Module catalogues and installed histories](#module-catalogues-and-installed-histories).
+The destination forward adds immutable address documents and scoped order,
+subscription and shipment bindings. Both relations revoke PUBLIC, browser and
+runtime table privileges and enable RLS; trusted runtime uses four bounded
+definer routines with pinned search paths. Parent/client consistency is checked,
+but host authorization of each parent read remains necessary. There is no saved
+address book or arbitrary destination-ID reader. Subscription defaults read
+through an active purchase; renewal orders resolve their own frozen operation
+reference, never the subscription's later future address. Shipment preparation
+pins its first document under the native dispatch lock. Hosts compose this reader
+in the existing authoritative preparation transaction before freezing requests.
+The shipment destination read and command enqueue must share one transaction
+on one connection; otherwise the host owns the intervening window.
+
+A human operator can correct an unowned created/packed/label_pending current
+parcel. Once a dispatch ref, command or attempt exists, the order and parcel keep
+their destination and the subscription future changes with the named
+applied_from_next_parcel result, including replay. The account-link orchestration
+returns partial and retains that named nested result. The reference HTTP route
+preserves the outcome; its older donor browser schema refuses it, so hosts must
+compose the native result explicitly and show next-parcel applicability. It is not a fully applied
+current-parcel result. Native customer changes future only. Open dunning does not
+blanket-block address; the donor next-cycle payment lock still applies, including
+a native snapshot owned before its cycle row exists. Subscription reads lock the
+parent; G7 retains that writable transaction through snapshot claim. Address
+changes do not move cadence, next_cycle_at, template_version, money, or delivery
+alignment. Never confirm an undelivered replacement through this boundary.
+
+The transaction records the native subscription event as account history and
+one subscription.address_changed outbox row, keyed by source event UUID. Both
+payloads name applicability and future destination ID, without frozen-parcel
+address data. Replay bypasses both INSERTs; the outbox's unique event/key fence
+also deduplicates. An outbox failure rolls back address, binding, event and receipt
+writes. Delivery is asynchronous: no mail response gates money or parcel work.
+The existing template mapper and explicitly composed subscription message facade
+do not automatically consume the native outbox. Host mail dispatch remains
+unbound; no delivered-email claim follows from enqueue.
+
+These documents carry full postal addresses and contact phone numbers, customer names
+and delivery instructions,
+plus identifying parent, actor and reference strings. Hosts should use opaque
+references and avoid personal data in keys/reasons. There is no destination privacy
+export or erasure path; existing identity erasure does not erase these documents.
+Do not claim complete privacy coverage. Privileged connected-store transfer
+retains exact documents, bindings and the existing command/support ledgers under
+whole-packet row/byte bounds and filtered-login refusal; it is not a subject
+privacy export. Root capture/restore additions ship no npm assets. The API remains
+a development-preview source candidate; full catalogue installation and explicit
+host composition are required, and managed definitions remain unchanged.
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
 SQL assets are copies of issued units with unchanged canonical identities,
@@ -1730,6 +1778,36 @@ legacy selection remains available for existing history. The required installed-
 compares the projection against the canonical manifest and exact source bytes.
 See [module catalogues](#module-catalogues-and-installed-histories) and the
 [installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
+The G4 forward adds purchase ownership to the existing inventory reservation
+table. Renewal ownership becomes nullable while its UNIQUE and foreign key stay
+intact; a validated exclusive-owner CHECK requires either a renewal operation
+or a purchase order. Existing renewal rows need no data backfill. Purchase
+release/expiry change only purchase-owned rows, and the unchanged ATP, renewal,
+stock-wait and retry paths continue counting their live quantities. One command
+receipt retains batch/release/cancel replay; runtime table grants do not widen. This
+ownership alteration is named by the closed class control and bound by the
+co-located feature pins. The receipt table revokes PUBLIC and named
+runtime/browser roles separately from function ACLs; it introduces neither RLS
+nor table grants. The existing reservation-table ACL stays unchanged. Local lots, locations,
+balance counters and movement history are outside this slice.
+
+The native abandoned-checkout wrapper locks the subscription root, order, intents,
+simulator attempts and their evidence, in that order. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without writing a receipt or
+changing the order, intent or holds. Terminal refused/expired attempts permit
+cancellation; captured or indeterminate attempts retain the money refusal.
+It delegates aggregate cleanup to the existing
+compensation routine and purchase transitions to the existing release routine in
+one transaction. Strict command receipts reject changed keyed input; paid,
+captured or indeterminate evidence prevents cancellation. It rejects renewal
+orders and admits no new holds on cancelled orders. No withdrawal metadata or
+money effect is written. A late capture's review disposition belongs to the
+preceding payment slot: it records `review_required` without reopening the
+cancelled order or reclaiming its released holds.
+Dedicated promotion cancellation remains unbound. Reference fields, including
+keys and source references, can contain identifying strings; hosts should use
+opaque references and avoid personal details in metadata and reasons. No erasure
+path exists yet for retained reservation, command-receipt or compensation data.
 
 Fresh channel capture admission binds the normalized slug through the existing
 trusted scope read and the raw-source digest through its original page event.

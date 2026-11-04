@@ -154,6 +154,8 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Only `packages/platform/src/catalog/commerceQuoteCatalogRead.ts` permits a pinned, unread payload handoff to `verifyDocument`, with refusal witnesses for extra reads, inspection, interpretation and logging.
+
 Native review tooling records exact candidate, policy and Git coverage edges.
 Its versioned session commands distinguish complete first review, checked
 integration, ordinary repair and explicit renewal. Verification/admission

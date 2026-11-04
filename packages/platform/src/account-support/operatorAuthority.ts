@@ -277,6 +277,14 @@ export function nativeSubscriptionCommand(value: unknown): NativeOperatorSubscri
       idempotencyKey: receipt.idempotencyKey as string, commandFingerprint: receipt.commandFingerprint as string,
       result: object(receipt.result, "customer_support_owner_receipt_invalid") };
   }
+  if (row.outcome === "applied_from_next_parcel") {
+    if (row.appliesFrom !== "next_parcel" || typeof row.futureDestinationId !== "string" || !row.futureDestinationId
+      || typeof row.replayed !== "boolean") throw new Error("customer_support_subscription_command_response_invalid");
+    const applied = subscriptionCommand({ ...row, outcome: "applied" });
+    if ("refusalCode" in applied) throw new Error("customer_support_subscription_command_response_invalid");
+    return { ...applied, outcome: "applied_from_next_parcel", appliesFrom: "next_parcel", futureDestinationId: row.futureDestinationId,
+      replayed: row.replayed, ...(ownerReceipt ? { ownerReceipt } : {}) };
+  }
   const result = row.outcome === "refused" && row.refusalCode === "operator_subscription_authority_unavailable"
     ? { outcome: "refused", refusalCode: "operator_subscription_authority_unavailable" } as const
     : subscriptionCommand(row);
@@ -286,7 +294,7 @@ export function nativeSubscriptionCommand(value: unknown): NativeOperatorSubscri
 export function operatorAuthorityCapabilities(graph: "managed" | "native"): OperatorAuthorityCapabilities {
   const available = { supported: true } as const;
   const conditional = graph === "managed" ? available : { supported: false, refusalCode: "operator_subscription_authority_unavailable" } as const;
-  return { graph, email: conditional, phone: conditional, link: conditional, address: conditional,
+  return { graph, email: conditional, phone: conditional, link: conditional, address: available,
     shortBand: conditional, unpaidResume: conditional, preparedAttemptPause: conditional,
     pause: available, resume: available, slide: available };
 }
