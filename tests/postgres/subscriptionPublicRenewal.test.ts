@@ -550,3 +550,48 @@ it("locks the subscription before prepare so a concurrent claim creates one arti
     await a.query("ROLLBACK"); await b.query("ROLLBACK"); a.release(); b.release();
   }
 }, 30_000);
+
+// Real two-session admission refusals are subsecond; allow 30 s for installed-consumer work.
+it.each(["generic", "native"] as const)("keeps %s reservation busy retryable without charge, dunning, terminal outcome or message", async path => {
+  const f = await active(), d = await deps(f.subscriptionId, "succeeded"), a = await runtime.connect();
+  let clock = now;
+  const b = binding(d, () => clock);
+  const effects = async () => {
+    const rows = await allPublicRows(admin);
+    // Claim is a durable retry obligation; every other public row must stay identical on busy.
+    delete rows.subscription_renewal_operations;
+    return rows;
+  };
+  let before = await effects();
+  try {
+    if (path === "generic") {
+      await a.query("BEGIN"); await a.query("SELECT pg_advisory_xact_lock(846832106,1)");
+      await expect(api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now))
+        .rejects.toMatchObject({ code: "55P03", message: "inventory_admission_busy" });
+      await a.query("ROLLBACK");
+    } else {
+      // Enter contention only at reservation, after the batch's expiry and claim steps.
+      b.queries.mockImplementation(async (sql, values) => {
+        if (!sql.includes("public.subscription_stock_wait_admit(")) return executor.query(sql, values);
+        const atReservation = await effects();
+        console.info("busy witness pre-reservation maintenance", Object.keys(before).filter(key => JSON.stringify(before[key]) !== JSON.stringify(atReservation[key])));
+        before = atReservation; // Batch discovery may close earlier, cancelled stock-wait cases.
+        await a.query("BEGIN"); await a.query("SELECT pg_advisory_xact_lock(846832106,1)");
+        try { return await executor.query(sql, values); }
+        finally { await a.query("ROLLBACK"); }
+      });
+      expect(await b.services.run()).toMatchObject({ renewals: [{ status: "error", reason: "renewal_processing_failed" }] });
+      b.queries.mockImplementation(executor.query);
+    }
+    expect(d.execute).not.toHaveBeenCalled();
+    expect(await effects()).toEqual(before);
+    const operation = (await runtime.query("SELECT id,state,terminal_outcome,terminal_reason,attempt_prepared_at FROM public.subscription_renewal_operations WHERE subscription_id=$1", [f.subscriptionId])).rows;
+    expect(operation).toMatchObject([{ state: "claimed", terminal_outcome: null, terminal_reason: null, attempt_prepared_at: null }]);
+    expect((await runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows).toEqual([{ status: "active" }]);
+    clock = later; // Past the existing claim lease; the schedule remains due.
+    const result = path === "generic" ? await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, later) : await b.services.run();
+    expect(result).toMatchObject(path === "generic" ? { status: "succeeded", operationId: operation[0].id } : { renewals: [{ status: "succeeded", operationId: operation[0].id }] });
+    expect(d.execute).toHaveBeenCalledTimes(1);
+    expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_renewal_operations WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
+  } finally { await a.query("ROLLBACK"); a.release(); }
+}, 30_000);
