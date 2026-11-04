@@ -1215,3 +1215,14 @@ store slots in their existing closed order. Its commit changes the expected
 prefix from five entries to seven. The contribution section's scanner commands,
 acceptance requirements and resource gates continue to apply. The next complete
 scanner set and runtime caller sweep must run before review and delivery.
+
+## Restricted absorption count pin
+
+> Pre-existing restricted absorption read limit; closer qlock-3. This is not availability proof.
+
+The four retained-renewal absorption cases pin this existing limit through the
+restricted service role and a non-superuser, non-bypass login. They check the
+SQLSTATE, destination-count context and unchanged public-row snapshot. The same
+cases run an owner regression for empty-lead absorption and replay, and refusal
+naming each of the three blocking tables. The existing qlock-3 closer owns the
+transition from these pins to positive restricted-runtime proofs.
