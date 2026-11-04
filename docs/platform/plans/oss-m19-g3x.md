@@ -101,19 +101,22 @@ tracked source. Run complete API reports after public-type changes.
 
 ## Release-train integration
 
-The supervisor authorized stacking this leaf directly on Q2's fixed head
-`24f427232ac00bf8299a388b2a880ad9dda3c236`, preserving its content and the
+The supervisor authorized stacking this leaf on the fixed control predecessor
+`ee7694d2363c18e963e5d57eeac0472819be0d5c`, which includes the landed catalogue
+predecessor, preserving its content and the
 coupled leaf-first delivery conditions. The conflict-free merge matches Git's
 predicted tree. The official Node 24.21.0 pack measures 1,970,035 code-class
 bytes, 35 bytes above the previous 1,970,000-byte cap. The leaf therefore carries
 only the admitted code-class number change to 2,055,017, leaving 84,982 bytes
 of measured code headroom. The official pack is +2,455 bytes packed, +1,883
-code-class bytes, +8,062 unpacked bytes and three files against Q2. Absolute
+code-class bytes, +8,062 unpacked bytes and three files against the control predecessor. Absolute
 packed bytes are 2,458,988, unpacked bytes 11,545,321 and files 3,042.
 The three earlier stacked review candidates were voided before any reviewer
 reported. The source now omits the roadmap change; its later delivery follows
 the purchase and destination bundle. Public exports and SQL boundaries are
 unchanged. Two fresh full reviews assess this candidate and its measured carrier
 after the scanner comparison, both neutrality checks, lint, built export checks
-and the leaf's required proofs. No canonical verification, submission or
-publication is authorized here.
+and the leaf's required proofs. The supervisor authorizes canonical verification
+and a draft pull request on the control predecessor after passing review and
+verification. The landing script alone handles readiness and queue arming after
+the predecessor lands. Package publication remains a separate human gate.
