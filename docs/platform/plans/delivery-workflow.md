@@ -32,12 +32,20 @@ weaker gate, new risk or external authority boundary needs its owning decision.
 Keep the approved working-tree checks and scoped tests for the changed
 contract. If a committed candidate still needs a broad pre-review diagnostic,
 refresh `origin/main` once at that boundary and run the early preflight before
-requesting the resource slot. Run the planner from the candidate worktree using
-the script from a separate checkout of trusted main when the candidate predates
-it. Export the candidate's existing `OPENLUP_STACK_BASE` for a stacked change.
+requesting the resource slot. Set `OPENLUP_TRUSTED_CHECKOUT` to the absolute path
+of a separate checkout of trusted main that contains the planner. Run the command
+from the candidate worktree. Export the candidate's existing
+`OPENLUP_STACK_BASE` for a stacked change.
 
 ```sh
-git fetch origin main && node --input-type=module - "$OPENLUP_TRUSTED_CHECKOUT" <<'NODE'
+pre_review() (
+  : "${OPENLUP_TRUSTED_CHECKOUT:?set to the checkout of trusted main}"
+  original_objects=$(git rev-parse --path-format=absolute --git-path objects) || exit
+  scratch_objects=$(mktemp -d) || exit
+  trap 'rm -r -- "$scratch_objects"' EXIT
+  mkdir "$scratch_objects/info" || exit
+  printf '%s\n' "$original_objects" > "$scratch_objects/info/alternates" || exit
+  GIT_OBJECT_DIRECTORY="$scratch_objects" node --input-type=module - "$OPENLUP_TRUSTED_CHECKOUT" <<'NODE'
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const planner = pathToFileURL(resolve(process.argv[2], 'scripts/verification-plan.mjs'));
@@ -49,9 +57,13 @@ try {
   process.exitCode = 1;
 }
 NODE
+)
+git fetch origin main && pre_review
 ```
 
-Schedule the diagnostic only after the command succeeds. If a task script
+The merge prediction writes temporary Git objects to the disposable directory
+so the probe also works when the candidate's Git metadata is read-only. Refresh
+the ref through the existing fetch path first. Schedule the diagnostic only after the command succeeds. If a task script
 schedules the diagnostic, use the preflight command as the first operand of
 `&&` before the existing resource request. A failed prediction comes before
 heavy work. The local pending-predecessor result permits local work and still
