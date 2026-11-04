@@ -471,6 +471,14 @@ correction and replacement requests retain their existing refusal. Returns recor
 intent; they do not receive, restock or execute a refund. The host authenticates
 and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
 
+Native destinations use `./commerce/server/destinations` and the complete SQL
+catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
+The confirmation outbox is durable; native mail dispatch is unbound.
+Full postal addresses, contact phone numbers and identifying reference strings persist. Use opaque references;
+there is no address export or erasure path. No saved address book is provided.
+The port's PostgreSQL routines arrive with the next change; until then a call fails closed with "function does not exist".
+The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
+
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;
 the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)

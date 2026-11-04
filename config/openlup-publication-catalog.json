@@ -1654,6 +1654,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g3x.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g4g3-control.md",
       "class": "public-output"
     },
@@ -3155,6 +3159,10 @@
     },
     {
       "path": "packages/platform/api/commerce-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce-destinations.api.md",
       "class": "public-output"
     },
     {
@@ -4883,6 +4891,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/configuratorIntentPersistenceHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/destinations/index.ts",
       "class": "public-output"
     },
     {
@@ -8191,6 +8203,10 @@
     },
     {
       "path": "packages/platform/test/commerce/configuratorIntentPersistenceHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/destinationPort.test.ts",
       "class": "public-output"
     },
     {
