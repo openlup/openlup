@@ -1,22 +1,25 @@
 # Native renewal, retry and alignment composition
 
-Status: local implementation and focused proof complete; maintainer read accepted
-for DCO sign-off with the production-query disclosure recorded below. Destination, stock-profile and simulator joined proof remains a
-delivery condition at the instructed predecessor integration. No full joined or
-hosted qualification is claimed.
+Status: implementation and inline-admission SQL read accepted; signed repair
+integrated on the frozen control predecessor. Local pre-review proof is running
+on that tree. Native review, final verification and hosted qualification are
+separate obligations; none is inferred from the earlier focused evidence.
 
 Outcome: expose the existing native renewal/retry/alignment pipeline through
 public subscriptions exports, fix historical terminal replay, and preserve the
 finite connected-transfer graph for the rows this path writes. Keep real repair,
 stock wait, retry fencing, active-service exhaustion and monotonic lateness.
-No new price writer, payment-attempt store, SQL routine or managed behavior.
+Reuse existing money writers and add the bounded destination read. No new
+price writer, payment-attempt store or managed behavior is introduced.
 
 ## Scope and authority
 
 Dedicated worktree `oss-m19-g7`, branch `codex/oss-m19-g7`. Current frozen
-predecessor: `c6248bf295dbdb474f86bd8c0fcf5f4e49c64470`, merged without
-rebasing as `43d135c9`. This adds the predecessor-owned measured replay
-deadlines to the earlier frozen stack. Documentation and later native prepare/verification use
+predecessor: `36ef901c970e533ae9310062fc2fbf058ad39c83`, merged without
+rebasing as `6e4676c8`. This integrates the admitted original-routine inline gate
+class and the roadmap changes. The earlier deadline predecessor
+`c6248bf295dbdb474f86bd8c0fcf5f4e49c64470` remains provenance.
+Documentation and later native prepare/verification use
 that exact `OPENLUP_STACK_BASE`; focused test children receive no stack pin.
 The earlier predecessor history below remains provenance, not the current base.
 
@@ -28,11 +31,13 @@ is preserved. The new test-only predecessor is merged with signed `87ed500f`,
 without rebase or rewriting any signed commit. Later native review uses the
 new exact predecessor as `OPENLUP_STACK_BASE`.
 
-The supervisor authorizes local implementation, explicit stack merges, focused
-checks and DCO-signed consolidation of the accepted candidate onto that signed
-predecessor. Its existing signed commits remain unchanged. This run stops before
-native review. No registry pin, checker edit, canonical verify, push, PR,
-publication, deployment or external service write is authorized in this run.
+The supervisor authorizes this exact frozen-head merge, pre-review proof and
+record-only corrections, full independent native review, canonical verification,
+a normal branch push and a draft PR on the predecessor branch or main after its
+landing. Receipt-history publication and the bounded landing helper are permitted
+only after those gates pass. Existing signed commits remain unchanged. No direct
+merge, manual auto-merge, release, deployment, credentials or unrelated repository
+write is authorized. The helper owns any permitted queue transition.
 Native repair cycles used: zero. The incremental hard stop is 16,000 packed bytes,
 including real SQL and manifest projection. Existing code is promoted with its
 characterization tests unchanged; a behavior change is not a promotion.
@@ -661,11 +666,11 @@ submission is claimed here.
 Self-retro: retain the stated 5,000-byte rounding after the exact calculation,
 and separate test-deadline ownership from the accepted package-budget commit.
 
-<!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-12f57bd5635111cc682fb6176fb8e6bd3d786d0ec352655a2f2fdc55477690f7","reason":"The own delta recomputes the whole-file and ordered function pins for the existing unlanded renewal forward and projects its exact bytes into both manifests. Five current catalogues are remeasured on PostgreSQL; prior migration bytes and historic pins stay unchanged. Inline admission preserves the original invoker headers and grants, adds no host configuration or installation authority, and remains subject to the separate closed-class admission and SQL read. Compatibility posture stays accurate; the runtime and architecture owners describe the changed admission behavior."} -->
+<!-- openlup-task-doc-impact {"unit":"configuration","doc":"docs/platform/CANONICAL_CONTRACTS.md","anchor":"#compatibility-posture","digest":"sha256-acce7bc4bfffcccf2554c29d5b2383f9f6853caf058a66a896d4eeb975046958","reason":"The own delta on the frozen control predecessor binds the exact native renewal forward, ordered function hashes and measured installation inventories. The predecessor supplies the separate inline-gate class amendment. Issued migration identities, original role grants, class and admission rules and installation authority stay unchanged; Compatibility posture remains accurate and the runtime owners describe the behavior."} -->
 
 <!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-1f1ded72e28d685c30e310729f082b012c75fb5eb2baf8338316014c71bf260a","reason":"The own delta adds restricted-role gate-text, ACL, contention, isolation and retryability witnesses and remeasures current catalogue literals without changing historic pins. The one authorized purchase-accounting setup now reserves sequentially because deterministic gate witnesses cover concurrent refusal; every accounting assertion stays unchanged. The installed consumer and measured per-case deadlines remain within the documented test boundaries. Required phases, selection controls, coverage and global timeouts do not change; classified pre-existing non-UTC assertions are recorded without edits, so Development-preview checks stays accurate."} -->
 
-<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-cf3c768d301e67030ee71b1f4a29ffe6ef86d6257e2fa9b3cae72830b063c01b","reason":"The only tooling delta changes the admission suite data expectation from the first four bound native slots to the first five after this feature pin is present. The reader, class rules, refusal fixtures, test selection and admission workflow are unchanged. Development-preview checks remains accurate because this follows the authorized feature data rather than changing a control mechanism."} -->
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-284d80900906e59f6b50819c534a61f1d5ccb6749298b2fba68030d36f76dcd3","reason":"Relative to the frozen control predecessor, the only tooling delta extends the admission suite data expectation from the first four bound slots to the first five for this feature pin. The predecessor owns the class-amendment fixture changes. Reader logic, refusal fixtures, test selection and admission workflow stay unchanged, so Development-preview checks remains accurate."} -->
 
 
 ## Adoption fixes: preserve renewal invoker gate compatibility
@@ -801,3 +806,22 @@ Self-retro: preserving the established Error details shape avoided an unwanted
 module edge without changing the technical refusal path. The complete callers
 sweep and its explicit zone exception list now distinguish inherited test-text
 assumptions from product failures and pending admission data.
+
+
+The frozen admission-control integration is mechanical: merge 6e4676c8 has the
+exact predicted tree 6ed5f021. It changes no database, platform-source or native
+PostgreSQL test input from the accepted signed repair. All five bound forwards
+pass the actual class reader. The full scanner set passes 3,662 cases with zero
+failures and two opt-in skips across 81 files, clearing the former class reds.
+The one sequential accounting setup and admit-only plain Error details mapping
+remain accepted. The own-row packed stop is now 21,500 bytes; total packed and
+code limits remain 2,595,000 and 2,055,017 bytes.
+
+F-ZONED-TRANSFER-TEXT covers the recorded pre-existing main timestamp-text sites,
+including retainedClientSubscriptionImport.test.ts:127 and the date-only
+subscriptionRetryLifecycleCases.ts:107 site, as well as the transfer pair. These
+main assertions remain unchanged; they are not allowances for product defects.
+
+Self-retro: the actual control integration clears the admission failures without
+changing a reader or relaxing a test. Documentation bindings are refreshed only
+for this new predecessor comparison, before native review freezes the candidate.
