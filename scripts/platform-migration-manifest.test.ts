@@ -250,24 +250,26 @@ describe("canonical qualified migration selection", () => {
     if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`, "utf8");
     const lock = { file: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: sha256(content) };
-    const migrations = [...readPlatformMigrations(process.cwd()).migrations, { file: lock.file, content }];
+    const migrations = readPlatformMigrations(process.cwd()).migrations;
+    expect(migrations.find(({ file }) => file === lock.file)?.content).toBe(content);
     expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
+    // The active manifest selects the tail last in both plans; its predecessor is the same manifest without it.
     const next = structuredClone(current);
-    next.qualified.forward.push(lock);
-    next.qualifiedAdmin.forward.push(lock);
-    // Structural inputs retain current inventories; they are not future live inventory evidence.
+    expect([next.qualified.forward.at(-1), next.qualifiedAdmin.forward.at(-1)]).toEqual([lock, lock]);
+    const previous = structuredClone(current);
+    for (const plan of [previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => file !== lock.file);
     expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
-    expect(evaluatePlatformMigrationManifestHistory(current, next, [lock.file])).toEqual([]);
-    expect(selectPlatformMigrationManifest(next, "legacy")).toEqual(selectPlatformMigrationManifest(current, "legacy"));
+    expect(evaluatePlatformMigrationManifestHistory(previous, next, [lock.file])).toEqual([]);
+    expect(selectPlatformMigrationManifest(next, "legacy")).toEqual(selectPlatformMigrationManifest(previous, "legacy"));
     for (const migrationIsBootstrap of [true, false]) {
       const selected = selectPlatformMigrationManifest(next, "qualified-v2", { migrationIsBootstrap, hasRestore: true });
       expect(selected.forward.at(-1)).toEqual(lock);
-      expect(selected.forward.slice(0, -1)).toEqual(current.qualified.forward);
+      expect(selected.forward.slice(0, -1)).toEqual(previous.qualified.forward);
     }
     for (const roleMode of ["installer-managed", "operator-provisioned"] as const) {
       const selected = selectPlatformMigrationManifest(next, "qualified-admin", { roleMode });
       expect(selected.forward.at(-1)).toEqual(lock);
-      expect(selected.forward.slice(0, -1)).toEqual(current.qualifiedAdmin.forward);
+      expect(selected.forward.slice(0, -1)).toEqual(previous.qualifiedAdmin.forward);
     }
     // A later shared forward appends after the lock in every plan.
     const shared = { file: "db/platform/migrations/20991231000000_later_shared.sql", content: "SELECT 1;\n" };
@@ -299,7 +301,7 @@ describe("canonical qualified migration selection", () => {
     const inserted = structuredClone(next);
     inserted.qualified.forward.pop();
     inserted.qualified.forward.splice(inserted.qualified.forward.length - 1, 0, lock);
-    expect(evaluatePlatformMigrationManifestHistory(current, inserted, [lock.file])).toContain("qualified migration manifest must preserve the previous prefix");
+    expect(evaluatePlatformMigrationManifestHistory(previous, inserted, [lock.file])).toContain("qualified migration manifest must preserve the previous prefix");
     const withoutAdmin = structuredClone(issued);
     withoutAdmin.qualified.forward.push(lock);
     const issuedQualified = issuedMigrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
@@ -372,9 +374,15 @@ describe("shared forwards after issued generation tails", () => {
       expect(evaluateSelectedPlatformMigrationManifest({ manifest: selections[index], migrations: migrations.filter(({ file }) => paths.has(file)) },
         (["legacy", "qualified-v2", "qualified-admin"] as const)[index]!)).toEqual([]);
     }
+    // Schema 2 cannot select the shared completion tail, which requires both qualified plans.
     const { qualifiedAdmin: _admin, ...v2 } = manifest;
-    expect(evaluatePlatformMigrationManifest({ manifest: { ...v2, schemaVersion: 2 },
-      migrations: migrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_")) })).toEqual([]);
+    const v2Migrations = migrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
+    expect(evaluatePlatformMigrationManifest({ manifest: { ...v2, schemaVersion: 2 }, migrations: v2Migrations }))
+      .toEqual(["the lock and conflict completion tail requires both qualified plans"]);
+    const withoutTail = { ...structuredClone(v2), schemaVersion: 2 as const };
+    withoutTail.qualified.forward = withoutTail.qualified.forward.filter(({ file }) => file !== QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE);
+    expect(evaluatePlatformMigrationManifest({ manifest: withoutTail,
+      migrations: v2Migrations.filter(({ file }) => file !== QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE) })).toEqual([]);
   });
 
   it.each(["legacy", "qualified", "qualifiedAdmin"] as const)("refuses missing, permuted or different-hash suffix rows in %s", generation => {

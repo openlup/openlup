@@ -559,12 +559,9 @@ it.each(["preflight", "cancel", "succeeded", "refused", "late_recovery"])("%s mu
   if (action === "preflight") await call(runtime, "subscription_refuse_renewal_preflight", [f.operation, f.token, "synthetic", AT]);
   else if (action === "cancel") {
     const args = [randomUUID(), f.client, randomUUID(), f.subscription, "cancel", {}, later(1)];
-    // Pre-existing qualified-runtime limit; closed by F-QUALIFIED-LIFECYCLE-LOCK.
-    await expect(call(runtime, "subscription_command_apply", args))
-      .rejects.toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
     await admin.query("UPDATE public.subscriptions SET created_at=$2,started_at=$2 WHERE id=$1", [f.subscription, AT]);
-    // No fixture grant: the owner observes the existing writer's NULL predicate.
-    expect(await call(admin, "subscription_command_apply", args)).toMatchObject({ status: "applied" });
+    // The shared lock and conflict completion admits the term-line row lock on this runtime.
+    expect(await call(runtime, "subscription_command_apply", args)).toMatchObject({ status: "applied" });
   }
   else if (action === "late_recovery") await call(runtime, "subscription_retry_record_recovery", [f.operation, randomUUID(), positive(f)]);
   else await call(runtime, "commerce_record_subscription_renewal_outcome", [f.operation, randomUUID(), f.fingerprint, action, "original-ack", action === "refused" ? "declined" : null, AT]);
@@ -615,10 +612,9 @@ it("stale promotion cleanup does not mistake a NULL purchase owner for a paid re
     SELECT promotion_id,definition_fingerprint,id,order_id,1,$3,$4 FROM adjustment`, [input.orderId, promotion, AT, later(1)]);
   await admin.query("UPDATE public.commerce_orders SET created_at=$2 WHERE id=$1", [input.orderId, AT]);
   const before = await rows(input.orderId);
-  await expect(call(runtime, "commerce_sweep_stale_promotion_claims", [later(2), 200, 15, 0]))
-    .rejects.toMatchObject({ code: "42501", message: "permission denied for table commerce_promotion_claim_events" });
+  // The shared lock and conflict completion grants only the claim-event arbiter columns.
   expect((await admin.query("SELECT has_table_privilege('service_role','public.commerce_promotion_claim_events','SELECT') allowed")).rows).toEqual([{ allowed: false }]);
-  expect(await call(admin, "commerce_sweep_stale_promotion_claims", [later(2), 200, 15, 0])).toMatchObject({ cancelled: 1 });
+  expect(await call(runtime, "commerce_sweep_stale_promotion_claims", [later(2), 200, 15, 0])).toMatchObject({ cancelled: 1 });
   expect((await admin.query("SELECT status FROM public.commerce_orders WHERE id=$1", [input.orderId])).rows).toEqual([{ status: "cancelled" }]);
   expect(await rows(input.orderId)).toEqual(before);
 });

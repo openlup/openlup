@@ -310,11 +310,15 @@ approvals, checks their exact fixture hashes, and rejects prior repins or
 co-located active SQL. These approvals are inert until a separate selected
 generation passes its installation and runtime proofs.
 The lock and conflict completion control witness pins the approved shared
-seventeenth identity. The reader admits it only as an atomic position-17 append
-after all sixteen issued approvals; the witness checks its exact fixture hash
-and refuses co-located SQL, later repins and wrong positions. The manifest witness admits it only once, as
-a tail of both qualified plans at the same position among shared units;
-shared forwards still append after it. The active
+seventeenth identity. The reader admits it only at position 17, and the
+co-located approval check keeps all sixteen issued approvals fixed; the witness
+checks its exact fixture hash and refuses co-located SQL, later repins and wrong
+positions. The manifest witness admits it only once, as a tail of both qualified
+plans at the same position among shared units; shared forwards still append
+after it. Its restricted-runtime effects and its destination-state guard are
+proved on both generations by
+[`qualifiedRuntimeLockCompletion`](tests/postgres/qualifiedRuntimeLockCompletion.test.ts).
+The active
 [`qualified-admin` witness](tests/postgres/m14QualifiedAdminComposition.test.ts)
 uses two disposable PostgreSQL 16 installations with actual non-superuser M
 sessions: each resumes after a 17-unit committed prefix, seals its fixed
