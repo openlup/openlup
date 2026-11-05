@@ -46,7 +46,7 @@ export function createPostgresDeliveryReconciliationPort(env: PostgresDataGatewa
           await db.query("UPDATE public.communication_native_sends SET observed_state=$3,observed_at=$4 WHERE id=$1 AND binding=$2", [input.sendId,binding,kind,at]);
         }
         if (kind === "bounced" || kind === "complained") {
-          for (const purpose of ["marketing_launch_offer","marketing_newsletter","tester_program"]) await db.query(`INSERT INTO public.communication_recipient_consents (recipient_fingerprint,purpose,state,captured_at,updated_at)
+          for (const purpose of ["marketing_launch_offer","marketing_newsletter","marketing_gifts_discounts","tester_program"]) await db.query(`INSERT INTO public.communication_recipient_consents (recipient_fingerprint,purpose,state,captured_at,updated_at)
             VALUES ($1,$2,'suppressed',$3,$3) ON CONFLICT (recipient_fingerprint,purpose) DO UPDATE SET state='suppressed',updated_at=greatest(communication_recipient_consents.updated_at,excluded.updated_at)`, [send.recipient_fingerprint,purpose,at]);
         }
       });

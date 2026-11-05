@@ -1,30 +1,37 @@
 # Native order, subscription and parcel destinations
 
-Status: BLOCKED with the combined purchase-hold change on current-donor
-admission parity. G3's completed proofs are preserved, but the new donor mapping
-and production reachability assessment are incomplete; native review has not
-started. See Donor mapping below.
+Current status: G3 is combined with G4 in the assigned bundle worktree. The
+cycle-3 SQL repair has its accepted read and DCO commit. The current comparison
+and review base is the frozen G3x head
+`addfaf98e4d4016d77033459090996d0d44d2dad`, integrated by a clean signed merge.
+The absorption classification control is on main at
+`8b48b5f0956530d59e2182ac28f6ab78d85f8381`, the current policy revision.
+The resumed grant authorizes the pre-review set, the final automatic cycle-3
+full review, verification and the stacked draft/landing route. Earlier stage
+notes below retain their original bases, evidence and grants.
 
 ## Outcome, authority and boundaries
 
 G3 ports new-address order/subscription destinations and customer/operator
 change_shipping_address, including parcel applicability. Matrix rows: P08, R08,
-T04-12, A23, T03-57, A78. Assigned worktree oss-m19-g3, branch codex/oss-m19-g3;
+T04-12, A23, T03-57, A78. Original separate-row worktree oss-m19-g3, branch codex/oss-m19-g3;
 base and recovered policy revision 3887ee7425fd0eddeecd9a8e2ef3e1420bcf640d.
-G4 and every other worktree stay untouched. The supervisor authorized local SQL,
+That original grant kept G4 untouched. The current bundle grant permits this
+assigned worktree only and leaves the export leaf untouched. It authorizes local SQL,
 manifest selection, public bindings, own API snapshots, transfer additions,
-characterization/refusal tests and unsigned WIP commits. No approval-class pin,
-checker edit or native review is authorized. The later accepted-read grant below
-authorizes DCO; landing still waits for separate control and ordered predecessors. No hosted qualification is claimed.
+characterization/refusal tests and unsigned WIP commits. The accepted-read and bundle grants authorize own feature pins, DCO and native
+review; no checker edit or delivery is authorized. Landing remains ordered after
+the leaf and predecessors. No hosted qualification is claimed.
 
 The lead accepted newAddress only (saved book is a named refusal), a separate
 address routine, and future-only application once dispatch owns the parcel.
 The latest resume authorizes donor confirmation enqueue in the existing routine
 and native subscription_events account history. No fifth signature, third table
-or trigger. It also permits only the additive native outcome/decoder lines and
-one address branch in the existing operator adapter. Other operator capabilities
-remain unsupported in the reference projection; explicit host composition is
-required. No existing OMS/G5 files or renewal codec are edited.
+or trigger. It permits the additive native outcome/decoder, the address adapter branch and
+the native address capability advertisement. Email, phone, account link, short-band
+slide, unpaid resume and prepared-attempt pause retain their named native
+refusals; ordinary pause/resume/slide and new-address change are advertised.
+Explicit host composition is required. No existing OMS/G5 files or renewal codec are edited.
 
 Hard package stop: 8,200 bytes packed including own SQL and manifest. No saved address book,
 default selector, list/delete/export/erasure API, real PSP, new attempt ledger,
@@ -1338,11 +1345,12 @@ are included; the predecessor-only undefined-function interval ends here.
 
 Each rule is ported from the reference adopter's behaviour; the rule-by-rule mapping and witnesses are in the maintainer packet.
 
-The current mapping and production reachability assessment remain incomplete.
-No zero-regression certification or native review is claimed. The combined
-change remains on hold for the inventory admission-gate ruling. Listing exposure
-is deferred to a registered follow-up outside this bundle; native stock
-accounting does not subtract retained listing exposure.
+The current source-rule mapping and production-composition reachability audit
+are recorded in the private maintainer packet. The earlier admission and
+compensation guards are ported and accepted; these two destination changes await
+their read. This is source and local-database evidence, not hosted qualification
+or a blanket service-parity certificate. Listing exposure remains a registered
+follow-up outside this bundle; native stock accounting does not subtract it.
 
 Accepted differences and limits:
 
@@ -1359,10 +1367,491 @@ Accepted differences and limits:
 - Address changes do not move a cycle or confirm an undelivered replacement.
   Confirmation mail belongs to the following communication binding.
 
-The private maintainer packet retains the complete pending package-path
-inventory. An additive result type or installed-version pin does not establish
+The private maintainer packet retains the complete package-path
+inventory and its source-composition evidence. An additive result type or installed-version pin does not establish
 production reachability or service parity. The public-entry predecessor is
 untouched.
 
 Self-retro: public records can state the porting boundary and limits without
 exposing the reference adopter's source structure.
+
+
+## Retained parcel ownership reconciliation
+
+The current draft restricts current-parcel selection to orders owned by the
+subscription's client, as well as its subscription-cycle scope. The function
+signature and header are unchanged. Beyond that lookup, only the reason-event
+projection admitted below changes; all other statements are unchanged. The draft
+adds a restricted-runtime retained-row regression and an executable source-pinned
+lookup witness; every existing case remains unchanged. Five installation
+profiles measured new current inventory digests and exact replay wrote nothing.
+
+The earlier rule-chain review found that the optional address-change reason was
+accepted but omitted from its persisted subscription event. The resumed draft
+ports its persistence in the same function: the top-level reason keeps the
+reference normalization, and the nested payload retains the originally supplied
+reason. Missing reason has no nested key; the top-level value is JSON null,
+as is an empty reason's top-level value. Supplied whitespace is preserved.
+Restricted customer and operator cases cover present, empty and absent input
+and matching replay; the operator case also checks changed-reason conflict. An exact-source event witness
+checks the same normalization. Existing tests remain unchanged.
+The source reconciliation, reachability audit and evidence stay in the private
+maintainer packet. The draft remains staged for a read; no native review or
+delivery is claimed.
+
+Self-retro: reconcile the full event payload as well as locks and ownership;
+a command fingerprint preserves identity, not the meaning of a reason.
+
+
+## Current combined ownership and reason proof
+
+All 24 pre-existing destination cases remain byte-identical. Five additions
+cover retained-owner selection, the characterized lookup, customer and operator
+reason persistence, and the characterized event expression. The complete suite
+passes 29 cases in each of default, two non-UTC and mixed sessions, including
+restricted-runtime event readback. The unchanged purchase-hold suite passes
+40 cases in each profile. The four-bound catalog passes 130 cases in both role
+modes; complete transfer passes 17; handover completes with 99 tables and its
+expected single fenced uncertain operation. The managed characterization passes
+three cases, including 56 pgTAP assertions; six composition cases pass.
+
+The five new cases also pass solo without coverage, with body durations from
+2.8 to 143.7 ms. Existing explicit transfer/composition timeouts and comments
+remain unchanged. Full API reports pass all 68 entries; typecheck passes five
+projects with zero unresolved edges; lint has zero errors and 33 existing
+warnings; ast-grep and both neutrality checks pass. The source-rule chain and
+26-path production-composition audit are retained privately, with eager barrel
+loading distinguished from unselected native branches.
+
+Policy and docs-update read the staged candidate and report 11 obligations,
+three awaiting the proposed scoped no-impact trailers in the later authorized
+DCO commit. They are not counted as green. CONTRIBUTING and control logic are
+unchanged. The delta remains staged; no commit, review, verify, push or PR.
+The public-entry predecessor remains untouched.
+
+Measured current inventories (historic pins and counts unchanged):
+
+| Profile | Current digest | Units | Replay writes |
+| --- | --- | ---: | ---: |
+| legacy | 49b0f960386c612c79c888634f63c59bcae17df0db4d43fa56252bef3bf8e6b1 | 95 | 0 |
+| bootstrap | 02be252bdef8b5dbb5053f77d37f058b98f857043cb57ba1875ed796c7cf647f | 99 | 0 |
+| separate | 9250799e79557d489f2ce617aa53bb2d6af8a22fc2d1a9e10536d7c849ee404a | 99 | 0 |
+| admin-managed | f47ee11eb5a78e01bd9cabb5f2cb63045e96fe005ad57f2a6c5fae5263b679b3 | 98 | 0 |
+| admin-operator | 3f4135031c7dcfb3b00238d3475e99ac68f60b9357cd7bdb81d3bfd68dd0c967 | 98 | 0 |
+
+
+Official Node v24.21.0 pack against the exact public-entry predecessor:
++12,175 B packed, +2,889 B code-gzip, +69,453 B unpacked and five files for the
+combined purchase-hold/destination bundle. Absolute totals: 2,454,062 B packed,
+1,957,647 B code, 11,544,987 B unpacked, 3,032 files; docs class 65,567 B.
+The two destination-body ports and reason documentation add 119 packed bytes
+and zero code-gzip over the earlier bundle measurement. SQL, manifest and README
+bytes in the extracted real tarball match the draft. No cap changes.
+
+Self-retro: align the complete staged candidate before policy, and prove event
+readback through the existing runtime permission as well as runtime writes.
+Both ports now have source-pinned and real-database evidence; final delivery
+still needs the read, signed commit, native reviews and authorized verification.
+
+
+## Operator recipe alignment
+
+The typed UUID guard and the linked operator recipe exposed two different gaps
+in the same approved outcome: identity validation used text, while a secondary
+recipe still described the previous address refusal. The remaining documentation
+owner is the current operator recipe and its canonical receipt summary. The
+simplest repair is to describe the already implemented bounded new-address branch
+and next-parcel result in both places, preserving the separate shipping-port
+refusal and managed boundary. Existing native operator, recovery and destination
+regressions discriminate writing, replay and partial applicability; no new runtime
+mechanism or prose-mirroring test is needed. This corrects an existing accepted
+contract; the native address advertisement now matches its accepted writer.
+No additional writer or public type is introduced.
+
+Self-retro: accepted native branch plus stale linked recipe → trace secondary
+instructions and correct the same contract at its current documentation owners.
+
+
+## Cycle-2 regroup and claim sweep
+
+Cycle 0's UUID-alias evaluation and cycle 1's operator-recipe evaluation left
+material obstacles to the same approved outcome. G3's advertised native
+capabilities, operator recipe and contract text must match the writers it
+delivers; the owners are the operator-authority contract and canonical contracts.
+The port moved writers without sweeping their same-change claims, so stale
+claims surfaced one at a time. The simpler path is one sweep of the whole
+purchase-hold/destination delta and its touched files, replacing isolated fixes.
+The next discriminating step is that sweep plus the restricted-runtime agreement
+regression for the moved address writer and every unsupported native subcase.
+Address must succeed and unsupported inputs must return their named refusal,
+with zero stale claims. Ordinary lifecycle commands retain a separate named
+pre-existing limit, not a passing availability claim (CD-M19-219). The existing review history and
+cycle budget remain intact. This entry adds no new behaviour or delivery grant.
+
+Lesson: a ported writer without its capability or doc claims → sweep every claim
+tied to a moved writer in the same change.
+
+
+### Whole-bundle claim sweep
+
+The sweep uses the complete delta from the exact export-leaf stack base and the
+full contents of its touched files, plus six related binding/owner files. `rg`
+checks supported/unsupported/unavailable/refusal wording, each delivered routine,
+capability names, operator recipes, destination/reason and next-parcel terms.
+Each hit is one matched HEAD file/line, deduplicated; historical stage notes are
+qualified by the current status. Generated declarations and exact SQL/pin/test
+references are checked against their source, not treated as capability probes.
+
+| Scope | Finding and action |
+|---|---|
+| 55 files, 3,471 matched lines | 3,448 accurate; 22 stale sites corrected; one pre-existing named limit (F-QUALIFIED-LIFECYCLE-LOCK). |
+| Operator capability and expectation | Advertise native new-address change; preserve every other subcase expectation and the managed graph. |
+| Operator recipe and canonical receipt summary | Replace old address refusal and incomplete partial-result claims with bounded SQL and next-parcel applicability. |
+| Inventory/account-support package guidance | State native zero safety/exposure accounting separately from managed accounting; include next-parcel partial recovery. |
+| G4 routine inventory and row-record status | Four runtime entries plus owner-only helper; qualify original separate-row and pre-read stages as history. |
+| Admission, hold/release/expiry, compensation, destination registration/read, event reason and frozen-parcel claims | Retain accurate entry, replay, refusal, owner, privacy and default-off boundaries; no SQL or privilege change. |
+| Correctly unsupported restrictions | 486 accurate restriction hit lines across 20 checked classes listed below; they are unchanged. |
+| Required runtime agreement | The moved address writer and every unsupported subcase have agreement assertions. Separate pause/resume/slide pins require42501 at the term-line row lock and zero new receipts; these are pre-existing known limits, closed by F-QUALIFIED-LIFECYCLE-LOCK, not passing lifecycle claims. |
+
+The 20 correctly unsupported classes are: email; phone; account link;
+short-band slide; expired-dunning resume; residual-unpaid resume;
+prepared-attempt pause; saved-address selection/book APIs; elapsed/non-finite
+expiry admission; non-READ-COMMITTED admission; direct runtime admission-helper
+entry; dedicated promotion cancellation; lots/locations/movement history;
+direct native stock adjustment; native safety/channel exposure; subject privacy
+export/erasure; automatic mail/host activation; the legacy browser's next-parcel
+decoder; the separate OMS address-correction port; and unselected host lanes.
+These source-scope checks do not certify qualified-runtime lifecycle commands.
+Existing lifecycle availability flags and runtime privileges remain unchanged.
+CD-M19-219 narrows agreement to the writers moved here;
+F-QUALIFIED-LIFECYCLE-LOCK is the registered follow-up. The
+qualified runtime lacks the term-line row-lock privilege: ordinary pause, resume
+and slide currently refuse42501 with no new receipt. The registered follow-up
+F-QUALIFIED-LIFECYCLE-LOCK will turn these and the existing G4 cancel pins into
+positive proofs when it lands; this bundle adds no grant.
+
+The parked prose patch was hash-checked and applied exactly first (its proposed
+tree matched), then rebased by this sweep's additional claim corrections. No
+CONTRIBUTING edit is included; the lead will collect the lesson after delivery.
+
+
+### Cycle-2 scope correction and discriminating proof
+
+CD-M19-219 confines writer agreement to new-address change and every unsupported
+native subcase. The restricted runtime succeeds for the address writer; email,
+phone, account link, short-band slide, both unpaid-resume variants and prepared
+attempt pause retain their named refusal. Ordinary pause/resume/slide are not
+certified by that test. Each has a separate pre-existing42501 term-line row-lock
+pin and zero new command receipts, closed by F-QUALIFIED-LIFECYCLE-LOCK.
+The same closer is recorded beside both existing G4 cancel pins; those assertions
+are unchanged. No capability other than address, table privilege or role changes.
+The one bundle-touched lifecycle delegation claim in the package reference now
+states this qualified-runtime limit. This is a scope correction, not a reviewer
+finding or a new regroup. The registered follow-up F-QUALIFIED-LIFECYCLE-LOCK
+will turn the pins into positive proofs when it lands.
+
+The four new cases ran without coverage in the focused lane: address/unsupported
+agreement258ms; pause26ms; resume26ms; slide23ms. None needs a per-case timeout
+above the existing10s limit. The first lifecycle expectation incorrectly inspected
+the adapter's mapped error for raw SQLSTATE; the test now captures and rethrows
+the original SQL error at the injected executor, asserting both the unchanged
+mapping and the underlying42501. This adds no fallback or production change.
+Complete API regeneration adds only the new-address-only comment to two reports;
+no public type or other report changes. CONTRIBUTING remains unchanged.
+
+Address admission keeps parity: allowed during dunning and without a method; refused for a locked next cycle (cycle or order status) or a claimed renewal; witnesses are “allows address during open dunning without a method, but preserves the donor next-cycle lock”, “preserves next-cycle ownership before a frozen native renewal has materialized its cycle”, and “witnesses every next-cycle lock branch through the public address port”.
+
+## Cycle-3 absorption classification repair
+
+The moved destination writer introduced a client-referencing table without its
+absorption classification. The absorber enumerates every client foreign key and
+refuses unknown tables even when the lead has no rows there. The smallest repair
+is the single `commerce_destinations` classification as `block`: a delivery
+snapshot remains bound to its original order or subscription and is never
+carried or rebound during lead absorption. Both forward copies carry the same
+statement; their whole-file pins and packaged manifest are recomputed. No grant,
+RLS policy, function body, public API or managed migration changes.
+
+Acceptance distinguishes owner execution from the restricted runtime. With a
+readable destination table, a destination-free lead absorbs and replays once;
+a lead with one destination refuses `lead_has_commercial_footprint` naming
+`commerce_destinations`, leaving all subject and destination rows unchanged.
+The separate pre-existing-class pin is **restricted absorption refuses 42501 at
+the destinations count; closer qlock-3**. It asserts both empty and nonempty
+destination cases and zero absorption effects, including receipts and audits.
+It is not a passing restricted-runtime absorption availability claim.
+
+This is the third and last automatic repair cycle of the existing bundle.
+The worker may commit only tests and this record with DCO; SQL, hashes and
+manifests stay staged for a coordinator re-read. The supervisor owns the later
+stack integration and two fresh full reviews. No prepare, review, merge,
+canonical verify, push, PR or release is authorized in this run.
+
+The initial owner regression exposed a prerequisite missing on this branch:
+`identity_privacy_erasures`, `subscription_command_receipts` and
+`subscription_stock_wait_cases` are still unclassified. Their existing approved
+classification statements belong to the later consent forward. The G3 repair
+does not silently add those statements to its own production migration.
+The regression fixture supplies exactly those three approved `block` rows as
+explicit full-chain prerequisites. It never supplies the destination row: that
+must come from G3's actual hash-checked forward. The managed absorption witness
+runs unchanged after the complete managed migration chain; the original managed
+address witnesses still run on their original baseline. Only the disposable
+pgTAP assertion helpers receive test execution permission.
+
+Policy revision read for this repair:
+`6979704a5247b1f572b2cbbd8dce487ca37eff88`; code comparison remains the pinned
+stack base `c1dd21ddc8954d62c6fe75dcd90c4c774fafb71f`. Reading newer policy
+does not merge it into this candidate. Current main's independent helper accepts
+all four bound forwards and recomputes their preimages with the exact one-row G3
+amendment in a scratch registry. The tracked G3 class slot remains unchanged.
+
+The first scanner invocation inherited the stack base into synthetic child
+repositories, causing two documentation CLI expectation failures. Those tests
+create their own comparison bases; the corrected scanner invocation unsets that
+environment variable only for the scanner process. Policy and neutrality checks
+retain the actual pinned stack base. No scanner, fixture assertion or control
+was changed to accommodate the invocation error.
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-9a666f5e3d3863a716c13d75e1bfac0f70cc093e647145676863fb4fc3877bb7","reason":"The cycle-3 repair adds owner admission/replay and destination-footprint refusal, the restricted 42501 zero-effect pin and the unchanged managed absorption witness. Full-chain test setup supplies only the three already approved later absorption classifications; the destination classification must come from the real forward. Managed permissions come from the existing complete managed chain, with execution granted only to disposable pgTAP assertion helpers. Existing test commands, native privileges, gate lanes, baselines and contribution controls remain unchanged, so the development-preview test guidance remains correct."} -->
+
+Self-retro: a moved client writer also needs its absorption classification;
+exercise the complete foreign-key census before claiming absorption admission.
+The one-row fix preserves the existing fail-closed absorber and table privacy
+boundary; widening runtime access belongs to its separately owned closer.
+
+### Cycle-3 completion evidence
+
+The canonical and packaged forward are byte-identical, SHA-256
+`1cdb720a6fadbfebeca50dad091e709b069639c2a8af9c8abb542f753687980f`.
+Removing exactly the added statement reproduces the previous forward byte for
+byte. All function hashes, inventory digests and chain counts remain unchanged.
+Only the whole-file hash is rebound in the feature pin and manifest projections.
+
+| Executed scope | Result |
+| --- | --- |
+| Complete default PostgreSQL selection: writers, absorption, catalog/ACL, transfer, composition, restore and upgrade | 318 passed; final managed file separately passes all 5 cases after its fixture refinement. |
+| Native writers and named existing absorption suites, plus the existing lead-absorption domain suite | 145 passed in each of `Etc/GMT-9` and `Etc/GMT+5`. |
+| Both native writer suites, the same mixed-session profile used in cycle 2 | 79 passed. |
+| Direct managed empty-lead admission and address-footprint refusal | Passed separately in both non-UTC zones and mixed sessions, as the managed runtime role. |
+| Unchanged managed absorption pgTAP script | All 41 assertions passed in its UTC fixture profile. |
+| Stabilized full `scripts/*.test.ts` scanner set | 2,889 passed; one existing opt-in concurrency case remains unconfigured. |
+| Built dist exports, package boundary, commerce, account-support, inventory and related dist consumers | 4,285 passed. |
+| Required lint, complete API reports, public typecheck, ast-grep and both neutrality checks | Passed; lint has zero errors and 33 existing warnings; all 68 API entries pass; typecheck has zero unresolved edges or consumer errors. |
+
+All six new cases have individual no-coverage measurements. The largest measured
+body is 319 ms; existing slow-case timeout comments and budgets remain unchanged.
+Startup probes observed zero requested/actual timezone mismatches. Every existing
+native destination test byte and every existing managed test body is preserved.
+
+Broader diagnostic runs were retained rather than counted as passing profiles:
+the old managed address characterization inserts a date-only cycle against a UTC
+anchor; the unchanged pgTAP script expects UTC consent-audit display text; two
+transfer assertions compare timezone-rendered timestamp text; and extra mixed
+sessions expose the same representation issue in legacy operator snapshots.
+No production behavior or existing assertion was changed for these observations.
+The unchanged pgTAP witness explicitly runs in UTC and restores its caller's zone;
+the separate managed regression proves admission and refusal in that caller zone.
+
+Official Node 24.21.0 real pack against the pre-repair bundle: **+106 packed B,
++0 code-gzip B, +276 unpacked B, +0 files**. Absolute package totals are
+2,454,293 packed B, 1,957,699 code-gzip B, 11,545,576 unpacked B and 3,032 files.
+Every current package file byte-matches the measured tarball after the final
+build. No cap, export, version or dependency changed. No OMS marker write or
+additional dispatched-attempt storage is introduced.
+
+The completed full scanner results predate the new single-scanner-lane rule and
+are retained under its explicit transition instruction. No full scanner rerun
+was started after resumption; any future full run must use that dedicated lane.
+Resumption found no owned destination-test container left behind. The interrupted
+tail check was rerun; the newer policy read leaves the same main revision above.
+
+Execution retro: the first 431-second scanner run inherited a stack pin into
+synthetic repositories. Finish the full-chain and timezone fixture setup before
+the broad scanner, and pass scope variables only to commands that own that scope.
+The initial empty-branch-slot fixture was replaced with the three already approved
+classification prerequisites, making the actual dependency explicit. These are
+test and invocation corrections, not additional production fixes or review cycles.
+
+### Frozen prerequisite integration and pre-review stop
+
+The frozen export prerequisite merged cleanly at
+`8e6f426d8096c7436a6275d955db5fe0b802aab1`. The comparison base remains
+`addfaf98e4d4016d77033459090996d0d44d2dad` for this run.
+The official Node real pack measures 2,471,602 packed B, 1,972,863 code-gzip B,
+11,615,363 unpacked B and 3,047 files. Against that predecessor the deltas are
++12,614 packed B, +2,828 code-gzip B, +70,042 unpacked B and +5 files.
+
+The dedicated scanner gate admitted the full set, which passed 2,889 cases with
+zero failures and one existing unconfigured opt-in concurrency case. Both
+neutrality checks, lint, typecheck and the complete API report check passed.
+The built dist and module selection, including the complete commerce directory,
+passed all 4,311 cases. The default real-PostgreSQL selection passed all 319.
+
+Each full non-UTC PostgreSQL profile passed 316 cases and failed three.
+The managed address characterization supplies a date-only cycle against a UTC
+anchor, so its lock expectation resolves successfully in either non-UTC zone.
+Two transfer assertions compare session-rendered timestamp text with retained
+UTC text. The explicit schedule comparison renders 21:00 +09 or 07:00 -05 for
+the same retained 12:00 UTC instant. Both affected test files byte-match the
+pre-merge head. These are the diagnostic limits already recorded above, now
+encountered by the required complete profiles. Native writer, absorption,
+catalogue, composition, restore and upgrade cases pass in all three profiles.
+The restricted absorption count retains its 42501 zero-effect pin and qlock-3
+closer. Full-profile acceptance requires an owner decision before review.
+
+Self-retro: the complete timezone profiles expose fixture timestamp spelling
+assumptions that a native-only profile cannot distinguish. Explicit fixture
+instants and typed instant comparisons are the relevant repair boundary.
+
+<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-edffdbc49ceda50cd686a36c275a54ee547093b3c4e974a66da125babaf71434","reason":"The integrated forward-registry test changes only its existing title and feature-binding expectation from two bound slots to four. The newly inherited absorption classification assertion is preserved. Reader, admission, review and release control logic and the documented test commands and trust boundaries retain their existing behavior, so the development-preview guidance remains correct."} -->
+
+### Cycle-3 UTC fixture correction and accepted zone limits
+
+The resumed disposition assigns the two transfer text failures to existing main
+assertions from `e58cbf12f6b5cd0283ba9adabcce823c127e4e96` and
+`dcd8971dc8042bfe99cd6be61a2371824b5d8eb3`, with follow-up
+**F-ZONED-TRANSFER-TEXT**. They are accepted failures for this row's non-UTC zone
+sweep. The complete three-zone profile retains both assertions.
+
+The managed address case belongs to this row, introduced in `0c953bbf`.
+A real PostgreSQL experiment compared its cycle literal with the source fixture's
+`next_cycle_at = '2026-09-15T00:00:00Z'`. In UTC the date-only cycle matches.
+In `Etc/GMT-9` it denotes an instant 32,400 seconds earlier, and in `Etc/GMT+5`
+it denotes one 18,000 seconds later. The managed
+`customer_self_service_assert_no_locked_cycle` compares typed instants with
+`scheduled_at = p_next_cycle_at`, so these different cycle instants miss the
+paid-cycle guard. Explicit `2026-09-15T00:00:00Z` matches in every zone.
+The same case's request instant now spells `2026-09-01T00:00:00Z` explicitly.
+Both values preserve the fixture's intended UTC instants.
+
+The fix changes only those two test data literals. All assertions and
+expectations are retained. The other own-suite date-only values are paired
+operation/cycle timestamps, a distant stock-staleness deadline and a subscription
+start preceding the exercised dates. Their zone shifts do not affect an observed
+result, so the correction remains confined to this managed case.
+The previously completed scanner evidence is retained under the resumed
+fixture-only exception. The final cycle-3 review follows the rerun profiles,
+lint, typecheck and policy evidence below.
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-7e65bd7200e5cdd6f73033341231445b57c080cc7b1525167947db4a769d3991","reason":"The existing cycle-3 owner admission/replay, destination-footprint refusal, restricted 42501 pin and complete managed-chain witnesses retain their assertions. The only new fixture correction gives the managed address case explicit UTC request and cycle instants matching its existing next-cycle anchor. The two inherited transfer timestamp-text failures are recorded with their assigned follow-up. Existing commands, gate lanes, privileges, timeout rules, baselines and test guidance remain correct for this delta."} -->
+
+Current instruction revision read on resumption is
+`cec0236b1c1742a4d6184c8ba4c750007bdc7709`. The explicit comparison and review
+base remains the frozen export prerequisite above.
+
+The corrected complete profile passes all 319 cases by default. Each non-UTC
+profile passes 317 cases with exactly the two accepted transfer-text failures.
+The complete managed destination file passes all five cases in every zone,
+including its original lock expectation and both absorption witnesses.
+The corrected case also passes alone in `Etc/GMT-9`, without coverage, in 17 ms.
+Lint and typecheck pass again. Policy has zero unanswered obligations after
+refreshing this fixture delta's documentation-impact record.
+All packaged inputs remain identical to the measured merged tree.
+
+Self-retro: session-local midnight and an explicit UTC anchor denote different
+instants. Spell fixture instants explicitly before exercising an instant-equality
+guard, while recording inherited display-only failures under their actual owner.
+
+## Measured deadlines for the complete replay family
+
+The merge-group run [41763619755](https://github.com/openlup/openlup/actions/runs/41763619755)
+exceeded the 45-second admin installer case and the 40-second reference bootstrap
+case. The single authorized hosted retry is consumed. The current draft changes
+only explicit case deadlines and their measurement comments across the entire
+chain-growing family, with this record. It remains staged for the lead's read.
+
+The reference, target and admin compositions, four connected-restore shapes and
+released legacy upgrade replay the selected current migration chain. All eleven
+cases receive the fourfold hosted-maximum rule. The six qualified baseline cases
+use fixed baseline SQL; the fifteen qualified-session cases examine admission
+and catalog races without replaying an installed chain. Those bounds remain
+unchanged. The other eleven connected-restore cases cover authority/refusal or
+pre-install status observation without applying the chain, and retain their
+existing bounds. Their four status-only shapes are distinct from the four full
+restore cases extended here.
+
+A measured successor tree contains this reviewed head and one additional SQL
+forward. Its three isolated and three loaded samples for each production
+composition case, plus three loaded full-file sibling runs, are reused. Across
+its primary isolated samples load1 was 1.22–2.75 and CPU idle 84.32–98.90 percent;
+loaded samples observed load1 1.47–2.88 and idle 68.20–98.11 percent. Every reused
+local maximum is lower than the corresponding hosted maximum. New baseline
+measurements would duplicate that conservative evidence.
+
+The hosted columns below are milliseconds from the last relevant source runs
+and the failed group. A timed-out printed duration is a censored lower bound,
+not a completed execution. The second source attempt reused successful sibling
+jobs; its repeated sibling numbers are retained as that run's evidence rather
+than treated as independent samples.
+
+| Case | Bound before | #527 | #529 | #530 attempt 1 | #530 attempt 2 | Merge group |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| neon-shaped installer-managed | 60000 | 38807 | 31717 | 57203 | 57203 | 32199 |
+| neon-shaped operator-provisioned | 60000 | 33778 | 26635 | 50725 | 50725 | 27424 |
+| rds-shaped installer-managed | 60000 | 33775 | 26048 | 50303 | 50303 | 26330 |
+| rds-shaped operator-provisioned | 60000 | 33679 | 26211 | 48408 | 48408 | 27361 |
+| reference bootstrap-restore | 40000 | 38118 | 22495 | 40033 | 31513 | 40038 |
+| reference separate-restore | 40000 | 30625 | 18962 | 35042 | 24634 | 35760 |
+| target bootstrap-restore | 40000 | 24653 | 14984 | 27089 | 20088 | 26791 |
+| target separate-restore | 75000 | 49452 | 29204 | 54210 | 40400 | 54315 |
+| released legacy upgrade | 30000 | 7855 | 6449 | 4993 | 4993 | 7870 |
+| admin installer | 45000 | 46174 | 42680 | 28221 | 28221 | 45410 |
+| admin operator | 45000 | 33910 | 32820 | 20816 | 20816 | 36273 |
+
+For each case, let H be its maximum across those five hosted observations and L
+its reused loaded maximum. The initial requirement is four times max(H,L).
+The selected 240-second value already bounds each qualified-composition child
+process; 40 seconds is an existing qualified case value. The child deadlines and
+global defaults retain their values.
+
+The source control/export prefix has two fewer forwards than this bundle.
+For a conservative estimate, the per-forward growth envelope is
+`max(0, (H - min(#527, #529)) / 2)`. Five remaining SQL units consume five times
+that envelope. This intentionally includes hosted-load variation and the older
+control run, rather than attributing the entire difference to SQL execution.
+It estimates future growth; it does not measure future forwards. Headroom below
+is the new deadline minus H minus that five-unit growth. Each selected bound
+covers four times the currently observed maximum and leaves positive headroom
+after the full tail estimate.
+
+| Case | Loaded local max ms | 4 × H ms | New bound ms | Tail growth ms | Headroom after growth ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| neon-shaped installer-managed | 16025.694 | 228812 | 240000 | 63715.0 | 119082.0 |
+| neon-shaped operator-provisioned | 13445.680 | 202900 | 240000 | 60225.0 | 129050.0 |
+| rds-shaped installer-managed | 13793.466 | 201212 | 240000 | 60637.5 | 129059.5 |
+| rds-shaped operator-provisioned | 13799.661 | 193632 | 240000 | 55492.5 | 136099.5 |
+| reference bootstrap-restore | 11425.177 | 160152 | 240000 | 43857.5 | 156104.5 |
+| reference separate-restore | 11137.656 | 143040 | 240000 | 41995.0 | 162245.0 |
+| target bootstrap-restore | 11104.339 | 108356 | 240000 | 30262.5 | 182648.5 |
+| target separate-restore | 21628.916 | 217260 | 240000 | 62777.5 | 122907.5 |
+| released legacy upgrade | 3656.365 | 31480 | 40000 | 3552.5 | 28577.5 |
+| admin installer | 14248.897 | 184696 | 240000 | 8735.0 | 185091.0 |
+| admin operator | 13954.731 | 145092 | 240000 | 8632.5 | 195094.5 |
+
+The operator-provisioned admin and all four full restore cases are included by
+the whole-family rule, including those with more room under their earlier bounds.
+The released upgrade grows from 30 to 40 seconds because 4 × 7.870 = 31.480
+seconds. Assertions, fixtures and child processes keep their existing behavior.
+Each changed file will run once in full through focused admission before the
+staged read packet is finalized.
+
+Self-retro: a replay-family deadline must account for every role/restore shape
+and the remaining chain, rather than only the cases that crossed a timer today.
+The direct per-case change keeps this recovery within the existing proof entry
+points and preserves the assertion duty.
+
+<!-- openlup-task-doc-impact {"unit":"portability-capability","doc":"docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","anchor":"#existing-store-transfer-and-recovery","digest":"sha256-63c49a9a2a4df89f1036f4dfdc2baa3638d6fadbbc6ad57d18c537e1fd584830","reason":"The bundle retains its measured current inventory/count expectations and existing transfer protocol. The only new portability-owned edit is the qualified composition case deadline and its measurement comment. Transport encoding, cumulative bounds, owner admission, retained graph and replay assertions keep their exact behavior, so the store transfer and recovery section remains correct."} -->
+
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-77e4caa22080ba78f2255f03a4cb1be8a292f8b3216b5f68eb6351407946e83e","reason":"This draft changes only explicit per-case replay deadlines and measurement comments, retaining every test body, fixture, assertion and global default. Bounds use four times the observed hosted maxima and record capacity after the five-unit tail estimate, with focused full-file proof. Existing test commands, role boundaries, gate lanes and sufficient-evidence guidance remain correct."} -->
+
+The staged draft passes one complete focused invocation of every changed file
+on the assigned tree, without coverage and with the official Node toolchain.
+Production composition passes 4 cases in 52.458 seconds, admin composition 2 in
+27.347 seconds, connected restore 15 in 71.164 seconds and released upgrade 1 in
+3.942 seconds. Total is 22 passed, zero failed and zero skipped. A TypeScript AST
+comparison removes comments and only each case's third deadline argument before
+proving equality with the reviewed head for all four files. Every test body,
+assertion, fixture, test title, child deadline and global setting is retained.
+The AST structural check passes. The final read packet binds the staged tree and
+binary diff identity. The draft remains uncommitted for the lead's read.

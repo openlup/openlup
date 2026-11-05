@@ -3,3 +3,4 @@ export { createPostgresCommerceOmsPort, createPostgresProviderExceptionHealPort 
 export { createPostgresCommerceOmsControlPlane } from "./omsControlPlane.js";
 export { createPostgresCommerceReturnsPort } from "./returnsControl.js";
 export type { BackfillRow, HealCandidate } from "./providerExceptionHoldTypes.js";
+export { createPostgresCommercePriceAuthorityReadPort } from "./commercePriceRead.js";

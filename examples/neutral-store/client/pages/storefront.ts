@@ -1,6 +1,7 @@
 import type { PageContext } from '../context.ts';
 import type { Cart, OfferResult } from '../../shared/offer.ts';
 import { emptyCart, evaluateOffer } from '../../shared/offer.ts';
+import { priceInterimOffer } from '../../shared/interim-pricing.ts';
 import { routes } from '../../shared/routes.ts';
 import { append, button, el, link } from '../dom.ts';
 import { field, refusal } from '../forms.ts';
@@ -66,7 +67,7 @@ export function productPage(context: PageContext): HTMLElement {
       el('p', {}, product.description[context.locale]),
       el('p', {}, product.details[context.locale]),
       el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
-      el('p', { class: 'price' }, context.money(product.unitPrice.amountMinor)),
+      el('p', { class: 'price' }, context.money(priceInterimOffer(context.config, context.getCart().mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor)),
       quantity.wrapper, add, output,
       el('p', { class: 'muted' }, context.config.copy.shippingNote[context.locale])));
 }
@@ -75,6 +76,7 @@ export function builderPage(context: PageContext): HTMLElement {
   const config = context.config;
   const initial = context.getCart();
   const selected = new Map<string, HTMLInputElement>();
+  const unitPrices = new Map<string, HTMLElement>();
   const mode = modeFields(context, initial);
   const result = el('div', { 'aria-live': 'polite' });
   const form = el('form', { class: 'builder' });
@@ -85,9 +87,10 @@ export function builderPage(context: PageContext): HTMLElement {
       value: String(initial.lines.find(line => line.sku === product.sku)?.quantity ?? 0),
       min: 0, max: config.offer.maxUnits });
     selected.set(product.sku, quantity.control as HTMLInputElement);
+    const unitPrice = el('p'); unitPrices.set(product.sku, unitPrice);
     append(form, el('section', { class: 'builder-row' },
       el('img', { src: product.media, alt: product.mediaAlt[context.locale], width: 96, height: 96 }),
-      el('div', {}, el('h2', {}, product.name[context.locale]), el('p', {}, context.money(product.unitPrice.amountMinor))),
+      el('div', {}, el('h2', {}, product.name[context.locale]), unitPrice),
       quantity.wrapper));
   }
   append(form, mode.node);
@@ -98,6 +101,9 @@ export function builderPage(context: PageContext): HTMLElement {
     lines: [...selected.entries()].map(([sku, control]) => ({ sku, quantity: Number(control.value) }))
       .filter(line => line.quantity !== 0) });
   function preview(): void {
+    for (const line of priceInterimOffer(config, mode.value(), config.offer.products.map(product => ({ sku: product.sku, quantity: 1 }))).lines) {
+      unitPrices.get(line.sku)!.textContent = context.money(line.unitMinor);
+    }
     const value = evaluateOffer(config, input());
     result.replaceChildren(value.ok ? context.fragments.checkoutSummary(context, value.quote) : offerIssues(context, value));
   }
@@ -184,5 +190,6 @@ function rules(context: PageContext): HTMLElement {
   const offer = context.config.offer;
   return el('aside', { class: 'panel small' }, el('h2', {}, context.t('offerRules')),
     el('p', {}, `${context.t('minUnits')}: ${offer.minUnits} · ${context.t('maxUnits')}: ${offer.maxUnits}`),
-    el('p', {}, `${context.t('freeShipping')}: ${context.money(offer.freeShippingFromMinor)}`));
+    el('p', {}, context.t('zeroShipping')),
+    el('p', {}, context.t('renewalShippingInterim')), el('p', {}, context.t('acquisitionInterim')));
 }

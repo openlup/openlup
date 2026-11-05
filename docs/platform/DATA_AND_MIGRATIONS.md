@@ -34,6 +34,8 @@ describes the codec and retry duties. Installing or releasing this forward still
 requires its separately admitted SQL-control inventory and ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
 
+See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
+
 The platform owns its schema, migration history, and documented data contracts.
 An adopter owns tables and migrations for its own extensions in the `app` schema.
 The platform never writes there; the adopter owns extension compatibility and
@@ -47,6 +49,29 @@ coordination mechanism for a multi-instance deployment.
 The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
+
+## Retained renewal storage
+
+The account-choice forward also creates the service-only
+`subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
+`subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
+pg_temp`, revoke PUBLIC before conditional role ACL blocks and add no table
+privileges. Registration seals optional full retained delivery/acquisition terms
+in the existing purchase attachment, fixes its acquisition basis version on the
+server, and compares the authorization instant with UTC microsecond identity.
+The old zero-only registration and its completer remain unchanged. A completed
+attachment reader exposes the retained terms; no current-settings read or
+additional agreement table is introduced. Graduation uses existing subscription,
+line-collection and event privileges inside the host transaction. Retained order
+preparation uses existing item INSERT/DELETE and shipping-adjustment INSERT
+privileges, with the existing deferred line-sum guard. The subscription owner
+above defines those transaction and frozen-replay obligations.
+
+The same forward adds the three explicitly classified absorption-policy rows for
+stock waits, privacy erasures and subscription command receipts. The absorber
+still refuses an unclassified client-referencing table. Classification and access
+to any other earlier-row table remain that table's integration responsibility;
+the forward neither widens table grants nor changes the absorber.
 
 ## Partner acquisition data
 
@@ -1515,7 +1540,28 @@ Only qualified tables created earlier by unconditional `CREATE TABLE public.<nam
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
-another slot, an unqualified/IF NOT EXISTS creation, or any table GRANT refuses.
+another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
+except for the fixed notice-table allowance below.
+The native paid-notice slot alone may name `insertSelectTables`, whose complete
+value is pinned by the reader to `["public.subscription_notice_refusals"]`.
+It is an allowance, so it may precede the table's introduction. It authorizes
+nothing until that same forward creates the table earlier in its own file.
+Only the following exact statements are admitted inside the existing service-role
+existence shell:
+
+```sql
+GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;
+CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);
+```
+
+The quoted inner statement includes its final semicolon; different spelling,
+privilege order, an added `TABLE`, extra roles, column grants and grant options
+refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
+The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
+privileges; its one policy has that role alone. With the role absent, the guarded
+grant and policy do not run and the new table stays owner-only with RLS enabled.
+No other row or table gains this capability.
+
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
 restricted runtime retains the access required by its row after the revokes/RLS;
@@ -1550,7 +1596,10 @@ operator a forward creates for another operand type cannot hide what it adds:
 - Existing relations of every kind, indexes and TOAST tables included, keep their
   owner, privileges, row security, options and column privileges. A new relation of
   any kind is owned by the migration role and carries only its owner's table
-  privileges and no column privilege. Relations are matched by OID, so a forward
+  privileges and no column privilege. The pinned notice table above alone may
+  carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
+  the comparator checks the role, command, predicates and absence of grant options.
+  Every other new relation stays owner-only. Relations are matched by OID, so a forward
   that rewrites an existing table, for example by adding a column with a volatile
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
@@ -1720,6 +1769,12 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The opt-in [complete account consent choices](#complete-account-consent-choices)
+forward adds a distinct actor API and expands only the native sync purpose CHECK.
+It neither replaces the served newsletter routines nor backfills grants. Hosts
+configure its single sync target before selecting the new API; old callers retain
+their existing opt-in/withdrawal behaviour across the upgrade.
+
 The native [paid-email forward](../../db/platform/migrations/20261101231000_native_paid_email.sql)
 replaces the paid-notification trigger and promoted-draft functions, preserving
 their invoker headers. The existing paid event remains; the additional mail event uses order_<UUID>,
@@ -1878,8 +1933,12 @@ runtime/browser roles separately from function ACLs; it introduces neither RLS
 nor table grants. The existing reservation-table ACL stays unchanged. Local lots, locations,
 balance counters and movement history are outside this slice.
 
-The native abandoned-checkout wrapper locks the order then its intents, matching
-the preceding payment slot. It delegates aggregate cleanup to the existing
+The native abandoned-checkout wrapper locks the subscription root, order, intents,
+simulator attempts and their evidence, in that order. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without writing a receipt or
+changing the order, intent or holds. Terminal refused/expired attempts permit
+cancellation; captured or indeterminate attempts retain the money refusal.
+It delegates aggregate cleanup to the existing
 compensation routine and purchase transitions to the existing release routine in
 one transaction. Strict command receipts reject changed keyed input; paid,
 captured or indeterminate evidence prevents cancellation. It rejects renewal
@@ -2567,6 +2626,124 @@ The narrowed import moves receipt stores and their ledger contracts. Reference
 mail-provider timeline/send-ledger implementations remain at their existing
 owners; no provider mapping or new schema enters the package.
 
+### Complete account consent choices
+
+The opt-in native forward `20261101232000_customer_account_consents.sql` adds
+`customer_account_communication_choices_as_actor(uuid)` and
+`customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)`.
+These are actor SECURITY DEFINER boundaries: `auth.uid()` must own the supplied
+client. Authenticated callers receive EXECUTE only; preference, event, evaluator
+and sync tables receive no browser DML grant. A pinned `pg_catalog, pg_temp`
+search path and qualified references avoid caller name resolution. Invoker
+routines cannot write the deliberately ungranted preference/event tables.
+The existing newsletter actor reader/setter below retain their behaviour.
+Both newly created account tables revoke ALL from PUBLIC, anon, authenticated
+and service_role, with RLS enabled and no browser policies. Their definer
+routines retain the required access without direct caller table privileges.
+Table checks bound lengths, nonblank target identifiers and the two literal copy
+versions. The command refuses target control characters, derives a lowercase
+SHA-256 fingerprint and constructs the exact copy version for its closed purpose
+list. Privileged direct ledger writes no longer have table-level hex or
+purpose/version-pair validation; trusted installation code must preserve those
+rules. Customers have no direct ledger/configuration write path.
+
+The read returns `customer.account_communication_choices.v1`, with contact and
+both `marketingNewsletter` and `marketingGiftsDiscounts`. Each carries purpose,
+state, granted, source, reason, capture/update time and nullable consentCopyVersion.
+Absent permission is unknown; an owned client without an email returns null.
+Read creates no contact or permission. Gifts/discounts is independent of launch
+offer. Historical or externally changed evaluator rows retain their state and
+times, with null attribution when no matching account event proves it.
+
+The command accepts client UUID, purpose, boolean choice and idempotency key.
+It returns `customer.account_communication_choice_result.v1` with permissionEventId,
+nullable workId, replayed and current choices. A valid withdrawal with an owned
+client and non-null stored email commits the local preference (newsletter),
+evaluator denial and permission event immediately. Provider sync is optional:
+no usable target or unusable email yields workId=null and no outbox/sync row.
+A registration failure also rolls back only optional work for a withdrawal;
+grants still require usable email/target and atomic work registration. Null
+stored email and invalid command/key still refuse. A suppression always wins.
+Exact replay returns the stored event ID and work ID (including null) with
+current choices, without reapplying an old choice or filling in missing work.
+Conflicting reuse refuses with `account_consent_idempotency_conflict` (23505).
+Ownership is checked before replay disclosure.
+
+The new `customer_account_consent_events` ledger records requested choice and
+effective state separately, actor/client/email fingerprint, source/reason,
+copy version, client/route attribution, capture method/time and work ID. Copy
+versions are `customer_account_marketing_newsletter.v1` and
+`customer_account_marketing_gifts_discounts.v1`. A current suppression retains
+its state and original evaluator timestamps; an account choice never clears it.
+The requested choice remains audited, and sync work requests suppress. The read
+does not attribute an external suppression to a customer's grant event.
+
+A trusted migration/admin connection configures the single
+`customer_account_consent_sync_targets` row with binding, provider_kind and
+enabled=true before grants or provider registration. No target is seeded or
+inferred. Grants refuse missing/disabled targets or control characters in either
+identifier with `account_consent_sync_target_unavailable` (55000), and unusable
+email with `account_consent_email_invalid` (22023). A withdrawal records locally
+without that work when either prerequisite is unavailable. Customers cannot
+configure or select targets. The provider remains unaware of an unsynced denial;
+enabling a target later or replaying the original key does not enqueue it.
+The target is held stable through the command. Source/work IDs use the reserved
+`account-consent:<permission-event-uuid>` namespace; the account-specific command
+fingerprint binds its payload/target, while the aggregate and event type match
+the existing native sync rail. Hosts must not register that reserved source key
+through the separate TypeScript registration API.
+
+For an unusable non-null email, the local recipient fingerprint remains SHA-256
+of the normalized stored text, including an empty or otherwise invalid result;
+that string is never passed to provider registration. The withdrawal also denies
+recipient fingerprints previously recorded by this actor/client for this purpose,
+using the existing event ledger, so correcting back to an earlier granted
+address cannot resurrect its old grant. Each recipient's suppression and times
+remain protected. Event metadata records `recipientFingerprints` and
+`syncDeferredReason`; no extra raw email is copied into the ledger. A fresh valid
+address is a separate unknown/default-denied recipient, requiring an explicit
+new grant. The historical denial is retained, and replay never retargets it or
+reapplies it over a later choice. Database/JavaScript case-fold limits below
+still apply; there is no general automatic email-change/provider migration.
+
+Owner-only read of locally recorded withdrawals without work:
+
+```sql
+-- account-consent-unsynced-denials
+SELECT id, principal_id, client_id, purpose, recipient_fingerprint,
+       metadata->'recipientFingerprints' AS recipient_fingerprints,
+       source, reason, consent_copy_version, source_ref, captured_at,
+       metadata->>'syncDeferredReason' AS sync_deferred_reason
+FROM public.customer_account_consent_events
+WHERE requested_consent = false AND work_id IS NULL
+ORDER BY captured_at, id;
+```
+
+This audit query includes effective denials and retained suppressions, and may
+include historical withdrawals superseded by later explicit choices. It does
+not send or retry anything. Operators must reconcile current choices, usable
+addresses and trusted targets before any provider action; no reconciliation
+writer or automatic backfill is supplied here. Reference fields and idempotency
+keys can contain identifying strings: hosts should use opaque references. No
+erasure path for this consent history exists yet; transfer does not add one.
+
+`outbox_events` and `communication_native_sync_state` remain the sole sync rail,
+with the existing per-contact/target aggregate ordering and worker claims,
+leases, retry limits and finalizers. The purpose CHECK additionally admits
+`marketing_gifts_discounts`; host composition must classify that purpose as
+marketing in its evaluator registry. Nothing here activates provider transport.
+No array/jsonb parameter encoding is introduced by these SQL signatures.
+The [real PostgreSQL witness](../../tests/postgres/customerAccountConsents.test.ts)
+uses the restricted runtime login and `SET LOCAL ROLE authenticated` for actor
+calls, covering refusal, replay, suppression, rollback and worker consumption.
+Database lowercase normalization retains the locale/Unicode limits explained
+in the newsletter section below; no broader normalization parity is claimed.
+The native delivery-observation adapter suppresses newsletter, gifts/discounts,
+launch-offer and tester consent after a bounce or complaint. The account-consent
+PostgreSQL regression grants the three marketing purposes, applies each provider
+hold through the restricted runtime adapter and verifies suppressed evaluator
+state, callback replay and suppression retention after subsequent account grants.
+
 ### Account newsletter withdrawal upgrade
 
 After installing the complete portable chain containing
@@ -2922,3 +3099,15 @@ The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
 only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
+
+### Terminal native notice refusals
+
+The native lifecycle binding retains `subscription_notice_refusals` by the
+original `(source, source_id)`, for event and reminder sources only. Its reason
+is the existing `notice_policy_refused` code and its time is database-recorded.
+A refusal is terminal, including after recipient, control or consent changes;
+it never asserts a send or changes a transactional delivery receipt. The runtime
+can insert and read this RLS-protected record, with no update or delete access.
+Browser roles have no access. Connected capture and restore retain these opaque
+source identities and their refusal times so a store move cannot send them again.
+This table contains no recipient address, message content or free-form reason.

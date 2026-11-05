@@ -15,5 +15,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["client", "host", "installation", "owned", "shared", "test", "browser", "playwright.config.ts"]
+  "include": ["client", "host", "installation", "owned", "shared", "test", "browser", "playwright.config.ts", "playwright.database.config.ts"]
 }

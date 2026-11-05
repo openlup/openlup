@@ -34,6 +34,7 @@ CREATE TABLE public.commerce_destination_bindings (
 );
 ALTER TABLE public.commerce_destinations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commerce_destination_bindings ENABLE ROW LEVEL SECURITY;
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');
 
 -- Bounded parent reads; shipment preparation pins its document under dispatch's lock.
 CREATE FUNCTION public.commerce_read_destination(p_scope text,p_id uuid)
@@ -197,7 +198,7 @@ BEGIN
   UPDATE public.subscriptions SET updated_at=p_now WHERE id=s.id;
   SELECT parcel.* INTO sh FROM public.fulfillment_shipments parcel
    JOIN public.commerce_orders o ON o.id=parcel.order_id JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
-   WHERE c.subscription_id=s.id ORDER BY o.created_at DESC,parcel.sequence_no DESC,parcel.id DESC LIMIT 1;
+   WHERE c.subscription_id=s.id AND o.client_id=s.client_id ORDER BY o.created_at DESC,parcel.sequence_no DESC,parcel.id DESC LIMIT 1;
   parcel_reason:=CASE WHEN sh.id IS NULL THEN 'no_current_parcel' WHEN NOT coalesce(v_operator,false) THEN 'customer_future_only' ELSE NULL END;
   IF sh.id IS NOT NULL THEN
    PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||sh.id::text,0));
@@ -223,7 +224,9 @@ BEGIN
   END IF;
   INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
    VALUES(s.id,'subscription.customer_self_service.change_shipping_address','command:'||encode(sha256(convert_to(p_actor_id::text||':'||p_key,'UTF8')),'hex'),
-    jsonb_build_object('action','change_shipping_address','payload',jsonb_build_object('shippingAddressId',v_id),
+    jsonb_build_object('action','change_shipping_address','payload',jsonb_build_object('shippingAddressId',v_id)
+     ||CASE WHEN p_payload ? 'reason' THEN jsonb_build_object('reason',p_payload->'reason') ELSE '{}'::jsonb END,
+     'reason',NULLIF(p_payload->>'reason',''),
      'actorKind',CASE WHEN coalesce(v_operator,false) THEN 'operator' ELSE 'customer' END,'actorId',p_actor_id,
      'outcome',CASE WHEN moved THEN 'applied' ELSE 'applied_from_next_parcel' END,
      'appliesFrom',CASE WHEN moved THEN 'current_parcel' ELSE 'next_parcel' END,'futureDestinationId',v_id,
