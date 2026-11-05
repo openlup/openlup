@@ -6,7 +6,7 @@ Each source span is verbatim, with one-based inclusive line numbers and a SHA-25
 Package-local source paths are relative to this package; docs/platform paths are repository-relative.
 Relative links inside excerpts are relative to their original source file. Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":546,"endLine":575,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":45,"sha256":"44f0d36b7659dc91772b6f3ca10b932397000bfa259bb5e94b091acb49ae3a4f"},{"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":298,"endLine":320,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":546,"endLine":575,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"552fd2f21bb0d8be09235260eeea4b4735f5ac2b118ba698339bc7e920ae4609"},{"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":333,"endLine":355,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
@@ -45,8 +45,13 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## migration-data-ownership: Keep adopter data in its owned schema
 
-<!-- openlup-context {"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":45,"sha256":"44f0d36b7659dc91772b6f3ca10b932397000bfa259bb5e94b091acb49ae3a4f"} -->
+<!-- openlup-context {"id":"migration-data-ownership","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"552fd2f21bb0d8be09235260eeea4b4735f5ac2b118ba698339bc7e920ae4609"} -->
 ## Data ownership
+
+Native terminal replay replaces only `subscription_claim_due_renewal` while
+retaining its header, ACL, frozen-input comparison and subscription-first lock
+order. Terminal history precedes due eligibility; cancelled new work refuses.
+The subscription owner below defines the public behavior and proof.
 
 The native `20261101223000_subscription_purchase_renewal.sql` forward records
 purchase facts and renewal-attachment duties beside the existing activation
@@ -72,6 +77,8 @@ describes the codec and retry duties. Installing or releasing this forward still
 requires its separately admitted SQL-control inventory and ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
 
+See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
+
 The platform owns its schema, migration history, and documented data contracts.
 An adopter owns tables and migrations for its own extensions in the `app` schema.
 The platform never writes there; the adopter owns extension compatibility and
@@ -90,7 +97,7 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-<!-- openlup-context {"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":298,"endLine":320,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
+<!-- openlup-context {"id":"migration-forward-path","source":"docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":333,"endLine":355,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:

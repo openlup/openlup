@@ -1,6 +1,7 @@
 // Native supervisor process evidence, not a signature or remote attestation.
 import { createHash } from 'node:crypto';
 import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
+import { REGISTRY_PATHS } from './agent-review-registry.mjs';
 
 export const REVIEW_RULES_VERSION = 3;
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
@@ -85,7 +86,8 @@ export function ordinaryRepairPath(path) {
 function prefixSession(session, end) {
   const history = session.history.slice(0, end); const event = history.findLast(item => item.type === 'prepare');
   demand(event, 'coverage prefix has no candidate');
-  return { ...session, history, candidate: event.candidate, preparedAt: event.at, cycle: event.cycle };
+  const version = history.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
+  return { ...session, version, history, candidate: event.candidate, preparedAt: event.at, cycle: event.cycle };
 }
 export function coverageState(session) {
   demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
@@ -103,10 +105,14 @@ export function coverageState(session) {
     demand(edge.previous === digest(prior.history) && digest(edge.from) === digest({ base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree }), 'coverage prefix differs');
     demand(digest(event.intent) === digest(latestIntent(prior)) && event.authorSessionId === latestPrepare(prior).authorSessionId, 'coverage intent or author changed');
     const decision = verdict(prior, prior.candidate, event.at); demand(decision.ok, 'prior coverage is incomplete, expired or unresolved');
-    inherited = coverageState(prior);
-    demand(prior.candidate.rules?.version === 3 && candidate.rules.head === prior.candidate.rules.head, 'coverage policy changed');
+    const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union'].includes(edge.proof?.kind);
+    inherited = prior.version === 2 && portable ? {
+      earliest: Math.min(...currentReports(prior).filter(report => report.verdict === 'PASS').map(report => report.at)),
+      expires: legacyReviewExpiry(prior), base: prior.candidate.base, paths: prior.candidate.changedPaths,
+    } : coverageState(prior);
+    if (!portable) demand(prior.candidate.rules?.version === 3 && candidate.rules.head === prior.candidate.rules.head, 'coverage policy changed');
     if (edge.kind === 'integration') {
-      demand(candidate.integration && ['git', 'registry-union'].includes(edge.proof?.kind) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0;
+      demand(candidate.integration && (portable || ['git', 'registry-union'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0;
     } else {
       demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base &&
         edge.proof?.paths?.length > 0 && edge.proof.paths.every(ordinaryRepairPath) && edge.proof.modeChanged === false, 'repair delta is not ordinary');
@@ -279,6 +285,9 @@ export function admit({ receipt, observed, now }) {
   return result(true, 'reviewed', 'reviewed');
 }
 const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
+// Additional queue inputs must not change historical v3 fingerprints or floors.
+export const QUEUE_TOOLCHAIN_PATH = /^(?:\.nvmrc|(?:packages\/[^/]+\/)?(?:npm-shrinkwrap\.json|\.npmrc))$/u;
+export const PACKAGE_BUDGET = /^packages\/[\w.-]+\/release-gates\.json$/u;
 const plainObject = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 export function exportAdditions(before, after) {
   if (!plainObject(before) || !plainObject(after) || !plainObject(before.exports) || !plainObject(after.exports)) return null;
@@ -289,7 +298,7 @@ export function exportAdditions(before, after) {
   if (Object.keys(before.exports).some(key => !Object.hasOwn(after.exports, key) || JSON.stringify(before.exports[key]) !== JSON.stringify(after.exports[key]))) return null;
   return Object.keys(after.exports).filter(key => !Object.hasOwn(before.exports, key));
 }
-export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree, changedPaths = [], movedPaths = [], manifests = {} }) {
+export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree, changedPaths = [], movedPaths = [], manifests = {}, provenPaths = [] }) {
   if (!baseAncestor) return result(false, 'stale', 'reviewed base is not an ancestor of the queue base; merge main and re-review');
   if (reviewedTree === groupTree) return result(true, 'reviewed', 'unchanged tree');
   const exempt = movedPaths.filter(path => {
@@ -300,6 +309,8 @@ export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree
     return mainAdded !== null && prAdded !== null && groupAdded !== null && !mainAdded.some(key => prAdded.includes(key)) &&
       groupAdded.length === mainAdded.length + prAdded.length && [...mainAdded, ...prAdded].every(key => groupAdded.includes(key));
   });
-  if (predictedTree !== groupTree || movedPaths.some(path => !exempt.includes(path) && (changedPaths.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))))) return result(false, 'stale', 'group does not carry over; merge main and re-review');
-  return result(true, 'reviewed', exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');
+  if (predictedTree !== groupTree) return result(false, 'stale', 'group does not carry over; merge main and re-review');
+  const blocked = movedPaths.filter(path => !exempt.includes(path) && !provenPaths.includes(path) && (changedPaths.includes(path) || REGISTRY_PATHS.includes(path) || PACKAGE_BUDGET.test(path) || QUEUE_TOOLCHAIN_PATH.test(path) || TRUST_PATHS.some(pattern => pattern.test(path))));
+  if (blocked.length) return result(false, 'stale', `group does not carry over; merge main and re-review (${blocked.slice(0, 8).join(', ')})`);
+  return result(true, 'reviewed', provenPaths.length ? 'base move with proved independent changes' : exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');
 }

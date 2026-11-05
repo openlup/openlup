@@ -417,6 +417,59 @@ describe("tree-wide neutrality ratchet", () => {
     }
   }, 30_000);
 
+  it("admits the current roadmap provider matrix without changing the baseline", () => {
+    const { root, base } = installed();
+    const before = readFileSync(join(root, baselinePath));
+    put(root, "ROADMAP.md", readFileSync(join(sourceRoot, "ROADMAP.md")));
+    const result = cli(root, base);
+    expect(result.status, result.output).toBe(0);
+    expect(readFileSync(join(root, baselinePath))).toEqual(before);
+  });
+
+  it.each([
+    [["res", "end"].join(""), "ui-12"],
+    [["str", "ipe"].join(""), "ui-13"],
+    [["tp", "ay"].join(""), "ui-14"],
+    [["omni", "pack"].join(""), "ui-15"],
+  ])("refuses a third roadmap occurrence of %s", (vendor, category) => {
+    const { root, base } = installed();
+    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
+    expect([...contents.matchAll(new RegExp(`\\b${vendor}\\b`, "gi"))]).toHaveLength(2);
+    put(root, "ROADMAP.md", `${contents}\n${vendor}\n`);
+    const result = cli(root, base);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"ROADMAP.md": ${category} increased 0 -> 1`);
+  });
+
+  it("refuses the roadmap provider terms at other paths", () => {
+    const { root, base } = installed();
+    const contents = [["res", "end"], ["str", "ipe"], ["tp", "ay"], ["omni", "pack"]]
+      .map(parts => parts.join("")).join(" ");
+    for (const path of ["README.md", "docs/ROADMAP.md", "roadmap.md", "ROADMAP.md.txt", "src/example.ts"]) {
+      put(root, path, contents);
+      const result = cli(root, base);
+      expect(result.status, result.output).toBe(1);
+      for (const category of ["ui-12", "ui-13", "ui-14", "ui-15"]) {
+        expect(result.output).toContain(`${JSON.stringify(path)}: ${category} increased 0 -> 1`);
+      }
+      rmSync(join(root, path));
+    }
+  }, 30_000);
+
+  it.each([
+    [["d", "hl"].join(""), "ui-16"],
+    [["faktu", "rownia"].join(""), "ui-17"],
+    [String.fromCharCode(80, 76, 78), "ui-5"],
+    [debt, "brand"],
+  ])("refuses unrelated roadmap vocabulary in %s", (term, category) => {
+    const { root, base } = installed();
+    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
+    put(root, "ROADMAP.md", `${contents}\n${term}\n`);
+    const result = cli(root, base);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"ROADMAP.md": ${category} increased 0 -> 1`);
+  });
+
   it("fails closed when the fulfillment allowance exceeds the ui-15 scanner count", () => {
     const vendor = ["omni", "pack"].join("");
     const path = `packages/platform/src/fulfillment/${vendor}/client.ts`;

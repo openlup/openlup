@@ -23,7 +23,7 @@ export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
-export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping, summarizeThresholdShipping } from "./thresholdPolicy.js";
 
 /** Sparse canonical projections, never an install chain. */
 export const SHIPPING_MIGRATIONS = [

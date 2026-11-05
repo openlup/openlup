@@ -585,6 +585,9 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The channel suffix established the preceding selected-plan prefix of
+91 legacy units, 95 qualified units and 94 restricted units.
+
 The sandbox-attempt source suffix follows the M17 prefix described below. Its
 one additive native unit extends those prefix counts to legacy 92, qualified 96
 and restricted 95, with separate reference digests for all five installation
@@ -595,6 +598,22 @@ generic prepared-provider storage and real PSP qualification remain unavailable.
 The separate closed-class admission prerequisite and feature pins must precede
 submission; a local manifest entry alone grants no delivery or release authority.
 
+The G4 purchase-hold forward appends the same native forward path/hash to all three
+manifest selections, with a separate measured catalogue digest for each existing
+installation shape. It preserves every prior source pin and defines four bounded runtime entries
+and one owner-only admission helper rather than replacing ATP or renewal functions. Abandoned compensation wraps
+the unchanged aggregate donor and releases purchase holds atomically; it adds
+neither withdrawal markers nor raw runtime ledger grants. Source admission
+separately checks the closed native class and co-located whole-forward/function
+pins. The data owner records the accepted ownership shape and donor limits.
+The native destination suffix adds two private address/binding relations and
+four bounded routines without replacing an existing function. Native operator
+results add applied_from_next_parcel; callers must name that partial applicability
+or refuse it, never infer fully applied current-parcel success. The managed
+subscription result/decoder remain unchanged. Destination/event/outbox records
+commit atomically; parcel and money transitions do not depend on mail delivery.
+No saved address book, privacy erasure/export, or automatic host/mail wiring is
+provided. The source task and data owner describe the explicit limits.
 
 The M17 channel suffix appends two native units to each existing selected plan:
 legacy now has 91 units, qualified selections 95, and restricted selections 94.
@@ -605,6 +624,19 @@ The RPC catalogue records the normalized ingest and existing payment owner call
 sites. Managed settlement uses the existing ATP exposure hook and allocator;
 portable source capture/read/CAS declares physical conversion unavailable. Fresh
 qualification and privacy lifecycle capabilities remain outside this import.
+
+The native paid-notice suffix appends one source unit, preserving those exact
+prefixes: selected source plans now contain 92, 96 and 95 units respectively.
+All five installation-shape inventories are measured separately before and
+after applying the forward. The conditional grants expose only the eight
+existing native notice helpers to service_role; an absent legacy role receives
+no grant. Invoker rights and browser refusals remain unchanged. These manifests
+describe installation inputs, not authority to run jobs, disclose contacts or
+send messages. The [native notice binding](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+requires trusted scheduled-host admission and preserves transactional delivery receipt replay.
+The forward's separate class/pin admission and eventual package projection
+remain delivery prerequisites; a measured local catalog is not publication or
+provider qualification.
 
 Corrections to these unissued forwards keep their source hashes, packed SQL
 hash and measured fingerprints for all five installation shapes in agreement.
@@ -1088,12 +1120,15 @@ source commit identifies the measured base, scanner blob identities pin the
 counting implementation, and SHA-256 keys identify exact relative paths. Each
 count belongs to one path and category; a reduction elsewhere cannot pay for an
 increase, and a new path has no inherited allowance.
+The check applies its explicit opt-in adapter vocabulary allowances before
+comparing these counts, including the scoped root `ROADMAP.md` addition below.
 
 The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
 regardless of filename extension and inventories binary files. It refuses
 increases against both the comparison tree and the accepted baseline, including
-an increased baseline allowance. Regeneration may lower existing allowances;
-it cannot admit new debt except for the fixed diagnostic-fixture introduction
+an increased baseline allowance. Baseline regeneration may lower existing
+allowances. It cannot admit new baseline debt except for the fixed
+diagnostic-fixture introduction
 recorded in the checker. That introduction admits five exact SQL fixture files
 in category `ui-15`, verified by their complete SHA-256 bytes, original counts
 and accepted counts, against one full comparison commit. The explicit baseline
@@ -1103,7 +1138,8 @@ a reduction. Scanner pins and every other path, category and increase remain
 unchanged. These counts reuse the existing scanner semantics and do not expand
 a runtime contract or establish a stable preview channel.
 
-The opt-in communications adapters have a `ui-12` vocabulary allowance only
+Apart from the scoped root `ROADMAP.md` addition below, the opt-in
+communications adapters have a `ui-12` vocabulary allowance only
 inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
@@ -1118,9 +1154,15 @@ The two snapshot filename tokens are additionally allowed only in the platform
 release-gates file and publication catalogue; the two relative adapter entry
 tokens are allowed only in the package boundary test. The undeclared-subpath
 fixture uses a neutral vendor segment and needs no allowance.
-Only the ledger additionally allows bare adapter names. Neutral communications
-sources and contracts, other root content and other documentation remain
-checked; baseline counts and matcher pins are unchanged.
+The ledger additionally allows bare adapter names. The root `ROADMAP.md`
+provider matrix is the one scoped addition to these adapter vocabulary
+allowances, with at most two matches each for categories `ui-12`, `ui-13`,
+`ui-14` and `ui-15` at that exact path. A third match, those terms at other paths
+outside their existing adapter allowances, and every other counted term or
+category remain checked. Neutral communications sources and contracts, other
+root content and other documentation remain checked outside their existing
+allowances. The baseline and scanner pins are unchanged. See the
+[CONTRIBUTING neutrality check guidance](../../CONTRIBUTING.md#package-policy-and-release-checks).
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
 its CLI refusal tests in required root `test`. Managed pgTAP remains a raw
@@ -1296,9 +1338,21 @@ remaining source contents and modes. This is preview evidence, not stability.
 
 ## M05 parity seams
 
-Development-preview hosts may select five independent seams; omission preserves
+Development-preview hosts may select independent seams; omission preserves
 incumbent behavior. No route, policy, provider or new financial default is selected
 by importing them. These additive APIs need a minor package set.
+
+The existing catalog entry also supplies the opt-in
+`createPostgresCommerceQuoteCatalogReadPort`. It reuses strict SKU envelopes,
+then guards the current payload against the product/slug/pointer and complete
+revision tuple before excluding inactive products. Included products then undergo
+required host schema, semantic identity and canonical digest verification.
+Bounded keyset scanning refuses excess cardinality/pages, duplicate variant or
+code and repeated cursor without partial success. Known quote catalog errors
+retain their class; unexpected failures become authority unavailable. This is
+current-direct authority, without a publication-wide snapshot or head-qualified
+publication. See the [catalog package contract](../../packages/platform/README.md#catalog)
+for the callback, limits and existing runtime SELECT capability.
 
 `createPromotionQuoteAcceptance` accepts explicit `shippingTerms` on each issue
 and verify input. `projectPromotionQuoteMoney(quote, acquisitionTerms?, shippingTerms?)`
@@ -1610,13 +1664,17 @@ an owner in-band refusal is durably paired with its support receipt/audit.
 
 Native SQL refusals write exactly one support receipt and one audit, with zero
 owner/lifecycle/event/outbox/address/identity changes. Native email/phone/link
-port refusals and typed address refusal open no transaction. Same-UTC-day slide
-is a support-only noop after window/version checks. Required real database proofs
+port refusals open no transaction. The native new-address branch instead calls
+its bounded destination routine and returns the destination applicability result;
+`applied_from_next_parcel` retains the frozen current parcel and changes the
+subscription's future. Same-UTC-day slide is a support-only noop after
+window/version checks. Required real database proofs
 are [operator authority](../../tests/postgres/accountSupportOperatorAuthority.test.ts)
 and [upgrade/recovery replay](../../tests/postgres/accountSupportUpgrade.test.ts).
 
-Only link-then-subscription composition has a partial result: the completed link
-and the second command's refusal or unknown transport completion remain separate.
+Link-then-subscription composition preserves a partial result: the completed link
+and the second command's refusal, next-parcel application or unknown transport
+completion remain separate.
 Its callback is invoked before the second call without awaiting refresh. Email
 correction instead follows admission, exclusive execution claim, identity commit
 and settlement. A queued recovery notice is not proof of delivery, and an email

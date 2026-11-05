@@ -87,7 +87,7 @@ export async function linkThenApply(input: {
   void onLinked();
   try {
     const subscription = await apply();
-    return { outcome: "refusalCode" in subscription ? "partial" : "completed", link: linked, subscription };
+    return { outcome: "refusalCode" in subscription || subscription.outcome === "applied_from_next_parcel" ? "partial" : "completed", link: linked, subscription };
   } catch {
     return { outcome: "partial", link: linked, subscription: null };
   }

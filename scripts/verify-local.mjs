@@ -76,7 +76,7 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
     for (const step of plan.phases) {
       const current = await captureSessionCandidate(cwd, candidate.base, { env });
       if (!current.clean || current.head !== candidate.head || current.tree !== candidate.tree) throw new Error('candidate changed during local verification');
-      const argv = ['scripts/agent-review-session.mjs', 'verify-command', ...(broker && step.resource ? ['--resource', step.resource] : []), '--', ...step.command];
+      const argv = [fileURLToPath(new URL('./agent-review-session.mjs', import.meta.url)), 'verify-command', ...(broker && step.resource ? ['--resource', step.resource] : []), '--', ...step.command];
       const started = Date.now(); const log = join(directory, `${step.name}.log`);
       console.log(`Local verification: ${step.name}; resource=${broker && step.resource ? step.resource : 'direct'}; log=${log}`);
       const phase = await run(process.execPath, argv, cwd, { ...env, ...step.env }, log);

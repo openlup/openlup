@@ -62,14 +62,18 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, region_code=EXCLUDED.region_code,
         currency=EXCLUDED.currency, status=EXCLUDED.status, valid_from=EXCLUDED.valid_from`,
     [row.id, row.name, row.region_code, row.currency, row.status, row.valid_from]);
-    for (const row of seed.prices) await connection.query(`INSERT INTO public.price_entries
-      (id, price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active, valid_from)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET
-        price_list_id=EXCLUDED.price_list_id, variant_id=EXCLUDED.variant_id, mode=EXCLUDED.mode,
-        min_qty=EXCLUDED.min_qty, unit_price_minor=EXCLUDED.unit_price_minor,
-        amount_kind=EXCLUDED.amount_kind, active=EXCLUDED.active, valid_from=EXCLUDED.valid_from`,
-    [row.id, row.price_list_id, row.variant_id, row.mode, row.min_qty, row.unit_price_minor,
-      row.amount_kind, row.active, row.valid_from]);
+    for (const row of seed.prices) {
+      await connection.query(`INSERT INTO public.price_entries
+        (id, price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active, valid_from)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+      [row.id, row.price_list_id, row.variant_id, row.mode, row.min_qty, row.unit_price_minor,
+        row.amount_kind, row.active, row.valid_from]);
+      const existing = (await connection.query(`SELECT id, price_list_id, variant_id, mode, min_qty,
+        unit_price_minor, amount_kind, active, valid_from FROM public.price_entries WHERE id=$1 FOR SHARE`, [row.id])).rows[0];
+      if (!existing || Object.entries(row).some(([key, value]) => key === 'valid_from'
+        ? new Date(String(existing[key])).getTime() !== Date.parse(value as string)
+        : existing[key] !== value)) throw new Error('starter_price_seed_conflict');
+    }
     for (const { addressReference: row } of acquisitionAddresses) {
       await connection.query(`INSERT INTO acquisition_private.address_references
         (source, reference, revision, provenance, active) VALUES ($1,$2,$3,$4,true)

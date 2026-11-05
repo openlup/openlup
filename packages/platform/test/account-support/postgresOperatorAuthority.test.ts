@@ -12,12 +12,11 @@ it("keeps managed positional order and actual nested M10 receipt on success and 
   expect(actual).toEqual(result);
   expect(query).toHaveBeenCalledExactlyOnceWith("SELECT public.customer_support_apply_subscription_action_v1($1,$2,$3,$4,$5,$6,$7) AS result", ["operator", "subscription", "pause", input.payload, 4, "support-key", "1970-01-01T00:00:00.000Z"]);
 });
-it.each(["email", "phone", "link", "address"] as const)("native %s refuses without opening the executor", async action => {
+it.each(["email", "phone", "link"] as const)("native %s refuses without opening the executor", async action => {
   const query = vi.fn(); const authority = port(query);
   const actual = action === "email" ? await authority.correctSubjectEmail({ operatorId: "operator", subjectId: "subject", expectedEmail: "old", newEmail: "new", idempotencyKey: "email-key" })
     : action === "phone" ? await authority.correctSubjectPhone({ operatorId: "operator", subjectId: "subject", expectedPhone: "old", newPhone: "new", idempotencyKey: "phone-key" })
-    : action === "link" ? await authority.linkSubjectAccount({ operatorId: "operator", subjectId: "subject", expectedEmail: "old", authUserId: null, idempotencyKey: "link-key" })
-    : await authority.applySubscriptionAction({ ...input, subscriptionAction: "change_shipping_address" });
+    : await authority.linkSubjectAccount({ operatorId: "operator", subjectId: "subject", expectedEmail: "old", authUserId: null, idempotencyKey: "link-key" });
   expect(actual).toEqual({ outcome: "refused", refusalCode: "operator_subscription_authority_unavailable" }); expect(query).not.toHaveBeenCalled();
 });
 it.each([
@@ -41,4 +40,15 @@ it("native recovery awaits Web Crypto hashes for the injected token before query
     createHash("sha256").update(JSON.stringify({ action: "issue_recovery", subjectId: "subject", caseId: "case" })).digest("hex"),
     createHash("sha256").update("private-token").digest("hex"), "1970-01-02T00:00:00.000Z", "/repair?token=private-token",
   ]);
+});
+
+it("routes address through the bounded native routine and preserves next-parcel applicability", async () => {
+  const result = { outcome: "applied_from_next_parcel", subscriptionStatus: "active", nextCycleAt: null,
+    templateVersion: 4, eventId: "event", appliedBy: "customer_self_service_delegate", appliesFrom: "next_parcel",
+    futureDestinationId: "new-destination", replayed: true } as const;
+  const query = vi.fn(async () => ({ rows: [{ result }] }));
+  const addressInput = { ...input, subscriptionAction: "change_shipping_address", payload: { newAddress: { line1: "Synthetic" } } } as const;
+  expect(await port(query).applySubscriptionAction(addressInput)).toEqual(result);
+  expect(query).toHaveBeenCalledExactlyOnceWith("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,$6) AS result",
+    ["operator", "subscription", addressInput.payload, 4, "support-key", "1970-01-01T00:00:00.000Z"]);
 });

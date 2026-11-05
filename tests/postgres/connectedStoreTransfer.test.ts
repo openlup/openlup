@@ -1,4 +1,6 @@
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
+import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput } from "@openlup/platform/inventory";
+import { createPostgresDestinationPort, type DestinationDocument } from "@openlup/platform/commerce/server/destinations";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
@@ -10,6 +12,8 @@ import * as renewal from "@openlup/platform/subscriptions";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
+import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
@@ -39,10 +43,16 @@ type Installation = { owner: Pool; ownerUrl: string; runtime: Pool; restore: Poo
 let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
+let purchaseHold: PurchaseReservationInput, purchaseHoldId: string;
+let retainedCancellation: { idempotencyKey: string; orderId: string; reason: string };
 let identity: Awaited<ReturnType<typeof identityFixture>>;
+let consent: Awaited<ReturnType<typeof consentFixture>>;
+
 let payments: Awaited<ReturnType<typeof paymentTransferFixture>>;
 const paymentOptions = { dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered" };
 const paymentAt = "2026-10-30T12:00:00.123Z";
+let retainedDestination: DestinationDocument;
+let destinationCommand: { operator: string; subscription: string; payload: object; key: string; version: number };
 let media: { parent: string; sourceRoot: string; targetRoot: string; grant: string; confirmedRef: string; pendingRef: string;
   cleanupRef: string; partialTemp: string; census: OrderReviewMediaFilesystemCensus } | undefined;
 const mediaLimits = { maximumFiles: 20, maximumObjectBytes: 1024, maximumTotalBytes: 4096 };
@@ -58,6 +68,23 @@ const renewalFacts: renewal.NativeRenewalPurchaseFacts = {
   acquisitionRef: "acquisition:customer@example.invalid",
 };
 let retainedRenewal: { orderId: string; subscriptionId: string }, pendingRenewal: typeof retainedRenewal;
+const terminalNotices: { source: "event" | "reminder"; id: string }[] = [];
+async function dispatchNotices(installation: Installation, unresolvedClients: ReadonlySet<string> = new Set()) {
+  const store = createPostgresTransactionalDeliveryStore({ connectionString: installation.runtimeUrl });
+  const captured: string[] = [];
+  try {
+    const delivery = createTransactionalDelivery({ store, delivery: createCapturedTransactionalDelivery({ outcome: command => {
+      captured.push(command.idempotencyKey); return { state: "accepted" };
+    } }) });
+    const binding = renewal.createPostgresLifecycleMessages({ delivery: { send: delivery.send, readReceipt: store.readReceipt },
+      async withSession(work) { const db = await installation.runtime.connect(); try { return await work(noticeSessionWithRecipientFault(db, unresolvedClients)); } finally { db.release(); } },
+      async bind(notice) { return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug }; },
+    });
+    await binding.run(100);
+    return captured;
+  } finally { await store.close(); }
+}
+
 
 async function renewalPurchase(complete: boolean) {
   const call = async (name: string, values: unknown[]) => (await source.runtime.query(
@@ -197,6 +224,47 @@ async function identityFixture() {
   return { verifier, token, accessToken, principal: verified.principal };
 }
 
+type AccountChoices = { marketingNewsletter: { state: string; granted: boolean }; marketingGiftsDiscounts: { state: string; granted: boolean } };
+type AccountReceipt = { permissionEventId: string; workId: string | null; replayed: boolean; choices: AccountChoices };
+async function consentActor<T>(db: Installation, principal: string, sql: string, values: unknown[]): Promise<T> {
+  const client = await db.runtime.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+    await client.query("SET LOCAL ROLE authenticated");
+    expect((await client.query("SELECT current_user,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS superuser")).rows).toEqual([{ current_user: "authenticated", superuser: false }]);
+    const result = (await client.query<{ result: T }>(sql, values)).rows[0]!.result;
+    await client.query("COMMIT"); return result;
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
+const consentRead = (db: Installation, principal: string, client: string) => consentActor<AccountChoices>(db, principal,
+  "SELECT public.customer_account_communication_choices_as_actor($1) AS result", [client]);
+const consentSet = (db: Installation, principal: string, client: string, purpose: string, value: boolean, key: string) => consentActor<AccountReceipt>(db, principal,
+  "SELECT public.customer_account_communication_choice_set_as_actor($1,$2,$3,$4) AS result", [client, purpose, value, key]);
+async function consentFixture() {
+  // Only client ownership and trusted install-time configuration are fixture rows.
+  // Every preference, evaluator choice, permission event and sync work is written by its actor routine.
+  await source.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('retained-account','synthetic-provider',true)");
+  const principal = identity.principal.principalId;
+  const newsletter = await consentSet(source, principal, graph.client, "marketing_newsletter", true, "transfer-newsletter");
+  const giftGrant = await consentSet(source, principal, graph.client, "marketing_gifts_discounts", true, "transfer-gift-grant");
+  await source.owner.query("UPDATE public.customer_account_consent_sync_targets SET enabled=false");
+  const giftWithdraw = await consentSet(source, principal, graph.client, "marketing_gifts_discounts", false, "transfer-gift-withdraw");
+  expect(giftWithdraw.workId).toBeNull();
+  await source.owner.query("UPDATE public.customer_account_consent_sync_targets SET enabled=true");
+  const heldClient = randomUUID(), heldPrincipal = randomUUID(), email = "held-consent@example.invalid";
+  await source.owner.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)", [heldClient, email, heldPrincipal]);
+  await consentSet(source, heldPrincipal, heldClient, "marketing_gifts_discounts", true, "transfer-before-bounce");
+  const delivery = createPostgresDeliveryReconciliationPort({ connectionString: source.runtimeUrl }, { binding: "retained-account" }); ports.push(delivery);
+  const at = new Date().toISOString(), messageId = "synthetic:consent-transfer";
+  const send = await delivery.registerNetworkTarget({ sourceKey: messageId, messageId, recipientEmail: email,
+    templateReference: "synthetic", acceptedAt: at, evidence: "network_accepted" });
+  await delivery.applyObservation({ sendId: send.id, messageId, observationKey: messageId, kind: "bounced", occurredAt: at, recipientEmail: email, source: "callback" });
+  const heldGrant = await consentSet(source, heldPrincipal, heldClient, "marketing_gifts_discounts", true, "transfer-after-bounce");
+  return { principal, heldClient, heldPrincipal, newsletter, giftGrant, giftWithdraw, heldGrant,
+    choices: await consentRead(source, principal, graph.client), heldChoices: await consentRead(source, heldPrincipal, heldClient) };
+}
+
 async function mediaFixture() {
   const parent = await mkdtemp(join(await realpath(tmpdir()), "m14-connected-media-"));
   const sourceRoot = join(parent, "source"), targetRoot = join(parent, "target");
@@ -318,10 +386,59 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
     VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
+  consent = await consentFixture();
+
   retainedRenewal = await renewalPurchase(true);
   pendingRenewal = await renewalPurchase(false);
 
   payments = await paymentTransferFixture();
+  const purchaseOrder = randomUUID(), purchaseItem = randomUUID();
+  await source.owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+    inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+    VALUES('retained-stock','retained-sku',10,10,0,'sellable','2026-09-01','2027-12-01','retained','retained',$1)`, ["a".repeat(64)]);
+  const purchaseWriter = await source.owner.connect();
+  try {
+    await purchaseWriter.query("BEGIN");
+    await purchaseWriter.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'pending_payment','XXX',0)", [purchaseOrder, graph.client]);
+    await purchaseWriter.query("INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,$3,1,2,0,0)", [purchaseItem, purchaseOrder, sku]);
+    await purchaseWriter.query("COMMIT");
+  } catch (error) { await purchaseWriter.query("ROLLBACK"); throw error; } finally { purchaseWriter.release(); }
+  purchaseHold = { idempotencyKey: "retained-purchase-hold", orderId: purchaseOrder, stockSourceKey: "retained-stock",
+    items: [{ orderItemId: purchaseItem, skuId: sku, quantity: 2 }], paymentStatus: "created",
+    expiresAt: "2026-09-02T12:00:00.000Z", now: "2026-09-01T12:00:00.000Z", metadata: { note: "retained@example.invalid", padding: "x".repeat(32768) } };
+  purchaseHoldId = (await createPostgresPurchaseReservationPort(source.runtime).reserveOrderItems(purchaseHold)).reservations[0]!.reservationId;
+  const cancelledOrder = randomUUID(), cancelledItem = randomUUID();
+  const cancelledWriter = await source.owner.connect();
+  try {
+    await cancelledWriter.query("BEGIN");
+    await cancelledWriter.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'pending_payment','XXX',0)", [cancelledOrder, graph.client]);
+    await cancelledWriter.query("INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,$3,1,2,0,0)", [cancelledItem, cancelledOrder, sku]);
+    await cancelledWriter.query("COMMIT");
+  } catch (error) { await cancelledWriter.query("ROLLBACK"); throw error; } finally { cancelledWriter.release(); }
+  await source.owner.query("SELECT public.subscription_declare_provisional_activation($1,$2,28,'2026-09-01')", [randomUUID(), cancelledOrder]);
+  await createPostgresPurchaseReservationPort(source.runtime).reserveOrderItems({ ...purchaseHold, idempotencyKey: "retained-cancelled-hold", orderId: cancelledOrder,
+    items: [{ orderItemId: cancelledItem, skuId: sku, quantity: 2 }] });
+  retainedCancellation = { idempotencyKey: "retained-cancellation", orderId: cancelledOrder, reason: "retained@example.invalid" };
+  expect(await createPostgresAbandonedCheckoutCompensationPort(source.runtime, () => "2026-09-01T12:00:00Z").cancelAbandonedOrder(retainedCancellation)).toEqual({ cancelled: true });
+  const destinations = createPostgresDestinationPort(source.runtime);
+  retainedDestination = await destinations.registerOrder({ idempotencyKey: `destination-${graph.order}`, orderId: graph.order,
+    address: { recipientName: "Synthetic personal recipient", line1: "Synthetic personal street", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: "2026-09-01T12:00:00Z" });
+  await source.owner.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [admin]);
+  destinationCommand = { operator: admin, subscription: graph.subscription, key: `address-${graph.order}`,
+    version: Number((await source.runtime.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows[0].template_version),
+    payload: { newAddress: { recipientName: "Synthetic future recipient", line1: "Synthetic future street", city: "Fixture", postalCode: "00000", country: "ZZ" } } };
+  await source.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-01T12:00:00Z')", [admin, graph.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
+  for (const sourceKind of ["event", "reminder"] as const) {
+    for (const reason of ["missing_recipient", "disabled_control", "consent_refused"] as const) {
+      const seeded = await refusedNoticeSources(source.owner, sourceKind, reason, 1);
+      try {
+        expect(await dispatchNotices(source, seeded.unresolvedClients)).not.toContain(`subscription-notice:${sourceKind}:${seeded.refused[0]}`);
+        expect((await source.runtime.query("SELECT reason FROM public.subscription_notice_refusals WHERE source=$1 AND source_id=$2", [sourceKind, seeded.refused[0]])).rows)
+          .toEqual([{ reason: "notice_policy_refused" }]);
+        terminalNotices.push({ source: sourceKind, id: seeded.refused[0]! });
+      } finally { await seeded.changeCondition(); }
+    }
+  }
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -441,6 +558,39 @@ for (const table of ["payment_simulator_attempts", "payment_simulator_observatio
   expect(await census(target.owner)).toEqual(before);
 }, 30_000);
 
+// Solo without coverage: 6.30 s including restore; retain 30 s headroom.
+it("transfers purchase owners, lines and receipts losslessly and preserves replay and bounded capture", async () => {
+  for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
+    expect(packet.owned.find(value => value.table === table)?.rows.length).toBeGreaterThan(0);
+  }
+  const heldClient = await source.owner.connect();
+  try {
+    await heldClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_purchase_reservation_receipts"]) {
+      const index = packet.owned.findIndex(value => value.table === table);
+      const priorBytes = [...packet.compatible.tables, ...packet.owned.slice(0, index)]
+        .reduce((sum, rowset) => sum + rowset.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+      const bytes = packet.owned[index]!.rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
+      await expect(captureConnectedNativeStore({ sourceId: "bounded-purchase-metadata", catalogueId: selected.objectInventorySha256,
+        maximumRows: 10000, maximumBytes: priorBytes + bytes - 1, source: { withSnapshot: work => work({ query: (sql, values) => heldClient.query(sql, values ? [...values] : undefined) }) } }))
+        .rejects.toMatchObject({ code: "limit_exceeded", table });
+    }
+  } finally { await heldClient.query("ROLLBACK"); heldClient.release(); }
+  expect((await restore()).replayed).toBe(false);
+  const sourceRows = await census(source.owner), targetRows = await census(target.owner);
+  for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
+    expect(targetRows[table]).toEqual(sourceRows[table]);
+  }
+  expect((await restore()).replayed).toBe(true);
+  const cancellation = createPostgresAbandonedCheckoutCompensationPort(target.runtime, () => "2026-09-03T12:00:00Z");
+  expect(await cancellation.cancelAbandonedOrder(retainedCancellation)).toEqual({ cancelled: true });
+  await expect(cancellation.cancelAbandonedOrder({ ...retainedCancellation, reason: "changed" })).rejects.toMatchObject({ code: "23505" });
+  const port = createPostgresPurchaseReservationPort(target.runtime);
+  expect(await port.reserveOrderItems(purchaseHold)).toMatchObject({ replayed: true, reservations: [{ reservationId: purchaseHoldId }] });
+  await expect(port.reserveOrderItems({ ...purchaseHold, metadata: { note: "changed" } })).rejects.toMatchObject({ code: "23505" });
+  expect((await target.owner.query("SELECT count(*)::int n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1", [purchaseHold.orderId])).rows).toEqual([{ n: 1 }]);
+}, 30_000);
+
 // Solo median 3.55 s, max 3.61 s; allow headroom for hosted database contention.
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
@@ -457,6 +607,13 @@ it("refuses a native capture login that row security would silently filter", asy
       // The baseline dump can leave a pooled session with this setting off.
       await client.query("SET LOCAL row_security = on");
       expect((await client.query("SELECT count(*)::int AS rows FROM public.clients")).rows).toEqual([{ rows: 0 }]);
+      for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
+        expect(Number((await source.owner.query(`SELECT count(*) n FROM public.${table}`)).rows[0].n)).toBeGreaterThan(0);
+        expect((await client.query(`SELECT count(*)::int AS rows FROM public.${table}`)).rows).toEqual([{ rows: 0 }]);
+        await client.query("SAVEPOINT address_filter; SET LOCAL row_security=off");
+        await expect(client.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });
+        await client.query("ROLLBACK TO SAVEPOINT address_filter");
+      }
       await expect(captureConnectedNativeStore({ sourceId: "native-filtered-login", catalogueId: selected.objectInventorySha256,
         maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
         source: { withSnapshot: work => work({ query: async (sql, values) => {
@@ -691,6 +848,102 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
 }, 30_000);
 
+// Solo without coverage: 7.90 s; 30 s exceeds three times that measurement.
+it("retains actor-written consent history, replay, suppression and trusted target across a store move", async () => {
+  expect(pristine.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows).toEqual([]);
+  await target.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('different-target','synthetic-provider',false)");
+  try {
+    await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
+    expect((await target.owner.query("SELECT binding,enabled FROM public.customer_account_consent_sync_targets")).rows).toEqual([{ binding: "different-target", enabled: false }]);
+  } finally { await target.owner.query("DELETE FROM public.customer_account_consent_sync_targets"); }
+  await restore();
+  expect(await census(target.owner)).toEqual(await census(source.owner));
+  expect(await consentRead(target, consent.principal, graph.client)).toEqual(consent.choices);
+  expect(consent.choices).toMatchObject({ marketingNewsletter: { state: "granted", granted: true }, marketingGiftsDiscounts: { state: "denied", granted: false } });
+  expect(await consentRead(target, consent.heldPrincipal, consent.heldClient)).toEqual(consent.heldChoices);
+  expect(consent.heldChoices.marketingGiftsDiscounts).toMatchObject({ state: "suppressed", granted: false });
+  const beforeReplay = await census(target.owner);
+  for (const [key, purpose, value, receipt] of [
+    ["transfer-newsletter", "marketing_newsletter", true, consent.newsletter],
+    ["transfer-gift-grant", "marketing_gifts_discounts", true, consent.giftGrant],
+    ["transfer-gift-withdraw", "marketing_gifts_discounts", false, consent.giftWithdraw],
+  ] as const) expect(await consentSet(target, consent.principal, graph.client, purpose, value, key)).toEqual({ ...receipt, replayed: true, choices: consent.choices });
+  expect(await consentSet(target, consent.heldPrincipal, consent.heldClient, "marketing_gifts_discounts", true, "transfer-after-bounce"))
+    .toEqual({ ...consent.heldGrant, replayed: true, choices: consent.heldChoices });
+  await expect(consentSet(target, consent.principal, graph.client, "marketing_gifts_discounts", false, "transfer-gift-grant"))
+    .rejects.toMatchObject({ code: "23505", message: "account_consent_idempotency_conflict" });
+  expect(await census(target.owner)).toEqual(beforeReplay);
+  expect((await restore()).replayed).toBe(true);
+  const result = await consentSet(target, consent.heldPrincipal, consent.heldClient, "marketing_gifts_discounts", true, "target-still-held");
+  expect(result.choices.marketingGiftsDiscounts).toMatchObject({ state: "suppressed", granted: false });
+  expect((await target.owner.query("SELECT binding,provider_kind,event_kind FROM public.communication_native_sync_state WHERE work_id=$1", [result.workId])).rows)
+    .toEqual([{ binding: "retained-account", provider_kind: "synthetic-provider", event_kind: "suppress" }]);
+  expect((await target.owner.query("SELECT count(*)::int AS n FROM public.customer_account_consent_events")).rows[0].n)
+    .toBe(beforeReplay.customer_account_consent_events.length + 1);
+  expect((await target.owner.query("SELECT to_jsonb(t)::text AS value FROM public.customer_account_consent_sync_targets t")).rows.map(row => row.value))
+    .toEqual(packet.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows);
+}, 30_000);
+
+// Solo without coverage: 4.18 s; 30 s exceeds three times that measurement.
+it("counts personal consent history and attribution toward whole-capture row and byte limits", async () => {
+  const index = packet.owned.findIndex(table => table.table === "customer_account_consent_events");
+  const ledger = packet.owned[index]!;
+  expect(ledger.rows).toHaveLength(5);
+  const event = JSON.parse(ledger.rows[0]!) as Record<string, unknown>;
+  expect(event).toMatchObject({ source: "customer_communication_preferences", source_ref: { route: "/api/bff/customers/communication-preferences" } });
+  expect(event.recipient_fingerprint).toMatch(/^[0-9a-f]{64}$/);
+  expect(event.principal_id).toEqual(expect.any(String));
+  const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+  const priorRows = prior.reduce((total, table) => total + table.rows.length, 0);
+  const priorBytes = prior.reduce((total, table) => total + table.rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0), 0);
+  const ledgerBytes = ledger.rows.reduce((total, row) => total + Buffer.byteLength(row), 0);
+  for (const limits of [{ maximumRows: priorRows + ledger.rows.length - 1, maximumBytes: 64 * 1024 * 1024 },
+    { maximumRows: 10000, maximumBytes: priorBytes + ledgerBytes - 1 }]) {
+    await expect(captureConnectedNativeStore({ sourceId: "consent-limit-proof", catalogueId: selected.objectInventorySha256, ...limits,
+      source: { async withSnapshot(work) {
+        const client = await source.owner.connect();
+        try { await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); const result = await work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) }); await client.query("COMMIT"); return result; }
+        catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+      } },
+    })).rejects.toMatchObject({ code: "limit_exceeded", table: "customer_account_consent_events" });
+  }
+}, 30_000);
+
+// Solo without coverage: 6.52 s; 30 s exceeds three times that measurement.
+it("retains terminal event and reminder refusals after changed policy, restore and replay", async () => {
+  await restore();
+  const rows = async () => (await target.runtime.query(`SELECT source,source_id,reason,
+    to_char(refused_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,xmin::text,ctid::text
+    FROM public.subscription_notice_refusals ORDER BY source,source_id`)).rows;
+  const before = await rows();
+  expect(before).toHaveLength(6);
+  expect((await census(target.owner)).subscription_notice_refusals).toEqual((await census(source.owner)).subscription_notice_refusals);
+  for (let replay = 0; replay < 2; replay++) {
+    const sent = await dispatchNotices(target);
+    for (const notice of terminalNotices) expect(sent).not.toContain(`subscription-notice:${notice.source}:${notice.id}`);
+    expect(await rows()).toEqual(before);
+  }
+  expect((await restore()).replayed).toBe(true);
+  expect(await rows()).toEqual(before);
+}, 30_000);
+
+// Solo without coverage: 3.85 s; 30 s exceeds three times that measurement.
+it("counts terminal refusal source identities and times toward capture row and byte limits", async () => {
+  const index = packet.owned.findIndex(table => table.table === "subscription_notice_refusals");
+  const retained = packet.owned[index]!;
+  expect(retained.rows).toHaveLength(6);
+  const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+  const rowCount = prior.reduce((sum, table) => sum + table.rows.length, 0);
+  const bytes = prior.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+  for (const limits of [{ maximumRows: rowCount + 5, maximumBytes: 64 * 1024 * 1024 },
+    { maximumRows: 10000, maximumBytes: bytes + retained.rows.reduce((total, row) => total + Buffer.byteLength(row), 0) - 1 }]) {
+    await capture(source.owner, "terminal-refusal-limits", limits).then(() => { throw new Error("Expected the terminal refusal capture limit"); },
+      (error: { code: string; table?: string }) => expect({ code: error.code, table: error.table })
+        .toEqual({ code: "limit_exceeded", table: "subscription_notice_refusals" }));
+  }
+}, 30_000);
+
+
 it("checks the identity mapper's erased-subject and conflict branches with synthetic records", async () => {
   const issuer = "https://issuer.example.invalid/managed";
   const liveManagedId = randomUUID(), erasedManagedId = randomUUID(), adminManagedId = randomUUID(), revokedManagedId = randomUUID();
@@ -851,6 +1104,45 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   freshTarget: pristine, targetOwner: target.owner })).rejects.toMatchObject({ code: "target_conflict", table: "clients" });
   expect(before.clients).toEqual([]);
 }, 30_000);
+
+// Solo without coverage: 4.97 s including restore; retain 30 s headroom.
+it("retains private destinations, scoped bindings, support replay and exact address data after restore", async () => {
+  await restore();
+  // The existing census compares every field in UTC without truncating stored microseconds.
+  const targetRows = await census(target.owner), sourceRows = await census(source.owner);
+  for (const table of ["commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts", "customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
+    expect(targetRows[table]).toEqual(sourceRows[table]);
+  }
+  const original = await createPostgresDestinationPort(target.runtime).registerOrder({ idempotencyKey: `destination-${graph.order}`, orderId: graph.order,
+    address: { recipientName: "Synthetic personal recipient", line1: "Synthetic personal street", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: "2026-09-02T12:00:00Z" });
+  expect(original).toEqual(retainedDestination);
+  const replay = await target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z') result", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
+  expect(replay.rows[0].result).toMatchObject({ replayed: true });
+  await expect(target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z')", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version + 1, destinationCommand.key])).rejects.toMatchObject({ code: "23505" });
+}, 30_000);
+
+// Solo without coverage: 3.68 s including restore; retain 30 s headroom.
+it("enforces actual cumulative row and byte limits at EACH address relation", async () => {
+  for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
+    const index = packet.owned.findIndex(t => t.table === table);
+    const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+    const rowsBefore = prior.reduce((n, t) => n + t.rows.length, 0);
+    const bytesBefore = prior.reduce((n, t) => n + t.rows.reduce((m, row) => m + Buffer.byteLength(row), 0), 0);
+    const relation = packet.owned[index]!;
+    expect(relation.rows.length).toBeGreaterThan(0);
+    for (const limits of [
+      { maximumRows: rowsBefore + relation.rows.length - 1, maximumBytes: 64 * 1024 * 1024 },
+      { maximumRows: 10000, maximumBytes: bytesBefore + relation.rows.reduce((n, row) => n + Buffer.byteLength(row), 0) - 1 },
+    ]) {
+      await expect(captureConnectedNativeStore({ sourceId: "address-bounded", catalogueId: selected.objectInventorySha256, ...limits,
+        source: { async withSnapshot(work) { const client = await source.owner.connect();
+          try { await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); return await work({ query: (sql, args) => client.query(sql, args ? [...args] : undefined) }); }
+          finally { await client.query("ROLLBACK"); client.release(); }
+        } } })).rejects.toMatchObject({ code: "limit_exceeded", table });
+    }
+  }
+}, 30_000);
+
 
 it("drains every target acquisition command before opening a new installation-key namespace", async () => {
   const sourcePort = createPostgresPartnerAcquisitionPort({ connectionString: source.ownerUrl });

@@ -17,12 +17,12 @@ export interface FulfillmentCommerceOrder {
 }
 export interface FulfillmentOrdersListRequest { page: number; pageSize: number; status?: FulfillmentCommerceOrder['status'] }
 export interface FulfillmentOrderDetailRequest { fulfillmentOrderId?: string; orderId?: string }
-export interface FulfillmentOrdersListResponse { contractVersion: 'commerce.fulfillment.v0'; orders: FulfillmentCommerceOrder[]; totalCount: number; page: number; pageSize: number }
-export interface FulfillmentOrderDetailResponse { contractVersion: 'commerce.fulfillment.v0'; order: FulfillmentCommerceOrder }
+export interface FulfillmentOrdersListResponse<Order = FulfillmentCommerceOrder> { contractVersion: 'commerce.fulfillment.v0'; orders: Order[]; totalCount: number; page: number; pageSize: number }
+export interface FulfillmentOrderDetailResponse<Order = FulfillmentCommerceOrder> { contractVersion: 'commerce.fulfillment.v0'; order: Order }
 /** Host-owned persisted projections. Payment statuses already come from the payments projection. */
-export interface FulfillmentCommerceReadPort {
-  listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse | FulfillmentNativeUnsupported>;
-  getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse | null | FulfillmentNativeUnsupported>;
+export interface FulfillmentCommerceReadPort<Order = FulfillmentCommerceOrder> {
+  listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse<Order> | FulfillmentNativeUnsupported>;
+  getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse<Order> | null | FulfillmentNativeUnsupported>;
 }
 export interface FulfillmentShipmentsOverviewRequest { shippedFilter: 'today' | '7d' | '30d' | 'all' }
 /** Bucket rows are opaque host data; native shipment counts cannot replace these buckets. */
