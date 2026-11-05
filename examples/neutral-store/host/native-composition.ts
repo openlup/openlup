@@ -60,9 +60,9 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   } });
   const capabilities = composeExistingCapabilities({ executor: pool, connectionString });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
-  const recoveryLane = createPostgresRoleFreeTransactionLane({ connectionString });
+  const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const recovery = {
-    tokens: createPostgresCheckoutRecoveryTokenPort(recoveryLane),
+    tokens: createPostgresCheckoutRecoveryTokenPort(checkoutRecoveryTokenLane),
     deliver: async (input: Parameters<ReturnType<typeof createCheckoutRecoveryDelivery>>[0]) => {
       const admittedOrigin = input.context.actor.requestOrigin;
       if (!admittedOrigin) throw new Error('starter_recovery_origin_required');
@@ -72,8 +72,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery), ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
-  const email = (value: unknown): value is string => typeof value === 'string' && value.length <= 160
-    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   const pad = (started: number) => setTimeout(Math.max(0, 400 - (Date.now() - started)));
   const verify = (kind: 'customer' | 'operator'): ActionBinding => async (payload, context) => {
     if (typeof payload.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(payload.token) || !context.setCookie) return refused('starter_input_invalid');
@@ -83,10 +83,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     context.setCookie(sessions.cookie(session.accessToken));
     return success({ expiresAt: session.expiresAt });
   };
-  actions['auth.request'] = async payload => {
-    if (!email(payload.email)) return refused('starter_input_invalid');
+  actions['auth.request'] = async (payload, context) => {
+    if (!email(payload.email, context.config.purchase.inputLimits.email)) return refused('starter_input_invalid');
     const started = Date.now();
-    await customer.requestChallenge(payload.email);
+    await customer.requestChallenge(payload.email.trim());
     await pad(started);
     return success({ accepted: true });
   };
@@ -94,9 +94,9 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   actions['auth.callback'] = verify('customer');
   actions['auth.operator'] = async (payload, context) => {
     if (payload.token !== undefined) return verify('operator')(payload, context);
-    if (!email(payload.email)) return refused('starter_input_invalid');
+    if (!email(payload.email, context.config.purchase.inputLimits.email)) return refused('starter_input_invalid');
     const started = Date.now();
-    await operator.requestChallenge(payload.email, async () => { await pad(started); await context.accept?.(); });
+    await operator.requestChallenge(payload.email.trim(), async () => { await pad(started); await context.accept?.(); });
     return success({ accepted: true });
   };
   actions['auth.signOut'] = async (_payload, context) => {
@@ -175,6 +175,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       const profile = await asCustomer(session.principalId, db => createPostgresCustomerMePort(db).getCustomerMe(session.principalId));
       return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
-    async close() { sessions.close(); await Promise.all([capabilities.close(), recoveryLane.close(), contacts.close(), operators.close(), pool.end()]); },
+    async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), pool.end()]); },
   };
 }

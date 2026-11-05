@@ -339,3 +339,54 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- A policy refusal completes the original source without claiming delivery.
+CREATE TABLE public.subscription_notice_refusals (
+  source text NOT NULL CHECK (source IN ('event', 'reminder')),
+  source_id uuid NOT NULL,
+  reason text NOT NULL CHECK (reason = 'notice_policy_refused'),
+  refused_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (source, source_id)
+);
+ALTER TABLE public.subscription_notice_refusals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.subscription_notice_refusals FROM PUBLIC;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
+    EXECUTE 'REVOKE ALL ON TABLE public.subscription_notice_refusals FROM anon';
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+    EXECUTE 'REVOKE ALL ON TABLE public.subscription_notice_refusals FROM authenticated';
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+    EXECUTE 'REVOKE ALL ON TABLE public.subscription_notice_refusals FROM service_role';
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+    EXECUTE 'GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;';
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+    EXECUTE 'CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);';
+  END IF;
+END;
+$$;

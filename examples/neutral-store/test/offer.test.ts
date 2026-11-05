@@ -242,3 +242,16 @@ test('fictional market formats validate without a named deployment market', () =
     assert.throws(() => assertConfig({ ...config, market }), { message: 'starter_market_invalid' });
   }
 });
+
+
+for (const original of Object.values(configurations)) test(`${original.id}: admission independently enforces native cadence, line and quantity bounds`, () => {
+  const config = offerFixture(original);
+  config.offer.cadenceDays = [120, 121]; config.offer.maxUnits = 100;
+  const input = { ...cart(config), mode: 'subscription', cadenceDays: 120 };
+  assert.ok(evaluateOffer(config, input).ok);
+  assert.deepEqual(evaluateOffer(config, { ...input, cadenceDays: 121 }), { ok: false, issues: [{ code: 'cadence_unavailable' }] });
+  assert.equal(evaluateOffer(config, { ...input, lines: [{ sku: config.offer.products[0]!.sku, quantity: 100 }] }).ok, false);
+  config.offer.products = Array.from({ length: 51 }, (_, index) => ({ ...config.offer.products[0]!, sku: `BOUND-${index}` }));
+  assert.deepEqual(evaluateOffer(config, { ...input, lines: config.offer.products.map(product => ({ sku: product.sku, quantity: 1 })) }),
+    { ok: false, issues: [{ code: 'cart_invalid' }] });
+});

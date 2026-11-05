@@ -26,9 +26,8 @@ for (const original of Object.values(configurations)) test(`${original.id}: owne
   config.offer.subscriptionDiscountBps = 700;
   config.offer.subscriptionRoundingQuantumMinor = 25;
   config.offer.shippingMinor = 900; config.offer.freeShippingFromMinor = 9000;
-  config.purchase.inputLimits = { text: 80, postalCode: 20, email: 180, name: 40, phone: 24 };
+  config.purchase.inputLimits = { text: 80, postalCode: 20, email: 140, name: 40, phone: 24 };
   config.purchase.reservationMinutes = 15;
-  config.purchase.acceptLinkedContacts = false;
   config.purchase.stock.quantities[config.offer.products[0]!.sku] = 27;
   config.purchase.stock.providerRef = 'changed-stock-source'; config.purchase.stock.syncRunId = 'changed-stock-revision';
   config.purchase.stock.collectedAt = '2020-01-01T00:00:00Z'; config.purchase.stock.staleAfter = '2990-01-01T00:00:00Z';
@@ -59,6 +58,9 @@ test('invalid stock bounds, quantities, input limits and hold lifetime refuse', 
     (config: typeof configurations[string]) => { config.purchase.stock.staleAfter = config.purchase.stock.collectedAt; },
     (config: typeof configurations[string]) => { config.purchase.stock.quantities[config.offer.products[0]!.sku] = -1; },
     (config: typeof configurations[string]) => { config.purchase.inputLimits.text = 0; },
+    (config: typeof configurations[string]) => { config.purchase.inputLimits.email = 161; },
+    (config: typeof configurations[string]) => { config.purchase.inputLimits.text = 201; },
+    (config: typeof configurations[string]) => { config.purchase.inputLimits.postalCode = 33; },
     (config: typeof configurations[string]) => { config.purchase.reservationMinutes = 0; },
     (config: typeof configurations[string]) => { config.purchase.tax.vatRateBps = -1; },
     (config: typeof configurations[string]) => { config.purchase.sandbox.recoveryUrlPath = 'https://example.test'; },
@@ -73,4 +75,28 @@ test('nonzero renewal shipping refuses while the native contract requires zero',
   const config = structuredClone(Object.values(configurations)[0]!);
   config.offer.renewalShippingMinor = 300;
   assert.throws(() => assertConfig(config), /starter_renewal_shipping_unsupported/);
+});
+
+
+for (const original of Object.values(configurations)) test(`${original.id}: native configuration boundaries refuse before composition`, () => {
+  const valid = structuredClone(original);
+  valid.offer.cadenceDays = [120]; valid.offer.defaultCadenceDays = 120;
+  valid.purchase.tax.legalBasis = 'x'.repeat(200);
+  valid.legal.revision = 'x'.repeat(64);
+  valid.purchase.stock.quantities[valid.offer.products[0]!.sku] = 2147483647;
+  assertConfig(valid);
+  for (const mutate of [
+    (config: typeof valid) => { config.offer.cadenceDays = [121]; config.offer.defaultCadenceDays = 121; },
+    (config: typeof valid) => { config.offer.cadenceDays = [120, 121]; },
+    (config: typeof valid) => { config.offer.defaultCadenceDays = 121; },
+    (config: typeof valid) => { config.purchase.stock.quantities[config.offer.products[0]!.sku] = 2147483648; },
+    (config: typeof valid) => { config.offer.products[0]!.unitPrice.amountMinor = 2147483648; },
+    (config: typeof valid) => { config.offer.subscriptionDiscountBps = 10000; },
+    (config: typeof valid) => { config.purchase.tax.legalBasis = 'x'.repeat(201); },
+    (config: typeof valid) => { config.legal.revision = 'x'.repeat(65); },
+    (config: typeof valid) => { config.legal.revision = ' padded '; },
+  ]) {
+    const invalid = structuredClone(valid); mutate(invalid);
+    assert.throws(() => assertConfig(invalid), /starter_(offer|purchase_configuration|product|configuration)_invalid/);
+  }
 });

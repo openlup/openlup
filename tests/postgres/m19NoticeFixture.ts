@@ -1,9 +1,53 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
 import { createOutboxOrderPaidEmailHandler } from "@openlup/platform/commerce/server";
 import type { TransactionalDeliveryReceiptStore } from "@openlup/platform/communications";
 import type { createTransactionalDelivery } from "@openlup/platform/communications";
+
+let sourceSequence = 1;
+export async function refusedNoticeSources(owner: Pool, source: "event" | "reminder",
+  refusal: "missing_recipient" | "disabled_control" | "consent_refused", count: number) {
+  const ids: string[] = [], clients: string[] = [], unresolvedClients = new Set<string>();
+  const template = source === "event" ? "subscription-welcome" : "subscription-renewal-upcoming";
+  for (let index = 0; index <= count; index++) {
+    const id = `00000000-0000-4000-8000-${String(sourceSequence++).padStart(12, "0")}`;
+    const refused = index < count, subscription = randomUUID();
+    const client = randomUUID();
+    if (refused && refusal === "missing_recipient") unresolvedClients.add(client);
+    ids.push(id); clients.push(client);
+    // Installer-only source/policy fixtures. Dispatch and terminal writes use the real runtime.
+    await owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+    // Queued historical sources do not ask the automatic future-reminder producer for extra work.
+    await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2001-01-01T00:00:00Z')", [subscription, client]);
+    if (source === "event") await owner.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key)
+      VALUES($1,$2,$3,$4)`, [id, subscription, refused ? "subscription.activated" : "subscription.customer_self_service.cancel", `terminal-fixture:${id}`]);
+    else await owner.query(`INSERT INTO public.subscription_reminder_ledger(id,subscription_id,reminder_kind,reminder_day)
+      VALUES($1,$2,$3,'2001-01-01')`, [id, subscription, refused ? "renewal_due_soon" : "pause_ending"]);
+    if (refused && refusal === "consent_refused") await owner.query("SELECT public.communications_record_recipient_consent($1,'transactional','suppressed',now())",
+      [createHash("sha256").update(`${client}@example.invalid`).digest("hex")]);
+  }
+  if (refusal === "disabled_control") await owner.query("INSERT INTO public.communication_delivery_controls(control_key,enabled) VALUES($1,false)", [template]);
+  return { source, unresolvedClients, refused: ids.slice(0, count), eligible: ids[count]!, async changeCondition() {
+    unresolvedClients.clear();
+    if (refusal === "disabled_control") await owner.query("DELETE FROM public.communication_delivery_controls WHERE control_key=$1", [template]);
+    for (const client of new Set(clients.slice(0, count))) {
+      if (refusal === "consent_refused") await owner.query("SELECT public.communications_record_recipient_consent($1,'transactional','granted',now())",
+        [createHash("sha256").update(`${client}@example.invalid`).digest("hex")]);
+    }
+  } };
+}
+
+/** A bounded recipient-read fault, not a fabricated result or schema/privilege change.
+ * Valid native FKs and nonempty email exclude an absent client in an ordinary fixture.
+ * The installed runtime still executes the real reader on the same held session. */
+export function noticeSessionWithRecipientFault(db: PoolClient, unresolvedClients: ReadonlySet<string>) {
+  return { query(text: string, values?: unknown[]) {
+    const unresolved = text === "SELECT public.dunning_lifecycle_recipient($1::uuid) AS recipient"
+      && unresolvedClients.has(String(values?.[0]));
+    return db.query(text, unresolved ? [null] : values);
+  } };
+}
 
 /** Only catalog/prices are installer seed data. Draft, lines, intent and paid events use native writers. */
 export async function nativeNoticeOrder(admin: Pool, runtime: Pool, clientId?: string, mode: "one_time" | "subscription" = "one_time") {

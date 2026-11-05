@@ -11,7 +11,7 @@ import {
 import { createPostgresLifecycleMessages, type NativeLifecycleNotice } from "@openlup/platform/subscriptions";
 import type { CapturedTransactionalDeliveryPort } from "@openlup/platform/communications";
 import type { OutboxEventRow } from "@openlup/core/outbox";
-import { capturedPaidHandler, nativeNoticeOrder } from "./m19NoticeFixture.js";
+import { capturedPaidHandler, nativeNoticeOrder, refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
 import { fixture as shipmentFixture } from "../helpers/fulfillmentNative.js";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
@@ -419,10 +419,10 @@ it("bounds mail-only lock waits and restores the settlement caller's timeout", a
   }
 });
 
-function noticeBinding(store: ReturnType<typeof createPostgresTransactionalDeliveryStore>, captured: CapturedTransactionalDeliveryPort, observed: NativeLifecycleNotice[]) {
+function noticeBinding(store: ReturnType<typeof createPostgresTransactionalDeliveryStore>, captured: CapturedTransactionalDeliveryPort, observed: NativeLifecycleNotice[], unresolvedClients: ReadonlySet<string> = new Set()) {
   const delivery = createTransactionalDelivery({ store, delivery: captured });
   return createPostgresLifecycleMessages({ delivery: { send: delivery.send, readReceipt: store.readReceipt },
-    async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
+    async withSession(work) { const db = await runtime.connect(); try { return await work(noticeSessionWithRecipientFault(db, unresolvedClients)); } finally { db.release(); } },
     async bind(notice, recipient) {
       expect(recipient.email).toContain("@example.invalid"); observed.push(notice);
       return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug };
@@ -678,4 +678,105 @@ it("joins the real future-only destination writer to one customer notice and pre
     expect(captures).toEqual([`client:${f.client}`]);
     expect(await destinations.read("shipment", f.shipment)).toEqual(original);
   } finally { await store.close(); }
+});
+
+
+// Solo without coverage: largest new bounded witness 0.23 s; retain a 30 s per-case bound.
+it.each((["event", "reminder"] as const).flatMap(source =>
+  (["missing_recipient", "disabled_control", "consent_refused"] as const).flatMap(refusal =>
+    ([1, 25] as const).map(limit => ({ source, refusal, limit })))))(
+  "terminally refuses $source/$refusal before eligible work with batch $limit", async ({ source, refusal, limit }) => {
+    const seeded = await refusedNoticeSources(admin, source, refusal, limit);
+    const capturedKeys: string[] = [], observed: NativeLifecycleNotice[] = [];
+    const store = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+    const captured = createCapturedTransactionalDelivery({ outcome: command => {
+      capturedKeys.push(command.idempotencyKey); return { state: "accepted" };
+    } });
+    let storeClosed = false;
+    const keys = seeded.refused.map(id => `subscription-notice:${source}:${id}`);
+    const terminal = async () => (await runtime.query(`SELECT source,source_id,reason,
+      to_char(refused_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,xmin::text,ctid::text
+      FROM public.subscription_notice_refusals WHERE source=$1 AND source_id=ANY($2::uuid[]) ORDER BY source_id`, [source, seeded.refused])).rows;
+    try {
+      const binding = noticeBinding(store, captured, observed, seeded.unresolvedClients);
+      for (let run = 0; run <= limit; run++) await binding.run(limit);
+      expect(capturedKeys.filter(key => key === `subscription-notice:${source}:${seeded.eligible}`)).toHaveLength(1);
+      expect(capturedKeys.some(key => keys.includes(key))).toBe(false);
+      const before = await terminal();
+      expect(before).toHaveLength(limit);
+      expect(before.every(row => row.reason === "notice_policy_refused")).toBe(true);
+      expect((await runtime.query("SELECT idempotency_key FROM public.transactional_delivery_receipts WHERE idempotency_key=ANY($1::text[])", [keys])).rows).toEqual([]);
+      await seeded.changeCondition();
+      // A fresh binding/session and store prove restart without an in-memory refusal cache.
+      await store.close(); storeClosed = true;
+      const restarted = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+      try {
+        await noticeBinding(restarted, captured, observed).run(100);
+        await noticeBinding(restarted, captured, observed).run(100);
+      } finally { await restarted.close(); }
+      expect(await terminal()).toEqual(before);
+      expect(capturedKeys.some(key => keys.includes(key))).toBe(false);
+      expect(observed.some(notice => seeded.refused.includes(notice.id))).toBe(false);
+    } finally { await seeded.changeCondition(); if (!storeClosed) await store.close(); }
+  }, 30_000,
+);
+
+it.each([1, 25])("advances through a mixed event/reminder refusal queue with batch %i", async limit => {
+  const seeded: Awaited<ReturnType<typeof refusedNoticeSources>>[] = [];
+  const observed: NativeLifecycleNotice[] = [], capturedKeys: string[] = [];
+  const store = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+  const captured = createCapturedTransactionalDelivery({ outcome: command => { capturedKeys.push(command.idempotencyKey); return { state: "accepted" }; } });
+  try {
+    for (const source of ["event", "reminder"] as const) for (const refusal of ["missing_recipient", "disabled_control", "consent_refused"] as const) {
+      seeded.push(await refusedNoticeSources(admin, source, refusal, limit === 1 ? 1 : seeded.length === 0 ? 5 : 4));
+    }
+    const unresolved = new Set(seeded.flatMap(row => [...row.unresolvedClients]));
+    const ids = seeded.flatMap(row => row.refused);
+    const terminal = async () => (await runtime.query(`SELECT source,source_id,reason,refused_at::text,xmin::text,ctid::text
+      FROM public.subscription_notice_refusals WHERE source_id=ANY($1::uuid[]) ORDER BY source,source_id`, [ids])).rows;
+    const binding = noticeBinding(store, captured, observed, unresolved);
+    for (let run = 0; run <= ids.length + seeded.length; run++) await binding.run(limit);
+    const last = seeded[seeded.length - 1]!;
+    expect(ids.every(id => id < last.eligible)).toBe(true);
+    expect(capturedKeys.filter(key => key === `subscription-notice:${last.source}:${last.eligible}`)).toHaveLength(1);
+    const before = await terminal(); expect(before).toHaveLength(limit === 1 ? 6 : 25);
+    for (const row of seeded) await row.changeCondition();
+    await noticeBinding(store, captured, observed).run(100);
+    await noticeBinding(store, captured, observed).run(100);
+    expect(await terminal()).toEqual(before);
+    for (const row of seeded) for (const id of row.refused) expect(capturedKeys).not.toContain(`subscription-notice:${row.source}:${id}`);
+  } finally { for (const row of seeded) await row.changeCondition(); await store.close(); }
+}, 30_000);
+
+
+it("snapshots the terminal refusal table's exact columns, RLS and runtime-only append/read ACL", async () => {
+  expect((await admin.query(`SELECT a.attname,format_type(a.atttypid,a.atttypmod) AS type
+    FROM pg_attribute a WHERE a.attrelid='public.subscription_notice_refusals'::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`)).rows)
+    .toEqual([{ attname: "source", type: "text" }, { attname: "source_id", type: "uuid" },
+      { attname: "reason", type: "text" }, { attname: "refused_at", type: "timestamp with time zone" }]);
+  expect((await admin.query(`SELECT relrowsecurity AS rls FROM pg_class WHERE oid='public.subscription_notice_refusals'::regclass`)).rows).toEqual([{ rls: true }]);
+  expect((await admin.query(`SELECT grantee::regrole::text AS role,privilege_type,is_grantable FROM pg_class c,
+    LATERAL aclexplode(c.relacl) WHERE c.oid='public.subscription_notice_refusals'::regclass AND grantee<>c.relowner ORDER BY 1,2`)).rows)
+    .toEqual([{ role: "service_role", privilege_type: "INSERT", is_grantable: false }, { role: "service_role", privilege_type: "SELECT", is_grantable: false }]);
+  expect((await admin.query(`SELECT roles::text[] AS roles,cmd,qual,with_check FROM pg_policies
+    WHERE schemaname='public' AND tablename='subscription_notice_refusals'`)).rows)
+    .toEqual([{ roles: ["service_role"], cmd: "ALL", qual: "true", with_check: "true" }]);
+  expect((await runtime.query(`SELECT has_table_privilege(current_user,'public.subscription_notice_refusals','INSERT') AS insert,
+    has_table_privilege(current_user,'public.subscription_notice_refusals','SELECT') AS read,
+    has_table_privilege(current_user,'public.subscription_notice_refusals','UPDATE') AS update,
+    has_table_privilege(current_user,'public.subscription_notice_refusals','DELETE') AS delete`)).rows)
+    .toEqual([{ insert: true, read: true, update: false, delete: false }]);
+  await expect(runtime.query("UPDATE public.subscription_notice_refusals SET reason='notice_policy_refused' WHERE false")).rejects.toMatchObject({ code: "42501" });
+  await expect(runtime.query("DELETE FROM public.subscription_notice_refusals WHERE false")).rejects.toMatchObject({ code: "42501" });
+  const db = await runtime.connect();
+  try {
+    for (const role of ["anon", "authenticated"]) {
+      await db.query("BEGIN");
+      try { await db.query(`SET LOCAL ROLE ${role}`); await expect(db.query("SELECT * FROM public.subscription_notice_refusals")).rejects.toMatchObject({ code: "42501" }); }
+      finally { await db.query("ROLLBACK"); }
+      await db.query("BEGIN");
+      try { await db.query(`SET LOCAL ROLE ${role}`); await expect(db.query("INSERT INTO public.subscription_notice_refusals(source,source_id,reason) VALUES('event',$1,'notice_policy_refused')", [randomUUID()])).rejects.toMatchObject({ code: "42501" }); }
+      finally { await db.query("ROLLBACK"); }
+    }
+  } finally { db.release(); }
 });

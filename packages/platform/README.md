@@ -212,6 +212,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
+| `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
@@ -480,9 +481,10 @@ address export/erasure is unavailable. No saved address book is provided.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
-Full postal addresses, contact phone numbers and identifying reference strings persist. Use opaque references;
+Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
 there is no address export or erasure path. No saved address book is provided.
 The port's PostgreSQL routines are included in the native migration chain.
+Address-change events retain the optional command reason in their top-level and nested payloads.
 The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
 
 `./composition` exports the inert `createCommerceContribution` for the installed
@@ -744,7 +746,9 @@ definer entries, with no runtime helper or table grant.
 routine closes the pending order, created intents and provisional activation,
 then releases its purchase holds in the same transaction. It retains strict
 keyed replay, refuses renewal orders and leaves existing payment/uncertainty
-facts untouched. The host withholds this operation for uncertain dispatch.
+facts untouched. A dispatched simulator attempt refuses without writes with
+`provider_attempt_in_flight`; captured or indeterminate attempts retain the money
+refusal. The host withholds this operation for uncertain dispatch.
 Dedicated promotion cancellation (`cancelUnstartedPromotionOrder`) remains
 unbound on native PostgreSQL. No table grant, withdrawal marker or provider
 dispatch is added. Install the complete catalogue and compose the binding
@@ -755,7 +759,7 @@ identifying strings, as can receipt metadata. Hosts should use opaque references
 and keep personal details out of those fields. There is no erasure path for
 these retained reservations, receipts or compensation history yet.
 
-`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Preview availability subtracts all live holds, remaining subscription demand inside 14 days and channel exposure, clamped at zero. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
+`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand inside 14 days, clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
@@ -1303,6 +1307,10 @@ changes the preference without granting consent. Earlier opt-outs need the
 [operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
 which also documents the provider-sync and email-change limits.
 
+The native delivery adapter suppresses newsletter, gifts/discounts, launch-offer
+and tester consent on a bounce or complaint. Complete account choices and their
+actor command boundary are documented in [Data and migrations](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#complete-account-consent-choices).
+
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.
 See the [communications recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import) for migration, email rendering and native operations.
 
@@ -1559,10 +1567,18 @@ The subscriptions entry also exports `createNativeSubscriptionBinding`,
 opt-in native composition and persistence boundaries; hosts supply readiness,
 transactions, a shared population lease and exact payment-attempt readback.
 The binding freezes the destination under the claim lock. Lower-level hosts
-supply the transaction callback to `createPostgresRenewalStore`. Until cycle
-shipping quotes are available, `shippingQuoteRef` is the typed
-`{ kind: "zero_shipping", shippingAmountMinor: 0 }` marker, never a real quote.
-This rail refuses non-zero renewal shipping amounts.
+supply the transaction callback to `createPostgresRenewalStore` and
+`createPostgresRenewalSettlementPort`. Retained `native.renewal-terms.v1` facts
+freeze delivery pricing and optional second-delivery/graduation terms from the
+accepted server offer. Threshold shipping uses product payable after discounts:
+paid below, free at or above the configured threshold. Fixed paid shipping also
+requires the retained-terms document. New threshold or paid-shipping snapshots carry the actual
+`retained_shipping` marker; other zero-shipping snapshots keep their original
+wire and fingerprint. Graduation runs under the subscription lock before the
+first unlocked third delivery, preserving add-ons and customer-edited normal
+cadences without moving the due anchor. Preparation projects discounted product
+positions and a separate shipping charge in one transaction; replay adds neither.
+A retained snapshot refuses preparation without the supplied transaction runner.
 See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 for destination claim transactions and qualification limits.
 
@@ -1617,6 +1633,21 @@ in `./subscriptions`; `createSubscriptionContribution` is in `./composition`.
 They are default-off and describe one host executor/job. The
 [composed module recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 owns explicit selection, frozen mandate/replay, M04 delivery and M12 boundaries.
+
+`createPostgresLifecycleMessages` consumes the native notice queue through an
+explicit trusted host. Its optional `dispatch` policy defaults to a 60-second
+lease, 6 attempts and a 900-second transient backoff. `recovered.windowSeconds`
+defaults to 172800. These are neutral safety defaults. Starter hosts must supply
+all four values explicitly from their typed configuration. Values are strictly
+validated positive PostgreSQL integers.
+Operator repair notices inherit their latest customer failure template and retain
+their own identity. Returned transient failures requeue using the SQL clock,
+explicit final failures settle failed, and exceptions retain the sending lease.
+Accepted receipts reconcile before binding. Current recovered-case truth and an
+inclusive recency cutoff gate unaccepted recovered history. The run result
+reports `requeued` separately. Hosts retain rendering, token authority and
+idempotent private-capture readback. The [lifecycle owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+defines these policies and the attempt-ceiling repair boundary.
 
 ## Invoicing contracts
 
@@ -1786,7 +1817,7 @@ host may still inject its opaque-token generator. Managed email admission
 and claim precede identity mutation and settlement. Native lifecycle commands
 delegate to M10, with actual optional owner receipts and named unavailable
 subcases. Link-then-action reports a completed link separately when the second
-command refuses or fails. The reference binding is default-off and unmounted;
+command refuses, applies from the next parcel or fails. The reference binding is default-off and unmounted;
 no import provisions authority or activates a route.
 
 R5a adds `createAccountSupportBindings` and `createAccountSupportServices` here,

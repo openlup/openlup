@@ -358,7 +358,7 @@ loudly. Replace this fictional registry and its onboarding for a customer enviro
 
 Operator customer search/detail remain unbound because the native reader
 requires a separate communications operator roster entry. The host does not
-provision that authority. Other unbound operator actions retain their named refusals; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+provision that authority. Broader payment/operator recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
 
 
 ## Guest purchase and later sign-in
@@ -368,9 +368,9 @@ Checkout creation uses the public contact registrar after attempt admission. Sig
 session's native client, never a browser-supplied client identifier.
 
 An unverified e-mail does not authorize reading an existing order or changing a
-client. With the existing policy enabled, an already linked contact can receive
-another order without exposing its account. The single host condition
-`purchase.acceptLinkedContacts` can instead require sign-in for that case.
+client. A guest purchase for an e-mail whose contact already has an account
+attaches the order to that existing client, without an account read or rewrite.
+The public answer does not depend on whether an account exists.
 
 An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
@@ -380,7 +380,11 @@ The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token, and a new token replaces the previous one.
+The committed continuity proof consists of the source continuity test and the
+clean-index root proof, which needs only npm ci and the three-package build,
+without a starter build or browser. A real-browser second-submit check was
+confirmed in a local run that is not part of the committed suite.
 Native inspection allows payment only for an active pending order, recognizes
 an already-paid order without payment controls, and refuses expired, cancelled
 or unavailable links. Indexed hash lookup makes no constant-time claim.
@@ -423,7 +427,22 @@ refuse loudly. Resolve a deliberate price change through the application's
 onboarding decision rather than relying on a silent seed overwrite.
 
 Attempt limits live in one process's memory and reset on restart.
-Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay precedes quotas; denied attempts add nothing. The synchronous process-local callback fails closed. Unpurchased contact retention belongs to the host.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
+
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters
+by configuration validation. Both demonstrations use 160. Longer purchase e-mails
+receive `starter_email_invalid` before contact resolution. Checkout and subscription
+address changes share the configured phone and postal-code limits; configuration
+cannot exceed the native destination bounds. Browser fields use those same limits.
+
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.
 
 ## Recovery admission and private capture
 

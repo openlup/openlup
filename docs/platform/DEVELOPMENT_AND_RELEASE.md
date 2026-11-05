@@ -33,7 +33,7 @@ fresh native review, checks and protected release approval retain their roles.
 | Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate, bound to its fork point (`git merge-base HEAD origin/main`); a branch behind `main` stays verifiable and pushable without a rebase. Where installed, run `openlup-dev verify` on the clean committed tree; pre-push refuses a task-worktree push without its stamp. Elsewhere, run the required check commands, or the [bounded local integration alternative](../../CONTRIBUTING.md#native-review-and-accountability) when proved eligible. |
 | Draft PR | Authorized branch push and PR creation | Sonar can analyze it. Published Tree CI jobs skip drafts; skipped jobs are not passing evidence. |
 | Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Post `agent-review-session.mjs receipt <PR>` output with `gh pr comment <PR> --body-file -` as soon as the PR is open and ready. After all other prerequisites, actual merge authority permits enabling auto-merge once while source checks are pending. Native admission still waits for six actual successes and that receipt. |
-| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The source receipt admits the group when the review carries over: an unchanged tree, or a group that is exactly the reviewed change on its base (checked with `git merge-tree`) whose net base change avoids the change's paths and the admission, identity-binding, dependency and migration machinery. Otherwise the group is rejected: merge `main` and re-review, then post the new source receipt. |
+| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The [canonical carry-over proof](../../CONTRIBUTING.md#merge-queue) compares the exact integrated tree and the base delta. A refusal requires the applicable committed integration or fresh review. |
 | Main | A merge commit produces a main push | Expensive commands reuse a complete successful merge-group run only for the exact same commit; otherwise they run again. DCO, policy/neutrality and secret checks run for the push; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
 | Package release | Authorized dispatch of `publish-package.yml` for a reviewed SHA on main's first-parent line, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
@@ -201,6 +201,14 @@ The 2026-10-02 settings inspection found the native queue and npm-stage
 variables enabled and the ruleset requiring six mechanical statuses plus
 `native-review`. This is dated activation evidence, not a promise about another
 repository or future settings.
+
+For a prepared branch that predates portable review, use a clean checkout of
+the fetched, trusted main to run the review command from that branch's working
+directory. For example, run
+`node /absolute/path/to/trusted-main/scripts/agent-review-session.mjs receipt PR_NUMBER`
+or `node /absolute/path/to/trusted-main/scripts/verify-local.mjs`. They read the
+branch's existing session and execute checks in its own worktree. Keep the
+configured stack pin and installed hook and stamp requirements.
 
 The admission script is checked out from `main`, but the job YAML comes from
 the PR or merge-group tree. A candidate can replace `native-review` with a

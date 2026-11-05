@@ -24,6 +24,15 @@ export interface NativeRetryDriverOptions {
   classifyFailure(reason: string): string;
 }
 
+/** Internal value matcher; not re-exported by a package entry. */
+export function canonicalUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
+  if (!/^[\da-f]{4}(?:-?[\da-f]{4}){7}$/i.test(raw)) return null;
+  const hex = raw.replaceAll("-", "").toLowerCase();
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+}
+
 export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
   const store = createPostgresRetryStore(options.executor);
   async function propagateFailure(operationId: string, key: string, input: NativeRetryFailure) {
@@ -78,18 +87,20 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         } else {
           if (!row.nextRetryAt || nativeInstant(row.nextRetryAt) > nativeInstant(now)) continue;
           const mandate = await options.readFrozenMandate(snapshot);
-          const input = options.retryInput(snapshot, row);
+          const supplied = options.retryInput(snapshot, row);
+          const paymentIntentId = canonicalUuid(supplied.paymentIntentId), orderRef = canonicalUuid(supplied.orderRef);
+          const input = { ...supplied, paymentIntentId: paymentIntentId ?? supplied.paymentIntentId, orderRef: orderRef ?? supplied.orderRef };
           const authorizations = (await options.executor.query(`SELECT a.method_ref FROM public.subscription_retry_recovery_authorizations a
             JOIN public.subscription_retry_obligations o ON o.id=a.obligation_id
             WHERE o.renewal_operation_id=$1::uuid AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL`, [operationId])).rows;
           const method = authorizations[0]?.method_ref ?? mandate.paymentMethodRef;
           if (!mandate.authorized || mandate.authorizationRef !== snapshot.authorizationRef || input.paymentMethodRef !== method
-            || input.paymentIntentId !== row.settlementIntentId || input.orderRef !== row.orderId
+            || paymentIntentId !== row.settlementIntentId || orderRef !== row.orderId
             || input.amountMinor !== snapshot.pricingSnapshot.totalAmountMinor || input.currency !== snapshot.pricingSnapshot.currency) {
             throw new Error("subscription_retry_frozen_mandate_mismatch");
           }
           options.validateInput(input);
-          const request: NativeRetryRequest = { paymentIntentId: input.paymentIntentId, orderRef: input.orderRef,
+          const request: NativeRetryRequest = { paymentIntentId, orderRef,
             amountMinor: input.amountMinor, currency: input.currency, idempotencyKey: input.executionIdempotencyKey,
             providerIdempotencyKey: input.externalIdempotencyKey, providerRequestFingerprint: input.requestFingerprint,
             paymentMethodRef: input.paymentMethodRef };
