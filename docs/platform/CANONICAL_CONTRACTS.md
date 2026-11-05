@@ -692,8 +692,8 @@ lock and conflict completion tail that both qualified plans select after their
 issued tails, and all sixteen earlier rows stay fixed. The approval itself adds
 no active SQL, manifest row, inventory or package change. The identical active
 SQL follows as its own change, after the delivery destination forward whose
-created state it guards. Both plans select it last: the qualified plan has 100
-units and the restricted plan 99, with four newly measured inventories; the
+created state it guards. Both plans select it last: the qualified plan has 103
+units and the restricted plan 102, with four newly measured inventories; the
 legacy plan is unchanged.
 
 The reference qualified selection declares actual migration/bootstrap/runtime

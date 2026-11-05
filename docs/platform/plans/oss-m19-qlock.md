@@ -105,13 +105,13 @@ four qualified inventories are measured again on PostgreSQL 16:
 
 | Plan | Installer shape | Digest prefix |
 |---|---|---|
-| qualified | bootstrap | `9ee6a028` |
-| qualified | separate | `2448c3e0` |
-| restricted | installer-managed | `fdc06f9f` |
-| restricted | operator-provisioned | `d6ed5d76` |
+| qualified | bootstrap | `3f7044a5` |
+| qualified | separate | `0f3b53ca` |
+| restricted | installer-managed | `1454db63` |
+| restricted | operator-provisioned | `1c3d47d5` |
 
 The composition, restore and upgrade witnesses pin these values and the new unit
-counts: qualified 100, restricted 99, legacy 95 unchanged.
+counts: qualified 103, restricted 102, legacy 98 unchanged.
 
 The [witness](../../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
 runs on `qualified-v2` and on operator-provisioned `qualified-admin`. Each run
@@ -157,18 +157,26 @@ uses an actual restricted runtime login. It proves:
   a renamed table, disabled or forced row security, an extra policy, a table
   grant and a column grant.
 
-The existing pins of these limits on the destination and purchase-hold
-witnesses become positive proofs on the restricted runtime:
+The existing pins of these limits on the destination, purchase-hold,
+retained-renewal and notice-delivery witnesses become positive proofs on the
+restricted runtime:
 
 - operator pause, resume and slide apply with one support command;
 - absorption applies without destinations, replays, and refuses one lead
   destination by name with only its command and audit rows added;
+- absorption of a lead blocked by a privacy erasure, a command receipt or a
+  stock wait refuses by that table, not by destinations, with only its command
+  and audit rows added, and the unblocked lead applies and replays;
+- operator recovery issuance records one command, one notice and one token,
+  and its replay adds none;
 - command cancellation beside purchase owners applies without changing them;
 - the stale promotion sweep cancels its order, while the runtime still has no
   table-wide claim-event `SELECT`.
 
 The issued-prefix observation in the purchase-hold setup still refuses,
-because that prefix ends before this unit.
+because that prefix ends before this unit. The account-consents witness now
+expects this tail after its forward on every qualified profile, and no tail on
+legacy.
 
 The legacy and managed chains are untouched: the legacy plan and its inventory
 are unchanged, and no `supabase/` path changes.

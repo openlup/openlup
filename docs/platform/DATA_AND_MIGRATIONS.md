@@ -2024,8 +2024,8 @@ client, but that table had row security and no runtime access at all.
 One shared completion tail closes these gaps. It is the approved seventeenth
 qualified identity. Both qualified plans select it once, after their issued
 tails and at the same position among shared units, so later shared forwards
-still append identically. The qualified plan now has 100 units and the
-restricted plan 99; legacy is unchanged.
+still append identically. The qualified plan now has 103 units and the
+restricted plan 102; legacy is unchanged.
 
 The tail must follow the delivery destination forward. Its guard refuses the
 whole unit unless that table exists in its created state: owned by the
@@ -2069,8 +2069,9 @@ It also refuses every actual update, every other claim-event and destination
 read, and every destination write, and enumerates every role that reaches each
 target. The guard refuses the unit for a missing, renamed, unprotected or
 force-protected destination table and for any extra policy or grant on it.
-Existing destination and purchase-hold witnesses now apply the lifecycle
-commands, the claim sweep and absorption through the restricted runtime.
+Existing destination, purchase-hold, retained-renewal and notice-delivery
+witnesses now apply the lifecycle commands, operator recovery issuance, the
+claim sweep and absorption through the restricted runtime.
 
 The separate `qualified-admin` generation starts with its issued 91-unit prefix
 and appends current shared forwards. It is not an upgrade, relabel or migration-history conversion from
