@@ -1299,3 +1299,28 @@ cases before those later mutations. The full transfer suite passes all 21 cases 
 every existing assertion and capture refusal. Lesson:
 exercise a retained-graph limit against its bounded source fixture, rather than
 assuming a shared source is unchanged after every unrelated case.
+
+## Accepted terminal-refusal delivery
+
+The maintainer accepted the case-A port: the reference adopter terminally settles
+policy-refused sources, so this binding retains that completion instead of
+re-evaluating it after a later policy change. The approved 29-bound record remains
+one four-column table in the existing slot, with RLS and runtime INSERT/SELECT
+only; delivery receipts, dunning and the public API remain unchanged. The
+control-reader dependency is #552 and its separately landed registry value is
+#553. This feature changes neither control nor native-store class data; it uses
+the accepted canonical statement bytes and rebinds its own forward hashes.
+
+The reference adopter's alternate direct renewal-reminder scan can starve. That
+is a separate adopter finding, recorded privately with source evidence; no
+adopter code is changed here. The accepted durable outbox-completion mechanism
+is the port source. Restricted-runtime mixed queues, changed conditions,
+restart, transfer, ACL and replay witnesses remain the acceptance proof.
+
+The supervisor authorizes signed repair/record commits, a signed main integration,
+pre-review checks, publication to the existing draft #534, native repair review,
+canonical verification and the front-gated landing script. No release or other
+pull-request action is authorized. The current instruction pin is
+9342b3f2cebf99d0d2c9d458954fb9ab758e6eb1, separate from the recorded source base.
+The prior staged-read statements are historical; the accepted repair is now
+committed and its source-review findings remain open until fresh native review.
