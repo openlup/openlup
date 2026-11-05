@@ -31,6 +31,10 @@ it("checks packaged owner fields, native superset and narrow executor fit with t
 it.each(["managed", "native"] as const)("reports the truthful %s action/subcase table", graph => {
   const cap = operatorAuthorityCapabilities(graph);
   for (const action of ["email", "phone", "link", "address", "shortBand", "unpaidResume", "preparedAttemptPause"] as const) {
+    if (graph === "native" && action === "address") {
+      expect(cap[action], action).toEqual({ supported: true });
+      continue;
+    }
     expect(cap[action], action).toEqual(graph === "managed" ? { supported: true } : { supported: false, refusalCode: "operator_subscription_authority_unavailable" });
   }
   expect([cap.pause, cap.resume, cap.slide]).toEqual([{ supported: true }, { supported: true }, { supported: true }]);
@@ -65,4 +69,15 @@ it("managed recovery sends Web Crypto hashes and a fresh opaque token to the aut
   }]);
   await port.issueRecovery(input);
   expect(rpc.mock.calls[1]![1]).not.toHaveProperty("p_token_hash", args.p_token_hash);
+});
+
+it("names the partial native outcome and refuses malformed scope without widening managed decoding", () => {
+  const partial = { outcome: "applied_from_next_parcel", subscriptionStatus: "active", nextCycleAt: null,
+    templateVersion: 2, eventId: "event", appliedBy: null, appliesFrom: "next_parcel",
+    futureDestinationId: "destination", replayed: false };
+  expect(nativeSubscriptionCommand(partial)).toEqual(partial);
+  expect(() => subscriptionCommand(partial)).toThrow("response_invalid");
+  for (const change of [{ appliesFrom: "current_parcel" }, { futureDestinationId: "" }, { replayed: undefined }]) {
+    expect(() => nativeSubscriptionCommand({ ...partial, ...change })).toThrow("response_invalid");
+  }
 });

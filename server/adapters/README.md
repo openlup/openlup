@@ -120,6 +120,15 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+Native destination transfer includes commerce_destinations (full immutable postal addresses and contact phone numbers), commerce_destination_bindings (scoped owner/destination references),
+subscription_command_receipts and the support command/audit ledgers. Restore
+parents precede documents/bindings and ledger actors. Owner snapshot authority,
+writer exclusion, unknown-table refusal, PostgreSQL row encoding and cumulative
+row/byte limits remain required. Both address relations have table-specific
+limit and filtered-login witnesses. Reference strings may identify people; use
+opaque values. This retained transfer is not address privacy export or erasure;
+no such path exists yet. The most sensitive stream relation is the address table.
+
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
 [target restore](postgres/connectedStoreRestore.ts) compose one finite native
 profile for explicitly selected qualified PostgreSQL 16 installations with a
@@ -149,6 +158,20 @@ added. A fresh-process checkout replay after restore returns the same order.
 The unchanged exact-set guard expects the receipt table even when empty; this
 change does not convert packets from an earlier finite profile.
 
+The purchase-hold draft adds observed current stock, reservation headers/lines
+and purchase command receipts, plus aggregate compensation history and provisional
+activation state, to the fixed capture and ordered restore lists.
+Headers follow their order and renewal-operation parents; lines follow headers.
+Receipts preserve exact PostgreSQL command/result JSON, including arbitrary
+metadata that may contain personal data. Existing whole-packet row/byte bounds,
+owner-only snapshot/restore authority, unknown-table refusal and target-writer
+exclusion still apply; the transfer read covers these six additions. A focused
+real-PostgreSQL witness checks unchanged rows, matching replay after restore,
+changed-input refusal and table-specific bounded capture for activation,
+compensation and command receipts. Restored cancellation replays its original
+answer and preserves released holds. This is local draft evidence, not a
+whole purchase-journey or hosted qualification claim.
+
 Ordinary outbox rows use this pinned owner insertion path while the generic
 compatible-row importer keeps its INSERT-trigger refusal. The exact
 `channel_purchase_outbox_guard` name is admitted under the existing qualified
@@ -164,6 +187,38 @@ lock, inserts catalog parents before line references, resolves a populated
 product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
+
+The profile also carries account consent events (requested/effective
+choice, actor/client and recipient fingerprint, copy/source/reason, route/client
+attribution, capture times and work ID) and their singleton sync-target row.
+Events restore after outbox parents. Existing preference/revision events,
+evaluator consents and native sync state remain included. Consent history and
+attribution count toward the same row and byte limits; exceeding either refuses
+the whole capture rather than dropping history. Packets contain personal data
+and need the operator's existing access, retention and erasure controls.
+
+Locally committed withdrawals can have no work ID when sync was unavailable;
+those null receipts restore unchanged and replay never creates deferred work
+or reapplies an old denial. This transfer does not add an erasure path for
+consent history. Hosts should use opaque references because reference fields
+and keys can contain identifying strings.
+
+The sync-target binding/provider names and enabled flag carry over exactly for
+same-store continuity; this table contains no credentials or endpoint. Existing
+queued work already retains these logical targets. The new database starts with
+an empty target table and stays inactive under host control; transfer does not
+activate dispatchers or reconfigure external credentials. A conflicting nonempty
+target is refused rather than overwritten. Changing providers remains a trusted
+operator action after transfer.
+
+The native notice binding also retains existing dunning cases and notifications,
+the reminder ledger and transactional delivery receipts. These are finite owned
+tables, with cases restored before notification references; accepted delivery
+receipts keep their original keys and evidence. The
+[notice suite](../../tests/postgres/m19NoticeIsolation.test.ts) captures native
+writer output and compares all four row sets after restore, then proves exact
+restore replay. No new privilege, generic table importer or delivery is added by
+this transfer path.
 
 The native profile also carries purchase-renewal attachments, method-state
 history, current method state and their activation lineage. Attachments preserve pending duties and the
@@ -185,6 +240,30 @@ snapshot and retention/erasure boundary. The same aggregate row and byte limits
 include these rows, and restore retains its 10,000-row/64-MiB cap. No credential
 or personal-data exclusion is inferred from the sandbox label. This native
 profile addition does not qualify managed-subscription lifecycle carry.
+
+Retry transfer additionally retains `subscription_retry_obligations` (frozen
+cycle, retry rung, state, case and payment/order bindings),
+`subscription_retry_receipts` (immutable failure, preparation, schedule and
+recovery inputs/results), `subscription_retry_recovery_authorizations` (token,
+method/evidence, rung and consumption linkage), `commerce_checkout_recovery_tokens`
+(hash, owner, expiry and revocation), and `subscription_stock_wait_cases` (frozen
+basket, deficits, reservation/recovery bindings and notice state). Snapshots,
+method/evidence references, event keys and failure text may identify customers;
+these rows share the existing aggregate limits and erasure-coverage limit.
+Token hashes are verifier records, not raw bearer tokens. Retaining them preserves
+the authority of an unexpired, unrevoked bearer on the destination; neither expiry
+nor revocation resets. Source retirement and exclusive target activation remain
+host obligations. No raw bearer, signing key or installation secret is copied.
+The dunning-case/notice parents are included. The profile also retains
+`commerce_order_draft_receipts`: the order link, idempotency key, request hash and
+saved response, including the entire quote snapshot. There is no separate raw
+request-body column, but that quote can hold addresses, contact details or other
+host fields; opaque references and the same transfer limits and erasure limit
+apply. `fulfillment_stock_operations` retains the stock writer's idempotency key,
+fingerprint, source key, SKU and creation time. It has no address/contact body,
+but free-form keys can identify people; the same limits apply. The remaining
+inventory history requires its finite transfer entries before the joined journey
+is transferable.
 
 The sandbox payment companions `payment_simulator_attempts` and
 `payment_simulator_observations` travel with payment truth, including
@@ -820,3 +899,11 @@ SQL executor and operator ID, uses the same fixed routines and preserves
 command hashing, row decoding and conflict/error mapping. Native pool/transaction
 ownership and managed RPC translation stay with the reference bindings; the
 package creates neither a connection nor a provider client on import.
+
+
+The connected transfer profile retains subscription dunning cases and queued
+notifications alongside retry obligations. Case and notification customer links,
+recovery paths, payloads, leases and delivery results keep their original meaning
+on restore. References and payloads can identify a customer; use opaque references
+and apply the profile's transfer limits and existing erasure limitations. Transfer
+must not reset a delivery lease, retry rung or token expiry/revocation.

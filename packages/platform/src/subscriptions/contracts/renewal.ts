@@ -236,12 +236,36 @@ export type RenewalCycleCorrelation =
 export interface RenewalTemplateSnapshot {
   templateId: string; version: number; cadenceDays: number; lines: readonly RenewalLine[];
 }
+/** Immutable acquisition facts, supplied by trusted checkout composition. */
+export interface RenewalShippingTerms {
+  version: "shipping-threshold.v1"; currency: string; flatMinor: number; freeThresholdMinor: number;
+}
+export interface RenewalLinePricing {
+  sku: string; quantity: number; unitAmountMinor: number; isAddon: boolean; quoteLine: Record<string, unknown>;
+}
+export interface RenewalStarterMarker {
+  schemaVersion: "1"; starterIntervalDays: number; basisTemplateVersion: number;
+  delivery2: { discountBps: number; discountMinor: number; basisSubtotalMinor: number };
+  graduation: { cadenceDays: number; sizeConstraint?: Record<string, unknown>;
+    lines: readonly { sku: string; qty: number; sortOrder: number; isAddon: boolean; quoteLine: Record<string, unknown> }[] };
+}
+export interface RenewalRetainedTerms {
+  version: "native.renewal-terms.v1"; shippingTerms?: RenewalShippingTerms; starterPack?: RenewalStarterMarker;
+  minimumPayableMinor?: number; normalCadenceDays?: readonly number[]; linePricing?: readonly RenewalLinePricing[];
+}
 export interface RenewalPricingSnapshot {
   currency: string; totalAmountMinor: number; shippingAmountMinor: number;
   agreementPolicy: "lock_until_edit"; proration: "none";
+  productSubtotalAmountMinor?: number; discountAmountMinor?: number; shippingTerms?: RenewalShippingTerms;
+  linePricing?: readonly RenewalLinePricing[];
+  acquisition?: { reasonCode: "starter_pack_delivery_2"; discountMinor: number; basisTemplateVersion: number };
 }
+/** Kept for already-frozen operations and legacy purchases without delivery terms. */
+export interface RenewalRetainedShippingMarker { kind: "retained_shipping"; shippingAmountMinor: number; terms: RenewalShippingTerms | null }
+/** Explicit zero-shipping limit; this is not a quote issued by a quote authority. */
+export interface RenewalZeroShippingMarker { kind: "zero_shipping"; shippingAmountMinor: 0 }
 export interface RenewalOrderSnapshot {
-  shippingAddressRef: string | null; shippingQuoteRef: string | null;
+  shippingAddressRef: string | null; shippingQuoteRef: string | RenewalZeroShippingMarker | RenewalRetainedShippingMarker | null;
   acquisitionRef: string | null; lines: readonly RenewalLine[];
 }
 export interface RenewalFrozenSnapshot extends RenewalSchedule {

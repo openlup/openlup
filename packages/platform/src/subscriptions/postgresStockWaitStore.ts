@@ -1,6 +1,7 @@
+import { canonicalUuid } from "./nativeRetryDriver.js";
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding, StockWaitStorePort } from "./contracts/stockWait.js";
 import type { RenewalSchedule } from "./contracts/renewal.js";
-import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { subscriptionCorrelationSql, subscriptionCorrelationJoin, subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 export interface NativeStockWaitBinding {
   executor: SubscriptionQueryExecutor;
@@ -28,7 +29,13 @@ function array(value: unknown): unknown[] {
 export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
   const { executor, codec } = options;
   async function invoke(db: SubscriptionQueryExecutor, name: string, values: unknown[]) {
-    return (await db.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values)).rows[0]?.response;
+    return (await db.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values).catch((error: unknown) => {
+      if (name === "subscription_stock_wait_admit" && error && typeof error === "object" && "code" in error && error.code === "55P03") {
+        throw Object.assign(new Error("Inventory admission temporarily unavailable"), { details: { code: "55P03",
+          reason: "message" in error && error.message === "inventory_admission_busy" ? "inventory_admission_busy" : "inventory_lock_unavailable" } });
+      }
+      throw error;
+    })).rows[0]?.response;
   }
   async function deficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]> {
     const rows = array(value).map(subscriptionRecord);
@@ -53,16 +60,17 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       LEFT JOIN public.commerce_settlement_intents intent ON intent.renewal_operation_id=op.id WHERE c.id=$1::uuid`, [caseId])).rows;
     if (!rows[0]) return null;
     const r = subscriptionRecord(rows[0].projection), snapshot = codec.decode(subscriptionRecord(rows[0].cycle_snapshot));
+    const canonicalCaseId = String(r.id);
     if (!["waiting", "stock_secured", "resumed", "closed"].includes(String(r.state))) throw new Error("stock_wait_state_invalid");
     return { subscriptionId: String(r.subscription_id), scheduledAt: snapshot.scheduledAt, scheduledInstant: snapshot.scheduledInstant,
-      caseId: String(r.id), clientId: String(r.client_id), state: r.state as StockWaitCase["state"],
+      caseId: canonicalCaseId, clientId: String(r.client_id), state: r.state as StockWaitCase["state"],
       frozenSnapshot: snapshot, frozenFingerprint: String(r.fingerprint),
-      binding: { caseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
+      binding: { caseId: canonicalCaseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
         paymentId: nullable(rows[0].payment_id), engineIdempotencyKey: String(rows[0].identity_key) },
       deficits: await deficits(db, r.deficits), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
       openedAt: String(r.opened_at), checkedAt: nullable(r.last_checked_at), selectedAt: nullable(r.last_selected_at),
       securedAt: nullable(r.stock_secured_at), resumedAt: nullable(r.resumed_at), closedAt: nullable(r.closed_at),
-      startedNoticeKey: `subscription_stock_wait:${caseId}:started`, resumedNoticeKey: `subscription_stock_wait:${caseId}:resumed`,
+      startedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:started`, resumedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:resumed`,
       noticeEligible: r.waitingNoticeRelevant === true };
   }
   async function frozen(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitFrozenCase> {
@@ -115,7 +123,12 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
     async readFrozenCase(input) {
       if (input.caseId === null) return null;
       const result = await readCase(executor, input.caseId);
-      if (result && Object.keys(input).some(key => input[key as keyof StockWaitRecoveryBinding] !== result.binding[key as keyof StockWaitRecoveryBinding])) {
+      if (result && Object.keys(input).some(key => {
+        const expected = input[key as keyof StockWaitRecoveryBinding], actual = result.binding[key as keyof StockWaitRecoveryBinding];
+        if (!["caseId", "cycleId", "orderId", "paymentId"].includes(key) || expected === null || actual === null) return expected !== actual;
+        const value = canonicalUuid(expected);
+        return value === null || value !== canonicalUuid(actual);
+      })) {
         throw new Error("stock_wait_frozen_binding_changed");
       }
       return result;
@@ -143,7 +156,15 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       });
     },
     async listNormalDue(input: { limit: number; asOf: string }) {
-      return array(await invoke(executor, "subscription_stock_wait_normal_due", [input.limit, input.asOf])).map(value => codec.due(subscriptionRecord(value)));
+      // Stock wait owns eligibility; the purchase codec also needs durable paid lineage.
+      const result = await executor.query(`SELECT due.*,${subscriptionCorrelationSql}
+        FROM jsonb_to_recordset(public.subscription_stock_wait_normal_due($1::integer,$2::timestamptz))
+        AS due(subscription_id uuid,client_id uuid,scheduled_at text,cadence_days integer,cycle_number integer,
+          currency_code text,stock_source_key text,settlement_channel_key text,authorization_ref text,
+          payer_account_ref text,unattended_charge_authorized_at text,delivery_admission text,delivery_block_reason text)
+        JOIN public.subscriptions s ON s.id=due.subscription_id ${subscriptionCorrelationJoin}
+        ORDER BY due.scheduled_at::timestamptz,due.subscription_id`, [input.limit, input.asOf]);
+      return result.rows.map(row => codec.due(row));
     },
     async deficits(input: { snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; operationId: string; now: string }) {
       return options.withTransaction(async db => deficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now])));

@@ -532,7 +532,7 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it.each(["pull_request", "merge_group"])("runs actual migration and native admission entry points for %s", async eventName => {
+  for (const eventName of ["pull_request", "merge_group"]) it(`runs actual migration and native admission entry points for ${eventName}`, async () => {
     const f = correctionFixture();
     try {
       f.install(); const head = f.commit();
@@ -554,7 +554,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
       await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toEqual(receipt);
     } finally { f.cleanup(); }
-  });
+  }, eventName === "merge_group" ? 30_000 : undefined);
 
   it("keeps unchanged bindings and their positions while recognizing the pending M09 repins", () => {
     const previous = structuredClone(registry);
@@ -819,7 +819,7 @@ describe("admitted M11 commerce live registry", () => {
         f.commit();
       }
     } finally { f.cleanup(); }
-  }, 60_000);
+  }, 120_000); // Measured 2026-11-04: hosted max 24.530 s, local max 9.375 s; 4x hosted rounded up.
 
   it.each(commerce.flatMap((pin, index) => ["CREATE OR REPLACE", ...pin.functions[0]!.beforeSha256 === null ? ["CREATE"] : []]
     .map(ddl => ({ pin, slot: index + 1, ddl }))))("refuses a coherent extra $ddl function in slot $slot", ({ pin, ddl }) => {
@@ -1819,5 +1819,5 @@ describe("M17 channel ingest approval", () => {
       git("reset", "--hard", control); put(registryPath, encode(changed)); const lateApproval = commit();
       expect(() => assertForwardApproval(root, control, lateApproval)).toThrow(/SQL is introduced/u);
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 300_000); // Measured 2026-11-04: hosted censored at 61.504 s, local max 29.845 s; 4x observed lower bound rounded up.
 });

@@ -173,6 +173,7 @@ describe("native store SQL shapes and pins", () => {
       { signature: "public.customer_account_communication_choices_as_actor(uuid)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)", searchPath: "pg_catalog, pg_temp" },
+      { signature: "public.subscription_renewal_purchase_terms(uuid)", searchPath: "pg_catalog, pg_temp" },
     ]);
     expect(slot.dataStatements).toEqual([
       "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_stock_wait_cases', 'block', 'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead.');",
@@ -222,24 +223,24 @@ describe("native store SQL shapes and pins", () => {
     expect(slots.find(slot => slot.row === "G6")!.createdFunctions).toHaveLength(4);
     expect(slots.find(slot => slot.row === "G2")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)"]);
     expect(slots.find(slot => slot.row === "G2")!.createdFunctions).toHaveLength(7);
-    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual(["public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)"]);
+    expect(slots.find(slot => slot.row === "G7")!.replacedFunctions.map(fn => fn.signature)).toEqual([
+      "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+      "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+      "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
+      "public.fulfillment_release_subscription_renewal(uuid,uuid,text,timestamptz)",
+      "public.fulfillment_expire_subscription_renewals(timestamptz,integer)",
+      "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+      "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+      "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+    ]);
     expect(slots.find(slot => slot.row === "G7")!.createdFunctions).toEqual([
       { signature: "public.commerce_view_shipment_destination(uuid)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_reserve_subscription_renewal_gated(uuid,uuid,integer,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_release_subscription_renewal_gated(uuid,uuid,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.fulfillment_expire_subscription_renewals_gated(timestamptz,integer)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_admit_gated(jsonb,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_recover_refusal_gated(uuid,text,text,timestamptz)", searchPath: "pg_catalog, pg_temp" },
-      { signature: "public.subscription_stock_wait_deficits_gated(jsonb,uuid,timestamptz)", searchPath: "pg_catalog, pg_temp" },
     ]);
-    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([
-      { signature: "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-      { signature: "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-      { signature: "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)", grantTo: [], revokeFrom: ["service_role"] },
-    ]);
+    expect(slots.find(slot => slot.row === "G7")!.grantOnlyFunctions).toEqual([]);
     expect(slots.find(slot => slot.row === "G8")!.replacedFunctions).toEqual([
       { signature: "public.commerce_order_emit_paid_notification()", beforeSha256: "6352247a869fda2812d3e83fbcd9b7a0bd9106d27bec22296492e06a15f78bee", searchPath: "public, pg_catalog" },
       { signature: "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)", beforeSha256: "2dd59a4f2eb7603e2a1714a97ccfad3d078990cb8978a4db16c130ff9db43364", searchPath: "pg_catalog" },
+      { signature: "public.commerce_order_assert_line_sum()", beforeSha256: "403236204ab35f1776bb1d43a0c9878872fc1547874772b7634b0216b8d837d4", searchPath: "public, pg_catalog" },
     ]);
     expect(slots.find(slot => slot.row === "G8")!.createdFunctions).toEqual([
       { signature: "public.commerce_promotion_lock_definition(text)", searchPath: "pg_catalog, pg_temp" },
@@ -676,12 +677,13 @@ function checkG4G3(index: number, text: string) {
 describe("G4 exact existing-table companions and G3 inventory", () => {
   const g4 = () => `${g4g3.g4Statements.join("\n")}\n${sql(2)}`;
   const g3 = () => fixture("g3-shape.sql").toString();
-  it("adds only two slots in order, without feature bindings, sealing or whole-file class pins", () => {
+  it("keeps the slots in order with four feature bindings, without sealing or whole-file class pins", () => {
     const slots = production.nativeStoreForwardClass!.slots;
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 2).map(slot => slot.path));
+    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 7).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
+    expect(slots[3]!.dataStatements).toEqual(["INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');"]);
     expect(slots[2]!.createdFunctions).toEqual([
       { signature: "public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
       { signature: "public.fulfillment_release_purchase_reservation(text,uuid,text,jsonb,timestamptz)", searchPath: "pg_catalog, pg_temp" },
@@ -785,5 +787,63 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     for (const statement of [`REVOKE ALL ON TABLE ${table} FROM PUBLIC;`, tableBlock, `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`]) {
       expect(() => checkG4G3(index, `${baseText}\n${statement}`)).toThrow(/same slot file/u);
     }
+  });
+});
+
+// The new-table capability is a fixed G8 allowance, not a registry-defined ACL grammar.
+const noticeTable = "public.subscription_notice_refusals";
+const noticeGrant = "GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;";
+const noticePolicy = "CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);";
+const noticeDo = (text: string) => `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE '${text}'; END IF; END; $$;`;
+const noticeCreate = `CREATE TABLE ${noticeTable} (id uuid);`;
+const noticeShape = [noticeCreate, `ALTER TABLE ${noticeTable} ENABLE ROW LEVEL SECURITY;`, `REVOKE ALL ON TABLE ${noticeTable} FROM PUBLIC;`, noticeDo(noticeGrant), noticeDo(noticePolicy)].join("\n");
+function checkNotice(text: string, mutate?: (value: ReviewedForwardRegistry) => void, existing?: "baseline" | "earlier-slot") {
+  const value = registry(); value.nativeStoreForwardClass!.slots[5]!.insertSelectTables = [noticeTable]; mutate?.(value);
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(existing === "baseline" ? `\n${noticeCreate}` : "")]) }];
+  for (let index = 0; index < 6; index++) {
+    const source = sql(index) + (index === 0 && existing === "earlier-slot" ? `\n${noticeCreate}` : "")
+      + (index === 5 ? `\n${block("service_role", "GRANT EXECUTE", control.slots[5]!.createdFunctions[0]!.signature)}\n${text}` : "");
+    const pin = bind(value, index, source);
+    assertNativeStoreForward(value, pin.path, Buffer.from(source), preceding);
+    preceding.push({ path: pin.path, bytes: Buffer.from(source) });
+  }
+}
+const conditionalNoticeError = "reviewed native store conditional privilege target or role refused";
+const sameSlotNoticeError = "reviewed native store INSERT/SELECT requires its table created earlier in the same slot file";
+function noticeRefusal(run: () => void, message: string) {
+  let caught: unknown;
+  try { run(); } catch (error) { caught = error; }
+  expect(caught).toBeInstanceOf(Error);
+  expect((caught as Error).message).toBe(message);
+}
+describe("checker-pinned G8 INSERT/SELECT table", () => {
+  it("admits the exact guarded grant and single policy after same-file creation", () => { expect(() => checkNotice(noticeShape)).not.toThrow(); });
+  it("permits the allowance before its future table is introduced", () => { expect(() => checkNotice("")).not.toThrow(); });
+  it("refuses UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER", () => {
+    for (const privilege of ["UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"]) noticeRefusal(() => checkNotice(noticeShape.replace("SELECT, INSERT", privilege)), conditionalNoticeError);
+  });
+  it("refuses any other grantee", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace("TO service_role", "TO fixture_role"))), conditionalNoticeError); });
+  it("refuses anon and authenticated grants", () => {
+    for (const role of ["anon", "authenticated"]) noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace("TO service_role", `TO ${role}`))), conditionalNoticeError);
+  });
+  it("refuses a second policy", () => { noticeRefusal(() => checkNotice(`${noticeShape}\n${noticeDo(noticePolicy)}`), "reviewed native store INSERT/SELECT permits at most one policy"); });
+  it("refuses another policy role, PUBLIC and an omitted role", () => {
+    for (const target of ["TO authenticated", "TO PUBLIC", ""]) noticeRefusal(() => checkNotice(noticeShape.replace(noticePolicy, noticePolicy.replace("TO service_role", target))), conditionalNoticeError);
+  });
+  it("refuses a grant or policy on a pre-existing table", () => {
+    for (const statement of [noticeGrant, noticePolicy]) noticeRefusal(() => checkNotice(noticeDo(statement), undefined, "baseline"), sameSlotNoticeError);
+  });
+  it("refuses a column-level grant", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace("SELECT, INSERT", "SELECT (id), INSERT (id)"))), conditionalNoticeError); });
+  it("refuses WITH GRANT OPTION", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace(";", " WITH GRANT OPTION;"))), conditionalNoticeError); });
+  it("refuses the shape on a table created by an earlier slot", () => { noticeRefusal(() => checkNotice(noticeDo(noticeGrant), undefined, "earlier-slot"), sameSlotNoticeError); });
+  it("refuses an unnamed new table", () => { noticeRefusal(() => checkNotice(noticeShape.replaceAll(noticeTable, "public.fixture_notice_other")), conditionalNoticeError); });
+  it("refuses the key on a non-G8 slot", () => { noticeRefusal(() => checkNotice(noticeShape, value => { value.nativeStoreForwardClass!.slots[0]!.insertSelectTables = [noticeTable]; }), "reviewed native store insertSelectTables is G8-only"); });
+  it("refuses a G8 value differing from the reader constant", () => {
+    for (const names of [[], ["public.fixture_notice_other"], [noticeTable, "public.fixture_notice_other"]]) noticeRefusal(() => checkNotice(noticeShape, value => { value.nativeStoreForwardClass!.slots[5]!.insertSelectTables = names; }), "reviewed native store insertSelectTables is pinned by the checker");
+  });
+  it("refuses the named table when not created in the same file", () => { noticeRefusal(() => checkNotice(noticeDo(noticeGrant)), sameSlotNoticeError); });
+  it("refuses policy text differing by one token", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticePolicy, noticePolicy.replace("USING (true)", "USING (false)"))), conditionalNoticeError); });
+  it("refuses reordered privileges and added TABLE", () => {
+    for (const grant of [noticeGrant.replace("SELECT, INSERT", "INSERT, SELECT"), noticeGrant.replace(" ON ", " ON TABLE ")]) noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, grant)), conditionalNoticeError);
   });
 });

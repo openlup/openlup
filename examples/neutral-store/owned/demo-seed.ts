@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { priceInterimOffer } from '../shared/interim-pricing.ts';
 import { assertConfig, type StoreConfig } from '../shared/config.ts';
 
 /** Fictional application data only. Schema and business effects belong to installed packages. */
@@ -22,11 +23,13 @@ export function buildDemoSeed(config: StoreConfig) {
   const priceLists = [{ id: listId, name: `${config.brand.name} demonstration`,
     region_code: config.market.country, currency: config.market.currency, status: 'active',
     valid_from: '2000-01-01T00:00:00.000Z' }];
-  const prices = config.offer.products.map((product, index) => {
-    if (product.unitPrice.amountMinor > 2147483647) throw new Error('starter_demo_price_out_of_range');
-    return { id: identifier('price', product.sku), price_list_id: listId, variant_id: skus[index]!.id,
-      mode: 'any', min_qty: 1, unit_price_minor: product.unitPrice.amountMinor,
+  const prices = config.offer.products.flatMap((product, index) => product.permittedPurchaseModes.map(mode => {
+    const amount = priceInterimOffer(config, mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor;
+    if (amount > 2147483647) throw new Error('starter_demo_price_out_of_range');
+    if (amount < 1) throw new Error('starter_demo_price_not_payable');
+    return { id: identifier('price', `${product.sku}:${mode}`), price_list_id: listId, variant_id: skus[index]!.id,
+      mode, min_qty: 1, unit_price_minor: amount,
       amount_kind: 'gross', active: true, valid_from: '2000-01-01T00:00:00.000Z' };
-  });
+  }));
   return { products, skus, priceLists, prices };
 }
