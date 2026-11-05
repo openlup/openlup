@@ -1,13 +1,13 @@
 # Starter order controls, invoice access and named limits
 
-Status: local refusal proof passes. Full scanner admission and shipment dependency proof remain open.
+Status: local implementation candidate. Installed and pre-review evidence is recorded separately; native review and delivery remain outside this continuation.
 
 ## Outcome and scope
 
 Refuse hold and release with zero effects after operator admission. Compose
 authenticated invoice history and captured
 non-fiscal PDF access, and a side-effect-free operator invoice summary. Keep
-shipment reads pending their frozen read-factory and destination-view dependency.
+shipment list/detail through the native read factory and nonmutating destination view.
 Use one localized refusal catalogue for deferred return, order and shipment
 mutations, public tracking and generic subscription changes. Remove the operator
 returns reader. Preserve the required purchase browser witness byte for byte.
@@ -44,7 +44,7 @@ base packet had no final accepted SHA at initial inspection. The invoice UUID
 leaf merged mechanically as 6eed6b4bfc772346897402330259af11bc66ebf0,
 tree 1ed8453e8e12211043e6f16a2d883224c8e3c8f3. No review cycle consumed.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-2d499f092fdf45058652bdff19770ec11aea65df8823c9827f64b02e8d19c50e","reason":"The shipment-reader and starter HTTP witnesses use the existing tests/postgres collector, owned container helper and qualified migration runner with separate installer and runtime sessions. They change no test discovery, commands, grants or sufficient-evidence rule. The starter witness now proves hold and release refusal with zero effects. The shipment witness records the preparation reader write boundary; it does not establish the still-blocked nonmutating starter read proof."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-54796a86ddee33a6f8c906eb88645b691683b37577c4fcc7b9052c50222ad05b","reason":"The invoice UUID and starter shipment witnesses use the existing tests/postgres collector, owned container helper and qualified migration runner with separate installer and runtime sessions. Shipment cases exercise installed tarballs, native human admission, actual read-only snapshot settings and zero-effect comparisons in three zones. No test discovery, command, fixture grant or sufficient-evidence rule changes; measured case deadlines use the existing explicit per-test convention. The separate browser witness preserves the required purchase specification."} -->
 
 ## Historical setup rethink and authority contradiction
 
@@ -148,3 +148,41 @@ before extracting a copy. Reconcile the staged task record before policy checks.
 A waiting launcher's future command can match process detection, so separate
 resource admission from the later scanner invocation. This checkpoint changes
 no gate or delivery authority.
+
+
+## Shipment reads on the integrated main
+
+The main dependency merge is f4c7d3d2385bad9b13d82125f9eff75c21362dcb,
+tree d066fb3eeea89d1743a61379e30a8d45ea7d7640, against the policy/source pin
+ad373b82b830f645cc09c97f355f50022973788c. The two resolved files preserve
+the sorted publication catalog union and main's configuration with the existing
+document/return/hold additions. This continuation remains local and staged,
+without feature sign-off, push, native review or canonical verification.
+
+Shipment reads use the same native human-admin read boundary as the existing
+operator order reads. The session principal is rechecked on every request and
+matched by UUID value before shipment queries. The control/Commerce intersection
+is an OMS mutation requirement, outside these nonmutating reads. Hold and release
+keep their named refusal. No actor provisioning or authority repair is included.
+
+List/detail and the injected destination view share one repeatable-read, read-only
+connection. The host supplies the existing eligibility policy and explicit captured
+mode mapping. The selected native response schemas preserve null/empty unavailable
+facts; the canonical native limits remain in force. No preparation read or
+second generic role-free lane is introduced.
+
+The installed witness covers first/repeated reads with complete effect snapshots,
+pinned versus current order destinations, case-varied UUID selectors, input and
+authority refusal before shipment I/O, and actual transaction settings in default
+and two non-UTC zones. Its fixture instants are explicit UTC. The separate browser
+spec shows the reads beside refused mutations in both locales/configurations.
+Execution results and measured deadlines remain in the private decision packet;
+these test descriptions alone do not establish passing proof.
+
+
+Self-retro. The shipment read boundary is human admin; the separate OMS mutation
+intersection does not apply to these reads. Checking the donor route and its
+authorization placement avoids an unnecessary authority repair. The first
+browser assertion used a form-result selector on a read panel; it now targets
+the panel's actual status element. Existing seams and one connection suffice. Check the donor request shape before
+starting tree-wide proof: unknown fields also require refusal before read I/O.

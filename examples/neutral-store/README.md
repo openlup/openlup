@@ -50,8 +50,9 @@ owner. The captured provider produces explicitly non-fiscal sandbox documents.
 The download stays behind authenticated POST, Origin admission and no-store.
 The browser saves the decoded PDF through a short-lived local object URL.
 Deferred operations share one bilingual catalogue with the limits page and stay
-unbound. The operator returns reader is removed. Shipment list/detail dependency
-proof is pending. See [limits](docs/limits.md).
+unbound. The operator returns reader is removed. Shipment list/detail compose
+the native nonmutating reader under the human-admin read boundary; the reduced
+projection retains its explicit unavailable facts. See [limits](docs/limits.md).
 
 ## Start from an exact source archive
 

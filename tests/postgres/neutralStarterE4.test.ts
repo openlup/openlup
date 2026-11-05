@@ -12,6 +12,8 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type * as Invoices from '@openlup/platform/invoicing';
 import type * as Identity from '@openlup/platform/identity';
 import type * as Native from '@openlup/platform/invoicing/postgres';
+import type * as Fulfillment from '@openlup/platform/fulfillment';
+import type { composeE4Capabilities } from '../../examples/neutral-store/host/e4-composition.ts';
 import type * as Migrations from '@openlup/platform/migrations';
 import type { InvoiceFacts, InvoiceHostPorts } from '@openlup/platform/invoicing/contracts';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
@@ -21,8 +23,10 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 
 let container: PostgresContainer | undefined;
 let bootstrap: Pool, installer: Pool, runtime: Pool;
-let invoices: typeof Invoices, native: typeof Native;
-let scratch: string, app: string, runtimeUrl: string;
+let invoices: typeof Invoices, native: typeof Native, fulfillment: typeof Fulfillment;
+let composeReads: typeof composeE4Capabilities;
+let browserShipmentRef: string;
+let scratch: string, app: string, runtimeUrl: string, runtimeConnection: string;
 const children: ChildProcess[] = [];
 const hosts: Array<{ id: string; baseURL: string }> = [];
 const customerEmail = 'document-customer@example.test', operatorEmail = 'document-operator@example.test';
@@ -101,6 +105,8 @@ beforeAll(async () => {
     expect(realpathSync(path).startsWith(join(app, 'node_modules/@openlup/'))).toBe(true);
     return import(/* @vite-ignore */ pathToFileURL(path).href) as Promise<T>;
   }
+  fulfillment = await installed<typeof Fulfillment>('@openlup/platform/fulfillment');
+  composeReads = (await import(/* @vite-ignore */ pathToFileURL(join(app, 'host/e4-composition.ts')).href)).composeE4Capabilities;
   invoices = await installed<typeof Invoices>('@openlup/platform/invoicing');
   native = await installed<typeof Native>('@openlup/platform/invoicing/postgres');
   const identity = await installed<typeof Identity>('@openlup/platform/identity');
@@ -119,7 +125,7 @@ beforeAll(async () => {
   await runner.apply();
   expect((await runner.status()).pending).toEqual([]);
   const url = new URL(container.connectionString); url.username = 'starter_runtime';
-  const runtimeConnection = url.toString();
+  runtimeConnection = url.toString();
   url.password = ''; url.protocol = 'postgresql:'; runtimeUrl = url.toString();
   runtime = new Pool({ connectionString: runtimeConnection });
   expect((await runtime.query('SELECT session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows)
@@ -229,6 +235,91 @@ async function snapshot() {
   return result;
 }
 
+// These are case deadlines, not expected runtimes. The installed snapshot matrix
+// is measured separately from the existing extraction/container setup.
+const shipmentReadTimeoutMs = 60000;
+for (const zone of ['default', 'Etc/GMT-9', 'Etc/GMT+5']) it(`reads shipment snapshots without writes in ${zone}`, async () => {
+  const orderId = await purchase(true);
+  await installer.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('starter-read-port','3pl',true) ON CONFLICT DO NOTHING");
+  const shipment = await fulfillment.createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'starter-read-port' })
+    .createShipment({ idempotencyKey: `read-${orderId}`, orderId, requestedAt: '2026-11-04T12:00:00Z' });
+  const shipmentId = shipment.shipmentId;
+  const original = (await runtime.query('SELECT public.commerce_view_shipment_destination($1::uuid) AS value', [shipmentId])).rows[0].value;
+  // Owner-only fixture facts model an already pinned parcel and a newer order
+  // destination. The read under test cannot create or alter either binding.
+  const clone = async (line1: string) => (await installer.query(`INSERT INTO public.commerce_destinations(client_id,address,created_at)
+    SELECT client_id,jsonb_set(address,'{line1}',to_jsonb($2::text)),'2026-11-04T12:00:00Z'
+    FROM public.commerce_destinations WHERE id=$1 RETURNING id`, [original.destinationId, line1])).rows[0].id;
+  const pinned = await clone('Pinned example street'), current = await clone('Current example street');
+  const beforeUnpinned = await snapshot();
+  expect((await action('operator.shipment', { shipmentRef: shipmentId.toUpperCase() })).body)
+    .toMatchObject({ ok: true, value: { order: { id: shipmentId, orderId } } });
+  expect((await action('operator.shipments')).body.ok).toBe(true);
+  expect(await snapshot()).toEqual(beforeUnpinned);
+  await installer.query("INSERT INTO public.commerce_destination_bindings(shipment_id,destination_id,updated_at) VALUES($1,$2,'2026-11-04T12:00:00Z')", [shipmentId, pinned]);
+  await installer.query("UPDATE public.commerce_destination_bindings SET destination_id=$2,updated_at='2026-11-04T12:00:00Z' WHERE order_id=$1", [orderId, current]);
+  const before = await snapshot();
+  for (const selector of [{ shipmentRef: shipmentId.toUpperCase() }, { orderRef: orderId.toUpperCase() },
+    { orderRef: orderId.slice(0, 18).toUpperCase() + orderId.slice(18) },
+    { shipmentRef: shipmentId.slice(0, 18).toUpperCase() + shipmentId.slice(18), orderRef: randomUUID() }]) {
+    for (let repeat = 0; repeat < 2; repeat++) {
+      const result = await action('operator.shipment', selector);
+      expect(result.body).toMatchObject({ ok: true, value: { order: { id: shipmentId, orderId, clientId: null,
+        providerKind: null, shippingAddress: { addressId: null, line1: 'Pinned example street' } } } });
+    }
+  }
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const result = await action('operator.shipments', { status: 'created', page: 1, pageSize: 100 });
+    expect(result.body.ok).toBe(true);
+    expect(result.body.value.orders.find((order: { id: string }) => order.id === shipmentId)).toMatchObject({
+      shippingAddress: { line1: 'Pinned example street' }, inventory: { locationId: null, locationCode: null },
+      lines: [expect.objectContaining({ id: null, inventoryReservationIds: [] })] });
+  }
+  expect((await runtime.query("SELECT public.commerce_read_destination('order',$1::uuid) AS value", [orderId])).rows[0].value)
+    .toMatchObject({ destinationId: current, address: { line1: 'Current example street' } });
+  expect((await action('operator.shipment', { shipmentRef: randomUUID() })).body.code).toBe('starter_shipment_not_found');
+  expect((await action('operator.shipment', { shipmentRef: orderId })).body.code).toBe('starter_shipment_not_found');
+  expect((await action('operator.shipment', { shipmentRef: shipmentId }, customerCookie)).body.code).toBe('operator_required');
+  expect(await snapshot()).toEqual(before);
+  const zonePool = new Pool({ connectionString: runtimeConnection,
+    ...(zone === 'default' ? {} : { options: `-c timezone=${zone}` }) });
+  let queries = 0, snapshots = 0;
+  const observedPool = { async connect() {
+    const db = await zonePool.connect();
+    return { async query(sql: string, values?: unknown[]) {
+      queries++;
+      if (sql.startsWith('SELECT') || sql.startsWith('WITH')) {
+        const state = (await db.query(`SELECT current_setting('transaction_isolation') AS isolation,
+          current_setting('transaction_read_only') AS readonly,current_setting('TimeZone') AS zone`)).rows[0];
+        expect(state).toEqual({ isolation: 'repeatable read', readonly: 'on', zone: zone === 'default' ? 'Etc/UTC' : zone });
+        snapshots++;
+      }
+      return db.query(sql, values);
+    }, release: () => db.release() };
+  } } as unknown as Pool;
+  const context = { actor: { customerRef: null, operatorRef: operatorId, principalRef: operatorId },
+    commandKey: randomUUID(), config: configurations.supplements! };
+  try {
+    const actions = composeReads(observedPool, async () => true);
+    expect(await actions['operator.shipment']!({ shipmentRef: shipmentId.toUpperCase() }, context)).toMatchObject({ ok: true });
+    expect(await actions['operator.shipments']!({}, context)).toMatchObject({ ok: true });
+    const successfulQueries = queries;
+    const refused = composeReads(observedPool, async () => false);
+    for (const operation of ['operator.shipments', 'operator.shipment'] as const) {
+      expect(await refused[operation]!({ shipmentRef: shipmentId, operatorRef: operatorId }, context)).toEqual({ ok: false, code: 'operator_required' });
+    }
+    expect(await actions['operator.shipment']!({ documentRef: shipmentId }, context)).toEqual({ ok: false, code: 'starter_input_invalid' });
+    expect(await actions['operator.shipment']!({ shipmentRef: shipmentId, principalRef: randomUUID() }, context))
+      .toEqual({ ok: false, code: 'starter_input_invalid' });
+    expect(await actions['operator.shipments']!({ orderRef: orderId }, context))
+      .toEqual({ ok: false, code: 'starter_input_invalid' });
+    expect(queries).toBe(successfulQueries);
+    expect(snapshots).toBeGreaterThan(3);
+    expect(await snapshot()).toEqual(before);
+  } finally { await zonePool.end(); }
+  browserShipmentRef = shipmentId;
+}, shipmentReadTimeoutMs);
+
 it('reads pending, issued, corrected, retry and guest summaries and owned PDF bytes with no read effects', async () => {
   let issued: Awaited<ReturnType<typeof invoiceFixture>> | undefined;
   for (const mode of ['pending', 'issued', 'corrected', 'retry', 'guest'] as const) {
@@ -273,7 +364,7 @@ it('reads pending, issued, corrected, retry and guest summaries and owned PDF by
   expect((await action('operator.invoice', { orderRef: randomUUID() })).body.code).toBe('starter_invoice_missing');
   const orderItemId = (await runtime.query('SELECT id FROM public.commerce_order_items WHERE order_id=$1 LIMIT 1', [issued.orderId])).rows[0]!.id;
   writeFileSync(join(scratch, 'browser-fixture.json'), JSON.stringify({ mailbox: join(app, '.context/captured-messages/identity.jsonl'),
-    customerEmail, operatorEmail, orderRef: issued.orderId, documentRef, orderItemId, shipmentReadsBound: false }));
+    customerEmail, operatorEmail, orderRef: issued.orderId, documentRef, orderItemId, shipmentRef: browserShipmentRef }));
 }, 120000);
 
 it('all ten deferred mutations and other named refusals preserve the complete effect snapshot over replay and forgery', async () => {
@@ -295,14 +386,14 @@ it('all ten deferred mutations and other named refusals preserve the complete ef
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
     expect(status.length).toBe(51);
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(32);
-    for (const operation of [...Object.keys(operationLimits), 'operator.shipments', 'operator.shipment']) {
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(34);
+    for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }
   }
   expect(await snapshot()).toEqual(before);
   await action('auth.signOut', {}, operatorCookie);
-  for (const operation of ['operator.hold', 'operator.release']) {
+  for (const operation of ['operator.hold', 'operator.release', 'operator.shipments', 'operator.shipment']) {
     expect((await action(operation, { orderRef, holdRef: orderRef, reason: 'manual_support' }, operatorCookie)).body.code).toBe('operator_required');
   }
 }, 60000);

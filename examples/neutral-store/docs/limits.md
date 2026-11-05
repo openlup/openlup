@@ -112,9 +112,19 @@ retains its separate HTTP 404 protocol.
 | `subscription.command` | `starter_subscription_command_unavailable` |
 | `research.submit`, `ingest.submit` | `host_binding_required` |
 
-Shipment list/detail still await the frozen read factory and nonmutating
-destination-view composition. The shipment mutation explanation describes the
-release contract, whose read proof remains pending. Owned account tracking needs
+Shipment list/detail use the native commerce reader in one repeatable-read,
+read-only snapshot after native human-admin authorization on each request.
+Unknown input fields and invalid selectors refuse before shipment I/O.
+The destination view never prepares or pins a shipment. A pinned parcel retains
+its destination when the order's current destination changes. This reduced
+projection keeps the captured fulfillment client id, provider kind, parcel-line
+ids and saved-address id null, item reservation links empty, and reservation
+locations null. It supplies
+no contact revision, digest, correction target or baseline comparison. Tracking
+and operation evidence retain the native reader's limits; missing required facts
+refuse rather than omit a selected shipment. See the canonical
+[native read limits](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
+Shipment mutations remain unavailable. Owned account tracking needs
 its separate account composition proof. Signed unsubscribe and payment/operator
 recovery retain their separately owned pending bindings. Other absent bindings
 return `host_binding_required` after admission. An invalid-grant example does not

@@ -12,7 +12,7 @@ interface DocumentFixture {
   orderRef: string;
   documentRef: string;
   orderItemId: string;
-  shipmentReadsBound: boolean;
+  shipmentRef: string;
 }
 const test = base.extend<{ fixturePath: string }>({ fixturePath: ['', { option: true }] });
 
@@ -137,8 +137,13 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     }
     const list = shipments.locator('section.panel');
     await list.getByRole('button', { name: copy[locale].readStatus, exact: true }).click();
-    if (fixture.shipmentReadsBound) await expect(list).not.toContainText('host_binding_required');
-    else await expect(list).toContainText('host_binding_required');
+    await expect(list.locator('[role=status]')).toContainText(fixture.shipmentRef);
+    await expect(list.locator('[role=status]')).toContainText('commerce.fulfillment.v0');
+    const detail = shipments.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].read, exact: true }) });
+    await detail.locator('[name=shipmentRef]').fill(fixture.shipmentRef.toUpperCase());
+    await detail.getByRole('button', { name: copy[locale].read, exact: true }).click();
+    await expect(detail.locator('.action-result')).toContainText(fixture.shipmentRef);
+    await expect(detail.locator('.action-result')).toContainText('Pinned example street');
     await page.goto(routes.limits[locale]);
     for (const limit of Object.values(operationLimitDefinitions)) {
       const row = page.locator('tr').filter({ hasText: limit.explanation[locale] });
