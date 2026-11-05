@@ -204,9 +204,13 @@ function validFacts(facts: InvoiceFacts): boolean {
     && facts.chargedTotalGrossMinor === facts.totalGrossMinor;
 }
 
-// Incumbent local-only constructor, byte-preserved SQL; zero tax is not a fiscal projection.
+// Local-only constructor; effective delivery is a separate position. Zero tax is not a fiscal projection.
 const LOCAL_DOCUMENT_SQL = `
-  WITH snapshot AS (
+  WITH shipping AS (
+    SELECT COALESCE(sum(CASE WHEN kind='shipping_charge' THEN amount_minor
+      WHEN kind='promotion_discount' AND scope='shipping' THEN -amount_minor ELSE 0 END),0) AS amount
+    FROM public.commerce_order_adjustments WHERE order_id=$2::uuid
+  ), snapshot AS (
     SELECT
       order_row.total_amount_minor,
       COALESCE(
@@ -227,10 +231,13 @@ const LOCAL_DOCUMENT_SQL = `
     GROUP BY order_row.id, order_row.total_amount_minor
   )
   SELECT public.accounting_document_request_from_paid_order(
-    $1, $2::uuid, snapshot.positions, snapshot.total_amount_minor,
+    $1, $2::uuid, snapshot.positions || CASE WHEN shipping.amount>0 THEN
+      jsonb_build_array(jsonb_build_object('description','delivery','quantity',1,
+        'unitGrossMinor',shipping.amount,'totalGrossMinor',shipping.amount,'taxRateBps',0))
+      ELSE '[]'::jsonb END, snapshot.total_amount_minor,
     jsonb_build_object('providerKind', $3::text)
   ) AS response
-  FROM snapshot`;
+  FROM snapshot CROSS JOIN shipping`;
 
 type MoneyEvidence = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
 class ClaimFenceError extends Error {}

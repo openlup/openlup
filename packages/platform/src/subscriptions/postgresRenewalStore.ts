@@ -1,4 +1,5 @@
 import type { RenewalDue, RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule, RenewalStorePort } from "./contracts/renewal.js";
+import { graduateNativeRenewal, nativeRetainedTerms } from "./nativeRenewalTerms.js";
 
 /** Transaction-bound executors may be supplied; no driver, environment or account is selected here. */
 export interface SubscriptionQueryExecutor {
@@ -25,7 +26,9 @@ export const subscriptionCorrelationJoin = `LEFT JOIN public.subscription_activa
  LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id`;
 const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,t.*,
  to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
- ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_facts(s.id) AS purchase_facts,
+ ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
+ (SELECT e.payload->'linePricing' FROM public.subscription_events e WHERE e.subscription_id=s.id
+  AND e.event_type='subscription.starter_graduated' ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1) AS graduation_pricing,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,
  'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l
  WHERE l.subscription_id=s.id),'[]'::jsonb) AS lines
@@ -40,8 +43,8 @@ export function subscriptionRecord(value: unknown): Record<string, unknown> {
 /** Native claim/prepare remain their original SQL transaction units. G23 is composed by the host. */
 export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec,
   withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalStorePort {
-  async function header(input: RenewalSchedule) {
-    const result = await executor.query(SNAPSHOT_SQL, [input.subscriptionId, input.scheduledAt]);
+  async function header(input: RenewalSchedule, db = executor) {
+    const result = await db.query(SNAPSHOT_SQL, [input.subscriptionId, input.scheduledAt]);
     if (!result.rows[0]) throw new Error("subscription_renewal_snapshot_not_found");
     return result.rows[0];
   }
@@ -61,7 +64,21 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     async buildCycleSnapshots(input) {
       const stored = await executor.query(`SELECT cycle_snapshot FROM public.subscription_renewal_operations
         WHERE subscription_id=$1::uuid AND scheduled_at=$2::timestamptz`, [input.subscriptionId, input.scheduledAt]);
-      return stored.rows[0] ? codec.decode(subscriptionRecord(stored.rows[0].cycle_snapshot)) : codec.freeze(await header(input), input);
+      if (stored.rows[0]) return codec.decode(subscriptionRecord(stored.rows[0].cycle_snapshot));
+      const row = await header(input);
+      // Imported terms may use an injected dialect without a purchase attachment.
+      // The native purchase codec still validates its own required facts.
+      if (row.purchase_facts == null || !nativeRetainedTerms(row)) return codec.freeze(row, input);
+      if (!withTransaction) throw new Error("subscription_renewal_transaction_required");
+      return withTransaction(async db => {
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid FOR UPDATE", [input.subscriptionId]);
+        const frozen = await db.query(`SELECT cycle_snapshot FROM public.subscription_renewal_operations
+          WHERE subscription_id=$1::uuid AND scheduled_at=$2::timestamptz`, [input.subscriptionId, input.scheduledAt]);
+        if (frozen.rows[0]) return codec.decode(subscriptionRecord(frozen.rows[0].cycle_snapshot));
+        let current = await header(input, db);
+        if (await graduateNativeRenewal(db, current)) current = await header(input, db);
+        return codec.freeze(current, input);
+      });
     },
     async readMandateEvidence(input) {
       const row = await header(input);
@@ -85,6 +102,12 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
           const snapshot = input.snapshot.orderSnapshot.shippingAddressRef == null && ref
             ? codec.withDestination!(input.snapshot, ref) : input.snapshot;
           return store.claimDue({ ...input, snapshot });
+        }
+        if (input.snapshot.frozenRevision === "native.purchase-renewal.v2") {
+          let fresh = codec.freeze(await header(input.snapshot, db), input.snapshot);
+          const destination = input.snapshot.orderSnapshot.shippingAddressRef;
+          if (destination) fresh = codec.withDestination!(fresh, destination);
+          if (codec.fingerprint(fresh) !== codec.fingerprint(input.snapshot)) throw new Error("subscription_renewal_snapshot_stale");
         }
         const document = subscriptionRecord((await db.query("SELECT public.commerce_read_destination('subscription',$1::uuid) AS destination", [input.snapshot.subscriptionId])).rows[0]?.destination);
         const snapshot = codec.withDestination!(input.snapshot, String(document.destinationId));

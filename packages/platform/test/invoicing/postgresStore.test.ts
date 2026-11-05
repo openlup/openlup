@@ -559,7 +559,11 @@ it("emits the bounded discovery and incumbent paid-order snapshot SQL contracts"
   query.mockResolvedValueOnce({ rows: [{ response: { document: { id: "local-doc", status: "issued" }, replayed: false } }] }).mockResolvedValueOnce({ rows: [{ document_ref: "LOCAL/B" }] });
   expect(await store.requestLocalDocument({ requestKey: "local-key", orderId: "order-a", providerRef: "local-host" })).toEqual({ kind: "requested", documentId: "local-doc", invoiceRef: "LOCAL/B", replayed: false, status: "issued" });
   expect(query.mock.calls[1]).toEqual([`
-  WITH snapshot AS (
+  WITH shipping AS (
+    SELECT COALESCE(sum(CASE WHEN kind='shipping_charge' THEN amount_minor
+      WHEN kind='promotion_discount' AND scope='shipping' THEN -amount_minor ELSE 0 END),0) AS amount
+    FROM public.commerce_order_adjustments WHERE order_id=$2::uuid
+  ), snapshot AS (
     SELECT
       order_row.total_amount_minor,
       COALESCE(
@@ -580,10 +584,13 @@ it("emits the bounded discovery and incumbent paid-order snapshot SQL contracts"
     GROUP BY order_row.id, order_row.total_amount_minor
   )
   SELECT public.accounting_document_request_from_paid_order(
-    $1, $2::uuid, snapshot.positions, snapshot.total_amount_minor,
+    $1, $2::uuid, snapshot.positions || CASE WHEN shipping.amount>0 THEN
+      jsonb_build_array(jsonb_build_object('description','delivery','quantity',1,
+        'unitGrossMinor',shipping.amount,'totalGrossMinor',shipping.amount,'taxRateBps',0))
+      ELSE '[]'::jsonb END, snapshot.total_amount_minor,
     jsonb_build_object('providerKind', $3::text)
   ) AS response
-  FROM snapshot`, ["local-key", "order-a", "local-host"]]);
+  FROM snapshot CROSS JOIN shipping`, ["local-key", "order-a", "local-host"]]);
   expect(query.mock.calls[2]).toEqual(["SELECT document_ref FROM public.accounting_documents WHERE id=$1::uuid", ["local-doc"]]);
 });
 it("absent status remains unavailable even when a caller supplies money values", async () => {

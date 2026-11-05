@@ -1226,6 +1226,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261101231000_native_paid_email.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261101232000_customer_account_consents.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1642,6 +1650,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-g11c.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-g11cctl.md",
       "class": "public-output"
     },
@@ -1711,6 +1723,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-g7ctl3.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-g8.md",
       "class": "public-output"
     },
     {
@@ -1795,6 +1811,10 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-starter.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-v.md",
       "class": "public-output"
     },
     {
@@ -3879,6 +3899,14 @@
     },
     {
       "path": "packages/platform/sql/20261101230000_subscription_renewal_terminal_replay.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101231000_native_paid_email.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261101232000_customer_account_consents.sql",
       "class": "public-output"
     },
     {
@@ -7806,6 +7834,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativeRenewalTerms.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/nativeRetryDriver.ts",
       "class": "public-output"
     },
@@ -7827,6 +7859,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresDeliveryAlignmentStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresLifecycleMessages.ts",
       "class": "public-output"
     },
     {
@@ -9950,11 +9986,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/contracts.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/subscriptions/facades.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/nativeRenewalTerms.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/noticePolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -28002,6 +28050,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/customerNewsletterWithdrawal.test.ts",
       "class": "public-output"
     },
@@ -28238,7 +28290,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m19CheckoutShipping.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m19MigrationFacade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19NoticeCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19NoticeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m19NoticeIsolation.test.ts",
       "class": "public-output"
     },
     {
@@ -28458,6 +28526,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionNoticeDelivery.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionPublicRenewal.test.ts",
       "class": "public-output"
     },
@@ -28483,6 +28555,10 @@
     },
     {
       "path": "tests/postgres/subscriptionRetainedMethodCompatibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetainedRenewal.test.ts",
       "class": "public-output"
     },
     {

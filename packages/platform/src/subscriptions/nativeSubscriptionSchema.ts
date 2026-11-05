@@ -8,6 +8,7 @@ export function nativeSubscriptionSchema(catalogue: { version: string; migration
       "subscription_command_receipts", "subscription_stock_wait_cases", "subscription_dunning_cases", "subscription_delivery_alignment_cases",
       "fulfillment_inventory_reservations", "commerce_settlement_intents"].map(name => ({ kind: "table" as const, name: `public.${name}` })),
     ...[
+      ["subscription_register_renewal_purchase_with_shipping", "uuid,jsonb"], ["subscription_renewal_purchase_terms", "uuid"],
       ["subscription_claim_due_renewal", "text,text,jsonb,text,integer,timestamp with time zone"],
       ["subscription_delivery_alignment_admit_renewal", "uuid,timestamp with time zone,timestamp with time zone"],
       ["subscription_retry_apply_failure", "uuid,text,jsonb"], ["subscription_retry_open_case", "uuid,text,text"],

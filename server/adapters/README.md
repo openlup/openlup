@@ -188,6 +188,38 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+The profile also carries account consent events (requested/effective
+choice, actor/client and recipient fingerprint, copy/source/reason, route/client
+attribution, capture times and work ID) and their singleton sync-target row.
+Events restore after outbox parents. Existing preference/revision events,
+evaluator consents and native sync state remain included. Consent history and
+attribution count toward the same row and byte limits; exceeding either refuses
+the whole capture rather than dropping history. Packets contain personal data
+and need the operator's existing access, retention and erasure controls.
+
+Locally committed withdrawals can have no work ID when sync was unavailable;
+those null receipts restore unchanged and replay never creates deferred work
+or reapplies an old denial. This transfer does not add an erasure path for
+consent history. Hosts should use opaque references because reference fields
+and keys can contain identifying strings.
+
+The sync-target binding/provider names and enabled flag carry over exactly for
+same-store continuity; this table contains no credentials or endpoint. Existing
+queued work already retains these logical targets. The new database starts with
+an empty target table and stays inactive under host control; transfer does not
+activate dispatchers or reconfigure external credentials. A conflicting nonempty
+target is refused rather than overwritten. Changing providers remains a trusted
+operator action after transfer.
+
+The native notice binding also retains existing dunning cases and notifications,
+the reminder ledger and transactional delivery receipts. These are finite owned
+tables, with cases restored before notification references; accepted delivery
+receipts keep their original keys and evidence. The
+[notice suite](../../tests/postgres/m19NoticeIsolation.test.ts) captures native
+writer output and compares all four row sets after restore, then proves exact
+restore replay. No new privilege, generic table importer or delivery is added by
+this transfer path.
+
 The native profile also carries purchase-renewal attachments, method-state
 history, current method state and their activation lineage. Attachments preserve pending duties and the
 exact purchase facts used for renewal snapshots: authorization and nullable payer

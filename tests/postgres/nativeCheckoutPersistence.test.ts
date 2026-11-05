@@ -181,12 +181,20 @@ it("rejects malformed money, identity injection and browser-return payment field
   await refusesWithoutWrite(() => port().createOrderDraft(input, { clientId: "invalid-client" }), { name: "ZodError" });
 });
 
-it("retains the native zero-payable, shipping and line-discount refusals", async () => {
+it("retains zero-payable and line-discount refusals and persists shipping", async () => {
   await refusesWithoutWrite(() => port().createOrderDraft({ ...request(), quoteSnapshot: quote("subscription", [0, 0]) }, { clientId }), { name: "CommerceOrderDraftUnsupportedMoneyError", reason: "zero_payable_unsupported" });
   const shipping = request();
   shipping.quoteSnapshot.quote.shippingGross = money(120); shipping.quoteSnapshot.quote.totalGross.amountMinor += 120;
   shipping.quoteSnapshot.quote.netTotal.amountMinor += 100; shipping.quoteSnapshot.quote.taxTotal.amountMinor += 20;
-  await refusesWithoutWrite(() => port().createOrderDraft(shipping, { clientId }), { name: "CommerceOrderDraftUnsupportedMoneyError", reason: "net_shipping_unsupported" });
+  const first = await port().createOrderDraft(shipping, { clientId });
+  const orderId = first.orderDraft.orderId.replace(/^order_/, "");
+  expect((await runtime.query("SELECT total_amount_minor::int AS total FROM public.commerce_orders WHERE id=$1", [orderId])).rows)
+    .toEqual([{ total: shipping.quoteSnapshot.quote.totalGross.amountMinor }]);
+  expect((await runtime.query("SELECT kind,scope,amount_minor::int AS amount FROM public.commerce_order_adjustments WHERE order_id=$1", [orderId])).rows)
+    .toEqual([{ kind: "shipping_charge", scope: "shipping", amount: 120 }]);
+  const beforeReplay = await effects();
+  expect(await port().createOrderDraft(shipping, { clientId })).toEqual({ ...first, orderDraft: { ...first.orderDraft, replayed: true } });
+  expect(await effects()).toEqual(beforeReplay);
   const discount = request();
   discount.quoteSnapshot.quote.discounts = [{ promotionId: "synthetic", appliesTo: "line", amountOffMinor: 100, reasonCode: "synthetic" }];
   discount.quoteSnapshot.quote.discountTotalGross = money(100); discount.quoteSnapshot.quote.totalGross.amountMinor -= 100;

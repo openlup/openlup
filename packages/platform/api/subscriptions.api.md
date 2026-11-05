@@ -717,12 +717,70 @@ export interface RenewalTemplateSnapshot {
     cadenceDays: number;
     lines: readonly RenewalLine[];
 }
+/** Immutable acquisition facts, supplied by trusted checkout composition. */
+export interface RenewalShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface RenewalLinePricing {
+    sku: string;
+    quantity: number;
+    unitAmountMinor: number;
+    isAddon: boolean;
+    quoteLine: Record<string, unknown>;
+}
+export interface RenewalStarterMarker {
+    schemaVersion: "1";
+    starterIntervalDays: number;
+    basisTemplateVersion: number;
+    delivery2: {
+        discountBps: number;
+        discountMinor: number;
+        basisSubtotalMinor: number;
+    };
+    graduation: {
+        cadenceDays: number;
+        sizeConstraint?: Record<string, unknown>;
+        lines: readonly {
+            sku: string;
+            qty: number;
+            sortOrder: number;
+            isAddon: boolean;
+            quoteLine: Record<string, unknown>;
+        }[];
+    };
+}
+export interface RenewalRetainedTerms {
+    version: "native.renewal-terms.v1";
+    shippingTerms?: RenewalShippingTerms;
+    starterPack?: RenewalStarterMarker;
+    minimumPayableMinor?: number;
+    normalCadenceDays?: readonly number[];
+    linePricing?: readonly RenewalLinePricing[];
+}
 export interface RenewalPricingSnapshot {
     currency: string;
     totalAmountMinor: number;
     shippingAmountMinor: number;
     agreementPolicy: "lock_until_edit";
     proration: "none";
+    productSubtotalAmountMinor?: number;
+    discountAmountMinor?: number;
+    shippingTerms?: RenewalShippingTerms;
+    linePricing?: readonly RenewalLinePricing[];
+    acquisition?: {
+        reasonCode: "starter_pack_delivery_2";
+        discountMinor: number;
+        basisTemplateVersion: number;
+    };
+}
+/** Kept for already-frozen operations and legacy purchases without delivery terms. */
+export interface RenewalRetainedShippingMarker {
+    kind: "retained_shipping";
+    shippingAmountMinor: number;
+    terms: RenewalShippingTerms | null;
 }
 /** Explicit zero-shipping limit; this is not a quote issued by a quote authority. */
 export interface RenewalZeroShippingMarker {
@@ -731,7 +789,7 @@ export interface RenewalZeroShippingMarker {
 }
 export interface RenewalOrderSnapshot {
     shippingAddressRef: string | null;
-    shippingQuoteRef: string | RenewalZeroShippingMarker | null;
+    shippingQuoteRef: string | RenewalZeroShippingMarker | RenewalRetainedShippingMarker | null;
     acquisitionRef: string | null;
     lines: readonly RenewalLine[];
 }
@@ -1080,6 +1138,7 @@ export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
 export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
 export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
 ```
@@ -1099,7 +1158,7 @@ export declare function createSubscriptionLifecycleMessages(delivery: Subscripti
 ## dist/subscriptions/nativePurchaseRenewal.d.ts
 
 ```ts
-import type { RenewalLine } from "./contracts/renewal.js";
+import type { RenewalLine, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
 export interface NativeRenewalPurchaseFacts {
@@ -1114,8 +1173,9 @@ export interface NativeRenewalPurchaseFacts {
     cadenceDays: number;
     currency: string;
     lines: readonly RenewalLine[];
-    /** Native preparation currently supports line totals only. */
-    shippingAmountMinor: 0;
+    /** Legacy fixed amount; a retained threshold is evaluated after product discounts. */
+    shippingAmountMinor: number;
+    renewalTerms?: RenewalRetainedTerms;
     acquisitionRef: string | null;
 }
 export type SandboxMethodHealth = "healthy" | "method_missing" | "mandate_not_chargeable_unattended" | "pending_activation";
@@ -1345,13 +1405,80 @@ import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
  * original obligation. The host owns mode selection and actual arrival facts. */
 export declare function withNativeDeliveryAlignmentRenewalAdmission(store: RenewalStorePort, db: SubscriptionQueryExecutor, now?: () => string): RenewalStorePort;
 ```
+## dist/subscriptions/postgresLifecycleMessages.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeLifecycleNotice {
+    id: string;
+    messageKey: string;
+    source: "dunning" | "event" | "reminder";
+    subscriptionId: string;
+    clientId: string;
+    kind: string;
+    templateSlug: string;
+    payload: Record<string, unknown>;
+    recoveryUrlPath: string | null;
+}
+type NoticeCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+    accessGrantReference?: string;
+};
+type NoticeReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+    retryable?: boolean;
+};
+export interface NativeLifecycleMessagesOptions {
+    /** Neutral safety defaults: 60-second lease, 6 attempts, 900-second backoff. Starter hosts supply explicit configured values. */
+    dispatch?: {
+        leaseSeconds?: number;
+        maxAttempts?: number;
+        transientBackoffSeconds?: number;
+    };
+    /** Neutral safety default: 172800-second recency. Starter hosts supply an explicit configured window. */
+    recovered?: {
+        windowSeconds?: number;
+    };
+    /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Host composes the transactional delivery engine and durable receipt reader. */
+    delivery: {
+        send(command: NoticeCommand): Promise<NoticeReceipt>;
+        readReceipt(key: string): Promise<NoticeReceipt | null>;
+    };
+    /** Trusted host rendering/locale/access-link binding. Never accepts browser-supplied recipient facts. */
+    bind(notice: NativeLifecycleNotice, recipient: {
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+}
+/** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.
+ * Session advisory locks serialize this binding's sends without a transaction across transport.
+ * A transport must preserve command idempotency on ambiguous acceptance; no live-provider claim. */
+export declare function createPostgresLifecycleMessages(options: NativeLifecycleMessagesOptions): {
+    run(limit?: number): Promise<{
+        sent: number;
+        replayed: number;
+        requeued: number;
+        failed: number;
+        skipped: number;
+        busy: number;
+        stale: number;
+    }>;
+};
+export {};
+```
 ## dist/subscriptions/postgresRenewalSettlement.d.ts
 
 ```ts
 import type { RenewalSettlementPort } from "./contracts/renewal.js";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** Direct settlement persistence; terminal truth must arrive from an external acknowledgement. */
-export declare function createPostgresRenewalSettlementPort(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec): RenewalSettlementPort;
+export declare function createPostgresRenewalSettlementPort(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalSettlementPort;
 ```
 ## dist/subscriptions/postgresRenewalStore.d.ts
 
