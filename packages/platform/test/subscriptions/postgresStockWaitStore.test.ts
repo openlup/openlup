@@ -60,3 +60,28 @@ describe("native stock wait adapter", () => {
     expect(f.query).toHaveBeenCalledTimes(2);
   });
 });
+
+it("keeps missing UUID bindings distinct from invalid strings and compares the engine key exactly", async () => {
+  const f = fixture(), caseId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  f.query.mockResolvedValue({ rows: [{ projection: { id: caseId, subscription_id: f.snapshot.subscriptionId,
+    client_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", state: "waiting", deficits: [] },
+    cycle_snapshot: f.wire, identity_key: f.binding.engineIdempotencyKey,
+    bound_cycle_id: null, bound_order_id: null, payment_id: null }] });
+  const input = { ...f.binding, caseId };
+  expect(await f.store.readFrozenCase(input)).toMatchObject({ caseId, binding: input });
+  for (const key of ["cycleId", "orderId", "paymentId"] as const) {
+    await expect(f.store.readFrozenCase({ ...input, [key]: "invalid-uuid" })).rejects.toThrow("stock_wait_frozen_binding_changed");
+  }
+  await expect(f.store.readFrozenCase({ ...input, engineIdempotencyKey: "ORIGINAL-KEY" })).rejects.toThrow("stock_wait_frozen_binding_changed");
+});
+
+it("preserves exact recovery binding JSON including invalid values and engine keys", async () => {
+  const f = fixture(), id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  f.query.mockResolvedValue({ rows: [{ response: { waiting: true, caseId: id } }] });
+  const recovery = { caseId: id.toUpperCase(), cycleId: id.toUpperCase(), orderId: id.toUpperCase(), paymentId: id.toUpperCase(), engineIdempotencyKey: "Case-Sensitive" };
+  await f.store.admit({ operationId: "op", claimToken: "token", snapshot: f.snapshot, recovery, now: f.at });
+  expect(f.query.mock.calls[0][1]?.[1]).toEqual({ stockWaitRecovery: recovery });
+  expect(recovery.caseId).toBe(id.toUpperCase());
+  await f.store.admit({ operationId: "op", claimToken: "token", snapshot: f.snapshot, recovery: { ...f.binding, caseId: "invalid-uuid" }, now: f.at });
+  expect(f.query.mock.calls[1][1]?.[1]).toEqual({ stockWaitRecovery: { ...f.binding, caseId: "invalid-uuid" } });
+});

@@ -27,6 +27,8 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   onSuccess?: (value: unknown) => void;
+  display?: (value: unknown) => unknown;
+  resultMessage?: (value: unknown) => CopyKey | undefined;
 }
 
 let fieldCounter = 0;
@@ -108,9 +110,14 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       try {
         const result = await act(options.operation, values, commandKey);
         output.replaceChildren(result.ok
-          ? el('section', {}, el('h4', {}, context.t('response')), renderValue(result.value))
+          ? el('section', {}, el('h4', {}, context.t('response')),
+            options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
+            renderValue(options.display ? options.display(result.value) : result.value))
           : refusal(context, result.code));
-        if (result.ok) options.onSuccess?.(result.value);
+        if (result.ok) {
+          for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
+          options.onSuccess?.(result.value);
+        }
       } finally {
         inFlight = false;
         submit.disabled = false;

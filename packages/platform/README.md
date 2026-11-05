@@ -212,6 +212,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
+| `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
@@ -702,6 +703,13 @@ and any artifact-cap change require their own approved scope.
 
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
+`resolveThresholdShipping` evaluates configured delivery terms against product
+payable after product discounts, excluding delivery: equality and higher spend
+are free. `summarizeThresholdShipping` projects one quote's effective delivery,
+free state and remaining product spend. Pass `stale: true` for loading, failed
+or busy quote state to suppress the remaining-spend helper. Missing delivery
+money does not imply free delivery. Hosts own copy and formatting; fees and
+thresholds remain configuration inputs.
 Native flat-rate save requires the rate port, a ready Core report and
 `nativeRateSchema`, a same-database Core `SchemaObservation` proving the applied
 seed identity and settings objects. A candidate schema label is not proof;
@@ -1299,6 +1307,10 @@ changes the preference without granting consent. Earlier opt-outs need the
 [operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
 which also documents the provider-sync and email-change limits.
 
+The native delivery adapter suppresses newsletter, gifts/discounts, launch-offer
+and tester consent on a bounce or complaint. Complete account choices and their
+actor command boundary are documented in [Data and migrations](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#complete-account-consent-choices).
+
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.
 See the [communications recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import) for migration, email rendering and native operations.
 
@@ -1549,6 +1561,28 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+The subscriptions entry also exports `createNativeSubscriptionBinding`,
+`createNativeRetryDriver`, `withNativeDeliveryAlignmentRenewalAdmission`,
+`createPostgresRenewalSettlementPort` and `nativeSubscriptionSchema`. These are
+opt-in native composition and persistence boundaries; hosts supply readiness,
+transactions, a shared population lease and exact payment-attempt readback.
+The binding freezes the destination under the claim lock. Lower-level hosts
+supply the transaction callback to `createPostgresRenewalStore` and
+`createPostgresRenewalSettlementPort`. Retained `native.renewal-terms.v1` facts
+freeze delivery pricing and optional second-delivery/graduation terms from the
+accepted server offer. Threshold shipping uses product payable after discounts:
+paid below, free at or above the configured threshold. Fixed paid shipping also
+requires the retained-terms document. New threshold or paid-shipping snapshots carry the actual
+`retained_shipping` marker; other zero-shipping snapshots keep their original
+wire and fingerprint. Graduation runs under the subscription lock before the
+first unlocked third delivery, preserving add-ons and customer-edited normal
+cadences without moving the due anchor. Preparation projects discounted product
+positions and a separate shipping charge in one transaction; replay adds neither.
+A retained snapshot refuses preparation without the supplied transaction runner.
+See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
+for destination claim transactions and qualification limits.
+
+
 The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
 committed `activateNativePurchaseWithRenewal` convenience call. A completion
@@ -1599,6 +1633,21 @@ in `./subscriptions`; `createSubscriptionContribution` is in `./composition`.
 They are default-off and describe one host executor/job. The
 [composed module recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 owns explicit selection, frozen mandate/replay, M04 delivery and M12 boundaries.
+
+`createPostgresLifecycleMessages` consumes the native notice queue through an
+explicit trusted host. Its optional `dispatch` policy defaults to a 60-second
+lease, 6 attempts and a 900-second transient backoff. `recovered.windowSeconds`
+defaults to 172800. These are neutral safety defaults. Starter hosts must supply
+all four values explicitly from their typed configuration. Values are strictly
+validated positive PostgreSQL integers.
+Operator repair notices inherit their latest customer failure template and retain
+their own identity. Returned transient failures requeue using the SQL clock,
+explicit final failures settle failed, and exceptions retain the sending lease.
+Accepted receipts reconcile before binding. Current recovered-case truth and an
+inclusive recency cutoff gate unaccepted recovered history. The run result
+reports `requeued` separately. Hosts retain rendering, token authority and
+idempotent private-capture readback. The [lifecycle owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+defines these policies and the attempt-ceiling repair boundary.
 
 ## Invoicing contracts
 

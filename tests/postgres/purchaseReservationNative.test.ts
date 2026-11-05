@@ -453,9 +453,9 @@ it("shares hard-hold accounting and stock locks with renewal and stock wait with
   const f = await renewal(admin), sku = f.snapshot.lines[0].sku;
   const id = (await admin.query("SELECT id FROM public.catalog_skus WHERE sku=$1", [sku])).rows[0].id;
   const s = { id, sku, source: f.source }, input = await purchase(s, [8]);
-  const [held, reserved] = await Promise.all([
-    port().reserveOrderItems(input), call(runtime, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, AT]),
-  ]);
+  // Renewal now shares admission; concurrent entry is covered by the gate witness.
+  const held = await port().reserveOrderItems(input);
+  const reserved = await call(runtime, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, AT]);
   expect(reserved).toMatchObject({ reserved: true });
   expect(await budget(s)).toMatchObject({ hard_hold_quantity: 10, soft_subscription_demand_quantity: 0, available_quantity: 0 });
   expect(await call(runtime, "subscription_stock_wait_deficits", [f.snapshot, f.operation, AT])).toEqual([]);

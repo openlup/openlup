@@ -10,18 +10,21 @@ import {
   adminCommerceFulfillmentRecordLabelRequestSchema,
   adminCommerceFulfillmentRecordProviderAttemptRequestSchema,
   adminCommerceFulfillmentTrackingEventRequestSchema,
+  type CommerceFulfillmentResponseSchemas,
 } from "./handlerSchemas.js";
 import type { FulfillmentOperatorMutationPort as CommerceFulfillmentMutationPort } from './contracts/operator.js';
-import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort } from './contracts/read.js';
+import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort, FulfillmentCommerceOrder } from './contracts/read.js';
 import { CommerceFulfillmentConflictError, authorize, isNativeUnsupported, type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
 type PortRef<T> = T | (() => T);
 
-export function createAdminCommerceFulfillmentOrdersListHandler<Response>({
+export function createAdminCommerceFulfillmentOrdersListHandler<Response, Order = FulfillmentCommerceOrder>({
   authorizeAdmin,
   respond,
   fulfillmentPort,
+  responseSchemas,
 }: BaseDeps<Response> & {
-  fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "listCommerceFulfillmentOrders">>;
+  fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort<Order>, "listCommerceFulfillmentOrders">>;
+  responseSchemas?: CommerceFulfillmentResponseSchemas<Order>;
 }) {
   const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = respond;
   return async function handler(req: FulfillmentHandlerRequest, res: Response): Promise<void> {
@@ -43,7 +46,7 @@ export function createAdminCommerceFulfillmentOrdersListHandler<Response>({
         sendBffError(res, "UPSTREAM_UNAVAILABLE", "Native fulfillment operation unsupported", { details: result });
         return;
       }
-      const response = adminCommerceFulfillmentOrdersListResponseSchema.safeParse(result);
+      const response = (responseSchemas?.list ?? adminCommerceFulfillmentOrdersListResponseSchema).safeParse(result);
       if (!response.success) {
         sendBffError(res, "INVALID_RESPONSE", "Admin commerce fulfillment orders response invalid");
         return;
@@ -55,12 +58,14 @@ export function createAdminCommerceFulfillmentOrdersListHandler<Response>({
   };
 }
 
-export function createAdminCommerceFulfillmentOrderDetailHandler<Response>({
+export function createAdminCommerceFulfillmentOrderDetailHandler<Response, Order = FulfillmentCommerceOrder>({
   authorizeAdmin,
   respond,
   fulfillmentPort,
+  responseSchemas,
 }: BaseDeps<Response> & {
-  fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "getCommerceFulfillmentOrderDetail">>;
+  fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort<Order>, "getCommerceFulfillmentOrderDetail">>;
+  responseSchemas?: CommerceFulfillmentResponseSchemas<Order>;
 }) {
   const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = respond;
   return async function handler(req: FulfillmentHandlerRequest, res: Response): Promise<void> {
@@ -86,7 +91,7 @@ export function createAdminCommerceFulfillmentOrderDetailHandler<Response>({
         sendBffError(res, "NOT_FOUND", "Commerce fulfillment order not found");
         return;
       }
-      const response = adminCommerceFulfillmentOrderDetailResponseSchema.safeParse(result);
+      const response = (responseSchemas?.detail ?? adminCommerceFulfillmentOrderDetailResponseSchema).safeParse(result);
       if (!response.success) {
         sendBffError(res, "INVALID_RESPONSE", "Admin commerce fulfillment detail response invalid");
         return;

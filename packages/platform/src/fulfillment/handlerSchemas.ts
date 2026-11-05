@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { FulfillmentOrdersListResponse, FulfillmentOrderDetailResponse } from './contracts/read.js';
 import { PAYMENT_INTENT_STATUSES } from '@openlup/core/payment';
 const OMS_FULFILLMENT_BLOCK_REASONS = ['order_not_paid','payment_not_succeeded','subscription_cycle_not_paid','active_hold','missing_shipping_address','inventory_review','risk_review'] as const;
 const OMS_INVENTORY_STATUSES = ['not_checked','reserved','missing','released','expired','consumed','review_required'] as const;
@@ -94,22 +95,45 @@ export const commerceFulfillmentOperationSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
 }).strict();
 
-export const commerceFulfillmentOrderSchema = z.object({
-  id: uuidSchema,
-  orderId: uuidSchema,
-  clientId: uuidSchema.nullable(),
-  status: commerceFulfillmentStatusSchema,
-  providerKind: z.string().trim().min(1).nullable(),
-  providerTrackingId: z.string().trim().min(1).nullable(),
-  shippingAddress: commerceFulfillmentShippingAddressSnapshotSchema,
-  lines: z.array(commerceFulfillmentLineSchema).min(1),
-  payment: commerceFulfillmentPaymentSummarySchema,
-  inventory: commerceFulfillmentInventorySummarySchema,
-  omsEligibility: commerceFulfillmentOmsEligibilitySchema,
-  latestOperation: commerceFulfillmentOperationSchema.nullable(),
-  createdAt: datetimeSchema,
-  updatedAt: datetimeSchema,
-}).strict();
+export type CommerceFulfillmentResponseSchemas<Order = CommerceFulfillmentOrder> = {
+  list: z.ZodType<FulfillmentOrdersListResponse<Order>>;
+  detail: z.ZodType<FulfillmentOrderDetailResponse<Order>>;
+};
+
+export function createCommerceFulfillmentResponseSchemas<Address extends z.ZodType>(shippingAddress: Address) {
+  const order = z.object({
+    id: uuidSchema,
+    orderId: uuidSchema,
+    clientId: uuidSchema.nullable(),
+    status: commerceFulfillmentStatusSchema,
+    providerKind: z.string().trim().min(1).nullable(),
+    providerTrackingId: z.string().trim().min(1).nullable(),
+    shippingAddress,
+    lines: z.array(commerceFulfillmentLineSchema).min(1),
+    payment: commerceFulfillmentPaymentSummarySchema,
+    inventory: commerceFulfillmentInventorySummarySchema,
+    omsEligibility: commerceFulfillmentOmsEligibilitySchema,
+    latestOperation: commerceFulfillmentOperationSchema.nullable(),
+    createdAt: datetimeSchema,
+    updatedAt: datetimeSchema,
+  }).strict();
+  return {
+    order,
+    list: z.object({
+      contractVersion: z.literal(COMMERCE_FULFILLMENT_CONTRACT_VERSION),
+      orders: z.array(order),
+      totalCount: z.number().int().min(0),
+      page: z.number().int().min(1),
+      pageSize: z.number().int().min(1),
+    }).strict(),
+    detail: z.object({
+      contractVersion: z.literal(COMMERCE_FULFILLMENT_CONTRACT_VERSION),
+      order,
+    }).strict(),
+  };
+}
+const managedResponseSchemas = createCommerceFulfillmentResponseSchemas(commerceFulfillmentShippingAddressSnapshotSchema);
+export const commerceFulfillmentOrderSchema = managedResponseSchemas.order;
 
 export const adminCommerceFulfillmentOrdersListRequestSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -177,18 +201,8 @@ export const adminCommerceFulfillmentCancelRequestSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
-export const adminCommerceFulfillmentOrdersListResponseSchema = z.object({
-  contractVersion: z.literal(COMMERCE_FULFILLMENT_CONTRACT_VERSION),
-  orders: z.array(commerceFulfillmentOrderSchema),
-  totalCount: z.number().int().min(0),
-  page: z.number().int().min(1),
-  pageSize: z.number().int().min(1),
-}).strict();
-
-export const adminCommerceFulfillmentOrderDetailResponseSchema = z.object({
-  contractVersion: z.literal(COMMERCE_FULFILLMENT_CONTRACT_VERSION),
-  order: commerceFulfillmentOrderSchema,
-}).strict();
+export const adminCommerceFulfillmentOrdersListResponseSchema = managedResponseSchemas.list;
+export const adminCommerceFulfillmentOrderDetailResponseSchema = managedResponseSchemas.detail;
 
 export const adminCommerceFulfillmentMutationResponseSchema = z.object({
   contractVersion: z.literal(COMMERCE_FULFILLMENT_CONTRACT_VERSION),

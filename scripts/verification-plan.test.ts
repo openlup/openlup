@@ -102,6 +102,46 @@ describe('read-only public explain CLI', () => {
     expect(human.status).toBe(0); expect(human.stdout).toContain('pgTAP: selected');
     expect(human.stdout).toContain('Hosted only (native-review)'); expect(await readdir(f.cwd)).toEqual(files);
   });
+  it('schedules a broad diagnostic only after early preflight accepts the committed candidate', async () => {
+    const f = await gitFixture();
+    const base = f.git('rev-parse', 'HEAD');
+    const planner = resolve('scripts/verification-plan.mjs');
+    const probe = `import { pathToFileURL } from 'node:url';
+      import { env } from 'node:process';
+      const { preflightBeforeReview } = await import(pathToFileURL(env.OPENLUP_TEST_PLANNER));
+      try { console.log(await preflightBeforeReview()); }
+      catch (error) { console.error(error.message); process.exitCode = 1; }`;
+    const schedule = (stackBase?: string) => spawnSync('/bin/sh', [
+      '-c', '"$1" --input-type=module -e "$2" && printf "broker-started\\n"',
+      'schedule', process.execPath, probe,
+    ], {
+      cwd: f.cwd, encoding: 'utf8', env: { PATH: '/usr/bin:/bin', OPENLUP_TEST_PLANNER: planner, OPENLUP_STACK_BASE: stackBase },
+    });
+    expect(schedule().stderr).toContain('requires a clean committed candidate');
+    await writeFile(join(f.cwd, 'source'), 'candidate\n');
+    f.git('add', '.'); f.git('commit', '-qm', 'candidate');
+    const head = f.git('rev-parse', 'HEAD');
+    const accepted = schedule();
+    expect(accepted.status).toBe(0);
+    expect(accepted.stdout.trim().split('\n')).toEqual([
+      `Pre-review ${head} on ${base} against ${base}: merge prediction accepted.`, 'broker-started',
+    ]);
+    const pending = schedule(head);
+    expect(pending.status).toBe(0);
+    expect(pending.stdout).toContain('queue still awaits the exact stack predecessor');
+    f.git('checkout', '-q', '--detach', base);
+    await writeFile(join(f.cwd, 'source'), 'main change\n');
+    f.git('add', 'source'); f.git('commit', '-qm', 'main change');
+    f.git('update-ref', 'refs/remotes/origin/main', f.git('rev-parse', 'HEAD'));
+    f.git('checkout', '-q', '--detach', head);
+    const index = await readFile(join(f.cwd, '.git/index'));
+    const refused = schedule();
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('candidate conflicts with origin/main');
+    expect(refused.stdout).not.toContain('broker-started');
+    expect(await readdir(f.cwd)).toEqual(['.git', 'new-file', 'source']);
+    expect(await readFile(join(f.cwd, '.git/index'))).toEqual(index);
+  });
   it('keeps all obligations and reports UNKNOWN scope when the Git base is unreadable', async () => {
     const f = await gitFixture(); f.git('update-ref', '-d', 'refs/remotes/origin/main');
     const output = execute(f.cwd, '--plan', '--json');

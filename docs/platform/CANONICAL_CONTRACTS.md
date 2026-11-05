@@ -585,6 +585,9 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The channel suffix established the preceding selected-plan prefix of
+91 legacy units, 95 qualified units and 94 restricted units.
+
 The sandbox-attempt source suffix follows the M17 prefix described below. Its
 one additive native unit extends those prefix counts to legacy 92, qualified 96
 and restricted 95, with separate reference digests for all five installation
@@ -621,6 +624,19 @@ The RPC catalogue records the normalized ingest and existing payment owner call
 sites. Managed settlement uses the existing ATP exposure hook and allocator;
 portable source capture/read/CAS declares physical conversion unavailable. Fresh
 qualification and privacy lifecycle capabilities remain outside this import.
+
+The native paid-notice suffix appends one source unit, preserving those exact
+prefixes: selected source plans now contain 92, 96 and 95 units respectively.
+All five installation-shape inventories are measured separately before and
+after applying the forward. The conditional grants expose only the eight
+existing native notice helpers to service_role; an absent legacy role receives
+no grant. Invoker rights and browser refusals remain unchanged. These manifests
+describe installation inputs, not authority to run jobs, disclose contacts or
+send messages. The [native notice binding](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+requires trusted scheduled-host admission and preserves transactional delivery receipt replay.
+The forward's separate class/pin admission and eventual package projection
+remain delivery prerequisites; a measured local catalog is not publication or
+provider qualification.
 
 Corrections to these unissued forwards keep their source hashes, packed SQL
 hash and measured fingerprints for all five installation shapes in agreement.
@@ -1106,12 +1122,15 @@ source commit identifies the measured base, scanner blob identities pin the
 counting implementation, and SHA-256 keys identify exact relative paths. Each
 count belongs to one path and category; a reduction elsewhere cannot pay for an
 increase, and a new path has no inherited allowance.
+The check applies its explicit opt-in adapter vocabulary allowances before
+comparing these counts, including the scoped root `ROADMAP.md` addition below.
 
 The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
 regardless of filename extension and inventories binary files. It refuses
 increases against both the comparison tree and the accepted baseline, including
-an increased baseline allowance. Regeneration may lower existing allowances;
-it cannot admit new debt except for the fixed diagnostic-fixture introduction
+an increased baseline allowance. Baseline regeneration may lower existing
+allowances. It cannot admit new baseline debt except for the fixed
+diagnostic-fixture introduction
 recorded in the checker. That introduction admits five exact SQL fixture files
 in category `ui-15`, verified by their complete SHA-256 bytes, original counts
 and accepted counts, against one full comparison commit. The explicit baseline
@@ -1121,7 +1140,8 @@ a reduction. Scanner pins and every other path, category and increase remain
 unchanged. These counts reuse the existing scanner semantics and do not expand
 a runtime contract or establish a stable preview channel.
 
-The opt-in communications adapters have a `ui-12` vocabulary allowance only
+Apart from the scoped root `ROADMAP.md` addition below, the opt-in
+communications adapters have a `ui-12` vocabulary allowance only
 inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
@@ -1136,9 +1156,15 @@ The two snapshot filename tokens are additionally allowed only in the platform
 release-gates file and publication catalogue; the two relative adapter entry
 tokens are allowed only in the package boundary test. The undeclared-subpath
 fixture uses a neutral vendor segment and needs no allowance.
-Only the ledger additionally allows bare adapter names. Neutral communications
-sources and contracts, other root content and other documentation remain
-checked; baseline counts and matcher pins are unchanged.
+The ledger additionally allows bare adapter names. The root `ROADMAP.md`
+provider matrix is the one scoped addition to these adapter vocabulary
+allowances, with at most two matches each for categories `ui-12`, `ui-13`,
+`ui-14` and `ui-15` at that exact path. A third match, those terms at other paths
+outside their existing adapter allowances, and every other counted term or
+category remain checked. Neutral communications sources and contracts, other
+root content and other documentation remain checked outside their existing
+allowances. The baseline and scanner pins are unchanged. See the
+[CONTRIBUTING neutrality check guidance](../../CONTRIBUTING.md#package-policy-and-release-checks).
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
 its CLI refusal tests in required root `test`. Managed pgTAP remains a raw
