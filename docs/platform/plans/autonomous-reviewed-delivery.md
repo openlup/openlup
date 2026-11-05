@@ -143,7 +143,8 @@ policy/agent instructions. Ordinary eligibility is limited to test/spec files,
 known test-fixture locations and Markdown prose outside these controls and the
 existing sensitive-path matcher. Product bytes, executable instructions and
 required proof changes never become ordinary through a filename. The canonical
-implementation selectors are `protectedCoveragePath` and `ordinaryRepairPath`.
+implementation selector is `protectedCoveragePath`; a repair is now reviewed as
+its delta with `deltaFloor` (see CONTRIBUTING native review).
 The catalog, nested-entry literal and cold-consumer entry arrays have only the
 bounded integration range exception, not a repair or group carry-over exemption.
 
@@ -540,7 +541,7 @@ see the trusted local entry point in
 
 The supervisor owns review of the committed source in the active task and posts
 its summary as soon as the PR is open and ready. A new head needs new evidence.
-After local proof, current review, required maintainer reads and the ready-main-PR
+After current review, required maintainer reads and the ready-main-PR
 source receipt, actual merge authority permits enabling auto-merge once while
 source checks are pending, following [Merge queue](../../../CONTRIBUTING.md#merge-queue).
 Known failed checks, conflicts and unresolved mergeability retain their existing
@@ -616,8 +617,8 @@ range. Controlled local fixtures establish those mechanics only. When a hosted
 sandbox or live queue test is unavailable, record `UNAVAILABLE` with its missing
 precondition; fixture results cannot replace it or justify a waiver.
 
-Prepare an exact settings proposal for separate maintainer approval: squash
-queue, build concurrency one, minimum and maximum merge count one, `ALLGREEN`,
+Prepare an exact settings proposal for separate maintainer approval: merge-commit
+queue, build concurrency two, minimum and maximum merge count one, `ALLGREEN`,
 all six existing contexts plus `native-review`, the activation variable and a
 check-response timeout covering mechanical CI plus the bounded receipt wait.
 Do not enable settings while delivering the foundation. The inactive admission

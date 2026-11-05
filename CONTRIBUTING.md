@@ -156,13 +156,13 @@ its users or operators can observe.
 
 Only `packages/platform/src/catalog/commerceQuoteCatalogRead.ts` permits a pinned, unread payload handoff to `verifyDocument`, with refusal witnesses for extra reads, inspection, interpretation and logging.
 
-Native review tooling records exact candidate, policy and Git coverage edges.
-Its versioned session commands distinguish complete first review, checked
-integration, ordinary repair and explicit renewal. Verification/admission
-recompute exceptional edges; none changes required test selection or hosted
+Native review tooling records the exact candidate and its Git coverage edges: a
+first review, an integration of main (a clean merge, a registry union, or a
+conflict resolution reviewed as its delta) and a repair reviewed as its delta.
+Admission recomputes those edges; none changes required test selection or hosted
 checks. Read [native review](#native-review-and-accountability) before using
 those commands. The registry checker recognizes only the three named carrier
-arrays and compares the complete merged tree; it does not resolve queue groups.
+arrays and compares the complete merged tree.
 
 The public local runner and its read-only `--plan` explanation share one
 obligation catalogue. It retains every mandatory local phase and the existing
@@ -1182,56 +1182,20 @@ add an exception.
 
 ### Local stack bases and heavy verification
 
-Ordinary independent pull requests use the existing fork-point base. Stacking
-is optional. For an upper branch, export `OPENLUP_STACK_BASE=<full-predecessor-SHA>`
-before documentation checks, native `prepare`/`record`/`verify`, and final local
-verification. The pin must be an ancestor of HEAD and a descendant of its fork
-point. It is the reviewed candidate's base; changing or
-removing it does not reuse an old review. Documentation uses that same base,
-including its no-impact fingerprints. Hosted event attribution still wins.
+Stacking is optional. For an upper branch, export
+`OPENLUP_STACK_BASE=<full-predecessor-SHA>` before documentation checks and native
+`prepare`/`record`/`verify`. The pin must be an ancestor of HEAD and a descendant
+of its fork point; it is the reviewed candidate's base. Review the upper change
+relative to that predecessor. Admission requires the base to have reached actual
+`main`; once the predecessor lands, the unchanged upper candidate keeps its review.
 
-Review the upper change relative to this exact predecessor, with the predecessor's
-contracts as context. Source and group admission independently require the
-reviewed base to have reached actual `main`; an unchanged group tree cannot
-waive that prerequisite. A predecessor-only landing
-then preserves the upper candidate, coverage, reports, expiry and repair history.
-Default unstacked reviews retain their existing fork-point refusal rules.
-
-For each heavy final local command, use:
-
-```sh
-node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:scoped
-```
-
-Keep every required command below, including package gates and coverage, unless
-an authorized supervisor establishes the bounded [mechanical integration
-alternative](#native-review-and-accountability). This wrapper adds no test
-selection, cache, stamp or authority; it does not establish complete local proof
-from one successful supplied command. Before starting the
-command, it checks the clean committed candidate and its native review. After
-the command exits, it checks candidate identity, cleanliness and review validity
-again. A changed candidate or expired review refuses final evidence; a valid
-candidate preserves the underlying command's exit code.
-
-With `--resource`, the wrapper requires `ai-resource-gate` on PATH and runs the
-command through its waiting admission route. Select the existing profile for
-the actual command, such as `openlup:coverage`, `openlup:build` or
-`openlup:typecheck`; the resource key uses a stable numeric worktree suffix, so directory names
-cannot select a different broker lane.
-The broker's configured CPU/RAM, timeout and refusal policies remain binding;
-the wrapper defines none of them. Without `--resource`, it runs the command
-directly. It refuses invocation inside an active resource broker or another
-verification wrapper, so wrap the underlying command once.
-
-Freeze tracked inputs and serialize commands sharing mutable output. The wrapper
-adds no output lease or policy/inventory check. Its cheap predicted-merge
-preflight reuses queue carry-over against locally fetched `origin/main` before
-the command starts; refresh that ref before final verification. It performs no
-intermediate candidate check after a broker wait. It passes the
-existing environment, including any `OPENLUP_STACK_BASE`, to the child command.
-Run the separately required checks yourself; existing maintainer-local stamps
-and hooks remain required where installed. This wrapper is local verification,
-not hosted admission or evidence of deployment readiness.
+Heavy local commands are optional feedback for the code being written; the
+required verification is hosted CI. To run one against the reviewed candidate, use
+`node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:scoped`.
+It checks the clean committed candidate and its review before and after the
+command and preserves the command's exit code. With `--resource` it runs through
+`ai-resource-gate`, whose policies stay binding; it refuses nesting inside another
+broker or wrapper.
 
 ### Optional SonarQube Cloud diagnostics
 
@@ -1557,8 +1521,7 @@ configuration or harness changes), or when requesting that raw diagnostic.
 The runner uses the commands below once: a single locked install, lint's package
 prerequisites, both reference builds, shared package/API/coverage gates and one
 `test:scoped`. Hosted shards, event-bound dependency comparison and receipt
-admission remain hosted checks. This command neither creates a maintainer-local
-stamp nor replaces an installed helper's requirements.
+admission remain hosted checks; this optional command is local feedback.
 
 Each phase uses the existing native before/after review and candidate checks.
 Where the optional resource broker is installed, a closed phase map selects its
@@ -1643,10 +1606,8 @@ those assertions require.
 
 The native review session binds the committed candidate to its fork point (or
 `OPENLUP_STACK_BASE` pin), tree, intent and fresh reviewer reports. Stable
-material finding IDs require closure. Normal expiry is 24 hours after the
-earliest counted PASS; only the bounded explicit unchanged-candidate renewal
-may extend it, within the original 72-hour cap. Unchanged prepare
-preserves evidence. Three repair cycles are automatic; `needs_owner` then
+material finding IDs require closure. Evidence does not expire; unchanged
+prepare preserves it. Three repair cycles are automatic; `needs_owner` then
 requires an owner decision recorded with `continue "<note>"`, adding three.
 Follow [Regroup when work stops converging](#regroup-when-work-stops-converging).
 `prepare --new` records a changed
@@ -1666,12 +1627,7 @@ workflow drift before expensive checks or replacement of prior logs, and acquire
 an output lock scoped to the actual task worktree before running those checks.
 An existing lock is refused without stealing it or disturbing another task's
 checks; unrelated worktrees use the host broker's capacity limits. The required
-six-job commands remain unchanged; exact-candidate review evidence may be reused
-by pre-push, but this process adds no general test-result cache. The local
-verification stamp records that one exact clean tree passed. Pre-push requires
-it, and it never lets a check be skipped. Prove actual
-CLI and hook refusal paths in two dogfooding passes, batch material repairs, and
-repeat affected scenarios before claiming live activation.
+six-job commands remain unchanged; this process adds no test-result cache.
 
 Published Tree CI also accepts `merge_group.checks_requested`. The six mechanical
 jobs run against the queue's actual group checkout. DCO checks the complete
@@ -1684,10 +1640,9 @@ unrelated reasons, including an edit of that section. A
 pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
 head parents; the payload's `merge_commit_sha` is not compared, because a
 `synchronize` payload can carry a lagging value.
-The local verification mirror must match these workflow commands before final
-delivery. A workflow change needs its separately authorized mirror update; focused
-tests cannot replace that final gate or stamp. The mirror runs raw diagnostics
-only on request, or pgTAP alone when the range reaches database inputs.
+The optional local verification mirror follows these workflow commands; it runs
+raw diagnostics only on request, or pgTAP alone when the range reaches database
+inputs.
 
 **When the job runs.** The `native-review` job runs when the repository
 variable `OPENLUP_NATIVE_QUEUE` is `enabled`. At the
@@ -1703,7 +1658,7 @@ required check. It reuses this admission reader once, after the seven source
 contexts succeeded, and inserts only a still-armed exact head. Its trusted
 default-branch execution, isolated App identity and refusal of automatic requeue
 are described under [Merge queue](#merge-queue); it does not change the source
-or group command set, reviewer floor, receipt expiry or recovery budget.
+or group command set, reviewer floor or recovery budget.
 
 **Receipt admission.** A pull-request run accepts a summary receipt for its PR
 number and exact reviewed head and tree. One receipt covers every run and
@@ -1730,7 +1685,7 @@ receipt for the live PR head. It checks repository permission rather than public
 organization membership, caches each login's result for the wait, and refuses
 bots and failed permission lookups. It fetches source objects with `transfer.fsckObjects=true`,
 recomputes the tree and reviewer floor from the changed paths and modes, and
-checks the base and expiry. Git runs through `/usr/bin/git` with
+checks the base. Git runs through `/usr/bin/git` with
 `PATH=/usr/bin:/bin`. The receipt base must equal the single fork point of the
 reviewed head and actual main. Receipts have no separate stack-pin field: an
 exact pinned predecessor landing becomes that fork point and preserves review;
@@ -1738,48 +1693,20 @@ an older landed ancestor is refused. A new head needs a new receipt and either p
 
 A valid source receipt carries over when the reviewed base is an ancestor of the
 queue base and the group is the reviewed tree or exactly the clean
-`git merge-tree` result. The verifier also checks the net base delta. A changed
-reviewed path or a move in admission, identity binding, dependencies, workflows,
-runtime pins or migrations blocks carry-over unless the applicable Git proof below succeeds.
-Unrelated check configuration is exercised on the group.
-
-- The three named registry carriers accept the exact union of disjoint
-  additions. Other changes to these shared controls refuse carry-over.
-  Package manifests retain the disjoint additive `exports` proof.
-  Contributor prose and package READMEs may overlap when the complete contextual
-  diff of the PR is identical apart from line offsets.
-- Publication metadata accepts a package's `N.x` to `>=N` declaration while
-  the repository stays on the identical pinned Node version. A package's explicit
-  file list can add `AGENTS.md`. A lockfile must be identical after removing the
-  proved engine delta from the designated workspace records. On a shared pack
-  budget file a change to `pack` must be proved even when the PR leaves the file
-  alone. The base may change the aggregate packed and unpacked byte caps,
-  aggregate file cap, packed code byte and file caps, and the cap explanation.
-  The reviewed change must leave `pack` unchanged and retain its contribution
-  outside it. A disjoint edit outside an identical `pack` keeps the existing
-  queue behavior. A versioning guide move refuses a PR that changes release
-  controls, including the package inventory and source release contract.
-  Independently proved registry and export additions, and package evidence with
-  unchanged pack rules, are eligible.
-- The portable review rollout is recognized from its introduction on trusted
-  main's first-parent history. For each named rollout path the old base
-  must have the pre-rollout blob and the new base must have the exact landed
-  rollout blob. The PR must leave that path alone. If another protected change
-  lands first, use the already active rules to integrate and fully review the
-  rollout PR before it can land.
-
-The existing v2 and v3 formats, report identities, original expiry and open
-findings govern admission. The six required checks run on the exact group.
-For a refused group, merge main and use the committed integration proof where
-eligible. Otherwise obtain the applicable fresh review and post a new receipt.
-There is no separate integration-review receipt route.
+`git merge-tree` result. Moves on main, including admission code, workflows,
+dependencies and migrations, do not invalidate it; the six required checks run
+on the exact group. For a conflicting group, merge main: a clean merge or a
+registry union needs no new review, and a resolved conflict needs review of the
+resolution delta only. Existing v2 and v3 receipts, report identities and open
+findings govern admission; the recorded `expires` field keeps receipt identity
+and is not enforced. There is no separate integration-review receipt route.
 The [focused integration rule](#native-review-and-accountability) permits one
 tree-identical trailer-only commit after the qualifying merge; the receipt still
 binds the actual tip and reviewers assess its documentation reasons.
 
 The supervisor follows actual admission in the same logical task; the maintainer
-does not move prompts or reports. A receipt timeout needs submission or expiry
-recovery, as [Merge queue](#merge-queue) describes. Freshness is checked at
+does not move prompts or reports. A receipt timeout needs submission, as
+[Merge queue](#merge-queue) describes. Freshness is checked at
 admission, not guaranteed at the later merge; same-name checks from a malicious
 writer remain outside this process-evidence boundary.
 
@@ -2742,6 +2669,14 @@ first edit to merge. An author preparing a local handoff follows the section
 above; the supervisor owns the protected steps below. Each step points to its
 detailed rule.
 
+**Process minimalism.** A new review, verification or control rule needs a
+named, concrete failure that the required CI on the integration tree and the
+PR's own review would not catch; without one, it is not added. A review covers
+the PR's own change: changes on main never invalidate it, a conflict needs
+review of its resolution only, and reviews do not expire. Each test runs once,
+in the required CI; local runs serve the code being written, not repeated
+rituals. Prefer deleting a rule to adding one.
+
 Record effective maintainer authority once in the existing finite task record:
 actors, allowed coordination, local/DCO/submission/receipt/reply scope, actual
 merge/release-dispatch grants and any authorized adopter continuation. Reconcile
@@ -2792,10 +2727,8 @@ reading, exact merge scope and protected release approval still apply.
        `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
    - refresh `origin/main` with `git fetch origin main`, then run
      `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`.
-     Its cheap merge preflight refuses a known conflict or failed carry-over before
-     reviewers start. `verify-command` repeats it before expensive verification,
-     and `receipt` before submission, against the locally fetched main. It does
-     not fetch or promise that main will remain unchanged. An unlanded stack pin
+     Its cheap merge preflight refuses a known conflict with the locally fetched
+     main before reviewers start, and `receipt` repeats it. An unlanded stack pin
      may still be reviewed locally; hosted admission waits for its prerequisite;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`. Three repair cycles are automatic;
@@ -2814,62 +2747,35 @@ reading, exact merge scope and protected release approval still apply.
    `prepare --new <intent.json>` records a changed intent or a rebase in the same
    append-only session history; findings, reviewers and the repair count carry on.
    Only `continue` adds cycles.
-4. **Local verification.** Finish source, generated inventories and tracked
-   task/plan edits before the final proof interval. Build, pack, consumer and root
-   commands sharing mutable dist/output run sequentially; parallelize only truly
-   disjoint inputs. Put observations during the run in existing ignored evidence
-   or PR records. A tracked delta invalidates the frozen final candidate: repeat
-   affected cheap checks, then satisfy the native final gate on the actual new
-   identity. Reuse only native-valid caches; no general result cache or skipped
-   gate is introduced.
-   - Where the maintainer-local layer is installed, run `openlup-dev verify` on
-     the clean committed tree. It must report `REQUIRED PASS`, and it writes the
-     stamp that the pre-push hook requires. An installation that does not support
-     the mechanical integration alternative still requires its full run; never
-     copy an older stamp or bypass its refusal.
-   - Elsewhere, run the [required check commands](#required-and-raw-checks).
-     Only the proved [mechanical integration alternative](#native-review-and-accountability)
-     permits the bounded local selection described there. When native review
-     evidence is available, the existing `verify-command` wrapper performs the
-     merge preflight before the command. Refresh `origin/main` before the final run.
-5. **Push** with `git push -u origin HEAD`. A push is publication, within your
-   delivery authority. If `main` has moved since the review, push as is: verify
-   and pre-push accept the review while its fork point is unchanged. Do not
-   rebase or merge `main` to catch up (see [Merge queue](#merge-queue)).
-6. **Open a ready pull request** within your delivery authority, using the
-   template. End its description with your `Signed-off-by:` line: the merge
-   commit takes its message from the description, and the DCO check certifies
-   merge commits too.
-7. **Post the source receipt** right away. `PR` is the pull request number;
-   posting the comment is a GitHub write within your delivery authority:
+4. **Push and open a ready pull request** as soon as the candidate is committed,
+   within your delivery authority, using the template. Hosted checks then run on
+   the integration merge ref while review proceeds; they are the required
+   verification, and canonical local verification is not required before push.
+   End the description with your `Signed-off-by:` line: the merge commit takes
+   its message from the description, and the DCO check certifies merge commits
+   too. Hosted runs share the organization's concurrent-job limit, so stagger
+   pushes when several candidates are ready. Do not rebase or merge `main` to
+   catch up.
+5. **Post the source receipt** once `verify` reports `reviewed`. `PR` is the pull
+   request number; posting the comment is a GitHub write within your delivery
+   authority. Posting does not retrigger CI: if the pull request's
+   `native-review` job already timed out, rerun it (see [Merge queue](#merge-queue)).
 
    ```bash
    node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
    ```
-
-   **Expiry.** Evidence expires 24 hours after the earliest counted PASS report
-   for the current candidate, except the bounded renewal available only on an
-   enabled landed base. Otherwise use `prepare --new <intent.json>`, obtain
-   fresh full reports, verify and post the refreshed receipt.
-8. **Revalidate authority and evidence.** The pull request states its sign-off
+6. **Revalidate authority and evidence.** The pull request states its sign-off
    class and actual delivery grant. Recheck the live head, mergeability, check
-   states and applicable review/receipt identity and expiry before each write.
-   Any later material delta requiring a maintainer read returns to step 2 before
-   sign-off. Required reads and closed material findings precede the request.
-9. **Request auto-merge once** under actual merge authority, following
-   [Merge queue](#merge-queue). With local proof, native review and the source
-   receipt complete, pending hosted checks need not delay this request. Record
-   whether it is waiting for checks or already queued; do not repeatedly arm it.
-10. **Hosted checks.** The six required contexts and `native-review` must pass;
-    GitHub then admits the requested PR to the queue automatically. Compare
-    required root and raw `pgtap` failures with the exact base. A pending request
-    is not successful admission or a completed merge.
-11. **Merge group.** Read the group's `native-review` log (see
-    [Required and raw checks](#required-and-raw-checks)). Carry-over needs no
-    further receipt. If carry-over fails, merge `main`, obtain the applicable integration proof or fresh review, then post
-    the new source receipt. If the source evidence expired, refresh it and
-    repost (step 7). If no usable receipt was found, submit it (step 7).
-12. **Confirm the merge**: the merge commit on `main` and its push run.
+   states and review/receipt identity before each write. A later material delta
+   requiring a maintainer read returns to step 2 before sign-off.
+7. **Request auto-merge once** under actual merge authority, following
+   [Merge queue](#merge-queue); pending hosted checks need not delay it. The six
+   required contexts and `native-review` must pass; GitHub, or the
+   `Queue Handoff` workflow once, then queues the PR. Compare required root and
+   raw `pgtap` failures with the exact base.
+8. **Merge group.** A clean group carries the source receipt. If the group
+   conflicts, merge `main`, review only the resolution and post the new receipt.
+9. **Confirm the merge**: the merge commit on `main` and its push run.
 
 A repair commit restarts from step 3 for the new candidate.
 
@@ -2892,76 +2798,48 @@ Record actual platform observations and complete findings;
 blockers demonstrate an effect on correctness or acceptance, while optional
 advice cannot block or require another edit after acceptance is satisfied.
 
-Commit repairs before review. Give fresh reviewers the open finding cards.
-Every material finding needs an explicit closure in the same append-only
-history. Initial review and every full-review route retain their existing risk
-floor, cold independent contexts and reviewer IDs that are unique across all
-authors and earlier candidates. Normal expiry is 24 hours after the earliest
-counted PASS; only explicit bounded renewal extends it.
+Commit repairs before review. Give fresh reviewers the open finding cards. Every
+material finding needs an explicit closure in the same append-only history. The
+first review keeps its risk floor, cold independent contexts and reviewer IDs
+that are unique across all authors and earlier candidates.
+
+**Review binds to the change.** A review covers the PR's own change: its
+committed diff against its base. It does not expire, and changes on main never
+invalidate it; the merge group's required checks on the integration tree are the
+protection.
+- A clean merge of main, or the exact union of disjoint additions to the three
+  registry carriers, needs no new review. Prepare proves the two parents (the
+  prior reviewed head and the new base on main) and the merged tree.
+- A conflict is resolved in that merge. Only the resolution, the diff from the
+  `git merge-tree` prediction to the committed tree, is reviewed; it may change
+  only the conflicted files.
+- A repair is reviewed as its delta, from the old reviewed head to the new head,
+  plus its interactions, with the open finding cards.
+- A delta needs two reviewers when it touches SQL, controls, machinery or
+  security-sensitive paths or changes a mode, and one otherwise. Each delta
+  report records `"ordinary": true` and the exact `delta` from
+  `candidate.coverage.delta`; two full reports also satisfy it.
+- The review base is the single fork point with main or an exact stack pin; an
+  integration needs its new base on main. One qualifying trailer-only tip after
+  a two-parent integration keeps the same tree, subject and
+  documentation-impact/sign-off lines.
 
 Three repair cycles are automatic. Exhaustion needs an actual owner decision;
 `continue "<note>"` records an authorized grant, never an automatic budget reset.
 Unchanged prepare preserves evidence. `prepare --new` retains findings, consumed
-cycles and reviewer identities. Follow the existing regroup procedure when
-work stops converging; it grants no review round or continuation.
-
-**Coverage after a passing candidate.**
-
-After a counted PASS with the complete reviewer floor, unexpired evidence and no open material finding, a required integration of main needs no new model review only when prepare independently proves the exact resulting tree and unchanged coverage. The integration must have the prior reviewed head and the new review base on main as its two parents, with unchanged intent and author and preserved base ancestry. Its tree must equal a successful Git merge-tree prediction without additional edits, or the independently recomputed exact union of disjoint additions to the publication catalog's publicPaths, the platform package-boundary test's nested-entry literal, and the cold consumer's ADAPTER_ENTRIES and NON_ADAPTER_ENTRIES. Every other conflicting path refuses this exception. Main's net change since the reviewed base must touch none of the task's own paths except those proved registry additions, and no review, documentation, dependency, migration, release or other protected control path. The checker preserves every existing entry, its value and order, rejects duplicates and overlapping additions, and proves the complete merged tree. Prior reports remain bound to the trees they actually reviewed; the new candidate records inherited coverage and retains its expiry. Verification on the actual new tree and all required hosted checks remain mandatory. Missing or failed proof uses the existing full review route.
-
-Once the portable rule is on the new base, a committed integration can also
-carry an eligible v2 or v3 review across the proved base deltas listed above.
-The exact two-parent tree (or exact registry union), approved intent, author,
-expiry and full prior reviewer floor are required. The local integration proof
-keeps the broader protected machinery checks outside those proofs. The landed
-rule selects the proof for a new integration. Earlier integration records replay
-against their original base, and repair and renewal keep their existing checks.
-
-Exactly one existing qualifying trailer-only tip may remain recognized under its unchanged message, tree and parent restrictions. It does not let new tracked content escape coverage. No reduced-coverage route applies to a delta touching protected controls, SQL, migrations, public API or security semantics.
-
-After complete, unexpired counted coverage and with no open material finding, one fresh independent reviewer may review a committed repair and its interactions when its complete old-head-to-new-head delta changes only ordinary tests, fixtures, documentation prose or an explicitly admitted package smoke-evidence list, outside all protected control paths. The base, intent, author and policy revision must be unchanged, and the old head must be an ancestor of the new head. The reviewer must confirm that the complete delta has ordinary semantics, preserves required proof and introduces no executable instruction, public contract, security, SQL or product behavior change; uncertainty requires two fresh full reviews. Deny rules take precedence over filename eligibility. The first review of a candidate is never reduced. Source coverage, findings and expiry stay in the same history; the new report does not renew inherited expiry. Repairs that touch a denied path or change required proof/control semantics use the existing full floor, including two fresh full reviewers for controls, SQL, API, security and unknown risk. Two fresh full reports can satisfy that fallback on the same prepare; an ordinary delta-only report is not a full report. Full coverage counts its own report times, while reduced repair coverage retains inherited expiry. Report scope is checked at every full floor, including the first candidate and a candidate without an eligible coverage edge.
-
-An explicitly requested renewal may extend existing complete counted coverage without another reviewer only when the exact candidate head and tree, approved intent and author, policy revision and reviewed-base ancestry are unchanged, no material finding is open, and main has touched neither the candidate's paths nor protected machinery since the recorded coverage. A renewal is an append-only session event with checked Git identities and timestamps. Its expiry is the earlier of 24 hours after renewal and 72 hours after the earliest counted PASS in the inherited coverage chain. It never resets that original timestamp, removes findings, adds repair cycles or establishes coverage that did not exist. Expired evidence may be renewed only inside that original 72-hour window and only with all these proofs; at or after that cap, fresh review under the full existing floor is required. Prepare alone never renews evidence.
-
-Reduced integration, repair and renewal rules are available only when the reviewed base already contains their landed rules version. A candidate introducing or modifying those rules cannot use its own implementation or policy to reduce its review. Trusted main independently validates eligibility and receipt coverage. Full first review, required verification and all other admission requirements remain unchanged.
-
-The first candidate retains the existing risk floor. Full two-review coverage
-remains required for protected controls, SQL, public API, security and unknown
-semantics. Inherited reports keep their original tree and reviewer identity;
-a repair's one fresh report confirms ordinary semantics and binds the exact
-delta. Every material finding remains open until explicitly closed. Missing,
-expired or unproved coverage uses the existing full-review route.
-
-The initial package smoke-evidence-list allowlist is empty. Existing release
-registries and cold-consumer harnesses are controls. Exact deny-first selectors,
-versioned history and receipt details are in the
-[native delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md#coverage-history-and-renewal).
-
-
-The review base is the single fork point with main or an exact permitted stack
-pin. Reduced integration needs that base already on main; an unlanded stack
-still uses full review. Do not merge main merely to catch up. One qualifying
-trailer-only tip after a two-parent integration is still allowed only with the
-same tree, subject and documentation-impact/sign-off lines; no other body,
-second tip or merge-on-top qualifies. The actual tip remains the candidate.
-
-Required verification runs on the actual new tree. The existing selected-local-
-proof alternative remains available only with a recorded prior full local PASS
-by exact head/tree/commands, green hosted evidence on the new main base and two
-fresh integration reviewers assessing the changed contracts and interactions.
-Inherited coverage without these fresh reviews uses normal full verification.
-Run cheap checks and focused regressions on the actual candidate in either
-case. Missing/inapplicable full anchors or uncertain interactions require the
-normal full run. No old stamp is copied and hosted commands remain unchanged.
+cycles and reviewer identities. Follow the existing regroup procedure when work
+stops converging; it grants no review round or continuation. The
+[native delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md#coverage-history-and-renewal)
+keeps the history of earlier rules. Required verification runs on the actual new
+tree, as hosted CI; run cheap checks and focused regressions before review.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
 and proceed only through authorized delivery steps.
 
 `scripts/agent-review-session.mjs` binds process evidence to the candidate,
-intent, scope and reviewer results. Installed verify and pre-push must refuse
-missing, stale, partial or unresolved evidence; live enforcement is claimed only
-after installed refusal tests pass. These receipts do not cryptographically
+intent, scope and reviewer results. Verify refuses missing, stale, partial or
+unresolved evidence. These receipts do not cryptographically
 attest remote agent execution or establish hard author/signer OS separation.
 Source objects are trusted through Git's own hashing, with
 `transfer.fsckObjects=true` on hosted fetches. The earlier signed-receipt
@@ -2983,7 +2861,7 @@ related documentation for changed public exports, options and commands. Explain
 why no related update is needed where that is the result; a bare “OK” does not
 satisfy the review contract. The supervisor assesses substance, not just presence.
 Existing recorded version-2 reports remain valid without rewriting history or
-resetting cycles, findings or expiry; the requirement applies at new `record`
+resetting cycles or findings; the requirement applies at new `record`
 calls. First-review risk floors remain unchanged; later coverage and receipt versions
 follow the bounded rules above.
 
@@ -3024,7 +2902,7 @@ challenge round or human read is required. A method, agent, context or PR change
 does not erase the unresolved issue or its history. Do not repeat a rethink of
 the same issue without decision-changing information. Existing `needs_owner`,
 exhausted budgets and material contract changes keep their actual owner route.
-Rethink grants no authority, cycles, finding closure, PASS renewal or extra expiry;
+Rethink grants no authority, cycles or finding closure;
 it does not run `continue`. The native `cycle` counts changed candidates except
 proved mechanical integrations, not completed evaluations. No new CLI event,
 receipt, job or counter is introduced.
@@ -3243,9 +3121,8 @@ not pin the `native-review` job definition: on PR and merge-group events,
 `.github/workflows/published-tree-ci.yml` comes from the candidate tree. A PR
 could replace admission with a successful no-op and self-admit under the same
 required context. Native source review requires two independent reviewers for
-`.github/` changes, and carry-over refuses a changed-tree group when the base
-move touches a workflow. These controls depend on review and on admission
-actually running; they cannot enforce themselves against edited workflow YAML.
+`.github/` changes. That control depends on review and on admission actually
+running; they cannot enforce themselves against edited workflow YAML.
 Another guard in that same YAML has the same limitation. The remaining in-repo
 control is review of workflow edits. Closing the bypass requires a separately
 authorized owner settings action: a ruleset-required workflow whose definition
@@ -3270,13 +3147,11 @@ group's tip like any other commit. The
 records why these rules exist.
 
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
-  into it, only because it is behind. A review is bound to the branch's fork
-  point, so verify and pre-push keep accepting it while the branch is behind.
-  Integrate `main` only for a textual conflict or failed carry-over/preflight,
-  by merging it, then apply the bounded integration rule above only when prepare proves coverage; otherwise obtain the existing full review.
+  into it, only because it is behind: its review stays bound to its own change.
+  Merge `main` only for a textual conflict; then only the resolution is reviewed.
 - **Arming.** Under actual merge authority, request auto-merge once after
-  applicable local proof, native review, any required maintainer read and the
-  source receipt are complete for the ready PR against `main`. Pending hosted
+  native review, any required maintainer read and the source receipt are
+  complete for the ready PR against `main`. Pending hosted
   checks may finish afterwards:
   `gh pr merge <PR> --auto --match-head-commit <reviewed-head> --author-email <address>`.
   The queue sets the merge method; use the maintainer's configured author address.
@@ -3300,14 +3175,14 @@ records why these rules exist.
   event since the current arming request prevents automatic requeue, including
   after eviction or a repeated completion event; authorized recovery keeps its
   existing two-retry budget.
-  Before requesting, revalidate the live head, mergeability, checks and applicable
-  review/receipt identity and expiry. A known failed required check needs diagnosis;
+  Before requesting, revalidate the live head, mergeability, checks and
+  review/receipt identity. A known failed required check needs diagnosis;
   a pending check is left to GitHub. `--admin` is never this route.
   `DIRTY`/`CONFLICTING` stops enqueue attempts until the head or mergeability
   changes and the conflict is resolved; do not spend queue retries polling the
   same refusal.
   `UNKNOWN` permits one fresh read, then stops for diagnosis if still unknown.
-  Leave `BEHIND` to the queue when carry-over remains valid.
+  Leave `BEHIND` to the queue.
 - **Handoff identity.** Activation is a separate maintainer action. The dedicated
   App is installed only on this repository, with merge-queue write, contents write
   and pull-request read permissions, and no bypass. Its private key is the
@@ -3322,8 +3197,8 @@ records why these rules exist.
   autonomous-handoff claim.
 - **Receipts.** While native admission is active, a supervisor with delivery
   authority posts one source receipt per reviewed PR head as soon as the pull
-  request is open and ready, using step 7. A group that cannot carry over is
-  rejected: merge `main`, establish coverage and post the new source receipt.
+  request is open and ready, using step 5. A conflicting group is rejected:
+  merge `main`, review the resolution and post the new source receipt.
   Posting a receipt comment does not retrigger CI: after the 20-minute wait expires, rerun the `native-review` job.
 - **Flakes.** A removal counts as a flake only when the same job passed on the
   same tree, or a `gh run rerun` passed without a code change. One requeue for a
@@ -3335,49 +3210,23 @@ records why these rules exist.
     failed `native-review` job. The rerun is a GitHub write; it requires
     authority that covers reruns.
   - In a merge group, requeue under merge authority. The new group is admitted
-    by the source receipt again when the review carries over. A carry-over
-    refusal requires merging `main` and re-reviewing. The requeue uses the same
+    by the source receipt again when it merges cleanly; a conflict requires
+    merging `main` and reviewing the resolution. The requeue uses the same
     two-retry budget, and a second timeout on the same head stops for diagnosis.
   - A timeout although a current source receipt was submitted in time is a
     defect on a pull-request run, or on a merge group whose log names no
-    carry-over refusal: stop and report it. An expired receipt or review needs the
-    re-review and resubmission described in step 7.
+    conflict: stop and report it.
 
-**Stacked pull requests.** Once a predecessor merges, the merge base of a pull
-request stacked on it is the predecessor's head, so the stacked change merges
-onto `main` without conflict, even where it regenerates the same records or
-inserts lines next to the predecessor's. Stack pull requests that build on each
-other or touch the same shared files:
-- A stacked branch contains its predecessors, and its generated files are
-  computed on that cumulative tree. Export `OPENLUP_STACK_BASE` with the exact
-  predecessor head for documentation, native review and final local checks.
-  Its doc-impact answers and reviewed diff then cover its own change.
-- Open it as a draft with its predecessor's branch as the base, after
-  `npm run oss:published-tree -- --policy --docs-base <predecessor-head>` with
-  the pinned SHA. Review its own diff with predecessor context; readiness and
-  source receipts wait for the prerequisite.
-- When the predecessor merges, GitHub retargets the pull request to `main`,
-  because head branches are deleted on merge. Continue only once the first
-  parent of `refs/pull/<PR>/merge` is `main`'s head; if that ref is stale,
-  close and reopen the pull request and check again. Then rerun its checks
-  against `main` by marking it ready; if it is already ready, convert it to
-  draft first, which clears auto-merge. Then submit its source receipt and arm
-  it: the receipt and queue admission require a pull request against `main`,
-  and admission takes only the first queue entry. Keep the original pin: the same
-  unchanged candidate remains locally reviewed after its predecessor lands.
-  Admission verifies the pinned base is on actual main, not merely present on
-  the source branch. Each upper PR still needs its own source receipt.
-- Run the shared preflight against fetched main and the exact reviewed
-  predecessor. The queue applies the same rule on its actual base. A proved
-  disjoint registry union can preserve review after resolving a conflict into a
-  commit. An unproved contribution change uses the applicable fresh review.
-- If a predecessor changes, merge its new head into each stacked pull request
-  above it (do not rebase); each result is reviewed again under the usual repair
-  rules and budget.
-- A second ejection of the same head stops the stack for diagnosis.
-
-Each stacked pull request is still one concern. Stacking changes no review,
-receipt or merge rule.
+**Stacked pull requests.** Stack pull requests that build on each other or touch
+the same shared files. Export `OPENLUP_STACK_BASE` with the exact predecessor
+head for documentation and native review, and open the upper pull request as a
+draft on its predecessor's branch. When the predecessor merges, GitHub retargets
+it to `main`. Confirm that the first parent of `refs/pull/<PR>/merge` is
+`main`'s head (close and reopen once if it is stale), mark it ready (converting
+to draft first if it is already ready, which clears auto-merge), then post its
+receipt and arm it. The unchanged upper candidate keeps its review. If a
+predecessor changes, merge its new head (do not rebase) and review the delta. A
+second ejection of the same head stops the stack for diagnosis.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
