@@ -3109,5 +3109,5 @@ A refusal is terminal, including after recipient, control or consent changes;
 it never asserts a send or changes a transactional delivery receipt. The runtime
 can insert and read this RLS-protected record, with no update or delete access.
 Browser roles have no access. Connected capture and restore retain these opaque
-source identities and their refusal times so a store move cannot resend them.
+source identities and their refusal times so a store move cannot send them again.
 This table contains no recipient address, message content or free-form reason.
