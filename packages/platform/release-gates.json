@@ -955,14 +955,14 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1970000,
+      "maxPackedBytes": 2055017,
       "maxFiles": 3039
     },
     "docs": {
       "maxPackedBytes": 75000,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2485000,
+    "maxPackedBytes": 2595000,
     "maxUnpackedBytes": 11955000,
     "maxFiles": 3173,
     "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained.",

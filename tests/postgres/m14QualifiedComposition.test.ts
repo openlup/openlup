@@ -11,10 +11,10 @@ import {
 
 const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
-// The current complete 99-unit installation includes the shared suffix.
+// The current complete 101-unit installation includes the shared suffix.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "e578feac21e0329e3dd17f8188ad42c6ff522672708d23c7c6bdf236a6e65819", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "f0723c366ccbc4de21ea433efe880a286a2b3d09aa74114eb823faa6157848dd", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "864b0676b53986b668e13829fcc0144a3f22dcdaeb7ec35de0c2f97e541ab5ec", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "1c072e35e59a037d6f69bf3a6b96990ac3c2b430219ba5c5b5c1ddcaa6cb0fae", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -55,7 +55,7 @@ for (const profile of profiles) for (const shape of shapes) {
         migrationIsBootstrap: !shape.separate, hasRestore: true,
       });
       const count = 1 + current.forward.length;
-      expect(count).toBe(99);
+      expect(count).toBe(102);
       expect(current.objectInventorySha256).toBe(shape.currentSha256);
       expect(result).toMatchObject({
         inventorySha256: shape.currentSha256, issuedInventorySha256: shape.sha256, issuedLedgerRows: 92,
@@ -70,6 +70,7 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  // Solo without coverage: 11.64 s ordinarily, 22.45 s for target/separate; allow about three times each.
-  }, profile.name === "target" && shape.separate ? 75_000 : 40_000);
+  // Hosted maximum 54.315 s: fourfold 217.260 s rounds to the existing 240 s child bound.
+  // Five-row tail estimate leaves at least 122.907 s of case headroom.
+  }, 240_000);
 }

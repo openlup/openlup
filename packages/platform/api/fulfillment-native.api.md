@@ -1786,11 +1786,11 @@ type DestinationReader = {
     }>;
 };
 /** Native shipment commerce projection. Supply the existing eligibility policy and
- * a nonmutating shipment destination reader; the preparation reader may pin state.
+ * optionally override the nonmutating shipment destination view reader.
  * The host owns authorization, connection lifetime and snapshot transaction. */
 export declare function createPostgresFulfillmentCommerceReadPort(input: {
     executor: Executor;
-    destinations: DestinationReader;
+    destinations?: DestinationReader;
     policy: FulfillmentCommerceReadPolicy;
     orderMode(input: {
         orderId: string;

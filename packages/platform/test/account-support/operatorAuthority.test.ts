@@ -31,6 +31,10 @@ it("checks packaged owner fields, native superset and narrow executor fit with t
 it.each(["managed", "native"] as const)("reports the truthful %s action/subcase table", graph => {
   const cap = operatorAuthorityCapabilities(graph);
   for (const action of ["email", "phone", "link", "address", "shortBand", "unpaidResume", "preparedAttemptPause"] as const) {
+    if (graph === "native" && action === "address") {
+      expect(cap[action], action).toEqual({ supported: true });
+      continue;
+    }
     expect(cap[action], action).toEqual(graph === "managed" ? { supported: true } : { supported: false, refusalCode: "operator_subscription_authority_unavailable" });
   }
   expect([cap.pause, cap.resume, cap.slide]).toEqual([{ supported: true }, { supported: true }, { supported: true }]);

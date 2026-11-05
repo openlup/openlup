@@ -531,6 +531,13 @@ condition only after separate activation.
 
 ### Source evidence and carry-over
 
+The current [canonical carry-over rule](../../../CONTRIBUTING.md#merge-queue)
+recognizes independent base changes for existing and future receipts. It
+preserves legacy report history, risk floor and expiry. For older worktrees,
+see the trusted local entry point in
+[Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
+
+
 The supervisor owns review of the committed source in the active task and posts
 its summary as soon as the PR is open and ready. A new head needs new evidence.
 After local proof, current review, required maintainer reads and the ready-main-PR

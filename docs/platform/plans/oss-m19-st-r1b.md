@@ -58,7 +58,8 @@ credential store or direct recovery-settlement shortcut remains.
 ## Preserved boundaries and exclusions
 
 The interim quota retains bounded process memory, hash-only attempt facts, exact
-replay before email/requester quotas, no count on denial and fail-closed behavior.
+replay of the same key and identity before further email/requester quota counts,
+no count on quota denial and fail-closed behavior.
 Restart resets it. Its existing decision callback is the replacement seam.
 The single interim price function resolves configured per-unit subscription
 prices before quantity; seeded mode prices match, discounts are empty and there
@@ -123,3 +124,93 @@ and exercises native authentication, origin admission and payment composition
 without importing the entire host graph into the root tests' compiler profile.
 A clean install, package build and public typecheck of the accepted composition
 passes; the earlier compiler error arose only from that test import graph.
+
+
+## Staged guest admission repair
+
+The maintainer authorized one bounded repair for the account-state admission and
+changed-identity replay findings. This continuation is staged for the maintainer's
+security read; it authorizes no commit, review, push or delivery action.
+
+Guest admission has no linked-contact option or branch. New, unlinked and linked
+contacts receive the same public result shape and configured response floor.
+The registrar alone decides whether an unlinked profile can be refreshed; its
+account and client facts remain internal to the host.
+
+After quota admission and before registration, one synchronous host section binds
+the command key to a digest of the normalized e-mail and requester fingerprint.
+A changed identity receives the existing admission refusal. The binding also
+applies with a permissive replacement callback. The existing retention and capacity values bound this process-local map;
+expired entries are dropped and full capacity refuses. There is no new service,
+package, SQL, public callback contract or persistence authority.
+
+The regression extends the existing real-HTTP PostgreSQL host suite: all three
+contact states, retained-key changes beyond the quota, exact replay, concurrent
+distinct identities, and a permissive callback. Contact counts and registration
+calls discriminate the two mechanisms. Both configurations pass the new cases
+in the default zone and both offset zones. Disabling the binding in scratch
+creates five extra contacts and fails all four replay cases; restoring the
+linked-contact denial fails both three-state cases. Every new heavy case has an
+explicit 30-second bound above four times its measured local duration.
+The existing standalone limiter's changed-input characterization remains intact.
+
+Self-retro: isolated quota tests did not establish admission before independently
+committed contact writes. The repair proof observes that composed boundary and
+removes the account-dependent branch instead of adding another policy choice.
+
+
+## Staged continuation and shared input repair
+
+The maintainer authorized a second bounded repair, staged for a security read
+before any commit. Same-order tokenless checkout replay preserves the tab's
+existing credential; a different order inherits none, and a newly supplied token
+replaces the old credential. A completion-entry token without an order reference
+still replaces prior state. Storage remains convenience, and the creating
+response remains the only host response carrying the raw token.
+
+Purchase and sign-in use the same typed e-mail limit, with configuration refusing
+values above the native 160-character sign-in boundary. Both owned demonstrations
+use that maximum. A bounded composition sweep also aligns subscription address
+phone and postal limits with checkout, caps configured destination text and postal
+lengths at their native bounds, and makes browser field lengths use the same values.
+No package, SQL, catalog, callback, persistence or recovery-authority change is made.
+
+Existing proof files cover repeated browser submission, completion and reload,
+credential separation between orders, the 160-character guest payment-to-account
+journey, refusal of 161 characters before contact writes, a lower configured
+challenge limit, and address field boundaries. Mutation witnesses restore each
+failure mechanism in an isolated scratch copy. The required browser journey
+specification remains byte-identical.
+
+Self-retro: separate successful actions missed cross-action continuity. Preserve
+same-order credentials on weaker replay and derive shared boundaries from their
+existing configuration values; test the transition as well as each action.
+
+
+## Staged native-boundary and proof-location repair
+
+A complete sweep of forwarded configuration and required-job prerequisites
+preceded this repair. Cadence choices and the default are restricted to 1..120;
+admission independently refuses unsupported cadences before contact resolution.
+The same sweep aligns per-line quantities (99), selected lines (50), stock and
+seeded price integer ranges, tax legal-basis length (200), and the shared legal
+revision (trimmed, 1..64) with their native consumers. Catalog size is unchanged.
+
+The root PostgreSQL regression no longer launches a browser or reads ignored UI
+output. Existing source tests prove create/replay/completion/reload credential
+continuity with storage and location stubs, including different-order separation
+and replacement tokens. The committed continuity proof consists of these source
+tests and the clean-index root proof. A real-browser second-submit check was
+confirmed in a local run that is not part of the committed suite. A staged-index checkout
+with only npm ci and the root three-package pretest build proves the root tests
+without starter dist or a browser. The required journey spec remains unchanged.
+
+Self-retro: prepared local output and a partial boundary inventory hid two new
+classes. Trace each forwarded value to its native consumer and each test to the
+prerequisites its actual runner provides before selecting proof.
+
+
+## Staged lane confinement exception
+
+Verify found one repository confinement test; exact-file exception with a
+single-call bound; same intent.

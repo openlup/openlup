@@ -63,3 +63,20 @@ export function resolveThresholdShipping(terms: ShippingTerms, productPayableMin
   const remainingMinor = Math.max(0, terms.freeThresholdMinor - payable);
   return { grossMinor: remainingMinor > 0 ? terms.flatMinor : 0, remainingMinor };
 }
+
+/** Presentation of one quote's money; stale terms never produce a remaining-spend helper. */
+export function summarizeThresholdShipping(input: {
+  productPayableMinor: number | null;
+  totalMinor: number | null;
+  shippingGrossMinor: number | null;
+  shippingDiscountMinor: number;
+  terms?: ShippingTerms | null;
+  stale?: boolean;
+}): { hasShipping: boolean; effectiveShippingMinor: number; shippingIsFree: boolean; remainingMinor: number } {
+  const hasShipping = input.shippingGrossMinor !== null;
+  const effectiveShippingMinor = Math.max(0, (input.shippingGrossMinor ?? 0) - input.shippingDiscountMinor);
+  const remainingMinor = effectiveShippingMinor > 0 && input.productPayableMinor !== null
+    && input.totalMinor !== null && input.terms && !input.stale
+    ? resolveThresholdShipping(input.terms, input.productPayableMinor).remainingMinor : 0;
+  return { hasShipping, effectiveShippingMinor, shippingIsFree: hasShipping && effectiveShippingMinor === 0, remainingMinor };
+}

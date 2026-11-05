@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, expect, it } from 'vitest';
-import { createPostgresFulfillmentCommerceReadPort } from '@openlup/platform/fulfillment/native';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
+import { createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentOrdersListHandler } from '@openlup/platform/fulfillment';
+import { createBffResponder } from '@openlup/platform/bff';
+import type { HttpResponse } from '@openlup/platform/http';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { evaluateCommerceFulfillmentEligibility } from '@openlup/platform/commerce';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { qualifiedPostgresStartupOptions } from '../../server/adapters/postgres/qualifiedInstall.js';
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from '../helpers/postgresContainer.js';
+describe.each(['default', 'Etc/GMT-9', 'Etc/GMT+5'])('shipment reads in %s', zone => {
+const zoneOptions = zone === 'default' ? '' : ` -c timezone=${zone}`;
 let container: PostgresContainer | undefined, owner: Pool, runtime: Pool;
 const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: 'postgres', runtimeLogin: 'fulfillment_reads_runtime', restoreLogin: 'fulfillment_reads_restore' } as const;
 beforeAll(async () => {
@@ -15,16 +20,20 @@ beforeAll(async () => {
   const root = new Pool({ connectionString: container.connectionString });
   for (const role of [selection.runtimeLogin, selection.restoreLogin]) await root.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
   await root.end();
-  owner = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
+  owner = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) + zoneOptions });
   await createPostgresMigrationRunner({ connectionString: container.connectionString }, { installation: selection, poolFactory: () => owner }).apply();
   const url = new URL(container.connectionString); url.username = selection.runtimeLogin;
-  runtime = new Pool({ connectionString: url.toString(), options: '-c role=service_role' });
+  runtime = new Pool({ connectionString: url.toString(), options: '-c role=service_role' + zoneOptions });
+  const actual = (await runtime.query('SHOW TimeZone')).rows[0].TimeZone;
+  expect(actual).toBe(zone === 'default' ? 'Etc/UTC' : zone);
+  expect((await owner.query('SHOW TimeZone')).rows[0].TimeZone).toBe(actual);
+  console.info(`Shipment read TimeZone: requested=${zone}; runtime=${actual}; owner=${actual}`);
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await closePostgres(container, [owner, runtime]); }, postgresTeardownTimeoutMs);
 const destinations = () => createPostgresDestinationPort(runtime);
-const port = () => createPostgresFulfillmentCommerceReadPort({ executor: runtime, destinations: destinations(), policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
-async function fixture(status = 'created') {
-  const order = randomUUID(), shipment = randomUUID(), client = randomUUID(), sku = randomUUID(), product = randomUUID();
+const port = () => createPostgresFulfillmentCommerceReadPort({ executor: runtime, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+async function fixture(status = 'created', client = randomUUID()) {
+  const order = randomUUID(), shipment = randomUUID(), sku = randomUUID(), product = randomUUID();
   await owner.query('BEGIN');
   try {
     await owner.query('INSERT INTO public.clients(id,email) VALUES($1,$2)', [client, `${client}@example.invalid`]);
@@ -50,8 +59,6 @@ async function reserve(f: Awaited<ReturnType<typeof fixture>>) {
 it('reads full native facts under the actual restricted login with stable repeat results', async () => {
   expect((await runtime.query('SELECT current_user,session_user')).rows).toEqual([{ current_user: 'service_role', session_user: selection.runtimeLogin }]);
   const f = await fixture(); await reserve(f);
-  // Preparation currently pins the destination; the separate case below proves why an unprepared read is blocked.
-  await destinations().read('shipment', f.shipment);
   const first = await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment });
   expect(first).toMatchObject({ order: { id: f.shipment, orderId: f.order, shippingAddress: { addressId: null },
     lines: [{ sku: f.sku, quantity: 2, inventoryReservationIds: [], productSnapshot: { opaque: 'captured' } }],
@@ -92,15 +99,68 @@ it('retains hold, unpaid, missing and elapsed reservation facts and names missin
   await owner.query('DELETE FROM public.commerce_destinations WHERE purchase_order_id=$1', [f.order]);
   await expect(port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).rejects.toThrow('native_fulfillment_destination_unavailable');
 });
-it('exposes the SQL dependency: first shipment read writes a binding; runtime cannot read private destination tables', async () => {
-  const f = await fixture();
+it('reads an unprepared shipment without writing any public row and retains private-table denial', async () => {
+  const f = await fixture('exception');
+  const tables = (await owner.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+  const countSql = tables.map(({ tablename }) => `SELECT '${tablename}' AS name,count(*)::text AS n FROM public."${tablename}"`).join(' UNION ALL ');
+  const counts = async () => (await owner.query(countSql)).rows;
   const bindings = async () => (await owner.query('SELECT count(*)::int AS n FROM public.commerce_destination_bindings WHERE shipment_id=$1', [f.shipment])).rows[0].n;
   expect(await bindings()).toBe(0);
-  await destinations().read('shipment', f.shipment);
-  expect(await bindings()).toBe(1);
-  await destinations().read('shipment', f.shipment); expect(await bindings()).toBe(1);
+  const before = await counts();
+  const viewed = (await runtime.query('SELECT public.commerce_view_shipment_destination($1::uuid) AS value', [f.shipment])).rows[0].value;
+  expect(viewed).toMatchObject({ destinationId: f.destination.destinationId, clientId: f.client, pinned: false });
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { id: f.shipment, shippingAddress: { line1: 'Synthetic street' } } });
+  await port().listCommerceFulfillmentOrders({ page: 1, pageSize: 100, status: 'exception' });
+  expect(await counts()).toEqual(before);
+  expect(await bindings()).toBe(0);
   await expect(runtime.query('SELECT * FROM public.commerce_destination_bindings')).rejects.toMatchObject({ code: '42501' });
   await expect(runtime.query('SELECT * FROM public.commerce_destinations')).rejects.toMatchObject({ code: '42501' });
+});
+it('maps routine owner mismatch, preserves an unmapped routine error and permits an injected override', async () => {
+  const f = await fixture(), other = await fixture();
+  await owner.query('INSERT INTO public.commerce_destination_bindings(shipment_id,destination_id) VALUES($1,$2)', [f.shipment, other.destination.destinationId]);
+  await expect(port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+  const unmapped = createPostgresFulfillmentCommerceReadPort({ executor: { query: (sql, values) => runtime.query(sql, sql.startsWith('SELECT public.commerce_view_shipment_destination') ? [null] : values) },
+    policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+  await expect(unmapped.getCommerceFulfillmentOrderDetail({ orderId: f.order })).rejects.toMatchObject({ code: '22023', message: 'commerce_destination_invalid_scope' });
+  const injected = createPostgresFulfillmentCommerceReadPort({ executor: { query(sql, values) {
+    expect(sql).not.toContain('commerce_view_shipment_destination'); return runtime.query(sql, values);
+  } }, destinations: { async read(scope, id) {
+    expect([scope, id]).toEqual(['shipment', f.shipment]);
+    return { ...f.destination, address: { ...f.destination.address, line1: 'Override street' } };
+  } }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+  expect(await injected.getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { shippingAddress: { line1: 'Override street' } } });
+});
+
+it('serves equivalent uppercase client UUIDs unchanged and refuses another owner', async () => {
+  const f = await fixture('in_transit', 'abcdefab-cdef-4abc-8def-abcdefabcdef');
+  const stored = (await runtime.query('SELECT client_id::text AS client_id FROM public.commerce_orders WHERE id=$1::uuid', [f.order])).rows[0].client_id;
+  expect(stored).toBe(f.client);
+  let clientId = stored.toUpperCase();
+  expect(clientId).not.toBe(stored);
+  const injected = createPostgresFulfillmentCommerceReadPort({ executor: runtime,
+    destinations: { async read(scope, id) {
+      expect([scope, id]).toEqual(['shipment', f.shipment]);
+      return { ...f.destination, clientId };
+    } }, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
+  const deps = { respond: createBffResponder(), authorizeAdmin: async () => ({ ok: true as const, userId: 'operator' }),
+    fulfillmentPort: injected, responseSchemas: nativeFulfillmentCommerceResponseSchemas };
+  const detail = createAdminCommerceFulfillmentOrderDetailHandler(deps);
+  const list = createAdminCommerceFulfillmentOrdersListHandler(deps);
+  let output: unknown;
+  const response = { setHeader() {}, status() { return this; }, json(value: unknown) { output = value; return this; } } as unknown as HttpResponse;
+  const res = { response, output: () => output };
+  await detail({ method: 'GET', query: { fulfillmentOrderId: f.shipment } }, res.response);
+  expect(res.output()).toMatchObject({ ok: true, data: { order: { id: f.shipment, shippingAddress: { clientId } } } });
+  await list({ method: 'GET', query: { page: '1', pageSize: '25', status: 'in_transit' } }, res.response);
+  expect(res.output()).toMatchObject({ ok: true, data: { orders: [{ id: f.shipment, shippingAddress: { clientId } }] } });
+  clientId = randomUUID().toUpperCase();
+  await expect(injected.getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+  await expect(injected.listCommerceFulfillmentOrders({ page: 1, pageSize: 25, status: 'in_transit' })).rejects.toThrow('native_fulfillment_destination_owner_mismatch');
+  await detail({ method: 'GET', query: { fulfillmentOrderId: f.shipment } }, res.response);
+  expect(res.output()).toMatchObject({ ok: false, error: { code: 'UPSTREAM_UNAVAILABLE' } });
+  await list({ method: 'GET', query: { page: '1', pageSize: '25', status: 'in_transit' } }, res.response);
+  expect(res.output()).toMatchObject({ ok: false, error: { code: 'UPSTREAM_UNAVAILABLE' } });
 });
 
 it('selects the highest sequence then id, with an explicit id taking precedence over an order id', async () => {
@@ -135,13 +195,17 @@ it('forwards the same database timestamp spelling in list and detail, including 
   const list = await port().listCommerceFulfillmentOrders({ page: 1, pageSize: 25, status: 'label_pending' });
   if (!detail || !('order' in detail) || !('orders' in list)) throw new Error('projection missing');
   expect(list.orders).toEqual([detail.order]);
-  expect(detail.order).toMatchObject({ createdAt: '2026-06-05T10:00:00.123456+00:00', updatedAt: '2026-06-05T10:01:00.654321+00:00' });
+  const stored = (await runtime.query("SELECT to_jsonb('2026-06-05T10:00:00.123456Z'::timestamptz) AS created, to_jsonb('2026-06-05T10:01:00.654321Z'::timestamptz) AS updated")).rows[0];
+  expect(detail.order).toMatchObject({ createdAt: stored.created, updatedAt: stored.updated });
+  if (zone === 'default') expect(detail.order).toMatchObject({ createdAt: '2026-06-05T10:00:00.123456+00:00', updatedAt: '2026-06-05T10:01:00.654321+00:00' });
 });
 
 it('uses the newest order tracking reference for both the current and an earlier shipment', async () => {
   const f = await fixture(), replacement = randomUUID();
   await owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,status,create_idempotency_key,sequence_no,replaces_shipment_id,replacement_reason) VALUES($1,$2,'read-port','3pl','created',$1::uuid::text,1,$3,'lost')", [replacement, f.order, f.shipment]);
-  await owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'tracking','earlier-ref','2026-06-01'),($2,'tracking','current-ref','2026-06-02')", [f.shipment, replacement]);
+  await owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'tracking','earlier-ref','2026-06-01T00:00:00Z'),($2,'tracking','current-ref','2026-06-02T00:00:00Z')", [f.shipment, replacement]);
   expect(await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).toMatchObject({ order: { providerTrackingId: 'current-ref' } });
   expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { id: replacement, providerTrackingId: 'current-ref' } });
+});
+
 });

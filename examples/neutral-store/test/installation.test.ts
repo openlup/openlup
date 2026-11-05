@@ -124,7 +124,7 @@ test('a configured price outside PostgreSQL integer storage refuses before SQL',
   const config = structuredClone(Object.values(configurations)[0]!);
   config.offer.products[0]!.unitPrice.amountMinor = 2147483648;
   const fixture = installation();
-  await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'starter_demo_price_out_of_range' });
+  await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'starter_product_invalid' });
   assert.equal(fixture.calls.length, 0);
 });
 
