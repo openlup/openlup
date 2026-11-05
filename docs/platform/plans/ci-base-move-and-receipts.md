@@ -3,7 +3,9 @@
 Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121, W5 #122; local steps 0b and 4 applied; the maintainer-local copy reinstalled with W5).
 Audience: the agents executing it, their reviewers and the maintainer.
 
-This is the historical 2026-10-03 execution record. Its dispatch/artifact
+This is the historical 2026-10-03 execution record. Since 2026-11-05 a review
+binds to the change, with no base-path conditions or expiry; see
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability). Its dispatch/artifact
 transport, run-keyed integration receipts, closure lineage, inherited expiry,
 repair-cycle limits and `needs_rescope` recovery are superseded by the
 [2026-10-19 simplification](native-review-simplification-proposal.md). The

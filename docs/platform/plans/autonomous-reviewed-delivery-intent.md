@@ -76,8 +76,8 @@ authorized continuation with `continue "<note>"`, which adds three cycles.
 Follow the mandatory supervisor [regroup procedure](../../../CONTRIBUTING.md#regroup-when-work-stops-converging),
 without adding an encoded gate or repair budget. `prepare --new` records a changed intent or a
 rebase in the same append-only session history; findings, reviewers and the
-repair count carry on. Merging main
-requires fresh review of the resulting candidate. Stop optional edits when
+repair count carry on. Merging main keeps the review; a conflict needs review
+of its resolution only. Stop optional edits when
 criteria, review and checks pass, then complete authorized delivery.
 
 The supervisor launches independent fresh-context reviewers within the same
@@ -129,11 +129,10 @@ stops. A pending `autoMergeRequest` records enabled auto-merge; `mergeQueueEntry
 alone confirms queue entry. Required source and group success still precedes merge.
 
 Carry-over follows the canonical
-[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks),
-including its narrow exception for disjoint package `exports` additions. The
-[plan](autonomous-reviewed-delivery.md#source-evidence-and-carry-over) points
-to that owner for the exact protected paths. Otherwise reject the group: merge
-`main` and re-review. The optional `OPENLUP_STACK_BASE` pin must lie between the
+[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks):
+base ancestry and a clean merge of the reviewed change, with no base path
+condition. Otherwise reject the group: merge `main` and review only the conflict
+resolution. The optional `OPENLUP_STACK_BASE` pin must lie between the
 fork point and HEAD and already be on actual main for hosted admission. At most
 two authorized supervisor queue-recovery retries remain separate from repair
 cycles, under the canonical

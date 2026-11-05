@@ -186,7 +186,7 @@ first review is full; reviewer independence, cold context and unique IDs remain
 required. A conflict with main is resolved by merging main, and only the
 resolution is reviewed. A repair is reviewed as its delta plus interactions,
 with the open findings: two reviewers when the delta touches SQL, controls,
-machinery or security-sensitive paths, one otherwise. Three repair cycles are
+machinery or security-sensitive paths or changes a mode, one otherwise. Three repair cycles are
 automatic; exhaustion requires an actual owner decision under CONTRIBUTING. Do
 not rebase or merge main only for freshness. Receipt export and hosted admission
 rederive the coverage chain from Git objects; [Merge queue](../../CONTRIBUTING.md#merge-queue)

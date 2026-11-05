@@ -581,13 +581,13 @@ history. Every accepted reason is printed by `--policy` for review.
 
 When a required integration of main changes a covered source delta, refresh the
 in-tree task answer or record its fresh reason on a non-merge commit. The
-[focused integration review rule](../../CONTRIBUTING.md#native-review-and-accountability)
+[native review rules](../../CONTRIBUTING.md#native-review-and-accountability)
 also permits exactly one single-parent commit directly after the qualifying
 two-parent merge: its tree must equal the merge tree, and its message may contain
 only a subject, one or more `OpenLup-Doc-Impact` trailer lines and optional
 `Signed-off-by` lines. Reviewers receive and judge those reasons. The actual
 trailer tip remains the reviewed and receipted head; all existing coverage,
-expiry, intent, author, finding, cycle and mechanical-proof rules still apply.
+intent, author, finding, cycle and integration-proof rules still apply.
 This does not change which commits answer obligations or what the digest binds.
 
 For compatibility, an in-section `openlup-doc-impact` comment accepted by the

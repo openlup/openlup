@@ -1700,7 +1700,7 @@ registry union needs no new review, and a resolved conflict needs review of the
 resolution delta only. Existing v2 and v3 receipts, report identities and open
 findings govern admission; the recorded `expires` field keeps receipt identity
 and is not enforced. There is no separate integration-review receipt route.
-The [focused integration rule](#native-review-and-accountability) permits one
+The [native review rules](#native-review-and-accountability) permit one
 tree-identical trailer-only commit after the qualifying merge; the receipt still
 binds the actual tip and reviewers assess its documentation reasons.
 
@@ -2818,7 +2818,8 @@ protection.
 - A delta needs two reviewers when it touches SQL, controls, machinery or
   security-sensitive paths or changes a mode, and one otherwise. Each delta
   report records `"ordinary": true` and the exact `delta` from
-  `candidate.coverage.delta`; two full reports also satisfy it.
+  `candidate.coverage.delta`; two full reports also satisfy it. Where Git cannot
+  prove the merge or repair edge, the full review floor applies.
 - The review base is the single fork point with main or an exact stack pin; an
   integration needs its new base on main. One qualifying trailer-only tip after
   a two-parent integration keeps the same tree, subject and

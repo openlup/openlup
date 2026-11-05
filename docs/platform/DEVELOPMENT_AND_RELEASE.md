@@ -254,7 +254,7 @@ review and charges no repair cycle; history and findings are preserved. There is
 no separate integration receipt route.
 Refresh local main before prepare/final verify so their preflight rejects known
 conflicts early. A DIRTY PR stops enqueue attempts until its
-head or mergeability changes; see [review after integration](../../CONTRIBUTING.md#native-review-and-accountability).
+head or mergeability changes; see [Native review](../../CONTRIBUTING.md#native-review-and-accountability).
 Early auto-merge follows [Merge queue](../../CONTRIBUTING.md#merge-queue): current
 review, required maintainer reads and a ready-main-PR source
 receipt precede the one-shot request under actual merge authority. Known failed

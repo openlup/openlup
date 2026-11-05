@@ -202,14 +202,12 @@ No new service, model API, workflow or remote attestation is introduced.
    without adding an encoded gate or budget. Preserve findings and
    failed attempts in the task record. `prepare --new` records a changed intent
    or a rebase in the same append-only session history; findings, reviewers and
-   the repair count carry on. Merging `main`
-   requires the current bounded coverage proof or fresh full review. A proved exact main
-   integration may focus inspection using prior source coverage, under
-   [review after integration](../../../CONTRIBUTING.md#native-review-and-accountability);
-   the current bounded coverage rule determines fresh inspection and preserves source expiry.
-   A proved exact clean mechanical integration does not charge a repair cycle;
-   manual conflict resolution or extra edits use the ordinary repair and full
-   local verification route. History and findings remain intact.
+   the repair count carry on. Merging `main` keeps the review: a clean merge or
+   registry union needs no new review, and a resolved conflict is reviewed as its
+   resolution only, under
+   [Native review](../../../CONTRIBUTING.md#native-review-and-accountability).
+   None charges a repair cycle; hosted CI on the new tree is the required
+   verification. History and findings remain intact.
 6. Record bounded session evidence and retry the installed gate. Verify and
    pre-push refuse missing, stale, dirty, mismatched, incomplete or unresolved
    review. Unchanged prepare retains current evidence. Handle
@@ -245,7 +243,7 @@ actor list, freshness and complete base/head/tree/intent observations. This is t
 existing process trust boundary, not a new machine-proven independence claim.
 
 A supervisor change uses the existing `prepare --new` route and requires fresh
-reports; preserve findings, histories, budgets and expiry rules. An identical tree
+reports; preserve findings, histories and budgets. An identical tree
 does not add a repair cycle. A simultaneous main integration is assessed
 separately under the existing integration conditions; a changed supervisor does
 not establish that exception. No new schema, migration or handoff command is
@@ -264,11 +262,12 @@ or unknown work, with the changed-path and mode floor able to raise the count.
 Reviewers must be cold, non-author, distinct and not reused from earlier candidates.
 
 Reviews do not expire; `expires` is still recorded for receipt compatibility.
-There is no reduced-reviewer closure route. The gate
+A repair or resolution delta takes its own floor, which may be lower than the
+first review's. The gate
 captures the candidate and checks the clean worktree and exact tree binding.
 An unchanged installation baseline is not task approval. The hosted summary
-receipt carries only PR, base, head, tree, risk, reviewers, verdict, expiry and
-session digest; admission independently recomputes the tree and risk floor.
+receipt carries only PR, base, head, tree, risk, reviewers, verdict, the recorded
+expiry and session digest; admission independently recomputes the tree and risk floor.
 
 The supervisor's observed review executions provide process evidence. The session
 receipt is not cryptographic remote attestation that an agent ran, and the same
@@ -497,8 +496,9 @@ condition only after separate activation.
 ### Source evidence and carry-over
 
 The current [canonical carry-over rule](../../../CONTRIBUTING.md#merge-queue)
-recognizes independent base changes for existing and future receipts. It
-preserves legacy report history, risk floor and expiry. For older worktrees,
+keeps a source review when the reviewed base is an ancestor of the queue base and
+the group is a clean merge of the reviewed change. Existing receipts keep their
+report history and risk floor. For older worktrees,
 see the trusted local entry point in
 [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
 
@@ -515,12 +515,12 @@ For a merge group, admission uses the PR number from
 `gh-readonly-queue/main/pr-<N>-<sha>` and actual event base/head identities.
 
 Native admission establishes carry-over under the canonical
-[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks).
-That procedure owns the exact tree/base checks, protected paths and narrow
-exception for disjoint package `exports` additions; this plan does not maintain
-a second list. Existing review evidence remains subject to those native rules.
+[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks):
+base ancestry and the clean `git merge-tree` result. No base path condition
+applies; this plan does not maintain a second list.
 
-Otherwise reject the group: merge `main` and re-review. There is no run-keyed or
+Otherwise reject the group: merge `main` and review only the conflict resolution.
+There is no run-keyed or
 integration-review receipt route. At most two authorized supervisor
 queue-recovery retries remain separate from the source repair counter, under
 the canonical [Merge queue](../../../CONTRIBUTING.md#merge-queue) procedure.
@@ -546,7 +546,7 @@ considers marked receipts only from users whose repository permission is `admin`
 `maintain` or `write`.
 It selects the newest valid receipt matching the live head, fetches the required
 SHAs using `transfer.fsckObjects=true`, and recomputes the tree, paths and risk
-floor. It checks PASS, reviewer count, expiry, fork point or pinned ancestry,
+floor. It checks PASS, reviewer count, fork point or pinned ancestry,
 and merge-group carry-over. Polling is every 15 seconds for at most twenty
 minutes. Missing, stale or mismatched evidence refuses with an actionable reason.
 
@@ -591,8 +591,8 @@ job is skipped and is not enforcement proof.
 The historical activation proof required a head changed after arming to stay
 blocked without new source evidence, a changed or sensitive group to require
 two integration reviews, and each new run/attempt to require a new receipt.
-Since 2026-10-19, a group that cannot carry over is rejected: merge `main` and
-re-review. A current source comment receipt covers reruns of the same reviewed
+Since 2026-11-05, a group that cannot carry over is rejected: merge `main`, and
+only a conflict resolution is reviewed. A current source comment receipt covers reruns of the same reviewed
 head; there is no integration-review receipt route. Prove exact live
 membership and base/head/tree/ref attribution, stale receipt failure, bounded
 wait expiry and rebuild recovery. Confirm the synthetic tip's DCO behavior and

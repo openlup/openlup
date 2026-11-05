@@ -12,7 +12,8 @@ artifact and integration-receipt procedure used then was superseded by the
 [2026-10-19 simplification](native-review-simplification-proposal.md). Current
 submission posts `agent-review-session.mjs receipt <PR>` output as a PR comment;
 see [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). A group that
-cannot carry over is rejected: merge `main` and re-review. This does not change
+cannot carry over is rejected: merge `main`; only a conflict resolution is
+reviewed. This does not change
 the diagnostic results or waive their obligations.
 
 ## Current checkpoint
