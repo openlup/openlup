@@ -13,7 +13,7 @@ import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 export async function git(cwd, ...args) {
-  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } })).stdout;
+  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', '-c', 'merge.conflictStyle=merge', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } })).stdout;
 }
 export async function captureCommittedReviewCandidate(cwd, base, head, runGit = git) {
   demand(SHA.test(base) && SHA.test(head), 'base and head must be full commit digests');
@@ -148,13 +148,14 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   }
   if (replacements.size) prediction = await replaceTreeBlobs(cwd, prediction, replacements);
   // A clean or registry-union merge needs no review; a resolved conflict is reviewed as its own delta.
-  const resolution = conflicts.filter(path => !registries.includes(path));
+  const resolution = conflicts.filter(path => !registries.includes(path)); let modeChanged = false;
   if (resolution.length) {
-    const changed = (await git(cwd, 'diff', '--name-only', '--no-renames', '-z', prediction, current.tree)).split('\0').filter(Boolean);
-    demand(changed.every(path => resolution.includes(path)), 'integration changed files outside its conflicts');
+    const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
+    demand(delta.changedPaths.every(path => resolution.includes(path)), 'integration changed files outside its conflicts');
+    modeChanged = delta.modeChanged;
   } else demand(prediction === current.tree, 'integration whole tree differs from prediction');
   const kind = resolution.length ? 'resolution' : conflicts.length ? 'registry-union' : 'git';
-  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction } : {}) };
+  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
 export async function captureCoverageEdge(cwd, session, observed, now, historicalKind) {
   if (!session || !verdict(session, session.candidate, now).ok || !observed.rules ||

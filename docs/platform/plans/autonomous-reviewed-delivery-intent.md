@@ -58,22 +58,17 @@ when a filename looks ordinary. The one reviewer explicitly confirms ordinary
 semantics and simplicity. Uncertainty requires two fresh reviews of the same
 committed candidate.
 Neither a self-declared low-risk label nor a small diff is proof of low risk.
-A merge group that cannot carry over is rejected: merge `main` and re-review.
+A merge group that cannot carry over is rejected: merge `main`; only a conflict
+resolution is reviewed.
 
 Commit repairs and give fresh reviewers the open finding cards, actual repair
 and interaction context, without old verdicts or author history. The new tree
 needs passing review by the required reviewer count, with every material finding
-closed. Evidence expires 24 hours after the earliest counted PASS report for the
-current candidate. A proved exact main integration may focus fresh inspection
-using prior source coverage and its earliest expiry, following
-[review after integration](../../../CONTRIBUTING.md#native-review-and-accountability).
-This adds no reduced reviewer count or copied reports.
-Only a clean integration whose tree equals the successful `git merge-tree`
-result for the prior reviewed head and exact new main base, proved as
-`candidate.integration.mechanical: true` with unchanged intent and author,
-avoids a repair-cycle charge. History, findings and earliest expiry remain.
-Manual resolution or extra edits use ordinary repair accounting and full local
-verification.
+closed. Reviews do not expire. A repair is reviewed as its delta plus
+interactions. A merge of `main` keeps the review, and a resolved conflict is
+reviewed as its resolution only, following
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability); these
+integrations charge no repair cycle.
 
 Unchanged prepare preserves evidence. Three repair cycles are automatic;
 `needs_owner` then requires the owner to continue, narrow or stop. Record an
@@ -96,16 +91,14 @@ No model API, backend, new host, account or authentication transfer is required.
 
 The supervisor records observed native execution identities and complete results
 for the exact committed base (the candidate's fork point), head, tree, scope and criteria. Local verify and
-pre-push require fresh matching review evidence; missing, stale, incomplete,
+pre-push require matching review evidence; missing, stale, incomplete,
 bypassed or unresolved material evidence refuses. A `needs_agent_review` response
 returns control to the active agent, which launches reviews and retries the gate
 without asking the maintainer to repeat the authorized task. Source and merge-group
 mechanical checks remain required; baseline installation is not task approval
 and skipped hosted checks are not success.
-The [bounded local integration alternative](../../../CONTRIBUTING.md#native-review-and-accountability)
-alone permits selective local proof, subject to its full-anchor, chain and check-selection conditions.
-Unsupported installed verifiers retain full-run stamp requirements; wrappers do not attest completeness.
-Required source and merge-group CI commands still run in full.
+Local verification is optional and wrappers do not attest completeness; the
+required source and merge-group CI commands run in full on the integration tree.
 
 This is process enforcement within the task, not cryptographic remote
 attestation of an agent's execution or a claim that the supervisor and author
@@ -126,9 +119,9 @@ The active supervisor posts the summary from
 the historical dispatch/artifact transport under the 2026-10-19 simplification.
 The old run-keyed integration receipt route is superseded too. All six mechanical
 checks remain required. The bounded `native-review` job reads eligible comments,
-recomputes source tree and reviewer floor, and checks live head, base and expiry.
+recomputes source tree and reviewer floor, and checks live head and base.
 A source-head change cannot inherit the old admission.
-After local proof, current review, required maintainer reads and the ready-main-PR
+After current review, required maintainer reads and the ready-main-PR
 source receipt, actual merge authority permits enabling auto-merge once while
 source checks are pending, following [Merge queue](../../../CONTRIBUTING.md#merge-queue).
 Known failed checks, conflicts and unresolved mergeability keep their existing
@@ -171,7 +164,7 @@ remain optional components; they do not create a requirement for an external
 model service or cryptographic separation in the same task.
 
 The design fails if self-approval replaces actual independent review, an erased
-finding or invalid expiry admits a stale or dirty candidate, green tests conceal
+finding admits a stale or dirty candidate, green tests conceal
 a violated approved goal, optional advice starts another repair, exhausted cycles
 are silently restarted, simple tasks require a long ceremony, or ordinary
 authorized repairs repeatedly ask

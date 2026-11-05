@@ -2904,7 +2904,8 @@ the same issue without decision-changing information. Existing `needs_owner`,
 exhausted budgets and material contract changes keep their actual owner route.
 Rethink grants no authority, cycles or finding closure;
 it does not run `continue`. The native `cycle` counts changed candidates except
-proved mechanical integrations, not completed evaluations. No new CLI event,
+proved integrations (a clean merge, a registry union or a reviewed conflict
+resolution), not completed evaluations. No new CLI event,
 receipt, job or counter is introduced.
 
 ### Review lessons
@@ -3225,8 +3226,8 @@ it to `main`. Confirm that the first parent of `refs/pull/<PR>/merge` is
 `main`'s head (close and reopen once if it is stale), mark it ready (converting
 to draft first if it is already ready, which clears auto-merge), then post its
 receipt and arm it. The unchanged upper candidate keeps its review. If a
-predecessor changes, merge its new head (do not rebase) and review the delta. A
-second ejection of the same head stops the stack for diagnosis.
+predecessor changes, merge its new head (do not rebase); the upper candidate then
+needs a full review. A second ejection of the same head stops the stack for diagnosis.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned

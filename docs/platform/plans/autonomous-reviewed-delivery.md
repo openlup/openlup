@@ -100,7 +100,7 @@ run, a dashboard, service framework or permanent third reviewer.
 
 ## Coverage history and renewal
 
-Current extension: the bounded rules in
+Current extension: the rules in
 [Native review](../../../CONTRIBUTING.md#native-review-and-accountability)
 supersede this plan's earlier blanket fresh-integration and v2-only statements.
 First review and protected/full-review floors remain unchanged. The enabling
@@ -113,24 +113,14 @@ reviewer, expiry or repair count is rewritten. Each prepare records base/head/
 tree, full paths/modes, approved intent/author and base/head policy snapshots.
 A coverage edge binds the previous history digest and identities, exact delta
 and independently derived Git proof. Integration needs no fresh model report
-only for the exact disjoint main merge or three-carrier insertion-gap union.
-Ordinary repairs need one new cold report with `ordinary: true` and `delta`
-equal to the prepared delta digest. The reviewer must confirm unchanged required
-proof and ordinary semantics; unknown/security/API/control semantics use two
-fresh full reports on the same prepare. A full report omits `ordinary` or sets
-it to `false`; it represents full current-candidate review, not a delta-only
-assessment. If full reports are present, only those reports count toward the
-two-review fallback and its fresh expiry. An `ordinary: true` delta report never
-counts as a full report; reduced repair coverage keeps its inherited age and
-requires the exact delta digest. A renewal is validated against its own recorded
-coverage prefix. Earlier reduced-coverage renewals remain in history without
-extending or capping later fresh full coverage; later full-coverage renewals keep
-that full coverage's original age cap. Complete history, finding closure and Git
-proof remain mandatory for either route. Denied paths win over test/prose filenames.
-Report scope applies to every full-review floor, including first review and
-candidates with no coverage edge. Delta-only observations remain in history but
-do not count as full reports or set fresh full expiry. The initial noncontrol
-package smoke-list set is empty.
+for a clean main merge or the exact three-carrier union. A resolved conflict is a
+`resolution` edge whose delta from the merge prediction may change only the
+conflicted files. A resolution or repair delta needs `deltaFloor` reports with
+`ordinary: true` and `delta` equal to the prepared delta digest: two when it
+touches `protectedCoveragePath` or changes a mode, one otherwise. Two full
+reports, which omit `ordinary` or set it to `false`, also satisfy it; when present,
+only full reports count. Complete history, finding closure and Git proof remain
+mandatory.
 
 Protected inputs include the existing trust paths, all review/documentation/
 reviewed-forward/CI machinery and every path already treated as sensitive by the
@@ -139,37 +129,24 @@ context checks, public CI/pgTAP and coverage guards, site-route checks, package
 guard scripts/API snapshots, the secret-scan ignore file, UI neutrality and the
 named package-boundary/conformance proofs, alongside forward catalog execution controls, workflows,
 SQL/migrations, manifests/lockfiles, release gates/budgets, configuration and
-policy/agent instructions. Ordinary eligibility is limited to test/spec files,
-known test-fixture locations and Markdown prose outside these controls and the
-existing sensitive-path matcher. Product bytes, executable instructions and
-required proof changes never become ordinary through a filename. The canonical
-implementation selector is `protectedCoveragePath`; a repair is now reviewed as
-its delta with `deltaFloor` (see CONTRIBUTING native review).
-The catalog, nested-entry literal and cold-consumer entry arrays have only the
-bounded integration range exception, not a repair or group carry-over exemption.
+policy/agent instructions. The canonical selector is `protectedCoveragePath`;
+it sets the delta floor.
 
 The registry checker preserves old values/order, refuses duplicate/overlapping
 additions and all outside-array changes, and reconstructs the entire expected
 merge tree. The arrays need no sorting or layout migration. Raw server merging
-can still conflict. Existing group carry-over, including its separate exports
-exception, is unchanged.
+can still conflict.
 
-`node scripts/agent-review-session.mjs renew` explicitly records unchanged
-head/tree/base/policy, main ancestry/path evidence and old/new expiry under the
-existing session lock. It may renew elapsed 24-hour evidence before the original
-72-hour cap; expiry is min(renewal time +24h, earliest inherited PASS +72h).
-Main touching a candidate/control path, including touch-and-revert, refuses.
-No model report, earliest origin or repair allowance is reset. Prepare alone
-never renews. Every inherited edge was complete, unexpired and free of material
-findings when established. Full-history replay keeps later findings open until
-explicit closure. Verification on every actual new tree stays required.
+The `renew` command and review expiry were removed on 2026-11-05. Recorded renew
+events still replay, and `expires` is still computed so v3 receipts validate
+unchanged. Verification on every actual new tree stays required, as hosted CI.
 
 New receipts use `<!-- openlup-native-review-receipt v3 -->` with exact fields
 `version, pr, base, head, tree, risk, verdict, expires, sessionDigest, session`.
 The complete bounded session permits trusted main to replay coverage and
 recompute Git/policy facts; old readers ignore this distinct marker. The 1 MiB
 receipt and 8 MiB state limits stay. Older v2 sessions/receipts retain their
-existing rules without conversion or renewed expiry. Source-object fetching,
+existing rules without conversion. Source-object fetching,
 permissions, live identity checks and the six mechanical checks stay unchanged.
 Receipts remain permission-trusted process evidence; a completely forged and
 internally consistent rewritten history is not cryptographically detectable.
@@ -286,8 +263,7 @@ Each candidate needs one reviewer for prose/routine work or two for sensitive
 or unknown work, with the changed-path and mode floor able to raise the count.
 Reviewers must be cold, non-author, distinct and not reused from earlier candidates.
 
-Evidence expires 24 hours after the earliest counted PASS report for the current
-candidate, limited by inherited source expiry for proved integration coverage.
+Reviews do not expire; `expires` is still recorded for receipt compatibility.
 There is no reduced-reviewer closure route. The gate
 captures the candidate and checks the clean worktree and exact tree binding.
 An unchanged installation baseline is not task approval. The hosted summary
@@ -312,7 +288,7 @@ execution on GitHub, a new backend or transfer of subscription credentials.
 
 Prove valid one-role prose and routine paths, plus two-role sensitive/unknown paths,
 then refusal of an elevated path with a routine label, uncertain routine semantics, absent
-review, wrong candidate/base/tree, dirty or out-of-scope changes, expiry, duplicate
+review, wrong candidate/base/tree, dirty or out-of-scope changes, duplicate
 execution identities, missing criteria/scope coverage, partial/failed executions,
 unresolved findings and bypass attempts. Exercise the actual installed verify
 and pre-push paths and the supervisor recovery after `needs_agent_review`.
@@ -320,7 +296,7 @@ Review transports must report unsupported cold-context capabilities honestly;
 do not quietly inherit author history or substitute an API call.
 
 Also prove unchanged prepare preserves evidence, advice does not block, stable
-material findings require closure, expiry applies to the current candidate,
+material findings require closure, reviews do not expire,
 and the fourth repair needs an owner continuation. Check new-session archival
 after a rebase or changed intent, lock exclusion and atomic state writes.
 Historical installed workflow-drift and heavy-check serialization proofs belong
@@ -380,22 +356,21 @@ node scripts/agent-review-session.mjs status
 writes version-2 state on a legacy base or version-3 state on an enabled landed
 base to `.context/scratch/agent-review/session.json`. Refresh
 `origin/main` first. Prepare, verify-command and receipt reuse the queue's cheap
-merge/carry-over preflight against that local ref; a conflict or ineligible base
-move refuses before expensive work. An unlanded stack pin still permits local
+merge/carry-over preflight against that local ref; a text conflict refuses
+before expensive work. An unlanded stack pin still permits local
 preparation, while hosted admission waits for the prerequisite. The base
 is the single `git merge-base --all HEAD origin/main`; no or multiple merge bases
 refuse. `OPENLUP_STACK_BASE` may pin a predecessor between that fork point and
 HEAD. Documentation and local review use the same pin; hosted admission requires
 the pinned base to be an ancestor of actual main and the reviewed head. A
-predecessor-only landing preserves the candidate and expiry. An unpinned review
+predecessor-only landing preserves the candidate. An unpinned review
 remains valid while main moves ahead without changing the fork point.
 
 Unchanged prepare preserves evidence. Preparing a new tree after an earlier
-candidate increments `cycle`, except when `candidate.integration.mechanical`
-proves the exact successful `git merge-tree` result of the prior reviewed head
-and new main base. That exception preserves the existing counter and allowance;
-it does not renew expiry. Under the legacy route it does not inherit reports;
-enabled bases use the coverage edges above. Three repairs are automatic. Beyond
+candidate increments `cycle`, except for a proved integration: a clean merge, a
+registry union, a reviewed resolution or the legacy
+`candidate.integration.mechanical`. Under the legacy route an integration does
+not inherit reports; enabled bases use the coverage edges above. Three repairs are automatic. Beyond
 the allowed cycles, `needs_owner` refuses until the owner authorizes continuation:
 
 ```bash
@@ -439,21 +414,13 @@ paths and executable/mode/symlink changes establish a floor that intent can rais
 Reviewers assess semantics independently and escalate uncertainty to two reviews.
 
 `verify` exits zero and prints `reviewed` only with a clean matching candidate,
-enough PASS reports, closed material findings and unexpired evidence. Expiry is
-24 hours after the earliest counted PASS report for the current candidate,
-or the earlier inherited source expiry when `candidate.integration` is present.
-Prepare supplies that context only for a valid prior PASS in the same session,
-unchanged intent/author and an exact two-parent merge of prior head and new base.
-It binds the prior base/head/tree and expiry. The legacy route requires two
-fresh current-tree reports; enabled bases may use the proved coverage route
-above. Unavailable coverage uses full review. See the canonical
+enough PASS reports and closed material findings; reviews do not expire. On a
+legacy version-2 base, `candidate.integration` binds the prior base/head/tree of
+an exact two-parent merge of the prior head and new base and needs two fresh
+current-tree reports. Enabled bases use the coverage edges above; unavailable
+coverage uses full review. See the canonical
 [inspection scope](../../../CONTRIBUTING.md#native-review-and-accountability).
-`candidate.integration.mechanical: true` additionally proves that the clean
-candidate tree equals the successful `git merge-tree` result for those exact
-parents. Two-parent lineage alone permits additional edits and cannot establish
-this mechanical exception. Manual resolution or extra edits retain ordinary
-repair accounting and full local verification.
-Failures use `needs_agent_review`, `needs_owner`, `stale`, `expired`, `dirty` or
+Failures use `needs_agent_review`, `needs_owner`, `stale`, `dirty` or
 `invalid` with an actionable reason; `status` prints JSON.
 
 `receipt <PR>` requires passing verify and prints a PR comment body. Legacy
@@ -474,11 +441,8 @@ refuses. The merge preflight reuses the existing queue predicate; proof leases
 and policy/inventory runs remain outside this wrapper. Exclusive locking and atomic rename protect state writes;
 input/state bounds remain 1 MiB/8 MiB.
 The wrapper does not attest that selected commands form complete verification.
-The existing raw-command route may use the
-[bounded local integration alternative](../../../CONTRIBUTING.md#native-review-and-accountability)
-only under its full-anchor, mechanical-chain and check-selection conditions.
-Unsupported installed verifiers keep full-run stamp requirements. No flag, history
-event, copied stamp or cache is introduced; all required source and merge-group CI commands still run.
+Local verification is optional; all required source and merge-group CI commands
+run on the integration tree.
 
 The report schema in `scripts/agent-review-session.mjs` is the implementation
 contract. Receipts are process evidence, not cryptographic remote attestation

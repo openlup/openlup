@@ -898,9 +898,9 @@ review or a new report format. Applicable maintainer/delegate reads remain requi
 
 Changes to a class, validator, its dependencies, review/admission or release
 machinery need a separate control change before using the new rule. The existing
-native admission, invoked from trusted main, validates co-located data with its
-own checker and refuses simultaneous machinery changes or machinery drift since
-the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+native admission, invoked from trusted main, validates the candidate's own
+co-located change with its own checker and refuses machinery changes in that
+change. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
 `scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
 release entry points and preparation; test-only coverage changes remain allowed,
 except the catalog test of the [closed native store forwards](#closed-native-store-forwards)

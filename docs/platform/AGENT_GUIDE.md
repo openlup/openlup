@@ -220,7 +220,8 @@ as a PR comment with `gh pr comment <PR> --body-file -`, within delivery authori
 as soon as the pull request is open and ready, and waits for actual admission.
 Admission checks the live PR head, tree and reviewer floor.
 
-Trusted main runs admission, so a PR cannot change the code that admits it. A
+Admission runs trusted main's script, so a PR cannot change the code that admits
+it; a workflow edit is machinery and takes two reviewers. A
 group carries the source review when it is a clean merge of the reviewed change.
 Queue rebuild recovery remains bounded at two retries and does not reset repair cycles.
 Settings remain a maintainer action; see [Deliver a change](../../CONTRIBUTING.md#deliver-a-change)

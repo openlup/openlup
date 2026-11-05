@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
@@ -248,6 +248,15 @@ describe('real Git coverage histories', () => {
     await f.cli('prepare', f.request); const next = await f.state(); expect(next.candidate.coverage.kind).toBe('repair');
     await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
     await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it.each(['resolution', 'repair'])('needs two delta reviewers for a %s that changes a mode', async kind => {
+    const f = await fixture(); await f.review();
+    if (kind === 'resolution') { const main = await f.mainMove(() => f.write('app.ts', 'main line\n')); expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow(); }
+    await f.write('app.ts', 'resolved\n'); await chmod(join(f.cwd, 'app.ts'), 0o755); f.commit();
+    await f.cli('prepare', f.request); const next = await f.state(); expect(next.candidate.coverage.proof).toMatchObject({ modeChanged: true });
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
   });
   it('does not inherit coverage with an open material card', async () => {
     const f = await fixture(); const prior = await f.review();
