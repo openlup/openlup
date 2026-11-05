@@ -12,7 +12,8 @@ import * as renewal from "@openlup/platform/subscriptions";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
+import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
+import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
@@ -67,6 +68,23 @@ const renewalFacts: renewal.NativeRenewalPurchaseFacts = {
   acquisitionRef: "acquisition:customer@example.invalid",
 };
 let retainedRenewal: { orderId: string; subscriptionId: string }, pendingRenewal: typeof retainedRenewal;
+const terminalNotices: { source: "event" | "reminder"; id: string }[] = [];
+async function dispatchNotices(installation: Installation, unresolvedClients: ReadonlySet<string> = new Set()) {
+  const store = createPostgresTransactionalDeliveryStore({ connectionString: installation.runtimeUrl });
+  const captured: string[] = [];
+  try {
+    const delivery = createTransactionalDelivery({ store, delivery: createCapturedTransactionalDelivery({ outcome: command => {
+      captured.push(command.idempotencyKey); return { state: "accepted" };
+    } }) });
+    const binding = renewal.createPostgresLifecycleMessages({ delivery: { send: delivery.send, readReceipt: store.readReceipt },
+      async withSession(work) { const db = await installation.runtime.connect(); try { return await work(noticeSessionWithRecipientFault(db, unresolvedClients)); } finally { db.release(); } },
+      async bind(notice) { return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug }; },
+    });
+    await binding.run(100);
+    return captured;
+  } finally { await store.close(); }
+}
+
 
 async function renewalPurchase(complete: boolean) {
   const call = async (name: string, values: unknown[]) => (await source.runtime.query(
@@ -410,6 +428,17 @@ beforeAll(async () => {
     version: Number((await source.runtime.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows[0].template_version),
     payload: { newAddress: { recipientName: "Synthetic future recipient", line1: "Synthetic future street", city: "Fixture", postalCode: "00000", country: "ZZ" } } };
   await source.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-01T12:00:00Z')", [admin, graph.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
+  for (const sourceKind of ["event", "reminder"] as const) {
+    for (const reason of ["missing_recipient", "disabled_control", "consent_refused"] as const) {
+      const seeded = await refusedNoticeSources(source.owner, sourceKind, reason, 1);
+      try {
+        expect(await dispatchNotices(source, seeded.unresolvedClients)).not.toContain(`subscription-notice:${sourceKind}:${seeded.refused[0]}`);
+        expect((await source.runtime.query("SELECT reason FROM public.subscription_notice_refusals WHERE source=$1 AND source_id=$2", [sourceKind, seeded.refused[0]])).rows)
+          .toEqual([{ reason: "notice_policy_refused" }]);
+        terminalNotices.push({ source: sourceKind, id: seeded.refused[0]! });
+      } finally { await seeded.changeCondition(); }
+    }
+  }
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -879,6 +908,41 @@ it("counts personal consent history and attribution toward whole-capture row and
     })).rejects.toMatchObject({ code: "limit_exceeded", table: "customer_account_consent_events" });
   }
 }, 30_000);
+
+// Solo without coverage: 6.52 s; 30 s exceeds three times that measurement.
+it("retains terminal event and reminder refusals after changed policy, restore and replay", async () => {
+  await restore();
+  const rows = async () => (await target.runtime.query(`SELECT source,source_id,reason,
+    to_char(refused_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,xmin::text,ctid::text
+    FROM public.subscription_notice_refusals ORDER BY source,source_id`)).rows;
+  const before = await rows();
+  expect(before).toHaveLength(6);
+  expect((await census(target.owner)).subscription_notice_refusals).toEqual((await census(source.owner)).subscription_notice_refusals);
+  for (let replay = 0; replay < 2; replay++) {
+    const sent = await dispatchNotices(target);
+    for (const notice of terminalNotices) expect(sent).not.toContain(`subscription-notice:${notice.source}:${notice.id}`);
+    expect(await rows()).toEqual(before);
+  }
+  expect((await restore()).replayed).toBe(true);
+  expect(await rows()).toEqual(before);
+}, 30_000);
+
+// Solo without coverage: 3.85 s; 30 s exceeds three times that measurement.
+it("counts terminal refusal source identities and times toward capture row and byte limits", async () => {
+  const index = packet.owned.findIndex(table => table.table === "subscription_notice_refusals");
+  const retained = packet.owned[index]!;
+  expect(retained.rows).toHaveLength(6);
+  const prior = [...packet.compatible.tables, ...packet.owned.slice(0, index)];
+  const rowCount = prior.reduce((sum, table) => sum + table.rows.length, 0);
+  const bytes = prior.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+  for (const limits of [{ maximumRows: rowCount + 5, maximumBytes: 64 * 1024 * 1024 },
+    { maximumRows: 10000, maximumBytes: bytes + retained.rows.reduce((total, row) => total + Buffer.byteLength(row), 0) - 1 }]) {
+    await capture(source.owner, "terminal-refusal-limits", limits).then(() => { throw new Error("Expected the terminal refusal capture limit"); },
+      (error: { code: string; table?: string }) => expect({ code: error.code, table: error.table })
+        .toEqual({ code: "limit_exceeded", table: "subscription_notice_refusals" }));
+  }
+}, 30_000);
+
 
 it("checks the identity mapper's erased-subject and conflict branches with synthetic records", async () => {
   const issuer = "https://issuer.example.invalid/managed";

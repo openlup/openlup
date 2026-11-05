@@ -8,3 +8,8 @@
 Migration: Hosts may supply a failed delivery receipt with `retryable: false`
 for a final rejection. An omitted disposition means transient. Exceptions retain
 the sending lease. Read the lifecycle binding policy before selecting a host.
+
+Native event and reminder policy refusals now terminally complete the original
+source. Missing recipients, disabled controls and refused consent remain terminal
+after policy changes, restart and connected store transfer. These records do not
+assert delivery or change the dunning flow or transactional delivery receipts.

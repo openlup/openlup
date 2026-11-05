@@ -387,14 +387,14 @@
     },
     {
       "file": "db/platform/migrations/20261101231000_native_paid_email.sql",
-      "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
+      "sha256": "5315e5a23e1462b19d0addf4beb5291b0bce808157e957386eee9d75dc10cbe3"
     },
     {
       "file": "db/platform/migrations/20261101232000_customer_account_consents.sql",
       "sha256": "53fbed96be421a69b3c92bc1b2b3fef1eac508a082edb3f2ebe72eac6db7f5b5"
     }
   ],
-  "objectInventorySha256": "8d686e90545639b1850ebfba27ac56cd1a6c82506406f0175d5567b5681bb37d",
+  "objectInventorySha256": "4b02a4badcc0dbc9240bc8a84b4bfbd2041611282ad09b1278237cd85cf0b5ca",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -799,7 +799,7 @@
       },
       {
         "file": "db/platform/migrations/20261101231000_native_paid_email.sql",
-        "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
+        "sha256": "5315e5a23e1462b19d0addf4beb5291b0bce808157e957386eee9d75dc10cbe3"
       },
       {
         "file": "db/platform/migrations/20261101232000_customer_account_consents.sql",
@@ -808,10 +808,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "bcf10197a4b687fc2cb140c02a5f7e3f86362167b19fa7bed0b985347943da7b"
+        "withRestore": "864b0676b53986b668e13829fcc0144a3f22dcdaeb7ec35de0c2f97e541ab5ec"
       },
       "separateMigrator": {
-        "withRestore": "f021e7d4c4dac9b03f969f333e1d5d74cfd6f4f47b9c74012c23446b617be1fe"
+        "withRestore": "1c072e35e59a037d6f69bf3a6b96990ac3c2b430219ba5c5b5c1ddcaa6cb0fae"
       }
     }
   },
@@ -1215,7 +1215,7 @@
       },
       {
         "file": "db/platform/migrations/20261101231000_native_paid_email.sql",
-        "sha256": "6d0f8544e8c45dd1d9f29151a297f23dc1eb0d90a5f3ab2476293fbce7dbbfb0"
+        "sha256": "5315e5a23e1462b19d0addf4beb5291b0bce808157e957386eee9d75dc10cbe3"
       },
       {
         "file": "db/platform/migrations/20261101232000_customer_account_consents.sql",
@@ -1223,8 +1223,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "848fce049871315b876d7206f297e0ba40a77ec4fea9490eaeff29136f70bc7f",
-      "operatorProvisioned": "7beb5097593e2994515e1431d547cce831c8814c6c54fff269e7e3d7d7709331"
+      "installerManaged": "6cddd1e2c8c812fd70ad2d51f99b5988c18c21f17da11f132ba452f9f2ecf85e",
+      "operatorProvisioned": "d3bd8fb71e4e7177af4f9033399c12f5dcf1c247338058aeba472e3e3cae52d7"
     }
   }
 }

@@ -86,6 +86,8 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
         ) SELECT x.* FROM sources x LEFT JOIN public.transactional_delivery_receipts r
           ON r.idempotency_key='subscription-notice:'||x.source||':'||x.id::text
           WHERE r.state IS DISTINCT FROM 'accepted' AND COALESCE(r.attempt_count,0)<6
+            AND NOT EXISTS (SELECT 1 FROM public.subscription_notice_refusals refused
+              WHERE refused.source=x.source AND refused.source_id=x.id)
           ORDER BY x.id LIMIT $1::integer`, [limit, Object.keys(aliases)])).rows;
         const rows: Record<string, unknown>[] = [...dunning.map(row => ({ ...row, source: "dunning", client_id: row.recipient_ref, kind: row.notification_kind })), ...sources];
         for (const row of rows) {
@@ -103,6 +105,10 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
             [row.id, row.claim_token, status, reference, dispatch.transientBackoffSeconds])).rows[0]?.ok === true;
           };
           try {
+            if (source !== "dunning" && (await db.query(`SELECT source_id FROM public.subscription_notice_refusals
+              WHERE source=$1 AND source_id=$2::uuid`, [source, row.id])).rows.length) {
+              result.skipped++; continue;
+            }
             if (source === "dunning" && row.recipient_kind !== "customer") throw new Error("subscription_notice_recipient_unsupported");
             if (source === "dunning" && !(await db.query(`SELECT id FROM public.subscription_dunning_notifications
               WHERE id=$1::uuid AND claim_token=$2::uuid AND status='sending' AND lease_expires_at>clock_timestamp()`, [row.id, row.claim_token])).rows.length) {
@@ -142,6 +148,9 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
               if (source === "dunning") {
                 const skipped = (await db.query("SELECT public.subscription_dunning_mark_result($1::uuid,$2::uuid,'skipped','notice_policy_refused',NULL) AS ok", [row.id, row.claim_token])).rows[0]?.ok;
                 if (skipped !== true) { result.stale++; continue; }
+              } else {
+                await db.query(`INSERT INTO public.subscription_notice_refusals(source,source_id,reason)
+                  VALUES($1,$2::uuid,'notice_policy_refused') ON CONFLICT (source,source_id) DO NOTHING`, [source, row.id]);
               }
               result.skipped++; continue;
             }

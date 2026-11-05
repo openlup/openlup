@@ -3075,3 +3075,15 @@ The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
 only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
+
+### Terminal native notice refusals
+
+The native lifecycle binding retains `subscription_notice_refusals` by the
+original `(source, source_id)`, for event and reminder sources only. Its reason
+is the existing `notice_policy_refused` code and its time is database-recorded.
+A refusal is terminal, including after recipient, control or consent changes;
+it never asserts a send or changes a transactional delivery receipt. The runtime
+can insert and read this RLS-protected record, with no update or delete access.
+Browser roles have no access. Connected capture and restore retain these opaque
+source identities and their refusal times so a store move cannot resend them.
+This table contains no recipient address, message content or free-form reason.

@@ -909,7 +909,7 @@ requires a refreshed answer for the resolved current-chain witnesses. This answe
 records the existing declared fixtures and unchanged proof contract, rather than
 claiming that the still-pending behavioral suites passed.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-3ab77e7a90cbbf6434f7f379d556e2501fb6e07413b1af5d7e61549f5bb3fc1f","reason":"The tests retain the declared local PostgreSQL and isolated local-tarball profiles. Operations use the restricted runtime; owner access supplies synthetic fixtures and observes state. New conservation, effective delivery, concurrency, ACL and replay witnesses preserve the existing test-scope rules. The two explicitly approved known-limit lifts replace a shipping-refusal expectation and the exact invoice SQL literal; zero-payable and line-discount refusals stay unchanged. The destination join uses the actual writer, with the previous event fixture retained. Current inventories are measured and historic pins stay untouched. No test-selection control, test-profile privilege, contributor command or proof requirement changes. The admin case bound follows the existing measured-timeout rule."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","digest":"sha256-cb029207220b764db2680521ae3d913d06da0b93310f7ec459b421e23ef921d5","reason":"The combined tests retain the documented restricted PostgreSQL and isolated local-artifact profiles, unchanged dunning and receipt contracts, and measured per-case deadlines. The repair adds real-runtime terminal-refusal, mixed-queue, effective ACL and connected-transfer limit/replay witnesses. Owner connections only seed valid source/control/consent facts and observe retained state; a bounded recipient-read fault still executes the installed reader and terminal writer as the restricted login, without changing schema, RLS or privileges. Historic pins, existing assertions, scanner selection and required proof controls are unchanged; current inventory literals are measured on the actual selected chains.","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks"} -->
 
 
 The official pre-implementation pack (Node 24.21.0/npm 11.19.0) measured
@@ -1250,3 +1250,52 @@ The other two named sites are also retained without assertion changes:
 - `subscriptionRetryLifecycleCases.ts:107` has the same complete case body on main and the candidate, SHA-256 `40f0da2713a0e09fb47f522baa8be13864bdd12cc99642c2fee515c18ad9dd78`. It seeds the offset-free SQL date `2027-06-01` but compares with the UTC constant `2027-06-01T00:00:00.000Z`. The observed values are `2027-05-31T15:00:00.000Z` under `Etc/GMT-9` and `2027-06-01T05:00:00.000Z` under `Etc/GMT+5`, matching the seed interpreted in each session zone. This is the named fixture-zone assumption; the assertion stays unchanged.
 
 The additional managed-transfer dump under `Etc/GMT+5` again found only equal-instant `created_at` and `updated_at` renderings: `2026-11-04T16:17:59.489385-05:00` versus `2026-11-04T21:17:59.489385+00:00`, with one row on each side and no other key difference.
+
+
+## Terminal policy refusal repair
+
+The maintainer authorized a staged repair for event/reminder batch starvation,
+with no sign-off or publication until the stabilized read. Missing recipient,
+disabled control and refused transactional consent all terminally complete the
+original source. A later policy change never resurrects that source. The
+existing dunning flow, transactional delivery receipts and public API remain
+unchanged. The optional invoice qualification wording is outside this repair.
+
+The evaluation audit cannot be reused: this binding does not write it, source
+fields are nullable and non-unique, and a missing recipient has no required
+fingerprint. One new RLS-protected `subscription_notice_refusals` record retains
+only `(source, source_id)`, the existing `notice_policy_refused` reason and a
+refusal time. Runtime access is INSERT/SELECT only; browser access is revoked.
+The original source lock covers the replay-safe insert. Candidate selection
+excludes terminal sources before LIMIT, and a second check under the lock
+protects a source selected concurrently before its refusal was recorded.
+
+The source graph has non-null client foreign keys and nonempty email constraints.
+The missing-recipient witness therefore injects a bounded lookup fault: the same
+restricted session executes the installed recipient reader with NULL only for
+specified fixture reads. No result is fabricated, and no constraint, routine,
+RLS policy or privilege is changed for that fixture. Removing the read fault
+restores the actual recipient; the recorded source remains terminal. Other
+refusal witnesses use the real persisted control and consent facts.
+
+Connected capture and restore retain the new opaque records and count them
+against whole-capture row/byte limits. Tests cover each condition and source,
+bounded mixed queues, changed conditions, restart, transfer, restore replay,
+and the exact runtime/browser ACL snapshot. The canonical lifecycle and data
+sections explain the behavior and retained-data boundary. Current inventory
+hashes are re-measured on real PostgreSQL; historic pins remain untouched.
+
+The existing SQL slot count is unchanged. Main's trusted reader currently
+refuses the new table grant shape; the separately owned class amendment is a
+read item, not a local checker exception. No review report is closed by the
+staged proof, and committed review resumes only after the accepted read.
+
+
+Transfer witness isolation was tightened after two fixture failures: future
+subscription dates also produced automatic reminders, and later acquisition
+cases mutate the shared capture source. Historical queued-source fixtures avoid
+extra producer work; refusal limit proofs now sit with the existing capture-limit
+cases before those later mutations. The full transfer suite passes all 21 cases after this placement, retaining
+every existing assertion and capture refusal. Lesson:
+exercise a retained-graph limit against its bounded source fixture, rather than
+assuming a shared source is unchanged after every unrelated case.

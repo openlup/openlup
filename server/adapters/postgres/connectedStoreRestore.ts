@@ -247,6 +247,7 @@ const order = [
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
   "commerce_settlement_intents", "commerce_settlement_transitions",
   "subscription_reminder_ledger", "transactional_delivery_receipts",
+  "subscription_notice_refusals",
   "payment_simulator_attempts", "payment_simulator_observations",
   "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",

@@ -2232,7 +2232,13 @@ Session advisory locks serialize matching sends without holding a database
 transaction across delivery. Accepted receipts prevent sequential replay sends;
 dunning finalizers retain the native claim-token fence. Failed delivery changes
 notice/receipt work only. Failed event/reminder receipts stop automatic selection
-after six recorded attempts; expired dunning claims at their native attempt
+after six recorded attempts. Missing recipients, disabled controls and refused
+transactional consent terminally complete event/reminder notices in
+`subscription_notice_refusals`, under the same per-source advisory lock. Those
+rows are excluded before the batch limit and survive connected transfer;
+restoring a recipient, control or consent never resurrects that source. Refusal
+records are not delivery receipts and contain no recipient or rendered content.
+Expired dunning claims at their native attempt
 ceiling remain visible for host repair. These outcomes never pause service.
 Operator-requested `payment_recovery` notices inherit the latest same-case
 customer `payment_failed` template and payload, ordered by `created_at DESC,

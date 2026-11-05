@@ -50,6 +50,7 @@ const owned = [
   "sales_channels", "commerce_settings", "client_absorption_policy", "subscriber_retention_activation_watermarks",
   "subscription_delivery_alignment_control", "outbox_dormant_event_types",
   "subscription_reminder_ledger", "transactional_delivery_receipts",
+  "subscription_notice_refusals",
 ] as const;
 
 export const connectedNativeStoreTables = [...compatible, ...owned] as const;
