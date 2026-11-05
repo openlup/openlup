@@ -3143,7 +3143,10 @@
             "revokeFrom": []
           }
         ],
-        "dataStatements": []
+        "dataStatements": [],
+        "insertSelectTables": [
+          "public.subscription_notice_refusals"
+        ]
       },
       {
         "row": "G11-c",
