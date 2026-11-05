@@ -15,7 +15,10 @@
     "public/media/dusk.svg",
     "public/media/light.svg",
     "public/media/medium.svg",
-    "public/media/noon.svg"
+    "public/media/noon.svg",
+    "owned/acquisition-policy.ts",
+    "owned/quote.config.ts",
+    "owned/quote-copy.ts"
   ],
   "managed": [
     ".dockerignore",
@@ -83,13 +86,22 @@
     "host/purchase-composition.ts",
     "client/purchase.ts",
     "playwright.database.config.ts",
-    "shared/interim-pricing.ts",
     "test/interim-pricing.test.ts",
     "host/checkout-attempts.ts",
     "test/checkout-attempts.test.ts",
     "test/address-outcomes.test.ts",
     "host/checkout-recovery.ts",
-    "test/checkout-recovery.test.ts"
+    "test/checkout-recovery.test.ts",
+    "host/acquisition-predecessors.ts",
+    "host/quote-composition.ts",
+    "installation/quote-seed.ts",
+    "shared/offer-estimate.ts",
+    "shared/quote-config.ts",
+    "browser/acquisition.spec.ts",
+    "client/quote-acceptance.ts",
+    "host/quote-secret.ts",
+    "test/acquisition-quote.test.ts",
+    "client/live-quote.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md"

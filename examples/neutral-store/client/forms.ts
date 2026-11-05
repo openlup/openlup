@@ -26,7 +26,9 @@ export interface ActionFormOptions {
   fields?: FieldSpec[];
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
+  prepare?: (values: ActionInput) => Promise<ActionInput | null>;
   onSuccess?: (value: unknown) => void;
+  onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
   resultMessage?: (value: unknown) => CopyKey | undefined;
 }
@@ -99,6 +101,14 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         output.replaceChildren(refusal(context, 'starter_input_invalid'));
         return;
       }
+      if (options.prepare) {
+        inFlight = true; submit.disabled = true; reset.disabled = true;
+        try {
+          const prepared = await options.prepare(values);
+          if (!prepared) return;
+          values = prepared;
+        } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
+      }
       const serialized = JSON.stringify(values);
       if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
       priorInput = serialized;
@@ -117,7 +127,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
           options.onSuccess?.(result.value);
-        }
+        } else options.onFailure?.(result.code);
       } finally {
         inFlight = false;
         submit.disabled = false;

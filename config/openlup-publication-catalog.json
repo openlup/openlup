@@ -1762,6 +1762,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-r1d.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-recipes.md",
       "class": "public-output"
     },
@@ -1878,6 +1882,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/acquisition.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/journey.spec.ts",
       "class": "public-output"
     },
@@ -1918,6 +1926,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/live-quote.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/main.ts",
       "class": "public-output"
     },
@@ -1950,6 +1962,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/quote-acceptance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/style.css",
       "class": "public-output"
     },
@@ -1979,6 +1995,10 @@
     },
     {
       "path": "examples/neutral-store/extract.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/acquisition-predecessors.ts",
       "class": "public-output"
     },
     {
@@ -2018,6 +2038,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/quote-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/quote-secret.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/server.ts",
       "class": "public-output"
     },
@@ -2034,6 +2062,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/installation/quote-seed.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/lifecycle",
       "class": "public-output"
     },
@@ -2043,6 +2075,10 @@
     },
     {
       "path": "examples/neutral-store/owned/acquisition-addresses.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/acquisition-policy.ts",
       "class": "public-output"
     },
     {
@@ -2059,6 +2095,14 @@
     },
     {
       "path": "examples/neutral-store/owned/fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/quote-copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/quote.config.ts",
       "class": "public-output"
     },
     {
@@ -2122,15 +2166,19 @@
       "class": "public-output"
     },
     {
-      "path": "examples/neutral-store/shared/interim-pricing.ts",
-      "class": "public-output"
-    },
-    {
       "path": "examples/neutral-store/shared/limits.ts",
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/offer-estimate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/quote-config.ts",
       "class": "public-output"
     },
     {
@@ -2139,6 +2187,10 @@
     },
     {
       "path": "examples/neutral-store/starter-release.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/acquisition-quote.test.ts",
       "class": "public-output"
     },
     {
@@ -28363,6 +28415,10 @@
     },
     {
       "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStoreQuote.test.ts",
       "class": "public-output"
     },
     {

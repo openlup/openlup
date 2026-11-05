@@ -402,29 +402,43 @@ Origin on GET or HEAD is not compared. Writes require the exact configured
 origin, the marker header and JSON. The accepted origin policy is unchanged.
 
 
-## Interim subscription pricing
+## Native quote and acquisition composition
 
-`shared/interim-pricing.ts` contains one temporary pricing function shared by the
-browser, host offer evaluation and owned price seed. Subscription units resolve
-from configured `subscriptionDiscountBps` and `subscriptionRoundingQuantumMinor`
-before multiplication by quantity. The native quote carries those reduced unit
-prices, explanatory `mode_discount` components, an empty discounts array and zero
-order discount. No promotion identifier or definition is invented for this mode
-price. The first-subscription acquisition offer is separate and comes later.
+The native host uses the installed quote engine with current catalogue documents,
+exact price-list entries, a canonical subscription policy and native promotion
+reads. Catalogue, builder, cart and checkout projections read `offer.validate` on the
+native host. Failed refreshes withhold the previous money. The local preview
+estimator remains available only for explicit database-less one-time estimates
+and configuration characterization; it delegates unit arithmetic to the package. The install seed
+retains the six compatibility mode-price entries and adds one immutable policy
+revision, current document pointers, physical trade-item facts and one standalone
+acquisition definition. Conflicting policy, document or promotion initialization
+refuses and rolls back. This is a fresh demonstration install, not policy rotation.
 
-Owned configuration also supplies initial/renewal shipping values and demonstration
-purchase input bounds, reservation minutes, per-SKU stock quantities and snapshot
-timestamps, fictional tax inputs and sandbox template/path choices. Validation
-rejects malformed values. Existing protocol/security constraints remain fixed.
-Recovery timing is the fixed native database rule; the existing session boundary is unchanged.
+`owned/quote.config.ts` supplies neutral acquisition rates, effective dates,
+document identity and graduation cadence. Product physical facts remain owned
+catalogue data. Initial and renewal shipping retain the zero-charge interim. A nonzero initial
+fee refuses with `starter_initial_shipping_unsupported` until that policy is qualified.
+The second-delivery display uses the retained quote's list basis and configured
+promise through the package adjustment engine.
 
-Checkout order UUIDs match by UUID value across lowercase, uppercase and mixed-case
-input. The host preserves request fields and the existing native response identifiers.
+The browser explicitly declares `subscription-acquisition.v1`. Unsupported
+subscription callers receive `acquisition_terms_capability_required` before
+contact, order or payment effects. A private host keyring file may be supplied
+with `--quote-acceptance-key-file`; it contains the existing helper's `current`
+and optional `previous` keys, each at least 32 characters. Keep it outside served
+assets and browser configuration. This application does not provision keys.
+Missing keys refuse acquisition quotes. Acceptance binds the request, money,
+policy, second promise and delivery terms; changed terms clear consent and require
+refresh even if the total is unchanged. Expired observations withhold money.
 
-The install seed gives each SKU and purchase mode a deterministic distinct price
-identity. Identical installation adds no price rows; changed-price conflicts
-refuse loudly. Resolve a deliberate price change through the application's
-onboarding decision rather than relying on a silent seed overwrite.
+The local predecessor seam loads the package eligibility and transactional
+admission factories. Missing exports refuse admission by name. All mounted checkout modes use the
+transaction adapter; acquisition terms never reach a direct lower-level writer. Alias evidence cannot grant a customer session or
+account reads. The retained-renewal interface remains an explicit pending seam:
+`starter_acquisition_renewal_binding_required` prevents acquisition drafts until
+that owner supplies the final typed activation contract. This checkpoint does not
+claim a completed acquisition purchase or second-delivery renewal.
 
 Attempt limits live in one process's memory and reset on restart.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
@@ -443,3 +457,8 @@ PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
+
+Replayed checkout uses its saved quote and compares the complete request binding;
+current observation times cannot silently alter its draft fingerprint. Renewal
+registration uses original quote line prices rather than allocated paid prices.
+Order UUID matching and the native response spelling remain unchanged.
