@@ -11,6 +11,8 @@ export interface VerifiedActor {
   sessionToken?: string;
   /** Host-derived peer fingerprint for public intake quotas; never a payload value. */
   requesterKey?: string;
+  /** Canonical origin derived from the admitted Host, never a payload or forwarding header. */
+  requestOrigin?: string;
 }
 
 export interface ActionContext {

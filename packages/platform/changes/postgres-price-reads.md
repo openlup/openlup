@@ -1,0 +1,1 @@
+Expose request-scoped PostgreSQL price authority history reads through the existing commerce server entry. Characterize the unchanged native promotion reader and document its device-evidence and mirror-family limits.

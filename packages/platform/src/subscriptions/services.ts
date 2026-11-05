@@ -19,3 +19,15 @@ export function createSubscriptionServices<Result>(input: {
     },
   };
 }
+
+export const NATIVE_SUBSCRIPTION_CAPABILITIES = Object.freeze({
+  graph: "native",
+  multiCyclePrepaid: Object.freeze({ supported: false, refusalCode: "multi_cycle_prepaid_unsupported" }),
+  genericBundleCommands: Object.freeze({ supported: true }),
+  commandBoundReceipts: Object.freeze({ supported: true }),
+  preparedAttemptStore: Object.freeze({ supported: false, refusalCode: "native_prepared_attempt_store_unsupported" }),
+  retryRecovery: "selected",
+  // Native stock adapters exist; selection requires passing real-PG evidence.
+  stockRecovery: "unavailable",
+  deliveryAdmission: "required", executorCount: 1, defaultEnabled: false,
+} as const satisfies import("./contracts/commands.js").SubscriptionCapabilities);

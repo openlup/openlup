@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { admit, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, carryOverSourceReview, git } from './agent-review-session.mjs';
+import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { captureCommittedReviewCandidate, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
@@ -15,9 +15,15 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 export function parseReceipt(body) {
-  if (typeof body !== 'string' || body.length > 1024 * 1024 || !body.startsWith(`${RECEIPT_MARKER}\n`)) return null;
-  const match = /^```json\s*\n([\s\S]*?)\n```\s*$/u.exec(body.slice(RECEIPT_MARKER.length + 1));
-  try { return match ? JSON.parse(match[1]) : null; } catch { return null; }
+  if (typeof body !== 'string' || body.length > 1024 * 1024) return null;
+  const marker = [RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER].find(value => body.startsWith(`${value}\n`));
+  if (!marker) return null;
+  const match = /^```json\s*\n([\s\S]*?)\n```\s*$/u.exec(body.slice(marker.length + 1));
+  try {
+    const receipt = match ? JSON.parse(match[1]) : null;
+    if (marker === ECONOMY_RECEIPT_MARKER ? receipt?.version !== 3 : receipt?.version !== undefined) return null;
+    return receipt;
+  } catch { return null; }
 }
 export async function readReceipts(api, root, pr, head, now, permissions = new Map()) {
   const comments = [];
@@ -60,12 +66,15 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions);
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main), 'main commit identity is invalid');
-      const refs = [...new Set([receipt.base, receipt.head, main, ...(group ? [group.base_sha, group.head_sha] : [])])];
+      const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
+      const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
+      demand(refs.every(ref => SHA.test(ref)), 'receipt references invalid source objects');
       let candidate; let baseValid;
       try {
         await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
         await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
+        if (receipt.version === 3) await validateEconomySession(cwd, receipt.session, runGit);
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, 'origin/main')).trim().split('\n');
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
@@ -75,7 +84,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
-        decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree }, runGit);
+        decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree, trustedMain: main }, runGit);
         demand(decision.ok, decision.reason, decision.code);
         if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
       }

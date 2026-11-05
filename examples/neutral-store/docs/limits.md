@@ -1,6 +1,6 @@
 # Portable sandbox limits
 
-Status: current draft UI refusals; required native bindings remain pending.
+Status: local PostgreSQL host and browser purchase/recovery evidence; release qualification remains separate.
 
 The app's `/limits` and `/ograniczenia` pages render the same canonical table as
 the visible action buttons (`shared/limits.ts`). A refusal is an observed
@@ -31,7 +31,7 @@ the install connection after installed bootstrap. It refuses absent bootstrap
 (`starter_seed_install_role_required`) and a database without the demonstration
 marker (`starter_seed_demonstration_database_required`). The one-shot bootstrap
 uses the complete installed history and refuses any pre-existing unmarked database.
-Purchase and subscription qualification remain pending.
+Guest purchase, subscription activation and recovery have real-database host and browser proofs.
 Promotions remain seed configuration, with no runtime administration.
 Clients, stock and settings must use their native writers; never seed them. Purchase, renewal terms and
 method states are never replaced by hand-written application rows.
@@ -77,7 +77,8 @@ The account order response does not claim a rich customer-order projection.
 Native detail preserves `native_account_order_money_unavailable` when a historical
 order lacks captured money; it never reconstructs purchase truth.
 
-Purchase, invoice history/artifacts, shipment list/detail and dependent label,
+Purchase creation uses the native contact-client factory. Invoice history/artifacts,
+shipment list/detail and dependent label,
 handoff, delivery and tracking bindings, signed unsubscribe and other unmounted
 workflows remain pending. Shipment reads follow destination/reservation facts;
 dispatch preparation alone does not provide them.
@@ -86,8 +87,8 @@ dispatch preparation alone does not provide them.
 Unbound operations return
 `host_binding_required` after customer/operator admission. These are implementation
 blockers, not additional accepted native limits. An invalid-grant example does
-not prove a valid grant works. Completion still requires the real purchase,
-account and operator browser journey in both configurations.
+not prove a valid grant works. Local completion evidence includes real purchase and account browser journeys in
+both configurations; operator order reads have separate host proofs.
 
 Both example catalogues price in `XTS` test units for fictional market `ZZ` at
 `UTC`. These choices make no real tax, shipping or compliance claim. The selected
@@ -113,10 +114,11 @@ contact deduplication has no time-based expiry. Public success returns only the
 case reference; contact details are visible through the authorized operator view.
 
 Review read and submit require an accepted, unexpired native order review grant.
-Invalid references do not prove positive grant behavior. Expired-grant refusal,
-positive review submit/read, publish/hide with a real review, grant expiry and
-revocation, and purchase-generated grant ownership remain acceptance duties of
-the purchase composition contribution. This slice claims none of them.
+Invalid references do not prove positive grant behavior. Positive review submit/read, publish/hide, revocation and grant ownership move
+to the later review journey after delivered-shipment reads. Ownership retains
+the native bearer-capability semantics. The issuer fixes expiry at thirty days
+and provides no application time seam. This purchase contribution claims no
+additional review proof beyond the earlier intake composition.
 Operator list/moderation admission reuses native human membership, rechecked on
 requests; a customer session supplies no operator authority.
 
@@ -149,6 +151,89 @@ Research remains `host_binding_required` until the host can authorize ownership
 of the research case (`authorizeResearchCase`); normalized ingest also remains
 `host_binding_required`. Neither action is mounted merely to return a refusal.
 
-Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40). An activated bundle is not purchasable in this release and comes in a later round.
 
 See the [operator roster recipe](../README.md#operator-support-roster-and-catalogue-authoring) for support provisioning and deactivation through the owner connection.
+
+
+## Purchase composition boundaries
+
+The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.
+For now this release does not charge shipping on one-off orders.
+For now this release does not charge shipping on renewals.
+The first-subscription offer is not offered yet and comes in a later part of this release.
+A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.
+
+Starter działa wyłącznie na lokalnej demonstracyjnej bazie danych; połączenie z bazą hostowaną nie należy do tego wydania i pojawi się w późniejszej rundzie.
+Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.
+Na razie to wydanie nie pobiera opłat za dostawę odnowień.
+Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.
+Aktywowanego pakietu nie można kupić w tym wydaniu; taka możliwość pojawi się w późniejszej rundzie.
+Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; klient loguje się tym e-mailem, aby zobaczyć zakup.
+
+These localized boundaries also appear on the shared limits page. The guest
+flow describes the contact-client composition; checkout creation uses the public contact registrar after attempt admission. No demonstration clients are installed as seed.
+An admitted new checkout issues a 256-bit recovery token through the native
+PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
+order creation plus 24 hours; this is a database rule, not a configurable value.
+One live link per order: a new link ends the previous link of the same order.
+The token is returned only in the creating response and a separate private
+captured checkout-recovery message, never an authentication challenge or event.
+The completion page reads the URL token once and replaces history synchronously
+before configuration fetch or rendering. Request bodies carry the token; memory
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token, and a new token replaces the previous one.
+Native inspection allows payment only for an active pending order, recognizes
+an already-paid order without payment controls, and refuses expired, cancelled
+or unavailable links. Indexed hash lookup makes no constant-time claim.
+Owning sessions retain order ownership checks. An email alone mints no link for
+an existing order. Recovery grants no account or subscription-command access.
+
+Address changes render the native result: `applied` says “Shipping address
+updated.” / “Adres dostawy został zmieniony.” The result
+`applied_from_next_parcel` says “This address change applies from the next parcel.
+A parcel already in flight keeps its current address.” / “Zmiana adresu obowiązuje
+od następnej przesyłki. Przesyłka będąca już w drodze zachowuje dotychczasowy adres.”
+The native customer branch returns the next-parcel outcome. Current-parcel
+operator correction is not offered through this customer action.
+
+Generic subscription commands remain unmounted pending a complete native fit.
+Payment recovery and operator recovery await their recovery rails. No refusal
+pauses or freezes an active subscription or confirms an undelivered replacement.
+
+
+## Interim subscription mode price
+
+The configured subscription rate and rounding quantum resolve each unit before
+quantity is applied. Quote lines and installed subscription price entries carry
+that actual unit price. A `mode_discount` component explains the included benefit;
+there is no order promotion or second deduction. First-subscription acquisition
+is a separate later offer. `shared/interim-pricing.ts` owns this temporary rule;
+the later installed quote-engine composition replaces it.
+
+The owned seed writes distinct one-time/subscription price entries. Repeating an
+identical seed inserts no new entries. A different authored price under the same
+identity refuses with `starter_price_seed_conflict` and rolls back; it never
+silently rewrites installed price truth. A customer environment needs its own
+onboarding. Demo stock quantities/timestamps, input bounds, reservation lifetime,
+sandbox template choices and fictional tax inputs live in typed owned config.
+These are local demonstration values, not provider or compliance qualification.
+The accepted origin/session boundary retains its separate limits.
+
+Attempt limits live in one process's memory and reset on restart.
+Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
+
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters
+by configuration validation. Both demonstrations use 160. Longer purchase e-mails
+receive `starter_email_invalid` before contact resolution. Checkout and subscription
+address changes share the configured phone and postal-code limits; configuration
+cannot exceed the native destination bounds. Browser fields use those same limits.
+
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.

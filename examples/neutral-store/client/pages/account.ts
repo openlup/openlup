@@ -1,5 +1,6 @@
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
+import { isRecord } from '../../shared/offer.ts';
 import type { Operation } from '../../shared/api.ts';
 import { routes } from '../../shared/routes.ts';
 import { el, link } from '../dom.ts';
@@ -71,16 +72,23 @@ function subscriptionCommands(context: PageContext): HTMLElement {
 export function addressForm(context: PageContext, operation: Operation): HTMLElement {
   return actionForm(context, {
     operation, title: 'changeAddress', submit: 'save',
+    resultMessage: addressOutcomeMessage,
     fields: [
       { name: 'subscriptionRef', label: 'subscriptionRef' },
-      { name: 'recipientName', label: 'firstName' },
-      { name: 'line1', label: 'address' },
-      { name: 'line2', label: 'address2', required: false },
-      { name: 'postalCode', label: 'postalCode' },
-      { name: 'city', label: 'city' },
-      { name: 'phone', label: 'phone', type: 'tel' },
+      { name: 'recipientName', maxLength: context.config.purchase.inputLimits.text, label: 'firstName' },
+      { name: 'line1', maxLength: context.config.purchase.inputLimits.text, label: 'address' },
+      { name: 'line2', maxLength: context.config.purchase.inputLimits.text, label: 'address2', required: false },
+      { name: 'postalCode', maxLength: context.config.purchase.inputLimits.postalCode, label: 'postalCode' },
+      { name: 'city', maxLength: context.config.purchase.inputLimits.text, label: 'city' },
+      { name: 'phone', maxLength: context.config.purchase.inputLimits.phone, label: 'phone', type: 'tel' },
     ], input: () => ({ countryCode: context.config.market.country }),
   });
+}
+
+export function addressOutcomeMessage(value: unknown): CopyKey | undefined {
+  if (!isRecord(value)) return undefined;
+  return value.outcome === 'applied' ? 'addressApplied'
+    : value.outcome === 'applied_from_next_parcel' ? 'addressNextParcel' : undefined;
 }
 
 export function authPage(context: PageContext): HTMLElement {
@@ -88,11 +96,11 @@ export function authPage(context: PageContext): HTMLElement {
     el('p', {}, context.t('signInBody')),
     actionForm(context, {
       operation: 'auth.request', submit: 'sendSignIn',
-      fields: [{ name: 'email', label: 'email', type: 'email', value: 'customer@example.test' }],
+      fields: [{ name: 'email', maxLength: context.config.purchase.inputLimits.email, label: 'email', type: 'email', value: 'customer@example.test' }],
     }),
     actionForm(context, {
       operation: 'auth.verify', submit: 'verifyOtp',
-      fields: [{ name: 'challengeRef', label: 'actionRef' }, { name: 'code', label: 'otp', maxLength: 12 }],
+      fields: [{ name: 'token', label: 'otp', type: 'password', maxLength: 43 }],
     }),
     nativeActions(context, ['N10']));
 }

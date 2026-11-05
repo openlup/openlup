@@ -79,7 +79,17 @@
     "test/sessions.test.ts",
     "test/support.test.ts",
     "test/routes.test.ts",
-    "tsconfig.json"
+    "tsconfig.json",
+    "host/purchase-composition.ts",
+    "client/purchase.ts",
+    "playwright.database.config.ts",
+    "shared/interim-pricing.ts",
+    "test/interim-pricing.test.ts",
+    "host/checkout-attempts.ts",
+    "test/checkout-attempts.test.ts",
+    "test/address-outcomes.test.ts",
+    "host/checkout-recovery.ts",
+    "test/checkout-recovery.test.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md"

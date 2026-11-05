@@ -98,6 +98,82 @@ wave authorizes its bounded local equivalents only. Keep existing mechanical
 checks intact; do not add another full test
 run, a dashboard, service framework or permanent third reviewer.
 
+## Coverage history and renewal
+
+Current extension: the bounded rules in
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability)
+supersede this plan's earlier blanket fresh-integration and v2-only statements.
+First review and protected/full-review floors remain unchanged. The enabling
+change itself uses the earlier full v2 route; reduced coverage reads the landed
+rules version from the immutable reviewed base, never from candidate HEAD.
+
+Sessions created on an enabled base use version 3. A supported version-2 prefix
+may transition with an append-only rules event; no earlier event, finding,
+reviewer, expiry or repair count is rewritten. Each prepare records base/head/
+tree, full paths/modes, approved intent/author and base/head policy snapshots.
+A coverage edge binds the previous history digest and identities, exact delta
+and independently derived Git proof. Integration needs no fresh model report
+only for the exact disjoint main merge or three-carrier insertion-gap union.
+Ordinary repairs need one new cold report with `ordinary: true` and `delta`
+equal to the prepared delta digest. The reviewer must confirm unchanged required
+proof and ordinary semantics; unknown/security/API/control semantics use two
+fresh full reports on the same prepare. A full report omits `ordinary` or sets
+it to `false`; it represents full current-candidate review, not a delta-only
+assessment. If full reports are present, only those reports count toward the
+two-review fallback and its fresh expiry. An `ordinary: true` delta report never
+counts as a full report; reduced repair coverage keeps its inherited age and
+requires the exact delta digest. A renewal is validated against its own recorded
+coverage prefix. Earlier reduced-coverage renewals remain in history without
+extending or capping later fresh full coverage; later full-coverage renewals keep
+that full coverage's original age cap. Complete history, finding closure and Git
+proof remain mandatory for either route. Denied paths win over test/prose filenames.
+Report scope applies to every full-review floor, including first review and
+candidates with no coverage edge. Delta-only observations remain in history but
+do not count as full reports or set fresh full expiry. The initial noncontrol
+package smoke-list set is empty.
+
+Protected inputs include the existing trust paths, all review/documentation/
+reviewed-forward/CI machinery and every path already treated as sensitive by the
+existing risk classifier. The same selector also covers lint rules, generated
+context checks, public CI/pgTAP and coverage guards, site-route checks, package
+guard scripts/API snapshots, the secret-scan ignore file, UI neutrality and the
+named package-boundary/conformance proofs, alongside forward catalog execution controls, workflows,
+SQL/migrations, manifests/lockfiles, release gates/budgets, configuration and
+policy/agent instructions. Ordinary eligibility is limited to test/spec files,
+known test-fixture locations and Markdown prose outside these controls and the
+existing sensitive-path matcher. Product bytes, executable instructions and
+required proof changes never become ordinary through a filename. The canonical
+implementation selectors are `protectedCoveragePath` and `ordinaryRepairPath`.
+The catalog, nested-entry literal and cold-consumer entry arrays have only the
+bounded integration range exception, not a repair or group carry-over exemption.
+
+The registry checker preserves old values/order, refuses duplicate/overlapping
+additions and all outside-array changes, and reconstructs the entire expected
+merge tree. The arrays need no sorting or layout migration. Raw server merging
+can still conflict. Existing group carry-over, including its separate exports
+exception, is unchanged.
+
+`node scripts/agent-review-session.mjs renew` explicitly records unchanged
+head/tree/base/policy, main ancestry/path evidence and old/new expiry under the
+existing session lock. It may renew elapsed 24-hour evidence before the original
+72-hour cap; expiry is min(renewal time +24h, earliest inherited PASS +72h).
+Main touching a candidate/control path, including touch-and-revert, refuses.
+No model report, earliest origin or repair allowance is reset. Prepare alone
+never renews. Every inherited edge was complete, unexpired and free of material
+findings when established. Full-history replay keeps later findings open until
+explicit closure. Verification on every actual new tree stays required.
+
+New receipts use `<!-- openlup-native-review-receipt v3 -->` with exact fields
+`version, pr, base, head, tree, risk, verdict, expires, sessionDigest, session`.
+The complete bounded session permits trusted main to replay coverage and
+recompute Git/policy facts; old readers ignore this distinct marker. The 1 MiB
+receipt and 8 MiB state limits stay. Older v2 sessions/receipts retain their
+existing rules without conversion or renewed expiry. Source-object fetching,
+permissions, live identity checks and the six mechanical checks stay unchanged.
+Receipts remain permission-trusted process evidence; a completely forged and
+internally consistent rewritten history is not cryptographically detectable.
+No new service, model API, workflow or remote attestation is introduced.
+
 ## Task lifecycle and native review
 
 1. The supervisor implements within authorized scope and commits the candidate.
@@ -149,10 +225,10 @@ run, a dashboard, service framework or permanent third reviewer.
    failed attempts in the task record. `prepare --new` records a changed intent
    or a rebase in the same append-only session history; findings, reviewers and
    the repair count carry on. Merging `main`
-   requires fresh review of the resulting candidate. A proved exact main
+   requires the current bounded coverage proof or fresh full review. A proved exact main
    integration may focus inspection using prior source coverage, under
    [review after integration](../../../CONTRIBUTING.md#native-review-and-accountability);
-   two fresh reviewers and inherited source expiry remain required.
+   the current bounded coverage rule determines fresh inspection and preserves source expiry.
    A proved exact clean mechanical integration does not charge a repair cycle;
    manual conflict resolution or extra edits use the ordinary repair and full
    local verification route. History and findings remain intact.
@@ -300,7 +376,8 @@ node scripts/agent-review-session.mjs status
 ```
 
 `prepare [--new] <intent.json>` captures the candidate and reviewer floor and
-writes version-2 state to `.context/scratch/agent-review/session.json`. Refresh
+writes version-2 state on a legacy base or version-3 state on an enabled landed
+base to `.context/scratch/agent-review/session.json`. Refresh
 `origin/main` first. Prepare, verify-command and receipt reuse the queue's cheap
 merge/carry-over preflight against that local ref; a conflict or ineligible base
 move refuses before expensive work. An unlanded stack pin still permits local
@@ -316,7 +393,8 @@ Unchanged prepare preserves evidence. Preparing a new tree after an earlier
 candidate increments `cycle`, except when `candidate.integration.mechanical`
 proves the exact successful `git merge-tree` result of the prior reviewed head
 and new main base. That exception preserves the existing counter and allowance;
-it does not renew expiry or reuse reports. Three repairs are automatic. Beyond
+it does not renew expiry. Under the legacy route it does not inherit reports;
+enabled bases use the coverage edges above. Three repairs are automatic. Beyond
 the allowed cycles, `needs_owner` refuses until the owner authorizes continuation:
 
 ```bash
@@ -347,7 +425,8 @@ no-impact assessment, also for documentation-only changes; the supervisor must
 check its meaning. A blocked review may state what prevents that assessment and
 must report the corresponding material finding. Earlier already-recorded v2
 reports stay valid without history rewrite, a new prepare or changed expiry.
-There is no new receipt version, reviewer floor or author form.
+This report-assessment requirement is independent of receipt version; initial
+review floors and author independence remain unchanged.
 
 `verdict` is `PASS` or `FAIL`. Findings have stable `id`, `summary` and `material`
 fields. A report on the current or a later candidate closes a finding through
@@ -364,8 +443,9 @@ enough PASS reports, closed material findings and unexpired evidence. Expiry is
 or the earlier inherited source expiry when `candidate.integration` is present.
 Prepare supplies that context only for a valid prior PASS in the same session,
 unchanged intent/author and an exact two-parent merge of prior head and new base.
-It binds the prior base/head/tree and expiry. Two fresh current-tree reports
-remain required; unavailable coverage uses full review. See the canonical
+It binds the prior base/head/tree and expiry. The legacy route requires two
+fresh current-tree reports; enabled bases may use the proved coverage route
+above. Unavailable coverage uses full review. See the canonical
 [inspection scope](../../../CONTRIBUTING.md#native-review-and-accountability).
 `candidate.integration.mechanical: true` additionally proves that the clean
 candidate tree equals the successful `git merge-tree` result for those exact
@@ -375,10 +455,12 @@ repair accounting and full local verification.
 Failures use `needs_agent_review`, `needs_owner`, `stale`, `expired`, `dirty` or
 `invalid` with an actionable reason; `status` prints JSON.
 
-`receipt <PR>` requires passing verify and prints a PR comment body: the marker
+`receipt <PR>` requires passing verify and prints a PR comment body. Legacy
+sessions use the marker
 `<!-- openlup-native-review-receipt v2 -->` followed by a fenced JSON summary
 `{pr, base, head, tree, risk, reviewers, verdict, expires, sessionDigest}`.
-The supervisor posts it within delivery authority:
+Version-3 sessions use the distinct marker and complete bounded history described
+above. The supervisor posts it within delivery authority:
 
 ```bash
 node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
@@ -448,6 +530,13 @@ Retain all six mechanical checks and their failure signals. The seventh `native-
 condition only after separate activation.
 
 ### Source evidence and carry-over
+
+The current [canonical carry-over rule](../../../CONTRIBUTING.md#merge-queue)
+recognizes independent base changes for existing and future receipts. It
+preserves legacy report history, risk floor and expiry. For older worktrees,
+see the trusted local entry point in
+[Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
+
 
 The supervisor owns review of the committed source in the active task and posts
 its summary as soon as the PR is open and ready. A new head needs new evidence.

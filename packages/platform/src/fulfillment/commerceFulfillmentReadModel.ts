@@ -1,4 +1,4 @@
-import type { FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
+import type { FulfillmentOrdersListResponse, FulfillmentOrderDetailResponse, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
 import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
 import {
   COMMERCE_FULFILLMENT_CONTRACT_VERSION,
@@ -9,6 +9,7 @@ import {
   type CommerceFulfillmentOrder,
   type CommerceFulfillmentOperationType,
   type CommerceFulfillmentStatus,
+  type CommerceFulfillmentResponseSchemas,
 } from "./handlerSchemas.js";
 
 export interface CommerceFulfillmentOrderRow {
@@ -74,9 +75,13 @@ export interface CommerceFulfillmentShipmentRefRow {
   created_at?: string | null;
 }
 
-export function buildCommerceFulfillmentOrdersListResponse(input: {
-  fulfillmentOrders: CommerceFulfillmentOrderRow[];
-  lines: CommerceFulfillmentLineRow[];
+type ProjectionOrderRow = Omit<CommerceFulfillmentOrderRow, 'shipping_address_snapshot'> & {
+  shipping_address_snapshot: Omit<CommerceFulfillmentOrder['shippingAddress'], 'addressId'> & { addressId: string | null };
+};
+type ProjectionLineRow = Omit<CommerceFulfillmentLineRow, 'id'> & { id: string | null };
+type ListInput = {
+  fulfillmentOrders: ProjectionOrderRow[];
+  lines: ProjectionLineRow[];
   latestOperations: CommerceFulfillmentOperationRow[];
   orderContexts: CommerceFulfillmentOrderContextRow[];
   paymentIntents: CommerceFulfillmentPaymentIntentRow[];
@@ -87,12 +92,17 @@ export function buildCommerceFulfillmentOrdersListResponse(input: {
   totalCount: number;
   page: number;
   pageSize: number;
-}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrdersListResponse {
-  return adminCommerceFulfillmentOrdersListResponseSchema.parse({
+  hasShippingAddress?: Record<string, boolean>;
+};
+export function buildCommerceFulfillmentOrdersListResponse<Order>(input: ListInput & { responseSchemas: CommerceFulfillmentResponseSchemas<Order> }, policy: FulfillmentCommerceReadPolicy): FulfillmentOrdersListResponse<Order>;
+export function buildCommerceFulfillmentOrdersListResponse(input: ListInput & { responseSchemas?: undefined }, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrdersListResponse;
+export function buildCommerceFulfillmentOrdersListResponse(input: ListInput & { responseSchemas?: CommerceFulfillmentResponseSchemas<unknown> }, policy: FulfillmentCommerceReadPolicy): FulfillmentOrdersListResponse<unknown> {
+  return (input.responseSchemas?.list ?? adminCommerceFulfillmentOrdersListResponseSchema).parse({
     contractVersion: COMMERCE_FULFILLMENT_CONTRACT_VERSION,
     orders: input.fulfillmentOrders.map((fulfillmentOrder) =>
       buildCommerceFulfillmentOrder({
         fulfillmentOrder,
+        hasShippingAddress: input.hasShippingAddress?.[fulfillmentOrder.order_id],
         lines: input.lines.filter((line) => line.fulfillment_order_id === fulfillmentOrder.id),
         latestOperation:
           input.latestOperations.find((operation) => operation.fulfillment_order_id === fulfillmentOrder.id) ??
@@ -114,9 +124,9 @@ export function buildCommerceFulfillmentOrdersListResponse(input: {
   });
 }
 
-export function buildCommerceFulfillmentOrderDetailResponse(input: {
-  fulfillmentOrder: CommerceFulfillmentOrderRow;
-  lines: CommerceFulfillmentLineRow[];
+type DetailInput = {
+  fulfillmentOrder: ProjectionOrderRow;
+  lines: ProjectionLineRow[];
   latestOperation: CommerceFulfillmentOperationRow | null;
   orderContext: CommerceFulfillmentOrderContextRow;
   paymentIntent: CommerceFulfillmentPaymentIntentRow;
@@ -124,11 +134,16 @@ export function buildCommerceFulfillmentOrderDetailResponse(input: {
   shipmentRef: CommerceFulfillmentShipmentRefRow | null;
   activeHoldCount: number;
   subscriptionCycleStatus: SubscriptionCycleStatus | null;
-}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrderDetailResponse {
-  return adminCommerceFulfillmentOrderDetailResponseSchema.parse({
+  hasShippingAddress?: boolean;
+};
+export function buildCommerceFulfillmentOrderDetailResponse<Order>(input: DetailInput & { responseSchemas: CommerceFulfillmentResponseSchemas<Order> }, policy: FulfillmentCommerceReadPolicy): FulfillmentOrderDetailResponse<Order>;
+export function buildCommerceFulfillmentOrderDetailResponse(input: DetailInput & { responseSchemas?: undefined }, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrderDetailResponse;
+export function buildCommerceFulfillmentOrderDetailResponse(input: DetailInput & { responseSchemas?: CommerceFulfillmentResponseSchemas<unknown> }, policy: FulfillmentCommerceReadPolicy): FulfillmentOrderDetailResponse<unknown> {
+  return (input.responseSchemas?.detail ?? adminCommerceFulfillmentOrderDetailResponseSchema).parse({
     contractVersion: COMMERCE_FULFILLMENT_CONTRACT_VERSION,
     order: buildCommerceFulfillmentOrder({
       fulfillmentOrder: input.fulfillmentOrder,
+      hasShippingAddress: input.hasShippingAddress,
       lines: input.lines,
       latestOperation: input.latestOperation,
       orderContext: input.orderContext,
@@ -145,8 +160,8 @@ export function buildCommerceFulfillmentOrderDetailResponse(input: {
 }
 
 function buildCommerceFulfillmentOrder(input: {
-  fulfillmentOrder: CommerceFulfillmentOrderRow;
-  lines: CommerceFulfillmentLineRow[];
+  fulfillmentOrder: ProjectionOrderRow;
+  lines: ProjectionLineRow[];
   latestOperation: CommerceFulfillmentOperationRow | null;
   orderContext: CommerceFulfillmentOrderContextRow;
   paymentIntent: CommerceFulfillmentPaymentIntentRow;
@@ -155,7 +170,8 @@ function buildCommerceFulfillmentOrder(input: {
   activeHoldCount: number;
   subscriptionCycleStatuses: Record<string, SubscriptionCycleStatus | null>;
   policy: FulfillmentCommerceReadPolicy;
-}): CommerceFulfillmentOrder {
+  hasShippingAddress?: boolean;
+}): Omit<CommerceFulfillmentOrder, "shippingAddress"> & { shippingAddress: ProjectionOrderRow["shipping_address_snapshot"] } {
   const paymentStatus = input.paymentIntent.status;
   const inventory = inventorySummary(input.inventoryReservations);
   return {
@@ -190,7 +206,7 @@ function buildCommerceFulfillmentOrder(input: {
         ? input.subscriptionCycleStatuses[input.orderContext.subscription_cycle_id] ?? null
         : null,
       activeHoldCount: input.activeHoldCount,
-      hasShippingAddress: Boolean(input.orderContext.shipping_address_id),
+      hasShippingAddress: input.hasShippingAddress ?? Boolean(input.orderContext.shipping_address_id),
       inventoryStatus: inventory.status,
     }),
     latestOperation: input.latestOperation
@@ -208,8 +224,8 @@ function buildCommerceFulfillmentOrder(input: {
 }
 
 function normalizeShippingAddressSnapshot(
-  snapshot: CommerceFulfillmentOrderRow["shipping_address_snapshot"],
-): CommerceFulfillmentOrder["shippingAddress"] {
+  snapshot: ProjectionOrderRow["shipping_address_snapshot"],
+): ProjectionOrderRow["shipping_address_snapshot"] {
   return {
     addressId: snapshot.addressId,
     clientId: snapshot.clientId,

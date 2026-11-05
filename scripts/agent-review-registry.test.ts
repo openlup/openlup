@@ -1,0 +1,649 @@
+import { execFileSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
+import { digest, coverageState, protectedCoveragePath, receiptSummary, renewCoverage, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, captureRenewalProof, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
+import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
+
+const roots: string[] = [];
+afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+const DAY = 86400000;
+const RECORD = 'docs/platform/plans/demo.md';
+async function fixture(enabled = true, controls: string[] = [], initialFiles: Record<string, string> = {}) {
+  await mkdir('.context/scratch', { recursive: true });
+  const cwd = await mkdtemp(join(process.cwd(), '.context/scratch/review-economy-')); roots.push(cwd);
+  const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  const write = async (path: string, value: string) => { await mkdir(dirname(join(cwd, path)), { recursive: true }); await writeFile(join(cwd, path), value); };
+  git('init', '-q', '-b', 'main'); await write('.gitignore', '.context/\n');
+  if (enabled) await write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n');
+  for (const path of REGISTRY_PATHS) await write(path, await readFile(join(process.cwd(), path), 'utf8'));
+  for (const path of controls) await write(path, await readFile(join(process.cwd(), path), 'utf8'));
+  for (const [path, source] of Object.entries(initialFiles)) await write(path, source);
+  await write('app.ts', 'export const before = 1;\n');
+  const commit = () => { git('add', '-A'); git('commit', '-qm', 'fixture'); return git('rev-parse', 'HEAD'); };
+  const base = commit(); git('update-ref', 'refs/remotes/origin/main', base);
+  await write('app.ts', 'export const before = 2;\n');
+  const head = commit();
+  const scratch = join(cwd, '.context/scratch'); await mkdir(scratch, { recursive: true });
+  const intent = { risk: 'behavior', criteria: 'Preserve the bounded fixture outcome' };
+  const request = join(scratch, 'intent.json'); await writeFile(request, JSON.stringify({ authorSessionId: 'author', intent }));
+  const env: { OPENLUP_STACK_BASE?: string } = {};
+  const cli = (...args: string[]) => sessionMain(args, { cwd, env });
+  const state = async () => JSON.parse(await readFile(join(scratch, 'agent-review/session.json'), 'utf8'));
+  let reviewer = 0;
+  const report = async (patch = {}) => {
+    const session = await state(); const path = join(scratch, 'report.json');
+    await writeFile(path, JSON.stringify({ reviewer: `cold-${reviewer++}`, tree: session.candidate.tree, cold: true, verdict: 'PASS', findings: [], closes: [], documentation: 'Checked contributor and documentation owners; fixture claims match source.', ...patch }));
+    return cli('record', path);
+  };
+  const review = async () => { await cli('prepare', request); await report(); await report(); return state(); };
+  const mainMove = async (change: () => Promise<void>, from = base) => {
+    const previous = git('rev-parse', 'HEAD'); git('checkout', '-q', '--detach', from); await change(); const main = commit();
+    git('update-ref', 'refs/remotes/origin/main', main); git('checkout', '-q', '--detach', previous); return main;
+  };
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  return { cwd, git, write, base, head, commit, request, cli, state, report, review, mainMove, scratch, env };
+}
+function addRegistry(path: string, source: string, entry: string) {
+  if (path === REGISTRY_PATHS[0]) {
+    const data = JSON.parse(source); data.publicPaths.push({ path: entry, class: 'public-output' });
+    data.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0); return JSON.stringify(data, null, 2) + '\n';
+  }
+  const registry = readRegistry(path, source); const [start, end] = registry.ranges[0];
+  const list = [...registry.lists[0], entry]; const replacement = path === REGISTRY_PATHS[1] ? JSON.stringify(list) : `[\n${list.map(value => `  ${JSON.stringify(value)},`).join('\n')}\n]`;
+  return source.slice(0, start) + replacement + source.slice(end);
+}
+
+describe('closed registry grammar', () => {
+  it('rejects duplicate JSON keys and unsupported syntax', () => {
+    expect(() => strictRegistryJson('{"a":1,"a":2}')).toThrow('duplicate');
+    expect(() => strictRegistryJson('{"a":1,}')).toThrow();
+    expect(() => readRegistry(REGISTRY_PATHS[2], 'export const ADAPTER_ENTRIES = [...other] as const;')).toThrow();
+  });
+  it.each(['class', 'removal', 'reorder', 'duplicate', 'overlap', 'outside'])('refuses %s rather than silently normalize', async kind => {
+    const path = REGISTRY_PATHS[0]; const source = await readFile(path, 'utf8');
+    const a = JSON.parse(addRegistry(path, source, 'zz-a')); const b = addRegistry(path, source, 'zz-b');
+    if (kind === 'class') a.publicPaths[0].class = 'entrypoint';
+    if (kind === 'removal') a.publicPaths.shift();
+    if (kind === 'reorder') a.publicPaths.reverse();
+    if (kind === 'duplicate') a.publicPaths.push(a.publicPaths[0]);
+    if (kind === 'outside') a.schemaVersion = 4;
+    expect(() => registryUnion(path, source, JSON.stringify(a, null, 2) + '\n', kind === 'overlap' ? JSON.stringify(a, null, 2) + '\n' : b)).toThrow();
+  });
+});
+
+describe('real Git coverage histories', () => {
+  it('requires full reports for a first protected candidate and excludes partial observations from full expiry', async () => {
+    const f = await fixture(); await f.write('scripts/ci-extra.mjs', 'export const guard = true;\n'); f.commit();
+    const partialAt = Date.now(); const fullAt = partialAt + DAY / 2;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(partialAt);
+    await f.cli('prepare', f.request); const prepared = await f.state(); expect(prepared.candidate.coverage).toBeUndefined();
+    await f.report({ ordinary: true, delta: 'a'.repeat(64) }); await f.report({ ordinary: true, delta: 'b'.repeat(64) });
+    const partial = await f.state();
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    clock.mockReturnValue(fullAt); await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: false }); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const full = await f.state(); expect(full.candidate).toEqual(prepared.candidate);
+    expect(full.history.slice(0, partial.history.length)).toEqual(partial.history);
+    expect(coverageState(full)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+    const malformed = structuredClone(full); malformed.history.find(event => event.type === 'report').report.ordinary = 'invalid';
+    expect(verdict(malformed, malformed.candidate, fullAt).reason).toContain('review scope');
+    clock.mockReturnValue(partialAt + DAY); await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it.each(['prose', 'routine'])('retains one standard full report for an initial %s candidate', async risk => {
+    const f = await fixture();
+    if (risk === 'prose') { await f.write('app.ts', 'export const before = 1;\n'); await f.write('docs/guide.md', 'Explain the existing example.\n'); f.commit(); }
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.risk = risk; await writeFile(f.request, JSON.stringify(request));
+    await f.cli('prepare', f.request); await f.report();
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+  });
+  it.each(['integration', 'ordinary repair'])('keeps the full-review route for %s on an unlanded stack base', async kind => {
+    const f = await fixture(); const original = kind === 'integration' ? await f.review() : undefined;
+    f.git('checkout', '-q', '--detach', f.base);
+    await f.write('predecessor.ts', 'independent predecessor\n'); const predecessor = f.commit();
+    f.git('checkout', '-q', '--detach', f.head); f.git('merge', '--no-ff', '-qm', 'integrate unlanded predecessor', predecessor);
+    f.env.OPENLUP_STACK_BASE = predecessor;
+    expect(f.git('rev-parse', 'origin/main')).toBe(f.base);
+    const prior = original ?? await f.review();
+    if (kind === 'ordinary repair') { await f.write('tests/demo.test.ts', 'ordinary fixture\n'); f.commit(); }
+    await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.candidate.base).toBe(predecessor);
+    expect(next.candidate.integration).toBeUndefined(); expect(next.candidate.coverage).toBeUndefined();
+    expect(next.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(next.cycle).toBe(prior.cycle + 1); expect(next.allowedCycles).toBe(prior.allowedCycles);
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+  });
+  it('inherits a clean disjoint merge with no new reports and retains the original expiry', async () => {
+    const f = await fixture(); const prior = await f.review(); const expiry = coverageState(prior).expires;
+    const main = await f.mainMove(() => f.write('other.ts', 'independent\n'));
+    f.git('merge', '--no-ff', '-qm', 'integrate main', main); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.kind).toBe('integration'); expect(next.cycle).toBe(prior.cycle);
+    await expect(f.cli('verify')).resolves.toBe(0); expect(coverageState(next).expires).toBe(expiry);
+    expect(next.history.filter(event => event.type === 'report')).toHaveLength(2);
+    await validateEconomySession(f.cwd, next);
+  });
+  it('proves a registry-only conflicting merge by the exact union of current carriers', async () => {
+    const f = await fixture();
+    for (const path of REGISTRY_PATHS) await f.write(path, addRegistry(path, f.git('show', `${f.base}:${path}`) + '\n', 'zz-row-a'));
+    const reviewed = f.commit(); const prior = await f.review();
+    const main = await f.mainMove(async () => {
+      for (const path of REGISTRY_PATHS) await f.write(path, addRegistry(path, f.git('show', `${f.base}:${path}`) + '\n', 'zz-row-b'));
+    });
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    for (const path of REGISTRY_PATHS) await f.write(path, registryUnion(path, f.git('show', `${f.base}:${path}`) + '\n', f.git('show', `${reviewed}:${path}`) + '\n', f.git('show', `${main}:${path}`) + '\n'));
+    f.commit(); await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.candidate.coverage.proof.kind).toBe('registry-union'); expect(next.cycle).toBe(prior.cycle);
+    await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it.each(['hidden hand edit', 'candidate path', 'machinery path'])('refuses inherited coverage for %s', async kind => {
+    const f = await fixture(); await f.review();
+    const main = await f.mainMove(() => f.write(kind === 'candidate path' ? 'app.ts' : kind === 'machinery path' ? 'scripts/ci-extra.mjs' : 'other.ts', 'main delta\n'));
+    try { f.git('merge', '--no-ff', '--no-commit', main); } catch { await f.write('app.ts', 'manual resolution\n'); }
+    if (kind === 'hidden hand edit') await f.write('extra.ts', 'hidden edit\n');
+    f.commit(); await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
+    await expect(f.cli('verify')).rejects.toThrow('independent PASS');
+  });
+  it.each([
+    'scripts/check-client-secret-boundary.ts', 'scripts/ast-grep/check-filewide-ignore.mjs',
+    'scripts/dco-signoff-check.ts', '.gitleaksignore', 'config/gitleaks.toml',
+    'scripts/agent-context/generate.mjs', 'scripts/public-ci-neutrality.mjs',
+    'scripts/pgtap-parity.mjs', 'scripts/assert-coverage-no-zero.mjs', 'scripts/site-routes.mjs',
+    'packages/outbox/scripts/consumer-proof.ts', 'packages/ui/smoke/neutrality.ts',
+    'packages/platform/test/packageBoundary.test.ts', 'packages/outbox/api/index.api.md',
+    'docs/platform/communications-conformance.mjs', 'packages/core/scripts/neutrality-tree-counts.ts',
+  ])('refuses a required registry union with changed execution guard %s', async path => {
+    const f = await fixture(true, [path]); const catalog = REGISTRY_PATHS[0];
+    const source = await readFile(path, 'utf8');
+    const changed = path === 'scripts/check-client-secret-boundary.ts' ? source.replace('variable.secret === true', 'variable.secret === false')
+      : path === 'scripts/ast-grep/check-filewide-ignore.mjs' ? source.replace('return !failed;', 'return true;')
+      : path === 'scripts/dco-signoff-check.ts' ? source.replace('missing: commits.filter((commit) => !SIGN_OFF.test(commit.message))', 'missing: []')
+      : source + '\n';
+    expect(changed).not.toBe(source);
+    await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-a'));
+    const reviewed = f.commit(); const prior = await f.review();
+    const main = await f.mainMove(async () => {
+      await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-b'));
+      await f.write(path, changed);
+    });
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write(catalog, registryUnion(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', f.git('show', `${reviewed}:${catalog}`) + '\n', f.git('show', `${main}:${catalog}`) + '\n'));
+    f.commit(); await f.cli('prepare', f.request); const next = await f.state();
+    if (!REGISTRY_PATHS.includes(path)) expect(next.candidate.rules.head).not.toBe(prior.candidate.rules.head);
+    expect(next.candidate.coverage).toBeUndefined();
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+  });
+  it('refuses registry-union inheritance when the verification plan replaces gitleaks with a no-op', async () => {
+    const path = 'scripts/verification-plan.mjs'; const catalog = REGISTRY_PATHS[0];
+    // The command-owning stanza from the verification catalogue; this fixture never executes it.
+    const source = `export const definitions = {
+  gitleaks: {
+    command: () => ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'], resource: null, requires: [],
+    owner: 'config/gitleaks.toml', context: 'gitleaks',
+    reason: 'Secret scanning of Git history with the pinned scanner.',
+  },
+};
+`;
+    const changed = source.replace("['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner']", "['node', '-e', '']");
+    expect(changed).not.toBe(source);
+    const f = await fixture(true, [], { [path]: source });
+    await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-a'));
+    const reviewed = f.commit(); const prior = await f.review();
+    const main = await f.mainMove(async () => {
+      await f.write(catalog, addRegistry(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', 'zz-row-b'));
+      await f.write(path, changed);
+    });
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(catalog);
+    await f.write(catalog, registryUnion(catalog, f.git('show', `${f.base}:${catalog}`) + '\n', f.git('show', `${reviewed}:${catalog}`) + '\n', f.git('show', `${main}:${catalog}`) + '\n'));
+    f.commit(); await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.candidate.rules.head).not.toBe(prior.candidate.rules.head);
+    expect(next.candidate.coverage).toBeUndefined();
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+  });
+  it('needs one fresh ordinary-delta report for a test repair, preserving initial full coverage', async () => {
+    const f = await fixture(); const prior = await f.review();
+    await f.write('tests/demo.test.ts', 'test fixture\n'); f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.kind).toBe('repair');
+    await expect(f.cli('verify')).rejects.toThrow('PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+    expect(coverageState(await f.state()).expires).toBe(coverageState(prior).expires);
+  });
+  it.each([undefined, false])('accepts two full reports with ordinary=%s for a semantically nonordinary docs repair', async ordinary => {
+    const f = await fixture(); const prior = await f.review(); const original = coverageState(prior);
+    const fullAt = original.earliest + DAY / 2; const clock = vi.spyOn(Date, 'now').mockReturnValue(fullAt);
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); const prepared = await f.state();
+    expect(prepared.candidate.coverage.kind).toBe('repair');
+    await f.report(ordinary === undefined ? {} : { ordinary }); await expect(f.cli('verify')).rejects.toThrow();
+    clock.mockReturnValue(fullAt + 1000); await f.report(ordinary === undefined ? {} : { ordinary });
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const reviewed = await f.state(); expect(reviewed.candidate).toEqual(prepared.candidate);
+    expect(reviewed.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(reviewed.cycle).toBe(prepared.cycle); expect(reviewed.allowedCycles).toBe(prior.allowedCycles);
+    expect(coverageState(reviewed)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+    await expect(validateEconomySession(f.cwd, reviewed)).resolves.toBeUndefined();
+    clock.mockReturnValue(original.expires); await expect(f.cli('verify')).resolves.toBe(0);
+    clock.mockReturnValue(fullAt + DAY); await expect(f.cli('verify')).rejects.toThrow('expired');
+  });
+  it('counts only full reports when mixed with delta-only reports and uses the full-report expiry', async () => {
+    const f = await fixture(); const prior = await f.review(); const origin = coverageState(prior).earliest;
+    const deltaAt = origin + DAY / 4; const fullAt = origin + DAY / 2;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(deltaAt);
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); const prepared = await f.state();
+    await f.report({ ordinary: true, delta: prepared.candidate.coverage.delta });
+    clock.mockReturnValue(fullAt); await f.report({ ordinary: false });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    clock.mockReturnValue(fullAt + 1000); await f.report();
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    expect(coverageState(await f.state())).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+  });
+  it.each([0, DAY / 4])('preserves a valid earlier delta renewal when full reports arrive %s ms later', async gap => {
+    const f = await fixture(); const prior = await f.review(); const origin = coverageState(prior).earliest;
+    const renewedAt = origin + DAY / 4; const fullAt = renewedAt + gap;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(renewedAt);
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); const prepared = await f.state();
+    await f.report({ ordinary: true, delta: prepared.candidate.coverage.delta }); await f.cli('renew');
+    const earlier = await f.state(); expect(coverageState(earlier).expires).toBe(renewedAt + DAY);
+    clock.mockReturnValue(fullAt); await f.report({ ordinary: false }); await f.report();
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const full = await f.state(); expect(full.history.slice(0, earlier.history.length)).toEqual(earlier.history);
+    expect(coverageState(full)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+    const tampered = structuredClone(full); tampered.history.find(event => event.type === 'renew').oldExpiry += 1;
+    expect(verdict(tampered, tampered.candidate, fullAt).ok).toBe(false);
+    expect(() => coverageState(tampered)).toThrow('renewal identity, expiry or age differs');
+    clock.mockReturnValue(fullAt + DAY); await f.cli('renew');
+    expect(coverageState(await f.state())).toMatchObject({ earliest: fullAt, expires: fullAt + 2 * DAY });
+    clock.mockReturnValue(fullAt + 71 * 3600000); await f.cli('renew');
+    expect(coverageState(await f.state())).toMatchObject({ earliest: fullAt, expires: fullAt + 3 * DAY });
+    await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    clock.mockReturnValue(fullAt + 3 * DAY); await expect(f.cli('renew')).rejects.toThrow('72-hour');
+  });
+  it('keeps two delta-only reports on the inherited expiry rather than count them as full review', async () => {
+    const f = await fixture(); const prior = await f.review(); const original = coverageState(prior);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(original.earliest + DAY / 2);
+    await f.write('docs/host-guide.md', 'Clarify the existing host example.\n'); f.commit(); await f.cli('prepare', f.request);
+    const prepared = await f.state(); const patch = { ordinary: true, delta: prepared.candidate.coverage.delta };
+    await f.report(patch); await f.report(patch); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    expect(coverageState(await f.state())).toMatchObject({ earliest: original.earliest, expires: original.expires });
+    clock.mockReturnValue(original.expires); await expect(f.cli('verify')).rejects.toThrow('expired');
+  });
+  it('still refuses an incorrect delta confirmation alongside two full reports', async () => {
+    const f = await fixture(); await f.review();
+    await f.write('docs/host-guide.md', 'Run the host callback only after validating the caller capability.\n'); f.commit();
+    await f.cli('prepare', f.request); await f.report({ ordinary: true, delta: 'incorrect' });
+    await f.report({ ordinary: false }); await f.report();
+    await expect(f.cli('verify')).rejects.toThrow('exact delta');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('exact delta');
+  });
+  it('a mixed repair with one product path cannot use the one-review route', async () => {
+    const f = await fixture(); await f.review(); await f.write('tests/demo.test.ts', 'test\n'); await f.write('app.ts', 'product change\n'); f.commit();
+    await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined(); await f.report({ ordinary: true });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: 'a'.repeat(64) });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('2 independent PASS');
+    const partial = await f.state(); const fullAt = Date.now() + DAY / 2; vi.spyOn(Date, 'now').mockReturnValue(fullAt);
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: false }); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const full = await f.state(); expect(full.history.slice(0, partial.history.length)).toEqual(partial.history);
+    expect(coverageState(full)).toMatchObject({ earliest: fullAt, expires: fullAt + DAY });
+  });
+  it('does not inherit expired coverage or an open material card', async () => {
+    const f = await fixture(); const prior = await f.review();
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'F1', summary: 'unclosed mechanism', material: true }] });
+    await expect(f.cli('renew')).rejects.toThrow();
+    await f.write(RECORD, 'ordinary prose\n'); f.commit(); await f.cli('prepare', f.request);
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    expect(verdict(prior, prior.candidate, coverageState(prior).expires).code).toBe('expired');
+  });
+  it('renews explicitly within the original 72 hours and refuses at the cap', async () => {
+    const f = await fixture(); const prior = await f.review(); const origin = coverageState(prior).earliest;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(origin + DAY); await f.cli('renew'); let next = await f.state();
+    expect(coverageState(next).expires).toBe(origin + 2 * DAY); expect(next.cycle).toBe(prior.cycle);
+    clock.mockReturnValue(origin + 71 * 3600000); await f.cli('renew'); next = await f.state();
+    expect(coverageState(next).expires).toBe(origin + 3 * DAY);
+    clock.mockReturnValue(origin + 3 * DAY); await expect(f.cli('renew')).rejects.toThrow('72-hour');
+  });
+  it.each(['tree', 'policy', 'base', 'touch and revert'])('refuses renewal after %s changes', async kind => {
+    const f = await fixture(); const prior = await f.review();
+    if (kind === 'tree' || kind === 'policy') { await f.write(kind === 'tree' ? 'app.ts' : 'scripts/documentation-extra.ts', 'changed\n'); f.commit(); }
+    if (kind === 'base') f.git('update-ref', 'refs/remotes/origin/main', f.head);
+    if (kind === 'touch and revert') {
+      const main = await f.mainMove(() => f.write('app.ts', 'touch\n'));
+      await f.mainMove(() => f.write('app.ts', 'export const before = 1;\n'), main);
+    }
+    await expect(f.cli('renew')).rejects.toThrow();
+    expect(digest((await f.state()).history)).toBe(digest(prior.history));
+  });
+  it('an enabling topic with an old base stays v2 and cannot renew itself', async () => {
+    const f = await fixture(false); await f.write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n'); f.commit();
+    const session = await f.review(); expect(session.version).toBe(2); expect(session.candidate.rules).toBeUndefined();
+    const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} }); expect(await captureReviewRules(f.cwd, candidate)).toBeUndefined();
+    await expect(f.cli('renew')).rejects.toThrow();
+    const reader = await import('./agent-review-queue.mjs');
+    const summary = receiptSummary(session, 12, Date.now()); expect(summary).not.toHaveProperty('version');
+    expect(reader.parseReceipt(`${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``)).toBeNull();
+  });
+  it('replays a v2 prefix after enabling v3 with two fresh full reviews and preserves absent rules', async () => {
+    const f = await fixture(false); const prior = await f.review();
+    expect(prior.version).toBe(2); expect(prior.candidate).not.toHaveProperty('rules');
+    const main = await f.mainMove(() => f.write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n'));
+    f.git('merge', '--no-ff', '-qm', 'integrate enabled rules', main);
+    await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.version).toBe(3); expect(next.candidate.rules.version).toBe(3);
+    expect(next.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(next.history[prior.history.length]).toMatchObject({ type: 'rules', version: 3 });
+    expect(next.cycle).toBe(prior.cycle); expect(next.allowedCycles).toBe(prior.allowedCycles);
+    expect(next.candidate.coverage).toBeUndefined();
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const reviewed = await f.state();
+    await expect(validateEconomySession(f.cwd, reviewed)).resolves.toBeUndefined();
+    expect(verdict(reviewed, reviewed.candidate, Date.now()).ok).toBe(true);
+    const summary = receiptSummary(reviewed, 12, Date.now());
+    expect(parseReceipt(`${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``)).toEqual(summary);
+    const fabricatedLegacyRules = structuredClone(reviewed);
+    fabricatedLegacyRules.history.find(event => event.type === 'prepare').candidate.rules = reviewed.candidate.rules;
+    await expect(validateEconomySession(f.cwd, fabricatedLegacyRules)).rejects.toThrow('recorded policy or base rules differ');
+    const missingEnabledRules = structuredClone(reviewed);
+    delete missingEnabledRules.history.findLast(event => event.type === 'prepare').candidate.rules;
+    await expect(validateEconomySession(f.cwd, missingEnabledRules)).rejects.toThrow('recorded policy or base rules differ');
+  });
+  it('binds v3 summaries to complete history and the actual head', async () => {
+    const f = await fixture(); const session = await f.review(); const summary = receiptSummary(session, 12, Date.now());
+    const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
+    expect(parseReceipt(body)).toEqual(summary); expect(summary.sessionDigest).toBe(digest(session));
+    expect(await captureRenewalProof(f.cwd, session)).toMatchObject({ main: f.base, untouched: true });
+  });
+});
+
+describe('coverage preconditions in real histories', () => {
+  it.each(['incomplete', 'expired'])('does not inherit %s first coverage across a main merge', async reason => {
+    const f = await fixture(); await f.cli('prepare', f.request); await f.report();
+    if (reason === 'expired') await f.report(); const original = await f.state();
+    const main = await f.mainMove(() => f.write('other.ts', 'main\n')); f.git('merge', '--no-ff', '-qm', 'integrate', main);
+    if (reason === 'expired') vi.spyOn(Date, 'now').mockReturnValue(coverageState(original).expires);
+    await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
+    await expect(f.cli('verify')).rejects.toThrow('PASS');
+  });
+  it('a control test filename does not make a protected catalog proof an ordinary repair', async () => {
+    const f = await fixture(); await f.review(); await f.write('tests/postgres/nativeStoreForwardCatalog.test.ts', 'changed proof\n'); f.commit();
+    await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
+  });
+  it('renewal permits disjoint main motion and refuses main policy motion', async () => {
+    const f = await fixture(); const session = await f.review(); const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
+    expect(await captureRenewalProof(f.cwd, session)).toMatchObject({ main, untouched: true });
+    await f.mainMove(() => f.write('scripts/documentation-extra.ts', 'policy\n'), main);
+    await expect(f.cli('renew')).rejects.toThrow('main touched');
+  });
+  it('rejects incomplete or altered receipt histories rather than trust inherited reviewer arrays', async () => {
+    const f = await fixture(); const session = await f.review();
+    const root = structuredClone(session); root.history.find(event => event.type === 'report').report.tree = 'a'.repeat(40);
+    expect(verdict(root, root.candidate, Date.now()).ok).toBe(false);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(coverageState(session).earliest + DAY); await f.cli('renew');
+    const renewed = await f.state(); renewed.history.at(-1).expires += 1;
+    expect(verdict(renewed, renewed.candidate, clock()).ok).toBe(false);
+  });
+});
+
+describe('ordinary repair ownership', () => {
+  it('refuses a fixture imported by product code even when its filename is eligible', async () => {
+    const f = await fixture(); await f.write('tests/fixtures/demo.ts', 'export const value = 1;\n');
+    await f.write('src/demo.ts', "import { value } from '../tests/fixtures/demo.js'; export { value };\n"); f.commit(); await f.review();
+    await f.write('tests/fixtures/demo.ts', 'export const value = 2;\n'); f.commit(); await f.cli('prepare', f.request);
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+  });
+  it('main touch-and-revert before an inherited integration still blocks renewal', async () => {
+    const f = await fixture(); await f.review(); const first = await f.mainMove(() => f.write('app.ts', 'transient\n'));
+    const main = await f.mainMove(() => f.write('app.ts', 'export const before = 1;\n'), first);
+    f.git('merge', '--no-ff', '-qm', 'integrate reverted main', main); await f.cli('prepare', f.request);
+    expect((await f.state()).candidate.coverage.kind).toBe('integration');
+    await expect(f.cli('renew')).rejects.toThrow('main touched');
+  });
+});
+
+describe('fixture dependency evidence', () => {
+  it.each([false, true])('traces test-only fixture parents (product consumer: %s)', async product => {
+    const f = await fixture(); await f.write('tests/fixtures/value.ts', 'export const value = 1;\n');
+    await f.write('tests/helpers/parent.ts', "export { value } from '../fixtures/value.js';\n");
+    await f.write(product ? 'src/consumer.ts' : 'tests/consumer.test.ts', "import { value } from '../tests/helpers/parent.js';\n"); f.commit(); await f.review();
+    await f.write('tests/fixtures/value.ts', 'export const value = 2;\n'); f.commit(); await f.cli('prepare', f.request);
+    expect((await f.state()).candidate.coverage?.kind).toBe(product ? undefined : 'repair');
+  });
+});
+
+
+describe('v3 source admission from real Git objects', () => {
+  it('admits inherited integration coverage through the full queue reader', async () => {
+    const f = await fixture(); await f.review(); const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
+    f.git('merge', '--no-ff', '-qm', 'integrate', main); await f.cli('prepare', f.request); const session = await f.state();
+    const summary = receiptSummary(session, 12, Date.now());
+    const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
+    const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };
+    const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')
+      ? [{ id: 1, body, user: { login: 'supervisor', type: 'User' } }]
+      : path.includes('/collaborators/') ? { permission: 'write' } : { object: { sha: main } } };
+    const runGit = async (cwd: string, ...args: string[]) => args.includes('fetch') ? '' : sourceGit(cwd, ...args);
+    await expect(waitNativeAdmission({ cwd: f.cwd, api, runGit,
+      event: { number: 12, repository: { private: false }, pull_request: { head: pr.head } },
+      env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
+    })).resolves.toEqual(summary);
+  });
+});
+
+describe('portable review on real Git objects', () => {
+  const policy = "const PORTABLE_REVIEW = 'openlup-portable-review-20261103';\n";
+  const lock = (node: string, version = '1.0.0') => JSON.stringify({
+    lockfileVersion: 3, packages: { 'packages/platform': { engines: { node } }, 'node_modules/sample': { version } },
+  }) + '\n';
+  const oldFiles = {
+    '.nvmrc': '24.21.0\n',
+    'package-lock.json': lock('24.x'),
+    '.github/VERSIONING_AND_EOL.md': 'Existing publication instructions.\n',
+    'scripts/agent-review-session.mjs': '// original source\n',
+  };
+  for (const order of ['policy first', 'metadata first']) {
+    it('accepts the original receipt across both base changes: ' + order, async () => {
+      const f = await fixture(true, [], oldFiles);
+      const source = await f.review();
+      const original = receiptSummary(source, 12, Date.now());
+      const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(original)}\n\`\`\``;
+      const packageMove = () => f.write('package-lock.json', lock('>=24'));
+      const policyMove = async () => {
+        await f.write('scripts/agent-review-session.mjs', policy);
+        await f.write('scripts/agent-review-registry.test.ts', '// rollout fixture\n');
+      };
+      const first = await f.mainMove(order === 'policy first' ? policyMove : packageMove);
+      const main = await f.mainMove(order === 'policy first' ? packageMove : policyMove, first);
+      const tree = f.git('merge-tree', '--write-tree', main, f.head);
+      const groupHead = f.git('commit-tree', tree, '-p', main, '-p', f.head, '-m', 'queued group');
+      const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: f.head } };
+      const api = { get: vi.fn(async (path: string) => path.includes('/pulls/') ? pr
+        : path.includes('/collaborators/') ? { permission: 'write' }
+        : path.includes('/issues/') ? [{ id: 1, user: { login: 'owner', type: 'User' }, author_association: 'OWNER',
+          body }]
+        : { object: { sha: main } }) };
+      const runGit = (cwd: string, ...args: string[]) => args.includes('fetch') ? Promise.resolve('') : sourceGit(cwd, ...args);
+      const sleep = vi.fn();
+      await expect(waitNativeAdmission({ cwd: f.cwd, api, runGit, sleep,
+        event: { action: 'checks_requested', repository: { private: false }, merge_group: {
+          base_ref: 'refs/heads/main', head_ref: 'refs/heads/gh-readonly-queue/main/pr-12-ab', base_sha: main, head_sha: groupHead,
+        } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'merge_group' },
+      })).resolves.toEqual(original);
+      expect(sleep).not.toHaveBeenCalled();
+      await expect(f.cli('receipt', '12')).resolves.toBe(0);
+      expect(await f.state()).toEqual(source);
+      await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: f.base })).resolves.toMatchObject({ ok: false });
+    });
+  }
+
+  it.each(['dependency resolution', 'npm shrinkwrap', 'npm policy', 'runtime pin', 'workflow', 'later admission edit'])('refuses a material base change to %s', async kind => {
+    const f = await fixture(true, [], oldFiles);
+    const prior = await f.review();
+    const rollout = await f.mainMove(() => f.write('scripts/agent-review-session.mjs', policy));
+    const main = await f.mainMove(async () => {
+      if (kind === 'dependency resolution') await f.write('package-lock.json', lock('>=24', '2.0.0'));
+      if (kind === 'npm shrinkwrap') await f.write('npm-shrinkwrap.json', lock('24.x', '2.0.0'));
+      if (kind === 'npm policy') await f.write('.npmrc', 'engine-strict=false\n');
+      if (kind === 'runtime pin') await f.write('.nvmrc', '24.22.2\n');
+      if (kind === 'workflow') await f.write('.github/workflows/admission.yml', 'jobs: {}\n');
+      if (kind === 'later admission edit') await f.write('scripts/agent-review-session.mjs', policy + '// later edit\n');
+    }, rollout);
+    const tree = f.git('merge-tree', '--write-tree', main, f.head);
+    await expect(carryOverSourceReview(f.cwd, prior.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
+    await expect(f.cli('receipt', '12')).rejects.toThrow('clean merge cannot carry over');
+  });
+
+  it('keeps a legacy v2 review across the exact committed registry union', async () => {
+    const f = await fixture(false, [], oldFiles);
+    const path = REGISTRY_PATHS[0];
+    const base = f.git('show', f.base + ':' + path) + '\n';
+    await f.write(path, addRegistry(path, base, 'zz-row-a'));
+    const reviewed = f.commit();
+    const prior = await f.review();
+    const oldReceipt = receiptSummary(prior, 12, Date.now());
+    const rollout = await f.mainMove(async () => {
+      await f.write('scripts/agent-review-session.mjs', policy);
+      await f.write('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\n');
+    });
+    const main = await f.mainMove(async () => {
+      await f.write('package-lock.json', lock('>=24'));
+      await f.write(path, addRegistry(path, base, 'zz-row-b'));
+    }, rollout);
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write(path, registryUnion(path, base, f.git('show', reviewed + ':' + path) + '\n', f.git('show', main + ':' + path) + '\n'));
+    f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    expect(next.history.slice(0, prior.history.length)).toEqual(prior.history);
+    expect(next.candidate.coverage.proof.kind).toBe('portable-registry-union');
+    expect(next.cycle).toBe(prior.cycle);
+    expect(coverageState(next).expires).toBe(oldReceipt.expires);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    vi.spyOn(Date, 'now').mockReturnValue(oldReceipt.expires);
+    await expect(f.cli('receipt', '12')).rejects.toThrow('review expired');
+  });
+  it('refuses a renewal claiming an earlier main after protected movement', async () => {
+    const f = await fixture(true, [], oldFiles);
+    const prior = await f.review();
+    await f.mainMove(() => f.write('scripts/agent-review-session.mjs', policy));
+    const forged = renewCoverage(prior, { main: f.base, untouched: true }, coverageState(prior).earliest + DAY + 1);
+    await expect(validateEconomySession(f.cwd, forged)).rejects.toThrow('main touched candidate or machinery path');
+    await expect(f.cli('renew')).rejects.toThrow('main touched candidate or machinery path');
+  });
+
+  it.each(REGISTRY_PATHS)('refuses an unproved base edit to the shared registry %s', async path => {
+    const f = await fixture();
+    const source = await f.review();
+    const original = f.git('show', f.base + ':' + path);
+    const changed = path.endsWith('.json') ? original.replace('"schemaVersion": 3', '"schemaVersion": 4') : original + '\n// guard changed';
+    const main = await f.mainMove(() => f.write(path, changed + '\n'));
+    const tree = f.git('merge-tree', '--write-tree', main, f.head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
+  });
+
+  it.each([
+    ['caps', true, true], ['required files', true, false],
+    ['caps', false, true], ['required files', false, false], ['non-pack evidence', false, true],
+  ])('checks %s with overlap %s', async (kind, overlap, allowed) => {
+    const path = 'packages/core/release-gates.json';
+    const file = { audit: { allowance: 1 }, retained: { witness: true }, pack: {
+      maxPackedBytes: 500, maxUnpackedBytes: 1000, maxFiles: 10, code: { maxPackedBytes: 400, maxFiles: 9 },
+      capReason: 'existing caps', requiredFiles: ['SECURITY.md'], baseline: { version: '0.1.0' },
+    } };
+    const format = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
+    const f = await fixture(true, [], { [path]: format(file) });
+    if (overlap) await f.write(path, format({ ...file, audit: { allowance: 0 } }));
+    const head = overlap ? f.commit() : f.head;
+    const source = await f.review();
+    const pack = kind === 'caps' ? { ...file.pack, maxFiles: 20, capReason: 'measured addition' } : kind === 'required files' ? { ...file.pack, requiredFiles: [] } : file.pack;
+    const changed = kind === 'non-pack evidence' ? { ...file, audit: { allowance: 2 } } : { ...file, pack };
+    const main = await f.mainMove(() => f.write(path, format(changed)));
+    const tree = f.git('merge-tree', '--write-tree', main, head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: allowed });
+  });
+
+  it('preserves the v3 workspace npm policy fingerprint while guarding queue drift', async () => {
+    const f = await fixture();
+    const path = 'packages/outbox/.npmrc';
+    expect(protectedCoveragePath(path)).toBe(false);
+    await f.write(path, 'engine-strict=true\n');
+    f.commit();
+    const source = await f.review();
+    expect(source.candidate.rules.head).toBe(source.candidate.rules.base);
+    await validateEconomySession(f.cwd, source);
+    const other = await fixture();
+    const prior = await other.review();
+    const main = await other.mainMove(() => other.write(path, 'engine-strict=true\n'));
+    const tree = other.git('merge-tree', '--write-tree', main, other.head);
+    await expect(carryOverSourceReview(other.cwd, prior.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
+  });
+
+  it.each([
+    ['legacy workspace npm policy', false, 'packages/outbox/.npmrc', 'git'],
+    ['portable workspace npm policy', true, 'packages/outbox/.npmrc', undefined],
+    ['portable unrelated source', true, 'unrelated.ts', 'portable-git'],
+  ])('selects the committed integration proof from its landed base: %s', async (_name, landed, path, expected) => {
+    const f = await fixture(true, [], landed ? { 'scripts/agent-review-session.mjs': policy } : {});
+    await f.review();
+    const main = await f.mainMove(() => f.write(path, 'fixture change\n'));
+    f.git('merge', '--no-ff', '--no-commit', main);
+    f.commit();
+    await f.cli('prepare', f.request);
+    const prepared = await f.state();
+    expect(prepared.candidate.coverage?.proof.kind).toBe(expected);
+    if (expected) {
+      await validateEconomySession(f.cwd, prepared);
+      await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    } else {
+      await expect(f.cli('receipt', '12')).rejects.toThrow('independent PASS reports required');
+    }
+  });
+
+  it.each([
+    'config/openlup-packages.json', 'config/openlup-source-release-contract.json', REGISTRY_PATHS[0],
+    'packages/outbox/npm-shrinkwrap.json', 'packages/platform/tsconfig.build.json',
+    'scripts/source-preview-release.ts', 'scripts/source-release-preparation.ts', 'scripts/oss-public-typecheck.ts', 'scripts/documentation-routing.ts', 'scripts/documentation-git.ts',
+  ])('refuses versioning-guide carry-over when the PR changes %s', async path => {
+    const f = await fixture(true, [], oldFiles);
+    const changed = path === REGISTRY_PATHS[0]
+      ? f.git('show', f.base + ':' + path).replace('"schemaVersion": 3', '"schemaVersion": 4') : '{}';
+    await f.write(path, changed + '\n');
+    const head = f.commit();
+    const source = await f.review();
+    const main = await f.mainMove(() => f.write('.github/VERSIONING_AND_EOL.md', 'Changed publication instructions.\n'));
+    const tree = f.git('merge-tree', '--write-tree', main, head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: false });
+  });
+
+  it.each(['exports', 'publish tag'])('limits versioning-guide independence for manifest changes to additive exports: %s', async kind => {
+    const path = 'packages/core/package.json';
+    const before = { exports: { '.': './dist/index.js' }, publishConfig: { tag: 'preview' } };
+    const f = await fixture(true, [], { ...oldFiles, [path]: JSON.stringify(before) + '\n' });
+    const after = kind === 'exports' ? { ...before, exports: { ...before.exports, './entry': './dist/entry.js' } }
+      : { ...before, publishConfig: { tag: 'latest' } };
+    await f.write(path, JSON.stringify(after) + '\n');
+    const head = f.commit();
+    const source = await f.review();
+    const main = await f.mainMove(() => f.write('.github/VERSIONING_AND_EOL.md', 'Changed publication instructions.\n'));
+    const tree = f.git('merge-tree', '--write-tree', main, head);
+    await expect(carryOverSourceReview(f.cwd, source.candidate, { base: main, tree, trustedMain: main })).resolves.toMatchObject({ ok: kind === 'exports' });
+  });
+});

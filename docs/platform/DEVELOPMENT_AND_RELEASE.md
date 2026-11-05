@@ -33,7 +33,7 @@ fresh native review, checks and protected release approval retain their roles.
 | Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate, bound to its fork point (`git merge-base HEAD origin/main`); a branch behind `main` stays verifiable and pushable without a rebase. Where installed, run `openlup-dev verify` on the clean committed tree; pre-push refuses a task-worktree push without its stamp. Elsewhere, run the required check commands, or the [bounded local integration alternative](../../CONTRIBUTING.md#native-review-and-accountability) when proved eligible. |
 | Draft PR | Authorized branch push and PR creation | Sonar can analyze it. Published Tree CI jobs skip drafts; skipped jobs are not passing evidence. |
 | Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Post `agent-review-session.mjs receipt <PR>` output with `gh pr comment <PR> --body-file -` as soon as the PR is open and ready. After all other prerequisites, actual merge authority permits enabling auto-merge once while source checks are pending. Native admission still waits for six actual successes and that receipt. |
-| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The source receipt admits the group when the review carries over: an unchanged tree, or a group that is exactly the reviewed change on its base (checked with `git merge-tree`) whose net base change avoids the change's paths and the admission, identity-binding, dependency and migration machinery. Otherwise the group is rejected: merge `main` and re-review, then post the new source receipt. |
+| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The [canonical carry-over proof](../../CONTRIBUTING.md#merge-queue) compares the exact integrated tree and the base delta. A refusal requires the applicable committed integration or fresh review. |
 | Main | A merge commit produces a main push | Expensive commands reuse a complete successful merge-group run only for the exact same commit; otherwise they run again. DCO, policy/neutrality and secret checks run for the push; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
 | Package release | Authorized dispatch of `publish-package.yml` for a reviewed SHA on main's first-parent line, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
@@ -202,6 +202,14 @@ variables enabled and the ruleset requiring six mechanical statuses plus
 `native-review`. This is dated activation evidence, not a promise about another
 repository or future settings.
 
+For a prepared branch that predates portable review, use a clean checkout of
+the fetched, trusted main to run the review command from that branch's working
+directory. For example, run
+`node /absolute/path/to/trusted-main/scripts/agent-review-session.mjs receipt PR_NUMBER`
+or `node /absolute/path/to/trusted-main/scripts/verify-local.mjs`. They read the
+branch's existing session and execute checks in its own worktree. Keep the
+configured stack pin and installed hook and stamp requirements.
+
 The admission script is checked out from `main`, but the job YAML comes from
 the PR or merge-group tree. A candidate can replace `native-review` with a
 successful no-op. Review of `.github/` edits is the current in-repo control;
@@ -222,6 +230,25 @@ Skipped, cancelled or timed-out execution cannot prove a passing check. The
 last recorded SQL closure from archived failures; neither is permission to ignore a red
 run. Compare failures with the exact base; disclose new failures and missing
 execution. Required success is not complete-suite success.
+
+Before retrying, classify the first causal failure from the stage log and run
+identity. Reproduce an assertion or contract failure with a focused check, then
+confirm the fix there before repeating the full gate. For confirmed resource
+admission or infrastructure failures, record the cause and what changed before
+using the existing retry route and budget. For a missing prerequisite, stale
+candidate or missing review evidence, resolve the named refusal first. A test
+timeout without broker evidence is not an admission timeout. If the cause is
+unclear, retain the log and diagnose it before retrying.
+
+When assessing a repair loop, record three times in the existing task evidence:
+stage execution, resource or dependency wait, and elapsed wall time from the
+start of the failed run to the end of verification after the repair. Include the
+time between runs in that last figure. Use recorded start/end times and
+scheduler logs. If a stage timer combines execution and wait and the log cannot
+separate them, record the combined time and mark the split unknown. Overlapping
+stage waits are not additive wall time. For a proposed reuse, subtract the cost
+of collecting, validating and restoring evidence from the work it would save,
+and distinguish that estimate from an observed saving.
 
 Fix named local violations rather than bypass hooks. A busy verification lock
 belongs to another run; wait without removing it. A pre-push refusal for a
