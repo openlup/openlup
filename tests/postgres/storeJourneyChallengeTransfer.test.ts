@@ -14,6 +14,20 @@ const resources = storeJourneyResources();
 let source: JourneyInstallation, target: JourneyInstallation;
 const relation = "public.customer_identity_challenges";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+// Column names shared with unrelated carried schemas are not challenge data.
+// Remove only schema descriptions, then inspect every remaining packet section.
+function assertChallengePacketSections(packet: {
+  compatible: { tables: { table: string; columns: unknown[] }[] };
+  owned: { table: string; columns: unknown[] }[];
+}) {
+  const withoutSchemas = structuredClone(packet);
+  for (const table of [...withoutSchemas.compatible.tables, ...withoutSchemas.owned]) {
+    expect(table.table.replace(/^public\./, "")).not.toBe("customer_identity_challenges");
+    table.columns = [];
+  }
+  for (const name of ["token_hash", "email_fingerprint"]) expect(JSON.stringify(withoutSchemas)).not.toContain(name);
+}
+
 beforeAll(async () => {
   source = await resources.installation("challenge-source");
   target = await resources.installation("challenge-target");
@@ -88,7 +102,11 @@ it("counts but never carries authorization challenges, restores customer sign-in
   expect(carried).toEqual([...connectedNativeStoreTables]);
   expect(carried).not.toContain("customer_identity_challenges");
   const serialized = JSON.stringify(packet);
-  for (const value of [...tokens, ...hashes, "token_hash", "email_fingerprint"]) expect(serialized).not.toContain(value);
+  for (const value of [...tokens, ...hashes]) expect(serialized).not.toContain(value);
+  assertChallengePacketSections(packet);
+  const carryingChallenges = structuredClone({ ...packet, owned: [...packet.owned,
+    { table: "customer_identity_challenges", columns: [{ name: "token_hash", type: "text" }], rows: [] }] });
+  expect(() => assertChallengePacketSections(carryingChallenges)).toThrow();
   const policy = (await source.owner.query("SELECT table_name,disposition,note FROM public.client_absorption_policy WHERE table_name='customer_identity_challenges'")).rows;
   expect(policy).toHaveLength(1);
   expect(policy[0]).toMatchObject({ table_name: "customer_identity_challenges", disposition: "block" });
@@ -136,7 +154,7 @@ it("counts but never carries authorization challenges, restores customer sign-in
       expect(await leadChallenges.issue({ email, tokenHash: hash("synthetic-lead-challenge"),
         expiresAt: new Date(Date.now() + 600_000).toISOString() })).toEqual({ deliverable: true });
     } finally { await leadChallenges.close(); }
-    results.push((await store.runtime.query("SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,$6) AS value",
+    results.push((await store.owner.query("SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,$6) AS value",
       [operator, draft.clientId, lead, email, "challenge-absorption-refusal", at])).rows[0].value);
     expect((await store.owner.query("SELECT email,principal_id,metadata FROM public.clients WHERE id=$1", [lead])).rows)
       .toEqual([{ email, principal_id: null, metadata: {} }]);
@@ -146,6 +164,8 @@ it("counts but never carries authorization challenges, restores customer sign-in
   expect(results[0]).toMatchObject({ outcome: expect.any(String), refusalCode: expect.any(String), blockingTables: expect.any(Array) });
   // Includes exact outcome, refusal code and blocking-table array equality.
   expect(results[1]).toEqual(results[0]);
+  for (const result of results) expect(result).toMatchObject({ outcome: "refused",
+    blockingTables: expect.arrayContaining(["customer_identity_challenges"]) });
   // A named exception never grants a schema-wide or authorization-name bypass.
   await source.owner.query("CREATE TABLE public.challenge_transfer_probe(id integer); INSERT INTO public.challenge_transfer_probe VALUES(1)");
   try {

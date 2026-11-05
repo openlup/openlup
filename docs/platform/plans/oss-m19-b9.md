@@ -1,12 +1,14 @@
 # Native store journey and transfer proof
 
 Status: stage 1 local candidate, development preview. Final joined renewal
-acceptance remains pending the native rows below.
+acceptance remains pending the joined proof below.
 
 Code base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
-Instruction freshness pin: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`, fetched
-during stage 1. This extension reread the local instruction revision; no fetch
-or merge was performed, so remote freshness is unverified.
+Instruction freshness pin: `ad373b82b830f645cc09c97f355f50022973788c`, fetched
+for this continuation. The required main integration is the signed-off merge
+`de43b6633e824aad6fe9de4d114c3c030318bd12`; its parents are the exclusion
+candidate and that main revision. The code review base is separate from this
+instruction pin.
 
 ## Outcome, scope and authority
 
@@ -22,10 +24,12 @@ bounded extension also owns the connected-capture adapter's exact authorization
 exclusion, one new PostgreSQL test, transfer documentation and this record.
 The carried table list, existing transfer/composition witnesses, restore adapter,
 packages, migrations, scripts and example application remain unchanged.
-The extension is staged and uncommitted pending the required security/trust
-boundary read. No DCO sign-off, native-review preparation, review, push,
-submission, merge, release, adopter change or hosted resource is authorized in
-this round. The existing local stage 1 commit remains the base.
+The security/trust-boundary read accepted the exact exclusion before its
+signed-off commit. This continuation authorizes the required main integration,
+test-only repairs and stronger assertions, documentation, checks, one signed-off
+test commit and an update to the existing draft. Native-review preparation,
+review, canonical verification, readiness, landing, release, adopter changes
+and hosted resources remain outside this step.
 
 ## Authorization-state transfer exclusion
 
@@ -70,14 +74,10 @@ one store instead of repeating its transfer/refusal matrix.
 
 ## Stage boundary and waiting rows
 
-Stage 1 stops before post-restore renewal execution/replay. On inspected main,
-`tests/postgres/subscriptionPurchaseRenewal.test.ts` explicitly characterizes a
-repeat of a successful public renewal call as throwing
-`subscription_renewal_claim_not_due` instead of returning terminal replay.
-The first effect is safe, but the required stored replay answer is absent.
-The missing G7 repair is terminal admission in `subscription_claim_due_renewal`
-and its composed renewal/retry binding. This is source-characterization
-inspection, not a newly executed joined renewal/replay witness.
+Stage 1 stops before post-restore renewal execution/replay. Its original
+inspection found a missing terminal replay answer. The owning native renewal
+repair is now on main; this is source inspection, not an executed joined
+post-restore renewal/replay witness.
 
 Waiting steps are destinations and purchase reservations, G7 renewal/retry and
 terminal replay, G8 paid/dunning notice dispatch, and G11-c consent choices.
@@ -149,39 +149,40 @@ preserves its required contract fields without constructing a weaker shape.
 
 ## Authorization exclusion continuation
 
-The extension is staged on the stage 1 commit and remains uncommitted pending
-the security/trust-boundary read. The exclusion adds no configuration value:
-its only named value is the exact relation name. Test data and identity
+The accepted exclusion is committed on the stage 1 candidate. It adds no
+configuration value: its only named value is the exact relation name. Test data and identity
 configuration are neutral synthetic fixtures, not reference-adopter values.
 
 The initial real PostgreSQL proof reached restored sign-in and customer reads,
 then found the native absorption classification gap: three client-referencing
 tables lacked registry dispositions. The earlier failure is retained in
-`.context/scratch/b9-challenge-isolated.log`. The approved current proof is
-narrower: equivalent leads and native challenges on source and restored stores
-must yield exactly equal absorption responses, including outcome, refusal code
-and blocking tables. It does not hard-code the current classification answer.
+`.context/scratch/b9-challenge-isolated.log`. The initial accepted differential proof required equivalent leads and native
+challenges on source and restored stores to yield exactly equal absorption
+responses, including outcome, refusal code
+and blocking tables. It does not hard-code the complete classification answer.
 The challenge registry tuple is compared exactly across restore; its explanatory
 note is preserved rather than pinned to prose. No test-only policy row or
 reference deletion changes the native answer.
 
-The challenge-specific absorption assertion lands together with the
-classification repair for the three client-referencing tables. B9 adds it once
-that repair is on main. The SQL stream owns the classification repair and its
-full-chain regression proof. Guest checkout start and renewal replay remain
-outside this extension and await their owning native rows.
+The three previously unclassified client-reference relations now have their
+native policy rows on main. The test additionally requires both installations
+to refuse absorption of a lead with a populated native challenge and to name
+`customer_identity_challenges` among the blocking tables. Exact differential
+response equality and the restored registry tuple remain required; containment
+does not prescribe whether other tables also block. No fixture policy row or
+reference deletion manufactures the answer. Guest checkout start and joined
+post-restore renewal replay remain outside this extension.
 
 Earlier fixture defects were repaired: a generated JWK lacked `use: sig`, and
 the shared fixture's letters-only routine guard rejected a versioned RPC name.
 The new test uses the fixed native SQL call. No unexplained assertion was
 rerun and no retry or review history was reset.
 
-Current continuation evidence follows. No commit, DCO sign-off, native review, push or canonical verify is
-authorized before the read is answered.
+The following stabilized evidence predates the accepted read and main integration;
+current continuation evidence is recorded separately below.
 
-Self-retro: separate a transfer-equivalence proof from an independent native
-classification repair; keep the latter's explicit assertion with its owning
-repair instead of manufacturing policy in the transfer fixture.
+Self-retro: preserve the native classification answer without fixture policy
+changes; once the owning repair lands, add the challenge-specific assertion.
 
 
 ## Stabilized exclusion evidence
@@ -201,8 +202,8 @@ SQL-chain priority. No timing-only or launch-error rerun was needed.
 | Documentation policy and navigation update | Two obligations, exactly one unanswered: `tests` at `CONTRIBUTING.md#development-preview-checks`; `.context/scratch/b9-challenge-differential-policy-final.log` |
 | Official package check/pack | PASS: 3 packages, no findings; `.context/scratch/b9-challenge-differential-official-pack.log` |
 
-The pending test-documentation obligation requires the later commit's scoped
-no-impact trailer; no commit or sign-off is permitted before the read. The
+The earlier test-documentation obligation was answered by the exclusion commit's
+scoped no-impact trailer after its accepted read. The
 transfer owner's section is updated. Test placement and invocation remain the
 existing root PostgreSQL suite and npm test command. Documentation update
 produced no generated tracked delta.
@@ -217,9 +218,85 @@ size classifier, the unchanged base package sources and pinned build output.
 Evidence: `.context/scratch/b9-challenge-pack-comparison/result.json` and its
 `official-verification.json` companion.
 
-All six conditions pass at the approved differential scope. The challenge-
-specific absorption assertion, guest checkout start and post-restore renewal
-replay remain deliberately unproved here. No hosted/adopter execution, canonical
+All six conditions passed at the earlier approved differential scope. Guest
+checkout start and joined post-restore renewal replay remain unproved here. No hosted/adopter execution, canonical
 verify, native review or delivery action is claimed. The staged patch identity
 is recorded privately after this final evidence edit; no self-referential hash
 is placed in this record.
+
+
+## Main integration and challenge assertion continuation
+
+The merged-tree control sweep passed: trusted main's class reader accepted the
+committed-tree overlay and all seven native forwards; the three catalog suites
+passed 1,061 tests. The production exclusion's added and removed lines are
+unchanged by integration: the SHA-256 of `git diff --no-ext-diff --unified=0`
+filtered to added/removed content lines is
+`8ec65931a6e83b6a0622bc18c19d459801580e75be1c93acfa1e617de66024aa`
+for both `4d78e855..36bc9739` and `origin/main..de43b663`, restricted to
+`server/adapters/postgres/connectedStoreCapture.ts`. No production or control
+change accompanies this test-only continuation.
+
+The first merged-tree PostgreSQL run passed 29 tests and failed the challenge
+packet's blanket `token_hash` column-name assertion. A different carried table
+now legitimately describes that column in its schema, with no rows. The repair
+keeps every token and hash value absent from the complete serialized packet.
+It checks both column names across all remaining sections after removing only
+carried-table schema descriptions, forbids a carried challenge table and proves
+that refusal using a mutated packet copy. Census and all outside-profile
+sections are included in the column-name check. No database data, grant or
+classification is changed. The corrected absorption assertion requires the
+effective native challenge block on both stores while retaining exact response
+and registry equality.
+
+Self-retro: separate challenge row/value exclusion from unrelated carried
+schema vocabulary; a structural packet check preserves the intended boundary.
+
+
+The six-file continuation run on Node 24.21.0 passed five files and 29 tests;
+the challenge test failed at the restricted-runtime absorption call with
+`permission denied for table commerce_destinations` (247.01 s total;
+`.context/scratch/b9-rulings-postgres.log`). The packet structural assertions,
+mutated-copy refusal, registry preservation, restore replay and restored sign-in
+checks ran before that call. No absorption response was returned in that attempt, so the new
+effective-block assertion remained unproved at that point. The current native
+routine scans populated blockers as its invoker, while the destination migration
+revokes direct runtime access to its table. No fixture grant, changed runtime,
+policy row or production edit bypasses that boundary. That attempt stopped before commit, the remaining pre-review set or draft
+update; no retry or fixture privilege change was made.
+
+Self-retro: after a classification gap closes, exercise its actual runtime
+privileges; registry completeness alone does not establish callable composition.
+
+
+Absorption classification is proved with owner access because the restricted-
+runtime absorption count read is a documented pre-existing limit on main with
+its own closure work; this row does not claim availability for the restricted
+runtime. The existing `subscriptionRetainedRenewal.test.ts` and
+`commerceDestinationsNative.test.ts` witnesses separately pin that limit.
+Only the classification call now uses the owner connection on both stores;
+challenge issue/redeem, session binding and customer profile reads retain the
+restricted runtime, and all differential and challenge-block assertions remain.
+
+
+The owner-access continuation passed all six selected PostgreSQL files and all
+30 tests on Node 24.21.0 in 245.47 s
+(`.context/scratch/b9-owner-postgres.log`). Both real classification results are
+refusals naming the challenge relation and remain exactly equal, including the
+refusal code and complete blocking-table array. Registry preservation, packet
+value/section checks and the mutated-packet control pass as well. No timing or
+launch retry was needed. The control sweep remains applicable because this
+continuation changes only the challenge test and this record.
+
+
+Before sign-off, lint passed with zero errors and 45 warnings outside the changed
+files, strict published-tree typecheck passed all five projects with zero
+unresolved edges and consumer-side errors, and the structural scan and whitespace
+check passed. Evidence is in `.context/scratch/b9-owner-lint-before.log` and
+`.context/scratch/b9-owner-typecheck-before.log`. Documentation policy identifies
+only the test unit's expected fresh no-impact trailer. Committed-tree checks and
+the draft update follow; no native prepare, review or canonical verification
+has run.
+
+Self-retro: reuse the existing owner-access classification witness for a known
+runtime read limit, and state its availability boundary explicitly.
