@@ -1754,6 +1754,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-qlock.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-r0.md",
       "class": "public-output"
     },
@@ -10635,6 +10639,10 @@
     },
     {
       "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261029100000_owner_path_name_resolution.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
       "class": "public-output"
     },
     {
