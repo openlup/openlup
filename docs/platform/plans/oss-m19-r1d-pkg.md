@@ -1,10 +1,9 @@
 # Native acquisition eligibility and admission
 
-Status: local implementation and required local proof complete; the maintainer
-accepted the APIs and recorded cost for one local DCO-signed commit. Development
-preview. This continuation stops after that commit, before native prepare,
-review, verification, submission or publication. Review waits for the assigned
-integration base.
+Status: development preview. The maintainer accepted the APIs and recorded cost;
+the signed implementation and authorized main integration are in a draft pull
+request. This continuation runs the required checks, native prepare and two full
+reviews, then stops before verification, readiness or publication.
 
 Outcome and smallest scope: add exact-first, bounded plus-alias eligibility and
 transactional final acquisition admission beside the existing promotion and
@@ -19,9 +18,10 @@ provider access, deployment and publication. No such change was made here.
 Authority: the assigned worker may implement and test this bounded package leaf
 in its assigned worktree; the stream supervisor coordinates with the programme
 lead. The maintainer read accepted the recorded forecast overshoot and authorized
-one local DCO-signed commit with explicit host obligations. No merge or release
-grant is exercised. The leaf has no merge. Scratch merges are diagnostic only
-and never enter this leaf.
+the implementation commit with explicit host obligations. Later authority covers
+a signed main integration and bounded test corrections before full review.
+No pull-request merge or release grant is exercised. Scratch dependency merges
+are diagnostic only and never enter this leaf.
 
 Code base: `e486bbf2d11939968960cb4ac924ce5e3d9e6063`, tree
 `be4db84a182cf04d6fe84099f2e3ad1ece5282c5`. Instruction pin:
@@ -52,9 +52,11 @@ The result of `resolve` must stay inside the server and never reach the browser.
 A host mounting acquisition routing must route every acquisition caller through
 the adapter; the mounting integration supplies its own no-bypass witness.
 The lower factory remains persistence only.
-The package-only tree mounts no checkout route; a staged AST caller inventory
-checks that its sole native draft construction is inside this adapter. Future
-starter route mounting requires its own integration/browser evidence.
+This leaf mounts no acquisition route. The AST inventory covers every direct
+native draft construction, including main's existing starter composition. Its
+direct quote has an empty discounts list and a fixed context without acquisition
+evidence; the test checks both limits and rejects additional callers. Acquisition
+route mounting requires its own integration/browser evidence.
 
 Acceptance and sufficient evidence: real installed-package restricted PostgreSQL
 must prove exact precedence and bounded escaped alias fallback; current paid
@@ -80,11 +82,17 @@ installer bindings declared first, an own labelled/tmpfs container and host TCP
 readiness. Runtime operations use the named non-superuser/non-bypass login;
 installer-only fixture arrangement and observational reads are distinguished.
 
-Nine real PostgreSQL cases pass on the final leaf within the focused suite
+Earlier pre-integration evidence: nine real PostgreSQL cases pass within the focused suite
 (18.95 s suite total, 11.61 s own file). Measured bodies: 9.93, 20.02, 31.69,
 25.54, 40.10, 9.24, 129.74, 24.29 and 102.97 ms. None approaches 5 s; the existing 10 s case bound is sufficient, so no
 explicit per-case timeout is needed. Shared setup/teardown bounds remain
 600,000/45,000 ms. The prior nine-case run's maximum was 102.06 ms.
+The integrated pre-review run explicitly selects the repository's 30,000 ms
+case-timeout tier. Four times the measured 131 ms maximum remains below that
+minimum tier; setup and teardown retain their separate bounds. The initial
+integrated run passed eight PostgreSQL cases and exposed the stale caller-count
+assertion. Clean main has the same starter caller, byte-identical to this tree;
+the corrected inventory proves its ordinary quote limits instead of excluding it.
 The initial full lint found one cross-module deep import introduced by module
 co-location. It now uses the existing promotions entry; scoped lint confirms the
 repair. The final mandatory full lint passes with zero errors. Whole-tree
@@ -231,4 +239,4 @@ receipt, and test a retry already waiting while an offer writer queues. Fixture
 column-grant and activation-default assumptions caused earlier avoidable runs.
 Forecast overshoot and inherited cap failure must remain distinct evidence.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-9be7a9b8d33b372ca9efd117a5d31206f95263f6cfd440dec582dd19972bea59","reason":"The added installed PostgreSQL witnesses follow the existing isolated-consumer, restricted-role, transaction/replay and deterministic-fixture guidance. They add no test command, selection, control, privilege or global timeout. The recorded setup repairs and measured case times preserve that guidance. Inherited scanner failures are established on a clean unchanged base rather than waived or repaired here."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-f28ee12c0609ba77730848d36578339a23f1735467d7bec0942c85e0bbf4b5bb","reason":"The added installed PostgreSQL witnesses follow the existing isolated-consumer, restricted-role, transaction/replay and deterministic-fixture guidance. They add no test command, selection, control, privilege or global timeout. The recorded setup repairs and measured case times preserve that guidance. The integrated caller inventory now covers the existing starter quote and asserts its empty discounts and fixed context. It adds no test selection, privilege or global timeout; the explicit runtime case-timeout tier follows the existing guidance. Earlier inherited scanner failures remain historical evidence rather than waivers."} -->
