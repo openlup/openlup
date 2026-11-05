@@ -28514,6 +28514,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/storeJourneyDestinations.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/storeJourneyGuestCheckout.test.ts",
       "class": "public-output"
     },

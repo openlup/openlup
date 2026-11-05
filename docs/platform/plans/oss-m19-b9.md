@@ -4,11 +4,13 @@ Status: stage 1 local candidate, development preview. Final joined renewal
 acceptance remains pending the joined proof below.
 
 Code base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
-Instruction freshness pin: `ad373b82b830f645cc09c97f355f50022973788c`, fetched
-for this continuation. The required main integration is the signed-off merge
-`de43b6633e824aad6fe9de4d114c3c030318bd12`; its parents are the exclusion
-candidate and that main revision. The code review base is separate from this
-instruction pin.
+Instruction freshness pin: `a359cd9706a51197ff3a2266e985c79c350a4099`, fetched
+by the guest draft update. The changed contribution guidance documents an inert
+installation-reader identity; it changes no active SQL or runtime absorption
+availability. The signed-off code integration remains
+`de43b6633e824aad6fe9de4d114c3c030318bd12`, whose parents are the exclusion
+candidate and main `ad373b82b830f645cc09c97f355f50022973788c`. The code
+comparison base is separate from the instruction pin.
 
 ## Outcome, scope and authority
 
@@ -79,8 +81,8 @@ inspection found a missing terminal replay answer. The owning native renewal
 repair is now on main; this is source inspection, not an executed joined
 post-restore renewal/replay witness.
 
-Waiting steps are destinations and purchase reservations, G7 renewal/retry and
-terminal replay, G8 paid/dunning notice dispatch, and G11-c consent choices.
+Waiting steps are native renewal execution/retry with terminal replay,
+paid/dunning notice dispatch and consent choices.
 Shipment-read composition follows its owning row. These natives are not mocked
 or skipped. Later integration is coordinated by the supervisor; this row lands
 once after its required predecessors. No complete store, hosted installation,
@@ -362,3 +364,30 @@ Guest sign-off checks passed: strict published-tree typecheck, structural scan,
 neutrality (zero increases), whitespace and lint (zero errors; 45 existing
 warnings). No full scanner set, native review or canonical verification ran in
 this continuation.
+
+
+The destination/reservation continuation follows the native destination port
+(`packages/platform/src/commerce/server/destinations/index.ts:19`) and purchase
+reservation port (`packages/platform/src/inventory/purchaseReservation.ts:39`).
+Its new witness registers an immutable order address, creates observed stock
+and purchase holds, captures/restores that graph, then uses the restricted
+runtime for exact destination/hold replay, stock-budget equality and changed-
+input refusals. An owner-prepared undispatched parcel supports the existing
+stable `commerce_view_shipment_destination` read; the read must not pin a new
+binding. Expiry one microsecond before and exactly at the fixed UTC boundary
+must match on source and target, with exact replay and no extra rows/effects.
+No parcel dispatch, arrival or delivery-alignment confirmation is claimed.
+
+
+The destination/reservation file passed its one joined case in the default zone
+(9.78 s), `Etc/GMT-9` (10.82 s) and `Etc/GMT+5` (10.67 s). Source and target
+finish with exactly equal public-row census after expiry. The 90-second case
+limit exceeds eight times the measured duration. The case converged in this
+continuation without a failed PostgreSQL attempt or production defect.
+
+Self-retro: use the stable shipment destination view for a transfer read witness;
+a read must not create a binding that later capture would have to explain.
+
+Destination/reservation sign-off checks passed: strict typecheck, structural
+scan, whitespace, neutrality (zero increases) and lint (zero errors; 45 existing
+warnings). The fresh test-unit trailer answers the documentation obligation.
