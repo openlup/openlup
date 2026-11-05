@@ -789,3 +789,61 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     }
   });
 });
+
+// The new-table capability is a fixed G8 allowance, not a registry-defined ACL grammar.
+const noticeTable = "public.subscription_notice_refusals";
+const noticeGrant = "GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;";
+const noticePolicy = "CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);";
+const noticeDo = (text: string) => `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE '${text}'; END IF; END; $$;`;
+const noticeCreate = `CREATE TABLE ${noticeTable} (id uuid);`;
+const noticeShape = [noticeCreate, `ALTER TABLE ${noticeTable} ENABLE ROW LEVEL SECURITY;`, `REVOKE ALL ON TABLE ${noticeTable} FROM PUBLIC;`, noticeDo(noticeGrant), noticeDo(noticePolicy)].join("\n");
+function checkNotice(text: string, mutate?: (value: ReviewedForwardRegistry) => void, existing?: "baseline" | "earlier-slot") {
+  const value = registry(); value.nativeStoreForwardClass!.slots[5]!.insertSelectTables = [noticeTable]; mutate?.(value);
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(existing === "baseline" ? `\n${noticeCreate}` : "")]) }];
+  for (let index = 0; index < 6; index++) {
+    const source = sql(index) + (index === 0 && existing === "earlier-slot" ? `\n${noticeCreate}` : "")
+      + (index === 5 ? `\n${block("service_role", "GRANT EXECUTE", control.slots[5]!.createdFunctions[0]!.signature)}\n${text}` : "");
+    const pin = bind(value, index, source);
+    assertNativeStoreForward(value, pin.path, Buffer.from(source), preceding);
+    preceding.push({ path: pin.path, bytes: Buffer.from(source) });
+  }
+}
+const conditionalNoticeError = "reviewed native store conditional privilege target or role refused";
+const sameSlotNoticeError = "reviewed native store INSERT/SELECT requires its table created earlier in the same slot file";
+function noticeRefusal(run: () => void, message: string) {
+  let caught: unknown;
+  try { run(); } catch (error) { caught = error; }
+  expect(caught).toBeInstanceOf(Error);
+  expect((caught as Error).message).toBe(message);
+}
+describe("checker-pinned G8 INSERT/SELECT table", () => {
+  it("admits the exact guarded grant and single policy after same-file creation", () => { expect(() => checkNotice(noticeShape)).not.toThrow(); });
+  it("permits the allowance before its future table is introduced", () => { expect(() => checkNotice("")).not.toThrow(); });
+  it("refuses UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER", () => {
+    for (const privilege of ["UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"]) noticeRefusal(() => checkNotice(noticeShape.replace("SELECT, INSERT", privilege)), conditionalNoticeError);
+  });
+  it("refuses any other grantee", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace("TO service_role", "TO fixture_role"))), conditionalNoticeError); });
+  it("refuses anon and authenticated grants", () => {
+    for (const role of ["anon", "authenticated"]) noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace("TO service_role", `TO ${role}`))), conditionalNoticeError);
+  });
+  it("refuses a second policy", () => { noticeRefusal(() => checkNotice(`${noticeShape}\n${noticeDo(noticePolicy)}`), "reviewed native store INSERT/SELECT permits at most one policy"); });
+  it("refuses another policy role, PUBLIC and an omitted role", () => {
+    for (const target of ["TO authenticated", "TO PUBLIC", ""]) noticeRefusal(() => checkNotice(noticeShape.replace(noticePolicy, noticePolicy.replace("TO service_role", target))), conditionalNoticeError);
+  });
+  it("refuses a grant or policy on a pre-existing table", () => {
+    for (const statement of [noticeGrant, noticePolicy]) noticeRefusal(() => checkNotice(noticeDo(statement), undefined, "baseline"), sameSlotNoticeError);
+  });
+  it("refuses a column-level grant", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace("SELECT, INSERT", "SELECT (id), INSERT (id)"))), conditionalNoticeError); });
+  it("refuses WITH GRANT OPTION", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, noticeGrant.replace(";", " WITH GRANT OPTION;"))), conditionalNoticeError); });
+  it("refuses the shape on a table created by an earlier slot", () => { noticeRefusal(() => checkNotice(noticeDo(noticeGrant), undefined, "earlier-slot"), sameSlotNoticeError); });
+  it("refuses an unnamed new table", () => { noticeRefusal(() => checkNotice(noticeShape.replaceAll(noticeTable, "public.fixture_notice_other")), conditionalNoticeError); });
+  it("refuses the key on a non-G8 slot", () => { noticeRefusal(() => checkNotice(noticeShape, value => { value.nativeStoreForwardClass!.slots[0]!.insertSelectTables = [noticeTable]; }), "reviewed native store insertSelectTables is G8-only"); });
+  it("refuses a G8 value differing from the reader constant", () => {
+    for (const names of [[], ["public.fixture_notice_other"], [noticeTable, "public.fixture_notice_other"]]) noticeRefusal(() => checkNotice(noticeShape, value => { value.nativeStoreForwardClass!.slots[5]!.insertSelectTables = names; }), "reviewed native store insertSelectTables is pinned by the checker");
+  });
+  it("refuses the named table when not created in the same file", () => { noticeRefusal(() => checkNotice(noticeDo(noticeGrant)), sameSlotNoticeError); });
+  it("refuses policy text differing by one token", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticePolicy, noticePolicy.replace("USING (true)", "USING (false)"))), conditionalNoticeError); });
+  it("refuses reordered privileges and added TABLE", () => {
+    for (const grant of [noticeGrant.replace("SELECT, INSERT", "INSERT, SELECT"), noticeGrant.replace(" ON ", " ON TABLE ")]) noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, grant)), conditionalNoticeError);
+  });
+});

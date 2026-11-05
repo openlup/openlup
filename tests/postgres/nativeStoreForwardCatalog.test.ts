@@ -9,7 +9,7 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables">;
 const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
@@ -139,7 +139,15 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   for (const old of before.relations) if (JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
     if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
-    for (const item of row.acl) if (!item.startsWith(`${row.owner}:`)) fail(`new relation ${row.name} grants ${item}`);
+    if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
+      const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
+      const acl = row.acl.filter(item => !item.startsWith(`${row.owner}:`));
+      const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
+      const expressions = (await db.query("SELECT pg_get_expr(polqual,polrelid) AS qual, pg_get_expr(polwithcheck,polrelid) AS check_expr FROM pg_policy WHERE polrelid=$1::oid", [row.oid])).rows;
+      if (row.kind !== "r" || !row.rls || row.forceRls || JSON.stringify(acl) !== JSON.stringify(role ? ["service_role:INSERT", "service_role:SELECT"] : [])
+        || policies.length !== (role ? 1 : 0) || (role && (policies[0]!.polname !== "subscription_notice_refusals_runtime" || policies[0]!.polcmd !== "*" || policies[0]!.polpermissive !== true
+          || JSON.stringify(policies[0]!.polroles) !== JSON.stringify([String(role)]) || expressions[0]?.qual !== "true" || expressions[0]?.check_expr !== "true"))) fail(`new relation ${row.name} exceeds its pinned INSERT/SELECT shape`);
+    } else for (const item of row.acl) if (!item.startsWith(`${row.owner}:`)) fail(`new relation ${row.name} grants ${item}`);
     if (row.columnAcls !== null) fail(`new relation ${row.name} has column privileges ${JSON.stringify(row.columnAcls)}`);
   }
 
@@ -232,6 +240,11 @@ const REVOKE_CREATED = "REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUB
 const CREATED_OK = `${CREATE_PINNED}\n${REVOKE_CREATED}\n${guarded("service_role", "GRANT EXECUTE ON FUNCTION", "public.cat_created(text) TO service_role;")}`;
 const forward = (created: string, extra = "") => [REPLACE_PART, created, GRANT_PART, TABLE_PART, EXISTING_PART, extra].filter(Boolean).join("\n");
 const CONFORMING = forward(CREATED_OK);
+const NOTICE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, insertSelectTables: ["public.subscription_notice_refusals"] };
+const NOTICE_TABLE = "CREATE TABLE public.subscription_notice_refusals (id int); ALTER TABLE public.subscription_notice_refusals ENABLE ROW LEVEL SECURITY; REVOKE ALL ON TABLE public.subscription_notice_refusals FROM PUBLIC;";
+const NOTICE_GRANT = guarded("service_role", "GRANT SELECT, INSERT ON", "public.subscription_notice_refusals TO service_role;");
+const NOTICE_POLICY = guarded("service_role", "CREATE POLICY subscription_notice_refusals_runtime ON", "public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);");
+const NOTICE_SQL = [NOTICE_TABLE, NOTICE_GRANT, NOTICE_POLICY].join("\n");
 // The statement reported as FC-R1B-001, unchanged: a quoted default hides an `AS $q$` so a static
 // header reader takes a fake search_path attribute list for the real one.
 const HIDDEN_HEADER = "CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS text LANGUAGE sql SECURITY DEFINER AS 'select p' SET application_name = x$q$;";
@@ -247,6 +260,11 @@ SELECT 1 AS x$a$, 2 AS y$q$;
 REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 const UNLISTED = "CREATE FUNCTION public.cat_unlisted(p text) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p $$;\nREVOKE ALL ON FUNCTION public.cat_unlisted(text) FROM PUBLIC;";
 const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
+  ["another new relation with the named table's runtime ACL", forward(CREATED_OK, guarded("service_role", "GRANT SELECT, INSERT ON", "public.cat_created_table TO service_role;")), /new relation public\.cat_created_table grants service_role:/u, true, NOTICE_SLOT],
+  ["the named runtime table without RLS", forward(CREATED_OK, NOTICE_SQL.replace("ENABLE ROW LEVEL SECURITY", "DISABLE ROW LEVEL SECURITY")), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
+  ["the named runtime table with an extra privilege", forward(CREATED_OK, NOTICE_SQL.replace("GRANT SELECT, INSERT", "GRANT SELECT, INSERT, UPDATE")), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
+  ["the named runtime table with a second policy", forward(CREATED_OK, NOTICE_SQL + "\nCREATE POLICY notice_extra ON public.subscription_notice_refusals TO service_role USING (true);"), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
+  ["the named runtime table with a PUBLIC policy", forward(CREATED_OK, NOTICE_SQL.replace("FOR ALL TO service_role", "FOR ALL TO PUBLIC")), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
   ["the FC-R1B-001 header under a listed signature", forward(`${HIDDEN_HEADER}\n${REVOKE_CREATED}`), /pinned search_path/u, false, SYNTHETIC_SLOT],
   ["an unlisted function", forward(CREATED_OK, UNLISTED), /created functions differ/u, false, SYNTHETIC_SLOT],
   ["a function created in pg_catalog", forward(CREATED_OK, "CREATE FUNCTION pg_catalog.cat_shadow(p text) RETURNS text LANGUAGE sql AS $$ SELECT p $$;"), /created functions differ/u, false, SYNTHETIC_SLOT],
@@ -347,6 +365,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
 
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
+  it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
   // A view recreated byte-for-byte but for spacing differs only in stored parser positions.
   it("admits a view redefinition that changes only parser positions", async () => { await checkForward(pool, SYNTHETIC_SLOT, [REPLACE_PART, CREATED_OK, GRANT_PART, TABLE_PART, "CREATE OR REPLACE VIEW public.cat_view AS SELECT    id   FROM   public.cat_existing_table;"].join("\n")); });

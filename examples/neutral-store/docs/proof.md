@@ -345,3 +345,97 @@ partner/review regression passed in both configurations. The default browser
 suite passed 92 UI checks and retained exactly two unchanged purchase failures,
 with zero skips. All proof-owned resources were removed; no purchase, positive
 support, catalogue administration or release qualification follows.
+
+
+## Database-backed purchase acceptance recipe
+
+Default Playwright starts database-less previews for navigation and visible
+refusals. Those hosts cannot qualify purchase. The separate database-backed
+config uses the unchanged required purchase spec and disables trace, screenshot
+and video capture because request bodies contain private order capabilities.
+
+Install/seed the complete selected package history using lifecycle. Start one
+host per configuration with the documented `--database-url`, `--configuration`,
+`--port` and `--listen`, using the restricted installer-managed runtime role.
+Write only loopback UI origins to `.context/database-ui-hosts.json`:
+
+```json
+[
+  { "id": "supplements", "baseURL": "http://127.0.0.1:4319" },
+  { "id": "coffee", "baseURL": "http://127.0.0.1:4320" }
+]
+```
+
+```sh
+npx --no -- playwright test --config playwright.database.config.ts
+```
+
+Record exact source/artifact identities, installed/repeat migration counts,
+both configuration results, capability refusal/replay cases and cleanup. This
+JSON alone supplies no database: never substitute a preview or fixture response
+for installed PostgreSQL. The required purchase file receives no sign-in step
+or other edit. Later sign-in uses the checkout e-mail and private captured native
+challenge token, never a seeded customer row.
+
+No required CI job currently runs this real-PostgreSQL browser recipe. The
+published-tree workflow's install-proof job runs required-package-gates; its
+starter cold consumer runs source/extracted tests, typecheck and build, with no
+browser invocation. The local purchase acceptance step above owns this proof.
+
+Guest one-time and subscription purchases, activation with renewal attachment,
+later sign-in ownership, operator order reads and next-parcel address changes
+have host-level real-PostgreSQL proofs in both configurations. The measured
+three-package application delta is zero bytes against the committed dependency stack.
+The database-backed UI suite passes 98 checks (49 per configuration), including
+both unchanged required purchase cases, with no failures, skips or retries.
+Separate local browser proof covers captured recovery mail opened in a fresh
+context, URL cleanup/reload, an actual host-process restart, paid-link confirmation
+without controls, native-clock expiry and revoked/unknown/cross-order/cancelled
+refusals. Sign-in exposes the order and activated subscription with completed
+renewal attachment. Both localized address results render after sign-in: the
+customer writer returns next-parcel application; immediate application is only a
+result-display fixture, not a native customer action. Captured responses and
+host/error logs are scanned for raw credentials. The Docker cycle freezes source
+inputs before image build and compares the live container files, then checks
+restart/mail/payment and removes its own containers and named volumes. This
+local evidence grants no hosted, provider or release qualification. Positive review and moderation,
+revocation and ownership move to the later delivered-shipment review journey;
+native thirty-day grant expiry has no application time seam.
+
+
+## Interim mode-price draft proof
+
+The earlier bounded pricing proof runs separately at the native draft
+boundary with clientId null; this is a test of the public draft factory, not an
+offered clientless checkout. Use a fresh installed demonstration database for
+each configuration, apply only the owned seed, then create subscription and
+one-time drafts through `createPostgresNativeCheckoutPersistence`. Reduced unit
+prices must match the seeded subscription entries, discounts must be empty and
+stored lines/totals must equal the server quote. Do not insert orders by hand.
+
+Repeat installation must apply zero migrations and add zero seed rows. Compare
+persisted price facts, assert seed conflicts for a changed configured price and
+native refusal for a quote whose price no longer matches the installed entry.
+The pure characterization fixes per-unit floor-to-quantum:1499 at5% with quantum10
+resolves1420 before multiplying quantity. Owned rate, quantum and demonstration
+values must be replaceable without managed code edits. This proof establishes
+no recovery, contact creation, activation or browser purchase result.
+
+Attempt limits live in one process's memory and reset on restart.
+Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
+
+
+Existing source continuation tests use storage and location stubs to check an
+unchanged second submit, completion, a cold module reload, different-order
+separation and a replacement token. The committed continuity proof consists of
+these source tests and the clean-index root proof. A real-browser second-submit
+check was confirmed in a local run that is not part of the committed suite.
+The root real-HTTP PostgreSQL regression needs only the three package builds;
+it uses neither starter UI assets nor a browser. It checks cadence 120 acceptance
+and cadence 121 refusal before any contact write. The shared e-mail boundary
+checks a 160-character guest
+purchase through payment, native challenge, sign-in and account order visibility;
+161 characters refuse before any contact write. A lower configured value governs
+both purchase and challenge requests. Address changes check the same phone and
+postal-code bounds as checkout. Each case has an explicit 30-second timeout;
+run new PostgreSQL cases in the default zone and both offset zones.
