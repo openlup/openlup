@@ -53,7 +53,7 @@ step: parser acceptance followed by actual HTTP readiness. Lost startup detail
 will be retained privately. Lesson: fixture launch refusal → validate the exact
 existing CLI contract before another database run.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-b5d615e85250547f044f78087ace0eb2e75ca28994174dd153316757b37b66cc","reason":"The added starter witness uses the existing tests/postgres Node root, existing container lifecycle and installed migration runner, and an explicit Playwright recipe. It changes no discovery, required command, fixture privilege, timeout default or contribution instructions. The tests owner already describes these proof locations and bounded per-case timeout conventions; local measured results and the native permission blocker belong to this task."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-b5d615e85250547f044f78087ace0eb2e75ca28994174dd153316757b37b66cc","reason":"The added starter witness uses the existing tests/postgres Node root, existing container lifecycle and installed migration runner, for the committed source and HTTP proofs. The explicit Playwright recipe is local evidence, not a committed root-job witness. Required commands, fixture privileges, timeout defaults and contribution instructions are unchanged. The tests owner already describes these proof locations and bounded per-case timeout conventions; local measured results and the native permission blocker belong to this task."} -->
 
 Retry-proof rethink: the HTTP/restart proof reached authorization, then an
 isolated native retry diagnostic identified an invalid synthetic method-evidence
@@ -66,13 +66,13 @@ the selected simulator's existing fact contract before changing composition.
 Measured PostgreSQL proof bounds: checkout fences took 0.85–1.57 seconds, with
 a 10-second per-case bound matching the adjacent HTTP witness. Authenticated
 restart/replay reached retry execution at 121.55–121.81 seconds, including two
-native one-minute sign-in cadences; its bound is 180 seconds. Browser wrappers
+native one-minute sign-in cadences; its bound is 180 seconds. Local browser wrappers
 took 9.13–9.92 seconds per configuration; their bound is 30 seconds, about three
 times measurement. The blocked operator proof retains its provisional
 60-second bound and needs a successful measurement after its native prerequisite
 is supplied. No global timeout or gate budget is changed.
 
-Checkpoint evidence: the selected real PostgreSQL/HTTP suite passed eight cases
+Earlier local checkpoint evidence: eight selected recovery cases passed
 across both configurations, including canonical UUID fences, wrong subject and
 case refusals, expired/revoked/used credentials, actual authorization/replay
 across host restarts, exactly one native retry execution and recovered readback.
@@ -80,7 +80,7 @@ The two operator cases were deliberately not rerun after the installed native
 permission blocker was established; they remain ordinary positive tests in
 source and remain required. This is not a passing whole-suite claim.
 
-Both browser configurations passed all 50 tests each, with zero skips or retries:
+Both browser configurations passed all 50 tests each in local runs, with zero skips or retries:
 the required journey file is unchanged, and the separate recovery proof checks
 active recurring tokens on guest and same-owner completion pages, synchronous
 URL cleanup, native sign-in and pending retry authorization. Final measured
@@ -124,5 +124,8 @@ The existing 24-case guest/customer UUID regression also passes. The strengthene
 fence witness reads the real initial acquisition cycle after payment and proves
 its absent renewal operation still permits guest and owner continuation. Token
 capture runs before bootstrap requests and before route rendering, including
-internal message-link navigation without a document reload. The separate
+internal message-link navigation without a document reload. The separate local
 browser proof exercises both entry paths; the required journey remains unchanged.
+The committed source and real-HTTP cases retain recovery and raw-token log
+refusal checks without starter assets or Chromium. Real-browser recovery is local
+evidence, not a committed root-job witness.

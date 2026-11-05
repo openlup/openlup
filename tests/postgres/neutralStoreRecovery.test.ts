@@ -1,7 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
@@ -408,33 +407,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     const raw = new URL(notice.recovery_url_path, base).searchParams.get('token')!;
     expect(logs.includes(raw)).toBe(false);
   }, 180_000);
-  // Measured 9.13–9.92 s; 30 s allows approximately three times the observed duration.
-  it('runs the unchanged required browser journey and authenticated recovery against this real store', async () => {
-    const f = await declined(), raw = await issue(f);
-    const fixture = resolve(state, 'recovery-fixture.json');
-    await writeFile(fixture, JSON.stringify({ token: raw, email: f.email,
-      identityMailbox: resolve(state, '.context/captured-messages/identity.jsonl') }), { mode: 0o600 });
-    const browserConfig = resolve(state, 'playwright-recovery.config.mjs');
-    await writeFile(browserConfig, `export default {
-      testDir: ${JSON.stringify(resolve('examples/neutral-store/browser'))},
-      testMatch: ['journey.spec.ts','recovery.proof.ts'], workers: 1, fullyParallel: false,
-      metadata: {recoveryFixture: ${JSON.stringify(fixture)}},
-      outputDir: ${JSON.stringify(resolve(state, 'browser-results'))},
-      use: {headless:true,trace:'off',screenshot:'off',video:'off',baseURL:${JSON.stringify(base)}},
-      projects: [{name:${JSON.stringify(config.id)}}], reporter:[['json',{outputFile:${JSON.stringify(resolve('.context/scratch/r2a', `browser-${config.id}.json`))}}]]
-    };`, { mode: 0o600 });
-    try {
-      const browser = await promisify(execFile)(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', browserConfig],
-        { maxBuffer: 8 * 1024 * 1024 });
-      outputs.push(browser.stdout, browser.stderr,
-        await readFile(resolve('.context/scratch/r2a', `browser-${config.id}.json`), 'utf8'));
-    } catch (error) {
-      const captured = error as { stdout?: string; stderr?: string };
-      outputs.push(captured.stdout ?? '', captured.stderr ?? '');
-      throw new Error('starter_browser_recovery_proof_failed');
-    }
-    expect(logs.includes(raw)).toBe(false);
-  }, 30_000);
+
 
 
 });

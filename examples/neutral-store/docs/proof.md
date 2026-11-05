@@ -388,7 +388,9 @@ have host-level real-PostgreSQL proofs in both configurations. The measured
 three-package application delta is zero bytes against the committed dependency stack.
 The database-backed UI suite passes 98 checks (49 per configuration), including
 both unchanged required purchase cases, with no failures, skips or retries.
-Separate local browser proof covers captured recovery mail opened in a fresh
+Committed source and real-HTTP recovery tests need no starter UI assets or
+Chromium. Real-browser recovery runs are local evidence, not a committed root-job
+witness. Separate local browser proof covers captured recovery mail opened in a fresh
 context, URL cleanup/reload, an actual host-process restart, paid-link confirmation
 without controls, native-clock expiry and revoked/unknown/cross-order/cancelled
 refusals. Sign-in exposes the order and activated subscription with completed

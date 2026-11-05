@@ -125,9 +125,10 @@ The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
 newsletter read/withdraw, and the reduced operator order control-plane view.
 Invoice artifacts, the full account projection and shipment reads remain named
-refusals. Guest purchase, account and operator order reads have real-database
-host and browser proofs. The database-backed suite passes the unchanged required
-purchase assertion in both configurations; this is local preview evidence.
+refusals. Guest purchase, account and operator order reads have committed source
+and real-HTTP proofs. Separate local real-browser evidence passes the unchanged
+required journey and recovery checks in both configurations; those browser runs
+are not a committed root-job witness.
 
 The demonstration captured mailbox is `.context/captured-messages/identity.jsonl` inside
 the application container, readable only with that runtime's filesystem

@@ -55,8 +55,9 @@ tests; existing renewal/alignment witnesses pass 42 tests. Package inputs are
 unchanged: this starter delta adds zero packed/code package bytes.
 
 The required browser specification is unchanged. Against native installations its
-98 required cases and two separate recovery cases pass after rebuilding the
-current client. The database-less preview is 96/98: its two completed-purchase
+98 required cases and two separate recovery cases pass in local runs after
+rebuilding the current client. Committed source and HTTP proofs need no browser;
+real-browser recovery is local evidence, not a committed root-job witness. The database-less preview is 96/98: its two completed-purchase
 cases still fail at the intentionally absent native binding. The complete
 58-file scanner set has 1,254 passing tests, the 16 inherited registry assertions,
 three inherited suite-load errors and one inherited skipped test. No new scanner
@@ -81,4 +82,4 @@ closed them without changing assertions. One admitted gate poll waited 396 secon
 571 seconds and were repeated as required. Lesson: freeze source and rebuild each affected artifact before its
 consumer proof. No additional process or successor work is created.
 
-<!-- openlup-task-doc-impact {"unit":"tests","digest":"sha256-6dbc01edb49bcd1b3a78eefd93c2caf6cc9fe5a4b0faacb297aded94fe6a70f9","reason":"The starter witnesses use the existing tests/postgres runner, restricted-role fixture and package consumer installer. The redundant second database browser wrapper was removed because the existing recovery suite runs the same unchanged required journey for both configurations. No assertion, discovery selector, mandatory command, privilege or proof policy is relaxed; the four remaining recovery failures stay reported.","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks"} -->
+<!-- openlup-task-doc-impact {"unit":"tests","digest":"sha256-6dbc01edb49bcd1b3a78eefd93c2caf6cc9fe5a4b0faacb297aded94fe6a70f9","reason":"The starter witnesses use the existing tests/postgres runner, restricted-role fixture and package consumer installer. The database browser wrappers are retired from root discovery; the unchanged real-browser journeys are local evidence, and the committed source and HTTP cases own the root proof. Committed source and HTTP assertions retain the existing root-job prerequisites; native privileges and the required command set are unchanged.","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks"} -->

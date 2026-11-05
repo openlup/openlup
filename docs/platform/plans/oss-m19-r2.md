@@ -30,8 +30,9 @@ Acceptance requires one schema for all existing notice kinds, unknown-version
 and unknown-kind refusal, immutable differing-key refusal, missing-artifact and
 changed-context refusal, and original operator-to-notice readback. The capture
 is a developer mailbox with no real recipients, under git-ignored .context,
-with directory0700 and file0600. Tests scan captured host/process/browser output
-and recovery responses for private email, URL and token material. Initial
+with directory0700 and file0600. Committed source and real-HTTP tests scan captured host/process output
+and recovery responses for private email, URL and token material. Browser recovery
+runs are separate local evidence, not a committed root-job witness. Initial
 checkout retains its existing creating-response capability protocol.
 
 The positive operator proof uses a separate scratch installation containing the
@@ -80,7 +81,7 @@ answer. The existing test discovery, restricted fixture authority, per-case
 timeout convention and mandatory command set remain sufficient.
 
 The first complete scratch run passed nine of ten recovery cases and both
-50-case browser configurations. A restart fixture read the previous operator
+50-case local browser configurations. A restart fixture read the previous operator
 challenge after generic acceptance, before asynchronous mailbox delivery. The
 fixture now waits up to5 seconds for a new captured challenge without issuing
 another request. This preserves the existing acceptance-before-delivery
@@ -96,8 +97,8 @@ The earlier complete recovery run passed the two customer restart/retry cases
 in121.568 and121.518 seconds against180 seconds, fences below1 second against
 10 seconds, and unusable-capability cases below1.85 seconds against10 seconds.
 Both unchanged required browser journeys and separate recovery proofs passed
-50 cases per configuration. Their outer wrappers took8.375 and8.866 seconds
-against30-second bounds. The first operator fixture failure is closed by the
+50 cases per configuration in local runs, outside the committed root job. Their
+local wrappers took8.375 and8.866 seconds against30-second bounds. The first operator fixture failure is closed by the
 separately committed readiness repair and both selected positive reruns.
 
 The real renewal and existing lifecycle/alignment suites pass26 cases, including
