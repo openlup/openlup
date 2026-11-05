@@ -359,6 +359,7 @@ loudly. Replace this fictional registry and its onboarding for a customer enviro
 Operator customer search/detail remain unbound because the native reader
 requires a separate communications operator roster entry. The host does not
 provision that authority. Broader payment/operator recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+provision that authority. Other unbound operator actions retain their named refusals; see [limits](docs/limits.md). Acquisition proves no purchase journey.
 
 
 ## Guest purchase and later sign-in
