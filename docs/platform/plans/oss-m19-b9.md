@@ -82,7 +82,7 @@ repair is now on main; this is source inspection, not an executed joined
 post-restore renewal/replay witness.
 
 Waiting steps are native renewal execution/retry with terminal replay,
-paid/dunning notice dispatch and consent choices.
+and paid/dunning notice dispatch.
 Shipment-read composition follows its owning row. These natives are not mocked
 or skipped. Later integration is coordinated by the supervisor; this row lands
 once after its required predecessors. No complete store, hosted installation,
@@ -345,7 +345,7 @@ Guest checkout is now proved by `storeJourneyGuestCheckout.test.ts`: two cases
 and pristine target, proves no acquisition intake, buys anonymously through
 main's composition, restores the paid purchase, compares exact checkout replay
 and purchase rows, then signs in natively and reads the same customer/order.
-The 90-second case limit exceeds eight times the measured case duration.
+The 90-second case limit exceeds four times the measured total for both guest cases.
 This continuation converged after correcting the peer-digest fixture input;
 no assertion or guard was weakened and no production defect was found.
 
@@ -391,3 +391,39 @@ a read must not create a binding that later capture would have to explain.
 Destination/reservation sign-off checks passed: strict typecheck, structural
 scan, whitespace, neutrality (zero increases) and lint (zero errors; 45 existing
 warnings). The fresh test-unit trailer answers the documentation obligation.
+
+
+The consent continuation follows the native actor read and write SQL at
+`db/platform/migrations/20261101232000_customer_account_consents.sql:44,94`.
+Each purpose receives its own source/restore case with real native account
+creation and authenticated, non-superuser runtime calls. The source grant and
+its event/work identities must survive restore and replay exactly; the restored
+customer must read and withdraw the choice with exact replay. Cross-customer
+reads/writes and changed-payload replay must refuse without effects. The existing
+outbox rail is enabled with synthetic installation configuration, without
+provider dispatch. New consent effect identities are generated only by the
+native writer; the source stays byte-identical after target continuation.
+
+
+The consent file passed both purposes in the default zone (19.37 s),
+`Etc/GMT-9` (20.74 s) and `Etc/GMT+5` (18.35 s). Captured permission/work
+identities and complete choice responses replay exactly after restore; each
+restored customer writes a new denial and replays it without another event or
+work item. The other customer cannot read or change the choice, changed-payload
+replay refuses, and the source remains unchanged. The 90-second per-case bound
+exceeds four times the earlier measured two-case guest file total. No failed
+PostgreSQL attempt or product defect occurred in this consent continuation.
+
+All three journeys in this continuation are now proved. Remaining joined proof
+is renewal execution with terminal replay after restore and paid/dunning notice
+dispatch. No full pre-review set, native preparation/review, canonical verify or
+landing has been run here.
+
+Self-retro: replay the captured consent receipt before issuing a new restored-
+store change; this distinguishes preserved identity from a replacement write.
+
+Consent sign-off checks passed: strict published-tree typecheck, structural
+scan, whitespace, neutrality (zero increases) and lint (zero errors; 45 existing
+warnings). Each of the three new test files has its catalog entry and measured
+default/two-zone proof. The full pre-review set remains deferred until the
+remaining two journeys are joined.
