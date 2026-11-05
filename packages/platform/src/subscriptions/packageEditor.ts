@@ -87,10 +87,10 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
       return options.withTransaction(async db => {
         await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, idempotencyKey]);
         await owned(db, actor, subscriptionId);
-        const quote = await repricer(db).quote(request);
-        if (request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const stored = await replay(db, actor, subscriptionId, idempotencyKey, raw);
         if (stored) return stored;
+        const quote = await repricer(db).quote(request);
+        if (request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const value = subscriptionRecord((await db.query("SELECT public.subscription_package_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::jsonb,$6::timestamptz) AS response",
           [actor.actorId, actor.clientId, idempotencyKey, subscriptionId, { request: raw, ...evidence(request, quote) }, options.now()])).rows[0]?.response);
         if (value.status === "refused") throw new Error(String(value.reason));

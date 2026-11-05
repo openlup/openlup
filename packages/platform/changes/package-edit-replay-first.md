@@ -1,0 +1,1 @@
+Replay a completed classic package-edit key before repricing or configuration reads, preserving its originally recorded result after a price change. Fresh commands still require a matching current quote.

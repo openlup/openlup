@@ -1842,8 +1842,9 @@ lines must still resolve in the subscription-sellable catalogue.
 
 Preview has no command key. It records a content-keyed, one-use quote with a
 15-minute expiry, current/new totals, ordered line evidence and template version.
-Apply uses its own key, fresh repricing and hash equality, then the locked SQL
-checks and drift comparison. The configured minimum is a strict positive integer
+Apply uses its own key. A completed key replays its original result before
+repricing or configuration reads. A fresh key requires repricing and hash
+equality, then the locked SQL checks and drift comparison. The configured minimum is a strict positive integer
 in `commerce_settings.value_text` at `subscription_minimum_base_units`; both the
 repricer and direct SQL apply refuse missing or malformed configuration. A no-op
 has no event, notice or preview acceptance. Existing generic commands retain
