@@ -1510,7 +1510,28 @@ Only qualified tables created earlier by unconditional `CREATE TABLE public.<nam
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
-another slot, an unqualified/IF NOT EXISTS creation, or any table GRANT refuses.
+another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
+except for the fixed notice-table allowance below.
+The native paid-notice slot alone may name `insertSelectTables`, whose complete
+value is pinned by the reader to `["public.subscription_notice_refusals"]`.
+It is an allowance, so it may precede the table's introduction. It authorizes
+nothing until that same forward creates the table earlier in its own file.
+Only the following exact statements are admitted inside the existing service-role
+existence shell:
+
+```sql
+GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;
+CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);
+```
+
+The quoted inner statement includes its final semicolon; different spelling,
+privilege order, an added `TABLE`, extra roles, column grants and grant options
+refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
+The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
+privileges; its one policy has that role alone. With the role absent, the guarded
+grant and policy do not run and the new table stays owner-only with RLS enabled.
+No other row or table gains this capability.
+
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
 restricted runtime retains the access required by its row after the revokes/RLS;
@@ -1545,7 +1566,10 @@ operator a forward creates for another operand type cannot hide what it adds:
 - Existing relations of every kind, indexes and TOAST tables included, keep their
   owner, privileges, row security, options and column privileges. A new relation of
   any kind is owned by the migration role and carries only its owner's table
-  privileges and no column privilege. Relations are matched by OID, so a forward
+  privileges and no column privilege. The pinned notice table above alone may
+  carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
+  the comparator checks the role, command, predicates and absence of grant options.
+  Every other new relation stays owner-only. Relations are matched by OID, so a forward
   that rewrites an existing table, for example by adding a column with a volatile
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
