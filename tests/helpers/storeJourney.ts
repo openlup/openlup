@@ -5,7 +5,12 @@ import { expect } from "vitest";
 import { createPostgresNativeCheckoutPersistence, type NativeCheckoutDraftRequest } from "@openlup/platform/commerce/server/native-checkout";
 import { createPostgresAccountLinkStore } from "@openlup/platform/identity";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
-import { createPostgresPurchaseRenewalWriter, type NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
+import { createNativeRenewalCodec, createPostgresRenewalStore, createPostgresRenewalSettlementPort, createPostgresRetryLifecycleBinding,
+  createPostgresSandboxRenewalRail, createSandboxRenewalPolicy, createPostgresPurchaseRenewalWriter,
+  type AutomaticRenewalRunDeps, type SandboxRenewalScenario, type SubscriptionQueryExecutor, type NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
+import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
+import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
+import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -169,4 +174,51 @@ export async function journeyCensus(owner: Pool) {
 export async function assertJourneyWithoutIntake(store: JourneyInstallation) {
   expect((await store.owner.query("SELECT count(*)::int AS count FROM acquisition_private.address_references")).rows)
     .toEqual([{ count: 0 }]);
+}
+
+/** Native purchase prerequisites: bind its immutable destination before activation. */
+export async function prepareJourneyRenewal(store: JourneyInstallation) {
+  await assertJourneyWithoutIntake(store);
+  const draft = await draftStoreJourney(store);
+  const destination = await createPostgresDestinationPort(store.runtime).registerOrder({
+    idempotencyKey: "journey-renewal-destination", orderId: draft.orderId, now: journeyPaidAt,
+    address: { recipientName: "Synthetic Buyer", line1: "1 Synthetic Lane", city: "Synthetic", postalCode: "00000", country: "ZZ" },
+  });
+  const purchase = await captureAndActivateJourney(store, draft);
+  expect(await createPostgresPurchaseRenewalWriter(store.runtime).complete(purchase.orderId))
+    .toEqual({ subscriptionId: purchase.subscriptionId, replayed: false });
+  const stock = createPostgresFulfillmentStockSyncPort(store.runtime, {
+    sourceKey: journeyFacts.stockSourceKey, readLocalInventoryStock: async () => [],
+  });
+  for (const line of journeyFacts.lines) await stock.recordProviderStockCurrent({ requestKey: `renewal-stock:${line.sku}`, snapshot: {
+    providerRef: "synthetic-stock", collectedAt: journeyPaidAt, sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot",
+    skuRef: line.sku, totalQuantity: 100, forSaleQuantity: 100, reservedOrUnavailableQuantity: 0, syncRunId: "renewal-stock" },
+    inventoryClass: "sellable", lastSyncedAt: journeyPaidAt, staleAfter: "2027-01-01T00:00:00.000000Z" });
+  await store.owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('journey-parcel','3pl',true)");
+  return { ...purchase, destination };
+}
+
+/** Compose the shipped renewal, reservation, settlement and sandbox observation ports. */
+export async function composeJourneyRenewal(store: JourneyInstallation, subscriptionId: string,
+  scenario: SandboxRenewalScenario, at: string) {
+  const withTransaction = async <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => {
+    const db = await store.runtime.connect();
+    try { await db.query("BEGIN"); const value = await work(db); await db.query("COMMIT"); return value; }
+    catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  };
+  const codec = createNativeRenewalCodec(), renewal = createPostgresRenewalStore(store.runtime, codec, withTransaction);
+  const rail = createPostgresSandboxRenewalRail(store.runtime, { scenario, now: () => at });
+  let executions = 0;
+  const lifecycle = createPostgresRetryLifecycleBinding({ executor: store.runtime, withTransaction,
+    settlement: db => createPostgresRenewalSettlementPort(db, codec, withTransaction),
+    correlate: wire => codec.decode(wire).cycle, failureTemplate: "subscription-payment-failed-1", recoveryPath: "/recover" });
+  const method = await createPostgresPurchaseRenewalWriter(store.runtime).readMethod(subscriptionId);
+  expect(method).toMatchObject({ healthState: "healthy", methodRef: journeyFacts.methodRef });
+  if (typeof method?.methodRef !== "string") throw new Error("Fixture renewal method reference missing");
+  const input: AutomaticRenewalRunDeps = { store: renewal, settlement: lifecycle.settlement, failureHandoff: lifecycle.failureHandoff,
+    inventory: createPostgresRenewalReservationPort(store.runtime), workerId: "journey-renewal", policy: createSandboxRenewalPolicy(method.methodRef),
+    paymentRails: { resolve: key => key === "sandbox" ? { ...rail, async execute(request) { executions++; return rail.execute(request); } } : null } };
+  const due = (await renewal.listDue(100, at)).find(row => row.subscriptionId === subscriptionId);
+  expect(due).toBeDefined();
+  return { input, due: due!, codec, executions: () => executions };
 }

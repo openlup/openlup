@@ -28526,6 +28526,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/storeJourneyRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/storeJourneyTransfer.test.ts",
       "class": "public-output"
     },

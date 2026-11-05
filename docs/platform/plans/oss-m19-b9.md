@@ -4,8 +4,8 @@ Status: stage 1 local candidate, development preview. Final joined renewal
 acceptance remains pending the joined proof below.
 
 Code base: `4d78e855cf8bbd57704f9503cd7bae28f96453a5`.
-Instruction freshness pin: `a359cd9706a51197ff3a2266e985c79c350a4099`, fetched
-by the guest draft update. The changed contribution guidance documents an inert
+Instruction freshness pin: `850c38e33521f3985bbd595fb32060f1f521569d`, fetched
+before the renewal continuation. The changed contribution guidance documents an inert
 installation-reader identity; it changes no active SQL or runtime absorption
 availability. The signed-off code integration remains
 `de43b6633e824aad6fe9de4d114c3c030318bd12`, whose parents are the exclusion
@@ -81,8 +81,8 @@ inspection found a missing terminal replay answer. The owning native renewal
 repair is now on main; this is source inspection, not an executed joined
 post-restore renewal/replay witness.
 
-Waiting steps are native renewal execution/retry with terminal replay,
-and paid/dunning notice dispatch.
+The joined renewal execution and terminal replay witness is recorded below.
+Paid/dunning notice dispatch remains for the next joined witness.
 Shipment-read composition follows its owning row. These natives are not mocked
 or skipped. Later integration is coordinated by the supervisor; this row lands
 once after its required predecessors. No complete store, hosted installation,
@@ -427,3 +427,48 @@ scan, whitespace, neutrality (zero increases) and lint (zero errors; 45 existing
 warnings). Each of the three new test files has its catalog entry and measured
 default/two-zone proof. The full pre-review set remains deferred until the
 remaining two journeys are joined.
+
+
+## Joined renewal execution and terminal replay
+
+`storeJourneyRenewal.test.ts` follows the native automatic renewal composition
+(`packages/platform/src/subscriptions/automaticRenewal.ts:34`), native sandbox
+rail, reservation and settlement ports, and retry lifecycle binding. Its source
+purchase registers the immutable destination before activation and completes the
+real renewal attachment. Synthetic observed stock and an explicit local parcel
+port are installation configuration; acquisition intake remains empty.
+
+After capture and pristine restore, the due row and pre-claim snapshot are
+exactly equal. Native claim freezes the registered destination; the expected
+snapshot is the original snapshot transformed by the shipped destination codec.
+The first attempt completed renewal but exposed the test's mistaken comparison
+of that claimed snapshot with its earlier unbound form. Correcting that expected
+transformation retains exact snapshot equality; no assertion or native guard is
+removed. Both source and restored runtimes then execute the same due renewal
+and create one order, settled intent, paid cycle and consumed two-line hold.
+The actual paid event drives the native paid-handoff port
+(`packages/platform/src/fulfillment/postgresPaidHandoffStore.ts:5`), creating one
+shipment obligation. No parcel dispatch or arrival is claimed.
+
+The terminal repeat must return the same operation and identity with
+`terminal_replay`, never the earlier `subscription_renewal_claim_not_due` answer.
+The sandbox execution count remains one. The entire stored operation, every
+public row, and per-table counts/SHA-256 hashes remain equal across both renewal
+and handoff replay. The normalized result and frozen snapshot match between
+source and restored stores. Every new clock value is an explicit UTC instant.
+The 90-second case limit retains headroom over the measured two-store cases.
+
+The restricted-runtime absorption count read remains a documented pre-existing
+limit of main with its own closure work; this row proves its classification with
+owner access and does not claim restricted-runtime absorption availability.
+
+Self-retro: compare a claimed snapshot against the native destination-binding
+transformation, while checking its pre-claim transfer equality separately.
+
+
+The renewal file passed its one joined case in the default zone (9.69 s),
+`Etc/GMT-9` (9.82 s) and `Etc/GMT+5` (9.34 s), including native delivery
+obligation creation and full replay census/hash equality. The database fixture
+verifies the actual session zone. Strict typecheck identified the method reader's
+intentionally opaque result; an explicit string guard narrows that fixture input
+without converting or replacing it. No production defect was found.
