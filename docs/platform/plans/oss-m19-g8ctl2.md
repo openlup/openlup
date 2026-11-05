@@ -9,8 +9,8 @@ creation. Existing revokes, RLS narrowing and all issued identity fences remain
 unchanged. The independent PostgreSQL comparator checks the resulting ACL, RLS
 and policy. All other new relations remain owner-only.
 
-This control changes the reader, its witnesses, the G8 class entry and the owning
-migration documentation. It changes no feature migration, bound forward pin,
+This control changes the reader, its witnesses and the owning migration
+documentation. It changes no feature migration, bound forward pin,
 public package API, package budget, review machinery or qualified-installation
 admission. The separate qualified-completion predecessor remains separate.
 
@@ -60,6 +60,11 @@ a discriminated-union typing error in the draft. Both were corrected before the
 staged proofs. The simpler exact-string classifier keeps this allowance smaller
 than a general privilege parser while the independent catalog witness checks
 its resulting authority.
+
+The production slot-key amendment moves to the feature change, after this
+reader is on main. This control leaves the production reviewed-forward registry
+unchanged so trusted-main admission does not need a key that only the candidate
+reader understands. Synthetic slots retain the key and all refusal witnesses.
 
 ## Documentation assessment
 
