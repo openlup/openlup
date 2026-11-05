@@ -35,11 +35,16 @@ export type JourneyInstallation = { owner: Pool; runtime: Pool; runtimeUrl: stri
 /** Own resources per suite; no ambient database, owner fallback or extra runtime grants. */
 export function storeJourneyResources() {
   const containers: PostgresContainer[] = [], pools: Pool[] = [];
+  // The standard runner TZ selects only the two explicit fixture zones.
+  // Every other runner zone preserves PostgreSQL's permanent default.
+  const runnerZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zone = ["Etc/GMT-9", "Etc/GMT+5"].includes(runnerZone) ? runnerZone : undefined;
   const pool = (connectionString: string) => { const value = new Pool({ connectionString }); pools.push(value); return value; };
   return {
     async installation(label: string): Promise<JourneyInstallation> {
       if (!await dockerAvailable()) throw new Error("Store journey requires disposable PostgreSQL; Docker absence is missing proof");
-      const container = await runPostgresContainer({ name: `store-journey-${label}-${process.pid}`, password: "synthetic-journey" });
+      const container = await runPostgresContainer({ name: `store-journey-${label}-${process.pid}`, password: "synthetic-journey",
+        ...(zone ? { command: ["postgres", "-c", `timezone=${zone}`] } : {}) });
       containers.push(container);
       if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Store journey PostgreSQL TCP unavailable");
       const bootstrap = pool(container.connectionString);
@@ -62,6 +67,7 @@ export function storeJourneyResources() {
       await bootstrap.end();
       const runtimeUrl = url(journeySelection.runtimeLogin), runtime = pool(runtimeUrl);
       await assertJourneyRuntime(runtime);
+      if (zone) for (const db of [owner, runtime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
       return { owner, runtime, runtimeUrl };
     },
     close: () => closePostgres(containers, pools),
@@ -156,4 +162,11 @@ export async function journeyCensus(owner: Pool) {
     }
     await client.query("COMMIT"); return rows;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
+
+
+/** New joined cases start without acquisition intake, never by pruning it. */
+export async function assertJourneyWithoutIntake(store: JourneyInstallation) {
+  expect((await store.owner.query("SELECT count(*)::int AS count FROM acquisition_private.address_references")).rows)
+    .toEqual([{ count: 0 }]);
 }

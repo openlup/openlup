@@ -47,7 +47,7 @@ restore zero challenge rows into a pristine installation, issue/redeem a new
 native challenge and read the customer's own profile through the restricted
 runtime, and preserve the registry tuple and differential lead-absorption result. This is
 an explicitly accepted plan item with no equivalent in the reference adopter's
-journey. It does not implement the still-missing guest checkout start.
+journey. Guest checkout start is now covered by the joined continuation below.
 
 ## Acceptance and discriminating proof
 
@@ -170,8 +170,8 @@ to refuse absorption of a lead with a populated native challenge and to name
 `customer_identity_challenges` among the blocking tables. Exact differential
 response equality and the restored registry tuple remain required; containment
 does not prescribe whether other tables also block. No fixture policy row or
-reference deletion manufactures the answer. Guest checkout start and joined
-post-restore renewal replay remain outside this extension.
+reference deletion manufactures the answer. Joined post-restore renewal replay
+remains pending; the later joined continuation covers guest checkout start.
 
 Earlier fixture defects were repaired: a generated JWK lacked `use: sig`, and
 the shared fixture's letters-only routine guard rejected a versioned RPC name.
@@ -218,8 +218,8 @@ size classifier, the unchanged base package sources and pinned build output.
 Evidence: `.context/scratch/b9-challenge-pack-comparison/result.json` and its
 `official-verification.json` companion.
 
-All six conditions passed at the earlier approved differential scope. Guest
-checkout start and joined post-restore renewal replay remain unproved here. No hosted/adopter execution, canonical
+All six conditions passed at the earlier approved differential scope. Joined
+post-restore renewal replay remains unproved here; guest start follows below. No hosted/adopter execution, canonical
 verify, native review or delivery action is claimed. The staged patch identity
 is recorded privately after this final evidence edit; no self-referential hash
 is placed in this record.
@@ -300,3 +300,65 @@ has run.
 
 Self-retro: reuse the existing owner-access classification witness for a known
 runtime read limit, and state its availability boundary explicitly.
+
+## Joined journey continuation
+
+The remaining named journeys are now in this row's accepted test scope. The
+first bounded continuation adds guest checkout start, transferred destinations
+and purchase reservations, and actor-owned consent choices, each in a new
+PostgreSQL file. Renewal execution/terminal replay and paid/dunning dispatch
+remain for the next continuation; they are not claimed by these cases. Only
+new tests, generic fixture additions, catalog entries and this record change.
+Each step receives its own signed-off commit and draft update; native review,
+canonical verification and landing still follow separately.
+
+Guest checkout uses the actual `checkout.create` and `payment.simulate`
+composition in `examples/neutral-store/host/purchase-composition.ts:64,189`,
+with the contact registrar at
+`packages/platform/src/identity/postgresContactClientRegistrar.ts:51`. Both
+one-time and subscription modes use synthetic configuration and catalogue
+seeds on the native installation, without invoking the starter installer.
+The case requires an unlinked contact and a paid order before capture, exact
+order/obligation replay on both stores, and native sign-in after restore that
+returns the same customer's profile and purchased order. No acquisition intake
+row is created or removed to admit capture.
+
+The standard runner `TZ` setting, exposed by `Intl`, selects either of the two
+non-default PostgreSQL server session zones for an isolated run. The fixture
+verifies actual owner/runtime session zones; all other runner zones preserve
+the database default. A direct custom environment read was refused by the
+neutrality check and removed; no ratchet baseline or control changed.
+All new fixture timestamps are explicit UTC instants. The earlier two-store
+case measured about 11 seconds; new guest cases have 90-second limits including
+their own installation, leaving loaded-host headroom.
+
+The first guest run refused both modes at checkout admission because the test
+supplied a plain requester label where the host contract requires a SHA-256
+peer digest. The fixture now supplies that digest; the real limiter and binding
+guards remain unchanged. This was a fixture error, not a product defect.
+
+Guest checkout is now proved by `storeJourneyGuestCheckout.test.ts`: two cases
+(one-time and subscription), both passing in the default zone (19.34 s),
+`Etc/GMT-9` (21.66 s) and `Etc/GMT+5` (21.67 s). Each case uses a fresh source
+and pristine target, proves no acquisition intake, buys anonymously through
+main's composition, restores the paid purchase, compares exact checkout replay
+and purchase rows, then signs in natively and reads the same customer/order.
+The 90-second case limit exceeds eight times the measured case duration.
+This continuation converged after correcting the peer-digest fixture input;
+no assertion or guard was weakened and no production defect was found.
+
+Self-retro: use the host's admitted identity representation in a composition
+fixture, rather than replacing its admission callback.
+
+The publication inventory initially refused the new file while it was still
+untracked; staging the test with its catalog row resolved that refusal. The
+only remaining documentation obligation is the fresh test-unit trailer.
+
+Strict typecheck found an unannotated empty replay-result array inferred as
+`never[]`; an explicit `unknown[]` type fixes that fixture-only error without
+changing its runtime behavior or assertions.
+
+Guest sign-off checks passed: strict published-tree typecheck, structural scan,
+neutrality (zero increases), whitespace and lint (zero errors; 45 existing
+warnings). No full scanner set, native review or canonical verification ran in
+this continuation.
