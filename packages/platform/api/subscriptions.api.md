@@ -79,6 +79,21 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
     settlementIntentId: string;
 }, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
 ```
+## dist/subscriptions/classicPackageQuote.d.ts
+
+```ts
+import type { PackageEditQuote, PackageEditQuotePorts, PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+type Quote = Awaited<ReturnType<PackageEditQuotePorts["quotePort"]["createServerAuthoritativeQuote"]>>["quote"];
+/** Content identity deliberately excludes observation time and all presentation facts. */
+export declare function hashPackageEditQuote(quote: Quote): string;
+/** The entire desired set is quoted verbatim. Cadence changes never resize quantities. */
+export declare function createClassicPackageRepricer(deps: PackageEditQuotePorts & {
+    readPort: PackageEditReadPort;
+}): {
+    quote(input: Pick<PackageEditRequest, "subscriptionId" | "planDays" | "base" | "addons">): Promise<PackageEditQuote>;
+};
+export {};
+```
 ## dist/subscriptions/commandExamples.d.ts
 
 ```ts
@@ -397,6 +412,88 @@ export interface SubscriptionLifecycleMessagePort {
         notificationId: string;
         replayed: boolean;
     }>;
+}
+```
+## dist/subscriptions/contracts/packageEdit.d.ts
+
+```ts
+/** Data-only classic package quote and command envelopes. Identity and execution stay in the server entry. */
+export interface PackageEditMoney {
+    amountMinor: number;
+    currency: string;
+}
+export interface PackageEditLine {
+    variantId: string;
+    qty: number;
+}
+export interface PackageEditQuoteLine {
+    sku: string;
+    quantity: number;
+    unitPriceGross: PackageEditMoney;
+    lineSubtotalGross: PackageEditMoney;
+    pricingComponents?: unknown[];
+}
+export interface PackageEditPricedLine extends PackageEditLine {
+    quoteLine: PackageEditQuoteLine;
+}
+export interface PackageEditRequest {
+    subscriptionId: string;
+    planDays: number;
+    base: PackageEditLine[];
+    addons?: PackageEditLine[];
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+export interface PackageEditQuote {
+    currentRecurringPrice: PackageEditMoney;
+    newRecurringPrice: PackageEditMoney;
+    delta: PackageEditMoney;
+    quoteHash: string;
+    baseLines: PackageEditPricedLine[];
+    addonLines: PackageEditPricedLine[];
+    cadenceDays: number;
+    expectedTemplateVersion: number;
+    compositionConstraint: Record<string, unknown> | null;
+}
+export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
+export interface PackageEditPreview {
+    preview: {
+        subscriptionId: string;
+        action: "update_package_template";
+        canApply: boolean;
+        blockedReason: PackageEditBlockedReason | null;
+        nextCycleAt: string | null;
+        editCutoffAt: string | null;
+        templateVersion: number;
+    };
+    lockedCycle: {
+        locked: boolean;
+        status: "blocked_preflight" | "dunning" | null;
+    };
+    futureTemplate: {
+        templateVersion: number;
+        effectiveCycleAt: string | null;
+        priceAgreementPolicy: "lock_until_edit";
+    };
+    quoteHash?: string;
+    quoteExpiresAt?: string;
+    currentTotal?: PackageEditMoney;
+    newTotal?: PackageEditMoney;
+    delta?: PackageEditMoney;
+    packageEdit?: Pick<PackageEditQuote, "currentRecurringPrice" | "newRecurringPrice" | "delta" | "quoteHash"> & {
+        effectiveCycleAt: string | null;
+        priceAgreementPolicy: "lock_until_edit";
+    };
+}
+export interface PackageEditApplyResult {
+    status: "applied" | "replayed" | "noop";
+    subscriptionId: string;
+    action: "update_package_template";
+    subscriptionStatus: string;
+    nextCycleAt: string | null;
+    templateVersion: number;
+    eventId: string | null;
+    originalStatus?: "applied" | "noop";
 }
 ```
 ## dist/subscriptions/contracts/renewal.d.ts
@@ -1141,6 +1238,12 @@ export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } fr
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
+export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
+export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
+export { createPostgresPackageEditor } from "./packageEditor.js";
+export { mapPackageEditError } from "./packageEditErrors.js";
+export type { PackageEditErrorMapping } from "./packageEditErrors.js";
+export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1347,6 +1450,123 @@ export declare function nativeSubscriptionSchema(catalogue: {
     version: string;
     migration: string;
 }): RequiredSchema;
+```
+## dist/subscriptions/packageEditContracts.d.ts
+
+```ts
+import type { PackageEditMoney, PackageEditQuoteLine } from "./contracts/packageEdit.js";
+export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
+import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Trusted host ports; neither identity nor price evidence comes from a browser. */
+export interface PackageEditSubscription {
+    cadenceDays: number;
+    templateVersion: number;
+    compositionConstraint: Record<string, unknown> | null;
+}
+export interface PackageEditCurrentLine {
+    lineId: string;
+    variantId: string;
+    quantity: number;
+    sortOrder: number;
+    isAddon: boolean;
+    frozenLineSubtotalGross?: PackageEditMoney;
+}
+/** Adapters translate the persisted carrier. Native classic edits restamp its top-level
+ * value from the accepted nominal plan; the host recognizes its own plan-length kind. */
+export interface PackageEditConstraintMapper {
+    toCore(stored: Record<string, unknown> | null): CompositionConstraint;
+    fromCore(constraint: CompositionConstraint): Record<string, unknown> | null;
+    nominalPlanDays(stored: Record<string, unknown> | null): number | null;
+}
+export interface PackageEditReadPort {
+    readSubscription(subscriptionId: string): Promise<PackageEditSubscription>;
+    readLines(subscriptionId: string): Promise<PackageEditCurrentLine[]>;
+    readMinimumBaseUnits(): Promise<number>;
+}
+/** Compose the existing quote engine with Q1/Q2 authority, no promotion or settings ports,
+ * zero automatic/code promotions, and use its server-authoritative method. */
+export interface PackageEditQuotePorts {
+    quoteCatalogReadPort: {
+        listQuoteCatalogItems(): Promise<{
+            variantId: string;
+            skuCode: string;
+            sellability: {
+                subscription: boolean;
+            };
+        }[]>;
+    };
+    quotePort: {
+        createServerAuthoritativeQuote(request: {
+            mode: "subscription";
+            cadenceDays: number;
+            compositionConstraint: Record<string, unknown> | null;
+            promoCodes: string[];
+            lines: {
+                sku: string;
+                quantity: number;
+                modeAtLine: "subscription";
+                isAddon: boolean;
+            }[];
+        }): Promise<{
+            quote: {
+                totalGross: PackageEditMoney;
+                subtotalGross: PackageEditMoney;
+                discountTotalGross: PackageEditMoney;
+                lines: PackageEditQuoteLine[];
+            };
+        }>;
+    };
+    compositionRulesPort: CompositionRulesPort;
+    constraintMapper: PackageEditConstraintMapper;
+}
+export interface PackageEditLimits {
+    maximumPlanDays: number;
+    maximumBaseLines: number;
+    maximumAddonLines: number;
+    maximumQuantity: number;
+}
+export interface PackageEditorOptions extends PackageEditQuotePorts {
+    /** One connection through commit/rollback; authorization precedes this factory. */
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    limits: PackageEditLimits;
+    now(): string;
+}
+export interface PackageEditActor {
+    actorId: string;
+    clientId: string;
+}
+```
+## dist/subscriptions/packageEditErrors.d.ts
+
+```ts
+export interface PackageEditErrorMapping {
+    status: 400 | 409 | 503;
+    code: "BAD_REQUEST" | "CONFLICT" | "UPSTREAM_UNAVAILABLE";
+    message: string;
+    reason?: string;
+}
+/** Raw preview-ledger errors use the generic upstream path; apply admits durable domain tokens. */
+export declare function mapPackageEditError(error: unknown, phase: "preview" | "apply"): PackageEditErrorMapping;
+```
+## dist/subscriptions/packageEditor.d.ts
+
+```ts
+import type { PackageEditActor, PackageEditApplyResult, PackageEditPreview, PackageEditRequest, PackageEditorOptions } from "./packageEditContracts.js";
+/** Host authentication supplies actor/client; only the desired set and acceptance are customer input.
+ * SQL owns the final locked guard, one-use ledger acceptance and future-template transaction. */
+export declare function createPostgresPackageEditor(options: PackageEditorOptions): {
+    preview(actor: PackageEditActor, input: PackageEditRequest): Promise<PackageEditPreview>;
+    apply(actor: PackageEditActor, idempotencyKey: string, input: PackageEditRequest): Promise<PackageEditApplyResult>;
+};
+```
+## dist/subscriptions/packageEditRead.d.ts
+
+```ts
+import type { PackageEditReadPort } from "./packageEditContracts.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** The same settings key, column and strict integer domain are used by the definer apply. */
+export declare function createPostgresPackageEditReadPort(db: SubscriptionQueryExecutor): PackageEditReadPort;
 ```
 ## dist/subscriptions/postgresCommandStore.d.ts
 

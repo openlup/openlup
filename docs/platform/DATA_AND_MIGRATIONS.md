@@ -52,6 +52,27 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## Retained renewal storage
 
+The package-editor forward adds an opaque nullable object constraint on
+`subscriptions` and the owner-only, RLS-enabled `subscription_quote_previews`
+ledger. Service-only definers record, take and accept a preview and apply future
+package terms; browser roles have no execution or table access. The eight new
+functions leave existing command routines unchanged. An accepted preview retains
+its request, quote, totals, command key and subscription-event reference. The
+accepted event also carries complete renewal `linePricing`; no per-line agreement
+column or existing cycle/operation snapshot is rewritten.
+
+Quote previews are classified as blocking client absorption because they belong
+to subscriptions, which already block it. Connected native-store capture owns
+these rows, and restore inserts them after clients, subscriptions and subscription
+events. Preview pruning retains accepted history and deletes at most 500
+unaccepted rows expired more than seven days before the request time. The minimum
+base-unit setting is supplied by the host installation, never seeded by this
+forward. The [subscription contract](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+owns quote composition, no-op ordering and renewal behavior. SQL installation
+still requires its separate reviewed forward admission; source presence alone
+is not an admitted or published installation chain.
+
+
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
 `subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
@@ -1771,6 +1792,19 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+The classic package-editor forward appends nullable subscription composition
+storage, a new preview ledger and eight created functions. It replaces no served
+command routine and rewrites no existing agreement, cycle or operation snapshot.
+The canonical manifest and projected package SQL retain identical bytes for all
+selected plans; each installation shape needs its separately measured catalogue
+identity. Apply this additive schema before upgrading native account reads or
+composing the editor. Old generic commands keep their existing contract.
+Preview rows retain linked actor/client and accepted-event references, block
+client absorption and travel through the finite connected-store profile. They
+have no erasure path yet. [Retained storage](#retained-renewal-storage) owns their
+privilege, pruning, acceptance and renewal-pricing boundaries.
+
 
 The opt-in [complete account consent choices](#complete-account-consent-choices)
 forward adds a distinct actor API and expands only the native sync purpose CHECK.
