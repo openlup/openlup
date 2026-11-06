@@ -34,7 +34,7 @@ CREATE UNIQUE INDEX subscription_quote_previews_open ON public.subscription_quot
 ALTER TABLE public.subscription_quote_previews ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.subscription_quote_previews FROM PUBLIC;
 
-INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_quote_previews', 'block', 'Quote previews belong to the subscriptions they price, which already block absorption.');
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_quote_previews', 'retain', 'A quote preview exists only for a subscription its client owns, and subscriptions already block absorption; absorption never reads previews.');
 
 CREATE FUNCTION public.subscription_quote_variant_qty_request(p_lines jsonb)
  RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$

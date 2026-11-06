@@ -3228,7 +3228,7 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": [
-          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_quote_previews', 'block', 'Quote previews belong to the subscriptions they price, which already block absorption.');"
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_quote_previews', 'retain', 'A quote preview exists only for a subscription its client owns, and subscriptions already block absorption; absorption never reads previews.');"
         ]
       }
     ]
@@ -3493,7 +3493,7 @@
     },
     {
       "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
-      "sha256": "05afa1a58934529d4d74eed3146ad15548b46dd178d2f5e216387fe20666929c",
+      "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40",
       "functions": [
         {
           "signature": "public.subscription_quote_variant_qty_request(jsonb)",
