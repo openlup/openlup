@@ -250,13 +250,16 @@ describe("canonical qualified migration selection", () => {
     if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`, "utf8");
     const lock = { file: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: sha256(content) };
-    const migrations = readPlatformMigrations(process.cwd()).migrations;
+    // Pin this admission fixture to the point where the completion tail was appended.
+    // Later shared forwards, including lifecycle closure, are exercised separately below.
+    const next = structuredClone(current);
+    const afterLock = new Set(next.qualified.forward.slice(next.qualified.forward.findIndex(({ file }) => file === lock.file) + 1).map(({ file }) => file));
+    for (const plan of [next, next.qualified, next.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => !afterLock.has(file));
+    const migrations = readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !afterLock.has(file));
     expect(migrations.find(({ file }) => file === lock.file)?.content).toBe(content);
     expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
-    // The active manifest selects the tail last in both plans; its predecessor is the same manifest without it.
-    const next = structuredClone(current);
     expect([next.qualified.forward.at(-1), next.qualifiedAdmin.forward.at(-1)]).toEqual([lock, lock]);
-    const previous = structuredClone(current);
+    const previous = structuredClone(next);
     for (const plan of [previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => file !== lock.file);
     expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(previous, next, [lock.file])).toEqual([]);
