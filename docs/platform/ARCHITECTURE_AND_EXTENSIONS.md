@@ -2084,8 +2084,33 @@ active subscription; late settlement/delivery supplies the later-only shift.
 Stock secured is not payment, realization is not parcel arrival, and no payment
 I/O runs inside these SQL transactions. M4 retains M2 recovery eligibility and
 excludes waits before the normal LIMIT. M5 maps started/resumed transactional
-notices and immediately admits positive customer cancellations to the existing
-120-day, cancellation-episode-deduplicated winback scan.
+notices and admits positive customer cancellations to the configured winback
+scan after its minimum cancellation age.
+
+`createPostgresSubscriptionWinback` explicitly selects winback only, outside the
+lifecycle notice dispatcher. A customer cancellation event must match the
+current cancelled episode. The existing native intent key identifies that episode;
+the delivery key `winback:<subscription UUID>` suppresses repeat sends across
+episodes. The native receipt rail has only accepted and failed states: accepted
+is its non-failed outcome, while failed remains retryable. An accepted send is
+recorded before its cancellation event. Session exclusion serializes sends for
+one subscription; a persisted receipt reconciles an ambiguous transport result.
+The worker rechecks source, subscription, consent and controls after host binding
+and immediately before send. Reactivation after planning refuses delivery.
+
+The trusted host configures `commerce_settings.value_text` at key
+`subscriber_winback_policy` with a JSON object. Omitted fields preserve the
+installed native behavior: `requireRetentionConsent: true`,
+`minCancellationAgeDays: 14`, `maxCancellationAgeDays: 120`.
+The window includes the minimum and excludes the maximum. Unknown fields,
+invalid types and inverted bounds refuse; no policy row is seeded by installation.
+Only winback can disable this consent gate. Starter composition must explicitly
+set it true; an adopter can explicitly set it false. The account choices API exposes
+newsletter and offers, not retention; a trusted host can record
+`retention_marketing` consent in the native consent store. Starter integration
+must show consent refusal and host-recorded consent, or add its own capture.
+Rendering, the localized account landing and reactivation confirmation remain
+host composition; this worker neither mounts pages nor activates recap/review.
 
 Managed ATP subtracts live provider hard holds, fulfillable-location safety and
 remaining active subscription demand within 14 days. Only the concrete
