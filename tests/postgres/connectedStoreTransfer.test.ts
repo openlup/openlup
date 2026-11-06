@@ -658,6 +658,80 @@ it("refuses a changed known trigger body and an unknown INSERT trigger before im
   expect(await census(target.owner)).toEqual(before);
 }, 30_000);
 
+// Uses the existing 30-second connected-transfer integration deadline.
+it("captures only the address-reference registry census and preserves the target installation registry", async () => {
+  const references = [randomUUID(), randomUUID()];
+  const localReference = randomUUID();
+  const insertReference = (db: Pool, reference: string) => db.query(`INSERT INTO acquisition_private.address_references
+    (source,reference,revision,provenance,created_at,updated_at)
+    VALUES('census_fixture',$1,'v1','synthetic_fixture','2026-09-01T12:00:00Z','2026-09-01T12:00:00Z') RETURNING id`, [reference]);
+  try {
+    const ids: string[] = [];
+    for (const reference of references) ids.push((await insertReference(source.owner, reference)).rows[0].id);
+    await insertReference(target.owner, localReference);
+    const sourcePacket = await capture(source.owner, "source-with-address-reference-registry");
+    const freshTarget = await capture(target.owner, "target-with-own-address-reference-registry");
+    expect(sourcePacket.outsideProfileCensus.filter(entry => entry.disposition !== "unsupported-empty").map(entry => entry.relation).sort())
+      .toEqual(["acquisition_private.address_references", "acquisition_private.installation_key", "public.platform_schema_migrations"]);
+    expect(sourcePacket.outsideProfileCensus.find(entry => entry.relation === "acquisition_private.address_references"))
+      .toEqual({ relation: "acquisition_private.address_references", owner: "platform_acquisition_owner", rows: "2", disposition: "target-address-references" });
+    expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === "acquisition_private.address_references")).toMatchObject({ rows: "1" });
+    expect(sourcePacket.emptyOutsideProfile).not.toContain("acquisition_private.address_references");
+    expect([...sourcePacket.compatible.tables, ...sourcePacket.owned].some(entry => String(entry.table) === "address_references")).toBe(false);
+    for (const value of [...references, ...ids, "synthetic_fixture"]) expect(JSON.stringify(sourcePacket)).not.toContain(value);
+    expect(JSON.stringify(freshTarget)).not.toContain(localReference);
+    const before = (await target.owner.query("SELECT to_jsonb(t)::text AS value,ctid::text,xmin::text FROM acquisition_private.address_references t")).rows;
+    const invalid = structuredClone(sourcePacket);
+    invalid.owned.push({ table: "address_references", columns: [{ name: "reference", type: "text" }], rows: ['{"reference":"synthetic-private-row"}'] } as unknown as ConnectedNativeStoreCapture["owned"][number]);
+    const { sha256: _old, ...body } = invalid;
+    invalid.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    await expect(restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: invalid, freshTarget }))
+      .rejects.toMatchObject({ code: "invalid_input", message: "postgres_transfer_invalid_input" });
+    expect((await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: sourcePacket, freshTarget })).replayed).toBe(false);
+    expect((await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: sourcePacket, freshTarget })).replayed).toBe(true);
+    expect((await target.owner.query("SELECT to_jsonb(t)::text AS value,ctid::text,xmin::text FROM acquisition_private.address_references t")).rows).toEqual(before);
+    expect(await census(target.owner)).toEqual(await census(source.owner));
+  } finally {
+    await source.owner.query("DELETE FROM acquisition_private.address_references WHERE source='census_fixture'");
+    await target.owner.query("DELETE FROM acquisition_private.address_references WHERE source='census_fixture'");
+  }
+}, 30_000);
+
+// Uses the existing 30-second connected-transfer integration deadline.
+it("refuses nonempty acquisition cases despite the address-reference census exception", async () => {
+  const id = randomUUID();
+  const insertCase = (db: Pool) => db.query(`INSERT INTO acquisition_private.cases
+    (id,case_reference,source_kind,lifecycle,dedupe_fingerprint,consent_version,policy_version,consent_accepted_at,locale,source_path,created_at,updated_at)
+    VALUES($1,$2,'partner_inquiry','new',decode(repeat('cd',32),'hex'),'not-applicable','fixture-v1',
+      '2026-09-01T12:00:00Z','und','/partners/b2b-inquiries','2026-09-01T12:00:00Z','2026-09-01T12:00:00Z')`, [id, `acquisition-case:${id}`]);
+  await insertCase(source.owner);
+  await insertCase(target.owner);
+  const before = await census(target.owner);
+  try {
+    await expect(capture(source.owner, "source-with-acquisition-case"))
+      .rejects.toMatchObject({ code: "unsupported_table", table: "acquisition_private.cases", message: "postgres_transfer_unsupported_table:acquisition_private.cases" });
+    await expect(restore()).rejects.toMatchObject({ code: "unsupported_table", table: "acquisition_private.cases", message: "postgres_transfer_unsupported_table:acquisition_private.cases" });
+    expect(await census(target.owner)).toEqual(before);
+    expect((await target.owner.query("SELECT id FROM acquisition_private.cases")).rows).toEqual([{ id }]);
+  } finally {
+    await source.owner.query("DELETE FROM acquisition_private.cases WHERE id=$1", [id]);
+    await target.owner.query("DELETE FROM acquisition_private.cases WHERE id=$1", [id]);
+  }
+}, 30_000);
+
+// Uses the existing 30-second connected-transfer integration deadline.
+it.each(["acquisition_private.address_references_extra", "other_private.address_references"])("refuses other private relation %s", async relation => {
+  if (relation.startsWith("other_private.")) await source.owner.query("CREATE SCHEMA other_private");
+  await source.owner.query(`CREATE TABLE ${relation}(value text); INSERT INTO ${relation} VALUES('synthetic-private-row')`);
+  try {
+    await expect(capture(source.owner, "source-with-other-private-relation"))
+      .rejects.toMatchObject({ code: "unsupported_table", table: relation, message: `postgres_transfer_unsupported_table:${relation}` });
+  } finally {
+    await source.owner.query(`DROP TABLE ${relation}`);
+    if (relation.startsWith("other_private.")) await source.owner.query("DROP SCHEMA other_private");
+  }
+}, 30_000);
+
 // Solo median 5.18 s, max 5.29 s; allow headroom for hosted database contention.
 it("refuses private business omission and nonpristine targets without deleting existing obligations", async () => {
   const targetBefore = await census(target.owner);

@@ -513,7 +513,7 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
   for (const relation of relations) {
     if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName) || relation.table === "platform_schema_migrations")) continue;
-    if (relation.schema === "acquisition_private" && relation.table === "installation_key") continue;
+    if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
     if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
   }
 }
