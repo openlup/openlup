@@ -28590,6 +28590,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionStockWaitBusy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionStockWaitCases.ts",
       "class": "public-output"
     },
