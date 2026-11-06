@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry, nativeStoreChecks, nativeStoreCheckPreimage, nativeStoreUniqueDefinition, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
+import { readReviewedForwardRegistry, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -15,6 +15,7 @@ const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
 // would resolve to an operator for (oid, integer), which a forward can create in pg_catalog to hide the objects it adds.
 const OID_FLOOR = `${FIRST_USER_OID}::pg_catalog.oid`;
+const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
 const GRANT_OPTION = " WITH GRANT OPTION";
 // Node trees (default arguments, rules, policies, trigger conditions) store where the parser read them in the file, which
 // moves when the same statement sits at another offset. That is compared as nothing; everything else in a tree is compared.
@@ -23,7 +24,7 @@ const POSITIONS = String.raw`':(?:stmt_)?location -?[0-9]+|:stmt_len [0-9]+', ':
 type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<string, unknown>; acl: string[]; src: string };
 type RelationRow = { oid: number; name: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
-  functions: FunctionRow[]; relations: RelationRow[]; system: { functions: string; relations: string };
+  functions: FunctionRow[]; relations: RelationRow[]; columns: { rel: string; name: string; attrs: Record<string, unknown>; default: string | null }[]; system: { functions: string; relations: string };
   relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string; indexOid: number }[]; guards: Record<string, Record<string, unknown>[]>;
 };
 // Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
@@ -64,13 +65,18 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
   const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.conindid::int AS "indexOid"
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE con.contype <> 'n' ORDER BY 1,2`)).rows;
+  const columns = (await db.query(`SELECT n.nspname||'.'||c.relname AS rel, a.attname AS name,
+    to_jsonb(a)-'attrelid' AS attrs, pg_get_expr(d.adbin,d.adrelid) AS default
+    FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+    LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+    WHERE c.relkind IN ('r','p') AND a.attnum>0 ORDER BY 1,a.attnum`)).rows;
   const relationOids = (await db.query("SELECT oid::int AS oid FROM pg_class ORDER BY oid")).rows.map(row => row.oid as number);
   const constraintOids = (await db.query("SELECT oid::int AS oid FROM pg_constraint ORDER BY oid")).rows.map(row => row.oid as number);
   const guards: Snapshot["guards"] = {};
   for (const guard of GUARDS) guards[guard.id] = (await db.query(`SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) AS rows FROM (
     SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
     FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s`)).rows[0].rows;
-  return { functions, relations, system, relationOids, constraintOids, constraints, guards };
+  return { functions, relations, columns, system, relationOids, constraintOids, constraints, guards };
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
@@ -80,6 +86,12 @@ const quotedValues = (list: string) => (list.match(/'((?:[^']|'')*)'/gu) ?? []).
 const checkValues = (def: string, column: string) => {
   const shape = new RegExp(`^CHECK \\(\\(${column} = ANY \\(ARRAY\\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\\]\\)\\)\\)$`, "u");
   const match = shape.exec(def); return match ? quotedValues(match[1]!) : null;
+};
+const PURPOSE_SHAPE = /^CHECK \(\(purpose = ANY \(ARRAY\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\]\)\)\)$/u;
+const purposeValues = (def: string) => { const match = PURPOSE_SHAPE.exec(def); return match ? quotedValues(match[1]!) : null; };
+const uniqueDefinition = (def: string) => {
+  const match = /^UNIQUE( NULLS NOT DISTINCT)? \(([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)\)$/u.exec(def);
+  return match ? { columns: match[2]!.split(", "), nullsNotDistinct: Boolean(match[1]) } : null;
 };
 const fail = (message: string): never => { throw new Error(`catalog: ${message}`); };
 
@@ -156,34 +168,43 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const newViews = after.relations.filter(row => !oldRelations.has(row.oid) && row.kind === "v").map(row => row.name).sort();
   if (JSON.stringify(newViews) !== JSON.stringify((slot.createdViews ?? []).map(view => view.name).sort())) fail("created views differ from the slot list");
 
-  // Installed definitions must equal the parsed, hash-bound preimages before
-  // the forward, even when unrelated additive DDL intervened on the same table.
+  // New entries compare the installed definitions, independently of historical SQL text.
   const constraintKey = (row: { rel: string; name: string }) => `${row.rel}.${row.name}`;
   const nowConstraints = new Map(after.constraints.map(row => [constraintKey(row), row.def]));
-  const checks = nativeStoreChecks(slot), uniques = slot.uniqueSupersets ?? [];
+  const checks = slot.checkSupersets ?? [], uniques = slot.uniqueSupersets ?? [];
   const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
   for (const entry of checks) {
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
-    const source = preimages.get(entry.beforeSha256), parsed = source ? nativeStoreCheckPreimage(source, entry) : null;
     const oldValues = old ? checkValues(old.def, entry.column) : null;
     const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newValues = def ? checkValues(def, entry.column) : null;
-    if (!parsed || !oldValues || sorted(parsed) !== sorted(oldValues) || !newValues || oldValues.some(value => !newValues.includes(value)) || sorted(entry.values) !== sorted(entry.legacy ? oldValues : newValues)) fail(`purpose CHECK changed beyond a widening of its listed values: ${def}`);
+    if (!oldValues || !newValues || oldValues.some(value => !newValues.includes(value)) || sorted(entry.values) !== sorted(newValues)) fail(`CHECK changed beyond its listed widening: ${def}`);
   }
   for (const entry of uniques) {
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
-    const source = preimages.get(entry.beforeSha256), parsed = source ? nativeStoreUniqueDefinition(source, entry.constraint, entry.table) : null;
-    const oldDef = old ? nativeStoreUniqueDefinition(`CONSTRAINT ${entry.constraint} ${old.def}`, entry.constraint) : null;
-    const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newDef = def ? nativeStoreUniqueDefinition(`CONSTRAINT ${entry.constraint} ${def}`, entry.constraint) : null;
-    if (!parsed || JSON.stringify(parsed) !== JSON.stringify(oldDef) || !newDef || parsed.columns.some(column => !entry.columns.includes(column)) || JSON.stringify(newDef) !== JSON.stringify({ columns: entry.columns, nullsNotDistinct: entry.nullsNotDistinct })) fail(`UNIQUE changed beyond its listed superset: ${def}`);
+    const oldDef = old ? uniqueDefinition(old.def) : null;
+    const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newDef = def ? uniqueDefinition(def) : null;
+    if (!oldDef || !newDef || oldDef.columns.some(column => !entry.columns.includes(column)) || (oldDef.nullsNotDistinct && !entry.nullsNotDistinct) || JSON.stringify(newDef) !== JSON.stringify({ columns: entry.columns, nullsNotDistinct: entry.nullsNotDistinct })) fail(`UNIQUE changed beyond its listed superset: ${def}`);
+  }
+  const protectedTables = new Set([...checks, ...uniques].map(entry => entry.table));
+  for (const old of before.columns.filter(column => protectedTables.has(column.rel))) {
+    const now = after.columns.find(column => column.rel === old.rel && column.name === old.name);
+    // DROP NOT NULL is the existing-table weakening; all other stored column facts stay fixed.
+    const expected = now?.attrs.attnotnull === false && old.attrs.attnotnull === true ? { ...old, attrs: { ...old.attrs, attnotnull: false } } : old;
+    if (JSON.stringify(now) !== JSON.stringify(expected)) fail(`column ${old.rel}.${old.name} changed outside its constraint replacement`);
   }
   for (const old of before.constraints) {
     if (checks.some(entry => entry.table === old.rel && entry.constraint === old.name) || uniques.some(entry => entry.table === old.rel && entry.constraint === old.name)) continue;
-    if (nowConstraints.get(constraintKey(old)) !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
+    const def = nowConstraints.get(constraintKey(old));
+    if (constraintKey(old) === PURPOSE_CONSTRAINT && def !== undefined && def !== old.def) {
+      const oldValues = purposeValues(old.def), newValues = purposeValues(def);
+      const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
+      if (!slot.purposeCheck || !oldValues || !newValues || sorted(slot.purposeCheck.values) !== sorted(oldValues) || oldValues.some(value => !newValues.includes(value))) fail(`purpose CHECK changed beyond a widening of its listed values: ${def}`);
+    } else if (def !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
   const admittedTriggers = new Set<string>();
   for (const entry of slot.createdTriggers ?? []) {
-    const statement = preimages.get(entry.sha256), expected = statement ? nativeStoreTriggerDefinition(statement) : null;
+    const statement = triggerStatements.get(entry.sha256), expected = statement ? nativeStoreTriggerDefinition(statement) : null;
     if (!expected || expected.name !== entry.name || expected.table !== entry.table) fail("created trigger source differs from its listed hash and identity");
     if (before.guards.triggers!.some(row => row.tgname === entry.name)) fail("created trigger name existed in the prefix");
     const table = before.relations.find(row => row.name === entry.table && row.kind === "r");
@@ -354,7 +375,7 @@ const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["a purpose CHECK voided by OR true", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c') OR true)")), /purpose CHECK/u, false, PURPOSE_SLOT],
   ["a purpose CHECK added NOT VALID", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c')) NOT VALID")), /purpose CHECK/u, false, PURPOSE_SLOT],
   ["a purpose CHECK whose slot lists other preimage values", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: PURPOSE_SLOT.purposeCheck!.beforeSha256, values: ["a"] } }],
-  ["a purpose CHECK rewritten by a slot that lists none", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /dropped or rewritten/u, false, SYNTHETIC_SLOT],
+  ["a purpose CHECK rewritten by a slot that lists none", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, SYNTHETIC_SLOT],
 ];
 
 // ---- Real forwards: every bound native slot, replayed on the cumulative native chain -----------
@@ -370,14 +391,13 @@ const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPath
   if (sha(bytes) !== unit.sha256) throw new Error(`native chain unit differs from the manifest: ${unit.file}`);
   return { path: unit.file, sql: bytes.toString("utf8") };
 });
-const preimages = new Map([SYNTHETIC_BASE, TRIGGER_SQL, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true).map(statement => [sqlSha256(statement), statement] as const)));
-const parameterSource = sqlStatements(SYNTHETIC_BASE).find(statement => statement.startsWith("CREATE TABLE public.cat_parameters"))!;
+const triggerStatements = new Map([TRIGGER_SQL, ...bound.filter(entry => entry.slot.createdTriggers?.length).map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql).map(statement => [sqlSha256(statement), statement] as const)));
 const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
-  { table: "public.cat_parameters", constraint: "cat_status", column: "status", beforeSha256: sqlSha256(parameterSource), values: ["open", "closed", "paused"] },
-  { table: "public.cat_parameters", constraint: "cat_kind", column: "kind", beforeSha256: sqlSha256(parameterSource), values: ["first", "second", "third"] },
+  { table: "public.cat_parameters", constraint: "cat_status", column: "status", values: ["open", "closed", "paused"] },
+  { table: "public.cat_parameters", constraint: "cat_kind", column: "kind", values: ["first", "second", "third"] },
 ] };
 const PARAMETER_CHECKS = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed','paused')); ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_kind; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_kind CHECK (kind IN ('first','second','third'));";
-const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table: "public.cat_parameters", constraint: "cat_key", beforeSha256: sqlSha256(parameterSource), columns: ["id", "extra"], nullsNotDistinct: true }] };
+const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table: "public.cat_parameters", constraint: "cat_key", columns: ["id", "extra"], nullsNotDistinct: true }] };
 const UNIQUE_SQL = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id,extra);";
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
 // the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
@@ -429,25 +449,41 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits multiple named CHECK widenings after unrelated additive DDL", async () => {
     await checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, "ALTER TABLE public.cat_parameters ADD COLUMN unrelated uuid; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_unrelated CHECK (unrelated IS NULL) NOT VALID;");
   });
-  it("requires installed CHECK preimages to equal the hash-bound parsed values", async () => {
-    const setup = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open'));";
-    await expect(checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, setup)).rejects.toThrow(/CHECK changed/u);
+  it("refuses a narrowed CHECK even when its ADD exactly matches its slot", async () => {
+    const slot = { ...SYNTHETIC_SLOT, checkSupersets: [{ ...PARAMETER_SLOT.checkSupersets![0]!, values: ["open", "paused"] }] };
+    const sql = PARAMETER_CHECKS.split(" ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_kind")[0]!.replace("'open','closed','paused'", "'open','paused'");
+    await expect(checkForward(pool, slot, forward(CREATED_OK, sql))).rejects.toThrow(/CHECK changed/u);
   });
-  it("refuses catalog preimages anchored to later ALTER definitions", async () => {
-    const addCheck = "ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open'));";
-    const addUnique = "ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE (extra);";
-    preimages.set(sqlSha256(addCheck), addCheck); preimages.set(sqlSha256(addUnique), addUnique);
-    const check = { ...SYNTHETIC_SLOT, checkSupersets: [{ ...PARAMETER_SLOT.checkSupersets![0]!, beforeSha256: sqlSha256(addCheck), values: ["open", "paused"] }] };
-    const widening = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','paused'));";
-    await expect(checkForward(pool, check, forward(CREATED_OK, widening), false, `ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ${addCheck}`)).rejects.toThrow(/CHECK changed/u);
-    const unique = { ...UNIQUE_SLOT, uniqueSupersets: [{ ...UNIQUE_SLOT.uniqueSupersets![0]!, beforeSha256: sqlSha256(addUnique) }] };
-    await expect(checkForward(pool, unique, forward(CREATED_OK, UNIQUE_SQL), false, `ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ${addUnique}`)).rejects.toThrow(/UNIQUE changed/u);
+  it.each(["missing", "non-closed"])("refuses an installed CHECK that is %s before the slot", async shape => {
+    const setup = `ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ${shape === "non-closed" ? "ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status <> 'blocked');" : ""}`;
+    const sql = shape === "missing" ? PARAMETER_CHECKS.replace("ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ", "") : PARAMETER_CHECKS;
+    await expect(checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, sql), false, setup)).rejects.toThrow(/CHECK changed/u);
   });
   it("proves a UNIQUE superset and its exact NULLS mode in the installed catalog", async () => {
     await checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL));
-    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL.replace("(id,extra)", "(extra)")))).rejects.toThrow(/UNIQUE changed/u);
     await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL.replace(" NULLS NOT DISTINCT", "")))).rejects.toThrow(/UNIQUE changed/u);
-    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL), false, "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE (extra);")).rejects.toThrow(/UNIQUE changed/u);
+  });
+  it("refuses a dropped UNIQUE column even when its ADD exactly matches its slot", async () => {
+    const slot = { ...UNIQUE_SLOT, uniqueSupersets: [{ ...UNIQUE_SLOT.uniqueSupersets![0]!, columns: ["extra"] }] };
+    await expect(checkForward(pool, slot, forward(CREATED_OK, UNIQUE_SQL.replace("(id,extra)", "(extra)")))).rejects.toThrow(/UNIQUE changed/u);
+  });
+  it.each(["missing", "non-closed"])("refuses an installed UNIQUE that is %s before the slot", async shape => {
+    const setup = `ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ${shape === "non-closed" ? "ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE (id) DEFERRABLE;" : ""}`;
+    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, shape === "missing" ? UNIQUE_SQL.replace("ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ", "") : UNIQUE_SQL), false, setup)).rejects.toThrow(/UNIQUE changed/u);
+  });
+  it("refuses removing NULLS NOT DISTINCT while admitting its addition", async () => {
+    const slot = { ...UNIQUE_SLOT, uniqueSupersets: [{ ...UNIQUE_SLOT.uniqueSupersets![0]!, nullsNotDistinct: false }] };
+    const setup = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id);";
+    await expect(checkForward(pool, slot, forward(CREATED_OK, UNIQUE_SQL.replace(" NULLS NOT DISTINCT", "")), false, setup)).rejects.toThrow(/UNIQUE changed/u);
+  });
+  it("retains the existing DROP NOT NULL weakening beside a UNIQUE replacement", async () => {
+    await checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, `${UNIQUE_SQL} ALTER TABLE public.cat_parameters ALTER COLUMN id DROP NOT NULL;`), false, "ALTER TABLE public.cat_parameters ALTER COLUMN id SET NOT NULL;");
+  });
+  it.each(["ALTER COLUMN status TYPE varchar", "ALTER COLUMN status SET DEFAULT 'closed'", "DROP COLUMN kind CASCADE"])("preserves other installed column facts during a listed widening: %s", change => {
+    return expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, `${UNIQUE_SQL} ALTER TABLE public.cat_parameters ${change};`))).rejects.toThrow(/column .* changed/u);
+  });
+  it("preserves other installed constraints during a listed widening", async () => {
+    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, `${UNIQUE_SQL} ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status;`))).rejects.toThrow(/constraint .* dropped or rewritten/u);
   });
   it("admits only a listed fresh view with owner-only privileges", async () => {
     const view = "CREATE VIEW public.cat_created_view AS SELECT id FROM public.cat_existing_table;";
@@ -478,7 +514,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   });
   it("refuses a listed trigger name already present on a different prefix table", async () => {
     const statement = TRIGGER_AFTER.replace("cat_created_event", "cat_base_trigger");
-    preimages.set(sqlSha256(statement), statement);
+    triggerStatements.set(sqlSha256(statement), statement);
     const slot = { ...TRIGGER_SLOT, createdTriggers: [TRIGGER_SLOT.createdTriggers![0]!, { name: "cat_base_trigger", table: "public.cat_parameters", sha256: sqlSha256(statement) }] };
     await expect(checkForward(pool, slot, forward(CREATED_OK, TRIGGER_SQL.replace(TRIGGER_AFTER, statement)))).rejects.toThrow("catalog: created trigger name existed in the prefix");
   });

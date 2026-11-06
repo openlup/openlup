@@ -1520,41 +1520,20 @@ statement must appear once in order, with internal bytes unchanged; an unlisted
 existing-table ALTER cannot fall through to generic ADD admission when the list
 is active. The issued three purchase-reservation texts remain unchanged data.
 
-`checkSupersets` entries declare table, constraint, column, beforeSha256 and values.
-The hash binds the complete original CREATE TABLE statement and values is the
-exact new positive IN list. Each entry requires one adjacent DROP CONSTRAINT /
-ADD CONSTRAINT CHECK pair that retains every parsed old value. Between that
-CREATE and the forward, only statements mentioning the protected table are checked.
-A mention is any case-insensitive substring occurrence of the bare table name
-in the raw statement, including comments, identifiers and escaped literals.
-Every mention must tokenize completely before an allowed form is considered; a
-reader give-up refuses even when the partial tokens contain no table name. Each mention must be an ADD COLUMN,
-an ADD or plain DROP CONSTRAINT with another resolved name, CREATE INDEX or
-CREATE TRIGGER on that table, CREATE TABLE of a different resolved table that
-references it, table privileges, COMMENT ON, DML, or
-CREATE [OR REPLACE] FUNCTION/VIEW. Definition bodies are
-not inspected: they execute only on a later call or select. A mentioning DO
-block refuses except for the existing constant guarded privilege shells. Constraint words fold to lower case; quoted
-names remain exact. Protected or unresolved names and conditional existence
-forms refuse.
-Every other mention refuses, including the protected constraint's changes,
-column changes, table moves and unclassified forms. Keyword whitespace, spaced
-schema dots and quoted identifiers cannot hide a mention. Statements before the
-hash-bound definition and statements without a mention are ignored. The real
-PostgreSQL witness compares the installed old constraint with the values parsed
-from the hash-bound source, including runtime effects of the preceding SQL.
-The issued account-consent `purposeCheck` remains readable unchanged: its values
-continue to mean the old list, and its existing refusal messages remain intact.
-
-`uniqueSupersets` entries declare table, constraint, beforeSha256, columns and
-nullsNotDistinct. The hash binds the original CREATE TABLE statement containing
-the named UNIQUE. An ALTER TABLE anchor refuses for both CHECK and UNIQUE
-entries; a later narrowed definition cannot replace the original preimage. One adjacent DROP / ADD of that same constraint must
-retain every old key column, with the exact new column list and declared NULLS
-NOT DISTINCT mode. That syntax belongs only to this entry; the general expression
-grammar is unchanged. Missing old columns, non-adjacent pairs, other constraint
-names and unlisted UNIQUE drops refuse. The catalog witness independently checks
-the installed old and new definitions, including the mode and replacement index.
+`checkSupersets` entries declare table, constraint, column and values;
+`uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
+The lexical validator checks only the slot's own SQL: exactly one adjacent
+DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
+IN values or plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops,
+non-adjacent pairs and mismatched additions refuse; the general expression
+grammar is unchanged. The protected real-PostgreSQL catalog control proves
+widening against the installed definition immediately before the slot: the old
+constraint must exist in the closed CHECK or UNIQUE shape, every old value or
+key column must remain, and NULLS NOT DISTINCT may be added but never removed.
+The installed new definition must equal the entry; other constraints, columns
+and triggers remain protected. No historical SQL anchor is used for these
+entries. The issued account-consent `purposeCheck` retains its original preimage,
+values and refusal behavior unchanged.
 
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
