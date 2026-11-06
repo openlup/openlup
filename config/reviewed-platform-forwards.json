@@ -3336,7 +3336,8 @@
           "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN operator_recipient_ref uuid REFERENCES public.notification_recipients(id);",
           "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN operator_dispatch_eligible boolean NOT NULL DEFAULT false;",
           "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN first_attempt_at timestamptz;",
-          "ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_recipient_binding_check CHECK ((recipient_kind='customer' AND recipient_ref IS NOT NULL AND operator_recipient_ref IS NULL) OR (recipient_kind='operator' AND (NOT operator_dispatch_eligible OR recipient_ref IS NULL)));"
+          "ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_recipient_binding_check CHECK ((recipient_kind='customer' AND recipient_ref IS NOT NULL AND operator_recipient_ref IS NULL) OR (recipient_kind='operator' AND (NOT operator_dispatch_eligible OR recipient_ref IS NULL)));",
+          "ALTER TABLE public.subscription_reminder_ledger ADD COLUMN renewal_at timestamptz;"
         ],
         "uniqueSupersets": [
           {
@@ -3657,7 +3658,7 @@
     },
     {
       "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
-      "sha256": "26d54fdd13cbd758b60129967a09b7c53763f816b973e31078651f04c1bb032c",
+      "sha256": "6d7a12d4c37072b73627601f845696c3c5058cd25b418972511605f73243ff4d",
       "functions": [
         {
           "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
@@ -3701,7 +3702,7 @@
         },
         {
           "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
-          "afterSha256": "5098e72b8ca03cc0c59447c7dea6c154cb05529627e3d273ef9f6d0fe5c72048",
+          "afterSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
           "beforeSha256": null
         },
         {

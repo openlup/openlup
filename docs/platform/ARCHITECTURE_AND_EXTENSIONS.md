@@ -1828,7 +1828,10 @@ reference composition and activation remain host choices.
 Native notice production uses the existing lifecycle binding and its trusted
 `bind` callback. Queued renewal payloads retain `renewalAt`; the binder derives
 charge, delivery-window and edit-deadline labels from that instant and its owned
-calendar policy. `phaseFactsAllowed` is false after rescheduling; `phaseFacts`
+calendar policy. Renewal facts live in the dedicated reminder ledger, isolated
+from customer-chosen lifecycle keys. Existing ledger IDs and accepted delivery
+keys remain authoritative; typed legacy renewal facts are still readable.
+`phaseFactsAllowed` is false after rescheduling; `phaseFacts`
 then contains no current acquisition/amount document. Pause notices carry a
 window UUID and the cadence-aligned next delivery, and resolved windows are
 durably suppressed before binding. Existing source names, aliases and

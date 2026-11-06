@@ -99,9 +99,12 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
           WHERE e.event_type=ANY($2::text[])
           UNION ALL SELECT r.id,'reminder',r.subscription_id,s.client_id,
           CASE r.reminder_kind WHEN 'pause_ending' THEN 'subscription.pause_reminder_due' ELSE 'subscription.renewal_upcoming' END,
-          jsonb_build_object('reminderDay',r.reminder_day)||coalesce(f.payload,'{}'::jsonb)
+          jsonb_build_object('reminderDay',r.reminder_day)||CASE WHEN r.renewal_at IS NOT NULL
+            THEN jsonb_build_object('renewalAt',to_char(r.renewal_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
+            ELSE coalesce(f.payload,'{}'::jsonb) END
           FROM public.subscription_reminder_ledger r JOIN public.subscriptions s ON s.id=r.subscription_id
           LEFT JOIN public.subscription_events f ON f.subscription_id=r.subscription_id
+            AND f.event_type='subscription.reminder.renewal_facts'
             AND f.idempotency_key='renewal-reminder:'||to_char(r.reminder_day,'YYYY-MM-DD') AND r.reminder_kind='renewal_due_soon'
         ) SELECT x.* FROM sources x LEFT JOIN public.transactional_delivery_receipts r
           ON r.idempotency_key='subscription-notice:'||x.source||':'||x.id::text

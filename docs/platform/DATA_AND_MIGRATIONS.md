@@ -1852,7 +1852,11 @@ without changing their existing signatures or search paths. Its mirrored SQL
 and manifest hashes must travel with the matching package set. It adds a nullable
 operator recipient while preserving the customer FK, replaces uniqueness with
 recipient-aware NULLS NOT DISTINCT identity, and defaults operator freshness to
-false for existing history. New pause facts use the existing event carrier;
+false for existing history. The nullable reminder-ledger `renewal_at` column
+retains new queued renewal instants without sharing customer event identities.
+Existing ledger rows are never re-keyed or backfilled; their day uniqueness and
+accepted receipt identities still dedupe, with typed legacy event facts retained
+as a read fallback. New pause facts use the existing event carrier;
 older dispatch code does not recognize those new event kinds. Upgrade the
 producer and dispatcher together before enabling their schedules. No ledger
 backfill, historical auto-send, reminder deletion or live activation is performed.

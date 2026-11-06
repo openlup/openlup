@@ -8,6 +8,8 @@ ALTER TABLE public.subscription_dunning_notifications DROP CONSTRAINT subscripti
 ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_case_kind_attempt_key UNIQUE NULLS NOT DISTINCT (case_id,notification_kind,retry_attempt,recipient_kind,recipient_ref,operator_recipient_ref);
 ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_recipient_binding_check CHECK ((recipient_kind='customer' AND recipient_ref IS NOT NULL AND operator_recipient_ref IS NULL) OR (recipient_kind='operator' AND (NOT operator_dispatch_eligible OR recipient_ref IS NULL)));
 
+ALTER TABLE public.subscription_reminder_ledger ADD COLUMN renewal_at timestamptz;
+
 CREATE FUNCTION public.subscription_dunning_queue_operator_notices(p_case_id uuid,p_kind text,p_attempt integer)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE c public.subscription_dunning_cases; r record; found_recipient boolean:=false; slug text;
@@ -143,15 +145,10 @@ BEGIN
         THEN p_starter_freshness_seconds ELSE p_ordinary_freshness_seconds END)
     ORDER BY s.next_cycle_at,s.id LIMIT greatest(coalesce(p_limit,1),1) FOR UPDATE OF s SKIP LOCKED
   ), written AS (
-    INSERT INTO public.subscription_reminder_ledger(subscription_id,reminder_kind,reminder_day)
-    SELECT subscription_id,'renewal_due_soon',reminder_day FROM due
-    ON CONFLICT ON CONSTRAINT subscription_reminder_ledger_subscription_kind_day_key DO NOTHING RETURNING subscription_id,reminder_day
-  ), facts AS (
-    INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-    SELECT d.subscription_id,'subscription.reminder.renewal_facts','renewal-reminder:'||to_char(d.reminder_day,'YYYY-MM-DD'),
-      jsonb_build_object('renewalAt',to_char(d.renewal_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
-    FROM due d JOIN written w USING(subscription_id,reminder_day) RETURNING id
-  ) SELECT count(*)::integer INTO v_enqueued FROM facts;
+    INSERT INTO public.subscription_reminder_ledger(subscription_id,reminder_kind,reminder_day,renewal_at)
+    SELECT subscription_id,'renewal_due_soon',reminder_day,renewal_at FROM due
+    ON CONFLICT ON CONSTRAINT subscription_reminder_ledger_subscription_kind_day_key DO NOTHING RETURNING id
+  ) SELECT count(*)::integer INTO v_enqueued FROM written;
   RETURN jsonb_build_object('enqueued',v_enqueued);
 END;
 $$;
