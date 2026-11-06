@@ -451,3 +451,9 @@ another active human administrator. The authenticated recovery case scans the
 same host log stream for its raw token after real HTTP recovery. Consumer
 installations are isolated per setup and removed in teardown. Browser recovery
 remains separate local evidence; the root proof needs no starter assets or Chromium.
+
+The authenticated recovery proof also releases four concurrent account requests
+from a real PostgreSQL lock barrier and requires every owned renewal projection
+to complete. The host releases its actor transaction before the separate
+renewal read borrows the same bounded pool; queries and authority checks retain
+their existing owners.

@@ -107,12 +107,16 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   actions['account.read'] = async (_payload, context) => {
     const principal = context.actor.principalRef;
     if (!principal) return refused('customer_session_required');
-    return asCustomer(principal, async db => success({
+    const account = await asCustomer(principal, async db => ({
       profile: await createPostgresCustomerMePort(db).getCustomerMe(principal),
       subscriptionControl: await createPostgresCustomerSubscriptionSnapshotPort(db).getSnapshot(),
+    }));
+    // Release the actor transaction before the projection borrows this pool.
+    return success({
+      ...account,
       renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
       fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
-    }));
+    });
   };
   actions['account.orders'] = async (payload, context) => {
     if (!context.actor.principalRef || !context.actor.customerRef) return refused('customer_session_required');

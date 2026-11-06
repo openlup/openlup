@@ -307,6 +307,30 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     expect(executions).toBe(1);
     expect(await call('payment.recover', { token: raw, action: 'read' }, f.email)).toEqual({ ok: true, value: { state: 'recovered' } });
     expect((await runtime.query('SELECT status FROM public.subscriptions WHERE id=$1', [f.subscriptionId])).rows[0].status).toBe('active');
+    const blocker = await owner.connect();
+    let accounts: Promise<ActionResult>[] = [];
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE public.subscriptions IN ACCESS EXCLUSIVE MODE');
+      accounts = Array.from({ length: 4 }, () => call('account.read', {}, f.email));
+      const deadline = Date.now() + 5000;
+      let waiting = 0;
+      while (waiting < 4 && Date.now() < deadline) {
+        waiting = Number((await owner.query(`SELECT count(*) AS count FROM pg_stat_activity
+          WHERE usename='starter_runtime' AND wait_event_type='Lock'`)).rows[0].count);
+        if (waiting < 4) await new Promise(done => setTimeout(done, 25));
+      }
+      expect(waiting).toBe(4);
+    } finally {
+      await blocker.query('ROLLBACK');
+      blocker.release();
+    }
+    for (const account of await Promise.all(accounts)) {
+      expect(account.ok).toBe(true);
+      if (account.ok && isRecord(account.value)) {
+        expect(account.value.renewal).toMatchObject({ subscriptions: [{ subscriptionId: f.subscriptionId }] });
+      }
+    }
     expect(logs.includes(raw)).toBe(false);
   }, 180_000);
 
