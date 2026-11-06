@@ -114,9 +114,10 @@ New/increased sized SKUs require current active/subscription-sellable state in
 the apply transaction; publication-head/membership fencing is not implemented.
 Entering, previewing or abandoning an invitation never binds sized.
 
-The host exports a paid-email parcel-note callback using frozen order quantities,
-exact physical identity and frozen renewal cadence. It mounts no paid-email
-handler or outbox consumer, so those notes are not sent by this starter.
+The host exports `composeSizedPaidEmailNote` using frozen order quantities,
+exact physical identity and frozen renewal cadence. The lifecycle renewal entry
+mounts the paid-email handler through `host/paid-mail.ts` without passing this
+callback, so its private captured receipts do not include sized parcel notes.
 
 ## Partner intake and reviews
 

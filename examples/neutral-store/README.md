@@ -262,14 +262,15 @@ has no classic exclusion facts.
 `host/editor-mail.ts` exports `composeSizedPaidEmailNote`, compatible with the
 paid-email handler's `describeParcel` callback. It composes quantities and exact
 physical identities from the frozen order and the renewal cycle's frozen
-cadence. Unprovable facts omit the note. Notes are composed but not sent:
-this reference store does not mount a paid-email handler or an outbox consumer.
-That missing sender is outside the editor boundary.
+cadence. Unprovable facts omit the note. The lifecycle renewal entry mounts the
+paid-email handler through `host/paid-mail.ts`, but does not pass this callback
+to it. The callback remains exported; sized parcel notes are not included in
+that handler's private captured receipts.
 
-The current editor proof is component and source-level evidence. Native
-subscription purchase must first materialize its editable lines and price
-context. Until that producer is available, the native browser/API journeys stay
-authored and unrun. Existing subscriptions without that template refuse with
+The editor proof includes 65 focused source tests, 42 component cases and 34
+database-backed browser/API journeys (17 per configuration), all passing locally.
+Native subscription purchase materializes its editable lines and price context.
+Existing subscriptions without that template refuse with
 `starter_subscription_template_unavailable`; there is no fallback read or
 fixture backfill. See [editor proof](docs/proof.md#subscription-editor-proof).
 

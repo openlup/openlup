@@ -52,12 +52,37 @@ npx --no -- playwright test --config playwright.editors.config.ts
 
 The native recipes are `browser/subscription-journeys.spec.ts` (seven classic
 and six sized journeys) and `browser/subscription-api.spec.ts` (four API journeys).
-They are authored and unrun: 17 cases per configuration, 34 total. They require
-the native purchase path to materialize editable template lines and its price
-list. That producer is absent from the selected editor package base. The fixture
-fails at the missing native template; it never seeds editable lines/price lists
-or supplies a fallback read. The native unconfigured-resize case shares this
-purchase fixture; its named refusal also has a passing local HTTP unit witness.
+On 2026-11-06 they passed on installed PostgreSQL: 17 cases per configuration,
+34 total, with zero failures, skips or retries in the final run. Native purchase
+materializes editable template lines and their price list. The fixture refuses
+a missing native template; it never seeds editable lines/price lists or supplies
+a fallback read. The native unconfigured-resize case shares this purchase
+fixture; its named refusal also has a passing local HTTP unit witness.
+
+The three local 0.36.0 development candidates were built and packed from source
+`38b5ad2d9f859bdf273dcf91690d52085fefa012`; these are not published release pins.
+Their SHA-256 identities were:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `openlup-core.tgz` | `a1255339edb1b20fda5a30dcc02d1a317689453f11b154892a944998a2578682` |
+| `openlup-outbox.tgz` | `e723db165b4e55166180b2b962191e80e5bbc5735d851e9de20a2e93877f3af0` |
+| `openlup-platform.tgz` | `95f2251f8f39d2287dd677b5916f33f30ff644dd95e24c7925eaeb0b96632ab1` |
+
+Each configuration used its own disposable lifecycle installation: all 106
+history units applied, repeat installation applied zero, and the HTTP host used
+the non-superuser `starter_runtime` login. UI ports were loopback-only and database
+ports unpublished. The initial run exposed two test selector defects: classic
+removal matched two variants with the same title, and sized group selection
+mistook an extra for a base product. The tests now scope removal to its variant
+row and select only base candidates. No product code or expected assertion was
+changed. The corrected suite passed all seven classic, six sized and four API
+journeys for both configurations. This includes stale acceptance, payment/edit
+blockers, captured notice/no-op behavior, retained pricing, stock/exclusion and
+withdrawal refusals, command replay and the named unconfigured-resize limits.
+All proof-owned containers, volumes and image tags were removed after the run;
+no host process was left running. This is local sandbox evidence, not hosted,
+provider, release or upgrade qualification.
 
 Start separate disposable installed/seeded hosts for the two configurations.
 The ignored `.context/database-ui-hosts.json` entries require `id`, loopback
@@ -75,9 +100,10 @@ Run one PostgreSQL-backed proof at a time, after the one-minute load average is
 at most 20; the native purchase-template proof has priority. Traces, screenshots
 and videos remain disabled. The notification journey uses a test-only native
 dispatcher with captured delivery; the reference host mounts no new consumer.
-The exported paid-email parcel-note callback separately proves frozen quantities,
-physical identities and renewal cadence. Notes are composed but not sent: the
-reference store has no paid-email handler or outbox consumer mounted.
+The exported `composeSizedPaidEmailNote` callback separately proves frozen
+quantities, physical identities and renewal cadence. The lifecycle renewal entry
+mounts the paid-email handler through `host/paid-mail.ts` without passing this
+callback. Its private captured receipts therefore omit sized parcel notes.
 
 ## Clean-directory and startup witness
 
@@ -409,8 +435,8 @@ Write only loopback UI origins to `.context/database-ui-hosts.json`:
 
 ```json
 [
-  { "id": "supplements", "baseURL": "http://127.0.0.1:4319" },
-  { "id": "coffee", "baseURL": "http://127.0.0.1:4320" }
+  { "id": "supplements", "baseURL": "http://127.0.0.1:4319", "composeProject": "starter-proof-supplements" },
+  { "id": "coffee", "baseURL": "http://127.0.0.1:4320", "composeProject": "starter-proof-coffee" }
 ]
 ```
 

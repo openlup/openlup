@@ -1,13 +1,13 @@
 import { test, expect, nativeSubscription } from './subscription-native-fixture.ts';
 import { randomUUID } from 'node:crypto';
 
-// Native purchase is mandatory. These journeys must remain unrun until its template attachment is available.
+// Native purchase must materialize the editable template; no fixture backfill is permitted.
 test('J-C1: quantities, candidate and removal review exact recurring money/date, confirm and read back',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject),catalog = await f.catalogue();
   const candidate = catalog.candidates.find(item => !f.sub.lines.some(line => line.variantId === item.variantId) && item.groupId !== f.config.subscriptionEditing.catalogue[0]!.groupKey)!;
   await f.open(); await page.getByRole('button',{ name: `Add one unit: ${f.sub.lines[0]!.title}`,exact: true }).click();
   await page.locator(`[data-variant="${candidate.variantId}"]`).click();
-  await page.getByRole('button',{ name: `Remove ${f.sub.lines[1]!.title} from package`,exact: true }).click();
+  await page.getByTestId(`editor-line-${f.sub.lines[1]!.variantId}`).getByRole('button',{ name: `Remove ${f.sub.lines[1]!.title} from package`,exact: true }).click();
   const previewResponse = page.waitForResponse(response => response.url().endsWith('/subscription.preview'));
   await page.getByRole('button',{ name: 'Review changes',exact: true }).click();
   const preview = (await (await previewResponse).json()).value;
@@ -85,7 +85,7 @@ test('J-S2: exact size/count/group edit quotes changed lines and retains the unc
     f.sql(`UPDATE public.price_entries SET unit_price_minor=unit_price_minor+7 WHERE id='${f.uuid(String(price.id))}'`);
     await f.open(true); await page.getByRole('combobox',{ name: `Size: ${first.name.en}`,exact: true }).selectOption(sibling.variantId);
     await page.getByRole('button',{ name: `Add one unit: ${first.name.en}`,exact: true }).click();
-    const candidate = catalog.candidates.find(item => !f.sub.lines.some(line => line.variantId === item.variantId) && item.groupId !== first.groupId && item.groupId !== catalog.candidates.find(row => row.variantId === f.sub.lines[1]!.variantId)!.groupId)!;
+    const candidate = catalog.candidates.find(item => !item.isAddon && !f.sub.lines.some(line => line.variantId === item.variantId) && item.groupId !== first.groupId && item.groupId !== catalog.candidates.find(row => row.variantId === f.sub.lines[1]!.variantId)!.groupId)!;
     await page.getByRole('button',{ name: `Add ${candidate.name.en} to package`,exact: true }).click(); await f.confirm();
     const after = f.eventPricing() as { sku: string; quoteLine: unknown }[];
     expect(after.find(item => item.sku === unchangedSku)!.quoteLine).toEqual(before.find(item => item.sku === unchangedSku)!.quoteLine);
