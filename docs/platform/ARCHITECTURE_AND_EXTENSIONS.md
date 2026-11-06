@@ -1838,7 +1838,9 @@ its frozen renewal amount only for the comparison baseline; retained desired
 lines must still resolve in the subscription-sellable catalogue.
 
 Preview has no command key. It records a content-keyed, one-use quote with a
-15-minute expiry, current/new totals, ordered line evidence and template version.
+15-minute expiry, current/new totals, ordered line evidence, the host's quoted
+composition constraint and template version. Apply persists that accepted
+constraint exactly, including null; plan days do not overwrite opaque host data.
 Apply uses its own key. A completed key replays its original result before
 repricing or configuration reads. A fresh key requires repricing and hash
 equality, then the locked SQL checks and drift comparison. The configured minimum is a strict positive integer
