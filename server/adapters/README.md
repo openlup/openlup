@@ -142,15 +142,29 @@ transaction and checks all non-system user schemas. Capture sets local
 refuses rather than exporting apparently empty tables. The caller supplies a
 login exempt from row security for the selected relations. Unknown nonempty business
 tables, including acquisition-private business data, refuse rather than being
-omitted. Migration history and the private installation key have separate
-target-owned dispositions; neither is copied. The key payload is never read,
+omitted. Migration history and the private installation key have separate count-only
+`target-migration-history` and `new-target-installation-key` dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
 The `acquisition_private.address_references` registry contributes only its row count to
-the census; no registry rows, references or columns are exported. Restore keeps
+the census with disposition `target-address-references`; no registry rows, references or columns are exported. Restore keeps
 the target installation's own registry without comparing its count to the source.
 Before connecting, restore rejects extra census fields, invalid counts and
 dispositions that do not match the relation; unsupported relations must have a zero count.
 Acquisition cases, history and all other nonempty private relations still refuse.
+
+`public.customer_identity_challenges` is intentionally not carried: its single-use,
+short-lived token hashes are live authorization state; customers sign in again after restore.
+Census reports only relation, owner, row count and `intentionally-not-carried`, even when empty.
+Restore accepts any digit count for this relation and validates its disposition before connecting.
+Capture never reads, hashes or transports challenge columns; other nonempty outside-profile
+relations still refuse, and the carried table set is unchanged. Restore requires a pristine
+target with no challenges and never clears an active target's authorization state.
+The [joined native proofs](../../tests/postgres/storeJourneyTransfer.test.ts) use intake-empty
+fixtures, real restricted-runtime commands and exact public-row comparisons after restore.
+They cover guest checkout/sign-in, destinations and purchase holds, consent choices,
+renewal execution with terminal replay, a late delivery after restore that extends the restored schedule, and captured paid/dunning dispatch without duplicate effects.
+The challenge registry remains `block`; owner-access absorption classification matches both stores.
+Restricted-runtime absorption count reads remain a documented pre-existing limit; availability is not claimed.
 
 Native checkout draft receipts are included in this finite profile. Their order
 and client UUIDs are preserved by native restore, so the stored SQL fingerprint
