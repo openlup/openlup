@@ -271,7 +271,7 @@ contract. The [documentation maintenance rules](docs/platform/DOCUMENTATION.md#i
 define scoped no-impact answers and review of related examples. New native
 reports include the short documentation assessment described under
 [native review](#native-review-and-accountability); prior recorded reports retain
-their history and expiry. These checks add no job, reviewer floor or gate budget.
+their history. These checks add no job, reviewer floor or gate budget.
 
 The [migration-session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
 uses the production package runner to check ledger admission, stable reads,
@@ -1663,7 +1663,7 @@ or group command set, reviewer floor or recovery budget.
 
 **Receipt admission.** A pull-request run accepts a summary receipt for its PR
 number and exact reviewed head and tree. One receipt covers every run and
-attempt of that head while the review is current. A merge-group run accepts it
+attempt of that head. A merge-group run accepts it
 only when the source review carries over, as defined below. Missing, stale,
 incomplete or mismatched evidence fails.
 
@@ -2817,8 +2817,10 @@ protection.
 - A conflict is resolved in that merge. Only the resolution, the diff from the
   `git merge-tree` prediction to the committed tree, is reviewed; it may change
   only the conflicted files.
-- A repair is reviewed as its delta, from the old reviewed head to the new head,
-  plus its interactions, with the open finding cards.
+- After a passing review with no open material finding, a repair is reviewed as
+  its delta, from the old reviewed head to the new head, plus its interactions.
+  A repair while material findings are open takes the full review floor, with
+  the open finding cards.
 - A delta needs two reviewers when it touches SQL, controls, machinery or
   security-sensitive paths or changes a mode, and one otherwise. Each delta
   report records `"ordinary": true` and the exact `delta` from

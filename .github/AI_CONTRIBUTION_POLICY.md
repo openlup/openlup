@@ -116,9 +116,11 @@ of the same committed candidate can resolve that uncertainty without a
 gratuitous code edit; prior evidence and the review-cycle budget remain visible.
 
 Commit repairs before review and give fresh reviewers the open finding cards.
-A repair is reviewed as its delta plus interactions: two reviewers when the delta
-touches SQL, controls, machinery or security-sensitive paths or changes a mode,
-one otherwise; two full reviews also satisfy it. Every material finding must be
+After a passing review with no open material finding, a repair is reviewed as its
+delta plus interactions: two reviewers when the delta touches SQL, controls,
+machinery or security-sensitive paths or changes a mode, one otherwise; two full
+reviews also satisfy it. A repair while material findings are open takes the
+full review floor. Every material finding must be
 closed; optional advice never blocks. Reviews do not expire.
 
 Unchanged prepare preserves evidence. Three repair cycles are automatic; after

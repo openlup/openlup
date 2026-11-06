@@ -172,6 +172,35 @@ describe('real Git coverage histories', () => {
     await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
     await validateEconomySession(f.cwd, await f.state());
   });
+  it('carries a clean merge where main edits a registry carrier outside its arrays', async () => {
+    const f = await fixture(); const prior = await f.review(); const path = REGISTRY_PATHS[2];
+    const main = await f.mainMove(() => f.write(path, f.git('show', `${f.base}:${path}`) + '\n// main edit outside the arrays\n'));
+    f.git('merge', '--no-ff', '-qm', 'integrate main', main); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.proof.kind).toBe('git'); expect(next.cycle).toBe(prior.cycle);
+    await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it('takes the exact union when both sides add entries to one carrier array in conflict', async () => {
+    const f = await fixture(); const path = REGISTRY_PATHS[2]; const source = f.git('show', `${f.base}:${path}`) + '\n';
+    await f.write(path, addRegistry(path, source, 'zz-row-a')); f.commit(); const prior = await f.review();
+    const main = await f.mainMove(() => f.write(path, addRegistry(path, source, 'zz-row-b')));
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write(path, registryUnion(path, source, f.git('show', `HEAD:${path}`) + '\n', f.git('show', `${main}:${path}`) + '\n'));
+    f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.proof.kind).toBe('registry-union'); expect(next.cycle).toBe(prior.cycle);
+    await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it('reviews a carrier conflict outside its arrays as a resolution with two reviewers', async () => {
+    const f = await fixture(); const path = REGISTRY_PATHS[2]; const source = f.git('show', `${f.base}:${path}`) + '\n';
+    const line = (text: string) => source.replace('Cold installed-artifact proof.', text);
+    await f.write(path, line('Cold installed-artifact proof, reviewed.')); f.commit(); await f.review();
+    const main = await f.mainMove(() => f.write(path, line('Cold installed-artifact proof, from main.')));
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write(path, line('Cold installed-artifact proof, reviewed and from main.')); f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.proof).toMatchObject({ kind: 'resolution', resolution: [path] });
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
+  });
   it('refuses a resolution that also edits a file outside its conflicts', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('app.ts', 'main line\n'));

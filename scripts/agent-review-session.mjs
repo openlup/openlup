@@ -122,7 +122,6 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   demand(await ancestor(git, cwd, previous.base, current.base), 'integration base ancestry differs');
   const own = (await captureCommittedReviewCandidate(cwd, previous.base, previous.head)).changedPaths;
   const moved = (await captureCommittedReviewCandidate(cwd, previous.base, current.base)).changedPaths;
-  const registries = moved.filter(path => REGISTRY_PATHS.includes(path));
   let prediction; let conflicts = [];
   try { prediction = (await git(cwd, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', previous.head, current.base)).split('\0')[0]; }
   catch (error) {
@@ -131,24 +130,21 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
     demand(conflicts.length > 0, 'integration conflict list missing');
   }
   demand(SHA.test(prediction), 'merge prediction missing'); const replacements = new Map();
-  for (const path of registries) {
+  // Git's clean merge stands for every carrier it merged. A conflicting carrier
+  // takes the deterministic union of its named arrays; if that union does not
+  // apply (a change outside the arrays, an overlap or another mode), the carrier
+  // is reviewed as part of the resolution.
+  for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
     const blobs = [];
     for (const revision of [previous.base, previous.head, current.base]) {
-      const rows = (await git(cwd, 'ls-tree', revision, '--', path)).trim(); demand(rows.startsWith('100644 blob '), 'unsupported registry mode');
-      blobs.push(await git(cwd, 'show', `${revision}:${path}`));
+      if ((await git(cwd, 'ls-tree', revision, '--', path)).trim().startsWith('100644 blob ')) blobs.push(await git(cwd, 'show', `${revision}:${path}`));
     }
-    const union = registryUnion(path, ...blobs);
-    // Clean Git remains authoritative if it preserves the exact same registry
-    // entries. Conflicting carriers require the deterministic union bytes.
-    if (conflicts.includes(path)) replacements.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
-    else {
-      const actual = await git(cwd, 'show', `${prediction}:${path}`);
-      demand(registryUnion(path, actual, actual, actual) === registryUnion(path, union, union, union), 'clean registry merge differs from exact union');
-    }
+    let union; try { union = blobs.length === 3 ? registryUnion(path, ...blobs) : undefined; } catch { union = undefined; }
+    if (union !== undefined) replacements.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
   }
   if (replacements.size) prediction = await replaceTreeBlobs(cwd, prediction, replacements);
   // A clean or registry-union merge needs no review; a resolved conflict is reviewed as its own delta.
-  const resolution = conflicts.filter(path => !registries.includes(path)); let modeChanged = false;
+  const resolution = conflicts.filter(path => !replacements.has(path)); let modeChanged = false;
   if (resolution.length) {
     const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
     demand(delta.changedPaths.every(path => resolution.includes(path)), 'integration changed files outside its conflicts');

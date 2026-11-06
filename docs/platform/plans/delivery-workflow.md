@@ -75,12 +75,11 @@ uses the existing native decision against the fetched ref. Later native
 preflights remain the owner of current admission decisions.
 
 A prepared candidate continues at its first outstanding obligation. Keep its
-exact commit, stack pin, existing review history and valid local verification
-or installed stamp. The planner does not require a review or write review or
+exact commit, stack pin and existing review history. The planner does not require a review or write review or
 verification records. Use it when there is still a broad diagnostic to schedule,
 and use the existing delivery checks for a candidate ready to submit. Reserve
 broad pre-review execution for a named interaction that the focused probes
-cannot establish. Complete the full required gate after native review, once on
+cannot establish. Complete the required hosted gate after native review, once on
 the actual candidate unless an existing recovery rule requires another run.
 
 <!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-48bbe21827488d20e42be875ef86f715a4f43e46dce096fcbd2b8a43021adf3a","reason":"The scheduling probe runs the existing native merge prediction before a resource request for an explicitly selected diagnostic. It is not part of the mandatory verification runner and does not change its phases, proof, receipt, stack-base or hosted admission rules. The development-preview checks section still describes those obligations. The scheduling procedure and its limits are explained in this delivery record."} -->

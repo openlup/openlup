@@ -62,10 +62,11 @@ A merge group that cannot carry over is rejected: merge `main`; only a conflict
 resolution is reviewed.
 
 Commit repairs and give fresh reviewers the open finding cards, actual repair
-and interaction context, without old verdicts or author history. The repair
-needs passing review by its delta's reviewer count, with every material finding
-closed. Reviews do not expire. A repair is reviewed as its delta plus
-interactions. A merge of `main` keeps the review, and a resolved conflict is
+and interaction context, without old verdicts or author history. The new tree
+needs passing review by the required reviewer count, with every material finding
+closed; after a passing review with no open material finding, a repair needs only
+its delta's reviewer count, reviewed as its delta plus interactions. Reviews do
+not expire. A merge of `main` keeps the review, and a resolved conflict is
 reviewed as its resolution only, following
 [Native review](../../../CONTRIBUTING.md#native-review-and-accountability); these
 integrations charge no repair cycle.
@@ -143,8 +144,7 @@ entry from the same arming intent.
 
 Foundation delivery does not authorize settings activation. The original live
 activation proof is historical; current guidance and dated activation evidence
-are linked above. Freshness is checked at admission, not guaranteed at the later
-merge, and Actions source attribution cannot isolate a malicious writer who can
+are linked above. Admission binds the receipt to the live head and tree, and Actions source attribution cannot isolate a malicious writer who can
 spoof the same context. No production or release authority is granted.
 
 ## Boundaries and falsifiers

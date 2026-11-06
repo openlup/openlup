@@ -192,10 +192,11 @@ No new service, model API, workflow or remote attestation is introduced.
    another repair; there is no quota. A complete evidence-backed no-findings
    verdict is valid.
    Failed, timed-out, partial or materially failing review cannot count as a pass.
-5. Batch material repairs, commit and obtain fresh independent review of the
-   repair delta and its interactions: two reviewers when the delta touches SQL,
-   controls, machinery or security-sensitive paths or changes a mode, one
-   otherwise, or two full reviews of the new tree. Give reviewers the open finding
+5. Batch material repairs, commit and obtain fresh independent full review of the
+   new tree by the required reviewer count. After a passing review with no open
+   material finding, a repair may instead be reviewed as its delta and its
+   interactions: two reviewers when the delta touches SQL, controls, machinery or
+   security-sensitive paths or changes a mode, one otherwise. Give reviewers the open finding
    cards, actual repair and interaction context, without old verdicts or author
    history. Every material finding needs explicit closure. Three repair cycles
    are automatic; `needs_owner` then requires an owner decision to continue,
