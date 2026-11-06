@@ -1,3 +1,6 @@
+import { readAccountRenewal } from './account-renewal.ts';
+import { composeOperatorRecovery } from './operator-recovery.ts';
+import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
@@ -66,7 +69,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       await createCheckoutRecoveryDelivery(admittedOrigin)(input);
     },
   };
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery), ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit
@@ -104,11 +107,16 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   actions['account.read'] = async (_payload, context) => {
     const principal = context.actor.principalRef;
     if (!principal) return refused('customer_session_required');
-    return asCustomer(principal, async db => success({
+    const account = await asCustomer(principal, async db => ({
       profile: await createPostgresCustomerMePort(db).getCustomerMe(principal),
       subscriptionControl: await createPostgresCustomerSubscriptionSnapshotPort(db).getSnapshot(),
-      fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
     }));
+    // Release the actor transaction before the projection borrows this pool.
+    return success({
+      ...account,
+      renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
+      fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
+    });
   };
   actions['account.orders'] = async (payload, context) => {
     if (!context.actor.principalRef || !context.actor.customerRef) return refused('customer_session_required');
