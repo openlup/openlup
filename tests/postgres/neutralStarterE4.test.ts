@@ -367,7 +367,55 @@ it('reads pending, issued, corrected, retry and guest summaries and owned PDF by
     customerEmail, operatorEmail, orderRef: issued.orderId, documentRef, orderItemId, shipmentRef: browserShipmentRef }));
 }, 120000);
 
-it('all ten deferred mutations and other named refusals preserve the complete effect snapshot over replay and forgery', async () => {
+// Measured separately from installation and browser challenge-window waits.
+const adminReadRefusalTimeoutMs = 60000;
+it('admits an active distributor session but refuses admin-only shipment and invoice reads before I/O', async () => {
+  expect((await runtime.query('SHOW TimeZone')).rows[0].TimeZone).toBe('Etc/UTC');
+  const distributorId = randomUUID(), email = 'document-distributor@example.test';
+  // Same owner-seeded active legacy membership as the identity upgrade witness;
+  // challenge issuance/redemption and request-time admission remain native.
+  await installer.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)', [distributorId, email]);
+  await installer.query(`INSERT INTO public.platform_human_memberships
+    (principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES($1,'distributor','active','legacy',now())`, [distributorId]);
+  const cookie = await login(true, email);
+  const { orderId } = await invoiceFixture('issued');
+  await installer.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('starter-read-port','3pl',true) ON CONFLICT DO NOTHING");
+  const { shipmentId } = await fulfillment.createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'starter-read-port' })
+    .createShipment({ idempotencyKey: `distributor-read-${orderId}`, orderId, requestedAt: '2026-11-04T12:00:00Z' });
+  expect((await installer.query('SELECT id FROM public.fulfillment_shipments WHERE id=$1', [shipmentId])).rows)
+    .toEqual([{ id: shipmentId }]);
+  expect((await installer.query('SELECT id FROM public.accounting_documents WHERE order_id=$1', [orderId])).rows)
+    .toHaveLength(1);
+  const admitted = await action('operator.orders', {}, cookie);
+  expect(admitted.body.ok).toBe(true);
+  expect(admitted.body.value.orders.length).toBeGreaterThan(0);
+  const before = await snapshot();
+  const fence = await installer.connect();
+  try {
+    await fence.query('BEGIN');
+    // These are the first read tables of the real shipment/invoice ports. An
+    // accidentally admitted read cannot complete while these fences are held.
+    await fence.query('LOCK TABLE public.fulfillment_shipments, public.commerce_orders, public.accounting_documents IN ACCESS EXCLUSIVE MODE');
+    for (const [operation, payload] of [
+      ['operator.shipments', {}],
+      ['operator.shipment', { shipmentRef: shipmentId }],
+      ['operator.invoice', { orderRef: orderId }],
+    ] as const) {
+      expect((await action(operation, payload, cookie)).body).toEqual({ ok: false, code: 'operator_required' });
+      expect((await fence.query(`SELECT count(*)::int AS blocked FROM pg_locks l
+        JOIN pg_stat_activity a ON a.pid=l.pid WHERE a.usename='starter_runtime'
+        AND a.datname=current_database() AND NOT l.granted AND l.relation=ANY($1::regclass[])`,
+      [['public.fulfillment_shipments', 'public.commerce_orders', 'public.accounting_documents']])).rows)
+        .toEqual([{ blocked: 0 }]);
+    }
+  } finally {
+    try { await fence.query('ROLLBACK'); } finally { fence.release(); }
+  }
+  expect(await snapshot()).toEqual(before);
+}, adminReadRefusalTimeoutMs);
+
+it('all fourteen operation limits preserve the complete effect snapshot over replay and forgery', async () => {
   const orderRef = await purchase(false);
   const paid = await purchase(true);
   const before = await snapshot();

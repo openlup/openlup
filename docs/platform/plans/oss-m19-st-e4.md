@@ -1,6 +1,8 @@
 # Starter order controls, invoice access and named limits
 
-Status: local implementation candidate. Installed and pre-review evidence is recorded separately; native review and delivery remain outside this continuation.
+Status: local candidate under review; this repair adds authorization proof and prose only.
+
+Current state: 51 declared / 34 bound / 17 unbound operations in both configurations. Shipment list/detail are bound; the mandatory scanner gate passed on the final feature tree.
 
 ## Outcome and scope
 
@@ -44,7 +46,7 @@ base packet had no final accepted SHA at initial inspection. The invoice UUID
 leaf merged mechanically as 6eed6b4bfc772346897402330259af11bc66ebf0,
 tree 1ed8453e8e12211043e6f16a2d883224c8e3c8f3. No review cycle consumed.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-54796a86ddee33a6f8c906eb88645b691683b37577c4fcc7b9052c50222ad05b","reason":"The invoice UUID and starter shipment witnesses use the existing tests/postgres collector, owned container helper and qualified migration runner with separate installer and runtime sessions. Shipment cases exercise installed tarballs, native human admission, actual read-only snapshot settings and zero-effect comparisons in three zones. No test discovery, command, fixture grant or sufficient-evidence rule changes; measured case deadlines use the existing explicit per-test convention. The separate browser witness preserves the required purchase specification."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-e99502c3c53ecb51f6343306af71f0ac779d44b329fc7b56bc758e83e1ad63e8","reason":"The invoice UUID and installed starter witnesses use the existing tests/postgres collector, owned container helper and qualified runner with separate installer/runtime sessions. The added distributor HTTP case exercises native challenge/session admission and the real admin-only read authorizer; installer-only table locks fence the first business reads without a runtime grant or production seam. Existing source discovery, commands and sufficient-evidence rules stay unchanged. The explicit measured per-case deadline follows the existing convention, and the separate browser witness preserves the required purchase specification."} -->
 
 ## Historical setup rethink and authority contradiction
 
@@ -93,7 +95,7 @@ requires a test context. Remove source-comparison copies before lint traversal.
 The final lint run returned to 33 existing warnings. These lessons simplify the
 next discriminator without changing the approved outcome or authority.
 
-## Shipment read dependency checkpoint
+## Historical shipment read dependency checkpoint
 
 The shipment reader dependency is integrated. The required nonmutating
 `public.commerce_view_shipment_destination(uuid)` routine is absent from the
@@ -108,21 +110,23 @@ Self-retro. Checking the nonmutating view before adding a host binding avoided
 throwaway composition and kept the missing dependency explicit.
 
 
-## Order hold release boundary
+## Historical order hold release boundary
 
 The release contract now refuses both hold operations with
 `starter_order_hold_unavailable`, after operator admission and before deferred
 I/O. Both bindings are removed. Typed hold reasons and release-reference forms
 remain visible. The operation catalogue has 14 declared refusals, plus the
-removed-reader protocol. Shipment list and detail remain declared and unbound.
+removed-reader protocol. At that historical checkpoint, shipment list and
+detail remained declared and unbound.
 This continuation permits local edits, required checks and an unsigned WIP
 snapshot only. It stops before feature sign-off, submission or native review.
 The earlier positive hold failure remains historical closer evidence.
 
 
-## Refusal checkpoint evidence
+## Historical refusal checkpoint evidence
 
-Both configurations report 51 declared, 32 bound and 19 unbound operations.
+At that historical checkpoint, both configurations reported 51 declared,
+32 bound and 19 unbound operations.
 Fourteen declared operations use named refusals. Hold and release are unbound,
 and authenticated original, repeated, changed-key and forged-reference requests
 leave the complete commerce/payment/fulfillment effect snapshot unchanged.
@@ -156,12 +160,14 @@ The main dependency merge is f4c7d3d2385bad9b13d82125f9eff75c21362dcb,
 tree d066fb3eeea89d1743a61379e30a8d45ea7d7640, against the policy/source pin
 ad373b82b830f645cc09c97f355f50022973788c. The two resolved files preserve
 the sorted publication catalog union and main's configuration with the existing
-document/return/hold additions. This continuation remains local and staged,
-without feature sign-off, push, native review or canonical verification.
+document/return/hold additions. At that checkpoint the continuation remained
+local and staged, without feature sign-off, push, native review or canonical
+verification.
 
-Shipment reads use the same native human-admin read boundary as the existing
-operator order reads. The session principal is rechecked on every request and
-matched by UUID value before shipment queries. The control/Commerce intersection
+Shipment reads and the operator invoice summary re-authorize human ADMIN on
+every request, matching the server-derived principal by UUID value before
+business reads. Unlike those admin-only reads, operator.orders/operator.order
+use session admission, which accepts active admin or distributor members. The control/Commerce intersection
 is an OMS mutation requirement, outside these nonmutating reads. Hold and release
 keep their named refusal. No actor provisioning or authority repair is included.
 
@@ -186,3 +192,26 @@ authorization placement avoids an unnecessary authority repair. The first
 browser assertion used a form-result selector on a read panel; it now targets
 the panel's actual status element. Existing seams and one connection suffice. Check the donor request shape before
 starting tree-wide proof: unknown fields also require refusal before read I/O.
+
+
+## Admin-only read proof repair
+
+The installed HTTP witness now signs in a real active distributor through the
+native challenge, proves ordinary operator-order admission, and requires all
+three admin-only reads to return operator_required for existing objects.
+Owner-held read fences and the complete effect snapshot distinguish admission
+from an accidental business read. No production read, authorizer, input parser
+or SQL implementation changes in this repair.
+
+Worker boundary: E4F-B-1 test/prose repair and the four assigned checks only;
+leave the three repair files staged, without commits or ref writes.
+
+Discrimination proof: replacing only the admin-only closure with `async () => true`
+made the isolated new case fail at the fenced shipment read (20-second request
+timeout). The authorizer was restored byte for byte with an empty production
+diff. The restored file passed all seven cases and both browser cases in 149.85 seconds.
+
+Self-retro. A stub authorizer cannot prove the real role restriction. An admitted
+non-admin session and existing selectors exercise that restriction directly;
+read fences keep the no-I/O claim independent of a zero-write snapshot. The new
+case now creates its own objects so isolated proof does not depend on prior tests.
