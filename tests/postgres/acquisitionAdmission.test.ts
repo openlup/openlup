@@ -26,6 +26,44 @@ it("uses the installed restricted runtime, full packaged catalogue and definitio
     has_function_privilege('authenticated','public.commerce_promotion_lock_definition(text)','EXECUTE') AS browser`)).rows).toEqual([{ anon: false, browser: false }]);
 });
 
+it("refuses a stale supplied second-delivery marker on a legacy pair without any public-table effects", async () => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  pair.input.quoteSnapshot.quote.context.starterPack = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  await f.owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300') WHERE promotion_id=ANY($1::text[])", [[pair.id, pair.legacyId]]);
+  const before = await f.publicTableDigests();
+  expect(Object.keys(before)).toEqual(expect.arrayContaining(["commerce_orders", "commerce_order_items", "commerce_order_adjustments",
+    "commerce_promotion_claims", "commerce_order_draft_receipts", "outbox_events"]));
+  await expect(pair.port().createOrderDraft(pair.input, { clientId })).rejects.toMatchObject({ message: "acquisition_terms_changed" });
+  expect(await f.publicTableDigests()).toEqual(before);
+}, 30_000);
+
+it.each([
+  { label: "without a second-delivery marker", supplied: false },
+  { label: "with a matching supplied second-delivery marker", supplied: true },
+])("admits a valid legacy pair quote $label", async ({ supplied }) => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  const marker = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  if (supplied) pair.input.quoteSnapshot.quote.context.starterPack = marker;
+  const result = await pair.port().createOrderDraft(pair.input, { clientId });
+  expect(result.orderDraft.replayed).toBe(false);
+  expect(result.orderDraft.quoteSnapshot.quote.context?.acquisitionTerms).toBeUndefined();
+  expect(result.orderDraft.quoteSnapshot.quote.context?.starterPack).toEqual(supplied ? marker : undefined);
+  expect(result.orderDraft.quoteSnapshot.quote.totalGross.amountMinor).toBe(760);
+  expect((await f.owner.query("SELECT amount_off_minor FROM public.commerce_promotion_claims WHERE order_id=$1::uuid", [result.orderDraft.orderId.slice(6)])).rows)
+    .toEqual([{ amount_off_minor: "240" }]);
+}, 30_000);
+
+it("replays a legacy pair draft unchanged after its supplied marker becomes stale", async () => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  pair.input.quoteSnapshot.quote.context.starterPack = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  const first = await pair.port().createOrderDraft(pair.input, { clientId });
+  await f.owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300') WHERE promotion_id=ANY($1::text[])", [[pair.id, pair.legacyId]]);
+  const before = await f.publicTableDigests();
+  const replay = await pair.port().createOrderDraft(pair.input, { clientId: clientId.toUpperCase() });
+  expect(replay.orderDraft).toEqual({ ...first.orderDraft, replayed: true });
+  expect(await f.publicTableDigests()).toEqual(before);
+}, 30_000);
+
 it("preserves exact-first preview, normalized aliases, unrelated identities and bounded escaped fallback", async () => {
   const key = `person${randomUUID()}`, domain = "example.invalid";
   const base = await f.client(`${key}@${domain}`), alias = await f.client(`${key}+exact@${domain}`, "2026-02-01T00:00:00Z");
@@ -203,7 +241,7 @@ it("waits behind an updating owner connection, then refuses the stale promise wi
   } finally { await owner.query("ROLLBACK"); owner.release(); if (pending) await pending; }
 });
 
-it("keeps native draft callers unmounted outside the acquisition adapter on this package-only tree", () => {
+it("keeps acquisition draft callers behind the adapter and the starter's direct quote free of acquisition evidence", () => {
   const walk = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);
     return entry.isDirectory() ? walk(path) : /\.tsx?$/.test(path) && !/\.(test|spec)\./.test(path) ? [path] : [];
@@ -227,6 +265,32 @@ it("keeps native draft callers unmounted outside the acquisition adapter on this
     };
     visit(source);
   }
-  expect(callers).toEqual([{ path: "packages/platform/src/commerce/server/native-checkout/index.ts",
+  const ordinary = "examples/neutral-store/host/purchase-composition.ts";
+  expect(callers).toEqual([{ path: ordinary, factory: "createPostgresNativeCheckoutPersistence", owner: "composePurchaseCapabilities" },
+    { path: "packages/platform/src/commerce/server/native-checkout/index.ts",
     factory: "createPostgresNativeCheckoutPersistence", owner: "createPostgresAcquisitionCheckoutPersistence" }]);
+  const source = ts.createSourceFile(ordinary, readFileSync(ordinary, "utf8"), ts.ScriptTarget.Latest, true);
+  let snapshot: ts.VariableDeclaration | undefined;
+  let references = 0;
+  const inspect = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && node.text === "quoteSnapshot") references++;
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "quoteSnapshot") snapshot = node;
+    ts.forEachChild(node, inspect);
+  };
+  inspect(source);
+  expect(references).toBe(2); // Declaration and the direct draft argument; no mutation or replacement.
+  expect(snapshot && ts.getCombinedNodeFlags(snapshot.parent) & ts.NodeFlags.Const).toBeTruthy();
+  const property = (expression: ts.Expression | undefined, name: string): ts.Expression => {
+    if (!expression || !ts.isObjectLiteralExpression(expression)) throw new Error("Expected a literal quote");
+    const entry = expression.properties.find(entry => ts.isPropertyAssignment(entry) && entry.name.getText(source) === name);
+    if (!entry || !ts.isPropertyAssignment(entry)) throw new Error("Expected a literal quote property");
+    return entry.initializer;
+  };
+  const keys = (expression: ts.Expression): string[] => {
+    if (!ts.isObjectLiteralExpression(expression)) throw new Error("Expected a literal context");
+    return expression.properties.flatMap(entry => ts.isSpreadAssignment(entry) ? keys(entry.expression) : [entry.name!.getText(source)]);
+  };
+  const quote = property(snapshot?.initializer, "quote"), discounts = property(quote, "discounts");
+  expect(ts.isArrayLiteralExpression(discounts) && discounts.elements.length === 0).toBe(true);
+  expect(keys(property(quote, "context"))).toEqual(["mode", "cadenceDays", "promoCodes", "starterRequest"]);
 });

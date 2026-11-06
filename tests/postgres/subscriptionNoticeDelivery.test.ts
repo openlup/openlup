@@ -173,20 +173,23 @@ describe.each(["UTC", "Etc/GMT-9", "Etc/GMT+5"])("native notice policy in %s", z
     } finally { await store.close(); }
   }, 30_000);
 
-  it("pins the pre-existing restricted operator receipt-lock refusal without recovery writes", async () => {
-    const f = await operatorCase(), key = `operator-limit:${randomUUID()}`;
+  // The shared lock and conflict completion admits the operator receipt lock on the restricted runtime.
+  it("issues operator recovery through the restricted runtime with one command, notice and token", async () => {
+    const f = await operatorCase(), key = `operator-recovery:${randomUUID()}`, token = createHash("sha256").update(key).digest("hex");
     const counts = async () => (await admin.query(`SELECT
       (SELECT count(*)::int FROM public.customer_recovery_commands WHERE idempotency_key=$1) AS commands,
       (SELECT count(*)::int FROM public.subscription_dunning_notifications WHERE case_id=$2::uuid AND notification_kind='payment_recovery') AS notices,
       (SELECT count(*)::int FROM public.commerce_checkout_recovery_tokens WHERE order_id=$3::uuid) AS tokens`,
     [key, f.caseId, f.orderId])).rows[0];
     expect(await counts()).toEqual({ commands: 0, notices: 0, tokens: 0 });
-    // F-QUALIFIED-RECOVERY-COMMAND-LOCK closes this inherited operator-issuance limit.
-    await expect(runtime.query(`SELECT public.customer_support_issue_recovery($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,
-      clock_timestamp()+interval '1 day','/account/recovery')`,
-    [f.operator.toUpperCase(), f.client.toUpperCase(), f.caseId.toUpperCase(), key, "a".repeat(64), "b".repeat(64)]))
-      .rejects.toMatchObject({ code: "42501", message: "permission denied for table customer_recovery_commands" });
-    expect(await counts()).toEqual({ commands: 0, notices: 0, tokens: 0 });
+    const issue = async () => (await runtime.query(`SELECT public.customer_support_issue_recovery($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,
+      clock_timestamp()+interval '1 day','/account/recovery') AS result`,
+    [f.operator.toUpperCase(), f.client.toUpperCase(), f.caseId.toUpperCase(), key, "a".repeat(64), token])).rows[0].result;
+    const issued = await issue();
+    expect(issued).toMatchObject({ outcome: "issued" });
+    expect(await counts()).toEqual({ commands: 1, notices: 1, tokens: 1 });
+    expect(await issue()).toEqual({ ...issued, outcome: "replayed" });
+    expect(await counts()).toEqual({ commands: 1, notices: 1, tokens: 1 });
   }, 30_000);
 
   it("refuses a missing source before recipient lookup or binding with a sanitized terminal skip", async () => {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -110,6 +110,36 @@ export async function acquisitionFixture() {
     const port = () => checkout.createPostgresAcquisitionCheckoutPersistence(runtime, { regionCode: "ZZ", financialPolicy: policy,
       isAcquisitionDiscount: discount => discount.reasonCode === "configured_acquisition" });
     const eligibility = () => promotions.createPostgresQuoteCustomerEligibility(runtime);
+    async function legacyPair() {
+      const id = await promotion(), legacyId = `legacy-${randomUUID()}`, legacy = configured(legacyId);
+      await owner.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)", [legacyId, legacy]);
+      const financialPolicy: AcquisitionFinancialPolicy<PromotionRow> = {
+        ...policy,
+        facts: row => ({ ...policy.facts(row), mirrorOf: row.id === id ? legacyId : null }),
+        classify: row => ({ ...policy.classify(row), baselineLegacy: row.id === legacyId, target: row.id === id }),
+        pairMatches: (baseline, mirror) => baseline.id === legacyId && mirror.id === id
+          && baseline.valid_from === mirror.valid_from && baseline.valid_to === mirror.valid_to,
+      };
+      const selected = pricing.selectAcquisitionTerms([legacy, configured(id)], new Date().toISOString(), "ZZ", financialPolicy);
+      if (selected?.kind !== "legacy_pair") throw new Error("Expected configured legacy pair");
+      const input = await request(id);
+      delete input.quoteSnapshot.quote.context.acquisitionTerms;
+      delete input.quoteSnapshot.quote.context.acquisitionCapability;
+      delete input.quoteSnapshot.quote.context.pricingPolicy;
+      const port = () => checkout.createPostgresAcquisitionCheckoutPersistence(runtime, { regionCode: "ZZ", financialPolicy,
+        isAcquisitionDiscount: discount => discount.reasonCode === "configured_acquisition" });
+      return { id, legacyId, input, terms: selected.terms, port };
+    }
+    async function publicTableDigests() {
+      const result: Record<string, { rows: number; sha256: string }> = {};
+      const tables = (await owner.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+      for (const { tablename } of tables) {
+        const name = String(tablename).replaceAll('"', '""');
+        const rows = (await owner.query(`SELECT to_jsonb(t) AS value,t.xmin::text AS version FROM public."${name}" t ORDER BY to_jsonb(t)::text,t.xmin::text`)).rows;
+        result[String(tablename)] = { rows: rows.length, sha256: createHash("sha256").update(JSON.stringify(rows)).digest("hex") };
+      }
+      return result;
+    }
     async function effects() {
       const result: Record<string, unknown> = {};
       for (const table of ["clients", "commerce_orders", "commerce_order_items", "commerce_order_adjustments", "commerce_promotion_claims",
@@ -117,6 +147,6 @@ export async function acquisitionFixture() {
         result[table] = (await owner.query(`SELECT to_jsonb(t) AS value,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
       return result;
     }
-    return { owner, runtime, runtimeUrl: runtimeUrl.toString(), consumer, sku, product, checkout, promotions, pricing, client, promotion, request, port, eligibility, effects, close };
+    return { owner, runtime, runtimeUrl: runtimeUrl.toString(), consumer, sku, product, checkout, promotions, pricing, client, promotion, request, port, eligibility, legacyPair, publicTableDigests, effects, close };
   } catch (error) { await close(); throw error; }
 }

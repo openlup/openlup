@@ -570,6 +570,7 @@ engines raise `acquisition_terms_v2_required`. A changed promise raises
 offer checks; the lower writer still validates replay ownership and input.
 An ordinary returning subscription may omit acquisition terms only with complete
 discount evidence, no acquisition grant or marker, and paid-family evidence.
+Admission re-checks paid-family eligibility for the ordinary-returning path; a quote issued before the family's first payment stays admissible until it expires, as in the reference implementation.
 The host must pass only a quote produced on the server, authorize the buyer and
 verify quote acceptance before calling this boundary. A host that mounts
 acquisition routing must route every acquisition caller through this adapter;
@@ -852,6 +853,8 @@ promotion IDs and do not aggregate mirror families. Hosts must not assume either
 capability or claim full eligibility parity from these reads. The characterization
 tests preserve these limits without changing the reader or adding a default
 eligibility rule.
+
+Admission re-checks paid-family eligibility for the ordinary-returning path; a quote issued before the family's first payment stays admissible until it expires, as in the reference implementation.
 
 The server entry is classified as an adapter because its executor declaration
 reaches the data entry and optional pg types. It imports at runtime without pg

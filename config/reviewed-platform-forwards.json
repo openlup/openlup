@@ -1931,6 +1931,10 @@
     {
       "path": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
       "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+      "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
     }
   ],
   "channelIngestForwards": [

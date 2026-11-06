@@ -178,8 +178,8 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
                 const parsed = resolvedAcquisitionTermsSchema.safeParse(candidate);
                 if (!parsed.success) changed();
                 else if (Object.entries(selected.terms).some(([key, value]) => parsed.data[key as keyof typeof parsed.data] !== value)) changed();
-                if (starter != null && starter.delivery2?.discountBps !== selected.terms.delivery2DiscountBps) changed();
               }
+              if (starter != null && starter.delivery2?.discountBps !== selected.terms.delivery2DiscountBps) changed();
             } else if (candidate !== undefined || starter != null || hasGrant) changed();
           }
         }
