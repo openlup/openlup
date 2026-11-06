@@ -35,8 +35,7 @@ describe('native review decisions', () => {
     ['head changed', passed, { ...observed, head: 'd'.repeat(40) }, time, 'stale'],
     ['tree changed', passed, { ...observed, tree: 'd'.repeat(40) }, time, 'stale'],
     ['base changed', passed, { ...observed, base: 'd'.repeat(40) }, time, 'stale'],
-    ['just before expiry', passed, observed, time + 86400000 - 1, 'reviewed'],
-    ['at expiry', passed, observed, time + 86400000, 'expired'],
+    ['a month later: reviews do not expire', passed, observed, time + 30 * 86400000, 'reviewed'],
     ['future report', passed, observed, time - 1, 'invalid'],
     ['invalid clock', passed, observed, NaN, 'invalid'],
     ['old version', () => ({ version: 1 }), observed, time, 'invalid'],
@@ -81,10 +80,10 @@ describe('native review decisions', () => {
     const session = passed(); Object.assign(session.history.at(-1).report, patch);
     expect(verdict(session, observed, time).code).toBe('invalid');
   });
-  it('never lets a later report refresh the earliest counted PASS expiry', () => {
+  it('keeps evidence valid without expiry while the receipt keeps its recorded identity field', () => {
     let session = recordReport(prepare({ intent: { ...intent, risk: 'behavior' } }), report(), time);
     session = recordReport(session, report({ reviewer: 'reviewer-2' }), time + 60000);
-    expect(verdict(session, observed, time + 86400000).code).toBe('expired');
+    expect(verdict(session, observed, time + 86400000).code).toBe('reviewed');
     expect(receiptSummary(session, 12, time + 60000).expires).toBe(time + 86400000);
   });
   it('keeps material findings until a later report explicitly closes their ids', () => {
@@ -167,17 +166,6 @@ describe('native review decisions', () => {
     session.history.at(-1).report.reviewer = reviewer;
     expect(verdict(session, observed, time + 2).code).toBe('invalid');
   });
-  it.each(['routine', 'behavior'])('--new renews expired same-tree evidence with fresh %s reviewers', risk => {
-    let session = passed(); const now = time + 86400000;
-    expect(verdict(session, observed, now).code).toBe('expired');
-    session = prepareCandidate(session, { ...observed, intent: { ...intent, risk }, authorSessionId: 'author' }, now, true);
-    expect(session.cycle).toBe(0);
-    session = recordReport(session, report({ reviewer: 'reviewer-2' }), now);
-    expect(verdict(session, observed, now).code).toBe(risk === 'routine' ? 'reviewed' : 'needs_agent_review');
-    session = recordReport(session, report({ reviewer: 'reviewer-3' }), now);
-    expect(verdict(session, observed, now).ok).toBe(true);
-    expect(receiptSummary(session, 12, now)).toMatchObject({ risk, expires: now + 86400000 });
-  });
   it.each([false, true])('first prepare accepts --new = %s and hashes intent history', fresh => {
     const session = prepareCandidate(null, { ...observed, intent, authorSessionId: 'author' }, time, fresh);
     expect(session).toEqual(prepare());
@@ -205,7 +193,7 @@ describe('native review decisions', () => {
     expect(() => continueOwner(prepare(), '', time)).toThrow();
     expect(() => recordReport(prepare(), report(), time - 1)).toThrow('time');
   });
-  it('focuses an exact base integration without copying reports or renewing source expiry', () => {
+  it('focuses an exact base integration without copying reports', () => {
     const source = passed();
     const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent, authorSessionId: 'author' };
     const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true }, time + 1);
@@ -222,7 +210,7 @@ describe('native review decisions', () => {
     const legacy = structuredClone(next); delete legacy.candidate.integration.mechanical;
     expect(verdict(legacy, actual, time + 60000).ok).toBe(true);
     expect(prepareCandidate(legacy, actual, time + 60001)).toEqual(legacy);
-    expect(verdict(next, actual, time + 86400000).code).toBe('expired');
+    expect(verdict(next, actual, time + 86400000).code).toBe('reviewed');
     expect(prepareCandidate(next, actual, time + 60001)).toEqual(next);
     const renewed = prepareCandidate(next, actual, time + 86400000, true);
     expect(renewed.candidate.integration).toBeUndefined();
@@ -231,12 +219,12 @@ describe('native review decisions', () => {
     expect(() => prepareCandidate(source, { ...actual, integration: { ...integration, mechanical: 'yes' } }, time + 1)).toThrow('integration coverage');
     expect(() => prepareCandidate(source, { ...actual, integration }, time + 1, true)).toThrow('integration coverage');
   });
-  it.each(['missing', 'expired', 'open finding', 'wrong parent', 'extra parent', 'base not ancestor', 'changed intent', 'changed author'])('does not focus integration with %s coverage', reason => {
+  it.each(['missing', 'open finding', 'wrong parent', 'extra parent', 'base not ancestor', 'changed intent', 'changed author'])('does not focus integration with %s coverage', reason => {
     let source = reason === 'missing' ? prepare() : passed();
     if (reason === 'open finding') source = recordReport(source, report({ reviewer: 'defect', verdict: 'FAIL', findings: [{ id: 'F1', summary: 'unresolved', material: true }] }), time);
     const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent: reason === 'changed intent' ? { ...intent, criteria: 'Other goal' } : intent, authorSessionId: reason === 'changed author' ? 'other' : 'author' };
     const parents = reason === 'wrong parent' ? [actual.base, observed.head] : reason === 'extra parent' ? [observed.head, actual.base, observed.base] : [observed.head, actual.base];
-    expect(integrationReviewContext(source, actual, { parents, baseAncestor: reason !== 'base not ancestor', mechanical: true }, reason === 'expired' ? time + 86400000 : time + 1)).toBeUndefined();
+    expect(integrationReviewContext(source, actual, { parents, baseAncestor: reason !== 'base not ancestor', mechanical: true }, time + 1)).toBeUndefined();
   });
   it.each([false, true])('charges a changed integration at the repair limit only when not mechanical: %s', mechanical => {
     const source = { ...passed(), cycle: 3 };

@@ -1,7 +1,10 @@
 # Review coverage after a passing candidate
 
 Status: development-preview control task. This record owns the finite outcome,
-accepted scope, authority and sufficient proof for independent review.
+accepted scope, authority and sufficient proof for independent review. Its
+disjoint-integration, ordinary-repair, renewal and expiry rules were superseded
+on 2026-11-05 by
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability).
 
 Outcome: retain complete first review while removing redundant review rounds
 following a proved disjoint main integration; permit one fresh review of an
