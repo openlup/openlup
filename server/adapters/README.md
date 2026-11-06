@@ -146,16 +146,18 @@ omitted. Migration history and the private installation key have separate
 target-owned dispositions; neither is copied. The key payload is never read,
 hashed or logged by transfer.
 
-`public.customer_identity_challenges` is intentionally not carried. These rows
-are single-use, short-lived authorization state holding token hashes, so carrying
-them would move live bearer material between stores, and customers sign in again
-after a restore. The outside-profile census reports only the relation, owner and
-row count with disposition `intentionally-not-carried`, even when empty. Capture
-never reads, hashes or transports any challenge column. This exact exclusion
-does not admit other nonempty relations or change the carried table set. The
-restored lead-absorption policy continues to classify this relation as `block`.
-Restore requires challenge rows to be absent on the pristine target; it does not clear
-an active target's authorization state.
+`public.customer_identity_challenges` is intentionally not carried: its single-use,
+short-lived token hashes are live authorization state; customers sign in again after restore.
+Census reports only relation, owner, row count and `intentionally-not-carried`, even when empty.
+Capture never reads, hashes or transports challenge columns; other nonempty outside-profile
+relations still refuse, and the carried table set is unchanged. Restore requires a pristine
+target with no challenges and never clears an active target's authorization state.
+The [joined native proofs](../../tests/postgres/storeJourneyTransfer.test.ts) use intake-empty
+fixtures, real restricted-runtime commands and exact public-row comparisons after restore.
+They cover guest checkout/sign-in, destinations and purchase holds, consent choices,
+renewal execution with terminal replay, and captured paid/dunning dispatch without duplicate effects.
+The challenge registry remains `block`; owner-access absorption classification matches both stores.
+Restricted-runtime absorption count reads remain a documented pre-existing limit; availability is not claimed.
 
 Native checkout draft receipts are included in this finite profile. Their order
 and client UUIDs are preserved by native restore, so the stored SQL fingerprint
