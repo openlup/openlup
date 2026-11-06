@@ -17,6 +17,7 @@ import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/comme
 import { createCheckoutRecoveryDelivery } from './checkout-recovery.ts';
 import { composePurchaseCapabilities } from './purchase-composition.ts';
 import { composeExistingCapabilities } from './e-composition.ts';
+import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -66,7 +67,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       await createCheckoutRecoveryDelivery(admittedOrigin)(input);
     },
   };
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery), ...composeSubscriptionEditors(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit
@@ -107,6 +108,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     return asCustomer(principal, async db => success({
       profile: await createPostgresCustomerMePort(db).getCustomerMe(principal),
       subscriptionControl: await createPostgresCustomerSubscriptionSnapshotPort(db).getSnapshot(),
+      subscriptionEditors: await readEditorSubscriptions(pool,context.actor),
       fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
     }));
   };

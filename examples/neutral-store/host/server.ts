@@ -73,7 +73,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config,
       setCookie: cookie => response.setHeader('Set-Cookie', cookie),
       accept: async () => { sendJson(response, 200, { ok: true, value: { accepted: true } }); } });
-    if (!response.writableEnded) sendJson(response, result.ok ? 200 : 409, result);
+    if (!response.writableEnded) sendJson(response, result.ok ? 200 : result.status ?? 409, result);
     return;
   }
   if (url.pathname.startsWith('/api/')) { sendJson(response, 404, { ok: false, code: 'starter_route_unknown' }); return; }

@@ -7,6 +7,7 @@ const configurations = [
 
 export default defineConfig({
   testDir: './browser',
+  testMatch: 'journey.spec.ts',
   workers: 1,
   fullyParallel: false,
   use: { headless: true, trace: 'retain-on-failure' },

@@ -31,6 +31,54 @@ Extend the engine journey with subscription activation, renewal and recovery
 when the native path is available; a one-time purchase is insufficient evidence
 for subscription acceptance.
 
+## Subscription editor proof
+
+The editor contribution has 65 passing focused source tests in seven touched
+files: editor models, package-consumer compilation, frozen-order parcel notes,
+session routes, installation, localized routes and extraction. Its separate
+Playwright component recipe passes 21 cases for each configuration (42 total,
+zero skips), using synthetic API responses. Those cases cover classic draft and
+review interactions, stale quotes, size/count changes, catalogue refresh,
+uncertain-save readback and explicit opt-in consent. They establish UI behavior,
+not native purchase or durable editor acceptance.
+
+With the selected package set installed and built, run from this directory:
+
+```sh
+node --experimental-strip-types --test test/subscription-models.test.ts test/editor-contracts.test.ts test/editor-mail.test.ts test/subscription-routes.test.ts test/installation.test.ts test/routes.test.ts test/extract.test.ts
+npm run build
+npx --no -- playwright test --config playwright.editors.config.ts
+```
+
+The native recipes are `browser/subscription-journeys.spec.ts` (seven classic
+and six sized journeys) and `browser/subscription-api.spec.ts` (four API journeys).
+They are authored and unrun: 17 cases per configuration, 34 total. They require
+the native purchase path to materialize editable template lines and its price
+list. That producer is absent from the selected editor package base. The fixture
+fails at the missing native template; it never seeds editable lines/price lists
+or supplies a fallback read. The native unconfigured-resize case shares this
+purchase fixture; its named refusal also has a passing local HTTP unit witness.
+
+Start separate disposable installed/seeded hosts for the two configurations.
+The ignored `.context/database-ui-hosts.json` entries require `id`, loopback
+`baseURL` and each proof-owned `composeProject`. The harness performs a native
+purchase and sandbox settlement, then native customer challenge sign-in; only
+the harness reads the private captured mailbox. Existing test-owned rows may be
+changed to exercise drift, blocking and exclusion repair. No seeded subscription
+or hand-built price list substitutes for the purchase. Run only these new files:
+
+```sh
+npx --no -- playwright test --config playwright.database.config.ts subscription-journeys.spec.ts subscription-api.spec.ts
+```
+
+Run one PostgreSQL-backed proof at a time, after the one-minute load average is
+at most 20; the native purchase-template proof has priority. Traces, screenshots
+and videos remain disabled. The notification journey uses a test-only native
+dispatcher with captured delivery; the reference host mounts no new consumer.
+The exported paid-email parcel-note callback separately proves frozen quantities,
+physical identities and renewal cadence. Notes are composed but not sent: the
+reference store has no paid-email handler or outbox consumer mounted.
+
 ## Clean-directory and startup witness
 
 Extract into a new empty directory, outside the source archive. Verify the new

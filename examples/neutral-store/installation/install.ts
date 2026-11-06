@@ -1,6 +1,8 @@
 import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
+import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
+import { editorProducts } from '../host/editor-catalogue.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
 
@@ -11,21 +13,22 @@ export interface InstallConnection {
 
 export interface DemonstrationInstallation {
   connection: InstallConnection;
+  stock: Pick<FulfillmentStockSyncPort,'recordProviderStockCurrent'>;
   installRole: string;
   runtimeRole: string;
   close(): Promise<void>;
 }
 
-export type InstallationBootstrap = () => Promise<DemonstrationInstallation>;
+export type InstallationBootstrap = (config: StoreConfig) => Promise<DemonstrationInstallation>;
 
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
 export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap): Promise<void> {
-  const installation = await bootstrap();
+  const installation = await bootstrap(config);
   try { await applyDemoSeed(config, installation); }
   finally { await installation.close(); }
 }
 
-/** Idempotent data composition; never creates schema, clients, stock or subscription truth. */
+/** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
 export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation): Promise<void> {
   const { connection, installRole, runtimeRole } = installation;
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
@@ -50,13 +53,37 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         name=EXCLUDED.name, description=EXCLUDED.description`,
     [row.id, row.slug, row.status, row.name, row.description]);
     for (const row of seed.skus) await connection.query(`INSERT INTO public.catalog_skus
-      (id, product_id, sku, title, status, min_order_qty, is_addon, sellable_standalone, sellable_in_subscription)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET
+      (id, product_id, sku, title, status, min_order_qty, is_addon, sellable_standalone, sellable_in_subscription,net_weight_g)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO UPDATE SET
         product_id=EXCLUDED.product_id, sku=EXCLUDED.sku, title=EXCLUDED.title, status=EXCLUDED.status,
         min_order_qty=EXCLUDED.min_order_qty, is_addon=EXCLUDED.is_addon,
-        sellable_standalone=EXCLUDED.sellable_standalone, sellable_in_subscription=EXCLUDED.sellable_in_subscription`,
+        sellable_standalone=EXCLUDED.sellable_standalone, sellable_in_subscription=EXCLUDED.sellable_in_subscription,net_weight_g=EXCLUDED.net_weight_g`,
     [row.id, row.product_id, row.sku, row.title, row.status, row.min_order_qty,
-      row.is_addon, row.sellable_standalone, row.sellable_in_subscription]);
+      row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
+    for (const row of seed.documents) {
+      await connection.query(`INSERT INTO public.catalog_product_document_revisions
+        (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
+        VALUES($1,$2,1,'starter:subscription-item@1',$3,$4::jsonb,'starter:demo','{}'::jsonb,$5)
+        ON CONFLICT(id) DO NOTHING`, [row.id,row.productId,`starter:demo:${row.id}`,row.document,row.digest]);
+      const existing = (await connection.query('SELECT digest FROM public.catalog_product_document_revisions WHERE id=$1', [row.id])).rows[0];
+      if (existing?.digest !== row.digest) throw new Error('starter_document_seed_conflict');
+      await connection.query('UPDATE public.catalog_products SET current_document_revision_id=$1,primary_sku_id=$2 WHERE id=$3',
+        [row.id,seed.skus.find(sku => sku.product_id === row.productId)!.id,row.productId]);
+    }
+    for (const row of seed.skus) {
+      // A fictional numeric identifier with a valid check digit; never a registered trade claim.
+      const digits = BigInt('0x' + row.id.replaceAll('-', '')).toString().slice(0,12).padStart(12,'0');
+      const check = (10 - [...digits].reduce((sum,digit,index) => sum + Number(digit) * (index % 2 ? 3 : 1),0) % 10) % 10;
+      await connection.query(`INSERT INTO public.catalog_sku_identifiers
+        (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)
+        VALUES($1,'starter:demo','gtin',$2,'unit',1,true) ON CONFLICT(issuer,normalized_value) DO NOTHING`, [row.id,digits+check]);
+    }
+    for (const row of seed.settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
+      VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`, [row.key,row.value]);
+    for (const product of editorProducts(config)) await installation.stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
+      providerRef: config.purchase.stock.providerRef,collectedAt: config.purchase.stock.collectedAt,sourceRevision: null,revisionSource: 'collection',quantityKind: 'snapshot',
+      skuRef: product.sku,totalQuantity: product.stockQuantity,forSaleQuantity: product.stockQuantity,reservedOrUnavailableQuantity: 0,syncRunId: config.purchase.stock.syncRunId },
+      inventoryClass: 'sellable',lastSyncedAt: config.purchase.stock.collectedAt,staleAfter: config.purchase.stock.staleAfter });
     for (const row of seed.priceLists) await connection.query(`INSERT INTO public.price_lists
       (id, name, region_code, currency, status, valid_from) VALUES ($1,$2,$3,$4,$5,$6)
       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, region_code=EXCLUDED.region_code,
@@ -95,7 +122,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
 }
 
 /** Local demo only. Socket access is the install capability; the application never mounts it. */
-export async function bootstrapDemonstration(): Promise<DemonstrationInstallation> {
+export async function bootstrapDemonstration(config: StoreConfig): Promise<DemonstrationInstallation> {
   const migrations = await import('@openlup/platform/migrations').catch((error: unknown) => {
     if (error instanceof Error && 'code' in error
       && (error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' || error.code === 'ERR_MODULE_NOT_FOUND')
@@ -145,5 +172,7 @@ export async function bootstrapDemonstration(): Promise<DemonstrationInstallatio
   } finally { await bootstrap.end(); }
   const connection = new pg.Client({ host: socket, database, user: installRole });
   await connection.connect();
-  return { connection, installRole, runtimeRole, close: () => connection.end() };
+  const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
+  const stock = createPostgresFulfillmentStockSyncPort(connection,{ sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
+  return { connection,stock, installRole, runtimeRole, close: () => connection.end() };
 }

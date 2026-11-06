@@ -2,20 +2,27 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
+import { editorProducts } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
 
-const seedPriceCount = (config: typeof configurations[string]) => config.offer.products.reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
+const seedPriceCount = (config: typeof configurations[string]) => editorProducts(config).reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
 
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
   const prices = new Map<string, Record<string, unknown>>();
+  const documents = new Map<string, string>();
+  const stockCalls: unknown[] = [];
   const binding: DemonstrationInstallation = {
     installRole: 'demo_install', runtimeRole: 'demo_runtime',
+    stock: { async recordProviderStockCurrent(input) { stockCalls.push(input); return { replayed: false,readBack: true }; } },
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('INSERT INTO public.catalog_product_document_revisions') && values) documents.set(String(values[0]),String(values[4]));
+      if (text.startsWith('SELECT digest')) return { rows: [{ digest: documents.get(String(values?.[0])) }] };
+      if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
         Object.fromEntries(['id','price_list_id','variant_id','mode','min_qty','unit_price_minor','amount_kind','active','valid_from'].map((key,i) => [key, values[i]])));
       if (text.startsWith('SELECT id, price_list_id')) return { rows: [prices.get(String(values?.[0]))!] };
@@ -25,26 +32,26 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
     } },
     close: async () => { closed++; },
   };
-  return { binding, calls, closed: () => closed };
+  return { binding, calls, stockCalls, closed: () => closed };
 }
 
 for (const config of Object.values(configurations)) {
   test(`${config.id}: fictional catalog and prices come from one configuration deterministically`, () => {
     const seed = buildDemoSeed(config);
     assert.deepEqual(buildDemoSeed(structuredClone(config)), seed);
-    assert.equal(seed.products.length, config.offer.products.length);
+    assert.equal(seed.products.length, new Set(editorProducts(config).map(product => product.groupKey)).size);
     assert.equal(seed.priceLists[0]!.currency, config.market.currency);
     const ids = [...seed.products, ...seed.skus, ...seed.priceLists, ...seed.prices].map(row => row.id);
     assert.equal(new Set(ids).size, ids.length);
     for (const [index, product] of config.offer.products.entries()) {
       assert.equal(seed.products[index]!.name, product.name.en);
       assert.equal(seed.products[index]!.description, product.description.en);
-      assert.equal(seed.skus[index]!.sku, product.sku);
-      assert.equal(seed.skus[index]!.product_id, seed.products[index]!.id);
-      const oneTime = seed.prices.find(row => row.variant_id === seed.skus[index]!.id && row.mode === 'one_time')!;
+      const sku = seed.skus.find(row => row.sku === product.sku)!;
+      assert.equal(sku.product_id, seed.products[index]!.id);
+      const oneTime = seed.prices.find(row => row.variant_id === sku.id && row.mode === 'one_time')!;
       assert.equal(oneTime.unit_price_minor, product.unitPrice.amountMinor);
       assert.equal(oneTime.price_list_id, seed.priceLists[0]!.id);
-      assert.equal(seed.prices.filter(row => row.variant_id === seed.skus[index]!.id).length, product.permittedPurchaseModes.length);
+      assert.equal(seed.prices.filter(row => row.variant_id === sku.id).length, product.permittedPurchaseModes.length);
     }
     const changed = structuredClone(config);
     changed.offer.products[0]!.unitPrice.amountMinor++;
@@ -62,10 +69,10 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, config.offer.products.length * 2 + seedPriceCount(config) + 1);
+    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 1);
     for (const call of inserts) {
-      assert.match(call.text, call.text.startsWith('INSERT INTO public.price_entries') ? /ON CONFLICT \(id\) DO NOTHING/ : /ON CONFLICT \(id\) DO UPDATE/);
-      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries)\b/);
+      assert.match(call.text, /ON CONFLICT/);
+      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings)\b/);
       assert.ok(call.values?.length);
     }
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
@@ -153,4 +160,21 @@ test('conflicting configured price is refused and rolls back instead of overwrit
   };
   await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!, fixture.binding), { message: 'starter_price_seed_conflict' });
   assert.equal(fixture.calls.at(-1)!.text, 'ROLLBACK');
+});
+
+
+test('install uses the native stock writer for every exact editor SKU and seeds no editable subscription rows', async () => {
+  const config = Object.values(configurations)[0]!, fixture = installation();
+  await applyDemoSeed(config,fixture.binding);
+  assert.equal(fixture.stockCalls.length,editorProducts(config).length);
+  assert.equal(fixture.calls.some(call => /INSERT INTO public\.(subscription_lines|subscription_renewal_terms|subscription_renewal_term_lines|subscription_method_states|clients)\b/.test(call.text)),false);
+  const settings = fixture.calls.filter(call => call.text.startsWith('INSERT INTO public.commerce_settings'));
+  assert.equal(settings.find(call => call.values?.[0] === 'subscription_minimum_base_units')?.values?.[1],String(config.subscriptionEditing.minimumBaseUnits));
+});
+
+test('a changed installed document refuses instead of reusing an incompatible revision', async () => {
+  const fixture = installation(),query = fixture.binding.connection.query;
+  fixture.binding.connection.query = async (text,values) => text.startsWith('SELECT digest') ? { rows: [{ digest: '0'.repeat(64) }] } : query(text,values);
+  await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!,fixture.binding),{ message: 'starter_document_seed_conflict' });
+  assert.equal(fixture.calls.at(-1)!.text,'ROLLBACK');
 });

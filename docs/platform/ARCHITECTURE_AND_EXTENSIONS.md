@@ -1917,8 +1917,12 @@ never moves the due anchor, writes an arrival or interrupts active service.
 
 The same editor binding accepts `ExactSubscriptionEditRequest` for seven separate
 API levers. These requests include their `action`; the classic request retains
-its existing shape and result type. There are no supplied portal controls or
-starter host routes for these levers.
+its existing shape and result type. The reference store mounts authenticated
+preview/apply routes for them with no portal controls. Its demand-driven
+plan-length and portion resize policy remains unconfigured; its ordinary classic
+and sized editor choices preserve explicit counts. Its paid-email parcel-note
+callback is composed but not sent because the starter mounts no paid-email host.
+See the [editor composition and proof limits](../../examples/neutral-store/README.md#customer-subscription-editors).
 
 | Action | Future-template effect |
 | --- | --- |

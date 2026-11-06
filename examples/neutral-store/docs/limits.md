@@ -16,9 +16,12 @@ application composition limits; they are not claims of exported package errors.
 | N5 | Saved addresses, billing profiles, delivery preferences, payment preferences, private-profile views and the profile/address/billing/private-profile views action | `starter_account_preferences_unavailable` |
 | N6 | Real PSP, payment method setup, card replacement and unsupported money recovery | `native_prepared_attempt_store_unsupported` |
 | N7 | Customer profile edit | `starter_profile_edit_unavailable` |
-| N8 | Exact generic recipe/mix/portion commands | `subscription_command_unsupported_action` |
+| N8 | Demand-driven plan-length and portion resizing are unconfigured; the seven exact commands are API-only | `starter_subscription_resize_unconfigured` |
 | N9 | Rich OMS, commercial analytics, payment links and saved draft resume | `starter_rich_oms_unavailable` |
 | N10 | Google sign-in | `oauth_not_supported` |
+| N11 | Size-aware acquisition; new purchases start classic and require explicit reviewed opt-in | `starter_sized_acquisition_unavailable` |
+| N12 | Publication-head and offer-membership fencing for sized edits | `starter_sized_publication_fence_unavailable` |
+| Purchase template | Historical/native purchases without editable lines or a price context have no fallback | `starter_subscription_template_unavailable` |
 | Inventory boundary | Lot traceability, locations and stock movements | `starter_inventory_traceability_unavailable` |
 
 The starter has no runtime writer for live products, SKUs, price lists, price
@@ -33,7 +36,9 @@ marker (`starter_seed_demonstration_database_required`). The one-shot bootstrap
 uses the complete installed history and refuses any pre-existing unmarked database.
 Guest purchase, subscription activation and recovery have real-database host and browser proofs.
 Promotions remain seed configuration, with no runtime administration.
-Clients, stock and settings must use their native writers; never seed them. Purchase, renewal terms and
+The install writes editor settings and synthetic catalogue documents/identifiers;
+fictional stock observations use the public native stock writer. Clients are
+not seeded. Purchase, renewal terms and
 method states are never replaced by hand-written application rows.
 
 The portable rail has **no lot traceability, locations or stock movements**.
@@ -96,12 +101,27 @@ configuration is a non-secret `--configuration` argument. The one-command
 installation target defaults from the owned registry. CLI transport does not
 supply an installation capability.
 
+## Subscription editors
+
+The classic editor, size-aware editor and reviewed opt-in use package preview
+and apply factories. Swap, individual extra changes and fixed-total base mix are
+available through the customer-session API; they have no portal buttons. Plan
+and portion resize commands reach the named configuration limit after ownership
+admission. Ordinary classic plan and sized cadence choices keep quantities.
+New/increased sized SKUs require current active/subscription-sellable state in
+the apply transaction; publication-head/membership fencing is not implemented.
+Entering, previewing or abandoning an invitation never binds sized.
+
+The host exports a paid-email parcel-note callback using frozen order quantities,
+exact physical identity and frozen renewal cadence. It mounts no paid-email
+handler or outbox consumer, so those notes are not sent by this starter.
+
 ## Partner intake and reviews
 
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 52 operations. With a runtime connection, the partner
+The application declares 54 operations. With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 

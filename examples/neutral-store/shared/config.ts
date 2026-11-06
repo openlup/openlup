@@ -1,5 +1,6 @@
 import { priceInterimOffer } from './interim-pricing.ts';
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
+import { assertEditorConfig, type SubscriptionEditorConfig } from './subscription-edit.ts';
 
 export type Locale = 'en' | 'pl';
 export type Localized = Record<Locale, string>;
@@ -18,6 +19,7 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  subscriptionEditing: SubscriptionEditorConfig;
   /** Optional owned origin; absence preserves the two local HTTP authorities. */
   publicOrigin?: string;
   /** Explicit opt-in for a non-loopback HTTP origin. Prefer TLS. */
@@ -93,6 +95,7 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  assertEditorConfig(config.subscriptionEditing);
   assertPublicOrigin(config);
   assertSupportEmail(config);
   const offer = config.offer;

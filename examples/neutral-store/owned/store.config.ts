@@ -1,7 +1,8 @@
 import type { StoreConfig } from '../shared/config.ts';
+import { subscriptionEditing } from './subscription-editing.ts';
 
 /** Change this single input to personalize the running application. */
-export const configurations: Record<string, StoreConfig> = {
+const inputs = {
   supplements: {
     id: 'supplements',
     brand: {
@@ -160,7 +161,10 @@ export const configurations: Record<string, StoreConfig> = {
     legal: { revision: 'demo-1', returnsDays: 14, demoOnly: true },
     features: { reviews: true, acquisition: true, research: true, partners: true, risk: false, normalizedIngest: true },
   },
-};
+} satisfies Record<string, Omit<StoreConfig, 'subscriptionEditing'>>;
+
+export const configurations: Record<string, StoreConfig> = Object.fromEntries(Object.entries(inputs)
+  .map(([id, config]) => [id, { ...config, subscriptionEditing: subscriptionEditing(config.offer.products) }]));
 
 /** The application owns its default identity and registry, including additional brands. */
 export const defaultConfigurationId = 'supplements';
