@@ -61,8 +61,10 @@ its request, quote, totals, command key and subscription-event reference. The
 accepted event also carries complete renewal `linePricing`; no per-line agreement
 column or existing cycle/operation snapshot is rewritten.
 
-Quote previews are classified as blocking client absorption because they belong
-to subscriptions, which already block it. Connected native-store capture owns
+Quote previews are classified `retain` for client absorption: a preview exists
+only for a subscription its client owns, and subscriptions already block
+absorption, so absorption never reads the owner-only preview table and refuses
+through the subscription instead. Connected native-store capture owns
 these rows, and restore inserts them after clients, subscriptions and subscription
 events. Preview pruning retains accepted history and deletes at most 500
 unaccepted rows expired more than seven days before the request time. The minimum
@@ -1842,8 +1844,9 @@ The canonical manifest and projected package SQL retain identical bytes for all
 selected plans; each installation shape needs its separately measured catalogue
 identity. Apply this additive schema before upgrading native account reads or
 composing the editor. Old generic commands keep their existing contract.
-Preview rows retain linked actor/client and accepted-event references, block
-client absorption and travel through the finite connected-store profile. They
+Preview rows retain linked actor/client and accepted-event references, stay
+unread by client absorption (their subscriptions block it) and travel through
+the finite connected-store profile. They
 have no erasure path yet. [Retained storage](#retained-renewal-storage) owns their
 privilege, pruning, acceptance and renewal-pricing boundaries.
 
