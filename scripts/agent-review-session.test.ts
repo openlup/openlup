@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { candidateFloor, classifyRisk, digest, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { admit, candidateFloor, classifyRisk, digest, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 
 const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
@@ -11,9 +11,9 @@ const passed = () => recordReport(prepare(), report(), time);
 describe('native review decisions', () => {
   it.each([
     ['prose', 1], ['routine', 1], ['behavior', 2], ['unknown', 1],
-  ])('requires the %s reviewer floor', (risk, count) => {
+  ])('requires the v3 %s reviewer floor', (risk, count) => {
     expect(requiredReviewers(classifyRisk(observed, risk))).toBe(count);
-    const session = recordReport(prepare({ intent: { ...intent, risk } }), report(), time);
+    const session = recordReport(prepare({ intent: { ...intent, risk }, rules: { version: 3 } }), report(), time);
     expect(verdict(session, observed, time).ok).toBe(count === 1);
   });
   it.each([
@@ -113,8 +113,35 @@ describe('native review decisions', () => {
       expect(verdict(session, next, time + index).ok).toBe(true);
     }
   });
-  it.each(['AGENTS.md', 'nested/AGENT_GUIDE.local.rst', '.github/guide.md', '.claude/rules.md', '.agents/rules.md', '.codex/rules.md', 'nested/SKILL.md'])('keeps a review for rule file %s', path => {
+  it.each(['GEMINI.md', '.cursor/rules/x.md', 'nested/GEMINI.md', 'nested/.cursor/rules/x.md', 'AGENTS.md', 'nested/AGENT_GUIDE.local.rst', '.github/guide.md', '.claude/rules.md', '.agents/rules.md', '.codex/rules.md', 'nested/SKILL.md'])('keeps a review for rule file %s', path => {
     expect(candidateFloor({ changedPaths: [path] }, 'unknown')).toBe(path.endsWith('.rst') ? 2 : 1);
+  });
+  it.each(['.nvmrc', 'scripts/documentation-routing.ts'])('replays a routine v2 session and receipt with one PASS for %s', path => {
+    const candidate = { ...observed, changedPaths: [path] };
+    // Persisted shape emitted by main, including its historical cycle fields.
+    const session = { version: 2, authorSessionId: 'author', intent, cycle: 0, allowedCycles: 3,
+      candidate, preparedAt: time, history: [
+        { type: 'prepare', intent, candidate, authorSessionId: 'author', at: time, cycle: 0 },
+        { type: 'report', at: time, report: { ...report(), at: time } },
+      ] };
+    expect(session.version).toBe(2);
+    expect(session.history.filter(event => event.type === 'report')).toHaveLength(1);
+    expect(verdict(session, candidate, time)).toMatchObject({ ok: true, code: 'reviewed' });
+    // Literal legacy summary: admission must also replay receipts emitted by main.
+    const receipt = { pr: 12, base: candidate.base, head: candidate.head, tree: candidate.tree,
+      risk: 'routine', reviewers: ['reviewer-1'], verdict: 'PASS', expires: time + 86400000, sessionDigest: digest(session) };
+    expect(receiptSummary(session, 12, time)).toEqual(receipt);
+    expect(admit({ receipt, observed: { ...candidate, pr: 12, baseValid: true }, now: time })).toMatchObject({ ok: true, code: 'reviewed' });
+    const v3 = recordReport(prepare({ changedPaths: [path], rules: { version: 3 } }), report(), time);
+    expect(verdict(v3, candidate, time)).toMatchObject({ ok: false, code: 'needs_agent_review' });
+  });
+  it.each(['prose', 'routine', 'behavior', 'unknown'])('preserves the v2 risk floor for %s in verification and admission', risk => {
+    const session = recordReport(prepare({ intent: { ...intent, risk } }), report(), time);
+    const receipt = { pr: 12, base: observed.base, head: observed.head, tree: observed.tree,
+      risk, reviewers: ['reviewer-1'], verdict: 'PASS', expires: time + 86400000, sessionDigest: digest(session) };
+    const ok = ['prose', 'routine'].includes(risk);
+    expect(verdict(session, observed, time).ok).toBe(ok);
+    expect(admit({ receipt, observed: { ...observed, pr: 12, baseValid: true }, now: time }).ok).toBe(ok);
   });
   it.each([false, true])('--new keeps F1 open until explicitly closed (changed tree: %s)', changed => {
     let session = recordReport(prepare(), report({ verdict: 'FAIL', findings: [{ id: 'F1', summary: 'broken clamp', material: true }] }), time);
@@ -170,7 +197,7 @@ describe('native review decisions', () => {
     expect(next.history.slice(0, -1)).toEqual(source.history);
     expect(verdict(next, actual, time + 1).code).toBe('needs_agent_review');
     next = recordReport(next, report({ reviewer: 'fresh-a', tree: actual.tree }), time + 60000);
-    expect(verdict(next, actual, time + 60000).code).toBe('reviewed');
+    expect(verdict(next, actual, time + 60000).code).toBe('needs_agent_review');
     next = recordReport(next, report({ reviewer: 'fresh-b', tree: actual.tree }), time + 60000);
     expect(verdict(next, actual, time + 60000).ok).toBe(true);
     expect(receiptSummary(next, 12, time + 60000).expires).toBe(time + 86400000);
@@ -192,13 +219,17 @@ describe('native review decisions', () => {
     const parents = reason === 'wrong parent' ? [actual.base, observed.head] : reason === 'extra parent' ? [observed.head, actual.base, observed.base] : [observed.head, actual.base];
     expect(integrationReviewContext(source, actual, { parents, baseAncestor: reason !== 'base not ancestor', mechanical: true }, time + 1)).toBeUndefined();
   });
-  it('does not raise the declared floor for a legacy integration', () => {
+  it('retains the two-reviewer floor for a v2 integration', () => {
     const source = passed();
     const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent, authorSessionId: 'author' };
     const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true }, time + 1);
-    const next = recordReport(prepareCandidate(source, { ...actual, integration }, time + 1), report({ reviewer: 'fresh', tree: actual.tree }), time + 1);
+    let next = recordReport(prepareCandidate(source, { ...actual, integration }, time + 1), report({ reviewer: 'fresh', tree: actual.tree }), time + 1);
+    expect(verdict(next, actual, time + 1).code).toBe('needs_agent_review');
+    next = recordReport(next, report({ reviewer: 'fresh-2', tree: actual.tree }), time + 1);
     expect(verdict(next, actual, time + 1).ok).toBe(true);
-    expect(receiptSummary(next, 12, time + 1).risk).toBe('routine');
+    const receipt = receiptSummary(next, 12, time + 1);
+    expect(receipt.risk).toBe('behavior');
+    expect(admit({ receipt: { ...receipt, reviewers: ['fresh'] }, observed: { ...actual, pr: 12, baseValid: true }, now: time + 1 }).code).toBe('needs_agent_review');
   });
   it('emits only a bounded summary and validates the PR number', () => {
     const summary = receiptSummary(passed(), 12, time);

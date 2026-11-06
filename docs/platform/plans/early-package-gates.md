@@ -7,6 +7,11 @@ Outcome: apply reusable premerge gates to every publishable package, rejecting
 unvalidated APIs, broken cold artifact/reference bindings and applicable schema
 observation regressions through the existing required checks. Stable support and adopter readiness are outside this proposal.
 
+Delivery-control notes below are historical, including blanket maintainer reads
+before DCO sign-off and repair budgets. Current delivery and approval authority
+follow [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change); the
+recorded task-specific human decisions remain historical evidence.
+
 ## Boundary and current evidence
 
 Inspected on 6 October 2026 at main
@@ -514,7 +519,8 @@ real SQL/replay and deterministic schema assertions run without skips; cleanup
 and costs are observed. Preserve all previous required checks and independent
 diagnostics. Final committed candidate still needs two fresh native reviewers
 for this material CI/contract work, closed findings and passing installed verify,
-within the existing two automatic repair-cycle budget.
+under [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). The
+original two-cycle repair budget is historical.
 Approval of a local patch awaiting parity is not acceptance of the final gates.
 Before declaring final acceptance, record the actual required execution order,
 time-to-failure for minimal bad inputs, cold/cached service costs and the parity

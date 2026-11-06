@@ -6,7 +6,7 @@ Start with a responsibility below, then open its owner and the linked code.
 Descriptions are authored routing purposes. File and symbol inventories are structural
 navigation hints; neither establishes behavior, test results or profile availability.
 
-[Documentation maintenance](DOCUMENTATION.md) owns regeneration and impact checks.
+[Documentation maintenance](DOCUMENTATION.md) owns regeneration and navigation checks.
 [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) drills into significant internal paths.
 
 <!-- openlup-generated:start -->

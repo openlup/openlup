@@ -103,8 +103,9 @@ regrowth fails. Baseline regeneration never authorizes higher allowances.
    native reviews of the exact committed candidate and staged local-tool bytes.
    Consolidate material findings before repairs; retain complete prior evidence
    and use the installed protocol's closure route for eligible ordinary repairs.
-   Sensitive or unknown repairs retain two reviewers; at most two automatic repair
-   cycles precede regrouping. A current complete pass ends review.
+   Historical review used two reviewers for sensitive or unknown repairs and a
+   two-cycle regroup budget. Current review and delivery follow
+   [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 5. Run the prescribed verifier and DCO on the final candidate. Inspect the fresh
    diagnostic logs after verifier execution; a required-admission exit 0 cannot
    waive a new infrastructure failure. Push only accepted evidence, then stop

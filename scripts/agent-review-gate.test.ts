@@ -186,7 +186,7 @@ describe('six real Git witnesses', () => {
       const path = join(f.scratch, 'integration-report.json');
       await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-1', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
-      await expect(f.cli('verify')).resolves.toBe(0);
+      await expect(f.cli('verify')).rejects.toThrow('2 independent PASS reports required');
       await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-2', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
       await expect(f.cli('verify')).resolves.toBe(0);
@@ -200,7 +200,7 @@ describe('six real Git witnesses', () => {
         await f.cli('receipt', '12');
         const body = vi.mocked(console.log).mock.calls.at(-1)![0];
         const receipt = parseReceipt(body);
-        expect(receipt).toMatchObject({ head: next.candidate.head, tree: next.candidate.tree, risk: 'routine', expires: next.candidate.integration.expires });
+        expect(receipt).toMatchObject({ head: next.candidate.head, tree: next.candidate.tree, risk: 'behavior', expires: next.candidate.integration.expires });
         const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: next.candidate.head } };
         const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, body }] : path.includes('/collaborators/') ? { permission: 'write' } : { object: { sha: main } }) };
         const runGit = vi.fn(async (cwd, ...args) => args.includes('fetch') ? '' : reviewGit(cwd, ...args));

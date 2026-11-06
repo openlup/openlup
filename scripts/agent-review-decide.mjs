@@ -25,6 +25,11 @@ export function classifyRisk({ changedPaths = [], modeChanged = false }, risk = 
   return requiredReviewers(risk) === 2 ? risk : modeChanged || changedPaths.some(twoReviewerPath) ? 'behavior' : risk;
 }
 export function requiredReviewers(risk) { demand(RISKS.includes(risk), 'risk is invalid'); return risk === 'behavior' ? 2 : 1; }
+// Replay v2 evidence with the classification used when it was recorded.
+function legacyRequiredReviewers(risk) { demand(RISKS.includes(risk), 'risk is invalid'); return ['prose', 'routine'].includes(risk) ? 1 : 2; }
+function legacyClassifyRisk({ changedPaths = [], modeChanged = false }, risk = 'routine') {
+  return legacyRequiredReviewers(risk) === 2 ? risk : modeChanged || changedPaths.some(sensitivePath) ? 'behavior' : risk;
+}
 function candidateValid(candidate) {
   demand(candidate && ['base', 'head', 'tree'].every(key => SHA.test(candidate[key])) && Array.isArray(candidate.changedPaths) && candidate.changedPaths.every(identity), 'candidate is invalid');
 }
@@ -74,7 +79,7 @@ export function protectedCoveragePath(path) {
     /(?:^|\/)(?:package(?:-lock)?\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/u.test(path) ||
     /^(?:\.gitignore|\.gitattributes|\.npmrc|\.nvmrc|[^/]*config\.[^/]+)$/u.test(path);
 }
-const RULE_FILE = /(?:^|\/)(?:AGENTS|AGENT_GUIDE|CLAUDE|CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY)(?:\.local)?\.(?:md|txt|rst)$|^\.github\/.*\.md$|(?:^|\/)(?:\.claude|\.agents|\.codex)\/|(?:^|\/)SKILL\.md$/iu;
+const RULE_FILE = /(?:^|\/)(?:AGENTS|AGENT_GUIDE|CLAUDE|GEMINI|CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY)(?:\.local)?\.(?:md|txt|rst)$|^\.github\/.*\.md$|(?:^|\/)(?:\.claude|\.agents|\.codex)\/|(?:^|\/)\.cursor\/rules(?:\/|$)|(?:^|\/)SKILL\.md$/iu;
 const twoReviewerPath = path => protectedCoveragePath(path) && !/\.md$/iu.test(path);
 export const deltaFloor = (paths, modeChanged = false) => modeChanged || paths.some(twoReviewerPath) ? 2 : paths.every(path => /\.md$/iu.test(path) && !RULE_FILE.test(path)) ? 0 : 1;
 export const candidateFloor = (candidate, risk) => requiredReviewers(classifyRisk(candidate, risk)) === 2 ? 2 : deltaFloor(candidate.changedPaths ?? [], candidate.modeChanged);
@@ -218,7 +223,7 @@ export function verdict(session, observed, now) {
       return result(true, 'reviewed', 'reviewed');
     }
     const reports = currentReports(session).filter(report => report.verdict === 'PASS');
-    const floor = candidateFloor(observed, latestIntent(session).risk);
+    const floor = Math.max(legacyRequiredReviewers(legacyClassifyRisk(observed, latestIntent(session).risk)), session.candidate.integration ? 2 : 0);
     if (reports.length < floor) return result(false, 'needs_agent_review', `${floor} independent PASS reports required`);
     if (reports.some(report => report.at > now)) return result(false, 'invalid', 'report is from the future');
     if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
@@ -235,7 +240,7 @@ export function receiptSummary(session, pr, now) {
       sessionDigest: digest(session), session };
     demand(Buffer.byteLength(JSON.stringify(summary)) <= 1024 * 1024 - 128, 'receipt exceeds bounded transport'); return summary;
   }
-  return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: classifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
+  return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
 }
 export function admit({ receipt, observed, now }) {
   if (receipt?.version === 3) {
@@ -253,7 +258,7 @@ export function admit({ receipt, observed, now }) {
   if (!Number.isFinite(now) || !receipt || !Number.isSafeInteger(receipt.pr) || receipt.pr <= 0 || !['base', 'head', 'tree'].every(key => SHA.test(receipt[key])) || !RISKS.includes(receipt.risk) || receipt.verdict !== 'PASS' || !/^[a-f0-9]{64}$/u.test(receipt.sessionDigest) || !Array.isArray(receipt.reviewers) || !receipt.reviewers.every(identity) || new Set(receipt.reviewers).size !== receipt.reviewers.length || !Number.isFinite(receipt.expires)) return result(false, 'invalid', 'receipt schema is invalid');
   if (['pr', 'base', 'head', 'tree'].some(key => receipt[key] !== observed[key])) return result(false, 'stale', 'receipt differs from the live PR candidate');
   if (!observed.baseValid) return result(false, 'stale', 'review base must be the exact fork point on main');
-  const floor = candidateFloor(observed, receipt.risk);
+  const floor = Math.max(legacyRequiredReviewers(receipt.risk), legacyRequiredReviewers(legacyClassifyRisk(observed)));
   if (receipt.reviewers.length < floor) return result(false, 'needs_agent_review', `${floor} independent reviewers required by the diff`);
   return result(true, 'reviewed', 'reviewed');
 }

@@ -194,7 +194,9 @@ describe('hosted review decisions', () => {
     expect(admit({ receipt: { ...receipt, ...patch }, observed: { ...observed, ...actual }, now }).code).toBe(code);
   });
   it.each([
-    ['docs/guide.md', 'unknown', 0], ['AGENTS.md', 'routine', 1], ['app.ts', 'unknown', 1], ['app.ts', 'behavior', 2],
+    ['docs/guide.md', 'prose', 1], ['docs/guide.md', 'unknown', 2], ['AGENTS.md', 'routine', 2],
+    ['app.ts', 'unknown', 2], ['app.ts', 'behavior', 2],
+    ['.nvmrc', 'routine', 1], ['scripts/documentation-routing.ts', 'routine', 1],
   ])('recomputes v2 admission for %s with %s risk and floor %i', (path, risk, floor) => {
     const candidate = { ...observed, changedPaths: [path] };
     const summary = { ...receipt, risk, reviewers: Array.from({ length: floor }, (_, index) => `reviewer-${index}`) };
