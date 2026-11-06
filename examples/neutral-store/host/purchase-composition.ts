@@ -195,8 +195,6 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     return order ? success({ ...present(order), mode: inspected.mode, cadenceDays: inspected.cadenceDays }) : refused('starter_recovery_unavailable');
   };
   actions['payment.simulate'] = async (payload, context) => {
-    const renewalShipping = context.config.offer.renewalShippingMinor;
-    if (renewalShipping !== 0) return refused('starter_renewal_shipping_unsupported');
     if (!only(payload, ['orderRef', 'token', 'outcome']) || !['captured', 'refused', 'expired', 'indeterminate'].includes(String(payload.outcome))) return refused('starter_input_invalid');
     const order = await authorizedOrder(payload, context);
     if (!order) return refused('starter_order_not_found');
@@ -229,7 +227,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
           const lines = acceptedQuote.quote.lines;
           const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
             stockSourceKey: source(context), templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
-            currency: order.currency_code, shippingAmountMinor: renewalShipping, acquisitionRef: null,
+            currency: order.currency_code, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
+            renewalTerms: { version: 'native.renewal-terms.v1', shippingTerms: (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms },
             lines: lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
           renewalAttachment = (await activateNativePurchaseWithRenewal(db, { orderId: order.id,
             idempotencyKey: `activate:${order.id}`, capturedReference: intent.external_ref ?? intent.id, facts })).renewalAttachment;

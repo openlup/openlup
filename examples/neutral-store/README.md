@@ -394,8 +394,6 @@ or unavailable links. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 
-For now this release does not charge shipping on one-off orders.
-For now this release does not charge shipping on renewals.
 The first-subscription offer is not offered yet and comes in a later part of this release. Sandbox outcomes
 are `captured`, `refused`, `expired` and `indeterminate`; other values refuse.
 No real-money provider is selected by this composition.
@@ -420,8 +418,11 @@ refuses and rolls back. This is a fresh demonstration install, not policy rotati
 
 `owned/quote.config.ts` supplies neutral acquisition rates, effective dates,
 document identity and graduation cadence. Product physical facts remain owned
-catalogue data. Initial and renewal shipping retain the zero-charge interim. A nonzero initial
-fee refuses with `starter_initial_shipping_unsupported` until that policy is qualified.
+catalogue data. `owned/store.config.ts` sets shipping to 640 minor units and the
+free-delivery threshold to 1,000 minor units in both demonstrations. The native
+quote evaluates product payable after product discounts; equality is free.
+Renewals retain the accepted shipping agreement and freeze each cycle's calculated
+amount. Current configuration cannot reprice a retained agreement.
 The second-delivery display uses the retained quote's list basis and configured
 promise through the package adjustment engine.
 

@@ -110,9 +110,11 @@ test('damaged quote projections withhold amounts rather than displaying zero or 
 });
 
 
-test('the zero-shipping interim refuses nonzero native initial charges instead of silently displaying free shipping', async () => {
+test('configured native shipping reaches the installed graph rather than an interim refusal', async () => {
   const changed = structuredClone(config); changed.offer.shippingMinor = 640;
-  const db = { query: async () => { throw new Error('no reads expected'); } } as unknown as Pool;
+  let reads = 0;
+  const db = { query: async () => { reads++; throw new Error('synthetic_database_boundary'); } } as unknown as Pool;
   const quotes = createNativeQuoteService(db,unavailable);
-  await assert.rejects(quotes.quote({ ...payload,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY },{ ...context,config: changed }),/starter_initial_shipping_unsupported/);
+  await assert.rejects(quotes.quote({ cart: { ...cart,mode: 'one_time',cadenceDays: null } },{ ...context,config: changed }),/catalog_authority_unavailable/);
+  assert.ok(reads > 0);
 });

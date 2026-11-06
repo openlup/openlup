@@ -48,7 +48,6 @@ export interface StoreConfig {
     heroBody: Localized;
     offerTitle: Localized;
     offerBody: Localized;
-    shippingNote: Localized;
   };
   media: {
     hero: string;
@@ -69,7 +68,6 @@ export interface StoreConfig {
     freeShippingFromMinor: number;
     subscriptionDiscountBps: number;
     subscriptionRoundingQuantumMinor: number;
-    renewalShippingMinor: number;
     cadenceDays: readonly number[];
     defaultCadenceDays: number;
   };
@@ -125,18 +123,18 @@ export function assertConfig(config: StoreConfig): void {
     if (!/^#[0-9a-f]{6}$/i.test(token)) throw new Error('starter_theme_invalid');
   }
   for (const amount of [offer.minUnits, offer.maxUnits, offer.shippingMinor,
-    offer.freeShippingFromMinor, offer.subscriptionDiscountBps, offer.renewalShippingMinor,
+    offer.freeShippingFromMinor, offer.subscriptionDiscountBps,
     offer.subscriptionRoundingQuantumMinor]) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
   }
-  if (offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
+  if (offer.shippingMinor > 2147483647 || offer.freeShippingFromMinor > 2147483647
+    || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
     || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 120
     || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 120)) {
     throw new Error('starter_offer_invalid');
   }
-  if (offer.renewalShippingMinor !== 0) throw new Error('starter_renewal_shipping_unsupported');
   const purchase = config.purchase;
   if (!purchase?.recoveryMessage || (['subject', 'body', 'expiryLabel', 'orderLabel'] as const).some(key => {
     const value = purchase.recoveryMessage[key];

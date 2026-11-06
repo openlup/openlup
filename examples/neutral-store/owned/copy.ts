@@ -2,14 +2,12 @@
 export const copy = {
   en: {
     attemptLimitsInterim: "Attempt limits live in one process's memory and reset on restart.",
-    renewalShippingInterim: "For now this release does not charge shipping on renewals.",
     acquisitionInterim: "The first-subscription offer is not offered yet and comes in a later part of this release.",
     modePriceBenefit: "Subscription unit-price benefit already included",
 
     simulateIndeterminate: "Simulate indeterminate payment",
     addressApplied: "Shipping address updated.",
     addressNextParcel: "This address change applies from the next parcel. A parcel already in flight keeps its current address.",
-    zeroShipping: "For now this release does not charge shipping on one-off orders.",
     localDatabaseOnly: "The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.",
     bundlePurchaseLater: "An activated bundle is not purchasable in this release and comes in a later round.",
     guestPurchase: "A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.",
@@ -314,14 +312,12 @@ export const copy = {
   },
   pl: {
     attemptLimitsInterim: "Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.",
-    renewalShippingInterim: "Na razie to wydanie nie pobiera opłat za dostawę odnowień.",
     acquisitionInterim: "Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.",
     modePriceBenefit: "Korzyść w cenach jednostkowych subskrypcji jest już uwzględniona",
 
     simulateIndeterminate: "Symuluj nieustalony wynik płatności",
     addressApplied: "Adres dostawy został zmieniony.",
     addressNextParcel: "Zmiana adresu obowiązuje od następnej przesyłki. Przesyłka będąca już w drodze zachowuje dotychczasowy adres.",
-    zeroShipping: "Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.",
     localDatabaseOnly: "Starter działa wyłącznie na lokalnej demonstracyjnej bazie danych; połączenie z bazą hostowaną nie należy do tego wydania i pojawi się w późniejszej rundzie.",
     bundlePurchaseLater: "Aktywowanego pakietu nie można kupić w tym wydaniu; taka możliwość pojawi się w późniejszej rundzie.",
     guestPurchase: "Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; klient loguje się tym e-mailem, aby zobaczyć zakup.",

@@ -154,3 +154,10 @@ remain private generated data. [Owned locale copy](../owned/renewal-copy.ts)
 supplies the paid subject and line labels through shared configuration validation.
 The lifecycle command runs one bounded pass without starting a scheduler or a
 real mail provider. Native subscription notices keep their existing owner.
+
+
+Shipping fee and free-delivery threshold are owned offer values. The managed
+quote binding passes them to the installed shipping policy; it owns no threshold
+calculation. The purchase binding retains the accepted shipping agreement for
+renewals. There is no separate `renewalShippingMinor` setting: current configuration
+cannot override retained terms or a frozen cycle's shipping amount.

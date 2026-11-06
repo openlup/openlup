@@ -1,3 +1,4 @@
+import { resolveThresholdShipping } from '@openlup/platform/shipping';
 import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
 import { evaluatePromotionAdjustmentsV2 } from '@openlup/core/promo';
 import type { Pool } from 'pg';
@@ -34,7 +35,6 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     if (selected.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) {
       throw new AcquisitionTermsError('acquisition_terms_capability_required');
     }
-    if (config.offer.shippingMinor !== 0) throw new Error('starter_initial_shipping_unsupported');
     if (payload.promoCodes !== undefined && (!Array.isArray(payload.promoCodes) || payload.promoCodes.length)) throw new Error('starter_promotion_codes_unsupported');
     const email = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef,context.actor.principalRef])).rows[0]?.email
@@ -62,7 +62,9 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     const codes = createQuotePromotionCodeAdjustments({ minimumProductPayableMinor: config.quote.acquisition.minimumProductPayableMinor });
     const shipping = createQuoteShippingPromotions({ ...automatic, ...codes,
       promoDataPort: createPostgresCommercePromoDataPort(db),
-      commerceSettingsPort: { getShippingSettings: async () => ({ legacyFlatMinor: 0, policy: null }) } });
+      commerceSettingsPort: { getShippingSettings: async () => ({ legacyFlatMinor: 0, policy: { version: 'shipping-policy.v1',
+        current: { enabled: true, flatMinor: config.offer.shippingMinor, freeThresholdMinor: config.offer.freeShippingFromMinor,
+          effectiveFrom: config.quote.policy.effectiveFrom } } }) } });
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
       { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
@@ -94,11 +96,12 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       const linePricing = snapshot.quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity,
         unitAmountMinor: line.unitPriceGross.amountMinor, isAddon: false, quoteLine: { ...line } }));
       snapshot.quote.context.starterRenewalTerms = { version: 'native.renewal-terms.v1', linePricing,
+        shippingTerms: snapshot.quote.context.shippingTerms,
         minimumPayableMinor: config.quote.acquisition.minimumProductPayableMinor,
         normalCadenceDays: [config.quote.acquisition.graduationCadenceDays],
         starterPack: { schemaVersion: '1', starterIntervalDays: selected.cart.cadenceDays!, basisTemplateVersion: 1,
           delivery2: { discountBps: terms.delivery2DiscountBps, basisSubtotalMinor: snapshot.quote.subtotalGross.amountMinor,
-            discountMinor: snapshot.quote.subtotalGross.amountMinor - view.secondTotalMinor },
+            discountMinor: snapshot.quote.subtotalGross.amountMinor - secondProductTotal(snapshot, config.quote.acquisition.minimumProductPayableMinor)! },
           graduation: { cadenceDays: config.quote.acquisition.graduationCadenceDays,
             lines: linePricing.map((line, index) => ({ sku: line.sku, qty: line.quantity, sortOrder: index,
               isAddon: line.isAddon, quoteLine: line.quoteLine })) } } };
@@ -143,7 +146,7 @@ function requireKeyring(keyring?: PromotionAcceptanceKeyring) {
   if (!keyring || keyring.current.length < 32) throw new Error('starter_quote_acceptance_key_required');
   return keyring;
 }
-export function projectQuote(snapshot: CreateQuoteResponse, minimumProductPayableMinor: number): OfferQuote & { acquisitionTerms?: ResolvedAcquisitionTerms; secondTotalMinor?: number } {
+function secondProductTotal(snapshot: CreateQuoteResponse, minimumProductPayableMinor: number): number | undefined {
   const quote = snapshot.quote;
   const terms = (quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms } | undefined)?.acquisitionTerms;
   const referenceProductMinor = quote.lines.reduce((sum,line) => sum + (line.catalogFacts?.baseUnitAmountMinor ?? line.unitPriceGross.amountMinor) * line.quantity,0);
@@ -153,7 +156,15 @@ export function projectQuote(snapshot: CreateQuoteResponse, minimumProductPayabl
       kind: 'target_percentage',lane: 'product',valueBps: terms.delivery2DiscountBps }]) : null;
   const retained = (quote.context as { starterRenewalTerms?: RenewalRetainedTerms } | undefined)?.starterRenewalTerms;
   const saved = retained?.starterPack?.delivery2;
-  const secondTotalMinor = saved ? saved.basisSubtotalMinor - saved.discountMinor : second ? quote.subtotalGross.amountMinor - second.adjustments.reduce((sum,item) => sum + item.amountOffMinor,0) : undefined;
+  return saved ? saved.basisSubtotalMinor - saved.discountMinor : second ? quote.subtotalGross.amountMinor - second.adjustments.reduce((sum,item) => sum + item.amountOffMinor,0) : undefined;
+}
+
+export function projectQuote(snapshot: CreateQuoteResponse, minimumProductPayableMinor: number): OfferQuote & { acquisitionTerms?: ResolvedAcquisitionTerms; secondTotalMinor?: number } {
+  const quote = snapshot.quote;
+  const terms = (quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms } | undefined)?.acquisitionTerms;
+  const product = secondProductTotal(snapshot, minimumProductPayableMinor);
+  const shipping = (quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
+  const secondTotalMinor = product === undefined ? undefined : product + (shipping ? resolveThresholdShipping(shipping, product).grossMinor : 0);
   return { lines: quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity, unitMinor: line.unitPriceGross.amountMinor,
     lineMinor: line.lineSubtotalGross.amountMinor,
     baseUnitMinor: line.catalogFacts?.baseUnitAmountMinor ?? line.unitPriceGross.amountMinor })),

@@ -97,4 +97,4 @@ export function limitFor(action: CopyKey): NativeLimit | undefined {
 }
 
 /** Release boundaries rendered from the same localized copy as checkout. */
-export const releaseLimits = ['attemptLimitsInterim', 'localDatabaseOnly', 'bundlePurchaseLater', 'zeroShipping', 'renewalShippingInterim', 'acquisitionInterim', 'guestPurchase', 'guestRecovery'] as const satisfies readonly CopyKey[];
+export const releaseLimits = ['attemptLimitsInterim', 'localDatabaseOnly', 'bundlePurchaseLater', 'acquisitionInterim', 'guestPurchase', 'guestRecovery'] as const satisfies readonly CopyKey[];

@@ -481,3 +481,20 @@ adds none, while the unclaimed settlement fact retains its row and version and
 creates no message. The settlement-first case fails before the vocabulary fix;
 the paid-first control already passes. No hand-inserted event substitutes for the
 real purchase in these two cases.
+
+
+## Shipping amount witnesses
+
+The installed real-PostgreSQL `neutralStoreQuote.test.ts` witness covers both
+configurations: paid shipping below the threshold, free shipping exactly at and
+above it, and a product discount crossing below it. It compares live quote,
+checkout response and persisted order money. Accepted shipping terms flow through
+activation into renewal pricing and the separate `shipping_charge` adjustment;
+changing current offer settings cannot change the retained agreement. Replaying
+the frozen renewal adds no second charge. Source tests replace the former
+zero-shipping refusals with configurable paid shipping and invalid-value checks.
+Scratch mutations remove the threshold comparison and retained shipping wiring to
+check that these witnesses detect the corresponding regressions. Browser purchase
+recipes retain their existing carts and expectations; both demonstration offers
+charge 640 minor units below a 1,000-minor threshold. These proofs establish no
+provider access, publication or deployment qualification.
