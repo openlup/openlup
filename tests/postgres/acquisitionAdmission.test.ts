@@ -26,6 +26,44 @@ it("uses the installed restricted runtime, full packaged catalogue and definitio
     has_function_privilege('authenticated','public.commerce_promotion_lock_definition(text)','EXECUTE') AS browser`)).rows).toEqual([{ anon: false, browser: false }]);
 });
 
+it("refuses a stale supplied second-delivery marker on a legacy pair without any public-table effects", async () => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  pair.input.quoteSnapshot.quote.context.starterPack = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  await f.owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300') WHERE promotion_id=ANY($1::text[])", [[pair.id, pair.legacyId]]);
+  const before = await f.publicTableDigests();
+  expect(Object.keys(before)).toEqual(expect.arrayContaining(["commerce_orders", "commerce_order_items", "commerce_order_adjustments",
+    "commerce_promotion_claims", "commerce_order_draft_receipts", "outbox_events"]));
+  await expect(pair.port().createOrderDraft(pair.input, { clientId })).rejects.toMatchObject({ message: "acquisition_terms_changed" });
+  expect(await f.publicTableDigests()).toEqual(before);
+}, 30_000);
+
+it.each([
+  { label: "without a second-delivery marker", supplied: false },
+  { label: "with a matching supplied second-delivery marker", supplied: true },
+])("admits a valid legacy pair quote $label", async ({ supplied }) => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  const marker = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  if (supplied) pair.input.quoteSnapshot.quote.context.starterPack = marker;
+  const result = await pair.port().createOrderDraft(pair.input, { clientId });
+  expect(result.orderDraft.replayed).toBe(false);
+  expect(result.orderDraft.quoteSnapshot.quote.context?.acquisitionTerms).toBeUndefined();
+  expect(result.orderDraft.quoteSnapshot.quote.context?.starterPack).toEqual(supplied ? marker : undefined);
+  expect(result.orderDraft.quoteSnapshot.quote.totalGross.amountMinor).toBe(760);
+  expect((await f.owner.query("SELECT amount_off_minor FROM public.commerce_promotion_claims WHERE order_id=$1::uuid", [result.orderDraft.orderId.slice(6)])).rows)
+    .toEqual([{ amount_off_minor: "240" }]);
+}, 30_000);
+
+it("replays a legacy pair draft unchanged after its supplied marker becomes stale", async () => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  pair.input.quoteSnapshot.quote.context.starterPack = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  const first = await pair.port().createOrderDraft(pair.input, { clientId });
+  await f.owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300') WHERE promotion_id=ANY($1::text[])", [[pair.id, pair.legacyId]]);
+  const before = await f.publicTableDigests();
+  const replay = await pair.port().createOrderDraft(pair.input, { clientId: clientId.toUpperCase() });
+  expect(replay.orderDraft).toEqual({ ...first.orderDraft, replayed: true });
+  expect(await f.publicTableDigests()).toEqual(before);
+}, 30_000);
+
 it("preserves exact-first preview, normalized aliases, unrelated identities and bounded escaped fallback", async () => {
   const key = `person${randomUUID()}`, domain = "example.invalid";
   const base = await f.client(`${key}@${domain}`), alias = await f.client(`${key}+exact@${domain}`, "2026-02-01T00:00:00Z");
