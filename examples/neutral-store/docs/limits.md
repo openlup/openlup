@@ -127,9 +127,9 @@ and operation evidence retain the native reader's limits; missing required facts
 refuse rather than omit a selected shipment. See the canonical
 [native read limits](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
 Shipment mutations remain unavailable. Owned account tracking needs
-its separate account composition proof. Signed unsubscribe and payment/operator
-recovery retain their separately owned pending bindings. Other absent bindings
-return `host_binding_required` after admission. An invalid-grant example does not
+its separate account composition proof. Signed unsubscribe retains its separately
+owned pending binding. Other absent bindings return `host_binding_required` after
+admission. An invalid-grant example does not
 prove a valid grant works.
 
 Both example catalogues price in `XTS` test units for fictional market `ZZ` at

@@ -1,8 +1,8 @@
 # Starter order controls, invoice access and named limits
 
-Status: local candidate under review; this repair adds authorization proof and prose only.
+Status: candidate under review.
 
-Current state: 51 declared / 34 bound / 17 unbound operations in both configurations. Shipment list/detail are bound; the mandatory scanner gate passed on the final feature tree.
+Current state, after the merge with current main: 51 declared / 36 bound / 15 unbound operations in both configurations. Shipment list/detail are bound; the mandatory scanner gate passed on the final feature tree.
 
 ## Outcome and scope
 
