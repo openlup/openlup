@@ -394,6 +394,10 @@
       {
         "file": "db/platform/migrations/20261101232000_customer_account_consents.sql",
         "sha256": "53fbed96be421a69b3c92bc1b2b3fef1eac508a082edb3f2ebe72eac6db7f5b5"
+      },
+      {
+        "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
+        "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
       }
     ],
     "objectInventorySha256": "4b02a4badcc0dbc9240bc8a84b4bfbd2041611282ad09b1278237cd85cf0b5ca",
@@ -810,6 +814,10 @@
         {
           "file": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
           "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
+        },
+        {
+          "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
+          "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
         }
       ],
       "objectInventorySha256": {
@@ -1230,6 +1238,10 @@
         {
           "file": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
           "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
+        },
+        {
+          "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
+          "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
         }
       ],
       "objectInventorySha256": {
@@ -1728,6 +1740,11 @@
       "file": "20261101232000_customer_account_consents.sql",
       "source": "db/platform/migrations/20261101232000_customer_account_consents.sql",
       "sha256": "53fbed96be421a69b3c92bc1b2b3fef1eac508a082edb3f2ebe72eac6db7f5b5"
+    },
+    {
+      "file": "20261120100000_subscription_package_editor.sql",
+      "source": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
+      "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

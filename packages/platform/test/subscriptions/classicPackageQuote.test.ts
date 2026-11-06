@@ -103,6 +103,7 @@ describe("classic full-package quote characterization", () => {
   it("hashes the exact money/ordered pricing projection with absent components treated as an empty list", () => {
     const quote = { totalGross: money(100), subtotalGross: money(100), discountTotalGross: money(0),
       lines: [{ sku: id, quantity: 1, unitPriceGross: money(100), lineSubtotalGross: money(100) }] };
+    expect(hashPackageEditQuote(quote)).toBe("13a514da5aeaf7536a6078b554c03e4f8f676e43ba0e701155fcf111fdb006c1");
     expect(hashPackageEditQuote(quote)).toBe(hashPackageEditQuote({ ...quote, lines: [{ ...quote.lines[0], pricingComponents: [] }] }));
     expect(hashPackageEditQuote(quote)).not.toBe(hashPackageEditQuote({ ...quote, totalGross: money(101) }));
   });

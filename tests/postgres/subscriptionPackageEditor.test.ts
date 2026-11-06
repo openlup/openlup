@@ -44,13 +44,14 @@ async function minimum(value: string | null) {
   if (value !== null) await owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units',$1)", [value]);
 }
 async function fixture() {
-  const client = randomUUID(), subscription = randomUUID(), actor = randomUUID(), sku = randomUUID(), addon = randomUUID();
+  const client = randomUUID(), subscription = randomUUID(), actor = randomUUID(), sku = randomUUID(), addon = randomUUID(), priceList = randomUUID();
   await owner.query("INSERT INTO public.clients(id,email,lifecycle_stage) VALUES($1,$2,'customer')", [client, `${client}@example.invalid`]);
   for (const [id, isAddon] of [[sku, false], [addon, true]] as const) {
     await owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Refill')", [id, `refill-${id}`]);
     await owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,is_addon,sellable_in_subscription) VALUES($1,$1,$2,'Refill',$3,true)", [id, id, isAddon]);
   }
-  await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,currency_code) VALUES($1,$2,28,$3,'XXX')", [subscription, client, next]);
+  await owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Configured','AA','XXX')", [priceList]);
+  await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,currency_code,price_list_id) VALUES($1,$2,28,$3,'XXX',$4)", [subscription, client, next, priceList]);
   await owner.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
     VALUES($1,'XXX','synthetic-stock','sandbox',$2,'sandbox-authorization')`, [subscription, at]);
   await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscription]);
@@ -81,7 +82,7 @@ async function record(f: Fixture, payload: Evidence, expiry = "2026-11-05T12:15:
     { baseLines: payload.baseLines, addonLines: payload.addonLines },
     { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: payload.newRecurringPrice, delta: payload.delta }, at]);
 }
-const apply = (f: Fixture, payload: Evidence, key = randomUUID(), db: Pool | PoolClient = runtime, now = at) =>
+const apply = (f: Fixture, payload: Evidence, key: string = randomUUID(), db: Pool | PoolClient = runtime, now = at) =>
   rpc(db, "subscription_package_edit_apply", [f.actor, f.client, key, f.subscription, payload, now]);
 async function effects() {
   const result: Record<string, unknown> = {};
