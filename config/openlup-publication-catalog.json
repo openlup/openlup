@@ -1238,6 +1238,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4019,6 +4023,10 @@
     },
     {
       "path": "packages/platform/sql/20261106100000_subscription_lifecycle_closure.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106120000_subscription_notice_producers.sql",
       "class": "public-output"
     },
     {
@@ -7983,6 +7991,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresLifecycleMessages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresNoticeExtensions.ts",
       "class": "public-output"
     },
     {
@@ -28703,6 +28715,10 @@
     },
     {
       "path": "tests/postgres/subscriptionNoticeDelivery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionNoticeProducers.test.ts",
       "class": "public-output"
     },
     {

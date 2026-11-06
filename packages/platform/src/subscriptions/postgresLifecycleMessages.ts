@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { subscriptionLifecycleTemplate } from "./lifecycleMessages.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { runAtRiskNotices, runOperatorNotices } from "./postgresNoticeExtensions.js";
 
 export interface NativeLifecycleNotice {
   id: string; messageKey: string; source: "dunning" | "event" | "reminder";
@@ -14,6 +15,11 @@ export interface NativeLifecycleMessagesOptions {
   dispatch?: { leaseSeconds?: number; maxAttempts?: number; transientBackoffSeconds?: number };
   /** Neutral safety default: 172800-second recency. Starter hosts supply an explicit configured window. */
   recovered?: { windowSeconds?: number };
+  /** Trusted host timing/cap values. Seconds are explicit; day identities remain UTC. */
+  notices?: { renewalMinSeconds?: number; renewalMaxSeconds?: number; ordinaryFreshnessSeconds?: number;
+    starterFreshnessSeconds?: number; pauseWindowSeconds?: number; atRiskMinDays?: number; atRiskMaxDays?: number;
+    atRiskMaxDaysPerCause?: number; operatorLeaseSeconds?: number; operatorMaxAttempts?: number;
+    operatorHorizonSeconds?: number; operatorTransientBackoffSeconds?: number };
   /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
   withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   /** Host composes the transactional delivery engine and durable receipt reader. */
@@ -23,6 +29,8 @@ export interface NativeLifecycleMessagesOptions {
   };
   /** Trusted host rendering/locale/access-link binding. Never accepts browser-supplied recipient facts. */
   bind(notice: NativeLifecycleNotice, recipient: { email: string; firstName: string | null; country: string | null }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+  /** Explicit operator fields only: no customer payload, recovery path or claim token. */
+  bindOperator?(notice: { notificationId: string; caseId: string; templateSlug: string }, recipient: { email: string }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
 }
 const aliases: Record<string, string> = {
   "subscription.activated": "subscription.created",
@@ -66,13 +74,23 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
   const delivery = options.delivery;
   const dispatch = noticePolicy(options.dispatch, { leaseSeconds: 60, maxAttempts: 6, transientBackoffSeconds: 900 });
   const recovered = noticePolicy(options.recovered, { windowSeconds: 172800 });
+  const policy = noticePolicy(options.notices, { renewalMinSeconds: 259200, renewalMaxSeconds: 432000,
+    ordinaryFreshnessSeconds: 432000, starterFreshnessSeconds: 86400, pauseWindowSeconds: 259200,
+    atRiskMinDays: 2, atRiskMaxDays: 5, atRiskMaxDaysPerCause: 2, operatorLeaseSeconds: 300,
+    operatorMaxAttempts: 6, operatorHorizonSeconds: 82800, operatorTransientBackoffSeconds: 600 });
+  if (policy.renewalMinSeconds > policy.renewalMaxSeconds || policy.atRiskMinDays > policy.atRiskMaxDays) {
+    throw new Error("subscription_notice_options_invalid");
+  }
   return {
     async run(limit = 25) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("subscription_notice_limit_invalid");
       return options.withSession(async db => {
         const result = { sent: 0, replayed: 0, requeued: 0, failed: 0, skipped: 0, busy: 0, stale: 0 };
-        await db.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue($1::integer)", [limit]);
-        await db.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch($1::integer)", [limit]);
+        await db.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue($1::integer,$2::integer,$3::integer,$4::integer,$5::integer)",
+          [limit, policy.renewalMinSeconds, policy.renewalMaxSeconds, policy.ordinaryFreshnessSeconds, policy.starterFreshnessSeconds]);
+        await db.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch($1::integer,$2::integer)", [limit, policy.pauseWindowSeconds]);
+        await runAtRiskNotices(options, db, limit, policy, result);
+        await runOperatorNotices(options, db, limit, policy, result);
         const dunning = (await db.query("SELECT * FROM public.subscription_dunning_claim_batch($1::integer,$2::integer,$3::integer)",
           [limit, dispatch.leaseSeconds, dispatch.maxAttempts])).rows;
         const sources = (await db.query(`WITH sources AS (
@@ -81,14 +99,18 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
           WHERE e.event_type=ANY($2::text[])
           UNION ALL SELECT r.id,'reminder',r.subscription_id,s.client_id,
           CASE r.reminder_kind WHEN 'pause_ending' THEN 'subscription.pause_reminder_due' ELSE 'subscription.renewal_upcoming' END,
-          jsonb_build_object('reminderDay',r.reminder_day)
+          jsonb_build_object('reminderDay',r.reminder_day)||coalesce(f.payload,'{}'::jsonb)
           FROM public.subscription_reminder_ledger r JOIN public.subscriptions s ON s.id=r.subscription_id
+          LEFT JOIN public.subscription_events f ON f.subscription_id=r.subscription_id
+            AND f.idempotency_key='renewal-reminder:'||to_char(r.reminder_day,'YYYY-MM-DD') AND r.reminder_kind='renewal_due_soon'
         ) SELECT x.* FROM sources x LEFT JOIN public.transactional_delivery_receipts r
           ON r.idempotency_key='subscription-notice:'||x.source||':'||x.id::text
           WHERE r.state IS DISTINCT FROM 'accepted' AND COALESCE(r.attempt_count,0)<6
+            AND NOT EXISTS(SELECT 1 FROM public.subscription_events done WHERE done.subscription_id=x.subscription_id
+              AND done.idempotency_key='notice-suppressed:'||x.source||':'||x.id::text)
             AND NOT EXISTS (SELECT 1 FROM public.subscription_notice_refusals refused
               WHERE refused.source=x.source AND refused.source_id=x.id)
-          ORDER BY x.id LIMIT $1::integer`, [limit, Object.keys(aliases)])).rows;
+          ORDER BY x.id LIMIT $1::integer`, [limit, [...Object.keys(aliases), "subscription.pause_reminder_due"]])).rows;
         const rows: Record<string, unknown>[] = [...dunning.map(row => ({ ...row, source: "dunning", client_id: row.recipient_ref, kind: row.notification_kind })), ...sources];
         for (const row of rows) {
           const source = row.source as NativeLifecycleNotice["source"];
@@ -121,6 +143,24 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
               continue;
             }
             const kind = aliases[String(row.kind)] ?? String(row.kind);
+            const payload = (row.payload ?? {}) as Record<string, unknown>;
+            if (kind === "subscription.pause_reminder_due" && payload.pauseWindowId) {
+              if (!(await db.query("SELECT id FROM public.subscription_pause_windows WHERE id=$1::uuid AND resumed_at IS NULL",
+                [payload.pauseWindowId])).rows.length) {
+                await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+                  VALUES($1::uuid,'subscription.notice.suppressed',$2,'{"reason":"pause_window_resolved"}'::jsonb)
+                  ON CONFLICT(subscription_id,idempotency_key) DO NOTHING`,
+                [row.subscription_id, `notice-suppressed:${source}:${row.id}`]);
+                result.skipped++; continue;
+              }
+            }
+            if (kind === "subscription.renewal_upcoming" && typeof payload.renewalAt === "string") {
+              const facts = (await db.query(`SELECT next_cycle_at=$2::timestamptz AS matching,
+                public.subscription_renewal_purchase_terms(id) AS facts FROM public.subscriptions WHERE id=$1::uuid`,
+              [row.subscription_id, payload.renewalAt])).rows[0];
+              payload.phaseFactsAllowed = facts?.matching === true;
+              payload.phaseFacts = facts?.matching === true ? facts.facts ?? null : null;
+            }
             if (source === "dunning" && kind === "payment_recovered" && !(await db.query(`SELECT id
               FROM public.subscription_dunning_cases WHERE id=$1::uuid AND subscription_id=$2::uuid
                 AND client_id=$3::uuid AND status='recovered'
@@ -156,7 +196,7 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
             }
             const notice: NativeLifecycleNotice = { id: String(row.id), messageKey: key, source,
               subscriptionId: String(row.subscription_id), clientId: String(row.client_id), kind, templateSlug,
-              payload: (recoverySource?.payload ?? row.payload ?? {}) as Record<string, unknown>, recoveryUrlPath: row.recovery_url_path == null ? null : String(row.recovery_url_path) };
+              payload: (recoverySource?.payload ?? payload) as Record<string, unknown>, recoveryUrlPath: row.recovery_url_path == null ? null : String(row.recovery_url_path) };
             const receipt = await delivery.send({ ...await options.bind(notice, recipient), idempotencyKey: key });
             if (receipt.state === "failed") {
               if (receipt.retryable !== undefined && typeof receipt.retryable !== "boolean") {

@@ -52,6 +52,24 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## Retained renewal storage
 
+The subscription-notice forward preserves the reminder ledger's renewal-day
+identity and stores queued charge facts in subscription events. Pause reminders
+use the existing event uniqueness with the pause-window UUID; at-risk outcomes
+use distinct non-deliverable event kinds. Operator notification rows bind a
+separate critical-recipient FK; customer references retain their client FK.
+Recipient-aware uniqueness admits multiple operators without colliding with the
+customer notice. Existing rows default to dispatch-ineligible operator history;
+only newly produced operator rows become eligible. First-attempt time bounds
+ambiguous retries, and durable acceptance repair precedes horizon failure.
+Operator controls need no seeded rows: absence enables a notice, and the existing
+setter upserts explicit choices. Configured controls or notification recipients
+remain outside the current connected-store transfer profile and refuse capture;
+this existing limitation is not changed by the notice suffix.
+The installed at-risk implementation retains its owner-only EXECUTE ACL. Runtime
+reads use the service-only `dunning_lifecycle_scan_at_risk_service(integer,integer,integer)`
+STABLE definer, pinned to `pg_catalog, pg_temp`, which delegates to that implementation.
+No existing function ACL or table privilege is widened by this entry.
+
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
 `subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
@@ -1829,6 +1847,17 @@ the constraint definition, trigger function, gateway commit role or table grants
 Other deferred constraints are not changed. Service closure calls still defer
 line-sum checking until transaction completion.
 
+The subscription-notice suffix replaces the installed producer/claim bodies
+without changing their existing signatures or search paths. Its mirrored SQL
+and manifest hashes must travel with the matching package set. It adds a nullable
+operator recipient while preserving the customer FK, replaces uniqueness with
+recipient-aware NULLS NOT DISTINCT identity, and defaults operator freshness to
+false for existing history. New pause facts use the existing event carrier;
+older dispatch code does not recognize those new event kinds. Upgrade the
+producer and dispatcher together before enabling their schedules. No ledger
+backfill, historical auto-send, reminder deletion or live activation is performed.
+The separate closed class-2 reader/data admission is required before this suffix
+can land; a source-only fixture application does not establish that admission.
 
 The opt-in [complete account consent choices](#complete-account-consent-choices)
 forward adds a distinct actor API and expands only the native sync purpose CHECK.

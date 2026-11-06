@@ -1825,6 +1825,37 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+Native notice production uses the existing lifecycle binding and its trusted
+`bind` callback. Queued renewal payloads retain `renewalAt`; the binder derives
+charge, delivery-window and edit-deadline labels from that instant and its owned
+calendar policy. `phaseFactsAllowed` is false after rescheduling; `phaseFacts`
+then contains no current acquisition/amount document. Pause notices carry a
+window UUID and the cadence-aligned next delivery, and resolved windows are
+durably suppressed before binding. Existing source names, aliases and
+`subscription-notice:<source>:<id>` delivery keys retain their meaning.
+
+The optional `notices` policy supplies positive integer timing/cap values. The
+binding passes timing explicitly to additive renewal and pause producer overloads.
+The original signatures delegate with the documented defaults in the forward;
+there is no session policy state.
+Starter freshness additionally requires the retained marker and correlated
+native paid evidence, while the notice phase counts every materialized cycle.
+Imported or uncorrelated starter histories may miss the early reminder and use
+standard freshness. Complete identity-preserving native store transfer retains
+the cycle census; standalone restore-role row imports do not prove that premise.
+
+At-risk discovery uses a service-only SQL definer entry; the replaced internal scan
+remains owner-only. At-risk notices use template controls without substituting a
+marketing consent gate. Valid accepted receipts and keyed disabled-template outcomes spend their
+cause/day allowance; failures, missing recipients and invalid-reference anomalies
+do not. Outcome events are neither deliverable aliases nor policy refusals.
+Transport idempotency must cover ambiguous acceptance across retry. Operator
+escalation requires `bindOperator`; its explicit input contains only notice ID,
+case ID and template, with recipient email separately. Operator claims never enter
+the customer claim and preserve fresh eligibility, receipt repair and manual
+review at the configured idempotency horizon. No live-provider qualification is
+established by these captured-delivery mechanisms.
+
 Native purchase renewal attachment uses
 `createPostgresPurchaseRenewalWriter` and `activateNativePurchaseWithRenewal` from
 `@openlup/platform/subscriptions`. Declare the purchase first, then supply trusted
