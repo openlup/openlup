@@ -1,6 +1,9 @@
 # Starter scheduled renewal, account facts and notices
 
-Status: local implementation checkpoint; joined recovery evidence remains blocked.
+Historical implementation checkpoint; the current task record is
+[PR #546](https://github.com/openlup/openlup/pull/546). Joined recovery now passes
+on the completed native installation; earlier checkpoint observations below are
+not current delivery instructions.
 Development preview only.
 
 Outcome: compose the existing native renewal and retry owners into one scheduled
@@ -63,16 +66,13 @@ cases still fail at the intentionally absent native binding. The complete
 three inherited suite-load errors and one inherited skipped test. No new scanner
 failure is introduced, and those failures are not repaired here.
 
-Four server-side assertions in the recovery predecessor remain open: same-cycle
-post-authorization execution and human-operator capture, in both configurations.
-The successful owned adapter proof does not waive that joined evidence. The
-existing populated-transfer test measured 6.17 seconds and lacks an explicit
-case timeout; its owner must close that proof duty before first review. Notice
-routing/requeue/recency, consent purpose support, future shipping/phase terms,
-operator shipment and invoice joins retain their existing predecessor gates. The
-operator and automatic notice hosts also require one agreed private artifact
-schema before joint routing: an incompatible existing artifact is refused.
-No DCO, native review, canonical verification, push or PR is claimed.
+The joined committed renewal/recovery files now pass21 cases with zero skips,
+including same-obligation execution and human-operator capture in both
+configurations. The existing populated-transfer owner has its explicit timeout.
+Operator and automatic notice hosts share one NoticeArtifactV1; incompatible
+existing artifacts refuse. Consent-purpose and richer account composition
+remain outside this selected host checkpoint. Current review/submission state
+is recorded in the PR description.
 
 Self-retro: source extraction initially coupled a small counter test to the full
 runtime package graph. Keeping configuration tests dependency-free and checking

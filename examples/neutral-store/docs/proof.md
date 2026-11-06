@@ -441,3 +441,13 @@ purchase through payment, native challenge, sign-in and account order visibility
 both purchase and challenge requests. Address changes check the same phone and
 postal-code bounds as checkout. Each case has an explicit 30-second timeout;
 run new PostgreSQL cases in the default zone and both offset zones.
+
+
+The committed recurring-recovery and renewal PostgreSQL files pass 21 cases with
+no skips on the selected native installation, including its command receipt-lock
+completion. Both operator cases prove issuance, immutable artifact capture/replay,
+missing-artifact and changed-context refusal, process restart and revocation by
+another active human administrator. The authenticated recovery case scans the
+same host log stream for its raw token after real HTTP recovery. Consumer
+installations are isolated per setup and removed in teardown. Browser recovery
+remains separate local evidence; the root proof needs no starter assets or Chromium.

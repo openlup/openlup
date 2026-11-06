@@ -359,8 +359,9 @@ loudly. Replace this fictional registry and its onboarding for a customer enviro
 
 Operator customer search/detail remain unbound because the native reader
 requires a separate communications operator roster entry. The host does not
-provision that authority. Broader payment/operator recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
-provision that authority. Other unbound operator actions retain their named refusals; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+provision that authority. Operator payment recovery is bound through the native
+human-authority command; other unbound actions retain their named refusals;
+see [limits](docs/limits.md). Acquisition proves no purchase journey.
 
 
 ## Guest purchase and later sign-in
@@ -491,8 +492,8 @@ sections keep their existing refusal.
 The [notice binder](host/lifecycle-notices.ts) renders configured English/Polish
 copy through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
-access-grant references contain the native token UUID. It is not mounted until
-the notice predecessor and joined recovery proof are available. No parallel
+access-grant references contain the native token UUID. It remains unmounted in this checkpoint; native notice dispatch and the joined
+recovery proof are available, but this row selects no parallel sender. No parallel
 outbox handler is registered. Consent/signed opt-out wait for native purpose
 support; operator shipment and invoice joins wait for their existing owners.
 Reminder windows, historical closure, winback, escalation and configurable
@@ -508,7 +509,9 @@ recovery. Initial checkout reads, simulator completion and acquisition
 activation refuse a recurring relation for both guests and matching owners.
 
 The human operator recovery action uses the native command and its eligible
-customer/case rules. The selected installation must include its native command
-receipt-lock completion. Active human authority is revalidated on replay. The
+customer/case rules. The selected native installation includes the command
+receipt-lock completion. Committed real-HTTP proofs pass for both configurations,
+including issuance, replay, missing/changed capture, restart and human revocation.
+Active human authority is revalidated on replay. The
 scheduled notice host reads the original operator artifact and preserves its
 rendered content, token and expiry across process restarts.

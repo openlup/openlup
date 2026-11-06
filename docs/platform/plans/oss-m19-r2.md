@@ -1,5 +1,10 @@
 # Joined starter recovery and scheduled notices
 
+Historical joined checkpoint; the current task record is
+[PR #546](https://github.com/openlup/openlup/pull/546). The merged native
+installation now includes the receipt-lock completion and both operator cases
+pass in the committed HTTP proof.
+
 Status is local implementation and proof. The development preview has a separate
 release and installed-set qualification boundary.
 
@@ -35,10 +40,10 @@ and recovery responses for private email, URL and token material. Browser recove
 runs are separate local evidence, not a committed root-job witness. Initial
 checkout retains its existing creating-response capability protocol.
 
-The positive operator proof uses a separate scratch installation containing the
-native receipt-lock completion. It exercises issuance, capture, replay, changed
+The positive operator proof now uses the merged native installation containing
+the receipt-lock completion. It exercises issuance, capture, replay, changed
 and missing artifacts, active-human revalidation and process restart in both
-configurations. Its dependency remains separate from the deliverable history.
+configurations. The installation prerequisite is present on main.
 The original required browser spec stays byte-identical.
 
 Before the packet, run source/strict/build, native PostgreSQL and both browser
@@ -74,8 +79,8 @@ The unified source seal passed209 starter/extraction tests with zero skips,
 strict compilation and lint with zero errors and33 inherited warnings. The
 three focused artifact cases include all20 admitted notice kinds, changed
 context, unknown kind/version/key, immutable publication and a real subprocess
-readback/output scan. The native-role and browser proofs follow on the required
-scratch prerequisite. Initial policy output requested the tests-owner trailer
+readback/output scan. The committed native-role proof now passes on the merged
+main installation; browser recovery remains separate local evidence. Initial policy output requested the tests-owner trailer
 for the current exact source digest. The unified commit carries that computed
 answer. The existing test discovery, restricted fixture authority, per-case
 timeout convention and mandatory command set remain sufficient.
@@ -85,8 +90,8 @@ The first complete scratch run passed nine of ten recovery cases and both
 challenge after generic acceptance, before asynchronous mailbox delivery. The
 fixture now waits up to5 seconds for a new captured challenge without issuing
 another request. This preserves the existing acceptance-before-delivery
-contract and the native login cadence. The pending proof reruns that repaired
-operator boundary in both configurations.
+contract and the native login cadence. The committed HTTP proof passes that repaired operator boundary in both
+configurations.
 
 Completed capture evidence uses the unchanged application code and the repaired
 mailbox-readiness fixture. Both selected real operator cases pass in61.298 and
@@ -109,7 +114,7 @@ has an explicit65-second bound. Application-owned heavy cases retain their
 30-second deadlines. These are per-case observations on the official Node
 toolchain. Installation/hooks have their existing separate bounds.
 
-The scratch installation contains the exact issued native lock completion and
+The earlier scratch installation contained the exact issued native lock completion and
 its canonical selector/package projection, with the selected measured inventory
 pin. The default packaged runner applies the complete selected history with no
 pending migrations in both configurations. Unrelated conformance conflicts
@@ -120,7 +125,7 @@ The first scratch setup retained an older selector and was correctly refused
 before any journey assertion. Restoring the exact prerequisite selector fixed
 that setup. A private launcher quoting error also stopped before admission and
 was corrected once. Neither failure changed a grant, role, projector or payload.
-The final source-only change after the unified artifact commit is the fixture's
+The earlier source-only change after the unified artifact commit was the fixture's
 bounded wait for newly captured material. Application/package source bytes
 remain equal across those two proof heads.
 

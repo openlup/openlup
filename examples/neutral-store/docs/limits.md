@@ -200,7 +200,8 @@ operator correction is not offered through this customer action.
 
 Generic subscription commands remain unmounted pending a complete native fit.
 Authenticated payment recovery authorizes the same native unpaid obligation.
-Operator recovery requires the native command receipt-lock completion and
+The selected native installation includes the command receipt-lock completion.
+Operator recovery passes the committed real-HTTP proof in both configurations and
 revalidates active human membership and support authority on replay. No refusal
 pauses or freezes an active subscription or confirms an undelivered replacement.
 

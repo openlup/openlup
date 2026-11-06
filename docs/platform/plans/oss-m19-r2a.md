@@ -1,5 +1,11 @@
 # Starter authenticated recovery checkpoint
 
+Historical checkpoint; the current task record is [PR #546](https://github.com/openlup/openlup/pull/546).
+The merged native installation now includes the receipt-lock completion. Both
+operator cases pass as ordinary committed HTTP proofs; no native prerequisite
+wait remains for this path. Earlier measurements below describe their original
+checkpoint, not current delivery instructions.
+
 Outcome: separate recurring payment recovery from initial checkout, preserve one
 private rendered message per command across restarts, and authorize retry of the
 same owned unpaid obligation using native server facts.
@@ -53,7 +59,7 @@ step: parser acceptance followed by actual HTTP readiness. Lost startup detail
 will be retained privately. Lesson: fixture launch refusal → validate the exact
 existing CLI contract before another database run.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-b5d615e85250547f044f78087ace0eb2e75ca28994174dd153316757b37b66cc","reason":"The added starter witness uses the existing tests/postgres Node root, existing container lifecycle and installed migration runner, for the committed source and HTTP proofs. The explicit Playwright recipe is local evidence, not a committed root-job witness. Required commands, fixture privileges, timeout defaults and contribution instructions are unchanged. The tests owner already describes these proof locations and bounded per-case timeout conventions; local measured results and the native permission blocker belong to this task."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-b5d615e85250547f044f78087ace0eb2e75ca28994174dd153316757b37b66cc","reason":"The added starter witness uses the existing tests/postgres Node root, existing container lifecycle and installed migration runner, for the committed source and HTTP proofs. The explicit Playwright recipe is local evidence, not a committed root-job witness. Required commands, fixture privileges, timeout defaults and contribution instructions are unchanged. The tests owner already describes these proof locations and bounded per-case timeout conventions; local measured results and the completed native permission proof belong to this task."} -->
 
 Retry-proof rethink: the HTTP/restart proof reached authorization, then an
 isolated native retry diagnostic identified an invalid synthetic method-evidence
@@ -68,9 +74,8 @@ a 10-second per-case bound matching the adjacent HTTP witness. Authenticated
 restart/replay reached retry execution at 121.55–121.81 seconds, including two
 native one-minute sign-in cadences; its bound is 180 seconds. Local browser wrappers
 took 9.13–9.92 seconds per configuration; their bound is 30 seconds, about three
-times measurement. The blocked operator proof retains its provisional
-60-second bound and needs a successful measurement after its native prerequisite
-is supplied. No global timeout or gate budget is changed.
+times measurement. The current operator proof passes in approximately61.4 seconds with its
+explicit180-second bound on the completed native installation. No global timeout or gate budget is changed.
 
 Earlier local checkpoint evidence: eight selected recovery cases passed
 across both configurations, including canonical UUID fences, wrong subject and
@@ -101,13 +106,11 @@ structural checks passed. Publication policy/docs navigation reports two owner
 obligations and zero unanswered. No package files changed: package contribution
 is zero bytes; no new pack or published-artifact qualification is claimed.
 
-Stop boundary: the restricted native operator command requires receipt row-lock
-permission absent from this installation. Its successful issuance, artifact
-capture/replay, missing-artifact and active-operator handoff proof remains
-blocked until its native owner supplies the prerequisite. No grant, owner
-fallback or package repair was added. The sensitive host checkpoint requires
-coordinator read before DCO. No review, canonical verify, submission or release
-has run, and full row completion is not claimed.
+The current native installation supplies receipt row-lock permission. Both
+operator cases pass issuance, artifact capture/replay, missing/changed-artifact
+refusal, process restart and active-human revalidation. No grant, owner fallback
+or package repair was added by the starter. Current submission and review
+state belongs to the PR task record.
 
 Self-retro: exact CLI admission and the simulator's existing fact schema should
 have been checked before the first database journey. Isolating the native call
