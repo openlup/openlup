@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
 import { createPaidMailHost } from '../../examples/neutral-store/host/paid-mail.ts';
 import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
@@ -35,6 +35,7 @@ beforeAll(async () => {
   const url = new URL(container.connectionString); url.username = 'starter_runtime'; url.password = 'synthetic-conformance';
   runtimeUrl = url.toString(); runtime = new Pool({ connectionString: runtimeUrl });
 }, 60_000);
+beforeEach(async () => { await owner.query('DELETE FROM public.outbox_events'); });
 afterAll(async () => { await closePostgres(container, [owner, migration, runtime].filter(Boolean)); }, postgresTeardownTimeoutMs);
 
 it('claims through the installed restricted runtime without supplementary grants', async () => {
@@ -46,9 +47,9 @@ it('claims through the installed restricted runtime without supplementary grants
 
 const now = '2026-10-20T12:00:00.000Z';
 async function fixture(status: 'paid' | 'pending_payment' | 'cancelled') {
-  const clientId = randomUUID(), orderId = randomUUID(), email = `${clientId}@example.test`;
+  const clientId = randomUUID(), orderId = randomUUID(), email = `${clientId}@example.test`, market = config().market;
   await owner.query(`INSERT INTO public.clients(id,email,first_name,country,created_at,updated_at)
-    VALUES($1,$2,'Example','PL',$3,$3)`, [clientId, email, now]);
+    VALUES($1,$2,'Example',$4,$3,$3)`, [clientId, email, now, market.country]);
   const metadata = { orderDraftSnapshot: { context: { mode: 'one_time' },
     totals: { subtotalGross: { amountMinor: 2400 }, discountTotalGross: { amountMinor: 400 } },
     lines: [{ title: 'Frozen item' }] } };
@@ -56,7 +57,7 @@ async function fixture(status: 'paid' | 'pending_payment' | 'cancelled') {
   try {
   await db.query('BEGIN');
   await db.query(`INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,metadata,created_at,updated_at)
-    VALUES($1,$2,'PLN',2000,$3,$4,$4)`, [orderId, clientId, metadata, now]);
+    VALUES($1,$2,$5,2000,$3,$4,$4)`, [orderId, clientId, metadata, now, market.currency]);
   await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor,created_at,
     source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,promotion_discount_allocated_minor,promotion_allocation_fingerprint)
     VALUES($1,1,2,1000,2000,$2,1,1200,2400,400,repeat('a',64))`, [orderId, now]);
@@ -83,7 +84,8 @@ async function lifecycle(directory: string, owned: StoreConfig) {
     child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { errors += data; });
     child.once('error', error => { clearTimeout(timer); fail(error); });
     child.once('exit', code => { clearTimeout(timer);
-      if (code !== 0) fail(new Error('paid_mail_lifecycle_failed'));
+      if (code !== 0) fail(new Error(errors.includes('ERR_MODULE_NOT_FOUND')
+        ? 'paid_mail_lifecycle_module_unavailable' : 'paid_mail_lifecycle_failed'));
       else done({ output: output + errors, result: JSON.parse(output) });
     });
     child.stdin.end(JSON.stringify({ url: runtimeUrl, config: owned }));
@@ -94,7 +96,7 @@ async function lifecycle(directory: string, owned: StoreConfig) {
 // Retain 10 s per action; the installation has its separate 60 s hook allowance.
 it('the lifecycle entry captures exactly one paid receipt with owned locale, recipient and totals; replay is inert', async () => {
   const f = await fixture('paid'), owned = config();
-  owned.renewal.notices.countryLocales = { PL: 'pl' };
+  owned.renewal.notices.countryLocales = { [owned.market.country]: 'pl' };
   await local(async directory => {
     const first = await lifecycle(directory, owned);
     expect(first.result.paidMail).toMatchObject({ claimed: 1, processed: 1 });
@@ -105,7 +107,9 @@ it('the lifecycle entry captures exactly one paid receipt with owned locale, rec
     expect(artifact).toMatchObject({ kind: 'order_paid', recipient: f.email, recipientReference: `client:${f.clientId}`,
       orderId: `order_${f.orderId}`, locale: 'pl', subject: owned.renewal.notices.copy.pl.paid.subject });
     expect(artifact.body).toContain('Frozen item');
-    for (const [label, value] of [['Suma częściowa', 'PLN 24.00'], ['Rabat', '−PLN 4.00'], ['Razem', 'PLN 20.00']]) {
+    const copy = owned.renewal.notices.copy.pl.paid;
+    const money = (major: number) => new Intl.NumberFormat('en', { style: 'currency', currency: owned.market.currency }).format(major);
+    for (const [label, value] of [[copy.subtotal, money(24)], [copy.discount, `−${money(4)}`], [copy.total, money(20)]]) {
       expect(artifact.body).toContain(`${label}: ${value}`);
     }
     expect((await stat(mailbox)).mode & 0o777).toBe(0o700);
