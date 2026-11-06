@@ -902,10 +902,9 @@ describe("registry-defined native capabilities", () => {
     expect(() => parameterForward(parameterUnique.replaceAll("fixture_key", "other_key"), addUnique)).toThrow(/closed shapes/u);
     expect(() => parameterForward(parameterUnique.replace(" NULLS NOT DISTINCT", ""), addUnique)).toThrow(/UNIQUE must only widen/u);
   });
-  it("uses the last defining UNIQUE statement as its hash-bound preimage", () => {
+  it("refuses a later ALTER definition as the UNIQUE preimage", () => {
     const history = "ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_key;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_key UNIQUE (id,extra);";
-    // A changed named constraint before its newest definition is legitimate history.
-    expect(() => parameterForward(parameterUnique, slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(history.split("\n")[1]!); }, history)).not.toThrow();
+    expect(() => parameterForward(parameterUnique, slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(history.split("\n")[1]!); }, history)).toThrow("reviewed native store UNIQUE preimage drifted");
   });
   it("admits a hash-pinned fresh view and required PUBLIC and conditional revokes", () => {
     const create = "CREATE VIEW public.fixture_parameter_view AS SELECT id FROM public.fixture_parameters;";
@@ -1130,12 +1129,12 @@ describe("token-bound native SQL identities", () => {
     const source = "CREATE TABLE public.fixture_parameters (id uuid, extra uuid, note text DEFAULT $data$CONSTRAINT fixture_key UNIQUE (extra)$data$, CONSTRAINT fixture_key UNIQUE (id));";
     expect(() => parameterForward(parameterUnique.replace("(id,extra)", "(extra)"), slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(source); slot.uniqueSupersets![0]!.columns = ["extra"]; }, "", source)).toThrow("reviewed native store UNIQUE must only widen its key");
   });
-  it("ignores UNIQUE history before the listed last definition and refuses mentions after it", () => {
+  it("requires the original UNIQUE CREATE anchor despite quoted later definitions", () => {
     const history = 'ALTER\nTABLE "public" . "fixture_parameters" VALIDATE/* name */CONSTRAINT "fixture_key";';
     expect(() => parameterForward(parameterUnique, addUnique, history)).toThrow("reviewed native store CHECK intervening DDL refused");
     const drop = 'ALTER\nTABLE "public" . "fixture_parameters" DROP/* name */CONSTRAINT "fixture_key";';
     const add = 'ALTER TABLE public /* schema */ . fixture_parameters ADD CONSTRAINT "fixture_key" UNIQUE (id, extra);';
-    expect(() => parameterForward(parameterUnique, slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(add); }, `${drop}\n${add}`)).not.toThrow();
+    expect(() => parameterForward(parameterUnique, slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(add); }, `${drop}\n${add}`)).toThrow("reviewed native store UNIQUE preimage drifted");
   });
   it("resolves both trigger shapes through keyword comments and qualified-name whitespace", () => {
     const statement = triggerBefore.replace("CREATE TRIGGER", "CREATE/* gap */TRIGGER").replace("ON public.fixture_parameters", 'ON "public" /* schema */ . "fixture_parameters"').replace("FUNCTION public.fixture_trigger_guard", 'FUNCTION "public" . "fixture_trigger_guard"');
@@ -1215,6 +1214,7 @@ it.each([
   "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'ALTER TABLE public.fixture_parameters DROP COLUMN status;'; END IF; END; $$;",
   "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON TABLE public.fixture_parameters FROM service_role; ALTER TABLE public.fixture_parameters DROP COLUMN status;'; END IF; END; $$;",
   "ALTER TABLE other_table RENAME TO fixture_parameters;",
+  "ALTER TABLE public.unrelated ADD COLUMN parent uuid REFERENCES public.fixture_parameters(id);",
 ])("refuses an unclassified protected-table mention after its preimage: %s", history => {
   expect(() => parameterForward(parameterCheck(), addCheck, history)).toThrow("reviewed native store CHECK intervening DDL refused");
   expect(() => parameterForward(parameterUnique, addUnique, history)).toThrow("reviewed native store CHECK intervening DDL refused");
@@ -1230,7 +1230,6 @@ it.each([
   "CREATE FUNCTION public.reader() RETURNS text LANGUAGE sql AS $$ SELECT status FROM public.fixture_parameters LIMIT 1 $$;",
   "CREATE VIEW public.reader AS SELECT status FROM public.fixture_parameters;",
   "ALTER TABLE public.unrelated ALTER COLUMN status DROP NOT NULL;",
-  "ALTER TABLE public.unrelated ADD COLUMN parent uuid REFERENCES public.fixture_parameters(id);",
   "CREATE FUNCTION public.reader() RETURNS jsonb LANGUAGE sql AS $$ SELECT jsonb_build_object('execute',true) FROM public.fixture_parameters LIMIT 1 $$;",
   "CREATE OR REPLACE FUNCTION public.reader() RETURNS void LANGUAGE plpgsql AS $$ BEGIN EXECUTE 'ALTER TABLE public.fixture_parameters DROP COLUMN status'; END; $$;",
   "CREATE OR REPLACE VIEW public.reader AS SELECT 'DROP TABLE' AS label FROM public.fixture_parameters;",
@@ -1281,4 +1280,40 @@ it("admits only a resolved different constraint drop with SQL identifier case ru
     for (const other of ["OTHER_CONSTRAINT", '"other_constraint"', `"${name.toUpperCase()}"`]) expect(() => parameterForward(sql, configure, `ALTER TABLE public.fixture_parameters DROP CONSTRAINT ${other};`)).not.toThrow();
     for (const bad of [name, name.toUpperCase(), `"${name}"`, "*", "'unresolved'", `IF EXISTS ${name}`, "IF EXISTS unrelated"]) expect(() => parameterForward(sql, configure, `ALTER TABLE public.fixture_parameters DROP CONSTRAINT ${bad};`)).toThrow("reviewed native store CHECK intervening DDL refused");
   }
+});
+
+it("refuses a CHECK ALTER anchor after an earlier narrowing", () => {
+  const add = "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_status CHECK (status IN ('open'));";
+  const history = `ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_status;\n${add}`;
+  expect(() => parameterForward(parameterCheck(undefined, undefined, "'open','paused'"), slot => {
+    addCheck(slot); slot.checkSupersets![0]!.beforeSha256 = sqlSha256(add); slot.checkSupersets![0]!.values = ["open", "paused"];
+  }, history)).toThrow("reviewed native store CHECK preimage drifted");
+});
+it.each([
+  String.raw`DO E'BEGIN\n PERFORM ''a\\b''; ALTER TABLE public.TABLE_NAME ALTER COLUMN COLUMN_NAME SET DEFAULT ''closed''; END;';`,
+  String.raw`DO 'BEGIN PERFORM ''a\b''; ALTER TABLE public.TABLE_NAME ALTER COLUMN COLUMN_NAME SET DEFAULT ''closed''; END;';`,
+  "DO $$ BEGIN ALTER TABLE public.TABLE_NAME ALTER COLUMN COLUMN_NAME SET DEFAULT 'closed'; END; $$;",
+  String.raw`SELECT 'a\b' /* TABLE_NAME */;`,
+  "DROP TABLE public.TABLE_NAME_archive;",
+  "SET work_mem='4MB' /* TABLE_NAME */;",
+  String.raw`CREATE FUNCTION public.literal_reader() RETURNS text LANGUAGE sql AS 'SELECT ''a\b TABLE_NAME''';`,
+])("refuses every raw mention on reader give-up or unlisted DDL: %s", template => {
+  const generic = template.replaceAll("TABLE_NAME", "fixture_parameters").replaceAll("COLUMN_NAME", "status");
+  const legacy = template.replaceAll("TABLE_NAME", "communication_native_sync_state").replaceAll("COLUMN_NAME", "purpose");
+  expect(() => parameterForward(parameterCheck(), addCheck, generic)).toThrow("reviewed native store CHECK intervening DDL refused");
+  expect(() => parameterForward(parameterUnique, addUnique, generic)).toThrow("reviewed native store CHECK intervening DDL refused");
+  expect(() => legacyCheckHistory(legacy)).toThrow("reviewed native store purpose CHECK intervening DDL refused");
+});
+it("ignores unrelated incomplete historical literals without a global prefix veto", () => {
+  const history = String.raw`DO 'BEGIN PERFORM ''a\b unrelated''; END;';`;
+  expect(() => parameterForward(parameterCheck(), addCheck, history)).not.toThrow();
+  expect(() => parameterForward(parameterUnique, addUnique, history)).not.toThrow();
+  expect(() => legacyCheckHistory(history)).not.toThrow();
+});
+
+it("refuses an escaped DO that recreates the original table and constraints", () => {
+  const recreate = `DROP TABLE public.fixture_parameters; ${parameterTable}`.replaceAll("'", "''");
+  const history = String.raw`DO E'BEGIN\n PERFORM ''a\\b''; ${recreate} END;';`;
+  expect(() => parameterForward(parameterCheck(), addCheck, history)).toThrow("reviewed native store CHECK intervening DDL refused");
+  expect(() => parameterForward(parameterUnique, addUnique, history)).toThrow("reviewed native store CHECK intervening DDL refused");
 });

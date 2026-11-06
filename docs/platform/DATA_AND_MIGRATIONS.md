@@ -1525,12 +1525,14 @@ The hash binds the complete original CREATE TABLE statement and values is the
 exact new positive IN list. Each entry requires one adjacent DROP CONSTRAINT /
 ADD CONSTRAINT CHECK pair that retains every parsed old value. Between that
 CREATE and the forward, only statements mentioning the protected table are checked.
-A mention is its bare name as a word or quoted identifier, or that name anywhere
-in a string literal, including a DO body. Each mention must be an ADD COLUMN,
+A mention is any case-insensitive substring occurrence of the bare table name
+in the raw statement, including comments, identifiers and escaped literals.
+Every mention must tokenize completely before an allowed form is considered; a
+reader give-up refuses even when the partial tokens contain no table name. Each mention must be an ADD COLUMN,
 an ADD or plain DROP CONSTRAINT with another resolved name, CREATE INDEX or
 CREATE TRIGGER on that table, CREATE TABLE of a different resolved table that
-references it, ALTER TABLE of a different resolved table, table privileges,
-COMMENT ON, DML, or CREATE [OR REPLACE] FUNCTION/VIEW. Definition bodies are
+references it, table privileges, COMMENT ON, DML, or
+CREATE [OR REPLACE] FUNCTION/VIEW. Definition bodies are
 not inspected: they execute only on a later call or select. A mentioning DO
 block refuses except for the existing constant guarded privilege shells. Constraint words fold to lower case; quoted
 names remain exact. Protected or unresolved names and conditional existence
@@ -1545,8 +1547,9 @@ The issued account-consent `purposeCheck` remains readable unchanged: its values
 continue to mean the old list, and its existing refusal messages remain intact.
 
 `uniqueSupersets` entries declare table, constraint, beforeSha256, columns and
-nullsNotDistinct. The hash binds the statement that last defined the named UNIQUE
-in the preceding rail. One adjacent DROP / ADD of that same constraint must
+nullsNotDistinct. The hash binds the original CREATE TABLE statement containing
+the named UNIQUE. An ALTER TABLE anchor refuses for both CHECK and UNIQUE
+entries; a later narrowed definition cannot replace the original preimage. One adjacent DROP / ADD of that same constraint must
 retain every old key column, with the exact new column list and declared NULLS
 NOT DISTINCT mode. That syntax belongs only to this entry; the general expression
 grammar is unchanged. Missing old columns, non-adjacent pairs, other constraint

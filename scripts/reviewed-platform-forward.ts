@@ -2185,12 +2185,12 @@ function nativeStorePrivilege(statement: string, tables: Set<string>, insertSele
 // Only mentions after the hash-bound preimage matter. This is a closed refusal
 // list, not an attempt to reconstruct the prefix's object catalog.
 function nativeStoreUnchangedCheck(statement: string, check: NativeStoreCheck & { legacy?: boolean }): void {
-  const { tokens, complete } = platformSqlTokens(statement, false, true), bare = check.table.split(".")[1]!;
-  if (!tokens.some(token => nativeIdentifier(token) === bare || (token.kind === "string" && token.value.toLowerCase().includes(bare)))) return;
-  const object = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
-  if (nativeWord(tokens, 0, "CREATE") && ["FUNCTION", "VIEW"].some(word => nativeWord(tokens, object, word))) return;
+  if (!statement.toLowerCase().includes(check.table.split(".")[1]!)) return;
+  const { tokens, complete } = platformSqlTokens(statement, false, true);
   const fail = () => { throw new Error(`reviewed native store ${check.legacy ? "purpose " : ""}CHECK intervening DDL refused`); };
   if (!complete) return fail();
+  const object = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
+  if (nativeWord(tokens, 0, "CREATE") && ["FUNCTION", "VIEW"].some(word => nativeWord(tokens, object, word))) return;
   const alter = nativeStoreAlter(statement);
   if (alter?.table === check.table && alter.actions.every(action => {
     const { tokens } = platformSqlTokens(action, false, true);
@@ -2198,7 +2198,7 @@ function nativeStoreUnchangedCheck(statement: string, check: NativeStoreCheck & 
     return name !== null && ((nativeWord(tokens, 0, "ADD") && (nativeWord(tokens, 1, "COLUMN") || (nativeWord(tokens, 1, "CONSTRAINT") && name !== check.constraint))) || (tokens.length === 3 && nativeWord(tokens, 0, "DROP") && nativeWord(tokens, 1, "CONSTRAINT") && name !== check.constraint));
   })) return;
   const head = nativeTableHead(tokens);
-  if (head?.kind === "TABLE" && ["CREATE", "ALTER"].includes(head.verb) && head.table && head.table !== check.table) return;
+  if (head?.verb === "CREATE" && head.kind === "TABLE" && head.table && head.table !== check.table) return;
   if (["GRANT", "REVOKE", "INSERT", "UPDATE", "DELETE", "SELECT"].some(word => nativeWord(tokens, 0, word)) || (nativeWord(tokens, 0, "COMMENT") && nativeWord(tokens, 1, "ON"))) return;
   const index = nativeWord(tokens, 1, "UNIQUE") ? 2 : 1, on = tokens.findIndex((_token, index) => nativeWord(tokens, index, "ON"));
   if (nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, index, "INDEX") && on >= 0 && nativeQualified(tokens, on + 1)?.name === check.table) return;
@@ -2219,7 +2219,7 @@ function nativeCheckValues(tokens: readonly PlatformSqlToken[], start: number, c
 }
 export function nativeStoreCheckPreimage(statement: string, check: NativeStoreCheck): string[] | null {
   const { tokens, complete } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
-  if (!complete || head?.table !== check.table) return null;
+  if (!complete || head?.verb !== "CREATE" || head.kind !== "TABLE" || head.table !== check.table) return null;
   for (let index = head.next; index < tokens.length; index++) {
     const named = nativeWord(tokens, index, "CONSTRAINT") && nativeIdentifier(tokens[index + 1]) === check.constraint;
     const inline = check.constraint === `${check.table.split(".")[1]}_${check.column}_check` && nativeIdentifier(tokens[index]) === check.column && nativeWord(tokens, index + 1, "TEXT") && nativeWord(tokens, index + 2, "NOT") && nativeWord(tokens, index + 3, "NULL");
@@ -2241,9 +2241,9 @@ function nativeUniqueValues(tokens: readonly PlatformSqlToken[], start: number):
   }
   return columns.length && nativeSymbol(tokens, index, ")") ? { columns, nullsNotDistinct, next: index + 1 } : null;
 }
-export function nativeStoreUniqueDefinition(statement: string, constraint: string): { columns: string[]; nullsNotDistinct: boolean } | null {
-  const { tokens, complete } = platformSqlTokens(statement, false, true);
-  if (!complete) return null;
+export function nativeStoreUniqueDefinition(statement: string, constraint: string, table?: string): { columns: string[]; nullsNotDistinct: boolean } | null {
+  const { tokens, complete } = platformSqlTokens(statement, false, true), head = table === undefined ? null : nativeTableHead(tokens);
+  if (!complete || (table !== undefined && (head?.verb !== "CREATE" || head.kind !== "TABLE" || head.table !== table))) return null;
   for (let index = 0; index < tokens.length; index++) if (nativeWord(tokens, index, "CONSTRAINT") && nativeIdentifier(tokens[index + 1]) === constraint) {
     const parsed = nativeUniqueValues(tokens, index + 2);
     if (parsed) return { columns: parsed.columns, nullsNotDistinct: parsed.nullsNotDistinct };
@@ -2325,7 +2325,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     for (const unique of uniques) {
       const key = `${unique.table}.${unique.constraint}`;
-      const definition = sqlSha256(statement) === unique.beforeSha256 && nativeTableHead(tokens)?.table === unique.table ? nativeStoreUniqueDefinition(statement, unique.constraint) : null;
+      const definition = sqlSha256(statement) === unique.beforeSha256 ? nativeStoreUniqueDefinition(statement, unique.constraint, unique.table) : null;
       if (definition) uniqueSources.set(key, { source: statement, ...definition });
       else if (uniqueSources.has(key)) nativeStoreUnchangedCheck(statement, { ...unique, column: "", values: [] });
     }

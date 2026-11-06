@@ -171,7 +171,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   }
   for (const entry of uniques) {
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
-    const source = preimages.get(entry.beforeSha256), parsed = source ? nativeStoreUniqueDefinition(source, entry.constraint) : null;
+    const source = preimages.get(entry.beforeSha256), parsed = source ? nativeStoreUniqueDefinition(source, entry.constraint, entry.table) : null;
     const oldDef = old ? nativeStoreUniqueDefinition(`CONSTRAINT ${entry.constraint} ${old.def}`, entry.constraint) : null;
     const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newDef = def ? nativeStoreUniqueDefinition(`CONSTRAINT ${entry.constraint} ${def}`, entry.constraint) : null;
     if (!parsed || JSON.stringify(parsed) !== JSON.stringify(oldDef) || !newDef || parsed.columns.some(column => !entry.columns.includes(column)) || JSON.stringify(newDef) !== JSON.stringify({ columns: entry.columns, nullsNotDistinct: entry.nullsNotDistinct })) fail(`UNIQUE changed beyond its listed superset: ${def}`);
@@ -432,6 +432,16 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("requires installed CHECK preimages to equal the hash-bound parsed values", async () => {
     const setup = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open'));";
     await expect(checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, setup)).rejects.toThrow(/CHECK changed/u);
+  });
+  it("refuses catalog preimages anchored to later ALTER definitions", async () => {
+    const addCheck = "ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open'));";
+    const addUnique = "ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE (extra);";
+    preimages.set(sqlSha256(addCheck), addCheck); preimages.set(sqlSha256(addUnique), addUnique);
+    const check = { ...SYNTHETIC_SLOT, checkSupersets: [{ ...PARAMETER_SLOT.checkSupersets![0]!, beforeSha256: sqlSha256(addCheck), values: ["open", "paused"] }] };
+    const widening = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','paused'));";
+    await expect(checkForward(pool, check, forward(CREATED_OK, widening), false, `ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ${addCheck}`)).rejects.toThrow(/CHECK changed/u);
+    const unique = { ...UNIQUE_SLOT, uniqueSupersets: [{ ...UNIQUE_SLOT.uniqueSupersets![0]!, beforeSha256: sqlSha256(addUnique) }] };
+    await expect(checkForward(pool, unique, forward(CREATED_OK, UNIQUE_SQL), false, `ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ${addUnique}`)).rejects.toThrow(/UNIQUE changed/u);
   });
   it("proves a UNIQUE superset and its exact NULLS mode in the installed catalog", async () => {
     await checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL));
