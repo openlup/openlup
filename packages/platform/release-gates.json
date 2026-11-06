@@ -980,7 +980,7 @@
       "./shipping/contracts": 32,
       "./payments/contracts": 32,
       "./fulfillment/contracts": 32,
-      "./subscriptions/contracts": 95,
+      "./subscriptions/contracts": 32,
       "./invoicing/contracts": 32,
       "./commerce/contracts": 32,
       "./pricing/browser": 25600,

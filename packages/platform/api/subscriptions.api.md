@@ -1240,7 +1240,8 @@ export interface SizedQuoteRequest {
         isAddon?: boolean;
     }[];
 }
-export declare const SIZED_PARCEL_LEVER_KIND: "subscription.sized.parcel";
+/** The sized parcel lever; the runtime value is exported by the server entry. */
+export type SizedParcelLeverKind = "subscription.sized.parcel";
 export type SizedEditAction = "resize_bundle" | "update_bundle" | "update_base_mix" | "update_plan_length" | "update_portion" | "add_addon" | "remove_addon" | "update_addon_quantity";
 type Acceptance = {
     subscriptionId: string;
@@ -1252,7 +1253,7 @@ export type SizedEditRequest = Acceptance & ({
     cadenceDays: number;
     compositionConstraint: Record<string, unknown>;
     resizeLever: {
-        kind: typeof SIZED_PARCEL_LEVER_KIND;
+        kind: SizedParcelLeverKind;
         value: {
             coreLines: PackageEditLine[];
             optInToSized?: true;
@@ -1520,8 +1521,8 @@ export { createSizedCompositionRules } from "./sizedComposition.js";
 export { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 export { splitBySubscriptionAgreement, agreedSubscriptionTotal, mergeSubscriptionAgreedQuote } from "./agreedPlanQuote.js";
 export type { SizedEditorOptions, SizedHostPorts, SizedSubjectFacts, SizedCatalogFact } from "./sizedEditPorts.js";
-export { SIZED_PARCEL_LEVER_KIND } from "./contracts/sizedEdit.js";
-export type { SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
+export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
+export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
 export { mapPackageEditError } from "./packageEditErrors.js";
 export type { PackageEditErrorMapping } from "./packageEditErrors.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
@@ -2609,6 +2610,13 @@ export declare function sizedCandidateCompatibility(catalog: readonly SizedCatal
     exclusions: readonly string[] | null;
     sellableNow: number | null;
 }[];
+```
+## dist/subscriptions/sizedParcelLever.d.ts
+
+```ts
+import type { SizedParcelLeverKind } from "./contracts/sizedEdit.js";
+/** Runtime value of the sized parcel lever; the browser contracts entry stays type-only. */
+export declare const SIZED_PARCEL_LEVER_KIND: SizedParcelLeverKind;
 ```
 ## dist/subscriptions/sizedParcelProjection.d.ts
 

@@ -64,8 +64,8 @@ export { createSizedCompositionRules } from "./sizedComposition.js";
 export { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 export { splitBySubscriptionAgreement, agreedSubscriptionTotal, mergeSubscriptionAgreedQuote } from "./agreedPlanQuote.js";
 export type { SizedEditorOptions, SizedHostPorts, SizedSubjectFacts, SizedCatalogFact } from "./sizedEditPorts.js";
-export { SIZED_PARCEL_LEVER_KIND } from "./contracts/sizedEdit.js";
-export type { SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy,
+export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
+export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy,
   SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
 export { mapPackageEditError } from "./packageEditErrors.js";
 export type { PackageEditErrorMapping } from "./packageEditErrors.js";

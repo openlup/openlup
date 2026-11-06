@@ -8202,6 +8202,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/sizedParcelLever.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/sizedParcelProjection.ts",
       "class": "public-output"
     },
