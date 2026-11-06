@@ -242,7 +242,7 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
 // ---- Synthetic cases: the comparator itself, on real PostgreSQL ---------------------------------
 const SYNTHETIC_BASE = `
 CREATE TABLE public.cat_existing_table (id int PRIMARY KEY, owner_ref uuid NOT NULL);
-CREATE TABLE public.cat_parameters (id uuid, extra uuid, status text, kind text, CONSTRAINT cat_status CHECK (status IN ('open','closed')), CONSTRAINT cat_kind CHECK (kind IN ('first','second')), CONSTRAINT cat_key UNIQUE (id));
+CREATE TABLE public.cat_parameters (id uuid, extra uuid, owner_ref uuid, status text, kind text, CONSTRAINT cat_status CHECK (status IN ('open','closed')), CONSTRAINT cat_kind CHECK (kind IN ('first','second')), CONSTRAINT cat_key UNIQUE (id));
 CREATE TABLE public.communication_native_sync_state (purpose text NOT NULL CONSTRAINT communication_native_sync_state_purpose_check CHECK (purpose IN ('a','b')));
 CREATE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'before' $$;
 REVOKE ALL ON FUNCTION public.cat_replaced(text,boolean) FROM PUBLIC;
