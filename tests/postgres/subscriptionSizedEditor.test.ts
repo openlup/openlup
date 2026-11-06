@@ -60,7 +60,7 @@ async function fixture() {
   await owner.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
     VALUES($1,'XXX','synthetic-stock','sandbox',$2,'sandbox-authorization')`, [subscription, at]);
   await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscription]);
-  const pricing = [];
+  const pricing: Record<string, unknown>[] = [];
   for (const [id, qty, ordinal, extra] of [[a, 4, 1, false], [addon, 1, 2, true]] as const) {
     await owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code) VALUES($1,$2,$3,$4,$5,100,'XXX')", [subscription, id, qty, ordinal - 1, extra]);
     await owner.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,$2,$3,$4,100)", [subscription, ordinal, id, qty]);
