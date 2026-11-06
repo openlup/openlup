@@ -30,7 +30,8 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
   const { executor, codec } = options;
   async function invoke(db: SubscriptionQueryExecutor, name: string, values: unknown[]) {
     return (await db.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values).catch((error: unknown) => {
-      if (name === "subscription_stock_wait_admit" && error && typeof error === "object" && "code" in error && error.code === "55P03") {
+      if (["subscription_stock_wait_admit", "subscription_stock_wait_recover_refusal", "subscription_stock_wait_deficits"].includes(name)
+        && error && typeof error === "object" && "code" in error && error.code === "55P03") {
         throw Object.assign(new Error("Inventory admission temporarily unavailable"), { details: { code: "55P03",
           reason: "message" in error && error.message === "inventory_admission_busy" ? "inventory_admission_busy" : "inventory_lock_unavailable" } });
       }

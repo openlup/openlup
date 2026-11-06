@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "owned": [
+    "owned/renewal-copy.ts",
+    "owned/renewal.config.ts",
     "AGENTS.md",
     "owned/catalogue.ts",
     "owned/copy.ts",
@@ -18,6 +20,15 @@
     "public/media/noon.svg"
   ],
   "managed": [
+    "host/account-renewal.ts",
+    "host/lifecycle-notices.ts",
+    "host/notice-artifact.ts",
+    "host/renewal-job.ts",
+    "host/renewal-sandbox.ts",
+    "host/scheduled-renewal.ts",
+    "shared/renewal-config.ts",
+    "test/renewal.test.ts",
+    "test/notice-artifact.test.ts",
     ".dockerignore",
     ".gitignore",
     ".npmrc",
@@ -89,7 +100,19 @@
     "test/checkout-attempts.test.ts",
     "test/address-outcomes.test.ts",
     "host/checkout-recovery.ts",
-    "test/checkout-recovery.test.ts"
+    "test/checkout-recovery.test.ts",
+    "host/private-capture.ts",
+    "test/private-capture.test.ts",
+    "host/recurring-fence.ts",
+    "host/authenticated-recovery.ts",
+    "host/operator-recovery.ts",
+    "test/recovery-entry.test.ts",
+    "shared/recovery-config.ts",
+    "client/recovery-page.ts",
+    "client/recovery-session.ts",
+    "browser/recovery.proof.ts",
+    "host/paid-mail-artifact.ts",
+    "host/paid-mail.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md"

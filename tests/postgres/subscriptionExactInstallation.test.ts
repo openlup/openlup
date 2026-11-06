@@ -57,7 +57,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
     const expected = profile === "legacy" ? 100 : admin ? 104 : 105;
     expect((await owner.query("SELECT count(*)::int AS n FROM public.platform_schema_migrations")).rows[0].n).toBe(expected);
     expect((await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 1")).rows)
-      .toEqual([{ catalog_path: "db/platform/migrations/20261120110000_subscription_exact_levers.sql" }]);
+      .toEqual([{ catalog_path: "db/platform/migrations/20261104110000_subscription_exact_levers.sql" }]);
     const signature = "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)";
     expect((await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows)
       .toEqual([{ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] }]);

@@ -25,7 +25,7 @@ const transaction = async <T>(work: (db: SubscriptionQueryExecutor) => Promise<T
   try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
   catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 };
-function bind(f: Renewal, enabled = true, ambiguous?: Renewal) {
+function bind(f: Renewal, enabled = true, ambiguous?: Renewal, beforeQuery?: (sql: string) => Promise<void>) {
   let now = later(1), method = "frozen-method", declined = false, ready = true;
   const snapshot: RenewalFrozenSnapshot = {
     contractVersion: "platform.subscription.renewal.v1", subscriptionId: f.subscription, clientId: f.client,
@@ -62,7 +62,7 @@ function bind(f: Renewal, enabled = true, ambiguous?: Renewal) {
     amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", reason: declined ? "declined" : null,
   });
   const queries: string[] = [];
-  const executor = { async query(sql: string, values?: unknown[]) { queries.push(sql); return h.pool.query(sql, values); } };
+  const executor = { async query(sql: string, values?: unknown[]) { queries.push(sql); await beforeQuery?.(sql); return h.pool.query(sql, values); } };
   const retryOptions = { executor, withTransaction: transaction, decode: codec.decode,
     readFrozenMandate: async () => ({ authorized: true, authorizationRef: "frozen-mandate", paymentMethodRef: "frozen-method" }),
     retryInput: (_snapshot: RenewalFrozenSnapshot, row: { settlementIntentId: string; orderId: string; retryAttempt: number }) => execution(row.settlementIntentId, row.orderId, `${f.identity}:retry:${row.retryAttempt}`),
@@ -268,6 +268,32 @@ it("ambiguous logical-cycle history refuses before the original claim, prepare o
   expect(await b.binding.services.run()).toMatchObject({ renewals: [{ subscriptionId: f.subscription, status: "error", reason: "renewal_processing_failed" }] });
   expect(b.execute).not.toHaveBeenCalled(); expect(await allPublicRows(h.pool)).toEqual(before);
 });
+
+// Hold the gate only at row admission, after the run's unchanged expiry prelude.
+it("completes a stock-wait busy-only run without an error row or new ledger outcome", async () => {
+  const f = await renewal(h.pool, 0);
+  expect(await bind(f).binding.services.run()).toMatchObject({ renewals: [{ status: "refused", reason: "inventory_unavailable" }] });
+  const blocker = await h.pool.connect();
+  let admissions = 0;
+  let before: Awaited<ReturnType<typeof allPublicRows>> | undefined;
+  const b = bind(f, true, undefined, async sql => {
+    if (sql.includes("public.subscription_stock_wait_admit(")) {
+      admissions++;
+      // Candidate discovery has already recorded its unchanged fairness timestamp.
+      before = await allPublicRows(h.pool);
+      await blocker.query("SELECT pg_advisory_xact_lock(846832106,1)");
+    }
+  });
+  b.time(later(2));
+  try {
+    await blocker.query("BEGIN");
+    expect(await b.binding.services.run()).toEqual({ retries: [], renewals: [] });
+    expect(admissions).toBe(1);
+    expect(b.execute).not.toHaveBeenCalled();
+    expect(before).toBeDefined();
+    expect(await allPublicRows(h.pool)).toEqual(before);
+  } finally { await blocker.query("ROLLBACK"); blocker.release(); }
+}, 10_000);
 
 
 async function provePopulationIsolation(population: "normal" | "stock") {
