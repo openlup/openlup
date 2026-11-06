@@ -95,12 +95,12 @@ export async function draftStoreJourney(store: JourneyInstallation) {
     acquisitionSource: "synthetic", lifecycleStage: "customer" })).id; }
   finally { await accounts.close(); }
   const listId = randomUUID();
-  await store.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX','2026-01-01')", [listId]);
+  await store.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX','2026-01-01T00:00:00Z')", [listId]);
   for (const line of journeyFacts.lines) {
     const id = randomUUID();
     await store.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Synthetic product')", [id, line.sku.toLowerCase()]);
     await store.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$1,$2,'Synthetic item',true)", [id, line.sku]);
-    await store.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',$3,'2026-01-01')", [listId, id, line.unitAmountMinor]);
+    await store.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',$3,'2026-01-01T00:00:00Z')", [listId, id, line.unitAmountMinor]);
   }
   const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
   const lines = journeyFacts.lines.map(line => {
