@@ -133,12 +133,13 @@ it("rolls back the address, bindings, event and receipts if the confirmation INS
 it("allows address during open dunning without a method, but preserves the donor next-cycle lock", async () => {
  const f = await fixture();
  await owner.query("INSERT INTO public.subscription_dunning_cases(subscription_id,client_id,idempotency_key) VALUES($1,$2,$3)", [f.subscription, f.client, `dunning-${f.subscription}`]);
- expect(await call(runtime, "subscription_command_apply", [f.principal, f.client, `pause-${randomUUID()}`, f.subscription, "pause", {}, AT])).toMatchObject({ status: "refused", reason: "subscription_command_payment_blocked" });
  expect(await port().changeShippingAddress({ actorId: f.principal, clientId: f.client, idempotencyKey: `address-${randomUUID()}`, subscriptionId: f.subscription, newAddress: address("Future during dunning"), expectedVersion: 1, now: AT })).toMatchObject({ outcome: "applied_from_next_parcel" });
  const next = (await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].next_cycle_at;
  await owner.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'payment_pending')", [f.subscription, next]);
  expect(await change(f, `locked-${randomUUID()}`)).toMatchObject({ outcome: "refused", refusalCode: "payment_blocked" });
  expect((await owner.query("SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ status: "open" }]);
+ expect(await call(runtime, "subscription_command_apply", [f.principal, f.client, `pause-${randomUUID()}`, f.subscription, "pause", {}, AT])).toMatchObject({ status: "applied" });
+ expect((await owner.query("SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ status: "paused" }]);
 });
 it("refuses invalid/saved addresses, foreign customers and machine operators without an address effect", async () => {
  const f = await fixture(), before = await counts(f);
