@@ -1586,6 +1586,26 @@ The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
 committed `activateNativePurchaseWithRenewal` convenience call. A completion
 failure leaves an enumerable durable duty while paid service remains active.
+After successful completion, including replays, an optional best-effort unit
+materializes the admitted logical draft lines and optional price context in one
+statement. It writes only when the template is empty and still version one,
+preserving later edits and graduation. A crash after completion leaves the prior
+no-template state; replay can recover it. Per SKU, quantities sum, sort uses the
+earliest ordinal and the unit price must agree across its original draft lines.
+Different prices skip the whole template and pair with a neutral reason.
+Add-on roles follow retained `renewalTerms.linePricing`, rather than catalogue
+roles. Resolution checks the original draft lines and saved mode, including when
+promotion allocation splits effective positions. Missing or ambiguous lists leave
+NULL context while permitted template lines remain visible.
+Only SQLSTATE classes 42, 22 and 23 skip the optional unit, logging
+`subscription_template_unavailable` plus the SQLSTATE once. Other failures
+propagate. The unit first attempts a savepoint. Only `25P01` identifies independently
+committed pool queries, which continue without one; any other savepoint error
+propagates. A caller transaction retains the established savepoint. Detection
+calls no database function and opens no explicit transaction. Missing runtime
+access keeps the prior no-template behavior and refused native edits, with no new
+grant. Graduation retries absent context under the same best-effort rule in a
+savepoint, preserving its existing add-on lookup and due anchor.
 `createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.
