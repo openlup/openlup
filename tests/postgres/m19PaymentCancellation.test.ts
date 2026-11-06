@@ -493,7 +493,11 @@ it("redelivers the same verified capture after recovery-notice contention rolls 
   expect((await admin.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [f.intent])).rows).toHaveLength(1);
   expect((await admin.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid'", [f.order])).rows).toHaveLength(1);
   expect((await admin.query("SELECT status FROM public.subscription_dunning_cases WHERE cycle_id=$1", [f.cycle])).rows).toEqual([{ status: "recovered" }]);
-  expect((await admin.query("SELECT id FROM public.subscription_dunning_notifications WHERE case_id=(SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$1)", [f.cycle])).rows).toHaveLength(2);
+  expect((await admin.query("SELECT recipient_kind,notification_kind,status,error FROM public.subscription_dunning_notifications WHERE case_id=(SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$1) ORDER BY recipient_kind,notification_kind", [f.cycle])).rows).toEqual([
+    { recipient_kind: "customer", notification_kind: "payment_failed", status: "skipped", error: "case_recovered" },
+    { recipient_kind: "customer", notification_kind: "payment_recovered", status: "queued", error: null },
+    { recipient_kind: "operator", notification_kind: "payment_failed", status: "skipped", error: "missing_critical_notification_recipient" },
+  ]);
 });
 
 
