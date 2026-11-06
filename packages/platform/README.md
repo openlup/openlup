@@ -1657,7 +1657,7 @@ defines these policies and the attempt-ceiling repair boundary.
 worker in `./subscriptions`. The host supplies an exclusive autocommit session,
 the existing durable delivery rail and localized content/account-link binding.
 Delivery uses one subscription-wide key across cancellation episodes, checks
-eligibility before binding and records acceptance after send. The
+eligibility after binding and records acceptance after send. The
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 defines `subscriber_winback_policy`, its compatibility defaults and the
 starter's retention-consent capture/refusal obligation. This worker mounts no

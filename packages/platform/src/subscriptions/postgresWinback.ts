@@ -46,12 +46,13 @@ export function createPostgresSubscriptionWinback(options: NativeWinbackOptions)
               result.deduped++;
               continue;
             }
-            const claimed = (await db.query(`SELECT public.subscriber_retention_claim_intent($1,$2) AS claim`,
-              [candidate.idempotency_key, candidate.fingerprint])).rows[0]!.claim as Record<string, unknown> | null;
-            if (!claimed) { result.refused++; continue; }
             const command = await options.bind({ subscriptionId, clientId: String(candidate.client_id),
               email: String(candidate.email), firstName: candidate.first_name == null ? null : String(candidate.first_name),
               country: candidate.country == null ? null : String(candidate.country) });
+            // Send-time eligibility recheck: recipient/render work can outlive reactivation.
+            const claimed = (await db.query(`SELECT public.subscriber_retention_claim_intent($1,$2) AS claim`,
+              [candidate.idempotency_key, candidate.fingerprint])).rows[0]!.claim as Record<string, unknown> | null;
+            if (!claimed) { result.refused++; continue; }
             const receipt = await options.delivery.send({ ...command, idempotencyKey: key });
             validateReceipt(receipt);
             await record(db, candidate, receipt, String(claimed.dispatchClaimReference));

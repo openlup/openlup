@@ -234,6 +234,31 @@ describe.each(profiles)("native winback: %s", profile => {
       expect(await worker({delivery:{readReceipt:async () => accepted,send}}).run()).toMatchObject({scanned:0,sent:0});
       expect(await intents()).toEqual([]); expect(send).not.toHaveBeenCalled();
     });
+    it("rechecks reactivation after planning and binding before attempting transport", async () => {
+      await policy({requireRetentionConsent:false}); const f = await seed(); await plan();
+      const send = vi.fn(async () => accepted);
+      const binding = worker({delivery:{readReceipt:async () => null,send},bind:async () => {
+        await owner.query("UPDATE public.subscriptions SET status='active',ended_at=NULL WHERE id=$1",[f.id]);
+        return {recipientReference:`client:${f.client}`,templateReference:"subscriber-winback-v1"};
+      }});
+      expect(await binding.run()).toMatchObject({refused:1,sent:0}); expect(send).not.toHaveBeenCalled();
+    });
+    it("rechecks consent and controls after planning", async () => {
+      const f = await seed(); await consent(f.email); await plan();
+      const send = vi.fn(async () => accepted);
+      expect(await worker({delivery:{readReceipt:async () => null,send},bind:async () => {
+        await consent(f.email,"denied"); return {recipientReference:`client:${f.client}`,templateReference:"subscriber-winback-v1"};
+      }}).run()).toMatchObject({refused:1,sent:0}); expect(send).not.toHaveBeenCalled();
+    });
+    it("honors a control disabled between planning and send", async () => {
+      await policy({requireRetentionConsent:false}); const f = await seed(); await plan();
+      const send = vi.fn(async () => accepted);
+      expect(await worker({delivery:{readReceipt:async () => null,send},bind:async () => {
+        await owner.query("UPDATE public.communication_delivery_controls SET enabled=false WHERE control_key='subscriber-retention'");
+        return {recipientReference:`client:${f.client}`,templateReference:"subscriber-winback-v1"};
+      }}).run()).toMatchObject({refused:1,sent:0});
+      expect(send).not.toHaveBeenCalled(); expect((await intents())[0]!.refusal).toBe("control_disabled");
+    });
     it("reconciles an expired ambiguous acceptance without resending", async () => {
       await policy({requireRetentionConsent:false}); await seed();
       const send = vi.fn(async (command: {idempotencyKey:string}) => {

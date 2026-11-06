@@ -2092,7 +2092,8 @@ episodes. The native receipt rail has only accepted and failed states: accepted
 is its non-failed outcome, while failed remains retryable. An accepted send is
 recorded before its cancellation event. Session exclusion serializes sends for
 one subscription; a persisted receipt reconciles an ambiguous transport result.
-The worker rechecks source, subscription, consent and controls before host binding.
+The worker rechecks source, subscription, consent and controls after host binding
+and immediately before send. Reactivation after planning refuses delivery.
 
 The trusted host configures `commerce_settings.value_text` at key
 `subscriber_winback_policy` with a JSON object. Omitted fields preserve the
