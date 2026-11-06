@@ -165,7 +165,8 @@ cannot exceed the native destination bounds. Browser fields use those same limit
 
 [The paid-mail host](../host/paid-mail.ts) is managed application composition of
 the installed commerce handler and public outbox claim/process rail. Its registry
-selects only the paid-email event. [The versioned artifact](../host/paid-mail-artifact.ts)
+selects only the paid-email event and composes the store-owned sized parcel note
+for private renewal receipts. [The versioned artifact](../host/paid-mail-artifact.ts)
 uses the existing atomic private capture protocol; recipients and rendered bodies
 remain private generated data. [Owned locale copy](../owned/renewal-copy.ts)
 supplies the paid subject and line labels through shared configuration validation.

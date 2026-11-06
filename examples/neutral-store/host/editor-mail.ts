@@ -4,7 +4,7 @@ import type { Locale, StoreConfig } from '../shared/config.ts';
 import { editorText } from '../owned/editor-copy.ts';
 import { isRecord } from '../shared/offer.ts';
 
-/** Compatible with describeParcel; this starter does not mount a paid-email handler. */
+/** Composed as describeParcel by the paid-mail host for private paid receipts. */
 export function composeSizedPaidEmailNote(db: SubscriptionQueryExecutor,config: StoreConfig): OrderPaidParcelNoteReader<Locale> {
   const project = createSizedParcelProjection({ allowedCadences: config.subscriptionEditing.sized.allowedCadences,
     async read(orderId) {
@@ -19,7 +19,7 @@ export function composeSizedPaidEmailNote(db: SubscriptionQueryExecutor,config: 
         || !order || !Array.isArray(order.lines)) return null;
       const rows = (await db.query(`SELECT sku_id,quantity,line_ordinal FROM public.commerce_order_items WHERE order_id=$1::uuid ORDER BY line_ordinal`, [orderId])).rows;
       if (rows.length !== order.lines.length) return null;
-      const lines = [];
+      const lines: { sku: string; quantity: number; retainedId: string | null }[] = [];
       for (const item of rows) {
         const frozen = order.lines.filter(line => isRecord(line) && line.lineOrdinal === item.line_ordinal);
         if (frozen.length !== 1 || !isRecord(frozen[0]) || frozen[0].quantity !== item.quantity || typeof frozen[0].sku !== 'string') return null;

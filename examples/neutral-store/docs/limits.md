@@ -116,8 +116,9 @@ Entering, previewing or abandoning an invitation never binds sized.
 
 The host exports `composeSizedPaidEmailNote` using frozen order quantities,
 exact physical identity and frozen renewal cadence. The lifecycle renewal entry
-mounts the paid-email handler through `host/paid-mail.ts` without passing this
-callback, so its private captured receipts do not include sized parcel notes.
+mounts the paid-email handler through `host/paid-mail.ts` with this callback.
+Its private captured receipts include proven sized renewal parcel notes; classic,
+acquisition and unprovable parcel facts omit the note.
 
 ## Partner intake and reviews
 

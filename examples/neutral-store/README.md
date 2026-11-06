@@ -263,9 +263,9 @@ has no classic exclusion facts.
 paid-email handler's `describeParcel` callback. It composes quantities and exact
 physical identities from the frozen order and the renewal cycle's frozen
 cadence. Unprovable facts omit the note. The lifecycle renewal entry mounts the
-paid-email handler through `host/paid-mail.ts`, but does not pass this callback
-to it. The callback remains exported; sized parcel notes are not included in
-that handler's private captured receipts.
+paid-email handler through `host/paid-mail.ts` with this callback. Proven sized
+renewal parcel notes appear in its private captured receipts; classic and
+acquisition receipts omit the note.
 
 The editor proof includes 65 focused source tests, 42 component cases and 34
 database-backed browser/API journeys (17 per configuration), all passing locally.

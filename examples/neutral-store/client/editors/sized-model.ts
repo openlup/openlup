@@ -1,4 +1,4 @@
-import { SIZED_PARCEL_LEVER_KIND, type SizedEditContext, type SizedEditRequest } from '@openlup/platform/subscriptions/contracts';
+import type { SizedParcelLeverKind, SizedEditContext, SizedEditRequest } from '@openlup/platform/subscriptions/contracts';
 import type { EditorCandidate, SubscriptionEditorConfig } from '../../shared/subscription-edit.ts';
 import { units } from './classic-model.ts';
 
@@ -83,6 +83,6 @@ export function sizedChanged(before: SizedDraft,after: SizedDraft): boolean {
 export function sizedRequest(context: SizedEditContext,draft: SizedDraft,optIn: boolean,hash?: string): SizedEditRequest {
   return { subscriptionId: context.subscriptionId,action: 'resize_bundle',cadenceDays: draft.cadenceDays,
     expectedTemplateVersion: context.templateVersion,compositionConstraint: { ...draft.constraint,value: units(draft.lines) },
-    resizeLever: { kind: SIZED_PARCEL_LEVER_KIND,value: { coreLines: draft.lines.map(line => ({ variantId: line.variantId,qty: line.qty })),...(optIn ? { optInToSized: true } : {}) } },
+    resizeLever: { kind: 'subscription.sized.parcel' satisfies SizedParcelLeverKind,value: { coreLines: draft.lines.map(line => ({ variantId: line.variantId,qty: line.qty })),...(optIn ? { optInToSized: true } : {}) } },
     ...(hash ? { acceptedQuoteHash: hash } : {}) };
 }

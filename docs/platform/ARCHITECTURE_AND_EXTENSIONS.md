@@ -1918,7 +1918,8 @@ its existing shape and result type. The reference store mounts authenticated
 preview/apply routes for them with no portal controls. Its demand-driven
 plan-length and portion resize policy remains unconfigured; its ordinary classic
 and sized editor choices preserve explicit counts. Its paid-email parcel-note
-callback is composed but not sent because the starter mounts no paid-email host.
+callback is mounted by its paid-mail host for private captured receipts. Proven
+sized renewal facts produce a note; classic and acquisition receipts omit it.
 See the [editor composition and proof limits](../../examples/neutral-store/README.md#customer-subscription-editors).
 
 | Action | Future-template effect |

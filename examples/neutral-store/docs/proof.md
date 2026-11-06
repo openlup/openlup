@@ -102,8 +102,11 @@ and videos remain disabled. The notification journey uses a test-only native
 dispatcher with captured delivery; the reference host mounts no new consumer.
 The exported `composeSizedPaidEmailNote` callback separately proves frozen
 quantities, physical identities and renewal cadence. The lifecycle renewal entry
-mounts the paid-email handler through `host/paid-mail.ts` without passing this
-callback. Its private captured receipts therefore omit sized parcel notes.
+mounts the paid-email handler through `host/paid-mail.ts` with this callback.
+The paid-mail PostgreSQL witness buys subscriptions through native checkout,
+opts one into sized servicing and pays their renewals through native ports.
+The private sized renewal receipt includes its parcel note; the classic receipt
+omits it. Acquisition receipts omit the note.
 
 ## Clean-directory and startup witness
 
