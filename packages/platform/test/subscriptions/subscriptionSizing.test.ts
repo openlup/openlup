@@ -1,6 +1,28 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { apportionSubscriptionUnits, createSubscriptionSizingRules } from "../../src/subscriptions/subscriptionSizing.js";
 const unit = (variantId: string, demandPerUnit = 10, maximumQuantity = 99) => ({ variantId, demandPerUnit, maximumQuantity });
+it.each(["plan_days", "unit_count"])("restamps only a nominal plan constraint without sizing %s quantities", async kind => {
+  const sizingRead = vi.fn(() => { throw new Error("constraint-only edits must not size quantities"); });
+  const rules = createSubscriptionSizingRules({ portionModes: { full: { mode: "full", factor: 1 }, reduced: { mode: "portion", factor: 0.5 } },
+    readDailyNeed: sizingRead, isPlanLengthConstraint: constraint => constraint.data.kind === "plan_days",
+    readUnitFacts: sizingRead, quantityPolicy: sizingRead });
+  const coreLines = [{ variantId: "a", qty: 4, isAddon: false }, { variantId: "b", qty: 2, isAddon: false }];
+  const constraint = { kind: "configured", version: 1, data: { kind, value: 28, mode: "portion", portionFactor: 0.5, marker: "keep" } };
+  const result = await rules.resizeComposition({ coreLines, constraint, lever: { kind: "planLengthConstraint", value: 14.9 } });
+  expect(result).toEqual({ coreLines, constraint: { ...constraint, data: { ...constraint.data, value: kind === "plan_days" ? 14 : 28 } } });
+  expect(result?.coreLines).toBe(coreLines);
+  expect(constraint.data.value).toBe(28);
+  expect(sizingRead).not.toHaveBeenCalled();
+});
+it.each([0, -1, 0.5, NaN, Infinity, undefined, ""])("refuses invalid constraint-only plan %s", async value => {
+  const sizingRead = vi.fn(() => { throw new Error("invalid plans must refuse before sizing"); });
+  const rules = createSubscriptionSizingRules({ portionModes: { full: { mode: "full", factor: 1 }, reduced: { mode: "portion", factor: 0.5 } },
+    readDailyNeed: sizingRead, isPlanLengthConstraint: () => true, readUnitFacts: sizingRead, quantityPolicy: sizingRead });
+  await expect(rules.resizeComposition({ coreLines: [{ variantId: "a", qty: 4, isAddon: false }],
+    constraint: { kind: "configured", version: 1, data: { value: 28 } }, lever: { kind: "planLengthConstraint", value } }))
+    .rejects.toThrow("subscription_reprice_invalid_plan_length");
+  expect(sizingRead).not.toHaveBeenCalled();
+});
 it.each([
   [7, [3, 1], [5, 2]], [5, [1, 1], [3, 2]], [3, [10, 1, 1], [1, 1, 1]],
 ] as const)("apportions %s units with deterministic remainder and selection preservation", (totalUnits, quantities, expected) => {

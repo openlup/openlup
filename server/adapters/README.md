@@ -368,6 +368,8 @@ one disposable managed PostgreSQL snapshot across non-system schemas, selecting
 Auth identity metadata without credentials. A capture login that row security
 would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
+The pinned managed source has no package-editor composition constraint; carried
+subscriptions project the target's nullable `composition_constraint` as NULL.
 Full managed audit and business history remains in the operator's source
 backup or snapshot, under the operator's own access, retention and erasure
 controls. The existing `retained-history` disposition records history with no

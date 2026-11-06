@@ -92,9 +92,9 @@ function options(f: Fixture): PackageEditorOptions {
     },
   };
 }
-async function evidence(f: Fixture, fields: Fields) {
+async function evidence(f: Fixture, fields: Fields, quoteOptions = options(f)) {
   const input = { ...fields, subscriptionId: f.subscription } as ExactSubscriptionEditRequest;
-  const quote = await createExactSubscriptionRepricer({ ...options(f), readPort: createPostgresPackageEditReadPort(runtime) }).quote(input);
+  const quote = await createExactSubscriptionRepricer({ ...quoteOptions, readPort: createPostgresPackageEditReadPort(runtime) }).quote(input);
   if (!quote) throw new Error("fixture source missing");
   const request: Fields & { acceptedQuoteHash: string } = { ...fields, acceptedQuoteHash: quote.quoteHash };
   return { ...quote, acceptedQuoteHash: quote.quoteHash, request };
@@ -241,12 +241,20 @@ it.each(["swap_base_line", "add_addon", "update_addon_quantity", "update_plan_le
     const after = await effects(); delete before.subscription_command_receipts; delete after.subscription_command_receipts; expect(after).toEqual(before);
   }, 30_000);
 it("resizes the plan, replaces only base IDs and relocks retained add-ons", async () => {
-  const f = await fixture(), before = await rows(f), payload = await evidence(f, { action: "update_plan_length", planDays: 14 });
+  const f = await fixture(), before = await rows(f), quoteOptions = options(f);
+  const quotePort = quoteOptions.quotePort;
+  let pricedConstraint: Record<string, unknown> | null | undefined;
+  quoteOptions.quotePort = { async createServerAuthoritativeQuote(input) {
+    pricedConstraint = input.compositionConstraint;
+    return quotePort.createServerAuthoritativeQuote(input);
+  } };
+  const payload = await evidence(f, { action: "update_plan_length", planDays: 14 }, quoteOptions);
   await record(f, payload); await apply(f, payload);
   const after = await rows(f); expect(after[0].id).not.toBe(before[0].id); expect(after[0]).toMatchObject({ quantity: 2, unit_price_minor: "131" });
   expect(after[1]).toMatchObject({ id: before[1].id, quantity: 3, unit_price_minor: "131" });
   expect((await owner.query("SELECT cadence_days,composition_constraint FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0])
-    .toMatchObject({ cadence_days: 14, composition_constraint: { value: 14, marker: "keep", need: 4 } });
+    .toEqual({ cadence_days: 14, composition_constraint: pricedConstraint });
+  expect(pricedConstraint).toEqual({ kind: "plan_days", value: 14, marker: "keep", need: 4 });
 }, 30_000);
 it("replaces a fixed-total base mix and independently refuses a changed SQL total", async () => {
   const f = await fixture(), payload = await evidence(f, { action: "update_base_mix", base: [{ variantId: f.target, qty: 4 }] });
