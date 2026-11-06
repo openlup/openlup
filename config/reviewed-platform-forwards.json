@@ -3201,6 +3201,11 @@
             "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
             "beforeSha256": "f80de5fe4097578d2d3f86e50f80e0040da22ddeef1cd11d6e7ba8a3088e8a0e",
             "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+            "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
+            "searchPath": "pg_catalog"
           }
         ],
         "createdFunctions": [
@@ -3530,7 +3535,7 @@
     },
     {
       "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
-      "sha256": "11e24b9c379e5a6e399ff04378849e4d80782e4078c0367cb5d788a3634dd390",
+      "sha256": "1c95a2e26939e51c83f0987fc02f69d5506f96a4da8ea513c92107c5ba7051b5",
       "functions": [
         {
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -3541,6 +3546,11 @@
           "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "f80de5fe4097578d2d3f86e50f80e0040da22ddeef1cd11d6e7ba8a3088e8a0e",
           "afterSha256": "3f257ea6ace6f4082749317bb85ff440fd1b1c223387ab78610ad92c2f4179ff"
+        },
+        {
+          "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+          "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
+          "afterSha256": "292e470fa409cebef063488e43a63d6ea4c10bdb28b58b82075180247a66646a"
         },
         {
           "signature": "public.subscription_terminalize_unpaid_artifacts(uuid,timestamptz,text,text)",

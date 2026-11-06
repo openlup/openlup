@@ -546,6 +546,73 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.customer_subscription_pause_as_actor(
+  p_subscription_id uuid,
+  p_idempotency_key text,
+  p_pause_preset text DEFAULT 'indefinite',
+  p_reason text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_principal_id uuid;
+  v_client_id uuid;
+BEGIN
+  IF p_idempotency_key IS NULL
+    OR p_idempotency_key <> btrim(p_idempotency_key)
+    OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
+  THEN
+    RAISE EXCEPTION 'subscription_lifecycle_invalid_idempotency_key' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_pause_preset IS NULL
+    OR p_pause_preset NOT IN ('2_weeks', '1_month', 'indefinite')
+  THEN
+    RAISE EXCEPTION 'subscription_lifecycle_invalid_transition' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_reason IS NOT NULL
+    AND (btrim(p_reason) = '' OR char_length(p_reason) > 500)
+  THEN
+    RAISE EXCEPTION 'subscription_lifecycle_invalid_transition' USING ERRCODE = '22023';
+  END IF;
+
+  v_principal_id := auth.uid();
+  IF v_principal_id IS NULL THEN
+    RAISE EXCEPTION 'subscription_lifecycle_not_found' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT client.id
+    INTO v_client_id
+    FROM public.clients AS client
+   WHERE client.principal_id = v_principal_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'subscription_lifecycle_not_found' USING ERRCODE = '22023';
+  END IF;
+
+  PERFORM public.subscription_pause_close_recovery(v_client_id,p_idempotency_key,p_subscription_id,statement_timestamp());
+
+  -- Closing an unpaid order queues this deferred invoker check. Fire it while
+  -- the fixed actor wrapper still has owner authority, then restore deferral.
+  -- No item or adjustment rows are written by the closure.
+  SET CONSTRAINTS public.trg_commerce_orders_line_sum IMMEDIATE;
+  SET CONSTRAINTS public.trg_commerce_orders_line_sum DEFERRED;
+
+  RETURN public.subscription_apply_lifecycle_action(
+    v_client_id,
+    p_idempotency_key,
+    p_subscription_id,
+    'pause',
+    jsonb_build_object('pausePreset', p_pause_preset, 'reason', p_reason),
+    statement_timestamp()
+  );
+END;
+$$;
+
 CREATE VIEW public.subscription_retention_outcomes AS
  SELECT e.id AS event_id,e.subscription_id,e.event_type,e.occurred_at,
  nullif(e.payload#>>'{payload,survey,reasonCode}','') AS cancel_reason_code,

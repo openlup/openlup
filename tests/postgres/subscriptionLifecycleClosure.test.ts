@@ -230,6 +230,74 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     expect(await lifecycleRows(env.owner)).toEqual(before);
   }, 30_000);
 
+  it("keeps a sending notice intact and repairs actor pause without changing actor authority", async () => {
+    const f = await lifecycleDeclined(env.owner), principal = randomUUID();
+    await env.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+    await env.owner.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
+    const original = readFileSync("db/platform/migrations/20260812100000_customer_subscription_pause_actor.sql", "utf8");
+    const body = original.slice(original.indexOf("CREATE FUNCTION"), original.indexOf("\n$$;") + 4).replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
+    const db = await env.owner.connect();
+    try {
+      await db.query("BEGIN"); await db.query(body); await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal })]);
+      await call(db, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `before:${f.subscription}`, "indefinite", null]);
+      await db.query("RESET ROLE");
+      expect((await db.query("SELECT status FROM public.subscription_dunning_cases WHERE id=$1", [f.caseId])).rows[0].status).toBe("open");
+      expect((await db.query("SELECT next_retry_at IS NOT NULL AS due FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1", [f.operation])).rows[0].due).toBe(true);
+      await db.query("ROLLBACK");
+    } finally { await db.query("ROLLBACK"); db.release(); }
+    await env.owner.query("UPDATE public.subscription_dunning_notifications SET status='sending',claim_token=$2,lease_expires_at=$3 WHERE case_id=$1", [f.caseId, randomUUID(), later(1)]);
+    await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `actor:${f.subscription}`, "indefinite", null]));
+    expect((await env.owner.query("SELECT status,next_retry_at FROM public.subscription_dunning_cases WHERE id=$1", [f.caseId])).rows[0]).toEqual({ status: "paused", next_retry_at: null });
+    expect((await env.owner.query("SELECT status FROM public.subscription_dunning_notifications WHERE case_id=$1", [f.caseId])).rows[0].status).toBe("sending");
+    expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.original.orderId])).rows[0].status).toBe("cancelled");
+    expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.original.settlementIntentId])).rows[0].status).toBe("cancelled");
+  }, 30_000);
+
+  it("refuses an inconsistent own order with 23514 inside actor authority and rolls the entire transaction back", async () => {
+    const f = await lifecycleDeclined(env.owner), principal = randomUUID();
+    await env.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+    await env.owner.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
+    const before = await lifecycleRows(env.owner), db = await env.owner.connect();
+    try {
+      await db.query("BEGIN");
+      // Fixture-owned corruption is part of this transaction, never an actor grant.
+      await db.query("UPDATE public.commerce_order_items SET quantity=quantity+1,line_amount_minor=(quantity+1)*unit_amount_minor WHERE order_id=$1", [f.original.orderId]);
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal })]);
+      await expect(call(db, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `mismatch:${f.subscription}`, "indefinite", null]))
+        .rejects.toMatchObject({ code: "23514", message: "commerce_order_line_sum_mismatch",
+          detail: `order ${f.original.orderId} declares 200 and its lines sum to 300` });
+      await db.query("ROLLBACK");
+      expect(await lifecycleRows(env.owner)).toEqual(before);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  }, 30_000);
+
+  it("restores the named constraint to deferred for a later statement before authenticated COMMIT", async () => {
+    const f = await lifecycleDeclined(env.owner), principal = randomUUID();
+    await env.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+    await env.owner.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
+    const before = await lifecycleRows(env.owner), db = await env.owner.connect();
+    try {
+      await db.query("BEGIN");
+      // A session-local, fixed-own-order fault writer distinguishes restored
+      // deferral from IMMEDIATE. It is not a shipped actor routine or grant.
+      await db.query(`CREATE FUNCTION pg_temp.c21_later_order_mismatch() RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $f$
+        BEGIN UPDATE public.commerce_orders SET total_amount_minor=total_amount_minor+1 WHERE id='${f.original.orderId}'::uuid; END; $f$`);
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal })]);
+      await call(db, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `deferred:${f.subscription}`, "indefinite", null]);
+      // Missing DEFERRED would raise 23514 here inside this fixture definer.
+      await db.query("SELECT pg_temp.c21_later_order_mismatch()");
+      expect((await db.query("SELECT current_user AS role")).rows).toEqual([{ role: "authenticated" }]);
+      // This deliberately queued *later* write has no actor wrapper to flush it.
+      // Its failure at COMMIT proves that the original deferred invoker mode is back.
+      await expect(db.query("COMMIT")).rejects.toMatchObject({ code: "42501", message: "permission denied for table commerce_orders" });
+      await db.query("ROLLBACK");
+      expect(await lifecycleRows(env.owner)).toEqual(before);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  }, 30_000);
+
   it("keeps the service closure helper deferred with the unchanged 23514 refusal at COMMIT", async () => {
     const f = await lifecycleDeclined(env.owner), db = await env.owner.connect();
     const before = await lifecycleRows(env.owner);
