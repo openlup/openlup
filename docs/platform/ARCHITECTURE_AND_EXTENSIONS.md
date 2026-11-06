@@ -1825,6 +1825,41 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+The opt-in classic package editor uses `createClassicPackageRepricer` and
+`createPostgresPackageEditor` from `@openlup/platform/subscriptions`. The host
+supplies authenticated actor/client ownership, request bounds, the existing
+server-authoritative quote engine and `CompositionRulesPort`. Compose that engine
+with the current price/catalogue authorities, no promotion or settings ports and
+empty automatic/code promotion results. Quote the complete desired base/add-on
+set in subscription mode; changing plan days never resizes explicit quantities.
+The host maps its opaque composition constraint and nominal plan. An unchanged
+nominal plan preserves an extended delivery cadence. A retired current line uses
+its frozen renewal amount only for the comparison baseline; retained desired
+lines must still resolve in the subscription-sellable catalogue.
+
+Preview has no command key. It records a content-keyed, one-use quote with a
+15-minute expiry, current/new totals, ordered line evidence, the host's quoted
+composition constraint and template version. Apply persists that accepted
+constraint exactly, including null; plan days do not overwrite opaque host data.
+Apply uses its own key. A completed key replays its original result before
+repricing or configuration reads. A fresh key requires repricing and hash
+equality, then the locked SQL checks and drift comparison. The configured minimum is a strict positive integer
+in `commerce_settings.value_text` at `subscription_minimum_base_units`; both the
+repricer and direct SQL apply refuse missing or malformed configuration. A no-op
+has no event, notice or preview acceptance. Existing generic commands retain
+their separate contracts. `mapPackageEditError` distinguishes customer request
+refusals, durable apply conflicts and generic upstream failures; raw preview
+ledger failures remain upstream failures.
+
+The package-editor forward must be admitted and installed through the selected
+migration plan before this API is composed. It writes future line/cadence terms
+and the accepted full `linePricing` on its existing package-change event. Renewal
+reads the newest event that carries a `linePricing` array among graduation and
+classic package edits, ordered by occurrence time and event ID, falling back to
+retained purchase pricing. Frozen renewal operations keep their existing snapshot. Package editing
+never moves the due anchor, writes an arrival or interrupts active service.
+
+
 Native purchase renewal attachment uses
 `createPostgresPurchaseRenewalWriter` and `activateNativePurchaseWithRenewal` from
 `@openlup/platform/subscriptions`. Declare the purchase first, then supply trusted
@@ -2914,6 +2949,17 @@ The fixture harness prepares dependencies; the upgrade command never installs
 them. Registry unavailability or an integrity mismatch fails the proof.
 
 ## Existing-store transfer and recovery
+
+The connected native profile retains both open and accepted package quote
+previews, with their original acceptance key and event reference. Restore places
+these rows after their client, subscription and event parents; replay compares
+the retained rows without reopening accepted quotes. The
+[transfer witness](../../tests/postgres/connectedStoreTransfer.test.ts) covers
+both states. The qualified composition proofs append the editor unit to their
+current suffix only; issued prefix counts and identities stay unchanged.
+Selecting these source units does not qualify an installation or activate a
+restored target.
+
 
 The finite profile retains immutable order adjustment rows, including renewal
 shipping charges. Capture and restore preserve their row and order identities,

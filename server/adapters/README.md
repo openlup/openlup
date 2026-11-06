@@ -120,6 +120,15 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+The finite native profile includes open and accepted `subscription_quote_previews`.
+Capture retains their request, quote, totals and acceptance references under the
+existing cumulative row/byte limits. Restore inserts clients, subscriptions and
+subscription events before previews, preserving the accepted event foreign key.
+The [connected-store witness](../../tests/postgres/connectedStoreTransfer.test.ts)
+compares both preview states and repeats restore without changing their identity.
+These linked pricing records share the profile's existing erasure-coverage limit.
+
+
 Native destination transfer includes commerce_destinations (full immutable postal addresses and contact phone numbers), commerce_destination_bindings (scoped owner/destination references),
 subscription_command_receipts and the support command/audit ledgers. Restore
 parents precede documents/bindings and ledger actors. Owner snapshot authority,
@@ -359,6 +368,8 @@ one disposable managed PostgreSQL snapshot across non-system schemas, selecting
 Auth identity metadata without credentials. A capture login that row security
 would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
+The pinned managed source has no package-editor composition constraint; carried
+subscriptions project the target's nullable `composition_constraint` as NULL.
 Full managed audit and business history remains in the operator's source
 backup or snapshot, under the operator's own access, retention and erasure
 controls. The existing `retained-history` disposition records history with no

@@ -439,6 +439,23 @@ beforeAll(async () => {
       } finally { await seeded.changeCondition(); }
     }
   }
+  // Keep both an accepted agreement and an open preview, including the event FK.
+  const previewActor = randomUUID();
+  const previewVersion = Number((await source.owner.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows[0].template_version);
+  const recordPreview = async (hash: string) => (await source.runtime.query(
+    "SELECT public.subscription_quote_preview_record($1,$2,$3,'update_package_template',$4,$5,$6,$7,$8,$9,$10) AS result",
+    [previewActor, graph.client, graph.subscription, hash, previewVersion, "2026-11-06T12:00:00Z",
+      { planDays: 28, nominalPlanDays: 28, compositionConstraint: { kind: "plan_days", value: 28 } },
+      { baseLines: [], addonLines: [] }, { currentRecurringPrice: { amountMinor: 100, currency: "XXX" } },
+      "2026-11-05T12:00:00Z"])).rows[0].result;
+  const acceptedPreview = await recordPreview("c".repeat(64));
+  const editEvent = (await source.owner.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+    VALUES($1,'subscription.customer_self_service.update_package_template','retained-package-edit','{"linePricing":[]}') RETURNING id`, [graph.subscription])).rows[0].id;
+  await source.runtime.query("SELECT public.subscription_quote_preview_mark_accepted($1,'retained-package-key',$2,'2026-11-05T12:00:00Z')", [acceptedPreview.id, editEvent]);
+  await recordPreview("d".repeat(64));
+  // Capture the new event's delivery receipt as well, so later dispatcher replay
+  // does not create a new obligation on an otherwise identical restored graph.
+  await dispatchNotices(source);
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -1379,3 +1396,20 @@ try {
     console.info("Checkout transfer retained tables:", connectedNativeStoreTables.length);
   } finally { await rm(consumer, { recursive: true, force: true }); }
 }, 60_000);
+
+// Local no-coverage case: 8.141 s; fourfold 32.564 s rounds to a 40 s deadline.
+it("round-trips open and accepted package previews with their event and subscription parents", async () => {
+  const captured = packet.owned.find(table => table.table === "subscription_quote_previews");
+  expect(captured?.rows).toHaveLength(2);
+  expect(captured!.rows.map(row => JSON.parse(row).status).sort()).toEqual(["accepted", "previewed"]);
+  await restore();
+  expect((await census(target.owner)).subscription_quote_previews).toEqual((await census(source.owner)).subscription_quote_previews);
+  expect((await target.owner.query(`SELECT q.status,e.event_type,s.client_id=q.client_id AS owned
+    FROM public.subscription_quote_previews q JOIN public.subscriptions s ON s.id=q.subscription_id
+    LEFT JOIN public.subscription_events e ON e.id=q.accepted_event_id ORDER BY q.status`)).rows)
+    .toEqual([{ status: "accepted", event_type: "subscription.customer_self_service.update_package_template", owned: true },
+      { status: "previewed", event_type: null, owned: true }]);
+  const beforeReplay = await census(target.owner);
+  expect((await restore()).replayed).toBe(true);
+  expect(await census(target.owner)).toEqual(beforeReplay);
+}, 40_000);

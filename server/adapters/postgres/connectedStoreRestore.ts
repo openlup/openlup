@@ -238,7 +238,7 @@ const order = [
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
-  "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
+  "subscriptions", "subscription_events", "subscription_quote_previews", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
