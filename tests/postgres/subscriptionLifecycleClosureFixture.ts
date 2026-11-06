@@ -44,7 +44,10 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
     prefix.qualifiedAdmin.objectInventorySha256.installerManaged = priorInventories["qualified-admin"];
     const root = resolve(`.context/scratch/c21/prefix-${profile}`);
     for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
-      plan.forward = plan.forward.filter((entry: { file: string }) => entry.file !== lifecycleForward);
+      // The frozen prefix ends before this forward; later appended forwards are not part of it.
+      const end = plan.forward.findIndex((entry: { file: string }) => entry.file === lifecycleForward);
+      if (end < 0) throw new Error("lifecycle forward missing from the manifest plan");
+      plan.forward = plan.forward.slice(0, end);
       for (const entry of [plan.baseline, ...plan.forward]) {
         const target = resolve(root, entry.file); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(entry.file));
       }
