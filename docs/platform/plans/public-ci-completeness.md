@@ -66,6 +66,10 @@ Follow [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics) for curren
 execution and proof limits. Merge neither cuts a preview nor authorizes
 an installation or adoption.
 
+Update, 6 November 2026: the required `test` aggregate now requires pgTAP, so
+admission and release depend on its success through that unchanged check name;
+the earlier independent-diagnostic descriptions above are historical.
+
 ## Runner and ratchet contracts
 
 The runner checks committed migration identities, bytes, modes and strictly

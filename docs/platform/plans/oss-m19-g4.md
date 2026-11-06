@@ -1,5 +1,10 @@
 # Native purchase holds
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 Current status: G4 and G3 form one native bundle in this worktree. The SQL,
 feature pins, admission gate and compensation guard have their accepted reads;
 the draft cycle-2 repair checks delivered writers against capability and

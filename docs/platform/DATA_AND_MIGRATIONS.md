@@ -30,8 +30,8 @@ activation helper retains its ACL. Method transitions compare expected health an
 rewriting subscription service state. Sandbox observation uses invoker rights
 and the existing operation/outcome capabilities, without another attempt table.
 The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
-describes the codec and retry duties. Installing or releasing this forward still
-requires its separately admitted SQL-control inventory and ordinary review;
+describes the codec and retry duties. The forward's approval inventory is
+admitted with it under ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
 
 See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
@@ -1212,8 +1212,8 @@ measured-base increases and parent-baseline raises, including regeneration;
 candidate counts must still fit the baseline. Changed bytes, another path even
 with the same digest, another category or count, and unrelated increases refuse.
 No native rail, TypeScript, package or documentation path can enter this list.
-Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
-the coordinator's control read. The six rail-path entries can be retired after
+Adding any further entry is a control change reviewed under the
+[native review floors](../../CONTRIBUTING.md#native-review-and-accountability). The six rail-path entries can be retired after
 the F17 PR lands and the base carries the counts.
 
 Historically, the managed runtime capability forward shipped after a separate

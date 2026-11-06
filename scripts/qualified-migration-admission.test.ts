@@ -294,6 +294,22 @@ it("accepts qualified pins and SQL in one introduction at PR, merge-group, CI an
   expect(() => assertReviewedPlatformForward(f.root, f.base, mismatch, paths[0]!, lateBytes, true)).toThrow("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
 });
 
+it("refuses rewriting an issued pending qualified pin at SQL introduction in CI and release", () => {
+  const f = fixture(), path = paths[0]!, bytes = bodies[0]!;
+  const issued = structuredClone({ ...f.approved, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, 4) });
+  issued.qualifiedInstallations[0]!.sha256 = sqlSha256(Buffer.concat([bytes, Buffer.from(" ")]));
+  f.put(REVIEWED_FORWARD_PATH, encode(issued));
+  const approval = f.commit("issue qualified approval while SQL is absent");
+  f.put(REVIEWED_FORWARD_PATH, encode({ ...issued, qualifiedInstallations: f.approved.qualifiedInstallations.slice(0, 4) }));
+  f.put(path, bytes);
+  const introduction = f.commit("rewrite issued approval and introduce matching SQL");
+  const error = "issued qualified installation approvals are immutable";
+  expect(() => assertReviewedPlatformForward(f.root, approval, introduction, path, bytes)).toThrow(error);
+  // Start release before issuance: it must still bind the introduction's parent, not only the release base.
+  expect(() => assertReviewedPlatformForward(f.root, f.base, introduction, path, bytes, true)).toThrow(error);
+  expect(() => assertCoLocatedForwardApproval(f.root, approval, introduction)).toThrow(error);
+});
+
 it("refuses machinery changes alongside new qualified SQL with unchanged pins", () => {
   const f = fixture();
   f.put(REVIEWED_FORWARD_PATH, encode(f.approved));

@@ -830,6 +830,7 @@ export function assertForwardApproval(root: string, base: string, head: string):
   for (const { path } of introducedChannel) if (!current.channelIngestForwards?.some(pin => pin.path === path)) throw new Error(`reviewed M17 channel requires a binding: ${path}`);
   if (before.equals(after)) return;
   for (const path of changedForwardApprovals(before, after)) {
+    if (isQualifiedPlatformMigrationPath(path) && previous.qualifiedInstallations?.some(pin => pin.path === path)) throw new Error("issued qualified installation approvals are immutable");
     if (blob(root, base, path) || !blob(root, head, path)) throw new Error(`reviewed replacement pin must be approved separately unless its SQL is introduced in this PR: ${path}`);
   }
 }
@@ -945,10 +946,9 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   }
   if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   if (isQualifiedPlatformMigrationPath(path)) {
-    const priorRegistry = blob(root, base, REVIEWED_FORWARD_PATH);
-    if (release || (priorRegistry && approvalBinding(readForwardRegistry(priorRegistry, true), path))) {
-      assertUnchangedForwardApproval(root, release ? introduction : base, head, path);
-    }
+    const priorRegistry = blob(root, approval, REVIEWED_FORWARD_PATH);
+    if (priorRegistry && approvalBinding(readForwardRegistry(priorRegistry, true), path)) assertUnchangedForwardApproval(root, approval, head, path);
+    else if (release) assertUnchangedForwardApproval(root, introduction, head, path);
     if (path === QUALIFIED_OWNER_PATH_FILE) {
       const acquisition = blob(root, head, QUALIFIED_ACQUISITION_FILE);
       const retained = blob(root, head, QUALIFIED_IMPORT_FILE);

@@ -1,5 +1,10 @@
 # Native sandbox payment ingress and durable attempts
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 Status: implementation and focused proof complete. Native review waits for the
 forward class and the supervisor. Final signed policy/pack evidence accompanies
 the immutable handoff.
