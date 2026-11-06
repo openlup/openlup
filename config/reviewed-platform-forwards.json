@@ -3616,7 +3616,7 @@
     },
     {
       "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
-      "sha256": "1c95a2e26939e51c83f0987fc02f69d5506f96a4da8ea513c92107c5ba7051b5",
+      "sha256": "b71a0e4bb1a2ce2312b50e9601b6fcd849b3db40dac6b75d7e41325612ac27bd",
       "functions": [
         {
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -3636,7 +3636,7 @@
         {
           "signature": "public.subscription_terminalize_unpaid_artifacts(uuid,timestamptz,text,text)",
           "beforeSha256": null,
-          "afterSha256": "4429a2c8b7370b798bfc3ce82e1eafd48c1ad25e6208f01d34a2636a578c35bf"
+          "afterSha256": "1a0f9b5d93d7d3c2a4a850d4d5c9ed6d764c1bc9a83371c17f0f6aba07ce0ac7"
         },
         {
           "signature": "public.subscription_pause_close_recovery(uuid,text,uuid,timestamptz)",
