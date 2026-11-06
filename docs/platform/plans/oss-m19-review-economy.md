@@ -73,7 +73,7 @@ Existing direct-importer tests, run unchanged before counted review:
 `agent-review-session.test.ts`, `agent-review-gate.test.ts`,
 `agent-review-queue.test.ts`, `qualified-migration-admission.test.ts`,
 `reviewed-batch-forward.test.ts`, `reviewed-native-store-forward.test.ts`,
-`verify-local.test.ts`, `documentation-impact.test.ts`,
+`verify-local.test.ts`, the former documentation-impact suite,
 `oss-published-tree-check.test.ts`, `documentation-cli.test.ts`,
 `documentation-bundle.test.ts`, `check-publishable-gap-enumeration.test.ts`,
 `source-release-preparation.test.ts` and `ci-test-scope.test.ts`, all under

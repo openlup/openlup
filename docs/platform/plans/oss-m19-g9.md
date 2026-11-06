@@ -262,7 +262,7 @@ containers:
 - `packages/platform/test/invoicing/readback.test.ts`
 - `packages/platform/test/invoicing/sellerRevision.test.ts`
 - `packages/platform/test/invoicing/settlementSync.test.ts`
-- `scripts/documentation-impact.test.ts`
+- the former documentation-impact suite
 - `scripts/packages/platform-cold-consumer.test.ts`
 - `scripts/packages/reference-delegation-consumer.test.ts`
 - `server/domains/accounting/stripePayoutSettlementSync.test.ts`

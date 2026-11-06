@@ -396,15 +396,15 @@
         "sha256": "53fbed96be421a69b3c92bc1b2b3fef1eac508a082edb3f2ebe72eac6db7f5b5"
       },
       {
-        "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
-        "sha256": "05afa1a58934529d4d74eed3146ad15548b46dd178d2f5e216387fe20666929c"
+        "file": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+        "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
       },
       {
-        "file": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+        "file": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
         "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
       },
       {
-        "file": "db/platform/migrations/20261120120000_subscription_sized_editor.sql",
+        "file": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
         "sha256": "2dff1028a164fd3f6bda656ae9e7d3b05ee3d89e4d591ab6438dbb8f7eb4374f"
       }
     ],
@@ -824,15 +824,15 @@
           "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
         },
         {
-          "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
-          "sha256": "05afa1a58934529d4d74eed3146ad15548b46dd178d2f5e216387fe20666929c"
+          "file": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+          "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
         },
         {
-          "file": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+          "file": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
           "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
         },
         {
-          "file": "db/platform/migrations/20261120120000_subscription_sized_editor.sql",
+          "file": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
           "sha256": "2dff1028a164fd3f6bda656ae9e7d3b05ee3d89e4d591ab6438dbb8f7eb4374f"
         }
       ],
@@ -1256,15 +1256,15 @@
           "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
         },
         {
-          "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
-          "sha256": "05afa1a58934529d4d74eed3146ad15548b46dd178d2f5e216387fe20666929c"
+          "file": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+          "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
         },
         {
-          "file": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+          "file": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
           "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
         },
         {
-          "file": "db/platform/migrations/20261120120000_subscription_sized_editor.sql",
+          "file": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
           "sha256": "2dff1028a164fd3f6bda656ae9e7d3b05ee3d89e4d591ab6438dbb8f7eb4374f"
         }
       ],
@@ -1766,18 +1766,18 @@
       "sha256": "53fbed96be421a69b3c92bc1b2b3fef1eac508a082edb3f2ebe72eac6db7f5b5"
     },
     {
-      "file": "20261120100000_subscription_package_editor.sql",
-      "source": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
-      "sha256": "05afa1a58934529d4d74eed3146ad15548b46dd178d2f5e216387fe20666929c"
+      "file": "20261104100000_subscription_package_editor.sql",
+      "source": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+      "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
     },
     {
-      "file": "20261120110000_subscription_exact_levers.sql",
-      "source": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+      "file": "20261104110000_subscription_exact_levers.sql",
+      "source": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
       "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
     },
     {
-      "file": "20261120120000_subscription_sized_editor.sql",
-      "source": "db/platform/migrations/20261120120000_subscription_sized_editor.sql",
+      "file": "20261104120000_subscription_sized_editor.sql",
+      "source": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
       "sha256": "2dff1028a164fd3f6bda656ae9e7d3b05ee3d89e4d591ab6438dbb8f7eb4374f"
     },
     {

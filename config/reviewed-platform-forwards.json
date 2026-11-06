@@ -3187,6 +3187,62 @@
             "marketing_newsletter"
           ]
         }
+      },
+      {
+        "row": "package-editor",
+        "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_quote_variant_qty_request(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_line_projection(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_variant_qty_lines(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_assert_jsonb_equal(jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_preview_mark_accepted(uuid,text,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_quote_previews', 'retain', 'A quote preview exists only for a subscription its client owns, and subscriptions already block absorption; absorption never reads previews.');"
+        ]
+      },
+      {
+        "row": "exact-levers",
+        "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -3445,6 +3501,63 @@
           "signature": "public.subscription_renewal_purchase_terms(uuid)",
           "beforeSha256": null,
           "afterSha256": "b99e0330c76130c86c147c1e9536c75d1f93c4d61678b2399e4ed966dfe2b0e1"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+      "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40",
+      "functions": [
+        {
+          "signature": "public.subscription_quote_variant_qty_request(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "58a20f076599f63633eb5669f2927ef998fcfc15a22bfb618fafee8219d5f1fe"
+        },
+        {
+          "signature": "public.subscription_quote_line_projection(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "fb3cb9987d02549e28a7dadb2c1ffcbc7f945fbdca0363f7927349fcbb3cb8a5"
+        },
+        {
+          "signature": "public.subscription_quote_variant_qty_lines(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "297b27ce747a88d107263bba447b8fbe8d125168ca272ee6307c63ef5aa4980e"
+        },
+        {
+          "signature": "public.subscription_quote_assert_jsonb_equal(jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "88c3e0788e834648944d7360a3454db9ce8d1ce039f350d40545ce54a4387721"
+        },
+        {
+          "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "37a21a9a47c15b509f13e1a0826c9ca48945180c3aee38d6152b042666879e68"
+        },
+        {
+          "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "afe8e1b42e512157fa45b211859a35b2d091696a78fd68b8c0c82114bf6579cf"
+        },
+        {
+          "signature": "public.subscription_quote_preview_mark_accepted(uuid,text,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "1b44e1a18b50338662d5bf127396f90509569c9bcb96ab292633af8425f6018c"
+        },
+        {
+          "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "15a13226c7695a296d8f84c2a89a01369feadcd895ff32007808a63de8b7b0e4"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
+      "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e",
+      "functions": [
+        {
+          "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "20afebf5049767ad813770b25c538504b2575f5b2e2dd05caac0b23fac42f036"
         }
       ]
     }

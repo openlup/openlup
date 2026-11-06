@@ -30,8 +30,8 @@ activation helper retains its ACL. Method transitions compare expected health an
 rewriting subscription service state. Sandbox observation uses invoker rights
 and the existing operation/outcome capabilities, without another attempt table.
 The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
-describes the codec and retry duties. Installing or releasing this forward still
-requires its separately admitted SQL-control inventory and ordinary review;
+describes the codec and retry duties. The forward's approval inventory is
+admitted with it under ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
 
 See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
@@ -72,7 +72,7 @@ owns quote composition, no-op ordering and renewal behavior. SQL installation
 still requires its separate reviewed forward admission; source presence alone
 is not an admitted or published installation chain.
 
-The subsequent `20261120110000_subscription_exact_levers.sql` forward creates
+The subsequent `20261104110000_subscription_exact_levers.sql` forward creates
 only `subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)`.
 It reuses the preview ledger and receipts, adds no table, column, data statement
 or replacement function, pins `pg_catalog, pg_temp`, revokes PUBLIC/browser
@@ -340,7 +340,7 @@ owners. These two routines are not a generic full-store restore capability.
 This retained-row unit follows the initial qualified runtime-capabilities unit
 in the selected manifest. Its exact source SHA-256 is
 `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`. The fifth
-whole-file approval was landed separately before this SQL introduction. The two
+whole-file approval historically landed separately before this SQL introduction. The two
 90-unit `withRestore` inventories from the E2+F-only candidate and the linked
 [reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203)
 are historical; the E-only 89-unit expectations and legacy 88-unit plan are
@@ -855,21 +855,21 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ### Co-located SQL and approval pins
 
-The fixed `qualifiedInstallations` class requires prior exact whole-file approval
+The fixed `qualifiedInstallations` class requires exact whole-file approval
 for four bootstrap units, an optional retained-import unit, the runtime
 completion tail and the owner-path forward. Position 17
 approves the shared lock and conflict completion tail described under
 [Compatibility lifecycle](#compatibility-lifecycle); its active SQL is
 byte-identical to that approval. Even expand-only
-qualified SQL uses this separate control-before-feature route: new SQL with new
-pins, simultaneous machinery changes, later repins, unknown paths and edits to
-issued files refuse. Trusted queue admission applies this guard to qualified SQL
+qualified SQL may land with its approval pins. Simultaneous machinery changes,
+later repins, unknown paths and edits to issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 retain seven exact bound units, including the
 [runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
 selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
+These are historical checkpoints, not an ordering requirement for future features.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) has
 five fixed approvals at positions 8–12. Those `qa_` fixtures remain inert
 except for the selected baseline. A PostgreSQL parse failure in the approved
@@ -891,20 +891,15 @@ profile has its own local PG16 qualification; hosted qualification remains open.
 
 The reader reserves the qualified owner-path forward after runtime completion,
 at approval position seven before the five reserved restricted-bootstrap
-positions. Its prior approval binds the exact file and nine function preimages
+positions. Its approval binds the exact file and nine function preimages
 and definitions. The active forward pins name resolution on those definitions;
 the issued qualified prefix has 92 units. Earlier qualified units and their approvals
 remain immutable.
 
-Delivery uses three separately landed checkpoints. First prepare the exact
-sixth identity's reader/order support, inert fixture and refusals without
-changing the five approval rows. Trusted main parses a changed registry before
-the no-active-SQL return, so co-locating an expanded reader and sixth registry
-row is incompatible with that existing reader. Calling the change control-only
-does not bypass this parser constraint. After reader preparation is
-actual main, append the exact sixth hash in a pin-only change. Only after that
-approval is actual main may a feature introduce the identical active SQL and
-append its selected manifest row. Keep all trusted co-location checks intact.
+Historically, delivery used three separately landed checkpoints: reader support,
+then an exact pin-only approval, then the identical active SQL and its selected
+manifest row. The current rule below permits class data, pins and SQL together
+when main's validator already supports that capability.
 
 The issued schema-2 manifest preserved legacy 88 units and the qualified
 91-unit prefix, then appended the exact owner-path forward as unit 92. Its two
@@ -923,35 +918,36 @@ There is no optional `withRestoreForward` field or new selection mode.
 Prior source approval establishes no installation, managed-host, publication or
 activation evidence.
 
-A PR introducing SQL in a class already admitted by its trusted comparison-base
-policy may also carry that SQL's pins. Only bindings for files introduced by
-that PR may change. Other entries and their list positions, shared fields,
-registry schema and immutable baselines stay unchanged. The fixed path/signature
-inventory, whole-file and function hashes, preimages, statement/grant limits,
-ordered prefixes and fixture/package equality still apply. A hash binds bytes;
-independent native review approves the complete candidate under the
+SQL, its exact approval pins and any class data land together in the feature
+pull request. CI runs its tests. Issued approvals and slots are immutable,
+including their content and
+positions; sealed native classes retain their existing slot prefix as described below. Shared fields, the registry schema and
+immutable baselines stay unchanged. Fixed path/signature inventories, whole-file
+and function hashes, preimages, statement/grant limits, ordered prefixes and
+fixture/package equality still apply. A hash binds bytes; review follows the
 [existing review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
-SQL risk assessment belongs in that required review, without a mandatory third
-review or a new report format. Applicable maintainer/delegate reads remain required.
+Applicable maintainer/delegate reads remain required.
 
-Changes to a class, validator, its dependencies, review/admission or release
-machinery need a separate control change before using the new rule. The existing
-native admission, invoked from trusted main, validates the candidate's own
-co-located change with its own checker and refuses machinery changes in that
-change. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+A new validator capability lands first as its own change. Admission runs main's
+validator against the candidate's own co-located change and refuses machinery
+changes in that change. A change that adds SQL cannot change the validator, the
+migration manifest checker, CI workflows, review or release tooling, or the test
+harness. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
 `scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
 release entry points and preparation; test-only coverage changes remain allowed,
 except the catalog test of the [closed native store forwards](#closed-native-store-forwards)
 and the named files that select and run it, which that section lists.
 The checker and its direct dependency closure, root manifests/lockfile and
-`.github/` files also stay unchanged. Admission reads candidate Git objects
+`.github/` files also stay unchanged. Machinery changes on main since the
+candidate's base do not trigger this veto. Admission reads candidate Git objects
 without running candidate code.
 The [documented workflow invocation limitation](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)
 remains: candidate YAML can omit the job, so sensitive review and the applicable
 maintainer/delegate read of workflow edits remain the control for that case.
 
 Release binds each forward to its unique first-parent mainline introduction.
-Its pin must be valid at that introduction and unchanged afterwards; a later
+Its pin may first appear with the SQL and class data in that introduction
+and must remain unchanged afterwards; a later
 repin cannot legalize an earlier invalid installation. Existing separate
 control → feature histories remain valid. Pin-only preparation of future SQL
 retains its existing control decision; it is not an unrelated companion of a
@@ -971,8 +967,8 @@ Current candidates require all 18 pins. Release-history comparison also reads
 the exact prior 16-pin set and
 the exact earlier 14-pin set (five native, then nine managed), preserving each
 unchanged approval's content and fixed shape position while pending pins move and native X/Y are added.
-Reordered, extra or unknown historical inventories refuse, and an approval added
-in the same commit as its SQL still cannot authorize that SQL.
+Reordered, extra or unknown historical inventories refuse. An approval added
+with its SQL at introduction can authorize that SQL.
 
 This batch covers four native creations (retry, commands, stock wait and the
 M06 ATP/new-purchase seam), three native body replacements (allocator, late-positive stock accounting
@@ -1067,7 +1063,7 @@ native allocator ACL, and a repinned managed index on an existing table. Missing
 Docker, PostgreSQL or pgTAP fails the required `test` aggregate; a lexical PASS
 cannot replace this gate. The managed setup budget includes its first image pull.
 These batch rules do not broaden the earlier #267, #295 or #300 classes.
-Coordinator control review and two fresh reviews remain separate delivery gates.
+Review follows the [native review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
 
 ### M10-9 attempt replay control fixtures
 
@@ -1254,12 +1250,12 @@ measured-base increases and parent-baseline raises, including regeneration;
 candidate counts must still fit the baseline. Changed bytes, another path even
 with the same digest, another category or count, and unrelated increases refuse.
 No native rail, TypeScript, package or documentation path can enter this list.
-Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
-the coordinator's control read. The six rail-path entries can be retired after
+Adding any further entry is a control change reviewed under the
+[native review floors](../../CONTRIBUTING.md#native-review-and-accountability). The six rail-path entries can be retired after
 the F17 PR lands and the base carries the counts.
 
-The managed runtime capability forward is shipped after its separate control
-approval. It changes no baseline bytes or function signature. Required service
+Historically, the managed runtime capability forward shipped after a separate
+control approval. It changes no baseline bytes or function signature. Required service
 and authenticated column/helper permissions are explicit in that ordered file;
 no portable twin or live upgrade compatibility is claimed. A corrected forward
 also retires exactly eight legacy id-only browser policies that membership
@@ -1499,26 +1495,37 @@ Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
 ### Closed native store forwards
 
 `nativeStoreForwardClass` in the [reviewed registry](../../config/reviewed-platform-forwards.json)
-owns up to seven exact native paths, their ordered rows and three closed lists:
+owns exact native paths and row names supplied by its slots, and three closed function lists:
 replaced functions with before-hashes, created functions with pinned search
 paths, and grant-only existing functions with closed role/verb capabilities.
 Only firm rows
-are registered; an absent row authorizes nothing. Additional inventory requires
-a separate control change and maintainer read. Set `sealed: true` in the store's
-set-version preparation (S1); subsequent slot changes or unsealing refuse.
+are registered; an absent row authorizes nothing. Additional unissued inventory
+may land with its SQL under the existing validator and applicable maintainer read. Set `sealed: true` in the store's
+set-version preparation (S1). A sealed class stays sealed: its complete old slots
+array, including unissued reservations, must remain a canonical content-equal
+prefix of every later array. Only appends are allowed; editing, deleting or
+inserting among those slots refuses. Issued bindings and their slots retain their content and array positions, even
+while the class is unsealed. There is no slot-count maximum or second class key.
+Slot timestamps come from their paths and strictly increase in array order. A
+new slot's time must exceed every dated migration in its introduction base,
+including qualified identities; later migrations do not invalidate issued slots.
 The [admission witness](../../scripts/reviewed-native-store-forward.test.ts)
 uses an independent synthetic registry, never production placeholder approvals.
 
 Feature SQL supplies `nativeStoreForwards` with whole-file and function
-after-hashes. It cannot change class data or admission machinery in that PR.
-Every earlier row in the fixed order needs prior inventory and unchanged landed pins;
+after-hashes. Its pull request may include class data but cannot change admission
+machinery.
+Every earlier slot in registry order needs unchanged landed pins;
 issued native file pins must also be present unchanged.
-Reserved timestamps require approval even for expand-only SQL. Unlisted function
+Registry-derived slot timestamps require approval even for expand-only SQL.
+The queue routes every native filename at or after the first issued slot time
+through the guard, including SQL whose slot was prepared earlier. The guard
+still admits ordinary unregistered expand-only migrations through their existing path. Unlisted function
 signatures, drifted preimages, destructive statements, default privileges and
 role statements refuse. Tables and indexes retain the existing expand-only
-rules; data statements require exact prior slot entries. Only the account-consent
-slot may replace the named native sync-purpose CHECK, preserving every prior
-value and binding the original table statement's hash.
+rules; data statements require exact head-class slot entries. CHECK and UNIQUE
+replacements use the named, closed entries below. A whole-file hash does not
+bypass the content checks.
 
 One signature may be replaced by at most one slot. Its before-hash binds the
 latest definition in the pre-class native prefix, and replacement headers stay
@@ -1539,22 +1546,53 @@ splitter would read it as an escape, while PostgreSQL ends a standard literal at
 the quote after it, so one statement for the splitter would be several for the
 database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
-Adding a nullable column or a new CHECK on an existing table already follows the
-existing expand-only rules. The purchase-reservation slot alone adds an
-`existingTableStatements` list: three exact whole ALTER TABLE statements, in
-order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
-from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
-foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The registry
-holds their complete text, and the reader accepts that list, and only that list, on
-this slot. Trusted main parses a changed registry before anything else, so the list
-reached the registry in a separate pin-only change after the reader had landed.
-Feature SQL must include each statement once, in that order. Its existing-table
-ALTERs cannot fall through to generic ADD admission.
-The checker pins the complete three-entry list; changing it requires a control
-change. Its target table must exist in the preceding native prefix.
-Comparison uses the existing statement splitter: leading comments/space are
-removed, internal statement bytes remain exact. Missing, duplicate, changed,
-extra or reordered companions refuse. No other slot gains this exception.
+Adding columns or new CHECKs to an existing table retains the expand-only path.
+Any slot may also list exact complete ALTER TABLE texts in
+`existingTableStatements`. PostgreSQL checks target existence when applying the
+plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
+under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
+CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
+preserves the issued purchase-reservation companions. Other drops, column type
+changes, renames and ownership changes refuse even when listed. Every listed
+statement must appear once in order, with internal bytes unchanged; an unlisted
+existing-table ALTER cannot fall through to generic ADD admission when the list
+is active. The issued three purchase-reservation texts remain unchanged data.
+
+`checkSupersets` entries declare table, constraint, column and values;
+`uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
+The lexical validator checks only the slot's own SQL: exactly one adjacent
+DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
+IN values or plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops,
+non-adjacent pairs and mismatched additions refuse; the general expression
+grammar is unchanged. The protected real-PostgreSQL catalog control proves
+widening against the installed definition immediately before the slot: the old
+constraint must exist in the closed CHECK or UNIQUE shape, every old value or
+key column must remain, and NULLS NOT DISTINCT may be added but never removed.
+The installed new definition must equal the entry; other constraints, columns
+and triggers remain protected. No historical SQL anchor is used for these
+entries. The issued account-consent `purposeCheck` retains its original preimage,
+values and refusal behavior unchanged.
+
+`createdViews` entries declare a fresh qualified name and exact CREATE VIEW
+statement hash. Only plain unconditional creation is admitted, once per listed
+view. OR REPLACE and conditional existence forms refuse. PostgreSQL rejects a
+duplicate name; the reader does not reconstruct a prefix object catalog.
+REVOKE ALL ON TABLE ... FROM PUBLIC is mandatory after creation; the
+existing guarded role revokes are allowed. Every GRANT on a created view refuses.
+Views gain no RLS or table-grant capability. The real catalog checks the declared
+new view inventory, ownership and owner-only privileges.
+
+`createdTriggers` entries name a fresh trigger, an existing prefix table and the
+exact CREATE TRIGGER statement hash. Only BEFORE/AFTER INSERT, DELETE or UPDATE
+(with an optional OF column list), combined with OR, FOR EACH ROW and a
+zero-argument public function are admitted. That function must be created in the
+same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
+path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
+allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
+trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
+OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
+triggers and missing targets; the catalog witness checks prefix-table membership,
+name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
@@ -1635,7 +1673,8 @@ operator a forward creates for another operand type cannot hide what it adds:
   carries no `SET` at all. Its language and leakproof flag are not compared: like
   its body, they stay with the whole-file hash and the feature review.
 - Existing relations of every kind, indexes and TOAST tables included, keep their
-  owner, privileges, row security, options and column privileges. A new relation of
+  owner, privileges, row security, options and column privileges. Only the index
+  of an explicitly listed UNIQUE replacement may be replaced with its new key. A new relation of
   any kind is owned by the migration role and carries only its owner's table
   privileges and no column privilege. The pinned notice table above alone may
   carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
@@ -1645,8 +1684,10 @@ operator a forward creates for another operand type cannot hide what it adds:
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
 - No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
-  excepted. The purpose CHECK keeps every value it holds and may gain more, in the one list form PostgreSQL deparses
-  for `IN`, and its slot lists the values it holds before the forward.
+  excepted. Listed CHECKs retain their hash-bound old values in the positive IN
+  form PostgreSQL deparses. Listed UNIQUE replacements retain every old key
+  column and the exact declared new definition; their old indexes may be replaced.
+  Other existing constraints and indexes keep the same protections.
 - The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
   `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
   `pg_event_trigger`, `pg_extension`, `pg_cast` and `pg_parameter_acl` (the
@@ -1656,7 +1697,7 @@ operator a forward creates for another operand type cannot hide what it adds:
   Left out of the comparison: each row's own OID, parser positions inside stored
   node trees, temporary schemas and the two transaction-horizon columns of
   `pg_database`. Every trigger that existed before the forward, an internal one and
-  its enabled state included, stays as it was; the only addition allowed is the
+  its enabled state included, stays as it was; additions are limited to the declared row triggers above and the
   enforcement trigger PostgreSQL creates internally for a constraint the forward
   itself adds.
 
@@ -1683,11 +1724,12 @@ These are admission controls, not SQL behavior or hosted qualification.
 
 ### M17 channelIngestForwards
 
-The reviewed registry declares `channelIngestForwards: []` before SQL can land.
+The reviewed registry may introduce `channelIngestForwards` together with its
+SQL and exact pins.
 Its fixed class admits only `20261030121000_channel_retained_basis.sql` and
 `20261030122000_channel_purchased_source.sql` on each native and managed rail.
-R1 supplies all four exact file, function and ordered-statement pins with the
-SQL introduction; an absent class remains readable in historical registries.
+The feature supplies all four exact file, function and ordered-statement pins
+with the SQL introduction; an absent class remains readable in historical registries.
 The checker fixes signatures, creation or replacement, preimages, headers and
 ordered companions, including triggers and ACLs. Registry pins cannot widen
 that inventory. PR, release and native queue checks require a binding at each
@@ -1844,8 +1886,8 @@ where service_role is absent. Native case/notice creation remains atomic;
 explicit notice-storage contention rolls back cleanly and is retried after
 release. The [scheduled binding boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 and [grant assessment](plans/oss-m19-g8.md#grant-exposure-assessment) own caller
-trust and contact-data exposure. The feature retains its separate prior
-admission-control prerequisite; local SQL proof alone does not admit it.
+trust and contact-data exposure. The feature requires exact class data and
+approval pins; local SQL proof alone does not admit it.
 
 The staged promoted-draft port validates effective shipping and retains its canonical charge
 adjustment, money equation, replay and line-allocation refusals. Where a quote

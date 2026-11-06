@@ -68,7 +68,7 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     // Qualified plans retain their lock/conflict tail; the package editor appends after it.
     const tail = profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }];
     const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 3])).rows;
-    expect(ledger).toEqual([{ catalog_path: "db/platform/migrations/20261120110000_subscription_exact_levers.sql" }, { catalog_path: "db/platform/migrations/20261120100000_subscription_package_editor.sql" }, ...tail, { catalog_path: file }]);
+    expect(ledger).toEqual([{ catalog_path: "db/platform/migrations/20261104110000_subscription_exact_levers.sql" }, { catalog_path: "db/platform/migrations/20261104100000_subscription_package_editor.sql" }, ...tail, { catalog_path: file }]);
     const served = (await owner.query("SELECT prosrc FROM pg_proc WHERE oid='public.customer_communication_preferences_set_as_actor(boolean,timestamptz)'::regprocedure")).rows[0].prosrc;
     expect(readFileSync("db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql", "utf8")).toContain(`AS $$${served}$$;`);
     const header = (await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid='public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)'::regprocedure")).rows[0];

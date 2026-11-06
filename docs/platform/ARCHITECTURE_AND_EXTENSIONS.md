@@ -440,7 +440,6 @@ See [the identity lifecycle](IDENTITY.md#operator-invitation-lifecycle) for expi
 cancellation, retained identity and managed concurrency limits.
 
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-72979d3e343910cc061caf7f7335b82a8a1d4f0afbcec47f45b86e80632e9095","reason":"Deletion delta. The personalization route key, the homepage personalization flag and its hidden paths, and a personalizer comment are removed from browser code; no browser boundary described here changes."} -->
 
 Browser-facing modules own portable types, validation, clients, and pure logic.
 Server modules own HTTP composition, use cases, authorization decisions, and
@@ -484,7 +483,6 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
 
-<!-- openlup-doc-impact {"unit":"server","digest":"sha256-9cfdf7128ab62cd3a5e27dbf32460c1b005f8617537f7483950832afc55587a7","reason":"The admin-domain kit drops an uncalled managed-only preflight copy and its unused imports; the dispatcher keeps using the runtime auth binding's preflight. The customer kit, the runtime auth binding and the customer session binding drop unused imports and re-exports. A characterization test pins the reference customer binding's existing process-wide managed read settings independently of the passed bundle-selection environment. No runtime boundary described here changes."} -->
 
 The runnable server substrate lives in the development-preview `@openlup/platform`
 package: the Node HTTP runtime and its fixed request order, BFF dispatch,
@@ -678,8 +676,7 @@ not permit Node dependencies or I/O in kernel contracts or logic.
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
 artifact role, with no current name reservation or bootstrap obligation. Record
-placement and the topology-trigger check in the module/API packet before
-implementation.
+placement and the topology-trigger check in the pull request's task record.
 
 A separate package needs evidence: incompatible peer ranges in supported cold
 installs; a genuinely different browser/edge/Node runtime; measured
@@ -688,7 +685,7 @@ or an actual independent consumer poorly served by subpaths. First
 assess whether an isolated subpath suffices; for adapters also consider an
 existing port, optional peer or application adapter. A provider name alone is
 not a trigger. Record the evidence and compatibility and maintenance ownership
-in the same packet. A trigger requires an explicit maintainer decision under
+in the pull request's task record. A trigger requires an explicit maintainer decision under
 the applicable authority; it grants no authority to create, bootstrap or
 publish a package. A
 new npm name also needs the maintainer's manual bootstrap before its first
@@ -696,8 +693,8 @@ release, not before its contribution PR; follow
 [package release setup](../../.github/VERSIONING_AND_EOL.md#package-releases).
 
 Size growth is not a topology trigger. When measured growth exceeds a cap,
-raise that cap in a reviewed change with the applicable maintainer read of the
-proposed budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
+raise that cap in a reviewed change that records the measured size and the new
+budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 
 The opt-in Node `payments/stripe` example follows the same placement decision:
 it shares the platform package's release and maintenance owner and composes M07
@@ -1972,6 +1969,35 @@ A failed facts or completion writer returns a pending attachment while paid
 service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
+After successful completion, including a replay, the writer attempts an optional
+template unit on its existing query executor. A crash before that unit leaves the
+completed purchase without a template, as before; a later replay can fill it in.
+The unit writes only while there are no template lines and `template_version = 1`,
+so it preserves later edits and graduation. Lines and the optional price context
+are atomic with each other, but are separate from completion.
+Both materialization and resolution use admitted logical draft lines saved in
+order metadata. Per SKU, the template sums quantity, takes the earliest zero-based
+ordinal and uses the admitted unit price only when all its lines agree. Different
+prices for one SKU skip the whole template and pair with
+`subscription_template_unavailable`, `ambiguous_line_price`. Add-on roles come
+from retained `renewalTerms.linePricing`, read through the existing completed
+purchase terms reader, with false when no retained role exists. Effective order
+positions split by promotion allocation are never the template or price source.
+The resolver evaluates each original draft line using admission's currency,
+validity, mode-dependent sellable flags and entry precedence. Exactly one matching
+list sets a still-NULL list/currency pair; missing or ambiguous lists leave it NULL
+and log a neutral reason while the template can still be materialized.
+The optional unit catches only SQLSTATE classes 42 (access), 22 (data) and 23
+(integrity), logs `subscription_template_unavailable` plus the SQLSTATE once, and
+keeps the completion response. All other failures propagate. On a caller-bound
+transaction it uses a savepoint to discard failed optional work without aborting
+the transaction. The writer first attempts `SAVEPOINT native_purchase_template`:
+success establishes the savepoint; only SQLSTATE `25P01` identifies independently committed
+pool queries, which continue without one. Other savepoint errors propagate. This
+detection calls no database function and opens no explicit transaction. No runtime
+grant is added; missing template access leaves no template and native edits stay refused, as before this change.
+Graduation retries NULL context with the same resolver inside a best-effort
+savepoint, retaining its existing add-on precedence, service and due anchor.
 The runtime has no direct privileges on the attachment or method-event tables;
 fixed definer readers expose pending identifiers/readiness and completed snapshot
 fields. `subscription_renewal_purchase_terms(uuid)` additionally returns the sealed
@@ -2140,6 +2166,13 @@ acknowledged or settled payment graph. Stock locks and whole-basket rollback
 belong to SQL. A resumed wait requires paid cycle/settlement, consumed stock and
 a local fulfillment obligation; it records no parcel arrival.
 
+Stock-wait admit, refusal recovery and deficits translate SQLSTATE `55P03` into
+recognized inventory-admission busy details. The public `runRenewalBatchRows`
+omits a row throwing recognized busy from its result array, including on the
+normal-due path, and continues without an in-call retry. Busy alone does not
+fail the batch or add an error outcome. Other thrown errors still produce
+`status: "error"` with `reason: "renewal_processing_failed"`.
+
 `createPostgresStockAvailability` exposes read-only new-purchase ATP through the
 native seam. Its fixed 14-day soft priority and native hard holds are both
 protected; callers cannot request a renewal exemption, horizon change or excluded
@@ -2297,7 +2330,9 @@ It is distinguishable from an issued quote reference, and non-zero renewal
 shipping amounts still refuse. Existing frozen operations replay their retained
 wire. A host supplies the batch limit; its existing default is preserved.
 Both normal-due and stock-recovery rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
-`error` result with `renewal_processing_failed` and later rows still execute.
+`error` result with `renewal_processing_failed` and later rows still execute. A row
+throwing recognized inventory-admission busy is omitted instead, as described
+under the native stock-wait seam.
 Static admission precedes G23;
 existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
 a captured case performs no G23 call; captured protected cases retain authority
