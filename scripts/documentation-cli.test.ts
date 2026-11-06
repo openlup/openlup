@@ -250,7 +250,7 @@ describe("strict documentation base attribution", () => {
   function hostedEvent(root: string, base: string, eventName = "push", extra: Record<string, unknown> = {}): NodeJS.ProcessEnv {
     const head = git(root, "rev-parse", "HEAD"); const eventPath = join(temporary(), "event.json");
     writeFileSync(eventPath, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, before: base, after: head, ...extra }));
-    return { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: head, PATH: process.env.PATH };
+    return { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: head, PATH: localEnvironment.PATH };
   }
   function mergeGroupEvent(root: string, base: string, patch: Record<string, unknown> = {}): NodeJS.ProcessEnv {
     const head = git(root, "rev-parse", "HEAD"); const ref = "refs/heads/gh-readonly-queue/main/pr-1-fixture";
