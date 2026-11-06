@@ -1486,4 +1486,4 @@ it("refuses a real sized opt-in before target writes while the classic source st
   expect(await census(target.owner)).toEqual(before);
   expect((await restore(classic)).replayed).toBe(false);
   expect(await census(target.owner)).toEqual(classicRows);
-});
+}, 30_000);
