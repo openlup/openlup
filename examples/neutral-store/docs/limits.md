@@ -274,3 +274,5 @@ unpaid and cancelled purchases emit no paid-mail event. The record dedupes
 reclaimed sends, and processed outbox state prevents another claim. No real mail
 provider is active. This adds no other event dispatcher, transport, SQL or grant.
 Subscription notices retain their separate native owner and existing limits.
+The sibling settlement event is known but unclaimed: it remains pending without
+delivery or a message record, and does not hold the paid receipt behind it.

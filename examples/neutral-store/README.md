@@ -613,6 +613,10 @@ rendered content, token and expiry across process restarts.
 The same `./lifecycle renewal` invocation mounts the package's paid-order email
 handler through [the paid-mail host](host/paid-mail.ts). Only
 `commerce.order.paid.email` is claimable. Other known event types stay untouched.
+The Core vocabulary includes the sibling `commerce.settlement.settled` fact.
+It stays pending without a handler or message record and cannot block the paid
+receipt even when it sorts first on the same order aggregate. This uses the
+known-type claim policy; no host override, acknowledgement or dormant seed is added.
 For a paid order with a resolvable contact and its emitted paid-mail event, the
 pass produces one [private receipt record](host/paid-mail-artifact.ts) under
 `.context/captured-messages`. It reads the order's contact, frozen lines and
