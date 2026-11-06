@@ -247,8 +247,9 @@ outside this authority. Current native evidence and actual source/group checks
 remain binding. Instruction policy was checked at main
 `5054c53dc81b246b81fb77122aeb71f92cfbdd75`, separately from the code review base.
 The landed review/history/report-scope rules and their owning contributor and
-documentation sections were read. S3 retains fresh full prose review and the
-complete local verification route; it inherits no model or stage proof.
+documentation sections were read. Under the rules of that date, S3 retained
+fresh full prose review and the complete local verification route; it inherits
+no model or stage proof.
 
 Acceptance for the qualification checkpoint: inspect retained real runs before
 choosing a donor; identify the later failure and actual assumptions it preserves;
@@ -372,8 +373,8 @@ reuse and public workflow v1 remain partial.
 [PR #509](https://github.com/openlup/openlup/pull/509) landed as
 `5054c53dc81b246b81fb77122aeb71f92cfbdd75`, from reviewed candidate
 `655aa3dbde3fbb4d944b9da7561f8af0a40c338b`. It concerns S6: mechanical review
-carry-over, ordinary repair review and evidence renewal (renewal and expiry were
-removed on 2026-11-05). It does not add verify
+carry-over, ordinary repair review and evidence renewal. This record predates
+2026-11-05, which removed renewal, expiry and required local verification. It does not add verify
 stage reuse. Its rules are now part of the actual main base; use the applicable
 landed rules without copying them or claiming verification-stage reuse here. The maintainer specified the landing order: **#507, then #509, then
 S3**. The latest instruction authorizes that merge order. Build and review S3

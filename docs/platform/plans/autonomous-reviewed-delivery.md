@@ -193,7 +193,9 @@ No new service, model API, workflow or remote attestation is introduced.
    verdict is valid.
    Failed, timed-out, partial or materially failing review cannot count as a pass.
 5. Batch material repairs, commit and obtain fresh independent review of the
-   new tree by the required reviewer count. Give reviewers the open finding
+   repair delta and its interactions: two reviewers when the delta touches SQL,
+   controls, machinery or security-sensitive paths or changes a mode, one
+   otherwise, or two full reviews of the new tree. Give reviewers the open finding
    cards, actual repair and interaction context, without old verdicts or author
    history. Every material finding needs explicit closure. Three repair cycles
    are automatic; `needs_owner` then requires an owner decision to continue,
@@ -552,11 +554,12 @@ minutes. Missing, stale or mismatched evidence refuses with an actionable reason
 
 The W2/W3 artifact-provenance and W4 separate-integration amendments are historical
 and superseded by the 2026-10-19 simplification. W4's bounded carry-over conditions
-and W5's fork-point base remain. Live historical proof: #122's group carried
+were superseded on 2026-11-05 by base ancestry plus a clean merge; W5's fork-point
+base remains. Live historical proof: #122's group carried
 over from its source receipt on an unchanged tree, without a live session.
 
-Freshness is checked at admission, not guaranteed at the eventual merge. A
-successful GitHub context has no native receipt expiry timer, and Actions source
+Admission binds the receipt to the live head and tree; it does not watch the PR
+after it succeeds. A successful GitHub context has no native receipt timer, and Actions source
 attribution does not isolate a malicious writer capable of spoofing that context.
 These remain process-evidence limits.
 

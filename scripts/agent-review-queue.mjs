@@ -172,7 +172,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     const selected = matches.filter(job => job.run_attempt === latest);
     demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
   }
-  const admitted = await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
+  await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
   await sourceCurrent();

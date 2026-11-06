@@ -62,8 +62,8 @@ A merge group that cannot carry over is rejected: merge `main`; only a conflict
 resolution is reviewed.
 
 Commit repairs and give fresh reviewers the open finding cards, actual repair
-and interaction context, without old verdicts or author history. The new tree
-needs passing review by the required reviewer count, with every material finding
+and interaction context, without old verdicts or author history. The repair
+needs passing review by its delta's reviewer count, with every material finding
 closed. Reviews do not expire. A repair is reviewed as its delta plus
 interactions. A merge of `main` keeps the review, and a resolved conflict is
 reviewed as its resolution only, following

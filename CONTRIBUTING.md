@@ -1514,8 +1514,9 @@ The candidate's changed paths describe committed changes only; `clean: false`
 also warns of pending working-tree changes. Package discovery and bounded root
 tooling selection remain with their existing owners, not a second selector.
 
-After committing and recording the required native reviews, run the normal full
-local command set with `node scripts/verify-local.mjs` from the task worktree root.
+For optional local feedback after committing and recording the required native
+reviews, run the full local command set with `node scripts/verify-local.mjs` from
+the task worktree root.
 Add `--pgtap` when the change reaches database inputs (including runtime, fixture,
 configuration or harness changes), or when requesting that raw diagnostic.
 The runner uses the commands below once: a single locked install, lint's package
@@ -1706,9 +1707,9 @@ binds the actual tip and reviewers assess its documentation reasons.
 
 The supervisor follows actual admission in the same logical task; the maintainer
 does not move prompts or reports. A receipt timeout needs submission, as
-[Merge queue](#merge-queue) describes. Freshness is checked at
-admission, not guaranteed at the later merge; same-name checks from a malicious
-writer remain outside this process-evidence boundary.
+[Merge queue](#merge-queue) describes. Admission binds the receipt to the live
+head and tree; same-name checks from a malicious writer remain outside this
+process-evidence boundary.
 
 The experimental invoicing module adds an isolated row to the existing platform
 module graph, with a type-only browser contracts entry and no module edges.
@@ -2864,7 +2865,7 @@ satisfy the review contract. The supervisor assesses substance, not just presenc
 Existing recorded version-2 reports remain valid without rewriting history or
 resetting cycles or findings; the requirement applies at new `record`
 calls. First-review risk floors remain unchanged; later coverage and receipt versions
-follow the bounded rules above.
+follow the rules above.
 
 Include the affected documentation owners and what changed in their explanations.
 For a scoped no-impact record, challenge its reasoning as well as its fresh
@@ -3046,9 +3047,9 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   profiles and the first root-worker observation; measure the next full run.
 - 2026-10-24, queue integration rethink: mechanical base merges consumed repair
   cycles and repeated full local proof → use the proved mechanical case in
-  [native review](#native-review-and-accountability), retaining fresh interaction
-  review and full remote gates; [request auto-merge](#merge-queue) once after
-  local prerequisites and the receipt, letting GitHub wait for pending CI.
+  [native review](#native-review-and-accountability) and full remote gates;
+  [request auto-merge](#merge-queue) once after the receipt, letting GitHub wait
+  for pending CI. Since 2026-11-05 a clean merge needs no review at all.
 - 2026-10-24, auto-merge handoff rethink: an enabled request remained outside
   the queue after all required checks passed → the [queue completion
   handoff](#merge-queue) rechecks existing authority and proof on the CI event,
