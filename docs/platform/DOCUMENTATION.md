@@ -516,6 +516,13 @@ transport protocols, pruning, submodule recursion and automatic maintenance. Res
 configuration before retrying; refusal diagnostics never print configured values
 or potentially credential-bearing keys.
 
+For `pull_request`, the checkout must have exactly two parents and its second
+parent must be the event head. The first parent must equal the event base or
+descend from it, allowing main to advance after the PR's fork point. Impact
+compares that first parent to the checkout, covering only the PR's change.
+Missing objects or shallow history that cannot prove this ancestry refuse with
+a complete-history diagnostic; restore the required history before retrying.
+
 For `merge_group.checks_requested`, hosted attribution requires the public
 repository, a nonzero event base on `main`, and the event head/ref matching the
 actual queue checkout. The event's commit and tree identity must also match

@@ -705,8 +705,8 @@ describe("strict documentation base attribution", () => {
     it("F3 refuses a one-parent checkout", () => {
       const { root, base, source } = merged(); git(root, "checkout", "-q", "--detach", source); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, base, source, source) })).toThrow(/base\/head merge/);
     });
-    it("F4 refuses a first parent other than the event base", () => {
-      const { root, source, merge } = merged(); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, source, source, merge) })).toThrow(/base\/head merge/);
+    it("F4 refuses an event base that is not an ancestor of the first parent", () => {
+      const { root, source, merge } = merged(); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, source, source, merge) })).toThrow(/not an observed ancestor/);
     });
     it("F5 refuses a checkout other than GITHUB_SHA", () => {
       const { root, base, source, merge } = merged(); const env = pullRequest(root, base, source, merge); env.GITHUB_SHA = source;
