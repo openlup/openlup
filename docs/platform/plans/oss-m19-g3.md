@@ -1292,8 +1292,8 @@ in `packages/platform/api/account-support-postgres.api.md`; the complete API che
 entry. No source, SQL, gate, checker or other snapshot changed.
 
 The accepted-read authority is the maintainer's accepted reads of the destination
-contract and forward evidence, together with the lead's additive operator-outcome
-ruling. The eight generated lines match that accepted wording exactly:
+contract and forward evidence, kept in the maintainer's private evidence record,
+together with the lead's additive operator-outcome ruling. The eight generated lines match that accepted wording exactly:
 `applied_from_next_parcel`, `appliesFrom: "next_parcel"`, `futureDestinationId`,
 `replayed`, and the inherited optional `ownerReceipt`. No additional outcome
 or field was introduced.
