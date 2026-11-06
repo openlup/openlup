@@ -16,6 +16,7 @@ import { createLifecycleNoticeHost } from '../../examples/neutral-store/host/lif
 import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
 import { createPostgresOperatorIdentityStore, createPostgresAccountLinkStore, createDirectOperatorInvitationStore } from '@openlup/platform/identity';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
+import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import type { ActionResult, Operation } from '../../examples/neutral-store/shared/api.ts';
 import { parseHostArguments } from '../../examples/neutral-store/shared/config.ts';
@@ -188,7 +189,9 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation: selection, poolFactory: () => migration });
     await runner.apply(); expect((await runner.status()).pending).toEqual([]);
     await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => {} });
+    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
+      stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
+      close: async () => {} });
     const url = new URL(container.connectionString); url.username = 'starter_runtime'; url.password = 'synthetic-conformance'; runtimeUrl = url.toString();
     runtime = new Pool({ connectionString: runtimeUrl });
     expect((await runtime.query("SELECT current_user,(SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS elevated")).rows[0]).toEqual({ current_user: 'starter_runtime', elevated: false });

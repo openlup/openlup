@@ -10,6 +10,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
+import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import type { ActionResult, Operation } from '../../examples/neutral-store/shared/api.ts';
 import { isRecord } from '../../examples/neutral-store/shared/offer.ts';
@@ -120,7 +121,9 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     await runner.apply();
     expect((await runner.status()).pending).toEqual([]);
     await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => {} });
+    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
+      stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
+      close: async () => {} });
     const runtimeUrl = new URL(container.connectionString);
     runtimeUrl.username = 'starter_runtime';
     runtimeUrl.protocol = 'postgresql:';

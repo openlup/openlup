@@ -6,6 +6,7 @@ import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane, type 
 import { createCapturedCustomerChallengeDelivery, createCustomerIdentityVerifier, createPostgresContactClientRegistrar,
   createPostgresCustomerMePort, resolveCustomerSessionBinding } from "@openlup/platform/identity";
 import { composePurchaseCapabilities } from "../../examples/neutral-store/host/purchase-composition.ts";
+import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { demoRenewalConfig } from "../../examples/neutral-store/owned/renewal.config.ts";
 import type { ActionContext } from "../../examples/neutral-store/host/bindings.ts";
 import type { StoreConfig } from "../../examples/neutral-store/shared/config.ts";
@@ -20,6 +21,7 @@ afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 const words = { en: "Synthetic collection", pl: "Synthetic collection" };
 const config: StoreConfig = {
   renewal: demoRenewalConfig("journey"),
+  subscriptionEditing: structuredClone(configurations.coffee!.subscriptionEditing),
   id: "journey", brand: { name: "Synthetic", strapline: words, description: words },
   theme: { ink: "#111111", paper: "#ffffff", accent: "#222222", accentInk: "#ffffff", border: "#333333" },
   copy: { heroTitle: words, heroBody: words, offerTitle: words, offerBody: words, shippingNote: words },
