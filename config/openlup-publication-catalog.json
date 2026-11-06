@@ -7990,6 +7990,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativePurchasePriceList.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/nativePurchaseRenewal.ts",
       "class": "public-output"
     },
@@ -10579,14 +10583,6 @@
     },
     {
       "path": "scripts/documentation-git.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-impact.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-impact.ts",
       "class": "public-output"
     },
     {
@@ -28226,6 +28222,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreCatalogRevisions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
       "class": "public-output"
     },
@@ -28771,6 +28771,14 @@
     },
     {
       "path": "tests/postgres/subscriptionPurchaseRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPurchaseTemplate.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPurchaseTemplateLegacy.test.ts",
       "class": "public-output"
     },
     {

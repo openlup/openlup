@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { RenewalLine, RenewalLinePricing, RenewalPricingSnapshot, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
 
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const cadence = z.number().int().positive().max(2_147_483_647);
@@ -111,6 +112,14 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     AND state NOT IN ('succeeded','refused') UNION ALL SELECT 1 FROM public.subscription_cycles WHERE subscription_id=$1::uuid
     AND status IN ('payment_pending','retry_scheduled') LIMIT 1`, [id]);
   if (open.rows.length) throw new Error("subscription_starter_graduation_open_cycle");
+  await bestEffortNativePurchaseTemplate(db, async () => {
+    const current = (await db.query("SELECT price_list_id,currency_code FROM public.subscriptions WHERE id=$1::uuid", [id])).rows[0];
+    if (!current || current.price_list_id != null || current.currency_code != null) return;
+    const context = await resolveNativePurchasePriceList(db, String(row.activation_order_id));
+    if (context.priceListId) await db.query(`UPDATE public.subscriptions SET price_list_id=$2::uuid,currency_code=$3
+      WHERE id=$1::uuid AND price_list_id IS NULL AND currency_code IS NULL`, [id, context.priceListId, context.currency]);
+    if (context.reason) console.warn("subscription_price_list_unresolved", context.reason);
+  });
   const original = z.array(z.object({ lineOrdinal: cadence, sku: z.string(), quantity: cadence, unitAmountMinor: amount }).strict()).parse(row.lines);
   const prices = currentPricing(row, original, terms!);
   let finalLines = original, finalPricing = prices;

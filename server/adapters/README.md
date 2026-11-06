@@ -208,6 +208,13 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+`catalog_product_document_revisions` is carried with its immutable row text.
+Restore stages both product pointers to null, inserts revisions after their
+products, then installs each current-revision pointer while the primary-SKU
+pointer is still staged. Each guarded update preserves every other product
+field and requires exactly one row; the foreign key requires the revision to
+belong to that product. The existing primary-SKU update follows SKU insertion.
+
 The profile also carries account consent events (requested/effective
 choice, actor/client and recipient fingerprint, copy/source/reason, route/client
 attribution, capture times and work ID) and their singleton sync-target row.
@@ -811,7 +818,6 @@ at 2,000 rows. It needs SELECT on those three columns, not event payload access
 or direct INSERT. The unbound winback adapter does not establish a runtime
 writer requirement. Tests retain the window's old-versus-recent reminder signal.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-a4a68c2cbfabb4d516254adf6c146187a8173fd64f3b4a158ca7a595856918f8","reason":"The reference admin-platform adapter now treats only stored admin and distributor roles as operator roles: null or unknown roles read as non-admin and are not eligible for the admin magic link. Its provider translation, capability boundaries and the rules in this file are unchanged; the role policy is documented in docs/platform/IDENTITY.md."} -->
 
 Identity verification, account linking, admin directory gateways, profile reads and direct session/challenge adapters now delegate to the [identity module](../../docs/platform/IDENTITY.md). The reference bindings retain SDK loading, mail delivery, sender and origin policy. The package accepts structural clients and an explicit JWT loader; the application remains responsible for selecting them.
 

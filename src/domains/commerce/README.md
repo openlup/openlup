@@ -352,7 +352,6 @@ Domain-boundary rules, including the Domain Map and the feature trace, live in
 the maintainer canon `DOMAIN_ARCHITECTURE.md`, which belongs to the private
 overlay and is not part of the published tree.
 
-<!-- openlup-doc-impact {"unit":"domain-commerce","digest":"sha256-6cc6ab0e0b1a42162aa3fec7747a6bebfa36ee5afa02b1969358017267e8d6bb","reason":"Email tests select neutral content and explicit presentation fixtures; operational-ladder checks resolve current installed state instead of historical source spelling. Money, idempotency, durable order ownership and email composition code described here are unchanged. The checkout and configurator-intent handlers lose their never-injected optional personalization hooks, and the personalization cookie mint is deleted; checkout money, idempotency, order ownership and the persisted response are unchanged."} -->
 
 Commerce email facades now bind the pure communications/contracts content
 factories. Copy packs, reference formatting, signed unsubscribe/footer policy and

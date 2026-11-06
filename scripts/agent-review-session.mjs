@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, digest, protectedCoveragePath, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, digest, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 
 const execute = promisify(execFile);
@@ -157,9 +157,11 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
 export async function captureCoverageEdge(cwd, session, observed, now, historicalKind) {
-  if (!session || !verdict(session, session.candidate, now).ok || !observed.rules ||
+  if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
+  const passed = verdict(session, session.candidate, now).ok;
+  if (!passed && (session.candidate.base !== observed.base || !fullReviewReports(session))) return undefined;
   let proof; let kind; let from = session.candidate.head; let to = observed.head;
   if (session.candidate.base !== observed.base) {
     // An integration base must be on main; a repair keeps its existing (possibly stacked) base.
@@ -200,7 +202,7 @@ export async function validateEconomySession(cwd, session, runGit = git) {
       if (event.candidate.coverage) {
         const prefix = session.history.slice(0, session.history[index - 1]?.type === 'rules' ? index - 1 : index); const prior = prefix.findLast(item => item.type === 'prepare');
         const version = prefix.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
-        const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at, cycle: prior.cycle };
+        const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
         const edge = await captureCoverageEdge(cwd, before, { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId }, event.at, event.candidate.coverage.proof?.kind);
         demand(edge && digest(edge) === digest(event.candidate.coverage), 'recorded coverage proof differs');
       }
@@ -267,11 +269,11 @@ export async function verifyCandidateCommand({ cwd, session, command, args = [],
   return code;
 }
 export async function sessionMain(argv = process.argv.slice(2), { cwd = process.cwd(), env = processEnvironment } = {}) {
-  const [verb, ...args] = argv; demand(['prepare', 'record', 'continue', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, continue "<note>", verify, status, receipt <PR>, or verify-command');
+  const [verb, ...args] = argv; demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, verify, status, receipt <PR>, or verify-command');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   await mkdir(directory, { recursive: true });
   let lock;
-  if (['prepare', 'record', 'continue'].includes(verb)) {
+  if (['prepare', 'record'].includes(verb)) {
     try { lock = await open(join(directory, '.session.lock'), 'wx', 0o600); }
     catch (error) { if (error.code === 'EEXIST') throw new Error('invalid: session is busy; retry after the active transaction finishes'); throw error; }
   }
@@ -308,12 +310,10 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       }
       const next = prepareCandidate(session, observed, now, fresh);
       await saveState(path, next);
-      demand(next.cycle <= next.allowedCycles, 'record an owner continuation with continue "<note>"', 'needs_owner');
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
     demand([2, 3].includes(session?.version), 'prepare a version-2 session before review');
     if (verb === 'status') { console.log(JSON.stringify(session, null, 2)); return 0; }
-    if (verb === 'continue') { session = continueOwner(session, args[0], Date.now()); await saveState(path, session); return 0; }
     if (verb === 'verify-command') {
       const resource = args[0] === '--resource' ? args.splice(0, 2)[1] : undefined;
       demand(args.shift() === '--' && args[0], 'verify-command [--resource PROFILE] -- CMD ARGS...');

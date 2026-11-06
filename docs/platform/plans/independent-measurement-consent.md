@@ -1,5 +1,9 @@
 # Independent optional measurement consent
 
+Delivery-control notes below record the 2026-10-30 task; maintainer reads before
+sign-off, repair budgets and self-retros are historical. Current delivery follows
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
+
 Outcome: optional consentPolicy modes on AnalyticsDataLayerOptions retain the analytics-only default, add independent either-purpose admission, and support explicit host-authorized denied-state admission without granting storage consent. Both nondefault modes publish strict stored purpose flags; false updates deny all signals but do not disable the selected admission policy. The host owns route, tag and payload authorization; no replay or provider binding is added.
 
 Placement: existing @openlup/platform/marketing subpath; no new package, dependency, copied adopter implementation or provider names. Hosts must refuse unauthorized tags under denial; only explicitly authorized consent-aware tags may process denied-state observations, with host-owned route and payload fences.
