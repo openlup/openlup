@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { createServer } from 'node:net';
 import { env as processEnvironment } from 'node:process';
 import { Pool } from 'pg';
+import { chromium } from '@playwright/test';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type * as Invoices from '@openlup/platform/invoicing';
 import type * as Identity from '@openlup/platform/identity';
@@ -446,7 +447,8 @@ it('all fourteen operation limits preserve the complete effect snapshot over rep
   }
 }, 60000);
 
-it('runs the separate browser spec in both installed configurations without changing the purchase witness', () => {
+// The browser journey is local preview evidence; hosted runners do not install browsers.
+it.runIf(existsSync(chromium.executablePath()))('runs the separate browser spec in both installed configurations without changing the purchase witness', () => {
   const fixturePath = join(scratch, 'browser-fixture.json');
   const config = join(app, '.context/e4-browser.config.mjs');
   writeFileSync(config, `import {defineConfig} from '@playwright/test';\nexport default defineConfig({testDir:'../browser',testMatch:'e4.spec.ts',workers:1,fullyParallel:false,

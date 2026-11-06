@@ -46,7 +46,7 @@ base packet had no final accepted SHA at initial inspection. The invoice UUID
 leaf merged mechanically as 6eed6b4bfc772346897402330259af11bc66ebf0,
 tree 1ed8453e8e12211043e6f16a2d883224c8e3c8f3. No review cycle consumed.
 
-<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-e99502c3c53ecb51f6343306af71f0ac779d44b329fc7b56bc758e83e1ad63e8","reason":"The invoice UUID and installed starter witnesses use the existing tests/postgres collector, owned container helper and qualified runner with separate installer/runtime sessions. The added distributor HTTP case exercises native challenge/session admission and the real admin-only read authorizer; installer-only table locks fence the first business reads without a runtime grant or production seam. Existing source discovery, commands and sufficient-evidence rules stay unchanged. The explicit measured per-case deadline follows the existing convention, and the separate browser witness preserves the required purchase specification."} -->
+<!-- openlup-task-doc-impact {"unit":"tests","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-7c8f507ce2dc964ed80f77ebe4379fafcaf984aff6a68cae0c383e19af4b7ff5","reason":"The invoice UUID and installed starter witnesses use the existing tests/postgres collector, owned container helper and qualified runner with separate installer/runtime sessions. The added distributor HTTP case exercises native challenge/session admission and the real admin-only read authorizer; installer-only table locks fence the first business reads without a runtime grant or production seam. Existing source discovery, commands and sufficient-evidence rules stay unchanged. The explicit measured per-case deadline follows the existing convention, and the separate browser witness preserves the required purchase specification. Only that local-preview browser case now requires an installed Chromium executable; hosted runners do not install browsers. All non-browser PostgreSQL cases remain unconditional, and the contributor section already separates browser journeys from hosted tests, so no command or canonical proof requirement changes."} -->
 
 ## Historical setup rethink and authority contradiction
 
@@ -215,3 +215,12 @@ Self-retro. A stub authorizer cannot prove the real role restriction. An admitte
 non-admin session and existing selectors exercise that restriction directly;
 read fences keep the no-I/O claim independent of a zero-write snapshot. The new
 case now creates its own objects so isolated proof does not depend on prior tests.
+
+
+## Hosted CI repair on cacbbada
+
+The first hosted run found two issues. The configuration prerequisites now spell
+out English and Polish, so the neutrality count does not increase. The separate
+browser case runs only where a Chromium executable is installed: its journey is
+local preview evidence, and hosted runners install no browser. All non-browser
+PostgreSQL cases and the required purchase specification are unchanged.
