@@ -142,14 +142,17 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
     let union; try { union = blobs.length === 3 ? registryUnion(path, ...blobs) : undefined; } catch { union = undefined; }
     if (union !== undefined) replacements.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
   }
+  // A union counts only when it is what was committed; any other carrier bytes are reviewed.
+  for (const [path, blob] of replacements) {
+    if ((await git(cwd, 'ls-tree', current.tree, '--', path)).trim() !== `100644 blob ${blob}\t${path}`) replacements.delete(path);
+  }
   if (replacements.size) prediction = await replaceTreeBlobs(cwd, prediction, replacements);
-  // A clean or registry-union merge needs no review; a resolved conflict is reviewed as its own delta.
-  const resolution = conflicts.filter(path => !replacements.has(path)); let modeChanged = false;
-  if (resolution.length) {
-    const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
-    demand(delta.changedPaths.every(path => resolution.includes(path)), 'integration changed files outside its conflicts');
-    modeChanged = delta.modeChanged;
-  } else demand(prediction === current.tree, 'integration whole tree differs from prediction');
+  // A clean or registry-union merge needs no review. Every other difference from
+  // that mechanical result, including edits outside the conflicts, is the
+  // resolution and is reviewed as its delta. A conflict left unresolved refuses.
+  const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
+  demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path)), 'integration commits a conflict without resolving it');
+  const resolution = delta.changedPaths; const modeChanged = delta.modeChanged;
   const kind = resolution.length ? 'resolution' : conflicts.length ? 'registry-union' : 'git';
   return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }

@@ -26,6 +26,8 @@ and set-version preparation in that change. Delivery or merge delegation depends
 on the actual programme grant and applicable maintainer-local policy; this page
 does not activate it. Required maintainer reading precedes DCO sign-off, and
 fresh native review, checks and protected release approval retain their roles.
+New rules follow [process minimalism](../../CONTRIBUTING.md#deliver-a-change): each
+needs a named failure that the required CI and the change's own review would miss.
 
 | Stage | Trigger and executor | Checks and next step |
 | --- | --- | --- |

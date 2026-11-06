@@ -102,15 +102,13 @@ describe('real Git coverage histories', () => {
     expect((await f.state()).candidate.coverage).toBeUndefined();
     await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
   });
-  it.each(['integration'])('keeps the full-review route for %s on an unlanded stack base', async kind => {
-    const f = await fixture(); const original = kind === 'integration' ? await f.review() : undefined;
+  it('keeps the full-review route for an integration on an unlanded stack base', async () => {
+    const f = await fixture(); const prior = await f.review();
     f.git('checkout', '-q', '--detach', f.base);
     await f.write('predecessor.ts', 'independent predecessor\n'); const predecessor = f.commit();
     f.git('checkout', '-q', '--detach', f.head); f.git('merge', '--no-ff', '-qm', 'integrate unlanded predecessor', predecessor);
     f.env.OPENLUP_STACK_BASE = predecessor;
     expect(f.git('rev-parse', 'origin/main')).toBe(f.base);
-    const prior = original ?? await f.review();
-    if (kind === 'ordinary repair') { await f.write('tests/demo.test.ts', 'ordinary fixture\n'); f.commit(); }
     await f.cli('prepare', f.request); const next = await f.state();
     expect(next.candidate.base).toBe(predecessor);
     expect(next.candidate.integration).toBeUndefined(); expect(next.candidate.coverage).toBeUndefined();
@@ -145,12 +143,14 @@ describe('real Git coverage histories', () => {
     expect(next.candidate.coverage.proof.kind).toBe('registry-union'); expect(next.cycle).toBe(prior.cycle);
     await expect(f.cli('verify')).resolves.toBe(0);
   });
-  it('refuses inherited coverage for a hidden hand edit in the merge', async () => {
+  it('reviews a hand edit made in a clean merge as the resolution', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('other.ts', 'main delta\n'));
-    f.git('merge', '--no-ff', '--no-commit', main); await f.write('extra.ts', 'hidden edit\n');
-    f.commit(); await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
-    await expect(f.cli('verify')).rejects.toThrow('independent PASS');
+    f.git('merge', '--no-ff', '--no-commit', main); await f.write('extra.ts', 'hand edit\n');
+    f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.proof).toMatchObject({ kind: 'resolution', resolution: ['extra.ts'] });
+    await expect(f.cli('verify')).rejects.toThrow('1 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
   });
   it('inherits a clean merge that touches review machinery with no new review', async () => {
     const f = await fixture(); const prior = await f.review();
@@ -201,12 +201,34 @@ describe('real Git coverage histories', () => {
     await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
     await validateEconomySession(f.cwd, await f.state());
   });
-  it('refuses a resolution that also edits a file outside its conflicts', async () => {
+  it('reviews an edit outside the conflicts together with the resolution', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('app.ts', 'main line\n'));
     expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
     await f.write('app.ts', 'resolved\n'); await f.write('other.ts', 'unrelated edit\n'); f.commit();
+    await f.cli('prepare', f.request); const next = await f.state();
+    expect(next.candidate.coverage.proof).toMatchObject({ kind: 'resolution', resolution: ['app.ts', 'other.ts'] });
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it('refuses a merge that commits a conflict without resolving it', async () => {
+    const f = await fixture(); await f.review(); const head = f.git('rev-parse', 'HEAD');
+    const main = await f.mainMove(() => f.write('app.ts', 'main line\n'));
+    let prediction = '';
+    try { f.git('-c', 'merge.conflictStyle=merge', 'merge-tree', '--write-tree', '--name-only', '--no-messages', head, main); } catch (error) { prediction = String((error as { stdout: string }).stdout).split('\n')[0]; }
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write('app.ts', f.git('show', `${prediction}:app.ts`) + '\n'); f.commit();
     await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
+  });
+  it('reviews a carrier conflict resolved by hand differently from the union, with two reviewers', async () => {
+    const f = await fixture(); const path = REGISTRY_PATHS[2]; const source = f.git('show', `${f.base}:${path}`) + '\n';
+    await f.write(path, addRegistry(path, source, 'zz-row-a')); f.commit(); await f.review();
+    const main = await f.mainMove(() => f.write(path, addRegistry(path, source, 'zz-row-b')));
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    await f.write(path, addRegistry(path, addRegistry(path, source, 'zz-row-b'), 'zz-row-a')); f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state(); expect(next.candidate.coverage.proof).toMatchObject({ kind: 'resolution', resolution: [path] });
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
   });
   it('needs one fresh ordinary-delta report for a test repair, preserving initial full coverage', async () => {
     const f = await fixture(); const prior = await f.review();

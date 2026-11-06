@@ -2755,6 +2755,7 @@ reading, exact merge scope and protected release approval still apply.
    within your delivery authority, using the template. Hosted checks then run on
    the integration merge ref while review proceeds; they are the required
    verification, and canonical local verification is not required before push.
+   Where the maintainer's pre-push hook is installed, it requires `verify` first.
    End the description with your `Signed-off-by:` line: the merge commit takes
    its message from the description, and the DCO check certifies merge commits
    too. Hosted runs share the organization's concurrent-job limit, so stagger
@@ -2814,9 +2815,10 @@ protection.
 - A clean merge of main, or the exact union of disjoint additions to the three
   registry carriers, needs no new review. Prepare proves the two parents (the
   prior reviewed head and the new base on main) and the merged tree.
-- A conflict is resolved in that merge. Only the resolution, the diff from the
-  `git merge-tree` prediction to the committed tree, is reviewed; it may change
-  only the conflicted files.
+- A conflict is resolved in that merge. Only the resolution is reviewed: the diff
+  from the `git merge-tree` prediction, with the registry union, to the committed
+  tree, including any other edit made in the merge. A conflict committed without
+  a resolution is refused.
 - After a passing review with no open material finding, a repair is reviewed as
   its delta, from the old reviewed head to the new head, plus its interactions.
   A repair while material findings are open takes the full review floor, with

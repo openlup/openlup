@@ -136,8 +136,10 @@ between that fork point and HEAD; hosted source and group admission require the
 reviewed base on current main. No pin is needed for an independent PR.
 A merge of `main` into a reviewed candidate, with unchanged intent and author in
 the same session, keeps its review: a clean merge or the exact registry-carrier
-union needs no new review, and a resolved conflict is reviewed as its resolution
-only, which may change only the conflicted files. These integrations charge no
+union needs no new review. Every other difference from that mechanical result,
+a resolved conflict or another edit made in the merge, is reviewed as the
+resolution; a conflict committed without a resolution is refused. These
+integrations charge no
 repair cycle. `prepare --new` records a changed intent or a rebase in the same
 append-only session history; findings, reviewers and the repair count carry on.
 Only an authorized `continue` adds cycles. Once criteria, required review and

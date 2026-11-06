@@ -113,9 +113,10 @@ reviewer, expiry or repair count is rewritten. Each prepare records base/head/
 tree, full paths/modes, approved intent/author and base/head policy snapshots.
 A coverage edge binds the previous history digest and identities, exact delta
 and independently derived Git proof. Integration needs no fresh model report
-for a clean main merge or the exact three-carrier union. A resolved conflict is a
-`resolution` edge whose delta from the merge prediction may change only the
-conflicted files. A resolution or repair delta needs `deltaFloor` reports with
+for a clean main merge or the exact three-carrier union. Every other difference
+from that mechanical result, a resolved conflict or another edit made in the
+merge, is a `resolution` edge reviewed as its delta; a conflict committed without
+a resolution refuses. A resolution or repair delta needs `deltaFloor` reports with
 `ordinary: true` and `delta` equal to the prepared delta digest: two when it
 touches `protectedCoveragePath` or changes a mode, one otherwise. Two full
 reports, which omit `ordinary` or set it to `false`, also satisfy it; when present,
@@ -134,8 +135,10 @@ it sets the delta floor.
 
 The registry checker preserves old values/order, refuses duplicate/overlapping
 additions and all outside-array changes, and reconstructs the entire expected
-merge tree. The arrays need no sorting or layout migration. Raw server merging
-can still conflict.
+merge tree. It runs only on carriers in conflict; Git's clean merge stands for the
+others. A carrier whose union does not apply, or whose committed bytes differ
+from it, is reviewed as part of the resolution. The arrays need no sorting or
+layout migration. Raw server merging can still conflict.
 
 The `renew` command and review expiry were removed on 2026-11-05. Recorded renew
 events still replay, and `expires` is still computed so v3 receipts validate
