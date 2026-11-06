@@ -2,6 +2,10 @@
 
 Status: local MVP proven; integration and delivery in progress; development preview.
 
+Delivery-control notes below are historical, including maintainer reads before
+DCO, repair budgets and self-retros. Current delivery follows
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
+
 Outcome: an adopter can retrieve a small set of source-backed task guidance
 from its installed package set without a network service. Scope is a bounded
 generated Markdown corpus for core, outbox and platform, an installed retrieval

@@ -629,7 +629,6 @@ route admission or success-only availability metadata.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-522c966a57eaea1fe0dcd4e7b12852b5ee9bb2bb974f4c0e10d71b547de5150c","reason":"Test-only delta. The admin magic-link route test now pins that null and unknown stored roles get the same padded, non-enumerating accepted response without a send, with quota unchanged. No route, invocation order, setting or runtime composition described here changes."} -->
 
 Identity route files now compose [package handler factories](IDENTITY.md) with
 this application's schemas, feature admission, limiter, redirect resolver and
@@ -1189,7 +1188,6 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
-<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-aca245296bae41d05957e53bf0bfa1a5e2977fd089ba1598927e515666e21eed","reason":"Import-only delta. The opt-in subscription reference account binding imports its account-link store factory from @openlup/platform/identity instead of a removed re-export file. Reconciliation, admission and the disposable runtime are unchanged."} -->
 
 The Node reference start function accepts an admitted outbox candidate and a host schedule binding. For a selected rail it binds dispatch/prune before opening the listener; a refused candidate or absent schedule binding opens no listener. Host composition supplies its driver, lease, effect handlers, known vocabulary and migration observation. Immediate and scheduled work share the packed rail engine, with candidate identity checked at every entrance. The default static CLI selects no outbox adapter and provides no deployed outbox proof.
 
@@ -1431,7 +1429,6 @@ presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
 
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-2b0421c680adfaa93b6ea03f7da109126065fa9b89a550ca027f21bf63b3157a","reason":"Transactional renderer tests now exercise neutral default presentation plus explicit synthetic presentation/content inputs, retaining rendered transport outcomes and refusal assertions. No renderer, provider, host or import-map implementation changes."} -->
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting

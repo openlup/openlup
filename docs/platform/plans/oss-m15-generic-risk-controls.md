@@ -1322,7 +1322,7 @@ the scoped graph/refusal explanations; no guidance contract changes. A probe
 against the incoming R2 head before committing correctly refused that head as
 not yet an ancestor; final validation uses the committed merge and exact R2.
 
-Final policy recovery: `documentation-impact.ts` deliberately reads non-merge
+Final policy recovery: the former documentation-impact checker deliberately reads non-merge
 commits only. R3's answers on the evidence merge were therefore not counted.
 A normal signed documentation commit carries the same two explanations; the
 checker is unchanged. Lesson: keep refreshed impact trailers on a non-merge
