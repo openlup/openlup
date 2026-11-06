@@ -46,8 +46,9 @@ it.each([
   if (supplied) pair.input.quoteSnapshot.quote.context.starterPack = marker;
   const result = await pair.port().createOrderDraft(pair.input, { clientId });
   expect(result.orderDraft.replayed).toBe(false);
-  expect(result.orderDraft.quoteSnapshot.quote.context?.acquisitionTerms).toBeUndefined();
-  expect(result.orderDraft.quoteSnapshot.quote.context?.starterPack).toEqual(supplied ? marker : undefined);
+  const context = result.orderDraft.quoteSnapshot.quote.context as typeof pair.input.quoteSnapshot.quote.context;
+  expect(context?.acquisitionTerms).toBeUndefined();
+  expect(context?.starterPack).toEqual(supplied ? marker : undefined);
   expect(result.orderDraft.quoteSnapshot.quote.totalGross.amountMinor).toBe(760);
   expect((await f.owner.query("SELECT amount_off_minor FROM public.commerce_promotion_claims WHERE order_id=$1::uuid", [result.orderDraft.orderId.slice(6)])).rows)
     .toEqual([{ amount_off_minor: "240" }]);
