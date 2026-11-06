@@ -250,13 +250,14 @@ describe("canonical qualified migration selection", () => {
     if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`, "utf8");
     const lock = { file: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: sha256(content) };
-    const migrations = readPlatformMigrations(process.cwd()).migrations;
+    const migrations = readPlatformMigrations(process.cwd()).migrations.filter(entry => entry.file !== "db/platform/migrations/20261106050000_customer_command_key_isolation.sql");
     expect(migrations.find(({ file }) => file === lock.file)?.content).toBe(content);
     expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
-    // The active manifest selects the tail last in both plans; its predecessor is the same manifest without it.
+    // Freeze the complete inventory at this tail; later shared forwards append after it.
     const next = structuredClone(current);
+    for (const plan of [next, next.qualified, next.qualifiedAdmin]) plan.forward = plan.forward.filter(entry => entry.file !== "db/platform/migrations/20261106050000_customer_command_key_isolation.sql");
     expect([next.qualified.forward.at(-1), next.qualifiedAdmin.forward.at(-1)]).toEqual([lock, lock]);
-    const previous = structuredClone(current);
+    const previous = structuredClone(next);
     for (const plan of [previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => file !== lock.file);
     expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(previous, next, [lock.file])).toEqual([]);

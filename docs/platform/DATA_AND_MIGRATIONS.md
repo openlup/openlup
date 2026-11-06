@@ -2386,6 +2386,48 @@ Stock recovery remains unselected until that real-PG proof is available.
 
 ### Native subscription commands (N2)
 
+The later `20261106050000_customer_command_key_isolation.sql` forward isolates
+actor pause and bundle preview/apply keys as `command:` plus the SHA-256 of the
+authenticated principal UUID, a colon and the exact supplied key, matching the
+generic command derivation. All three actor entry points reject supplied keys
+starting with `command:` as `subscription_command_reserved_idempotency_key`
+(22023), including historical raw keys with that prefix.
+
+New actor events carry `commandKeyIdentity` with derivation `principal-sha256.v1`
+and the principal UUID: in the lifecycle event's nested `payload` for pause,
+and directly in the bundle event payload. New quotes carry the same object in
+the nullable `subscription_edit_quotes.command_key_identity` column. NULL or an
+absent marker denotes legacy history; the migration neither backfills provenance
+nor re-keys rows. A derived-key lookup accepts only the exact principal-bound
+marker. An unmarked row at that value is ambiguous raw history and refuses as
+`subscription_command_ambiguous_idempotency_key` (23505), never as a replay.
+Existing generic command rows without this marker also refuse this actor lookup;
+their generic receipt path remains unchanged.
+
+After subscription ownership and its row lock are established, a non-reserved
+raw key may replay only an unmarked self-service event of that same action.
+Bundle replay additionally requires the matching request, accepted quote hash
+and accepted event link. A different customer action at that raw key refuses
+idempotency conflict; another subscription owner refuses before replay. A system
+event at the raw key is bypassed, never adopted as customer history. Legacy
+in-flight quotes remain usable by the matching bundle command, and only its new
+event receives derived provenance. Same-action retries retain one event and one
+pause window or accepted quote; no command is inferred from matching key bytes
+alone.
+
+Hashing new commands cannot remove a pre-upgrade collision. Graduation, cadence
+normalization and dunning exhaustion therefore retain their original system key
+when available, prefixing it with `system:` while a different event type occupies
+it. Existing customer rows remain intact, including preclaimed prefixed keys.
+Dunning suppresses only its own exhaustion replay. The forward preserves function
+headers and ACLs; the matching TypeScript runtime supplies graduation's guard.
+The [real PostgreSQL witness](../../tests/postgres/customerCommandKeyIsolation.test.ts)
+covers legacy and both qualified generations, same-action replay, ownership,
+reserved-prefix and ambiguous-hash refusal, cross-action conflicts and both
+collision attacks. Qualified system operations
+execute through their installed restricted service role; legacy system setup
+uses its migration owner rather than claiming a qualified runtime.
+
 Migration: `20261024170000_subscription_command_lifecycle.sql` is the second
 native subscription prefix, after N1 and the interleaved M08/M09 units. It adds the actor/key receipt table and
 `subscription_command_preview` / `subscription_command_apply`, all invoker-only

@@ -3187,6 +3187,35 @@
             "marketing_newsletter"
           ]
         }
+      },
+      {
+        "row": "customer-command-key-isolation",
+        "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+            "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "d1df1dd5d72f894632ad5cf6daa739ddae72b264340caa129ac887bd36dde0a1",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "d2c82e5591e1fa8fa98a6d829307ce335c9a9c808989a2879f58c5d6704c26a8",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+            "beforeSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -3445,6 +3474,32 @@
           "signature": "public.subscription_renewal_purchase_terms(uuid)",
           "beforeSha256": null,
           "afterSha256": "b99e0330c76130c86c147c1e9536c75d1f93c4d61678b2399e4ed966dfe2b0e1"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
+      "sha256": "c8ab11f943b18dcbb57c50f9aa51dd7f181b59374b3fc1ba0c1e4548d50404a4",
+      "functions": [
+        {
+          "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+          "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
+          "afterSha256": "ae7d65c5bd6e613246e8194b5f510a763687023ae7d9cb18e4eb61fc3979aa57"
+        },
+        {
+          "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "d1df1dd5d72f894632ad5cf6daa739ddae72b264340caa129ac887bd36dde0a1",
+          "afterSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d"
+        },
+        {
+          "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "d2c82e5591e1fa8fa98a6d829307ce335c9a9c808989a2879f58c5d6704c26a8",
+          "afterSha256": "ed57f54c925c1e91403b966cf796c4198a3a93aa5573534a9a8921ea0aa1c4a2"
+        },
+        {
+          "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+          "beforeSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb",
+          "afterSha256": "445578959cd43bf23bb5caa71a1e531533e678b334bced24f7eacac8be6e4df0"
         }
       ]
     }
