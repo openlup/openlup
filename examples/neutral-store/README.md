@@ -204,8 +204,11 @@ An existing unmarked database fails closed before role or schema changes. Only
 a successful database creation in that invocation can set the marker. An
 interruption between creation and marking deliberately leaves a refused database.
 
-The install also supplies grouped synthetic document revisions, exact physical
-SKU facts and identifiers for the editor catalogue. It writes the configured
+The install writes one product document per catalogue product, with a `variants`
+list shared by checkout and the editors. Each variant carries its SKU identity,
+physical trade-item facts, demand per unit and exclusions; sizes share the same
+catalogue product. Both readers verify the selected SKU against the current
+product document. The install also supplies exact physical SKU facts and identifiers. It writes the configured
 `subscription_minimum_base_units`, `subscription_sized_intro_phase` and the
 demonstration subject fixture to `commerce_settings`. The public native stock
 writer records the configured fictional observations. Clients are not seeded.

@@ -17,12 +17,12 @@ import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTc
 
 export const config = structuredClone(configurations.coffee!);
 config.id = "quote-catalog-proof";
-// The installation seed owns revision 3; this reader fixture exercises revisions 1 and 2.
-config.quote.document.revisionNo = 3;
+// The shared installation seed owns revision 1; the reader adds revisions 2 and 3.
+config.quote.document.revisionNo = 1;
 config.offer.products = Array.from({ length: 501 }, (_, index) => ({
   ...config.offer.products[0]!, sku: `QUOTE-${String(index).padStart(4, "0")}`,
   slug: `row-${index}`, title: `Fixture ${index}`, name: { en: `Fixture ${index}`, pl: `Fixture ${index}` },
-  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture", unitGtin: gtin(index) },
+  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture-seed", unitGtin: gtin(index) },
   permittedPurchaseModes: index % 3 === 0 ? ["one_time"] : index % 3 === 1 ? ["subscription"] : ["one_time", "subscription"],
 }));
 config.purchase.stock.quantities = Object.fromEntries(config.offer.products.map(product => [product.sku, 1]));

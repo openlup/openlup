@@ -1,34 +1,14 @@
-import { createPostgresCommerceQuoteCatalogReadPort,
-  type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
-import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, CommerceQuoteCatalogReadError,
+import { createPostgresCommerceQuoteCatalogReadPort } from '@openlup/platform/catalog';
+import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort,
   type CommercePriceAuthorityReadPort, type CreateQuoteRequest, type CommerceQuoteCatalogItem } from '@openlup/platform/pricing';
 import { createPostgresStockAvailability } from '@openlup/platform/inventory';
 import type { CompositionRulesPort } from '@openlup/core/bundle';
 import type { SizedCatalogFact, SizedHostPorts, SubscriptionQueryExecutor, PackageEditConstraintMapper } from '@openlup/platform/subscriptions';
 import type { StoreConfig } from '../shared/config.ts';
 import { isRecord } from '../shared/offer.ts';
-import { documentDigest, editorProducts, demoIdentifier } from './editor-catalogue.ts';
+import { documentDigest, editorProducts, demoIdentifier, productDocument, verifyProductDocument } from './editor-catalogue.ts';
 
 const instant = (value: unknown) => value instanceof Date ? value.toISOString() : String(value);
-type Document = { schema: string; productId: string; variants: { id: string; sku: string; physicalSize: number; demandPerUnit: number; exclusions: string[] }[] };
-function document(value: unknown): Document {
-  if (!isRecord(value) || value.schema !== 'starter:subscription-item@1' || typeof value.productId !== 'string'
-    || !Array.isArray(value.variants) || !value.variants.length || value.variants.some(row => !isRecord(row)
-      || typeof row.id !== 'string' || typeof row.sku !== 'string' || !Number.isSafeInteger(row.physicalSize) || Number(row.physicalSize) <= 0
-      || !Number.isSafeInteger(row.demandPerUnit) || Number(row.demandPerUnit) <= 0
-      || !Array.isArray(row.exclusions) || row.exclusions.some(key => typeof key !== 'string' || !key))) {
-    throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
-  }
-  return value as Document;
-}
-function verifyDocument(value: unknown, envelope: NeutralSkuEnvelopeV1): Promise<void> {
-  const parsed = document(value), variants = parsed.variants.filter(row => row.id === envelope.sku.id && row.sku === envelope.sku.code);
-  if (parsed.productId !== envelope.product.id || variants.length !== 1 || variants[0]!.physicalSize !== envelope.sku.netContent.unscaled
-    || envelope.documentRevision.schemaId !== parsed.schema || documentDigest(value) !== envelope.documentRevision.digest) {
-    throw new CommerceQuoteCatalogReadError('catalog_revision_invalid');
-  }
-  return Promise.resolve();
-}
 /** Exact effective-list selection and amount policy stay in the public pricing authority. */
 function priceReads(db: SubscriptionQueryExecutor): CommercePriceAuthorityReadPort {
   const entries = async (variantId: string, priceListId: string, mode: 'one_time' | 'subscription') =>
@@ -52,7 +32,7 @@ function priceReads(db: SubscriptionQueryExecutor): CommercePriceAuthorityReadPo
   };
 }
 export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig) {
-  const quoteCatalogReadPort = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument });
+  const quoteCatalogReadPort = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (value,envelope) => verifyProductDocument(value,envelope,config.quote.document.schemaId) });
   const taxProfile = { included: true as const,country: config.market.country,category: config.purchase.tax.category,
     vatRateBps: config.purchase.tax.vatRateBps,legalBasis: config.purchase.tax.legalBasis };
   const quotePort = createDbBackedCommerceQuotePort<CreateQuoteRequest,CommerceQuoteCatalogItem,Record<string, never>,{ mode: 'one_time' | 'subscription'; promoCodes: string[]; cadenceDays: number | null }>({
@@ -115,11 +95,11 @@ export function sizedHostPorts(config: StoreConfig, now: () => string): Omit<Siz
       const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now }).readPort.read({
         skus: rows.map(row => String(row.sku)),horizonDays: 14,excludeOrderId: null });
       return rows.map((row): SizedCatalogFact => {
-        const parsed = document(row.document_payload), variant = parsed.variants.find(item => item.id === row.id && item.sku === row.sku);
-        if (!variant || parsed.productId !== row.product_id || variant.physicalSize !== row.net_weight_g || documentDigest(parsed) !== row.digest) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
+        const parsed = productDocument(row.document_payload,config.quote.document.schemaId), variant = parsed.variants.find(item => item.skuId === row.id && item.sku === row.sku);
+        if (!variant || parsed.productId !== row.product_id || variant.physical.netWeightG !== row.net_weight_g || documentDigest(parsed) !== row.digest) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
         const availability = stock.get(String(row.sku));
         return { variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
-          sellable: row.status === 'active' && row.product_status === 'active' && row.sellable_in_subscription === true,physicalSize: variant.physicalSize,demandPerUnit: variant.demandPerUnit,
+          sellable: row.status === 'active' && row.product_status === 'active' && row.sellable_in_subscription === true,physicalSize: variant.physical.netWeightG,demandPerUnit: variant.demandPerUnit,
           documentRevisionId: String(row.current_document_revision_id),documentDigest: String(row.digest),verified: true,exclusions: variant.exclusions,
           sellableNow: availability?.stale ? 0 : availability?.availableForNewPurchases ?? null };
       });

@@ -13,7 +13,6 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
   const prices = new Map<string, Record<string, unknown>>();
-  const documents = new Map<string, string>();
   const stockCalls: unknown[] = [];
   const digests = new Map<string, unknown>();
   const policies = new Map<string, { id: unknown; digest: unknown }>();
@@ -23,13 +22,12 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
     stock: { async recordProviderStockCurrent(input) { stockCalls.push(input); return { replayed: false,readBack: true }; } },
     connection: { query: async (text, values) => {
       calls.push({ text, values });
-      if (text.startsWith('INSERT INTO public.catalog_product_document_revisions') && values) documents.set(String(values[0]),String(values[4]));
       if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
       if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
       if (text.startsWith('SELECT p.primary_sku_id')) return { rows: [{ primary_sku_id: null,current_document_revision_id: null,net_weight_g: 0 }] };
       if (text.startsWith('INSERT INTO public.catalog_product_document_revisions') && values) digests.set(String(values[0]), values[7]);
-      if (text.startsWith('SELECT digest')) return { rows: [{ digest: digests.get(String(values?.[0])) ?? documents.get(String(values?.[0])) }] };
+      if (text.startsWith('SELECT digest')) return { rows: [{ digest: digests.get(String(values?.[0])) }] };
       if (text.startsWith('INSERT INTO public.commerce_promotion_definitions') && values) promotions.set(String(values[0]), { definition: values[1], active: values[2] });
       if (text.startsWith('SELECT definition,active')) return { rows: [promotions.get(String(values?.[0]))!] };
       if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
@@ -78,7 +76,7 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + config.offer.products.length * 2 + 3);
+    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
@@ -183,7 +181,7 @@ test('install uses the native stock writer for every exact editor SKU and seeds 
 
 test('a changed installed document refuses instead of reusing an incompatible revision', async () => {
   const fixture = installation(),query = fixture.binding.connection.query;
-  fixture.binding.connection.query = async (text,values) => text.startsWith('SELECT digest') ? { rows: [{ digest: '0'.repeat(64) }] } : query(text,values);
+  fixture.binding.connection.query = async (text,values) => text.startsWith('SELECT digest FROM public.catalog_product_document_revisions') ? { rows: [{ digest: '0'.repeat(64) }] } : query(text,values);
   await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!,fixture.binding),{ message: 'starter_document_seed_conflict' });
   assert.equal(fixture.calls.at(-1)!.text,'ROLLBACK');
 });

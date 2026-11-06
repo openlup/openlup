@@ -61,24 +61,6 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         sellable_standalone=EXCLUDED.sellable_standalone, sellable_in_subscription=EXCLUDED.sellable_in_subscription,net_weight_g=EXCLUDED.net_weight_g`,
     [row.id, row.product_id, row.sku, row.title, row.status, row.min_order_qty,
       row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
-    for (const row of seed.documents) {
-      await connection.query(`INSERT INTO public.catalog_product_document_revisions
-        (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
-        VALUES($1,$2,1,'starter:subscription-item@1',$3,$4::jsonb,'starter:demo','{}'::jsonb,$5)
-        ON CONFLICT(id) DO NOTHING`, [row.id,row.productId,`starter:demo:${row.id}`,row.document,row.digest]);
-      const existing = (await connection.query('SELECT digest FROM public.catalog_product_document_revisions WHERE id=$1', [row.id])).rows[0];
-      if (existing?.digest !== row.digest) throw new Error('starter_document_seed_conflict');
-      await connection.query('UPDATE public.catalog_products SET current_document_revision_id=$1,primary_sku_id=$2 WHERE id=$3',
-        [row.id,seed.skus.find(sku => sku.product_id === row.productId)!.id,row.productId]);
-    }
-    for (const row of seed.skus) {
-      // A fictional numeric identifier with a valid check digit; never a registered trade claim.
-      const digits = BigInt('0x' + row.id.replaceAll('-', '')).toString().slice(0,12).padStart(12,'0');
-      const check = (10 - [...digits].reduce((sum,digit,index) => sum + Number(digit) * (index % 2 ? 3 : 1),0) % 10) % 10;
-      await connection.query(`INSERT INTO public.catalog_sku_identifiers
-        (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)
-        VALUES($1,'starter:demo','gtin',$2,'unit',1,true) ON CONFLICT(issuer,normalized_value) DO NOTHING`, [row.id,digits+check]);
-    }
     for (const row of seed.settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
       VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`, [row.key,row.value]);
     for (const product of editorProducts(config)) await installation.stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
