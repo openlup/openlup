@@ -142,6 +142,13 @@ The required installed-consumer gate refuses drift. In a source checkout, run
 to regenerate exact copies after an authorized canonical change.
 This packaging change adds no migration and changes no SQL bytes.
 
+Customer pause and bundle commands share the generic principal-scoped `command:`
+hash namespace after `20261106050000_customer_command_key_isolation.sql`.
+Apply the complete selected catalogue with the matching runtime: same-action
+legacy replay preserves raw history, and system producers bypass foreign legacy
+keys without replacing those rows. See the
+[native command owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2).
+
 ## Installed agent context
 
 The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical

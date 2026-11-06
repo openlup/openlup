@@ -1234,6 +1234,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4075,6 +4079,10 @@
     },
     {
       "path": "packages/platform/sql/20261101232000_customer_account_consents.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106050000_customer_command_key_isolation.sql",
       "class": "public-output"
     },
     {
@@ -28251,6 +28259,10 @@
     },
     {
       "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerCommandKeyIsolation.test.ts",
       "class": "public-output"
     },
     {

@@ -1,0 +1,4 @@
+- Isolate authenticated subscription pause and bundle command keys from system event keys using the existing principal-scoped command hash. Legacy same-action self-service events still replay without rewriting history.
+- Graduation, cadence normalization and dunning exhaustion preserve a legacy foreign event at their predictable key and select a prefixed system identity, so old customer keys cannot block or suppress system evidence.
+
+Migration: apply the complete selected catalogue through `20261106050000_customer_command_key_isolation.sql` before serving customer commands. The forward replaces function bodies only and retains existing privileges and history. Keep the matching package runtime for graduation collision handling; rolling back to earlier writers restores the old collision behavior.
