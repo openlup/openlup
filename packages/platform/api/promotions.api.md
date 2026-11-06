@@ -5301,6 +5301,18 @@ import { type PromotionClaimSweepPort } from "./promotionClaimSweepPort.js";
 import type { PgQueryExecutor } from "../data/index.js";
 export declare function createPostgresCommercePromoDataPort(executor: PgQueryExecutor): CommercePromoDataPort;
 export declare function createPostgresPromotionClaimSweepPort(executor: PgQueryExecutor): PromotionClaimSweepPort;
+/** Trusted quote evidence only; never customer identity or access authority. */
+export interface QuoteCustomerEligibilityResolution {
+    clientId: string | null;
+    source: "anonymous" | "resolved_client";
+    matchKind: "exact" | "plus_normalized" | null;
+}
+/** Exact first, then at most 25 oldest candidates; never changes stored contact. */
+export declare function createPostgresQuoteCustomerEligibility(executor: PgQueryExecutor): {
+    resolve(email: string | null): Promise<QuoteCustomerEligibilityResolution>;
+    /** Final family check uses the same native paid-subscription facts as quotes. */
+    hasPaidSubscription(clientId: string | null): Promise<boolean>;
+};
 ```
 ## dist/promotions/promotionClaimSweepPort.d.ts
 
