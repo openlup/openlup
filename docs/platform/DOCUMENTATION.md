@@ -452,6 +452,20 @@ The policy self-check validates owner paths and anchors, ordinary local Markdown
 links and generated navigation/source-map freshness. It checks structure; the
 reviewer checks whether the explanation remains true against source and contracts.
 
+The migration-history and package Migration-block checks use an explicit full
+base SHA or a local merge base with `origin/main`. Hosted checks use validated
+event attribution and checkout identity, taking precedence over `--docs-base`.
+Missing comparison history is a refusal. A missing hosted base is fetched from
+the public repository by validated SHA, without credentials or ref updates.
+
+For `pull_request`, the checkout must have exactly two parents and its second
+parent must be the event head. The first parent must equal the event base or
+descend from it, allowing main to advance after the PR's fork point. The
+migration-history and package Migration-block checks compare that first parent
+with the checkout, covering only the PR's change. Missing objects or shallow
+history that cannot prove this ancestry refuse with a complete-history
+diagnostic; restore the required history before retrying.
+
 From the repository root, check or regenerate navigation:
 
 ```sh
