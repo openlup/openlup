@@ -1,5 +1,9 @@
 # Reference market composition
 
+Delivery-control notes below are historical, including maintainer read packets,
+repair budgets and self-retros. Current delivery follows
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
+
 ## Outcome and authority
 
 Prepare opt-in reference rules, address schemas, provider recipe, synthetic

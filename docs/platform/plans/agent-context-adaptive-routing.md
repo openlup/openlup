@@ -2,6 +2,11 @@
 
 Status: repository routing and installed-context P0/P1/P2 delivered through PR #450. Development preview; package release and adopter activation remain separate.
 
+Delivery-control notes below are historical, including blanket maintainer reads
+before DCO sign-off and repair budgets. Current delivery and approval authority
+follow [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change); the
+recorded task-specific human decisions remain historical evidence.
+
 The initial route-only cut line and authority below record the first phase. The P0/P1 and P2 follow-ups later in this task record supersede that scope and delivery boundary for the current candidate.
 
 ## Outcome and authority
@@ -71,7 +76,7 @@ The likely bottlenecks are ranking related sections without flooding top results
 
 ## Execution evidence and self-retro
 
-The paired decision card is implemented in root `AGENTS.md` and `docs/platform/AGENT_GUIDE.md`. A temporary query-time locator was built without dependencies or persistent state. Its five focused tests passed (disjoint sections/current lines, role filtering, tracked-only reading, symlink/missing refusal and empty-result semantics); local ast-grep and ESLint passed. The two spike files were then removed before integration because the frozen comparison failed its keep threshold. No npm command, package or release budget changed. The public path inventory gained this plan document's row, which is necessary for the existing catalogue gate; it is not a command or publication grant. The guide's maintainer read remains required before any DCO sign-off of that control delta, and no sign-off is in this local task.
+The paired decision card is implemented in root `AGENTS.md` and `docs/platform/AGENT_GUIDE.md`. A temporary query-time locator was built without dependencies or persistent state. Its five focused tests passed (disjoint sections/current lines, role filtering, tracked-only reading, symlink/missing refusal and empty-result semantics); local ast-grep and ESLint passed. The two spike files were then removed before integration because the frozen comparison failed its keep threshold. No npm command, package or release budget changed. The public path inventory gained this plan document's row, which is necessary for the existing catalogue gate; it is not a command or publication grant. At that task snapshot, the guide required a maintainer read before DCO sign-off of that control delta; no sign-off occurred in the local task. That blanket requirement is historical; current delivery follows [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 Fresh `gpt-6.1-sol` agents used the same H1–H4 and S1–S6 prompts without seeing the gold table or each other's report. Each had at most three search commands and five opened source files per case. The direct arm used `rg` plus `SOURCE_MAP.md`; the locator arm used the spike plus the same owner tracing. Times are rough interaction windows, not controlled latency evidence. Counted required owner documents **opened**, not search hits:
 

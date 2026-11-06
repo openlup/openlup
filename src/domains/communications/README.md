@@ -245,7 +245,6 @@ content or consent policy satisfies a jurisdiction's law.
 Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.
 
-<!-- openlup-doc-impact {"unit":"domain-communications","digest":"sha256-11d5b86572e22aad0b806323acfc0741be220b6f76d4eb066fe416154754b83d","reason":"The obsolete deployment-specific database-template seed-content test is withdrawn. The selected public email registry projection remains empty; portable template, renderer, consent and delivery tests remain. No registry, send policy or email runtime changes."} -->
 
 
 ## Native lifecycle stores

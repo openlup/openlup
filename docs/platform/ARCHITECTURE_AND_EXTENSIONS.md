@@ -440,7 +440,6 @@ See [the identity lifecycle](IDENTITY.md#operator-invitation-lifecycle) for expi
 cancellation, retained identity and managed concurrency limits.
 
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-72979d3e343910cc061caf7f7335b82a8a1d4f0afbcec47f45b86e80632e9095","reason":"Deletion delta. The personalization route key, the homepage personalization flag and its hidden paths, and a personalizer comment are removed from browser code; no browser boundary described here changes."} -->
 
 Browser-facing modules own portable types, validation, clients, and pure logic.
 Server modules own HTTP composition, use cases, authorization decisions, and
@@ -484,7 +483,6 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
 
-<!-- openlup-doc-impact {"unit":"server","digest":"sha256-9cfdf7128ab62cd3a5e27dbf32460c1b005f8617537f7483950832afc55587a7","reason":"The admin-domain kit drops an uncalled managed-only preflight copy and its unused imports; the dispatcher keeps using the runtime auth binding's preflight. The customer kit, the runtime auth binding and the customer session binding drop unused imports and re-exports. A characterization test pins the reference customer binding's existing process-wide managed read settings independently of the passed bundle-selection environment. No runtime boundary described here changes."} -->
 
 The runnable server substrate lives in the development-preview `@openlup/platform`
 package: the Node HTTP runtime and its fixed request order, BFF dispatch,
@@ -678,8 +676,7 @@ not permit Node dependencies or I/O in kernel contracts or logic.
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
 artifact role, with no current name reservation or bootstrap obligation. Record
-placement and the topology-trigger check in the module/API packet before
-implementation.
+placement and the topology-trigger check in the pull request's task record.
 
 A separate package needs evidence: incompatible peer ranges in supported cold
 installs; a genuinely different browser/edge/Node runtime; measured
@@ -688,7 +685,7 @@ or an actual independent consumer poorly served by subpaths. First
 assess whether an isolated subpath suffices; for adapters also consider an
 existing port, optional peer or application adapter. A provider name alone is
 not a trigger. Record the evidence and compatibility and maintenance ownership
-in the same packet. A trigger requires an explicit maintainer decision under
+in the pull request's task record. A trigger requires an explicit maintainer decision under
 the applicable authority; it grants no authority to create, bootstrap or
 publish a package. A
 new npm name also needs the maintainer's manual bootstrap before its first
@@ -696,8 +693,8 @@ release, not before its contribution PR; follow
 [package release setup](../../.github/VERSIONING_AND_EOL.md#package-releases).
 
 Size growth is not a topology trigger. When measured growth exceeds a cap,
-raise that cap in a reviewed change with the applicable maintainer read of the
-proposed budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
+raise that cap in a reviewed change that records the measured size and the new
+budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 
 The opt-in Node `payments/stripe` example follows the same placement decision:
 it shares the platform package's release and maintenance owner and composes M07

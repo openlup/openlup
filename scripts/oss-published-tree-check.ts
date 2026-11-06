@@ -12,7 +12,6 @@ import { runPlatformMigrationManifestCheck } from "./platform-migration-manifest
 import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicTypecheckProjects, summarizePublicDiagnostics } from "./oss-public-typecheck.ts";
 import { assertDocumentationNavigation, readDocumentationState } from "./documentation-routing.ts";
 import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
-import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
 import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, isQualifiedPlatformMigrationPath, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
@@ -379,16 +378,13 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
     assertMigrationBlocks(root, base.base, head);
     log(`- package API changes carry Migration blocks: ${base.base}..${head}`);
   }
-  const result = checkDocumentationImpact(root, state, base.base);
-  for (const line of renderDocumentationImpact(result)) log(line);
-  if (result.failures.length > 0) return 1;
   const output = options.get("--docs-export");
   if (output) {
     const bundle = createDocumentationBundle(root, state, options.has("--docs-local"));
     writeDocumentationBundle(root, output, bundle);
     log(`- documentation bundle: ${output}; ${bundle.manifest.bundleDigest}; ${bundle.manifest.provenance.kind}; publishable=${bundle.manifest.provenance.publishable}`);
   }
-  log("the tree satisfies its public policy catalogue and documentation ownership/impact checks.");
+  log("the tree satisfies its public policy catalogue and documentation navigation checks.");
   return 0;
 }
 

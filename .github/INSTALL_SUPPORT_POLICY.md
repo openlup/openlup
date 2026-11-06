@@ -62,13 +62,13 @@ the affected claim. A generated package-set BOM binds artifact identities; it
 does not establish installation, publication, provenance or support evidence.
 See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md).
 
-The starter host currently boots pending bindings, accepts only local
-Host authorities and does not connect a database. Only local offer validation
-and application-status reporting are bound; configuration health does not
-establish a live store. The [image quickstart](../deploy/neutral-store/README.md) is limited to local
-image build and rollback; its local A → B → A run passed. Public hosting remains
-blocked on starter-owned
-binding and public-origin work; the binder stays application-owned.
+The starter host binds native store actions against a local demonstration
+PostgreSQL database. Without `publicOrigin`, it accepts only
+`127.0.0.1:<listening-port>` and `localhost:<listening-port>` as Host authorities;
+with `publicOrigin`, it accepts exactly that origin's canonical Host authority.
+Configuration health does not establish a live store. The [image quickstart](../deploy/neutral-store/README.md) is limited to local
+image build and rollback; its local A → B → A run passed. Public hosting is not
+established; the binder stays application-owned.
 
 The native account readers need explicit host sources for saved addresses,
 billing profiles, payment/delivery preferences, account events and private-profile
