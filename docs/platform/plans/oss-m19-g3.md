@@ -765,7 +765,7 @@ other worktree changes, no reserved OMS marker/attempt-storage change.
 
 ## Accepted-read race proof and final local checks
 
-CD-M19-74 same-transaction witness PASS on actual PostgreSQL through the public
+Accepted-read same-transaction witness PASS on actual PostgreSQL through the public
 port and restricted g3_runtime/session service_role. The preparation connection
 begins a transaction, reads the old immutable shipment document and retains its
 native-dispatch advisory lock. A second runtime connection starts the address
@@ -1291,9 +1291,9 @@ export still present. The only generated change is the eight-line union addition
 in `packages/platform/api/account-support-postgres.api.md`; the complete API check passes for every
 entry. No source, SQL, gate, checker or other snapshot changed.
 
-The accepted-read authority is CD-M19-74/-75, read packet `reads/g3.md:140-148`,
-with register rows CD-M19-64 and CD-M19-61 and the lead's additive operator-outcome
-ruling. The eight generated lines match that accepted wording exactly:
+The accepted-read authority is the maintainer's accepted reads of the destination
+contract and forward evidence, kept in the maintainer's private evidence record,
+together with the lead's additive operator-outcome ruling. The eight generated lines match that accepted wording exactly:
 `applied_from_next_parcel`, `appliesFrom: "next_parcel"`, `futureDestinationId`,
 `replayed`, and the inherited optional `ownerReceipt`. No additional outcome
 or field was introduced.
@@ -1485,7 +1485,7 @@ The next discriminating step is that sweep plus the restricted-runtime agreement
 regression for the moved address writer and every unsupported native subcase.
 Address must succeed and unsupported inputs must return their named refusal,
 with zero stale claims. Ordinary lifecycle commands retain a separate named
-pre-existing limit, not a passing availability claim (CD-M19-219). The existing review history and
+pre-existing limit, not a passing availability claim, under the accepted writer-agreement scope. The existing review history and
 cycle budget remain intact. This entry adds no new behaviour or delivery grant.
 
 Lesson: a ported writer without its capability or doc claims → sweep every claim
@@ -1523,7 +1523,7 @@ export/erasure; automatic mail/host activation; the legacy browser's next-parcel
 decoder; the separate OMS address-correction port; and unselected host lanes.
 These source-scope checks do not certify qualified-runtime lifecycle commands.
 Existing lifecycle availability flags and runtime privileges remain unchanged.
-CD-M19-219 narrows agreement to the writers moved here;
+The accepted scope decision narrows agreement to the writers moved here;
 F-QUALIFIED-LIFECYCLE-LOCK is the registered follow-up. The
 qualified runtime lacks the term-line row-lock privilege: ordinary pause, resume
 and slide currently refuse42501 with no new receipt. The registered follow-up
@@ -1537,7 +1537,7 @@ CONTRIBUTING edit is included; the lead will collect the lesson after delivery.
 
 ### Cycle-2 scope correction and discriminating proof
 
-CD-M19-219 confines writer agreement to new-address change and every unsupported
+The accepted scope decision confines writer agreement to new-address change and every unsupported
 native subcase. The restricted runtime succeeds for the address writer; email,
 phone, account link, short-band slide, both unpaid-resume variants and prepared
 attempt pause retain their named refusal. Ordinary pause/resume/slide are not

@@ -2006,6 +2006,13 @@ acknowledged or settled payment graph. Stock locks and whole-basket rollback
 belong to SQL. A resumed wait requires paid cycle/settlement, consumed stock and
 a local fulfillment obligation; it records no parcel arrival.
 
+Stock-wait admit, refusal recovery and deficits translate SQLSTATE `55P03` into
+recognized inventory-admission busy details. The public `runRenewalBatchRows`
+omits a row throwing recognized busy from its result array, including on the
+normal-due path, and continues without an in-call retry. Busy alone does not
+fail the batch or add an error outcome. Other thrown errors still produce
+`status: "error"` with `reason: "renewal_processing_failed"`.
+
 `createPostgresStockAvailability` exposes read-only new-purchase ATP through the
 native seam. Its fixed 14-day soft priority and native hard holds are both
 protected; callers cannot request a renewal exemption, horizon change or excluded
@@ -2163,7 +2170,9 @@ It is distinguishable from an issued quote reference, and non-zero renewal
 shipping amounts still refuse. Existing frozen operations replay their retained
 wire. A host supplies the batch limit; its existing default is preserved.
 Both normal-due and stock-recovery rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
-`error` result with `renewal_processing_failed` and later rows still execute.
+`error` result with `renewal_processing_failed` and later rows still execute. A row
+throwing recognized inventory-admission busy is omitted instead, as described
+under the native stock-wait seam.
 Static admission precedes G23;
 existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
 a captured case performs no G23 call; captured protected cases retain authority

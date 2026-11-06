@@ -125,9 +125,10 @@ The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
 newsletter read/withdraw, and the reduced operator order control-plane view.
 Invoice artifacts, the full account projection and shipment reads remain named
-refusals. Guest purchase, account and operator order reads have real-database
-host and browser proofs. The database-backed suite passes the unchanged required
-purchase assertion in both configurations; this is local preview evidence.
+refusals. Guest purchase, account and operator order reads have committed source
+and real-HTTP proofs. Separate local real-browser evidence passes the unchanged
+required journey and recovery checks in both configurations; those browser runs
+are not a committed root-job witness.
 
 The demonstration captured mailbox is `.context/captured-messages/identity.jsonl` inside
 the application container, readable only with that runtime's filesystem
@@ -358,7 +359,9 @@ loudly. Replace this fictional registry and its onboarding for a customer enviro
 
 Operator customer search/detail remain unbound because the native reader
 requires a separate communications operator roster entry. The host does not
-provision that authority. Broader payment/operator recovery and catalogue administration remain unbound; see [limits](docs/limits.md). Acquisition proves no purchase journey.
+provision that authority. Operator payment recovery is bound through the native
+human-authority command; other unbound actions retain their named refusals;
+see [limits](docs/limits.md). Acquisition proves no purchase journey.
 
 
 ## Guest purchase and later sign-in
@@ -443,3 +446,72 @@ PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
+
+## Recovery admission and private capture
+
+The capture is a developer mailbox with no real recipients. Rendered messages
+stay under the git-ignored `.context/captured-messages` directory. Operator and
+scheduled notices share [NoticeArtifactV1](host/notice-artifact.ts), with one
+version, kind discriminator and validating reader/writer through private capture. The filename is the SHA-256 of the message key; permissions
+are 0700 for the directory and 0600 for each file. Publication uses an exclusive
+temporary file, file sync, exclusive link and directory sync, followed by
+committed readback. Identical writes reuse the artifact; differing or corrupt
+material refuses. A later claim must refuse a missing artifact and cannot
+regenerate its bearer. Preserve these private files separately when moving a
+store; database transfer alone does not preserve them.
+
+### Scheduled sandbox renewal checkpoint
+
+The application owns [renewal configuration](owned/renewal.config.ts), including
+its explicit disabled default, population, cadence, batch and lease values. The
+installer and public configuration use the same object. After the selected
+installation is complete, an existing local scheduler may invoke
+`./lifecycle renewal --configuration <id> --database-url <restricted-runtime-url>`.
+This one-shot lifecycle entry selects the native renewal service once; it creates
+no timer or second HTTP server. Disabled or structurally unready invocations do
+not claim. Population session exclusion and the durable job ledger serialize
+selected executors, including a callback longer than its lease interval.
+Returned batches record actual checked, updated, failure and deferred counts.
+An invocation that throws without a batch result marks counts unavailable; it
+does not guess partial progress. Lease configuration must stay within the native
+ledger's 60–3600 second range; unsupported values refuse before any claim.
+
+[Sandbox composition](host/renewal-sandbox.ts) uses frozen renewal money and the
+current server-owned method. A retry begins an attempt on the original intent,
+persists a simulator observation and reads that exact attempt before handing
+source evidence to the native recovery owner. An ambiguous prepared attempt is
+read again after restart and never dispatched again. This is local simulation;
+it does not qualify a real payment method or provider.
+
+The account response adds a narrow `renewal` projection from owned action,
+payment, alignment and frozen/retained charge facts. Charge dates are distinct
+from promised arrival; unavailable arrival promises remain explicitly unavailable.
+Effective address outcomes come from the owning native event. Other rich account
+sections keep their existing refusal.
+
+The [notice binder](host/lifecycle-notices.ts) renders configured English/Polish
+copy through the separately owned private capture module and M04 receipt owner.
+It preserves one artifact and frozen token expiry per native notice command;
+access-grant references contain the native token UUID. It remains unmounted in this checkpoint; native notice dispatch and the joined
+recovery proof are available, but this row selects no parallel sender. No parallel
+outbox handler is registered. Consent/signed opt-out wait for native purpose
+support; operator shipment and invoice joins wait for their existing owners.
+Reminder windows, historical closure, winback, escalation and configurable
+subscription policies retain their named interim limits in subscription care.
+This checkpoint makes no full notice-parity or release claim.
+
+Authenticated recurring recovery captures its entry token synchronously before
+application requests and the login trip, then uses the server-owned
+case/obligation/operation/order chain. The route accepts no method or payment
+facts from the browser. Authorization schedules the same unpaid obligation and
+returns pending state; only native retry execution and readback establish
+recovery. Initial checkout reads, simulator completion and acquisition
+activation refuse a recurring relation for both guests and matching owners.
+
+The human operator recovery action uses the native command and its eligible
+customer/case rules. The selected native installation includes the command
+receipt-lock completion. Committed real-HTTP proofs pass for both configurations,
+including issuance, replay, missing/changed capture, restart and human revocation.
+Active human authority is revalidated on replay. The
+scheduled notice host reads the original operator artifact and preserves its
+rendered content, token and expiry across process restarts.

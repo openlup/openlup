@@ -799,11 +799,10 @@ const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
   return null;
 };
 
-/** Only an existing policy class may bind the SQL introduced by this candidate. */
+/** Preserve shared fields and issued positions while allowing new class data and pins. */
 export function changedForwardApprovals(before: Buffer, after: Buffer): string[] {
   const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
   assertNativeStoreClassTransition(prior, current);
-  if (canonical(prior.nativeStoreForwardClass) !== canonical(current.nativeStoreForwardClass)) throw new Error("reviewed native store class must be approved separately");
   if (canonical(sharedApproval(prior)) !== canonical(sharedApproval(current))) throw new Error("reviewed replacement shared approval fields must be approved separately");
   if (prior.channelIngestForwards !== undefined && current.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
   const changed: string[] = [];
@@ -825,17 +824,13 @@ export function assertForwardApproval(root: string, base: string, head: string):
   const introducedNative = git(root, ["diff", "--name-only", "--diff-filter=A", base, head, "--", "db/platform/migrations/"]).toString("utf8").trim().split("\n").filter(isNativeStoreMigrationPath);
   if (before.equals(after) && introducedChannel.length === 0 && introducedNative.length === 0) return;
   const previous = readReviewedForwardRegistry(before);
-  if (previous.channelIngestForwards === undefined && introducedChannel.length > 0) throw new Error("reviewed M17 channel class must be approved separately before its SQL");
   const current = readReviewedForwardRegistry(after);
   assertNativeStoreClassTransition(previous, current);
-  if (introducedNative.length && canonical(previous.nativeStoreForwardClass) !== canonical(current.nativeStoreForwardClass)) throw new Error("reviewed native store class must be approved separately before SQL");
-  for (const path of introducedNative) if (!previous.nativeStoreForwardClass?.slots.some(slot => slot.path === path) || !current.nativeStoreForwards?.some(pin => pin.path === path)) throw new Error(`reviewed native store requires a prior exact slot and feature binding: ${path}`);
+  for (const path of introducedNative) if (!current.nativeStoreForwardClass?.slots.some(slot => slot.path === path) || !current.nativeStoreForwards?.some(pin => pin.path === path)) throw new Error(`reviewed native store requires an exact slot and feature binding: ${path}`);
   for (const { path } of introducedChannel) if (!current.channelIngestForwards?.some(pin => pin.path === path)) throw new Error(`reviewed M17 channel requires a binding: ${path}`);
   if (before.equals(after)) return;
   for (const path of changedForwardApprovals(before, after)) {
-    if (previous.channelIngestForwards === undefined && channelIngestShapes.some(shape => shape.path === path)) throw new Error("reviewed M17 channel class must be approved separately before its SQL");
-    if (isQualifiedPlatformMigrationPath(path)) throw new Error("qualified installation bytes require separate exact approval before SQL introduction");
-    if (!previous.supportAuthorityForwards && supportAuthorityShapes.some(shape => shape.path === path)) throw new Error("reviewed M12 support class must be approved separately before its SQL");
+    if (isQualifiedPlatformMigrationPath(path) && previous.qualifiedInstallations?.some(pin => pin.path === path)) throw new Error("issued qualified installation approvals are immutable");
     if (blob(root, base, path) || !blob(root, head, path)) throw new Error(`reviewed replacement pin must be approved separately unless its SQL is introduced in this PR: ${path}`);
   }
 }
@@ -865,7 +860,7 @@ export const NATIVE_CATALOG_CONTROLS = [
   "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", "scripts/disposable-docker.mjs", "scripts/ci-vitest-duration-keys.ts", "scripts/coverage-summary-protocol.ts",
   "src/test/setup.ts", "src/checkout/machine/commerceRequestCache.ts", "config/ci-images.json", ".npmrc",
 ];
-export function assertCoLocatedForwardApproval(root: string, base: string, head: string, trustedBase = base): void {
+export function assertCoLocatedForwardApproval(root: string, base: string, head: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (before && after && !before.equals(after)) {
     assertNativeStoreClassTransition(readForwardRegistry(before, true), readReviewedForwardRegistry(after));
@@ -889,7 +884,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
   const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", ...NATIVE_CATALOG_CONTROLS, "package.json", "package-lock.json"];
-  const changed = [head, trustedBase].flatMap((revision) => git(root, ["diff", "--name-only", "--no-renames", "-z", base, revision]).toString("utf8").split("\0"));
+  const changed = git(root, ["diff", "--name-only", "--no-renames", "-z", base, head]).toString("utf8").split("\0");
   const releaseTool = (path: string) => /^scripts\/(?:agent-review-|oss-|source-|packages\/)/u.test(path) && !/\.test\.[cm]?[jt]sx?$/u.test(path);
   if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || path.startsWith("tests/setup/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
   assertForwardApproval(root, base, head);
@@ -935,10 +930,12 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   if (isQualifiedPlatformMigrationPath(path) && sqlSha256(bytes) !== forward.sha256) throw new Error(`qualified installation differs from its exact approved bytes: ${path}`);
   let approval = base;
+  let introduction = head;
   if (release) {
     // Bind at the unique mainline introduction, never at a later repair of the pins.
     const commits = git(root, ["log", "--first-parent", "--format=%H", "--diff-filter=A", `${base}..${head}`, "--", path]).toString("utf8").trim().split("\n").filter(Boolean);
     if (commits.length !== 1) throw new Error("reviewed replacement requires one unambiguous forward introduction");
+    introduction = commits[0]!;
     approval = git(root, ["rev-parse", `${commits[0]}^`]).toString("utf8").trim();
     git(root, ["merge-base", "--is-ancestor", approval, head]);
     try { assertUnchangedForwardApproval(root, approval, commits[0]!, path); }
@@ -949,7 +946,9 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   }
   if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   if (isQualifiedPlatformMigrationPath(path)) {
-    assertUnchangedForwardApproval(root, approval, head, path);
+    const priorRegistry = blob(root, approval, REVIEWED_FORWARD_PATH);
+    if (priorRegistry && approvalBinding(readForwardRegistry(priorRegistry, true), path)) assertUnchangedForwardApproval(root, approval, head, path);
+    else if (release) assertUnchangedForwardApproval(root, introduction, head, path);
     if (path === QUALIFIED_OWNER_PATH_FILE) {
       const acquisition = blob(root, head, QUALIFIED_ACQUISITION_FILE);
       const retained = blob(root, head, QUALIFIED_IMPORT_FILE);

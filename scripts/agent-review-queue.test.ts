@@ -127,7 +127,7 @@ describe('CI completion queue handoff', () => {
   });
   it('allows aggregate failure when only a non-required diagnostic failed and all seven required checks passed', async () => {
     const f = handoffFixture(); f.run.conclusion = 'failure'; f.event.workflow_run.conclusion = 'failure';
-    f.result.jobs.push({ ...f.result.jobs[0]!, id: 88, name: 'pgtap', conclusion: 'failure' }); f.result.total_count++;
+    f.result.jobs.push({ ...f.result.jobs[0]!, id: 88, name: 'optional-diagnostic', conclusion: 'failure' }); f.result.total_count++;
     await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' }); expect(f.enqueue).toHaveBeenCalledTimes(1);
   });
   it('uses six untouched first-attempt successes and the successful native-only partial rerun', async () => {

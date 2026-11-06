@@ -10,27 +10,27 @@ owner section. At most seven exact ordered slots follow `20261030122000`.
 Unknown class paths, signatures and preimages refuse. Feature SQL binds whole-file
 and function after-hashes separately; it cannot change this control in that PR.
 
-Authority: CD-M19-39/40 and CD-M19-41 as amended by 41a. Function DO blocks contain
+Authority: the maintainer's accepted closed-forward design and amended privilege-block rules. Function DO blocks contain
 one guarded constant privilege statement; closed roles are anon, authenticated
-and service_role, with anon revoke-only. CD-M19-47 adds PUBLIC/conditional table
+and service_role, with anon revoke-only. The accepted table-privilege narrowing adds PUBLIC/conditional table
 revokes and ENABLE ROW LEVEL SECURITY only for tables created earlier by accepted,
 qualified unconditional CREATE TABLE statements in that same file. Table GRANT
 always refuses. Each feature PR must prove its required restricted-runtime access
 on real PostgreSQL after narrowing; this control supplies no behavioral proof.
 
-CD-M19-63 replaces CD-M19-41a's key with uniqueness per role, verb AND
+The accepted three-list design replaces the earlier privilege-block key with uniqueness per role, verb AND
 object kind (FUNCTION/TABLE). One function revoke and one table revoke can coexist
-for one role; duplicates of either kind refuse. CD-M19-63 also accepts a
+for one role; duplicates of either kind refuse. The accepted design also includes a
 third closed list: grant-only existing functions, disjoint from replaced/created,
 with base-chain existence, no before-hash/redefinition and only pinned conditional
 role/verb capabilities. Grant-only-only blocks need no new created-function PUBLIC
-revoke. Both refinements and table narrowing as built are accepted by CD-M19-63;
-the feature PR retains the real-PostgreSQL RLS/access proof duty. CD-M19-56 requests additive CHECK evidence and a question
-confirming that inherited ADD COLUMN/CHECK grammar falls within CD-M19-39; it
+revoke. Both refinements and table narrowing as built are accepted in the stabilized control read;
+the feature PR retains the real-PostgreSQL RLS/access proof duty. The additive-grammar evidence request asks for CHECK evidence and a question
+confirming that inherited ADD COLUMN/CHECK grammar falls within the accepted closed-forward design; it
 introduces no grammar change here.
 
-The worker operates locally under foundation supervision. CD-M19-63 accepts
-the stabilized read below for DCO. Native review then requires two independent fresh
+The worker operates locally under foundation supervision. The maintainer accepts
+the stabilized control read below for DCO. Native review then requires two independent fresh
 reviewers, and canonical verify waits for the supervisor's named slot. No native
 review, PR, merge, publishing, settings, credentials, production or budget grant
 is inferred from this implementation or its preliminary proofs.
@@ -181,7 +181,7 @@ Separately fetched policy revision (2026-11-01):
 unchanged from the base. No main merge solely for freshness was performed.
 Branch: `codex/oss-m19-forward-class`. At the original read no task commit, native
 review session, admission receipt, expiry or canonical verification existed. The
-CD-M19-63 DCO commit and subsequent repair state are recorded below. Repair cycles: zero.
+accepted-control DCO commit and subsequent repair state are recorded below. Repair cycles: zero.
 Earlier read packets were unreviewed and are superseded, not accepted evidence.
 
 Current firm inventory, in timestamp order (exact signatures remain registry data):
@@ -276,7 +276,7 @@ Using the writer file for a bounded shape probe and a real existing-table fixtur
 settles the additive-CHECK question without a parser change or another approval
 mechanism. Stop NEEDS_READ after the refreshed evidence and identity, before DCO.
 
-CD-M19-61 evidence continuation: check final G11-c head 241d6c1d read-only at
+Final source-forward evidence continuation: check final G11-c head 241d6c1d read-only at
 whole SQL SHA `01acd691f9918af6025c975028e31028df02105d36b123dde41c29dc02bcecf6`.
 Its two created definer signatures are unchanged; work_id is nullable within
 its own CREATE TABLE. The hash is informational here, not a new registry field.
@@ -304,7 +304,7 @@ inputs are unchanged from the prior staged read; only task/read evidence changes
 No broad check is repeated without an affected input. Stop NEEDS_READ with the
 new identity; no DCO, review cycle, PR or canonical verify was started or reset.
 
-CD-M19-63 accepted read identity: code base bb000848, staged tree
+Accepted stabilized-control read identity: code base bb000848, staged tree
 `09b58a2b5c4e66c0bf1b4944041c6657e1c3462a`, binary staged-diff SHA-256
 `2b5ebab4ae2e1df4b4520069cdd7be72060d903a557060f4895465599b190f9b`, ten paths.
 The coordinator accepted the three-list design, role/verb/object-kind key,
@@ -324,7 +324,7 @@ Hash ownership (accepted answer 6): NO whole-file hash belongs in the class.
 The feature PR binds its SQL's file hash and function after-hashes under brief
 point 5. Correcting an unissued forward's bytes needs no control change unless
 its signatures change; issued-file/binding immutability remains in force. The
-CD-M19-61 exact-byte G11-c PASS is informational proof, not a class-list file pin.
+final-source exact-byte G11-c PASS is informational proof, not a class-list file pin.
 The per-slot-hash alternative discussed above is rejected and is not built.
 
 Authorized next steps: DCO-sign as Bart Roszkowski <dev@openlup.com>, complete
@@ -334,7 +334,7 @@ run canonical verify, push, open a PR or queue. This is a no-read prose repair.
 Self-retro for this handoff: record the accepted S1 and hash duties once in the
 existing task state and keep the executable tree fixed; no new process is needed.
 
-Native preparation continuation: CD-M19-63 was DCO-committed as 8da8774 with
+Native preparation continuation: the accepted stabilized control was DCO-committed as 8da8774 with
 passing policy (zero unanswered), clean status and a clean gitleaks contribution
 scan. No task WIP refs exist. Native prepare then refused a conflict with current
 main. A single publication-catalog insertion conflict was resolved as the union
@@ -415,7 +415,7 @@ was created, so earliest counted PASS/expiry are absent. Stop NEEDS_READ with
 the computed staged identity and retain the unsigned merge; the new security
 control read is mandatory before repaired DCO and the two fresh native reviews.
 
-Accepted repair continuation (CD-M19-67, 2026-11-02): the coordinator accepted
+Accepted identity-repair continuation (2026-11-02): the coordinator accepted
 HEAD 8da87741, MERGE_HEAD 09cd599b and staged tree
 8e4e08c99cc349623128270dfa43e0ffb34bec83, including the material identity repair
 and exact catalog union. DCO merge b4fb886e retained that tree. Non-merge empty
@@ -463,7 +463,7 @@ canonical verify was run. The complete file results are:
 | `scripts/verify-local.test.ts` | PASS: 14 passed (14) |
 | `base-native-8da87741` | PASS: 134 passed (134) |
 
-Net control paths (separate control authority, outside the general CD-M19-10 control exclusion):
+Net control paths (separate control authority, outside the general programme merge grant, which excludes controls):
 
 - `config/openlup-publication-catalog.json`
 - `config/reviewed-platform-forwards.json`
@@ -585,19 +585,19 @@ control code is not DCO-signed before its new read. Its exact proposed trailer
 is in the stable packet; after accepted read it must be committed and policy
 must show zero unanswered. No policy PASS is inferred for this unsigned tree.
 
-F-FORWARD-LEGACY-KELVIN is registered as a follow-up by CD-M19-72, not fixed
+F-FORWARD-LEGACY-KELVIN is retained as a follow-up by the maintainer's repair decision, not fixed
 here. The older legacy-class Kelvin-sign example is unreachable with today's
 registry bytes, and any relocation of that legacy path needs its own control.
 The reviewers' prerequisite relocation scenario does not establish a current
 admission. Issued SQL is not repinned. Default expand-only admission already
 rejects such structural Unicode. No older class is changed.
 
-CD-M19-72 confirms the predecessor interpretation: landing stays in slot order;
+The maintainer's repair decision confirms the predecessor interpretation: landing stays in slot order;
 every earlier non-empty row needs its landed binding before a later slot,
 including G4/G3 before G7/G8/G11-c. The conservative refusal is unchanged and
 no unregistered predecessor is skipped. This question is answered.
 
-Regroup/self-retro: the author evaluation accepted at CD-M19-67 proved the suffix
+Regroup/self-retro: the accepted identity-repair author evaluation proved the suffix
 repair; the first native candidate evaluation at ed99d2ca then left a material
 obstacle to the same closed-identity outcome. The remaining gap belongs to this
 class control, not the unchanged older classes. The first fix did not cover every
@@ -613,7 +613,7 @@ three-cycle budget. Rules-common step 4 requires a fresh stabilized control read
 before repaired DCO; stop NEEDS_READ, then obtain two new independent reviews.
 No canonical verify, push, PR, queue, release or other worktree mutation ran.
 
-Accepted repair continuation (CD-M19-72, 2026-11-02): the coordinator accepted
+Accepted closed-identity repair continuation (2026-11-02): the coordinator accepted
 HEAD ed99d2ca and staged tree c4b85788a9a2ebeb80b31fb06fb38a2990a5c70d,
 with cached-diff SHA e5cc00d13e25c1fcdbacf31689c83c57ba78ec9402537d4cf9e02d73eb91370f
 and four paths. DCO commit 793930e5 retains that exact tree. ASCII structure
@@ -647,7 +647,7 @@ next review finds another, and return the catalog-proof tradeoff to the owner.
 This line changes the allowed recovery route, not the admitted SQL or test floor.
 Final verification and all external delivery remain reserved to the supervisor.
 
-Required main integration after CD-M19-72: native prepare refused merge preflight
+Required main integration after the accepted closed-identity repair: native prepare refused merge preflight
 against main 4c7afd2590dc6998e22464153fca70a92eecfeb2. The integration-trailer control had
 landed after the accepted repair. A forced merge followed; its only conflict
 was the publication catalogue's adjacent plan-row insertion. The union retains
@@ -657,7 +657,7 @@ Native parser, registry, fixtures, caller changes and data-owner section remain
 identical to the accepted repair. No parser rule or new static parse bypass was
 introduced or discovered. The next-two-reviewer regroup line remains binding.
 
-The CD-M19-72 repair was DCO-committed as 793930e5 at its exact accepted tree;
+The accepted closed-identity repair was DCO-committed as 793930e5 at its exact accepted tree;
 record/trailer commit 8f295e4b followed, with policy two obligations and zero
 unanswered, clean status and passing gitleaks. That committed repair is cycle
 one of three. Prepare stopped before appending its event, so the stored native
