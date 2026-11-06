@@ -1238,6 +1238,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -3923,6 +3927,10 @@
     },
     {
       "path": "packages/platform/sql/20261120100000_subscription_package_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261120110000_subscription_exact_levers.sql",
       "class": "public-output"
     },
     {
@@ -7822,6 +7830,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/exactEdit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/index.ts",
       "class": "public-output"
     },
@@ -7839,6 +7851,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/contracts/stockWait.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/exactEditQuote.ts",
       "class": "public-output"
     },
     {
@@ -7947,6 +7963,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/subscriptionSizing.ts",
       "class": "public-output"
     },
     {
@@ -10042,6 +10062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/exactEditQuote.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/facades.test.ts",
       "class": "public-output"
     },
@@ -10087,6 +10111,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/renewalKeys.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
       "class": "public-output"
     },
     {
@@ -28575,6 +28603,14 @@
     },
     {
       "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionExactEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionExactInstallation.test.ts",
       "class": "public-output"
     },
     {

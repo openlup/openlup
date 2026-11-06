@@ -1,3 +1,4 @@
+import type { ExactSubscriptionEditRequest } from "../../src/subscriptions/contracts/exactEdit.js";
 import { expect, it, vi } from "vitest";
 import { createPostgresPackageEditor } from "../../src/subscriptions/packageEditor.js";
 import { mapPackageEditError } from "../../src/subscriptions/packageEditErrors.js";
@@ -11,15 +12,18 @@ function fixture() {
   const row = { id, status: "active", next_cycle_at: "2026-12-01T00:00:00Z", edit_window_hours: 72, template_version: 1,
     cadence_days: 20, composition_constraint: null, method_healthy: true, payment_blocked: false, cycle_locked: false };
   let missing = false;
+  let replayAction: string | null = null;
   const options: PackageEditorOptions = {
     now: () => "2026-11-05T00:00:00Z", limits: { maximumPlanDays: 45, maximumBaseLines: 3, maximumAddonLines: 5, maximumQuantity: 50 },
     async withTransaction(work) { return work({ async query(sql, values) {
       calls.push({ sql, values });
+      if (sql.startsWith("SELECT r.*") && replayAction) return { rows: [{ matches: true, status: "applied", result: {
+        status: "applied", action: replayAction, subscriptionId: id, subscriptionStatus: "active", nextCycleAt: "2026-12-01T00:00:00Z", templateVersion: 2, eventId: id } }] };
       if (sql.startsWith("SELECT s.*")) return { rows: missing ? [] : [row] };
       if (sql.startsWith("SELECT cadence_days")) return { rows: [row] };
       if (sql.startsWith("SELECT l.*")) return { rows: [{ id, variant_id: id, quantity: 4, sort_order: 0, is_addon: false, frozen_gross: "400", frozen_currency: "XXX" }] };
       if (sql.startsWith("SELECT value_text")) return { rows: [{ value_text: "4" }] };
-      if (sql.includes("AS response")) return { rows: [{ response: { status: "applied", action: "update_package_template", subscriptionId: id,
+      if (sql.includes("AS response")) return { rows: [{ response: { status: "applied", action: sql.includes("subscription_line_edit_apply") ? values?.[4] : "update_package_template", subscriptionId: id,
         subscriptionStatus: "active", nextCycleAt: "2026-12-01T00:00:00Z", templateVersion: 2, eventId: id } }] };
       return { rows: [] };
     } }); },
@@ -32,7 +36,7 @@ function fixture() {
     compositionRulesPort: { validateComposition: async () => ({ ok: true }), resizeComposition: async () => null },
     constraintMapper: { toCore: stored => ({ kind: "synthetic", version: 1, data: stored ?? {} }), fromCore: value => value.data, nominalPlanDays: () => null },
   };
-  return { options, calls, row, editor: createPostgresPackageEditor(options), missing() { missing = true; } };
+  return { options, calls, row, editor: createPostgresPackageEditor(options), missing() { missing = true; }, replay(action: string) { replayAction = action; } };
 }
 it("admits ownership before any pricing or durable preview work", async () => {
   const f = fixture(); f.missing();
@@ -96,4 +100,51 @@ it("retains a string reprice reason but exposes only the matched durable token f
   expect(mapPackageEditError("subscription_reprice_invalid_addons", "apply")).toMatchObject({ status: 400, reason: "subscription_reprice_invalid_addons" });
   expect(mapPackageEditError({ message: "RPC failed: subscription_edit_quote_expired; private diagnostic" }, "apply"))
     .toMatchObject({ status: 409, reason: "subscription_edit_quote_expired" });
+});
+
+
+it.each([
+  { action: "swap_base_line", fromVariantId: id, toVariantId: id },
+  { action: "add_addon", variantId: id, qty: 2 },
+  { action: "update_plan_length", planDays: 10 },
+  { action: "update_base_mix", base: [{ variantId: id, qty: 4 }] },
+  { action: "update_portion", portionMode: "portion" },
+] as const)("binds exact $action previews and applies through the shared ledger", async fields => {
+  const f = fixture(); f.options.portionModes = { full: { mode: "full", factor: 1 }, reduced: { mode: "portion", factor: 0.5 } };
+  f.options.compositionRulesPort.resizeComposition = async input => ({ coreLines: input.coreLines.map(line => ({ ...line, qty: 2 })),
+    constraint: { ...input.constraint, data: { mode: "portion", portionFactor: 0.5 } } });
+  const input = { ...fields, subscriptionId: id } as ExactSubscriptionEditRequest;
+  const preview = await f.editor.preview(actor, input);
+  expect(preview.preview.action).toBe(fields.action); expect(preview.packageEdit).toBeUndefined();
+  const record = f.calls.find(call => call.sql.includes("subscription_quote_preview_record"))!;
+  expect(record.sql).toContain(`'${fields.action}'`); expect(record.values?.[8]).toEqual({});
+  const response = await f.editor.apply(actor, "exact-apply-key", { ...input, acceptedQuoteHash: preview.quoteHash });
+  expect(response.action).toBe(fields.action);
+  const call = f.calls.find(call => call.sql.includes("SELECT public.subscription_line_edit_apply"))!;
+  expect(call.values?.[4]).toBe(fields.action);
+  expect(call.values?.[5]).toMatchObject({ request: { action: fields.action, acceptedQuoteHash: preview.quoteHash } });
+});
+it.each(["remove_addon", "update_addon_quantity"] as const)("keeps absent exact %s previews unavailable", async action => {
+  const f = fixture(); await expect(f.editor.preview(actor, { subscriptionId: id, action, variantId: client, ...(action === "update_addon_quantity" ? { qty: 2 } : {}) } as ExactSubscriptionEditRequest))
+    .rejects.toThrow("subscription_preview_reprice_unavailable");
+});
+it("replays an exact completed key before changed pricing or missing portion configuration", async () => {
+  const f = fixture(); f.replay("update_portion");
+  vi.mocked(f.options.quotePort.createServerAuthoritativeQuote).mockRejectedValue(new Error("must not re-quote"));
+  const result = await f.editor.apply(actor, "completed-exact-key", { subscriptionId: id, action: "update_portion", portionMode: "portion", acceptedQuoteHash: "a".repeat(64) });
+  expect(result).toMatchObject({ status: "replayed", action: "update_portion", originalStatus: "applied" });
+  expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+});
+it("rejects generic aliases and customer-supplied exact price evidence", async () => {
+  const f = fixture();
+  for (const input of [{ subscriptionId: id, action: "resize_bundle" }, { subscriptionId: id, action: "update_portion", portionMode: "portion", lines: [] }]) {
+    await expect(f.editor.preview(actor, input as ExactSubscriptionEditRequest)).rejects.toThrow("subscription_reprice_invalid_request");
+  }
+});
+it("maps exact durable conflicts and plan unservable errors without mapping dependency failures", () => {
+  for (const code of ["conflict_duplicate_line", "not_found_line", "not_found_addon", "base_total_mismatch"]) {
+    expect(mapPackageEditError(new Error(`subscription_edit_${code}`), "apply")).toMatchObject({ status: 409, reason: `subscription_edit_${code}` });
+  }
+  expect(mapPackageEditError(new Error("subscription_reprice_plan_length_unservable"), "preview", "update_plan_length"))
+    .toMatchObject({ status: 400, message: "plan_length_unavailable" });
 });

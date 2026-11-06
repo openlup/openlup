@@ -72,6 +72,23 @@ owns quote composition, no-op ordering and renewal behavior. SQL installation
 still requires its separate reviewed forward admission; source presence alone
 is not an admitted or published installation chain.
 
+The subsequent `20261120110000_subscription_exact_levers.sql` forward creates
+only `subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)`.
+It reuses the preview ledger and receipts, adds no table, column, data statement
+or replacement function, pins `pg_catalog, pg_temp`, revokes PUBLIC/browser
+execution and grants execution only to `service_role`. Its seven actions retain
+their separate no-op and line-identity semantics. Portion acceptance binds the
+configured mode/factor pair to the preview and refuses a mismatched selection.
+Base mix independently checks
+its fixed total; plan and portion edits replace only base rows and preserve
+add-on IDs. Every real edit rewrites future renewal term lines and stores full
+accepted pricing in its action event, then accepts the preview and records the
+receipt atomically. Existing cycles, arrivals and frozen renewal snapshots are
+not rewritten. The current selected installation plans append one unit after
+the shared editor, with measured current inventories; issued prefixes remain
+unchanged. See the [subscription contract](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+for host sizing configuration and API limits.
+
 
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE

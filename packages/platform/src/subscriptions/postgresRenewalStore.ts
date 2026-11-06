@@ -28,7 +28,11 @@ const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,
  to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
  ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
  (SELECT e.payload->'linePricing' FROM public.subscription_events e WHERE e.subscription_id=s.id
-  AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template')
+  AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template',
+   'subscription.customer_self_service.swap_base_line','subscription.customer_self_service.add_addon',
+   'subscription.customer_self_service.remove_addon','subscription.customer_self_service.update_addon_quantity',
+   'subscription.customer_self_service.update_plan_length','subscription.customer_self_service.update_base_mix',
+   'subscription.customer_self_service.update_portion')
   ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1) AS graduation_pricing,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,
  'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l

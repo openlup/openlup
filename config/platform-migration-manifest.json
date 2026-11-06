@@ -396,9 +396,13 @@
     {
       "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
       "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
+    },
+    {
+      "file": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+      "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
     }
   ],
-  "objectInventorySha256": "2748dbfbafe93c2129a39a2492b25975bfdfc5fb8c26ed307e86ddcfd4cabc55",
+  "objectInventorySha256": "fd92e5671ba89f3df3259dd445f38f5a2d64a541dd5492935709a445d7df5f19",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -816,14 +820,18 @@
       {
         "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
         "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
+      },
+      {
+        "file": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+        "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "50da1a1854a921d1fbcb06830ed0e5b2f79f7341ef12c669c1b8ad4e070bdaeb"
+        "withRestore": "30210e809f9214a442371d7a99b996225ef8861cc4766f77d79ec62135e7816e"
       },
       "separateMigrator": {
-        "withRestore": "2d81e0b8276137c51ffb1446cdd4768f7a2dc9fc50b469887df1c028f739e5fe"
+        "withRestore": "bf67442c9033d85876dbcf79ad048b6735a11a35109f22aefa1265fa8f5e9366"
       }
     }
   },
@@ -1240,11 +1248,15 @@
       {
         "file": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
         "sha256": "71a052f05ca6be0add4bf4e4e4f80d38d44cc58038abbb36d4024fb805b975af"
+      },
+      {
+        "file": "db/platform/migrations/20261120110000_subscription_exact_levers.sql",
+        "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "5853396553abaecdc40359fe56d73f05636348f08150ccd31f7bb95a58bc569f",
-      "operatorProvisioned": "ab56e89cfd2c68a7c250ddee143a8bda851581f676df241f8e61c163d615c380"
+      "installerManaged": "05df982a1e95f61adb9000521beea6f6e35ed74a09e766aaaa32c1655ec1de03",
+      "operatorProvisioned": "e791d33b0a487c20e8efff9d21e4034694a30962b026a186123da1858bd64a52"
     }
   }
 }
