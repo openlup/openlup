@@ -12,7 +12,7 @@ export { expect };
 
 /** Test-only owner access to an explicitly selected disposable Compose installation.
  * No template/price-list backfill: every editable subscription must originate in checkout. */
-export async function nativeSubscription(page: Page,baseURL: string | undefined,project: string,quantity = 6) {
+export async function nativeSubscription(page: Page,baseURL: string | undefined,project: string,quantity = 6,options: { completeIntro?: boolean } = {}) {
   if (!baseURL || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(baseURL) || !/^[a-z0-9-]+$/u.test(project)) throw new Error('starter_subscription_browser_project_required');
   const compose = (args: string[],input?: string) => execFileSync('docker',['compose','--project-name',project,...args],{
     encoding: 'utf8',stdio: ['pipe','pipe','pipe'],...(input === undefined ? {} : { input }),timeout: 30000 });
@@ -27,11 +27,13 @@ export async function nativeSubscription(page: Page,baseURL: string | undefined,
   };
   const config = (await (await page.request.get(`${baseURL}/api/config`)).json()).config as StoreConfig;
   const email = `${randomUUID()}@example.test`;
-  const bought = await action('checkout.create',{ locale: 'en',configuration: config.id,country: config.market.country,
+  const purchase = { acquisitionCapability: 'subscription-acquisition.v1', locale: 'en',configuration: config.id,country: config.market.country,
     termsRevision: config.legal.revision,termsAccepted: true,email,firstName: 'Example',lastName: 'Customer',phone: '000000000',
     line1: '1 Example Street',city: 'Example City',postalCode: '00000',
     cart: { schemaVersion: 1,configuration: config.id,mode: 'subscription',cadenceDays: config.offer.defaultCadenceDays,
-      lines: [{ sku: config.offer.products[0]!.sku,quantity },...(quantity > 1 ? [{ sku: config.offer.products[1]!.sku,quantity: 2 }] : [])] } });
+      lines: [{ sku: config.offer.products[0]!.sku,quantity },...(quantity > 1 ? [{ sku: config.offer.products[1]!.sku,quantity: 2 }] : [])] } };
+  const quote = await action('offer.validate',purchase); expect(quote.body.ok).toBe(true);
+  const bought = await action('checkout.create',{ ...purchase,quoteAcceptance: quote.body.value.quoteAcceptance,expectedTotal: quote.body.value.expectedTotal });
   expect(bought.body.ok).toBe(true);
   const paid = await action('payment.simulate',{ orderRef: bought.body.value.orderRef,token: bought.body.value.token,outcome: 'captured' });
   expect(paid.body.ok).toBe(true);
@@ -45,7 +47,30 @@ export async function nativeSubscription(page: Page,baseURL: string | undefined,
     const subscription = result.body.value.subscriptionEditors.find((item: EditorSubscription) => item.status === 'active');
     if (!subscription) throw new Error('starter_subscription_purchase_required'); return subscription;
   };
-  const sub = await read(),id = uuid(sub.subscriptionId);
+  const purchased = await read(),id = uuid(purchased.subscriptionId);
+  // Servicing starts after the real introductory phase, never by rewriting its marker/count.
+  if (config.quote.acquisition.enabled && options.completeIntro !== false) {
+    const code = `import assert from 'node:assert/strict';import pg from 'pg';
+      import {createNativeRenewalCodec,createPostgresRenewalStore,createPostgresRenewalSettlementPort,runOneAutomaticSubscriptionRenewal} from '@openlup/platform/subscriptions';
+      import {createPostgresRenewalReservationPort} from '@openlup/platform/inventory';
+      import {composeRenewalSandbox} from './host/renewal-sandbox.ts';
+      import {selectConfiguration} from './owned/store.config.ts';
+      const config=selectConfiguration(${JSON.stringify(config.id)}),pool=new pg.Pool({connectionString:'postgresql://starter_runtime@database/neutral_store'});
+      const withTransaction=async work=>{const db=await pool.connect();try{await db.query('BEGIN');const value=await work(db);await db.query('COMMIT');return value;}catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}};
+      try {for(let cycle=0;cycle<2;cycle++) {
+        const next=(await pool.query('SELECT next_cycle_at FROM public.subscriptions WHERE id=$1',[${JSON.stringify(id)}])).rows[0].next_cycle_at;
+        const at=new Date(new Date(next).getTime()+60000).toISOString(),codec=createNativeRenewalCodec(),store=createPostgresRenewalStore(pool,codec,withTransaction);
+        const sandbox=composeRenewalSandbox({executor:pool,withTransaction,codec,config:{...config.renewal,sandbox:{initial:'succeeded',retry:'succeeded'}},now:()=>at,
+          failureTemplate:config.purchase.sandbox.dunningTemplateSlug,recoveredTemplate:config.purchase.sandbox.recoveryTemplateSlug,recoveryPath:config.purchase.sandbox.recoveryUrlPath});
+        await sandbox.refresh();const due=(await store.listDue(100,at)).find(row=>row.subscriptionId===${JSON.stringify(id)});assert.ok(due);
+        const result=await runOneAutomaticSubscriptionRenewal({store,settlement:createPostgresRenewalSettlementPort(pool,codec,withTransaction),
+          inventory:createPostgresRenewalReservationPort(pool),paymentRails:sandbox.paymentRails,policy:sandbox.policy,
+          failureHandoff:{async handoffFailure(){throw Error('unexpected_intro_renewal_failure');}},workerId:'editor-browser-intro'},due,at);
+        assert.equal(result.status,'succeeded');
+      }} finally{await pool.end();}`;
+    compose(['exec','-T','--user','node','application','node','--input-type=module'],code);
+  }
+  const sub = await read();
   if (!sub.lines.some(line => !line.isAddon) || sub.editBlockedReason === 'starter_subscription_template_unavailable') {
     throw new Error('starter_subscription_purchase_template_required: awaiting native purchase template attachment; no fixture backfill permitted');
   }

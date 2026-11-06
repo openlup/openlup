@@ -50,63 +50,75 @@ npm run build
 npx --no -- playwright test --config playwright.editors.config.ts
 ```
 
-The native recipes are `browser/subscription-journeys.spec.ts` (seven classic
-and six sized journeys) and `browser/subscription-api.spec.ts` (four API journeys).
-On 2026-11-06 they passed on installed PostgreSQL: 17 cases per configuration,
-34 total, with zero failures, skips or retries in the final run. Native purchase
-materializes editable template lines and their price list. The fixture refuses
-a missing native template; it never seeds editable lines/price lists or supplies
-a fallback read. The native unconfigured-resize case shares this purchase
-fixture; its named refusal also has a passing local HTTP unit witness.
+The final native recipes are `browser/subscription-journeys.spec.ts` (seven
+classic and six sized journeys) and `browser/subscription-api.spec.ts` (four API
+journeys). On 2026-11-06 the final run passed 17 cases per configuration, 34 total,
+with zero failures, skips or retries in 50.8 seconds. The selected product stack
+is `7731b97e26ba4e685b2a7a590d731433166c256f`, including the final sized editor
+and settlement-ordering vocabulary correction. Later proof-only harness repairs
+supply acquisition acceptance and the servicing preconditions described below.
 
-The three local 0.36.0 development candidates were built and packed from source
-`38b5ad2d9f859bdf273dcf91690d52085fefa012`; these are not published release pins.
-Their SHA-256 identities were:
+The three local 0.36.0 development candidates use that stack's package inputs;
+they are not published release pins. Their SHA-256 identities and packed sizes were:
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `openlup-core.tgz` | `a1255339edb1b20fda5a30dcc02d1a317689453f11b154892a944998a2578682` |
-| `openlup-outbox.tgz` | `e723db165b4e55166180b2b962191e80e5bbc5735d851e9de20a2e93877f3af0` |
-| `openlup-platform.tgz` | `95f2251f8f39d2287dd677b5916f33f30ff644dd95e24c7925eaeb0b96632ab1` |
+| Artifact | SHA-256 | Packed bytes |
+| --- | --- | ---: |
+| `openlup-core.tgz` | `3818515857bf4b31c63d61bcb216d849b914af017cbfafbe0a342d8ed19f916d` | 183143 |
+| `openlup-outbox.tgz` | `e723db165b4e55166180b2b962191e80e5bbc5735d851e9de20a2e93877f3af0` | 41203 |
+| `openlup-platform.tgz` | `4c62b3c17a73dfe285e02844fedeede7e1b038a9029ab9231f63bda753ee36c4` | 2604082 |
 
 Each configuration used its own disposable lifecycle installation: all 106
 history units applied, repeat installation applied zero, and the HTTP host used
-the non-superuser `starter_runtime` login. UI ports were loopback-only and database
-ports unpublished. The initial run exposed two test selector defects: classic
-removal matched two variants with the same title, and sized group selection
-mistook an extra for a base product. The tests now scope removal to its variant
-row and select only base candidates. No product code or expected assertion was
-changed. The corrected suite passed all seven classic, six sized and four API
-journeys for both configurations. This includes stale acceptance, payment/edit
-blockers, captured notice/no-op behavior, retained pricing, stock/exclusion and
-withdrawal refusals, command replay and the named unconfigured-resize limits.
-All proof-owned containers, volumes and image tags were removed after the run;
-no host process was left running. This is local sandbox evidence, not hosted,
-provider, release or upgrade qualification.
+the non-superuser, non-BYPASSRLS `starter_runtime` login. Database ports were
+unpublished; UI ports were loopback-only. The live shared-document reader matched
+the selected source bytes in both hosts. Both readers use one current product
+document with per-SKU variants; the separate editor document is gone.
+
+The fixture obtains the native acquisition quote and acceptance before checkout,
+then uses native sandbox settlement and customer challenge sign-in. Two native
+introductory renewals prepare servicing cases for editing and opt-in; no marker,
+paid-cycle counter, editable template, price list or renewal truth is backfilled.
+The edit-window/payment-blocker case keeps its original purchase anchor so the
+configured maximum 720-hour window can close it without moving the cycle.
+This fixture correction resolved the initial 32/34 run; assertions and timing
+bounds were retained. No product or SQL repair was needed.
 
 Start separate disposable installed/seeded hosts for the two configurations.
+Supply a private local keyring through `--quote-acceptance-key-file`, as described
+in the [native quote composition](../README.md#native-quote-and-acquisition-composition);
+the proof used a disposable keyring mounted read-only outside served assets.
 The ignored `.context/database-ui-hosts.json` entries require `id`, loopback
-`baseURL` and each proof-owned `composeProject`. The harness performs a native
-purchase and sandbox settlement, then native customer challenge sign-in; only
-the harness reads the private captured mailbox. Existing test-owned rows may be
-changed to exercise drift, blocking and exclusion repair. No seeded subscription
-or hand-built price list substitutes for the purchase. Run only these new files:
+`baseURL` and each proof-owned `composeProject`. Only the harness reads the private
+captured mailbox. Test-owned rows may change to exercise drift, blocking and
+exclusion repair. A missing native purchase template fails rather than falling
+back to seeded editable lines. Run from this directory:
 
 ```sh
 npx --no -- playwright test --config playwright.database.config.ts subscription-journeys.spec.ts subscription-api.spec.ts
 ```
 
-Run one PostgreSQL-backed proof at a time, after the one-minute load average is
-at most 20; the native purchase-template proof has priority. Traces, screenshots
-and videos remain disabled. The notification journey uses a test-only native
-dispatcher with captured delivery; the reference host mounts no new consumer.
-The exported `composeSizedPaidEmailNote` callback separately proves frozen
-quantities, physical identities and renewal cadence. The lifecycle renewal entry
-mounts the paid-email handler through `host/paid-mail.ts` with this callback.
-The paid-mail PostgreSQL witness buys subscriptions through native checkout,
-opts one into sized servicing and pays their renewals through native ports.
-The private sized renewal receipt includes its parcel note; the classic receipt
-omits it. Acquisition receipts omit the note.
+The suite covers stale acceptance, payment/edit blockers, captured notice/no-op
+behavior, retained pricing, stock/exclusion and withdrawal refusals, command
+replay and named unconfigured-resize limits. Traces, screenshots and videos are
+disabled. The notification journey uses a test-only native dispatcher with
+captured delivery; it mounts no new serving consumer.
+
+On the same stack, the installed checkout/quote file passed three cases: its two
+existing single-SKU expectation sets unchanged and one added multi-size checkout
+case. The latter quotes and buys the larger SKU of the same product, then proves
+typed refusal when the selected SKU is absent from a current document with a
+valid digest. The guest transfer file passed 2/2, including exact multi-variant
+document round-trip and native sign-in/replay. Catalogue reads passed 52/52 with
+unchanged expectations, UUID/HTTP checks 38/38 and recovery 8/8. The recovery run
+retained native one-minute challenge cadences and took 381.79 seconds. The
+paid-mail file's three final 9/9 runs are described below. Store compilation and
+the repository consumer typecheck passed with zero errors against ceiling zero;
+publication policy, structural rules, lint and neutrality checks passed.
+
+Run one PostgreSQL-backed proof at a time after the one-minute load average is
+at most 20. All proof-owned containers, volumes, image tags and host processes
+were removed after this run, along with its disposable keyring. These are local
+sandbox results, not hosted, provider, release or upgrade qualification.
 
 ## Clean-directory and startup witness
 
@@ -520,7 +532,7 @@ postal-code bounds as checkout. Each case has an explicit 30-second timeout;
 run new PostgreSQL cases in the default zone and both offset zones.
 
 
-The committed recurring-recovery and renewal PostgreSQL files pass 21 cases with
+The earlier recurring-recovery and renewal PostgreSQL baseline passed 21 cases with
 no skips on the selected native installation, including its command receipt-lock
 completion. Both operator cases prove issuance, immutable artifact capture/replay,
 missing-artifact and changed-context refusal, process restart and revocation by
@@ -558,3 +570,15 @@ adds none, while the unclaimed settlement fact retains its row and version and
 creates no message. The settlement-first case fails before the vocabulary fix;
 the paid-first control already passes. No hand-inserted event substitutes for the
 real purchase in these two cases.
+
+The final stacked paid-mail file passed 9/9 three consecutive times on 2026-11-06
+(7.68 s, 7.56 s and 7.54 s), without skips or retries in those runs. It retains
+both settlement-ordering cases and the sized/classic parcel-note witness. The
+servicing fixture first completes two actual introductory renewals, then opts
+one subscription into sized servicing and pays another renewal for each. All
+eight resulting paid-email rows are claimed and captured. The final sized
+receipt includes its frozen quantity/identity/cadence note; the classic binding
+and acquisition receipts omit it. Introductory receipts are separately checked
+for captured order and recipient identity. The servicing fixture hides no event,
+alters no event timestamp and marks none processed manually; the separate
+settlement-ordering witnesses above retain their explicit timestamp controls.

@@ -40,7 +40,8 @@ test('J-C4: a concurrent edit stales acceptance; return to editing and a fresh r
   await f.confirm(); expect((await f.read()).lines.find(line => line.variantId === f.sub.lines[0]!.variantId)!.qty).toBe(7);
 });
 test('J-C5: closed edit window and open payment blocker disable the editor without moving its anchor',async ({ page,baseURL,composeProject }) => {
-  const f = await nativeSubscription(page,baseURL,composeProject);
+  // Keep the native purchase anchor within the configured 720-hour window bound.
+  const f = await nativeSubscription(page,baseURL,composeProject,6,{ completeIntro: false });
   f.sql(`UPDATE public.subscriptions SET edit_window_hours=720 WHERE id='${f.id}'`);
   await f.open(); await expect(page.getByRole('alert')).toContainText('edit window');
   f.sql(`UPDATE public.subscriptions SET edit_window_hours=72 WHERE id='${f.id}'`);

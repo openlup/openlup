@@ -112,13 +112,18 @@ and portion resize commands reach the named configuration limit after ownership
 admission. Ordinary classic plan and sized cadence choices keep quantities.
 New/increased sized SKUs require current active/subscription-sellable state in
 the apply transaction; publication-head/membership fencing is not implemented.
-Entering, previewing or abandoning an invitation never binds sized.
+Entering, previewing or abandoning an invitation never binds sized. An acquisition
+purchase's fixed introductory phase refuses sized opt-in; the servicing proof
+completes that phase through native renewals before editing. Checkout and the
+editors share one current product document with per-SKU variants, including
+physical identity, demand per unit and exclusions.
 
 The host exports `composeSizedPaidEmailNote` using frozen order quantities,
 exact physical identity and frozen renewal cadence. The lifecycle renewal entry
 mounts the paid-email handler through `host/paid-mail.ts` with this callback.
-Its private captured receipts include proven sized renewal parcel notes; classic,
-acquisition and unprovable parcel facts omit the note.
+Its private captured receipts include proven sized renewal parcel notes when the
+stored subscription binding is sized at send time. Classic bindings, acquisition
+receipts and unprovable parcel facts omit the note.
 
 ## Partner intake and reviews
 

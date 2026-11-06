@@ -267,8 +267,9 @@ paid-email handler's `describeParcel` callback. It composes quantities and exact
 physical identities from the frozen order and the renewal cycle's frozen
 cadence. Unprovable facts omit the note. The lifecycle renewal entry mounts the
 paid-email handler through `host/paid-mail.ts` with this callback. Proven sized
-renewal parcel notes appear in its private captured receipts; classic and
-acquisition receipts omit the note.
+renewal parcel notes appear in its private captured receipts when the stored
+subscription binding is sized at send time. Classic bindings and acquisition
+receipts omit the note.
 
 The editor proof includes 65 focused source tests, 42 component cases and 34
 database-backed browser/API journeys (17 per configuration), all passing locally.
@@ -480,8 +481,8 @@ reads. Catalogue, builder, cart and checkout projections read `offer.validate` o
 native host. Failed refreshes withhold the previous money. The local preview
 estimator remains available only for explicit database-less one-time estimates
 and configuration characterization; it delegates unit arithmetic to the package. The install seed
-retains the six compatibility mode-price entries and adds one immutable policy
-revision, current document pointers, physical trade-item facts and one standalone
+retains compatibility mode-price entries for every seeded SKU and adds one immutable
+policy revision, current shared product-document pointers, physical trade-item facts and one standalone
 acquisition definition. Conflicting policy, document or promotion initialization
 refuses and rolls back. This is a fresh demonstration install, not policy rotation.
 

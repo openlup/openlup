@@ -1914,15 +1914,15 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/acquisition.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/editor-component-fixtures.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/browser/editor-components.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "examples/neutral-store/browser/acquisition.spec.ts",
       "class": "public-output"
     },
     {

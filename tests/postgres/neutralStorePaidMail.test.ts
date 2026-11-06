@@ -12,7 +12,6 @@ import { createPaidMailHost } from '../../examples/neutral-store/host/paid-mail.
 import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
 import { createPaidMailArtifacts, paidMailKey } from '../../examples/neutral-store/host/paid-mail-artifact.ts';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
-import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import { assertRenewalConfig } from '../../examples/neutral-store/shared/renewal-config.ts';
 import type { StoreConfig } from '../../examples/neutral-store/shared/config.ts';
 import type { PaidMailArtifactV1 } from '../../examples/neutral-store/host/paid-mail-artifact.ts';
@@ -36,7 +35,6 @@ beforeAll(async () => {
   await runner.apply();
   expect((await runner.status()).pending).toEqual([]);
   await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-  await applyDemoSeed(config(), { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => {} });
   const url = new URL(container.connectionString); url.username = 'starter_runtime'; url.password = 'synthetic-conformance';
   runtimeUrl = url.toString(); runtime = new Pool({ connectionString: runtimeUrl });
   await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
@@ -153,7 +151,7 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
       const input=JSON.parse(readFileSync(0,'utf8')),config=input.config;
       process.chdir(input.directory);
       const pool=new pg.Pool({connectionString:input.url}),accounts=createPostgresAccountLinkStore({connectionString:input.url});
-      const bindings=await composeNativeBindings(input.url,createOriginPolicy(config,3210));
+      const bindings=await composeNativeBindings(input.url,createOriginPolicy(config,3210),{current:'paid-mail-fixture-acceptance-key-00000000000000'});
       const results=[];
       try {
         for (const sized of [true,false]) {
@@ -164,12 +162,35 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
             const result=await bindings.actions[name](payload,{config,actor,commandKey:randomUUID()});
             assert.equal(result.ok,true,name+': '+JSON.stringify(result)); return result.value;
           };
-          const bought=await call('checkout.create',{locale:'en',configuration:config.id,country:config.market.country,
+          const purchase={acquisitionCapability:'subscription-acquisition.v1',locale:'en',configuration:config.id,country:config.market.country,
             termsRevision:config.legal.revision,termsAccepted:true,firstName:'Example',lastName:'Customer',phone:'000000000',
             line1:'1 Example Street',city:'Example City',postalCode:'00000',
             cart:{schemaVersion:1,configuration:config.id,mode:'subscription',cadenceDays:28,
-              lines:[{sku:config.offer.products[0].sku,quantity:6},{sku:config.offer.products[1].sku,quantity:2}]}});
+              lines:[{sku:config.offer.products[0].sku,quantity:6},{sku:config.offer.products[1].sku,quantity:2}]}};
+          const quote=await call('offer.validate',purchase);
+          const bought=await call('checkout.create',{...purchase,quoteAcceptance:quote.quoteAcceptance,expectedTotal:quote.expectedTotal});
           await call('payment.simulate',{orderRef:bought.orderRef,outcome:'captured'});
+          const renew=async()=>{
+            const current=(await readEditorSubscriptions(pool,actor))[0];
+            const at=new Date(Date.parse(current.nextCycleAt)+60000).toISOString();
+            const withTransaction=async work=>{const db=await pool.connect();try {await db.query('BEGIN');
+              const value=await work(db);await db.query('COMMIT');return value;
+            }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}};
+            const codec=createNativeRenewalCodec(),store=createPostgresRenewalStore(pool,codec,withTransaction);
+            const sandbox=composeRenewalSandbox({executor:pool,withTransaction,codec,config:{...config.renewal,
+              sandbox:{initial:'succeeded',retry:'succeeded'}},now:()=>at,
+              failureTemplate:config.purchase.sandbox.dunningTemplateSlug,recoveredTemplate:config.purchase.sandbox.recoveryTemplateSlug,
+              recoveryPath:config.purchase.sandbox.recoveryUrlPath});
+            await sandbox.refresh();
+            const due=(await store.listDue(100,at)).find(row=>row.subscriptionId===current.subscriptionId);assert.ok(due);
+            const renewed=await runOneAutomaticSubscriptionRenewal({store,
+              settlement:createPostgresRenewalSettlementPort(pool,codec,withTransaction),
+              inventory:createPostgresRenewalReservationPort(pool),paymentRails:sandbox.paymentRails,policy:sandbox.policy,
+              failureHandoff:{async handoffFailure(){throw Error('unexpected_renewal_failure');}},workerId:'paid-mail-witness'},due,at);
+            assert.equal(renewed.status,'succeeded',JSON.stringify(renewed));
+            return (await pool.query('SELECT id AS order_id FROM public.commerce_orders WHERE renewal_operation_id=$1',[renewed.operationId])).rows[0];
+          };
+          const introductoryOrders=[(await renew()).order_id,(await renew()).order_id];
           const [subscription]=await readEditorSubscriptions(pool,actor);
           assert.ok(subscription.lines.length>0);
           if(sized) {
@@ -182,28 +203,12 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
             const preview=await call('subscription.preview',{request}); assert.equal(preview.preview.canApply,true);
             await call('subscription.command',{request:{...request,acceptedQuoteHash:preview.quoteHash}});
           }
-          const at=new Date(Date.parse(subscription.nextCycleAt)+60000).toISOString();
-          const withTransaction=async work=>{const db=await pool.connect();try {await db.query('BEGIN');
-            const value=await work(db);await db.query('COMMIT');return value;
-          }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}};
-          const codec=createNativeRenewalCodec(),store=createPostgresRenewalStore(pool,codec,withTransaction);
-          const sandbox=composeRenewalSandbox({executor:pool,withTransaction,codec,config:{...config.renewal,
-            sandbox:{initial:'succeeded',retry:'succeeded'}},now:()=>at,
-            failureTemplate:config.purchase.sandbox.dunningTemplateSlug,recoveredTemplate:config.purchase.sandbox.recoveryTemplateSlug,
-            recoveryPath:config.purchase.sandbox.recoveryUrlPath});
-          await sandbox.refresh();
-          const due=(await store.listDue(100,at)).find(row=>row.subscriptionId===subscription.subscriptionId);assert.ok(due);
-          const renewed=await runOneAutomaticSubscriptionRenewal({store,
-            settlement:createPostgresRenewalSettlementPort(pool,codec,withTransaction),
-            inventory:createPostgresRenewalReservationPort(pool),paymentRails:sandbox.paymentRails,policy:sandbox.policy,
-            failureHandoff:{async handoffFailure(){throw Error('unexpected_renewal_failure');}},workerId:'paid-mail-witness'},due,at);
-          assert.equal(renewed.status,'succeeded',JSON.stringify(renewed));
-          const order=(await pool.query('SELECT id AS order_id FROM public.commerce_orders WHERE renewal_operation_id=$1',[renewed.operationId])).rows[0];
-          results.push({sized,orderId:order.order_id,acquisitionOrderId:bought.orderRef,email});
+          const order=await renew();
+          results.push({sized,orderId:order.order_id,acquisitionOrderId:bought.orderRef,introductoryOrders,email});
         }
         process.stdout.write(JSON.stringify(results));
       }finally {await bindings.close();await accounts.close();await pool.end();}`;
-    const purchases = await new Promise<{ sized: boolean; orderId: string; acquisitionOrderId: string; email: string }[]>((done, fail) => {
+    const purchases = await new Promise<{ sized: boolean; orderId: string; acquisitionOrderId: string; introductoryOrders: string[]; email: string }[]>((done, fail) => {
       const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script], { stdio: ['pipe', 'pipe', 'pipe'] });
       let output = '', errors = '';
       const timer = setTimeout(() => { child.kill('SIGTERM'); fail(new Error('paid_mail_purchase_timeout')); }, 20_000);
@@ -214,8 +219,8 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
     });
     const events = (await runtime.query(`SELECT aggregate_id,status,available_at,now() AS observed_at FROM public.outbox_events
       WHERE event_type='commerce.order.paid.email' ORDER BY created_at,id`)).rows;
-    expect(events).toHaveLength(4);
-    expect((await lifecycle(directory, config())).result.paidMail, JSON.stringify(events)).toMatchObject({ claimed: 4, processed: 4 });
+    expect(events).toHaveLength(8);
+    expect((await lifecycle(directory, config())).result.paidMail, JSON.stringify(events)).toMatchObject({ claimed: 8, processed: 8 });
     const artifacts = createPaidMailArtifacts(createPrivateCapture(join(directory, '.context/captured-messages')));
     for (const purchase of purchases) {
       for (const orderId of [purchase.orderId, purchase.acquisitionOrderId]) {
@@ -225,6 +230,10 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
         const note = 'Items: 8 · 8 × 250 g · Every 28 days';
         if (purchase.sized && orderId === purchase.orderId) expect(artifact!.body).toContain(note);
         else expect(artifact!.body).not.toContain('Items:');
+      }
+      for (const orderId of purchase.introductoryOrders) {
+        const event = (await runtime.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid.email'", [orderId])).rows[0];
+        expect(await artifacts.read(paidMailKey(event.id))).toMatchObject({ orderId: `order_${orderId}`, recipient: purchase.email });
       }
     }
   });
