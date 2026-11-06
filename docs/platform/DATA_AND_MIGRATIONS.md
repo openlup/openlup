@@ -2120,8 +2120,9 @@ client, but that table had row security and no runtime access at all.
 One shared completion tail closes these gaps. It is the approved seventeenth
 qualified identity. Both qualified plans select it once, after their issued
 tails and at the same position among shared units, so later shared forwards
-still append identically. The qualified plan now has 103 units and the
-restricted plan 102; legacy is unchanged.
+still append identically. With the package editor and exact-lever suffixes,
+the qualified plan has 105 units, the restricted plan 104 and legacy 100.
+The completion tail itself adds no legacy unit.
 
 The tail must follow the delivery destination forward. Its guard refuses the
 whole unit unless that table exists in its created state: owned by the
