@@ -148,6 +148,8 @@ hashed or logged by transfer.
 The `acquisition_private.address_references` registry contributes only its row count to
 the census; no registry rows, references or columns are exported. Restore keeps
 the target installation's own registry without comparing its count to the source.
+Before connecting, restore rejects extra census fields, invalid counts and
+dispositions that do not match the relation; unsupported relations must have a zero count.
 Acquisition cases, history and all other nonempty private relations still refuse.
 
 Native checkout draft receipts are included in this finite profile. Their order

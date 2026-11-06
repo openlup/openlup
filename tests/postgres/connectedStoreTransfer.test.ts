@@ -11,7 +11,7 @@ import * as jose from "jose";
 import * as renewal from "@openlup/platform/subscriptions";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
 import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
@@ -687,6 +687,29 @@ it("captures only the address-reference registry census and preserves the target
     invalid.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
     await expect(restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: invalid, freshTarget }))
       .rejects.toMatchObject({ code: "invalid_input", message: "postgres_transfer_invalid_input" });
+    const connect = vi.fn(async () => { throw new Error("unexpected_database_connection"); });
+    const disconnectedOwner = { connect } as unknown as Pool;
+    for (const [relation, patch] of [
+      ["acquisition_private.address_references", { columns: [{ name: "reference", type: "text" }] }],
+      ["acquisition_private.address_references", { rowData: [{ reference: references[0] }] }],
+      ["acquisition_private.address_references", { disposition: "new-target-installation-key" }],
+      ["acquisition_private.address_references", { disposition: "unknown-disposition" }],
+      ["acquisition_private.address_references", { rows: "-1" }],
+      ["acquisition_private.address_references", { rows: "1.5" }],
+      ["acquisition_private.address_references", { rows: "2\n" }],
+      ["acquisition_private.address_references", { rows: 2 }],
+      ["acquisition_private.installation_key", { disposition: "target-address-references" }],
+      ["public.platform_schema_migrations", { disposition: "target-address-references" }],
+      ["acquisition_private.cases", { rows: "1" }],
+    ] as const) {
+      const malformed = structuredClone(sourcePacket);
+      Object.assign(malformed.outsideProfileCensus.find(entry => entry.relation === relation)!, patch);
+      const { sha256: _hash, ...payload } = malformed;
+      malformed.sha256 = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+      await expect(restoreConnectedNativeStore({ owner: disconnectedOwner, installation: selection, packet: malformed, freshTarget }))
+        .rejects.toMatchObject({ code: "invalid_input", message: "postgres_transfer_invalid_input" });
+      expect(connect).not.toHaveBeenCalled();
+    }
     expect((await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: sourcePacket, freshTarget })).replayed).toBe(false);
     expect((await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: sourcePacket, freshTarget })).replayed).toBe(true);
     expect((await target.owner.query("SELECT to_jsonb(t)::text AS value,ctid::text,xmin::text FROM acquisition_private.address_references t")).rows).toEqual(before);
