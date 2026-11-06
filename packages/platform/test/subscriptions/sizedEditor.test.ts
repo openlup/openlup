@@ -34,6 +34,20 @@ describe("full agreed pricing", () => {
     live.mockClear(); const cadence = await quoteSizedEdit({ db, context: context(), request: { subscriptionId: ids.subscription, action: "update_plan_length", planDays: 30 }, policy, host: ports, point: "preview" });
     expect(live).not.toHaveBeenCalled(); expect(cadence.lines.map(line => line.qty)).toEqual([4, 1]); expect(cadence.changedLines).toBe(0);
   });
+  it("records only selected catalogue facts in canonical order with exact document and physical evidence", async () => {
+    const ports = host(), facts = catalog().reverse(); facts.find(fact => fact.variantId === ids.a)!.exclusions = ["zeta", "alpha"];
+    ports.readCatalog = async () => facts;
+    const input = { db, context: context(), request: { subscriptionId: ids.subscription, action: "update_plan_length" as const, planDays: 30 }, policy, host: ports, point: "preview" as const };
+    const priced = await quoteSizedEdit(input);
+    expect(priced.catalogFacts).toEqual([ids.a, ids.addon].map(id => {
+      const fact = facts.find(value => value.variantId === id)!;
+      return { ...fact, exclusions: [...fact.exclusions!].sort() };
+    }));
+    expect(priced.catalogFacts[0].exclusions).toEqual(["alpha", "zeta"]);
+    ports.readCatalog = async () => [...facts].reverse().map(fact => ({ ...fact, exclusions: [...fact.exclusions!].reverse() }));
+    expect((await quoteSizedEdit(input)).catalogFacts).toEqual(priced.catalogFacts);
+    expect(facts.find(fact => fact.variantId === ids.a)!.exclusions).toEqual(["zeta", "alpha"]);
+  });
   it.each(["discount", "shipping", "shippingDiscount", "cardinality", "identity", "money", "currency"])("refuses changed quote %s corruption", reason => {
     const request = { mode: "subscription" as const, promoCodes: [], lines: [{ sku: ids.b, quantity: 4 }] };
     const quote = fullQuote([quoteLine(ids.b, 4)]);

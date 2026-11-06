@@ -31,7 +31,8 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
   if (!constraint || constraint.kind !== "unit_count" || !Number.isSafeInteger(dailyNeed) || Number(dailyNeed) <= 0 || !Number.isSafeInteger(constraint.value)) throw new Error("subscription_reprice_sized_need_unreadable");
   if ("compositionConstraint" in request && !sameSizedPinnedConstraint(request.compositionConstraint, constraint)) throw new Error("subscription_reprice_sized_lever_mismatch");
   const baseline = selectSizedAgreements(context, policy), current = agreedSubscriptionTotal(baseline);
-  const catalog = await host.readCatalog(db, context);
+  const catalog = (await host.readCatalog(db, context)).map(fact => ({ ...fact, variantId: fact.variantId.toLowerCase(),
+    exclusions: fact.exclusions === null ? null : [...fact.exclusions].sort() }));
   const cadenceDays = request.action === "update_plan_length" ? request.planDays : "cadenceDays" in request ? request.cadenceDays ?? context.cadenceDays : context.cadenceDays;
   const rules = createSizedCompositionRules({ policy, catalog, baseline, exclusions: facts.exclusions, dailyNeed: Number(dailyNeed), cadenceDays,
     useFrozenBaseline: sizedEditPhase(context, policy) === "graduation_pending", proposePortion: host.proposePortion });
@@ -79,7 +80,12 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
   const changed = split.changed.length ? (await host.quotePort.createServerAuthoritativeQuote({ ...quoteRequest, lines: split.changed.map(value => value.line) })).quote : null;
   const quote = mergeSubscriptionAgreedQuote({ request: quoteRequest, unchanged: split.unchanged, changedQuote: changed, currency: current.currency });
   const lines = references.map((line, index) => ({ ...line, quoteLine: quote.lines[index] as SizedAgreedLine["quoteLine"] }));
-  return { lines, cadenceDays, compositionConstraint: coreConstraint.data, expectedTemplateVersion: context.templateVersion,
+  const catalogFacts = [...new Set(desired.map(line => line.variantId.toLowerCase()))].sort().map(id => {
+    const fact = byId.get(id);
+    if (!fact) throw new Error("subscription_reprice_sized_catalog_facts_unreadable");
+    return { ...fact, variantId: id, exclusions: fact.exclusions === null ? null : [...fact.exclusions].sort() };
+  });
+  return { lines, catalogFacts, cadenceDays, compositionConstraint: coreConstraint.data, expectedTemplateVersion: context.templateVersion,
     quoteHash: hashPackageEditQuote(quote), quote, currentRecurringPrice: current, newRecurringPrice: quote.totalGross,
     delta: { amountMinor: quote.totalGross.amountMinor - current.amountMinor, currency: current.currency },
     changedLines: split.changed.length, unchangedLines: split.unchanged.length, subjectFacts: facts, optInFacts };
