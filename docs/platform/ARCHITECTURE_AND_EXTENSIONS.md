@@ -1852,9 +1852,9 @@ ledger failures remain upstream failures.
 The package-editor forward must be admitted and installed through the selected
 migration plan before this API is composed. It writes future line/cadence terms
 and the accepted full `linePricing` on its existing package-change event. Renewal
-reads the newest pricing event among graduation and classic package edits,
-ordered by occurrence time and event ID, falling back to retained purchase
-pricing. Frozen renewal operations keep their existing snapshot. Package editing
+reads the newest event that carries a `linePricing` array among graduation and
+classic package edits, ordered by occurrence time and event ID, falling back to
+retained purchase pricing. Frozen renewal operations keep their existing snapshot. Package editing
 never moves the due anchor, writes an arrival or interrupts active service.
 
 The same editor binding accepts `ExactSubscriptionEditRequest` for seven separate
