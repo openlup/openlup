@@ -81,12 +81,13 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
       const needsForwardApproval = candidate.changedPaths.includes(REVIEWED_FORWARD_PATH) || candidate.changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path));
-      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
+      // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
+      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, candidate.base);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
         decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree, trustedMain: main }, runGit);
         demand(decision.ok, decision.reason, decision.code);
-        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
+        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, group.base_sha);
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
@@ -171,7 +172,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     const selected = matches.filter(job => job.run_attempt === latest);
     demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
   }
-  const admitted = await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
+  await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
   await sourceCurrent();
@@ -182,7 +183,6 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
   demand(['write', 'maintain', 'admin'].includes(finalAccess?.permission ?? finalAccess?.role_name), 'auto-merge authority changed before enqueue');
-  demand(now() < admitted.expires, 'native review expired before enqueue');
   const queued = await enqueue({ pullRequestId: pr.id, expectedHeadOid: source.head_sha, jump: false });
   demand(typeof queued?.id === 'string' && queued.id.length > 0, 'enqueue did not confirm a queue entry');
   const after = await live();

@@ -115,10 +115,13 @@ higher-risk interaction blocks the single-review route. Two fresh full reviews
 of the same committed candidate can resolve that uncertainty without a
 gratuitous code edit; prior evidence and the review-cycle budget remain visible.
 
-Commit repairs before review. Give fresh reviewers the open finding cards and
-obtain passing review of the new tree by the required number of reviewers.
-Every material finding must be closed; optional advice never blocks. Evidence
-expires 24 hours after the earliest counted PASS report for the current candidate.
+Commit repairs before review and give fresh reviewers the open finding cards.
+After a passing review with no open material finding, a repair is reviewed as its
+delta plus interactions: two reviewers when the delta touches SQL, controls,
+machinery or security-sensitive paths or changes a mode, one otherwise; two full
+reviews also satisfy it. A repair while material findings are open takes the
+full review floor. Every material finding must be
+closed; optional advice never blocks. Reviews do not expire.
 
 Unchanged prepare preserves evidence. Three repair cycles are automatic; after
 that `needs_owner` requires the owner to decide whether to continue, narrow or
@@ -126,38 +129,25 @@ stop. Record an authorized continuation with `continue "<note>"`, which adds
 three cycles. The mandatory supervisor [regroup procedure](../CONTRIBUTING.md#regroup-when-work-stops-converging)
 adds no native gate or budget. The [agent guide](../AGENTS.md#change-and-verification-rules)
 owns this process; exhaustion cannot bypass review or authorize a merge.
-The review base is the candidate's
-fork point, the single `git merge-base HEAD origin/main`, so `main` moving ahead does not
-by itself make a review stale. An optional `OPENLUP_STACK_BASE` can instead pin
-an exact predecessor between that fork point and HEAD. The candidate binds this
-pin, its own delta and the complete tree. Local checks use it consistently;
-hosted source and group admission require the reviewed base on current main,
-including for equal trees. Landing that predecessor
-alone preserves the exact review without refreshing its expiry or resetting
-history. No pin is needed for an independent PR, whose existing rules remain.
-An exact two-parent integration of the prior reviewed head and the new main
-base may use focused integration inspection when `prepare` proves valid prior
-coverage in the same session with unchanged intent and author. Two fresh
-reviewers approve the current tree after examining the complete integration and
-base deltas, conflict resolution and interactions, including changed control
-machinery. Source coverage keeps its earliest expiry. Missing or expired
-coverage and uncertain interactions require full inspection; findings and the
-same repair budget remain binding. Only `candidate.integration.mechanical: true`,
-proved by an exact successful `git merge-tree` result for those two parents,
-avoids charging a repair cycle. Manual conflict resolution or additional edits
-use the ordinary repair and full local verification route. History, findings,
-fresh reviewer requirements and earliest expiry are preserved. See
-[review after integration](../CONTRIBUTING.md#native-review-and-accountability). `prepare --new` records a changed intent or a rebase
-in the same append-only session history; findings, reviewers and the repair
-count carry on. Only an authorized `continue` adds cycles.
-This focused inspection does not copy reports across trees or create another
-receipt route; the merge-group carry-over rule below is unchanged. Once criteria, required review and
+The review base is the candidate's fork point, the single
+`git merge-base HEAD origin/main`, so `main` moving ahead does not make a review
+stale. An optional `OPENLUP_STACK_BASE` can instead pin an exact predecessor
+between that fork point and HEAD; hosted source and group admission require the
+reviewed base on current main. No pin is needed for an independent PR.
+A merge of `main` into a reviewed candidate, with unchanged intent and author in
+the same session, keeps its review: a clean merge or the exact registry-carrier
+union needs no new review. Every other difference from that mechanical result,
+a resolved conflict or another edit made in the merge, is reviewed as the
+resolution; a conflict committed without a resolution is refused. These
+integrations charge no
+repair cycle. `prepare --new` records a changed intent or a rebase in the same
+append-only session history; findings, reviewers and the repair count carry on.
+Only an authorized `continue` adds cycles. Once criteria, required review and
 checks pass, stop optional edits and continue only authorized delivery steps.
 
-The [bounded local integration alternative](../CONTRIBUTING.md#native-review-and-accountability)
-alone permits selective local proof, subject to its full-anchor, chain and check-selection conditions.
-Unsupported installed verifiers retain full-run stamp requirements; `verify-command` does not attest completeness.
-All required source and merge-group CI commands still run.
+Hosted CI on the integration tree is the required verification. Local runs are
+optional and serve the code being written; `verify-command` does not attest
+completeness.
 
 Planning and review ask whether a simpler solution delivers the outcome faster,
 with less maintenance and stronger evidence. New abstractions, dependencies,
@@ -173,8 +163,8 @@ active supervisor retains actual native source-review observations and posts
 `node scripts/agent-review-session.mjs receipt <PR>` output as a PR comment with
 `gh pr comment <PR> --body-file -`, within delivery authority, as soon as the
 pull request is open and ready, then waits for actual admission. Admission
-checks the live PR head, tree, reviewer floor and expiry.
-Under actual merge authority, after local proof, review, required maintainer
+checks the live PR head, tree and reviewer floor.
+Under actual merge authority, after review, required maintainer
 reads and the ready-main-PR source receipt, the supervisor may enable auto-merge
 once while source checks are pending, following
 [Merge queue](../CONTRIBUTING.md#merge-queue). Known failed checks, conflicts and
@@ -182,25 +172,17 @@ unresolved mergeability keep their existing stops. A pending `autoMergeRequest`
 confirms auto-merge is enabled; only `mergeQueueEntry` confirms queue entry.
 Actual required source and group success still precedes merge.
 
-The source review carries over to a merge group when either:
-- the group tree is the reviewed tree; or
-- the group is exactly the reviewed change on its queue base, and the base's net
-  change since the reviewed base touches neither the change's paths nor the
-  admission, identity-binding, dependency and migration machinery (`.github/`,
-  review scripts, the identity fence, package manifests and lockfiles,
-  migrations).
-
-Admission checks these conditions itself; the author declares nothing. The
-mechanical checks on the group tree are then relied on for behavioural
-interaction. Otherwise the group is rejected: merge `main` and re-review, then
-post the new source receipt. Base integration still requires fresh current-tree
-review, using the proved focused scope described above when eligible.
+The source review carries over to a merge group when the reviewed base is an
+ancestor of the queue base and the group tree is the reviewed tree or the clean
+`git merge-tree` result of the reviewed change on that base. Admission checks
+this itself; the author declares nothing. The mechanical checks on the group
+tree cover behavioural interaction. Otherwise the group is rejected: merge
+`main`, have the conflict resolution reviewed, and post the new source receipt.
 
 Activation requires separate explicit maintainer approval of the exact settings
 and live refusal proof. A disabled or skipped admission job is not that proof.
 The six mechanical checks remain required; active queue admission adds a seventh
-required `native-review` context. Its success establishes freshness at admission,
-not a guarantee that evidence remains unexpired at the eventual merge. GitHub
+required `native-review` context. Its success establishes the review at admission. GitHub
 Actions source attribution does not isolate a workflow against a malicious
 writer able to spoof the same context. Native receipts remain process evidence;
 neither transport nor queue admission grants merge, release or settings authority.
@@ -234,6 +216,21 @@ checkable: *you can extend this safely, including by delegating to an agent,
 because the readiness condition is machine-checked.*
 
 ## Changes to this policy
+
+**Review binds to the change, decided 2026-11-05.** The rules read that review
+evidence expires after 24 hours, that a base move touching the change's paths or
+the review machinery stops carry-over, and that a merge of `main` needs two
+fresh integration reviewers and full local verification. A review now covers
+the candidate's own change: a clean merge carries it, a conflict needs review of
+its resolution only, a repair is reviewed as its delta, reviews do not expire,
+and hosted CI on the integration tree is the required verification.
+- The reason: each move of `main` re-triggered review and local verification of
+  unchanged work, which took most of a landing's time without catching defects
+  that the required CI and the change's own review would miss.
+- Unchanged: trusted-main admission, required CI, the receipt binding reviews to
+  the head, finding closure, reviewer independence and no force-push.
+- Wrong if: a clean merge or a reviewed resolution admits a defect that the
+  required CI on the group tree could not catch and a re-review would have.
 
 **Rules 2 and 4, decided 2026-09-23.** Rule 4 read: "A human opens the pull
 request, having read it." It now lets an agent open a pull request on an
@@ -293,7 +290,8 @@ receipts are now PR comments, with no run-keyed receipt route.
 **Review carry-over in the merge queue, decided 2026-10-03 (#121).** The rule read: "Unknown or sensitive interactions cannot be excused by filenames, path separation or an author-written approval". It also required two integration reviewers for every merge group whose tree differed from the reviewed source.
 
 Superseded by the [2026-10-19 simplification](../docs/platform/plans/native-review-simplification-proposal.md):
-a group that cannot carry over is rejected; merge `main` and re-review.
+a group that cannot carry over is rejected; merge `main` and re-review. Superseded
+again by "Review binds to the change" above: a clean merge carries the review.
 
 - **What changed.** A source review now carries over, and the pull request's source receipt admits the group, in two cases:
   - the group tree is the reviewed tree;
