@@ -2206,7 +2206,7 @@ function nativeUniqueValues(tokens: readonly PlatformSqlToken[], start: number):
 export function nativeStoreTriggerDefinition(statement: string): { name: string; table: string; signature: string; timing: string; events: { event: string; columns: string[] }[] } | null {
   const { tokens, complete } = platformSqlTokens(statement, false, true), name = nativeIdentifier(tokens[2]);
   if (!complete || !nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, 1, "TRIGGER") || name === null || !["BEFORE", "AFTER"].some(word => nativeWord(tokens, 3, word))) return null;
-  const timing = tokens[3]!.value.toUpperCase(), events = []; let index = 4;
+  const timing = tokens[3]!.value.toUpperCase(), events: { event: string; columns: string[] }[] = []; let index = 4;
   for (;;) {
     const event = ["INSERT", "DELETE", "UPDATE"].find(word => nativeWord(tokens, index, word));
     if (!event) return null;
