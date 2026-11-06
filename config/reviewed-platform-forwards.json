@@ -3552,12 +3552,12 @@
     },
     {
       "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
-      "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e",
+      "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199",
       "functions": [
         {
           "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "20afebf5049767ad813770b25c538504b2575f5b2e2dd05caac0b23fac42f036"
+          "afterSha256": "4b0f10f37fb4a3ffa715c440898de8285a695b4544bd2b2770a2e9fcdff2b389"
         }
       ]
     }

@@ -1882,6 +1882,9 @@ and before preview acceptance or the locked-cycle check. Missing add-on removal
 is a refusal. A reduced-mode request can fail its repricer before SQL's same-mode
 no-op. Exact previews return hash/expiry and persist their ordered pricing
 evidence with empty totals; they do not attach the classic price summary.
+An exact plan change persists the accepted quote’s composition constraint. The
+host sizing policy changes its `value` only for a plan-length constraint; a
+unit-count constraint keeps its value and other host data as cadence changes.
 
 `createExactSubscriptionRepricer` uses the recurring-only quote engine and the
 existing `CompositionRulesPort.resizeComposition` seam. The optional

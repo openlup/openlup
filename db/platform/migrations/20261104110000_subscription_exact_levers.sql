@@ -109,7 +109,7 @@ BEGIN
   ELSIF p_action='update_plan_length' THEN
    plan:=(p_payload#>>'{request,planDays}')::integer;
    IF plan IS NULL OR plan<=0 THEN RAISE EXCEPTION 'subscription_edit_invalid_plan_length' USING ERRCODE='22023'; END IF;
-   constraint_value:=jsonb_set(COALESCE(s.composition_constraint,'{}'::jsonb),'{value}',to_jsonb(plan));
+   constraint_value:=NULLIF(q#>'{quote_snapshot,compositionConstraint}','null'::jsonb);
   ELSIF p_action='update_base_mix' THEN
    SELECT COALESCE(sum(quantity),0) INTO current_total FROM public.subscription_lines WHERE subscription_id=s.id AND NOT is_addon;
    SELECT COALESCE(sum((v->>'qty')::integer),0) INTO desired_total FROM jsonb_array_elements(lines) v WHERE NOT (v->>'isAddon')::boolean;
