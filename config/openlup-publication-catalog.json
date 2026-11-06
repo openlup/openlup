@@ -2062,6 +2062,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/paid-mail-artifact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/paid-mail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/private-capture.ts",
       "class": "public-output"
     },
@@ -28459,6 +28467,10 @@
     },
     {
       "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStorePaidMail.test.ts",
       "class": "public-output"
     },
     {
