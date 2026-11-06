@@ -28166,6 +28166,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreStarterRelations.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
       "class": "public-output"
     },
