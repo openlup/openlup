@@ -431,6 +431,10 @@ assets and browser configuration. This application does not provision keys.
 Missing keys refuse acquisition quotes. Acceptance binds the request, money,
 policy, second promise and delivery terms; changed terms clear consent and require
 refresh even if the total is unchanged. Expired observations withhold money.
+After an uncertain checkout response, an unchanged retry retains the submitted
+acceptance proof and command key so the host can recover the saved receipt.
+Changing the input or explicitly starting a new action prepares a fresh quote;
+the server still validates acceptance before any new draft is admitted.
 
 The local predecessor seam loads the package eligibility and transactional
 admission factories. Missing exports refuse admission by name. All mounted checkout modes use the

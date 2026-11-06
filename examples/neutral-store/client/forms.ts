@@ -75,11 +75,13 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;
+  let uncertain: { input: string; prepared: ActionInput } | undefined;
   let inFlight = false;
   const reset = button(context.t('newAction'), () => {
     if (inFlight) return;
     commandKey = crypto.randomUUID();
     priorInput = null;
+    uncertain = undefined;
     output.replaceChildren();
   }, 'secondary');
   append(form, el('p', { class: 'muted small' }, context.t('idempotency')),
@@ -101,7 +103,10 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         output.replaceChildren(refusal(context, 'starter_input_invalid'));
         return;
       }
-      if (options.prepare) {
+      const input = JSON.stringify(values);
+      if (uncertain?.input === input) values = uncertain.prepared;
+      else if (options.prepare) {
+        uncertain = undefined;
         inFlight = true; submit.disabled = true; reset.disabled = true;
         try {
           const prepared = await options.prepare(values);
@@ -119,6 +124,8 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
         const result = await act(options.operation, values, commandKey);
+        uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
+          ? { input, prepared: values } : undefined;
         output.replaceChildren(result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,

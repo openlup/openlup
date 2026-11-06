@@ -241,7 +241,7 @@ it("waits behind an updating owner connection, then refuses the stale promise wi
   } finally { await owner.query("ROLLBACK"); owner.release(); if (pending) await pending; }
 });
 
-it("keeps acquisition draft callers behind the adapter and the starter's direct quote free of acquisition evidence", () => {
+it("routes mounted checkout through the acquisition adapter without a lower persistence fallback", () => {
   const walk = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);
     return entry.isDirectory() ? walk(path) : /\.tsx?$/.test(path) && !/\.(test|spec)\./.test(path) ? [path] : [];
@@ -265,32 +265,25 @@ it("keeps acquisition draft callers behind the adapter and the starter's direct 
     };
     visit(source);
   }
-  const ordinary = "examples/neutral-store/host/purchase-composition.ts";
-  expect(callers).toEqual([{ path: ordinary, factory: "createPostgresNativeCheckoutPersistence", owner: "composePurchaseCapabilities" },
-    { path: "packages/platform/src/commerce/server/native-checkout/index.ts",
+  expect(callers).toEqual([{ path: "packages/platform/src/commerce/server/native-checkout/index.ts",
     factory: "createPostgresNativeCheckoutPersistence", owner: "createPostgresAcquisitionCheckoutPersistence" }]);
-  const source = ts.createSourceFile(ordinary, readFileSync(ordinary, "utf8"), ts.ScriptTarget.Latest, true);
-  let snapshot: ts.VariableDeclaration | undefined;
-  let references = 0;
+  const host = "examples/neutral-store/host/purchase-composition.ts";
+  const source = ts.createSourceFile(host, readFileSync(host, "utf8"), ts.ScriptTarget.Latest, true);
+  const declarations = new Map<string, ts.Expression>();
+  const drafts: ts.CallExpression[] = [];
   const inspect = (node: ts.Node) => {
-    if (ts.isIdentifier(node) && node.text === "quoteSnapshot") references++;
-    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "quoteSnapshot") snapshot = node;
+    if (ts.isVariableDeclaration(node) && node.initializer) declarations.set(node.name.getText(source), node.initializer);
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "createOrderDraft") drafts.push(node);
     ts.forEachChild(node, inspect);
   };
   inspect(source);
-  expect(references).toBe(2); // Declaration and the direct draft argument; no mutation or replacement.
-  expect(snapshot && ts.getCombinedNodeFlags(snapshot.parent) & ts.NodeFlags.Const).toBeTruthy();
-  const property = (expression: ts.Expression | undefined, name: string): ts.Expression => {
-    if (!expression || !ts.isObjectLiteralExpression(expression)) throw new Error("Expected a literal quote");
-    const entry = expression.properties.find(entry => ts.isPropertyAssignment(entry) && entry.name.getText(source) === name);
-    if (!entry || !ts.isPropertyAssignment(entry)) throw new Error("Expected a literal quote property");
-    return entry.initializer;
-  };
-  const keys = (expression: ts.Expression): string[] => {
-    if (!ts.isObjectLiteralExpression(expression)) throw new Error("Expected a literal context");
-    return expression.properties.flatMap(entry => ts.isSpreadAssignment(entry) ? keys(entry.expression) : [entry.name!.getText(source)]);
-  };
-  const quote = property(snapshot?.initializer, "quote"), discounts = property(quote, "discounts");
-  expect(ts.isArrayLiteralExpression(discounts) && discounts.elements.length === 0).toBe(true);
-  expect(keys(property(quote, "context"))).toEqual(["mode", "cadenceDays", "promoCodes", "starterRequest"]);
+  expect(declarations.get("quoteSnapshot")?.getText(source)).toBe("observed.snapshot");
+  expect(declarations.get("drafts")?.getText(source)).toMatch(/^predecessors\.checkout\(db,/);
+  expect(drafts).toHaveLength(1);
+  expect(drafts[0]!.expression.getText(source)).toBe("drafts.createOrderDraft");
+  expect(drafts[0]!.arguments[0]!.getText(source)).toBe("{ idempotencyKey: key, quoteSnapshot }");
+  const binding = readFileSync("examples/neutral-store/host/acquisition-predecessors.ts", "utf8");
+  expect(binding).toContain("createPostgresAcquisitionCheckoutPersistence");
+  expect(binding).toContain("starter_acquisition_admission_binding_required");
 });
