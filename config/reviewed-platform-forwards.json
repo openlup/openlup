@@ -3230,6 +3230,19 @@
         "dataStatements": [
           "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_quote_previews', 'retain', 'A quote preview exists only for a subscription its client owns, and subscriptions already block absorption; absorption never reads previews.');"
         ]
+      },
+      {
+        "row": "exact-levers",
+        "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -3534,6 +3547,17 @@
           "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "15a13226c7695a296d8f84c2a89a01369feadcd895ff32007808a63de8b7b0e4"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
+      "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e",
+      "functions": [
+        {
+          "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "20afebf5049767ad813770b25c538504b2575f5b2e2dd05caac0b23fac42f036"
         }
       ]
     }
