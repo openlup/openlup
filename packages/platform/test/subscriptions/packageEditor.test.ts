@@ -48,7 +48,7 @@ it("records a content-keyed preview with effective request, complete snapshots, 
   const record = f.calls.find(call => call.sql.includes("subscription_quote_preview_record"))!;
   expect(record.values).toEqual([id, client, id, preview.quoteHash, 1, "2026-11-05T00:15:00.000Z",
     { planDays: 20, nominalPlanDays: 20, base: request.base, addons: [], expectedTemplateVersion: 1 },
-    { baseLines: [{ ...request.base[0], quoteLine: { sku: "REFILL", quantity: 6, unitPriceGross: money(137), lineSubtotalGross: money(822) } }], addonLines: [] },
+    { baseLines: [{ ...request.base[0], quoteLine: { sku: "REFILL", quantity: 6, unitPriceGross: money(137), lineSubtotalGross: money(822) } }], addonLines: [], compositionConstraint: null },
     { currentRecurringPrice: money(548), newRecurringPrice: money(822), delta: money(274) }, "2026-11-05T00:00:00Z"]);
   const applied = await f.editor.apply(actor, "independent-apply-key", { ...request, acceptedQuoteHash: preview.quoteHash });
   expect(applied.status).toBe("applied");

@@ -44,7 +44,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
   const repricer = (db: SubscriptionQueryExecutor) => createClassicPackageRepricer({ ...options, readPort: createPostgresPackageEditReadPort(db) });
   function evidence(request: ReturnType<typeof parse>, quote: PackageEditQuote) {
     return { planDays: quote.cadenceDays, nominalPlanDays: request.planDays, base: request.base, addons: request.addons,
-      baseLines: quote.baseLines, addonLines: quote.addonLines,
+      baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint,
       currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta,
       expectedTemplateVersion: quote.expectedTemplateVersion, acceptedQuoteHash: request.acceptedQuoteHash };
   }
@@ -73,7 +73,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'update_package_template',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)",
           [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,
             { ...originalRequest, planDays: payload.planDays, nominalPlanDays: payload.nominalPlanDays },
-            { baseLines: payload.baseLines, addonLines: payload.addonLines },
+            { baseLines: payload.baseLines, addonLines: payload.addonLines, compositionConstraint: payload.compositionConstraint },
             { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta }, options.now()]);
         return { ...preview, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
           newTotal: quote.newRecurringPrice, delta: quote.delta, packageEdit: { currentRecurringPrice: quote.currentRecurringPrice,
