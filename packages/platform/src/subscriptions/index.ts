@@ -53,3 +53,5 @@ export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } fr
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
+export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
+export type { NativeWinbackOptions } from "./postgresWinback.js";
