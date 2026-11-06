@@ -89,7 +89,8 @@ it("retains a protected predecessor, extends the restored schedule on actual lat
   const predecessor = await createPostgresFulfillmentShipmentSpinePort(source.owner, { portKey: "journey-parcel" })
     .createShipment({ idempotencyKey: "journey-late-predecessor", orderId: purchase.orderId, requestedAt: journeyPaidAt });
   const offered = await composeJourneyRenewal(source, purchase.subscriptionId, "succeeded", at);
-  const admission = { subscriptionId: purchase.subscriptionId, scheduledAt: journeyScheduledAt, occurredAt: at };
+  const admission = { subscriptionId: purchase.subscriptionId, scheduledAt: journeyScheduledAt,
+    scheduledInstant: offered.due.scheduledInstant, occurredAt: at } satisfies Parameters<ReturnType<typeof withNativeDeliveryAlignmentRenewalAdmission>["admitDeliveryAlignment"]>[0];
   expect(await withNativeDeliveryAlignmentRenewalAdmission(offered.input.store, source.runtime).admitDeliveryAlignment(admission))
     .toEqual({ allowed: false, state: "protected", reason: "delivery_alignment_protected", deferred: true });
   const before = await journeyCensus(source.owner), packet = await captureStoreJourney(source.owner, "late-renewal-protected");
@@ -100,7 +101,7 @@ it("retains a protected predecessor, extends the restored schedule on actual lat
   const deliveredAt = "2026-09-30T12:00:00.123456Z", extended = "2026-10-28T12:00:00.123456Z";
   const renewAt = "2026-10-28T12:01:00.654321Z", replayAt = "2026-10-28T13:01:00.654321Z";
   const arrival = { requestKey: "journey-late-arrival", parcelRef: predecessor.shipmentId,
-    deliveredAt, evidenceRef: "evidence:journey-late-arrival" };
+    deliveredAt, evidenceRef: "evidence:journey-late-arrival" } satisfies Parameters<ReturnType<typeof createPostgresDeliveryAlignmentPort>["recordArrival"]>[0];
   const answers: unknown[] = [];
   for (const store of [source, target]) {
     await assertJourneyRuntime(store.runtime);
