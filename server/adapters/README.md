@@ -208,6 +208,13 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+`catalog_product_document_revisions` is carried with its immutable row text.
+Restore stages both product pointers to null, inserts revisions after their
+products, then installs each current-revision pointer while the primary-SKU
+pointer is still staged. Each guarded update preserves every other product
+field and requires exactly one row; the foreign key requires the revision to
+belong to that product. The existing primary-SKU update follows SKU insertion.
+
 The profile also carries account consent events (requested/effective
 choice, actor/client and recipient fingerprint, copy/source/reason, route/client
 attribution, capture times and work ID) and their singleton sync-target row.
