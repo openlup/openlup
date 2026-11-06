@@ -445,7 +445,7 @@ admission factories. Missing exports refuse admission by name. All mounted check
 transaction adapter; acquisition terms never reach a direct lower-level writer. Alias evidence cannot grant a customer session or
 account reads. The host freezes the installed retained-renewal contract in the
 server quote: original mode-price units and full line evidence, the second-delivery
-amount/rate/basis, configured minimum and graduation cadence, and zero shipping.
+amount/rate/basis, configured minimum and graduation cadence, and the accepted shipping agreement.
 Acceptance binds those promise values; observation timestamps are not promise
 identity. The full retained evidence is excluded from the browser projection.
 After sandbox capture, the installed purchase-renewal writer records those terms
