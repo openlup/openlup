@@ -11,8 +11,8 @@ export interface PackageEditCurrentLine {
   lineId: string; variantId: string; quantity: number; sortOrder: number; isAddon: boolean;
   frozenLineSubtotalGross?: PackageEditMoney;
 }
-/** Adapters translate the persisted carrier. Native classic edits restamp its top-level
- * value from the accepted nominal plan; the host recognizes its own plan-length kind. */
+/** Adapters translate the persisted carrier. Native classic edits persist the constraint the
+ * host quoted for the accepted plan; the host recognizes its own plan-length kind. */
 export interface PackageEditConstraintMapper {
   toCore(stored: Record<string, unknown> | null): CompositionConstraint;
   fromCore(constraint: CompositionConstraint): Record<string, unknown> | null;
