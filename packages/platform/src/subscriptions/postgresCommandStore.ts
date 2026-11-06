@@ -1,4 +1,5 @@
-import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal } from "./contracts/commands.js";
+import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import { lifecycleTerms, retentionFields } from "./lifecycleTerms.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./index.js";
 
@@ -7,6 +8,10 @@ export interface NativeSubscriptionCommand {
   action: string; payload: Record<string, unknown>; now: string;
 }
 export interface NativeSubscriptionCommandBinding {
+  /** Server-owned timing policy, separate from customer fields. Omit for compatibility timings. */
+  lifecycleTerms?: SubscriptionLifecycleTerms;
+  /** Optional adopter taxonomy; the package validates shape without owning reason values. */
+  retentionReasonCodes?: readonly string[];
   /** The callback must use one connection and commit/rollback the complete unit. */
   withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   /** Validate address ownership and refuse address mutation; resolve SKUs and
@@ -55,14 +60,14 @@ function commandResult(result: Record<string, unknown>): Record<string, unknown>
 
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
  * Preview is a separate persisted transaction; apply never executes payment. */
-export function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction">) {
+export function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">) {
   return {
     preview(input: NativeSubscriptionCommand) { return invokeCommand(binding, input, true); },
     apply(input: NativeSubscriptionCommand) { return invokeCommand(binding, input, false); },
   };
 }
 
-async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction">,
+async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">,
   input: NativeSubscriptionCommand, preview: boolean,
   futureTerms?: () => ReturnType<NativeSubscriptionCommandBinding["futureTerms"]>): Promise<Record<string, unknown>> {
   if (input.action === "multi_cycle_prepaid") return {
@@ -95,6 +100,13 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       WHEN status<>'previewed' THEN result||jsonb_build_object('status','replayed','originalStatus',status,'commandFingerprint',command_fingerprint)
       END AS response FROM receipt`, [...values, preview, !!futureTerms]);
     if (stored.rows[0]?.response) return commandResult(subscriptionRecord(stored.rows[0].response));
+    if ((input.action === "pause" || input.action === "cancel") && binding.retentionReasonCodes
+      && input.payload.survey !== null && typeof input.payload.survey === "object") {
+      const reasonCode = subscriptionRecord(input.payload.survey).reasonCode;
+      if (typeof reasonCode === "string" && !binding.retentionReasonCodes.includes(reasonCode)) {
+        return { status: "refused", reason: "subscription_command_invalid_input" };
+      }
+    }
     if (futureTerms) {
       if (stored.rows[0]) {
         // A matching preview already bound the host translation. Apply that
@@ -121,7 +133,10 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
     }
     if (!result) {
       const name = preview ? "subscription_command_preview" : "subscription_command_apply";
-      const { rows } = await executor.query(`SELECT public.${name}($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz) AS response`, values);
+      const terms = !preview && binding.lifecycleTerms !== undefined
+        && ["pause", "resume", "cancel", "skip_next_cycle", "slide_next_cycle", "order_now", "reactivate"].includes(input.action)
+        ? lifecycleTerms(binding.lifecycleTerms) : undefined;
+      const { rows } = await executor.query(`SELECT public.${name}($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz${terms ? ",$8::jsonb" : ""}) AS response`, terms ? [...values, terms] : values);
       result = commandResult(subscriptionRecord(rows[0]?.response));
     }
     if (preview || result.status === "refused") return result;
@@ -139,11 +154,13 @@ export function createPostgresSubscriptionCommands(binding: NativeSubscriptionCo
   preview(command: Extract<SubscriptionCommand, { action: "edit_future_terms" }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
 } {
   function encode(command: SubscriptionCommand): NativeSubscriptionCommand | SubscriptionCommandRefusal {
-    // This serving adapter never pauses an active subscription. Existing native
-    // callers retain their separate, unchanged lifecycle contract.
-    if (command.action === "pause") return { outcome: "refused", reason: "subscription_command_pause_forbidden" };
     const { actor, subscriptionId, idempotencyKey, now, action, ...fields } = command;
     let payload: Record<string, unknown> = { ...fields, actorKind: actor.kind };
+    if (command.action === "pause" || command.action === "cancel") {
+      const retention = retentionFields(command);
+      if (!retention) return { outcome: "refused", reason: "subscription_command_invalid_input" };
+      payload = { ...payload, ...retention };
+    }
     let nativeAction: string = action === "skip" ? "skip_next_cycle" : action === "slide" ? "slide_next_cycle" : action;
     if (command.action === "edit_future_terms") {
       // Preserve the host carriers as well as their native translation in the

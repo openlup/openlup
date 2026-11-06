@@ -1614,7 +1614,12 @@ With N1 then N2 installed, `createPostgresSubscriptionCommandStore` and
 command-bound receipts. Preview persists a quote; apply atomically updates future
 terms, event and receipt with no proration or current-cycle repricing. Hosts own
 authorization, address validation, SKU/composition translation and the transaction
-connection. Prepaid remains unsupported; the serving adapter refuses pause.
+connection. The lifecycle-closure forward enables explicit pause with atomic
+recovery closure and unpaid-artifact finality. Confirmed order-now/reactivation,
+structured pause/cancel retention evidence and separate trusted lifecycle timing
+terms use the existing command port; see the
+[subscription owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+Prepaid remains unsupported.
 
 Native N3 plus the ATP seam/allocator and X/Y suffix provide
 `createPostgresStockWaitStore` and `createPostgresStockAvailability` (the latter
@@ -1731,6 +1736,12 @@ for composition, refusal and sandbox limits. Construction installs no route,
 schedule or provider connection.
 
 ## Account and support contracts
+
+The command transcription includes confirmed order now/reactivation, structured
+pause/cancel survey and save-offer carriers, and an optional slide reason.
+Legacy survey/offer strings remain strings. Native order history projects a
+terminalized settlement intent as `cancelled` rather than payment pending.
+No new operator action, retention discount or browser binding is installed.
 
 `./account-support/postgres` exposes the existing
 `createPostgresCustomerSupportJourneyPort`. Supply a restricted runtime connection

@@ -102,18 +102,48 @@ export interface SubscriptionCommandContext {
     idempotencyKey: string;
     now: string;
 }
+/** Trusted host policy; never part of a browser command payload. */
+export interface SubscriptionLifecycleTerms {
+    pauseDays: number;
+    pauseMonths: number;
+    slideMinDays: number;
+    slideMaxDays: number;
+    orderNowDelayMinutes: number;
+    reactivateDelayDays: number;
+}
+export interface SubscriptionCancelSurvey {
+    reasonCode?: string;
+    comment?: string | null;
+    acceptedSaveOfferId?: string | null;
+}
+export interface SubscriptionSaveOffer {
+    offerId: string;
+    kind: "pause" | "skip" | "reschedule" | "plan_length" | "recipe_mix" | "support_callback";
+    accepted: boolean;
+    externalOfferRef?: string | null;
+}
 export type SubscriptionCommand = SubscriptionCommandContext & ({
     action: "pause";
     pausePreset: string;
     reason: string | null;
-    survey: string | null;
-    saveOffer: string | null;
+    survey: SubscriptionCancelSurvey | string | null;
+    saveOffer: SubscriptionSaveOffer | string | null;
 } | {
-    action: "resume" | "skip" | "cancel";
+    action: "resume" | "skip";
     reason: string | null;
     confirmedChargeTiming: boolean;
 } | {
+    action: "cancel";
+    reason: string | null;
+    confirmedChargeTiming: boolean;
+    survey?: SubscriptionCancelSurvey | string | null;
+    saveOffer?: SubscriptionSaveOffer | string | null;
+} | {
+    action: "order_now" | "reactivate";
+    confirmedChargeTiming: true;
+} | {
     action: "slide";
+    reason?: string | null;
     newNextCycleAt: string;
     confirmedChargeTiming: boolean;
 } | {
@@ -1351,7 +1381,7 @@ export declare function nativeSubscriptionSchema(catalogue: {
 ## dist/subscriptions/postgresCommandStore.d.ts
 
 ```ts
-import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal } from "./contracts/commands.js";
+import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeSubscriptionCommand {
     actorId: string;
@@ -1363,6 +1393,10 @@ export interface NativeSubscriptionCommand {
     now: string;
 }
 export interface NativeSubscriptionCommandBinding {
+    /** Server-owned timing policy, separate from customer fields. Omit for compatibility timings. */
+    lifecycleTerms?: SubscriptionLifecycleTerms;
+    /** Optional adopter taxonomy; the package validates shape without owning reason values. */
+    retentionReasonCodes?: readonly string[];
     /** The callback must use one connection and commit/rollback the complete unit. */
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** Validate address ownership and refuse address mutation; resolve SKUs and
@@ -1383,7 +1417,7 @@ export interface NativeSubscriptionCommandBinding {
 }
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
  * Preview is a separate persisted transaction; apply never executes payment. */
-export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction">): {
+export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">): {
     preview(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
     apply(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
 };

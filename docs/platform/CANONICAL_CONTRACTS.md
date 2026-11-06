@@ -528,7 +528,9 @@ the SQL side therefore charges earlier than the engine would.
 table admits only `active`, `paused` and `cancelled`, so it has no activation
 statuses and no `completed`. It has no status-transition trigger: each lifecycle
 function checks its own source status. It can send a win-back message to a
-cancelled subscriber, but no function reactivates a cancelled subscription.
+cancelled subscriber. With the lifecycle-closure forward, its trusted command
+port also reactivates a cancelled subscription after charge-timing confirmation,
+using healthy method and renewal-term evidence and leaving old unpaid cycles terminal.
 Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
 active on dunning exhaustion (invariant repair). A NULL next retry leaves the
 case open and repairable through `dunning_lifecycle_record_recovery`, queues the
@@ -539,8 +541,8 @@ refusal on rung one also has no next retry. No caller in this tree invokes it
 today. A future caller must not call it with NULL unless
 `isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
 must stay open without that call. An adopter on the portable chain therefore cannot store a
-completed or provisional subscription, and cannot reactivate a cancelled one,
-until a forward migration closes the gap under the compatibility lifecycle in
+completed or provisional subscription. The lifecycle command port is described
+by the subscription owner; additional status-matrix changes still follow the compatibility lifecycle in
 [Data and migrations](DATA_AND_MIGRATIONS.md).
 
 ## Subscription delivery alignment
