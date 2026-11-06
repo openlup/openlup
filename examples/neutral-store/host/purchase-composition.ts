@@ -1,3 +1,4 @@
+import { isInitialCheckoutOrder, sameUuid } from './recurring-fence.ts';
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { setTimeout } from 'node:timers/promises';
@@ -49,16 +50,25 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_[A-Za-z0-9_-]{43}$/.test(value);
   const authorizedOrder = async (payload: Record<string, unknown>, context: ActionContext) => {
     if (context.actor.customerRef) {
-      const orderId = payload.orderRef ?? (token(payload.token) ? (await recovery.tokens.validate(payload.token))?.orderId : undefined);
+      let orderId = payload.orderRef;
+      if (payload.token !== undefined) {
+        if (!token(payload.token)) return null;
+        const verified = await recovery.tokens.validate(payload.token);
+        if (!verified || (payload.orderRef !== undefined && !sameUuid(payload.orderRef, verified.orderId))
+          || !await isInitialCheckoutOrder(db, verified.orderId)) return null;
+        orderId = verified.orderId;
+      }
       const order = await readOrder(orderId);
-      return order?.client_id === context.actor.customerRef ? order : null;
+      return order && sameUuid(order.client_id, context.actor.customerRef)
+        && await isInitialCheckoutOrder(db, order.id) ? order : null;
     }
     if (!token(payload.token)) return null;
     const verified = await recovery.tokens.validate(payload.token);
     if (!verified || (payload.orderRef !== undefined
-      && (!uuid(payload.orderRef) || payload.orderRef.toLowerCase() !== verified.orderId))) return null;
+      && (!uuid(payload.orderRef) || !sameUuid(payload.orderRef, verified.orderId)))) return null;
     const order = await readOrder(verified.orderId);
-    return order?.status === 'pending_payment' && order.client_id === verified.clientId ? order : null;
+    return order?.status === 'pending_payment' && sameUuid(order.client_id, verified.clientId)
+      && await isInitialCheckoutOrder(db, order.id) ? order : null;
   };
   const address = (payload: Record<string, unknown>, country: string) => ({
     recipientName: `${payload.firstName} ${payload.lastName}`, line1: String(payload.line1),
@@ -124,7 +134,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       const orderId = result.orderDraft.orderId.slice(6);
       created = { id: orderId, fresh: !result.orderDraft.replayed };
       const current = await readOrder(orderId);
-      if (!current || !['pending_payment', 'paid'].includes(current.status)) return refused('starter_checkout_not_payable');
+      if (!current || !await isInitialCheckoutOrder(db, current.id) || !['pending_payment', 'paid'].includes(current.status)) return refused('starter_checkout_not_payable');
       // Replayed registration compares the original immutable address before returning it.
       await destinations.registerOrder({ idempotencyKey: `${key}:destination`, orderId, address: shipping, now: new Date().toISOString() });
       const stock = createPostgresFulfillmentStockSyncPort(db, { sourceKey: source(context), readLocalInventoryStock: async () => [] });
@@ -173,8 +183,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!token(payload.token)) return refused('starter_recovery_unavailable');
     const inspected = await recovery.tokens.inspect(payload.token);
     if (!inspected || (payload.orderRef !== undefined
-      && (!uuid(payload.orderRef) || payload.orderRef.toLowerCase() !== inspected.orderId))) return refused('starter_recovery_unavailable');
-    if (context.actor.customerRef && inspected.clientId !== context.actor.customerRef) return refused('starter_order_not_found');
+      && (!uuid(payload.orderRef) || !sameUuid(payload.orderRef, inspected.orderId)))) return refused('starter_recovery_unavailable');
+    if (!await isInitialCheckoutOrder(db, inspected.orderId)) return refused('starter_recovery_unavailable');
+    if (context.actor.customerRef && !sameUuid(inspected.clientId, context.actor.customerRef)) return refused('starter_order_not_found');
     if (inspected.tokenState === 'revoked') return refused('starter_recovery_unavailable');
     if (inspected.tokenState === 'expired') return refused('starter_recovery_expired');
     if (inspected.status === 'cancelled') return refused('starter_recovery_cancelled');
@@ -205,6 +216,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       if (accepted.status !== 200) return refused('starter_sandbox_observation_refused');
       let renewalAttachment: string | undefined;
       if (payload.outcome === 'captured') {
+        if (!await isInitialCheckoutOrder(db, order.id)) return refused('starter_order_not_found');
         const declaration = (await db.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [order.id])).rows[0];
         if (declaration) {
           const acceptedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;

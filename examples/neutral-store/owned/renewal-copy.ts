@@ -1,0 +1,28 @@
+export const renewalNoticeCopy = {
+  en: {
+    minorUnits: 'minor units', cause: 'Payment information', needsConfirmation: 'This payment needs confirmation.',
+    cannotRecur: 'This method cannot be used for an unattended payment.', methodDead: 'This payment method is no longer available.',
+    methodDataInvalid: 'The payment method details need attention.', methodMissing: 'A payment method is missing.',
+    payment_failed: 'Payment needs attention', payment_expired: 'Payment still needs attention',
+    payment_recovery: 'Your payment repair link', payment_recovered: 'Payment confirmed',
+    lifecycle: 'Subscription update', active: 'Your subscription remains active.',
+    amount: 'Amount', retry: 'Next scheduled payment attempt', charge: 'Charge date',
+    repair: 'Repair this payment', expires: 'Link expires', unknown: 'Not available',
+    status: 'Current subscription status', addressApplied: 'The address change applied.',
+    addressNextParcel: 'The address change applies from the next parcel.',
+    address: 'A future address change does not move a parcel already being prepared.',
+  },
+  pl: {
+    minorUnits: 'jednostki mniejsze', cause: 'Informacja o płatności', needsConfirmation: 'Ta płatność wymaga potwierdzenia.',
+    cannotRecur: 'Ta metoda nie obsługuje płatności bez udziału klienta.', methodDead: 'Ta metoda płatności nie jest już dostępna.',
+    methodDataInvalid: 'Dane metody płatności wymagają uwagi.', methodMissing: 'Brakuje metody płatności.',
+    payment_failed: 'Płatność wymaga uwagi', payment_expired: 'Płatność nadal wymaga uwagi',
+    payment_recovery: 'Link do naprawy płatności', payment_recovered: 'Płatność potwierdzona',
+    lifecycle: 'Aktualizacja subskrypcji', active: 'Twoja subskrypcja pozostaje aktywna.',
+    amount: 'Kwota', retry: 'Następna zaplanowana próba płatności', charge: 'Data obciążenia',
+    repair: 'Napraw tę płatność', expires: 'Link wygasa', unknown: 'Brak danych',
+    status: 'Bieżący stan subskrypcji', addressApplied: 'Zmiana adresu została zastosowana.',
+    addressNextParcel: 'Zmiana adresu dotyczy następnej paczki.',
+    address: 'Zmiana przyszłego adresu nie przenosi paczki, która jest już przygotowywana.',
+  },
+} as const;

@@ -1,4 +1,6 @@
 import { quoteConfigurations } from './quote.config.ts';
+import { demoRenewalConfig } from './renewal.config.ts';
+import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import type { StoreConfig } from '../shared/config.ts';
 
 /** Change this single input to personalize the running application. */
@@ -6,6 +8,8 @@ export const configurations: Record<string, StoreConfig> = {
   supplements: {
     id: 'supplements',
     quote: quoteConfigurations.supplements,
+    renewal: demoRenewalConfig('supplements'),
+    recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
       name: 'Aster Goods',
       strapline: { en: 'A fictional everyday collection', pl: 'Fikcyjna kolekcja na co dzień' },
@@ -93,6 +97,8 @@ export const configurations: Record<string, StoreConfig> = {
   coffee: {
     id: 'coffee',
     quote: quoteConfigurations.coffee,
+    renewal: demoRenewalConfig('coffee'),
+    recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
       name: 'Pebble Coffee',
       strapline: { en: 'A fictional coffee shelf', pl: 'Fikcyjna półka z kawą' },

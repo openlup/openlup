@@ -455,6 +455,17 @@ function copyCapture(input: ConnectedNativeStoreCapture): ConnectedNativeStoreCa
     if (copy.format !== "openlup.native-retained-store.v1" || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
     if (!copy.observation || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
       || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
+    if (!Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
+    for (const entry of copy.outsideProfileCensus) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)
+        || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
+        || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
+        || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
+      const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
+        : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
+          : entry.relation === "acquisition_private.address_references" ? "target-address-references" : "unsupported-empty";
+      if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
+    }
     const all = tables(copy);
     if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
@@ -513,7 +524,7 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
   for (const relation of relations) {
     if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName) || relation.table === "platform_schema_migrations")) continue;
-    if (relation.schema === "acquisition_private" && relation.table === "installation_key") continue;
+    if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
     if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
   }
 }

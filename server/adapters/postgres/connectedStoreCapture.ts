@@ -70,7 +70,7 @@ export interface ConnectedNativeStoreCapture {
   observation: { cluster: string; database: string; login: string; snapshot: string };
   emptyOutsideProfile: string[];
   outsideProfileCensus: { relation: string; owner: string; rows: string;
-    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" }[];
+    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" | "target-address-references" }[];
   sha256: string;
 }
 
@@ -128,14 +128,16 @@ export async function captureConnectedNativeStore(input: {
       for (const relation of relations) {
         if (relation.schema === "public" && allowed.has(relation.table)) continue;
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
-        if (relation.schema === "acquisition_private" && relation.table === "installation_key"
+        if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
           || relation.schema === "public" && relation.table === "platform_schema_migrations") {
           // Count/ownership only. Never read, hash or transport installation key
-          // payloads. Private acquisition business rows below are NOT secrets
-          // by naming convention: nonempty cases/history still refuse capture.
+          // payloads or target-owned address-reference registry rows. Private
+          // acquisition business rows below are NOT secrets by naming
+          // convention: nonempty cases/history still refuse capture.
           const rows = (await db.query<{ count: string }>(`SELECT count(*)::pg_catalog.text AS count FROM ${qualified}`)).rows[0]!.count;
           outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows,
-            disposition: relation.table === "installation_key" ? "new-target-installation-key" : "target-migration-history" });
+            disposition: relation.table === "installation_key" ? "new-target-installation-key"
+              : relation.table === "address_references" ? "target-address-references" : "target-migration-history" });
           continue;
         }
         if ((await db.query(`SELECT 1 FROM ${qualified} LIMIT 1`)).rows.length) {

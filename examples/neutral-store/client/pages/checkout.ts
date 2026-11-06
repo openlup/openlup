@@ -1,4 +1,5 @@
 import { createQuoteAcceptance } from '../quote-acceptance.ts';
+import { authenticatedRepairPage } from '../recovery-page.ts';
 import type { PageContext } from '../context.ts';
 import { validateCart, isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
@@ -89,12 +90,5 @@ export function completionPage(context: PageContext): HTMLElement {
 }
 
 export function repairPage(context: PageContext): HTMLElement {
-  return el('div', {}, el('h1', {}, context.t('repair')),
-    el('p', {}, context.t('repairBody')),
-    actionForm(context, {
-      operation: 'payment.recover', submit: 'repairAction',
-      fields: [{ name: 'token', label: 'recoveryToken', value: context.query.get('token') ?? '', maxLength: 1024 }],
-    }),
-    el('p', { class: 'notice' }, context.t('subscriptionInvariant')),
-    nativeActions(context, ['N6']));
+  return authenticatedRepairPage(context);
 }
