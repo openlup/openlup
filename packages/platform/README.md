@@ -1587,6 +1587,16 @@ The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
 committed `activateNativePurchaseWithRenewal` convenience call. A completion
 failure leaves an enumerable durable duty while paid service remains active.
+Before completion, a single privilege probe checks the template's required reads,
+writes and row lock. Missing grants skip materialization with one neutral reason
+and complete as before: no template is created, and native edits stay refused.
+Where grants exist, one statement materializes the purchased template and eligible
+price context. An unresolved pair omits the context UPDATE entirely; a resolved
+pair requires its column write grants. A crash before completion leaves the duty
+pending; retry keeps existing lines, and completed replay preserves later edits.
+Missing or ambiguous lists retain NULL context while permitted template lines
+remain visible. Graduation retries absent context only with the required pair
+write grants, without changing its existing behavior or due anchor.
 `createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.

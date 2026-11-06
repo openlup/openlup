@@ -1841,6 +1841,30 @@ A failed facts or completion writer returns a pending attachment while paid
 service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
+Before completion, one privilege probe checks every read/write column required
+by the chosen template source and the subscription row lock. Missing template
+grants skip materialization, log one neutral reason and call completion as before;
+they do not leave the attachment pending. On that restricted runtime, no account
+template is created and native edits remain refused, as before this change.
+Where grants permit, the writer materializes the standing template and optional
+price context in one atomic statement on its existing query executor. Initial
+lines use admitted SKU, quantity, zero-based ordinal and false addon flags.
+When order-item reads are unavailable but draft/catalogue reads are granted, it
+uses the admitted draft persisted in order metadata plus the SKU lookup. Term
+lines are created only by completion and cannot supply this earlier phase.
+A failure between materialization and completion leaves the template present
+and attachment pending; retry preserves existing lines and completes the duty.
+Completed attachments and later template revisions receive no template/context
+writes, so replay cannot overwrite a customer edit or graduation.
+The resolver checks read grants before selecting eligible lists in the order
+currency with admission's entry precedence and admitted prices. Exactly one match
+sets a still-NULL list/currency pair only when both column writes are granted.
+For an unresolved pair, the materialization statement contains no context UPDATE.
+Missing, ambiguous or unavailable price reads retain NULL context and log a neutral
+reason; lines are still shown where template grants exist. Graduation retries
+absent context with the same resolver. It reads context only after its SELECT
+check, and skips the new pair UPDATE if its read or write grants are missing,
+preserving the existing graduation and due anchor.
 The runtime has no direct privileges on the attachment or method-event tables;
 fixed definer readers expose pending identifiers/readiness and completed snapshot
 fields. `subscription_renewal_purchase_terms(uuid)` additionally returns the sealed

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { RenewalLine, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { nativeRenewalTermsSchema } from "./nativeRenewalTerms.js";
+import { resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
 
 /** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
 export interface NativeRenewalPurchaseFacts {
@@ -35,7 +36,40 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
       if (Object.hasOwn(facts, "renewalTerms")) nativeRenewalTermsSchema.parse(facts.renewalTerms);
       return response("SELECT public.subscription_register_renewal_purchase_with_shipping($1::uuid,$2::jsonb) AS response", [orderId, JSON.stringify({ ...facts, unattendedChargeAuthorizedAt: nativeInstant(facts.unattendedChargeAuthorizedAt) })]);
     },
-    complete(orderId: string) {
+    async complete(orderId: string) {
+      const context = await resolveNativePurchasePriceList(executor, orderId, true);
+      if (!context.templateAllowed) return response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);
+      // Renewal term lines do not exist before completion. Restricted order-item
+      // readers use the admitted draft saved by the same admission statement.
+      const source = context.orderReadable
+        ? `SELECT item.sku_id AS variant_id,item.quantity,item.line_ordinal-1 AS sort_order,
+            item.unit_amount_minor,o.currency_code FROM public.commerce_orders o
+          JOIN public.commerce_order_items item ON item.order_id=o.id WHERE o.id=$1::uuid`
+        : `SELECT sku.id AS variant_id,(item.line->>'quantity')::integer AS quantity,
+            (item.ordinal-1)::integer AS sort_order,(item.line#>>'{unitPriceGross,amountMinor}')::bigint AS unit_amount_minor,
+            o.currency_code FROM public.commerce_orders o
+          CROSS JOIN LATERAL jsonb_array_elements(o.metadata#>'{orderDraftSnapshot,lines}')
+            WITH ORDINALITY item(line,ordinal)
+          JOIN public.catalog_skus sku ON sku.sku=item.line->>'sku' WHERE o.id=$1::uuid`;
+      // One statement atomically writes the template and optional price context.
+      // Completion remains its existing durable duty; a crash between statements
+      // leaves the template intact and the attachment pending for retry.
+      const contextUpdate = context.priceListId ? `, context AS (
+        UPDATE public.subscriptions s SET price_list_id=$2::uuid,currency_code=$3
+        FROM pending p WHERE s.id=p.id AND s.price_list_id IS NULL AND s.currency_code IS NULL
+        RETURNING s.id
+      )` : "";
+      await executor.query(`WITH pending AS MATERIALIZED (
+        SELECT s.id FROM public.subscription_activations a JOIN public.subscriptions s ON s.id=a.subscription_id
+        WHERE a.order_id=$1::uuid AND a.state='active' AND s.template_version=1
+          AND public.subscription_renewal_purchase_facts(s.id) IS NULL FOR UPDATE OF s
+      ), template AS (
+        INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+        SELECT p.id,l.variant_id,l.quantity,l.sort_order,false,l.unit_amount_minor,l.currency_code
+        FROM pending p CROSS JOIN (${source}) l
+        WHERE NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=p.id)
+        ON CONFLICT(subscription_id,variant_id) DO NOTHING RETURNING id
+      )${contextUpdate} SELECT id FROM pending`, context.priceListId ? [orderId, context.priceListId, context.currency] : [orderId]);
       return response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);
     },
     async pending(limit = 100) {

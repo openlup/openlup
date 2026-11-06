@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { RenewalLine, RenewalLinePricing, RenewalPricingSnapshot, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
 
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const cadence = z.number().int().positive().max(2_147_483_647);
@@ -111,6 +112,9 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     AND state NOT IN ('succeeded','refused') UNION ALL SELECT 1 FROM public.subscription_cycles WHERE subscription_id=$1::uuid
     AND status IN ('payment_pending','retry_scheduled') LIMIT 1`, [id]);
   if (open.rows.length) throw new Error("subscription_starter_graduation_open_cycle");
+  const context = await resolveNativePurchasePriceList(db, String(row.activation_order_id), false, id);
+  if (context.priceListId && context.contextWritable) await db.query(`UPDATE public.subscriptions SET price_list_id=$2::uuid,currency_code=$3
+    WHERE id=$1::uuid AND price_list_id IS NULL AND currency_code IS NULL`, [id, context.priceListId, context.currency]);
   const original = z.array(z.object({ lineOrdinal: cadence, sku: z.string(), quantity: cadence, unitAmountMinor: amount }).strict()).parse(row.lines);
   const prices = currentPricing(row, original, terms!);
   let finalLines = original, finalPricing = prices;
@@ -119,7 +123,7 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
       JOIN public.catalog_skus k ON k.id=l.variant_id WHERE l.subscription_id=$1::uuid`, [id]);
     const roles = new Map(template.rows.map(value => [String(value.sku), value]));
     const addons = new Set(original.filter(line => roles.get(line.sku)?.is_addon
-      ?? prices.find(price => price.sku === line.sku)?.isAddon).map(line => line.sku));
+      || prices.find(price => price.sku === line.sku)?.isAddon).map(line => line.sku));
     const next = marker.graduation.lines.map(line => ({ sku: line.sku, quantity: line.qty,
       unitAmountMinor: amount.parse(subscriptionRecord(line.quoteLine.unitPriceGross).amountMinor), isAddon: line.isAddon, quoteLine: line.quoteLine }));
     const unique = new Set(next.map(line => line.sku));
@@ -142,9 +146,9 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     for (const line of next) await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
       VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7)`, [id, ids.get(line.sku), line.quantity,
       marker.graduation.lines.find(value => value.sku === line.sku)!.sortOrder, line.isAddon, line.unitAmountMinor, row.currency_code]);
-    // Purchase attachment materializes renewal lines first. Retain an acquisition
-    // addon in the template too when no template row has yet been materialized.
-    for (const line of original.filter(value => addons.has(value.sku) && !roles.has(value.sku))) {
+    // Initial purchase lines have no addon role yet; restore retained addon roles
+    // after removing those initial base rows, as for older absent templates.
+    for (const line of original.filter(value => addons.has(value.sku) && roles.get(value.sku)?.is_addon !== true)) {
       await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
         VALUES($1::uuid,$2::uuid,$3,$4,true,$5,$6)`, [id, ids.get(line.sku), line.quantity, sortOrder(line.sku), line.unitAmountMinor, row.currency_code]);
     }
