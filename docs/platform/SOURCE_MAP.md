@@ -73,8 +73,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | core-bundle | Core bundle identity, descriptor and readiness contracts | [packages/core/README.md](../../packages/core/README.md#bundle-contracts) | `packages/core/src/bundle/**` |
 | subscription-kernel | Pure lifecycle, retry, cycle and deterministic-clock behavior | [packages/core/docs/SUBSCRIPTION_ENGINE.md](../../packages/core/docs/SUBSCRIPTION_ENGINE.md) | `packages/core/src/subscription/**` |
 | tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `scripts/**` |
-| docs-impact | Documentation change impact and same-owner review enforcement | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#impact) | `scripts/documentation-impact*.ts`; `scripts/documentation-git*.ts` |
-| docs-export | Generated documentation navigation and the checked bundle consumer boundary | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#exporting) | `scripts/documentation-bundle*.ts`; `scripts/documentation-navigation*.ts`; `.gitignore` |
+| docs-export | Generated documentation navigation and the checked bundle consumer boundary | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#exporting) | `scripts/documentation-bundle*.ts`; `scripts/documentation-git*.ts`; `scripts/documentation-navigation*.ts`; `.gitignore` |
 | tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `tests/**`; `src/test/**` |
 | assets | Static public assets and their reference build consumption | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `public/**` |
 | operations | Deployment recipes and operational interface boundaries | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#self-host-boundary) | `deploy/**`; `mcp/**` |

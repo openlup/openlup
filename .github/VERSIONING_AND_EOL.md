@@ -645,8 +645,8 @@ is not created by the message. No production action is granted.
 
 ### Package artifact limits
 
-Size growth follows the cap-change route, with the applicable maintainer read,
-not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
+Size growth follows the cap-change route, a reviewed change that records the
+measured size and the new cap, not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
 
 `npm run packages:check` builds and packs by default. Caps, the content allowlist
 and browser-entry limits also run in `--release-set`, the preflight's
@@ -856,9 +856,8 @@ A release takes three steps:
    every version npm holds for each package. Choose it from actual registry
    observations and the API, behaviour, schema and shipped-SQL classification,
    then recheck before dispatch. A conflict after review needs a repair and
-   applicable review of the new candidate; do not silently change pins. Complete
-   working-tree checks and any required stabilized maintainer read before DCO
-   sign-off, then committed native review and final verification, as
+   applicable review of the new candidate; do not silently change pins. Commit
+   with DCO sign-off, then native review and hosted verification, as
    [CONTRIBUTING](../CONTRIBUTING.md#deliver-a-change) describes. Merging it does
    not authorize a release. Read the candidate version from the manifests, and
    publication only from the immutable releases and the npm registry: a version bump by itself

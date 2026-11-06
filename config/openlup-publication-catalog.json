@@ -10430,14 +10430,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/documentation-impact.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-impact.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/documentation-links.test.ts",
       "class": "public-output"
     },

@@ -126,7 +126,7 @@ describe("documentation CLI on the bare public runtime", () => {
       expect(unmigratedApi.status).toBe(1); expect(unmigratedApi.stderr).toContain("migration-block @openlup/core: packages/core/api/demo.api.md removes or changes a declaration line");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   });
-  it("runs in a shallow checkout without node_modules, enforces source impact and trusts hosted attribution", () => {
+  it("runs in a shallow checkout without node_modules, checks navigation and trusts hosted attribution", () => {
     const temporary = mkdtempSync(join(tmpdir(), "documentation-cli-"));
     try {
       const source = join(temporary, "source"); mkdirSync(source); const base = seed(source);
@@ -150,12 +150,12 @@ describe("documentation CLI on the bare public runtime", () => {
       const redirected = execute(["--docs-base", head], { GIT_DIR: join(decoy, ".git"), GIT_WORK_TREE: decoy, GIT_INDEX_FILE: join(decoy, ".git/index") });
       expect(redirected.stderr).toBe(""); expect(redirected.status).toBe(0); expect(redirected.stdout).toContain(`${head} (explicit)`);
       write(checkout, "src/domains/demo/main.ts", "export const value = 2;\n");
-      const original = readFileSync(join(checkout, "README.md"), "utf8");
-      write(checkout, "README.md", original.replace("## Other", `<!-- openlup-doc-impact {"unit":"domain-demo","digest":"sha256-${"0".repeat(64)}","reason":"An invalid fingerprint is not an update."} -->\n\n## Other`));
-      const refused = execute([], env);
-      expect(refused.status).toBe(1); expect(refused.stdout).toContain("needs a substantive section update");
-      write(checkout, "README.md", original.replace("preserves replay safety", "preserves replay safety and now refuses reordered events"));
+      // Source edits no longer need an owner-section answer.
       expect(execute([], env).status).toBe(0);
+      write(checkout, "docs/platform/SOURCE_MAP.md", "stale navigation\n");
+      const staleMap = execute([], env);
+      expect(staleMap.status).toBe(1); expect(staleMap.stderr).toContain("documentation source map is stale");
+      expect(execute(["--docs-update"], env).status).toBe(0);
       const mismatch = execute([], { ...env, GITHUB_SHA: base });
       expect(mismatch.status).toBe(1); expect(mismatch.stderr).toContain("checkout identity");
     } finally { rmSync(temporary, { recursive: true, force: true }); }

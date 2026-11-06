@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyRisk, continueOwner, digest, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { candidateFloor, classifyRisk, digest, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 
 const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
@@ -10,14 +10,14 @@ const passed = () => recordReport(prepare(), report(), time);
 
 describe('native review decisions', () => {
   it.each([
-    ['prose', 1], ['routine', 1], ['behavior', 2], ['unknown', 2],
+    ['prose', 1], ['routine', 1], ['behavior', 2], ['unknown', 1],
   ])('requires the %s reviewer floor', (risk, count) => {
     expect(requiredReviewers(classifyRisk(observed, risk))).toBe(count);
     const session = recordReport(prepare({ intent: { ...intent, risk } }), report(), time);
     expect(verdict(session, observed, time).ok).toBe(count === 1);
   });
   it.each([
-    '.github/README.md', 'AGENTS.md', 'package.json', 'config/settings.json', 'db/example.sql',
+    'package.json', 'config/settings.json', 'db/example.sql',
     'scripts/agent-review-session.mjs', 'scripts/source-preview-release.ts', 'packages/core/src/index.ts',
     'server/bff/orders.ts', 'src/domains/payment/card.ts', 'src/domains/subscription/renewal.ts',
     'src/pages/account/login/useOtpCodeFallback.ts', 'src/domains/customers/customerMagicLinkClient.ts',
@@ -65,7 +65,6 @@ describe('native review decisions', () => {
     expect(verdict(stored, observed, time)).toMatchObject({ ok: true, code: 'reviewed' });
     const prepared = prepareCandidate(stored, { ...observed, intent, authorSessionId: 'author' }, time);
     expect(prepared.history).toEqual(stored.history);
-    expect(stored.cycle).toBe(session.cycle);
     expect(stored.history.at(-1).report).not.toHaveProperty('documentation');
     expect(stored.history.at(-1).report.findings).toEqual(session.history.at(-1).report.findings);
     expect(receiptSummary(prepared, 12, time).expires).toBe(receiptSummary(session, 12, time).expires);
@@ -103,49 +102,19 @@ describe('native review decisions', () => {
     const session = recordReport(prepare(), report({ findings: [{ id: 'F1', summary: 'broken clamp', material: true }] }), time);
     expect(() => recordReport(session, report({ reviewer: 'reviewer-2', findings: [{ id: 'F1', summary: 'something else', material: true }] }), time)).toThrow('changed meaning');
   });
-  it('bounds three repairs and grants three more with an owner note', () => {
+  it('records repeated repairs without cycle counters or an owner gate', () => {
     let session = prepare();
-    for (let cycle = 1; cycle <= 7; cycle += 1) {
-      const next = { ...observed, head: cycle.toString().repeat(40), tree: cycle.toString().repeat(40), intent, authorSessionId: 'author' };
-      session = prepareCandidate(session, next, time + cycle);
-      expect(session.cycle).toBe(cycle);
-      if (cycle === 4) {
-        expect(verdict(session, next, time + cycle).code).toBe('needs_owner');
-        expect(() => recordReport(session, report({ tree: next.tree }), time + cycle)).toThrow('needs_owner');
-        session = continueOwner(session, 'Owner approves three further repairs', time + cycle);
-        expect(session.history.at(-1)).toMatchObject({ type: 'continue', at: time + cycle });
-      }
-      expect(verdict(session, next, time + cycle).code).toBe(cycle > 6 ? 'needs_owner' : 'needs_agent_review');
+    expect(session).not.toHaveProperty('cycle'); expect(session).not.toHaveProperty('allowedCycles');
+    for (let index = 1; index <= 7; index++) {
+      const next = { ...observed, head: index.toString().repeat(40), tree: index.toString().repeat(40), intent, authorSessionId: 'author' };
+      session = prepareCandidate(session, next, time + index);
+      expect(session.history.at(-1)).not.toHaveProperty('cycle');
+      session = recordReport(session, report({ reviewer: `reviewer-${index}`, tree: next.tree }), time + index);
+      expect(verdict(session, next, time + index).ok).toBe(true);
     }
   });
-  it.each([
-    [0, 3, false, 0, 'needs_agent_review'],
-    [0, 3, true, 1, 'needs_agent_review'],
-    [1, 3, false, 1, 'needs_agent_review'],
-    [1, 3, true, 2, 'needs_agent_review'],
-    [2, 3, false, 2, 'needs_agent_review'],
-    [2, 3, true, 3, 'needs_agent_review'],
-    [3, 3, true, 4, 'needs_owner'],
-    [4, 3, false, 4, 'needs_owner'],
-    [4, 3, true, 5, 'needs_owner'],
-    [5, 6, true, 6, 'needs_agent_review'],
-    [7, 6, false, 7, 'needs_owner'],
-  ])('--new preserves budget %i/%i (changed tree: %s)', (cycle, allowedCycles, changed, expectedCycle, code) => {
-    const session = { ...continueOwner(passed(), 'Existing owner continuation', time), cycle, allowedCycles };
-    const bytes = JSON.stringify(session);
-    const nextObserved = { ...observed, head: 'd'.repeat(40), tree: changed ? 'e'.repeat(40) : observed.tree,
-      intent: { ...intent, criteria: 'Approved changed intent' }, authorSessionId: 'author' };
-    const next = prepareCandidate(session, nextObserved, time + 1, true);
-    expect(next).toMatchObject({ cycle: expectedCycle, allowedCycles });
-    expect(next).not.toHaveProperty('previousSessionDigest');
-    expect(next.history.slice(0, -1)).toEqual(session.history);
-    expect(next.history.at(-1)).toMatchObject({ type: 'prepare', intent: nextObserved.intent, candidate: next.candidate, authorSessionId: 'author' });
-    expect(verdict(next, nextObserved, time + 1).code).toBe(code);
-    if (code === 'needs_owner') {
-      expect(() => recordReport(next, report({ tree: nextObserved.tree }), time + 1)).toThrow('needs_owner');
-      expect(continueOwner(next, 'Owner authorizes continuation', time + 1).allowedCycles).toBe(allowedCycles + 3);
-    }
-    expect(JSON.stringify(session)).toBe(bytes);
+  it.each(['AGENTS.md', 'nested/AGENT_GUIDE.local.rst', '.github/guide.md', '.claude/rules.md', '.agents/rules.md', '.codex/rules.md', 'nested/SKILL.md'])('keeps a review for rule file %s', path => {
+    expect(candidateFloor({ changedPaths: [path] }, 'unknown')).toBe(path.endsWith('.rst') ? 2 : 1);
   });
   it.each([false, true])('--new keeps F1 open until explicitly closed (changed tree: %s)', changed => {
     let session = recordReport(prepare(), report({ verdict: 'FAIL', findings: [{ id: 'F1', summary: 'broken clamp', material: true }] }), time);
@@ -189,8 +158,7 @@ describe('native review decisions', () => {
     expect(() => prepareCandidate(session, { ...observed, intent: { ...intent, criteria: 'new goal' }, authorSessionId: 'author' }, time)).toThrow('prepare --new');
     expect(JSON.stringify(session)).toBe(bytes);
   });
-  it('refuses invalid owner notes and report timestamps', () => {
-    expect(() => continueOwner(prepare(), '', time)).toThrow();
+  it('refuses invalid report timestamps', () => {
     expect(() => recordReport(prepare(), report(), time - 1)).toThrow('time');
   });
   it('focuses an exact base integration without copying reports', () => {
@@ -199,11 +167,10 @@ describe('native review decisions', () => {
     const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true }, time + 1);
     expect(integration).toMatchObject({ base: observed.base, head: observed.head, tree: observed.tree, expires: time + 86400000, mechanical: false });
     let next = prepareCandidate(source, { ...actual, integration }, time + 1);
-    expect(next.cycle).toBe(1);
     expect(next.history.slice(0, -1)).toEqual(source.history);
     expect(verdict(next, actual, time + 1).code).toBe('needs_agent_review');
     next = recordReport(next, report({ reviewer: 'fresh-a', tree: actual.tree }), time + 60000);
-    expect(verdict(next, actual, time + 60000).code).toBe('needs_agent_review');
+    expect(verdict(next, actual, time + 60000).code).toBe('reviewed');
     next = recordReport(next, report({ reviewer: 'fresh-b', tree: actual.tree }), time + 60000);
     expect(verdict(next, actual, time + 60000).ok).toBe(true);
     expect(receiptSummary(next, 12, time + 60000).expires).toBe(time + 86400000);
@@ -214,7 +181,6 @@ describe('native review decisions', () => {
     expect(prepareCandidate(next, actual, time + 60001)).toEqual(next);
     const renewed = prepareCandidate(next, actual, time + 86400000, true);
     expect(renewed.candidate.integration).toBeUndefined();
-    expect(renewed.cycle).toBe(1);
     expect(() => prepareCandidate(source, { ...actual, integration: { ...integration, expires: integration.expires + 1 } }, time + 1)).toThrow('integration coverage');
     expect(() => prepareCandidate(source, { ...actual, integration: { ...integration, mechanical: 'yes' } }, time + 1)).toThrow('integration coverage');
     expect(() => prepareCandidate(source, { ...actual, integration }, time + 1, true)).toThrow('integration coverage');
@@ -226,42 +192,13 @@ describe('native review decisions', () => {
     const parents = reason === 'wrong parent' ? [actual.base, observed.head] : reason === 'extra parent' ? [observed.head, actual.base, observed.base] : [observed.head, actual.base];
     expect(integrationReviewContext(source, actual, { parents, baseAncestor: reason !== 'base not ancestor', mechanical: true }, time + 1)).toBeUndefined();
   });
-  it.each([false, true])('charges a changed integration at the repair limit only when not mechanical: %s', mechanical => {
-    const source = { ...passed(), cycle: 3 };
+  it('does not raise the declared floor for a legacy integration', () => {
+    const source = passed();
     const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent, authorSessionId: 'author' };
-    const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true, mechanical }, time + 1);
-    let next = prepareCandidate(source, { ...actual, integration }, time + 1);
-    expect(next.cycle).toBe(mechanical ? 3 : 4);
-    expect(next.allowedCycles).toBe(source.allowedCycles);
-    expect(next.history.slice(0, -1)).toEqual(source.history);
-    expect(verdict(next, actual, time + 1).code).toBe(mechanical ? 'needs_agent_review' : 'needs_owner');
-    if (mechanical) {
-      expect(() => prepareCandidate(source, { ...actual, clean: false, integration }, time + 1)).toThrow('dirty');
-      expect(() => prepareCandidate(source, { ...actual, integration }, time + 1, true)).toThrow('integration coverage');
-      for (const reviewer of ['integration-a', 'integration-b']) next = recordReport(next, report({ reviewer, tree: actual.tree }), time + 1);
-      expect(receiptSummary(next, 12, time + 1).expires).toBe(time + 86400000);
-    } else expect(() => recordReport(next, report({ reviewer: 'integration', tree: actual.tree }), time + 1)).toThrow('needs_owner');
-  });
-  it('preserves the sensitive reviewer floor and earliest expiry through consecutive integrations', () => {
-    const sensitive = { ...observed, changedPaths: ['AGENTS.md'], intent, authorSessionId: 'author' };
-    let source = prepareCandidate(null, sensitive, time);
-    for (const reviewer of ['first-a', 'first-b']) source = recordReport(source, report({ reviewer }), time);
-    const integrate = (prior, base, head, tree, now) => {
-      const actual = { ...observed, base: base.repeat(40), head: head.repeat(40), tree: tree.repeat(40), intent, authorSessionId: 'author' };
-      const integration = integrationReviewContext(prior, actual, { parents: [prior.candidate.head, actual.base], baseAncestor: true, mechanical: true }, now);
-      let next = prepareCandidate(prior, { ...actual, integration }, now);
-      expect(next.cycle).toBe(prior.cycle);
-      next = recordReport(next, report({ reviewer: head + '-a', tree: actual.tree }), now);
-      expect(verdict(next, actual, now).code).toBe('needs_agent_review');
-      next = recordReport(next, report({ reviewer: head + '-b', tree: actual.tree }), now);
-      expect(receiptSummary(next, 12, now)).toMatchObject({ risk: 'behavior', expires: time + 86400000 });
-      return next;
-    };
-    source = integrate(source, 'd', 'e', 'f', time + 1);
-    source = integrate(source, '1', '2', '3', time + 2);
-    const repair = prepareCandidate(source, { ...observed, base: source.candidate.base, head: '4'.repeat(40), tree: '5'.repeat(40), intent, authorSessionId: 'author' }, time + 3);
-    expect(repair.cycle).toBe(source.cycle + 1);
-    expect(repair.candidate).not.toHaveProperty('integration');
+    const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true }, time + 1);
+    const next = recordReport(prepareCandidate(source, { ...actual, integration }, time + 1), report({ reviewer: 'fresh', tree: actual.tree }), time + 1);
+    expect(verdict(next, actual, time + 1).ok).toBe(true);
+    expect(receiptSummary(next, 12, time + 1).risk).toBe('routine');
   });
   it('emits only a bounded summary and validates the PR number', () => {
     const summary = receiptSummary(passed(), 12, time);

@@ -526,7 +526,7 @@ The full selection (including proof children through their parent tests) is:
 
 - `packages/platform/test/communications/nativeDelivery.test.ts` — not run; stopped at blocker.
 - `scripts/customer-selfservice-recovery-schema.test.ts` — not run; stopped at blocker.
-- `scripts/documentation-impact.test.ts` — not run; stopped at blocker.
+- the former documentation-impact suite — not run; stopped at blocker.
 - `scripts/packages/platform-cold-consumer.test.ts` — not run; stopped at blocker.
 - `scripts/reviewed-batch-forward.test.ts` — not run; stopped at blocker.
 - `server/adapters/postgres/communicationsLifecycle.test.ts` — not run; stopped at blocker.
@@ -610,7 +610,7 @@ whose SQL, production source and test are unchanged. Current results:
 | --- | ---: | ---: |
 | `packages/platform/test/communications/nativeDelivery.test.ts` | 2 | 0 |
 | `scripts/customer-selfservice-recovery-schema.test.ts` | 3 | 0 |
-| `scripts/documentation-impact.test.ts` | 101 | 0 |
+| the former documentation-impact suite | 101 | 0 |
 | `scripts/packages/platform-cold-consumer.test.ts` | 108 | 0 |
 | `scripts/reviewed-batch-forward.test.ts` | 691 | 0 |
 | `server/adapters/postgres/communicationsLifecycle.test.ts` | 1 | 0 |
@@ -737,7 +737,7 @@ The current measurements, unchanged from the earlier isolated run, are:
 | --- | ---: | ---: |
 | `packages/platform/test/communications/nativeDelivery.test.ts` | 2 | 0 |
 | `scripts/customer-selfservice-recovery-schema.test.ts` | 3 | 0 |
-| `scripts/documentation-impact.test.ts` | 101 | 0 |
+| the former documentation-impact suite | 101 | 0 |
 | `scripts/packages/platform-cold-consumer.test.ts` | 108 | 0 |
 | `scripts/packages/platform-migration-projection.test.ts` | 1 | 0 |
 | `scripts/reviewed-batch-forward.test.ts` | 691 | 0 |

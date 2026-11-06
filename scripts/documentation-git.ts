@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { assertDocumentationPath, assertMaterializedDocumentationPath, documentationGit } from "./documentation-routing.ts";
+import { readFileSync } from "node:fs";
+import { assertDocumentationPath, documentationGit } from "./documentation-routing.ts";
 export { documentationGit } from "./documentation-routing.ts";
 
 export type DocumentationObject = { mode: string; digest: string; contents: Buffer };
@@ -73,14 +72,6 @@ function materializeGitRows(root: string, rows: { path: string; mode: string; oi
   if (position !== batch.length) throw new Error("documentation: unexpected base blob batch output");
   return new Map(rows.map(({ path, mode, oid }) => [path, { mode, ...blobs.get(oid)! }]));
 }
-export function readDocumentationCandidate(root: string, paths: string[]): Map<string, DocumentationObject> {
-  return new Map(paths.map((path) => {
-    assertMaterializedDocumentationPath(root, path);
-    const contents = readFileSync(join(root, path));
-    return [path, { mode: lstatSync(join(root, path)).mode & 0o111 ? "100755" : "100644", digest: documentationDigest(contents), contents }];
-  }));
-}
-
 function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base: string; provenance: "pull-request" | "merge-group" | "push" } {
   if (env.GITHUB_REPOSITORY !== "openlup/openlup" || !env.GITHUB_EVENT_PATH || !SHA.test(env.GITHUB_SHA ?? "") || head !== env.GITHUB_SHA)
     throw new Error("documentation: hosted checkout identity does not match the public event");

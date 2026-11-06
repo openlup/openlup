@@ -78,7 +78,7 @@ describe('CI completion queue handoff', () => {
     ['unknown mergeability', (f: ReturnType<typeof handoffFixture>) => { f.queuePr.mergeable = 'UNKNOWN'; }],
     ['lost merge authority', (f: ReturnType<typeof handoffFixture>) => { f.state.permission = 'read'; }],
     ['missing native receipt', (f: ReturnType<typeof handoffFixture>) => { f.state.comments = []; }],
-    ['insufficient review floor', (f: ReturnType<typeof handoffFixture>) => { f.runGit.mockImplementation(async (_cwd, ...args) => args[0] === 'diff' ? `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0AGENTS.md\0` : args[0] === 'rev-parse' ? receipt.tree : args[0] === 'merge-base' ? receipt.base : ''); }],
+    ['insufficient review floor', (f: ReturnType<typeof handoffFixture>) => { f.runGit.mockImplementation(async (_cwd, ...args) => args[0] === 'diff' ? `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0config/demo.json\0` : args[0] === 'rev-parse' ? receipt.tree : args[0] === 'merge-base' ? receipt.base : ''); }],
     ['missing check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs.pop(); f.result.total_count--; }],
     ['skipped check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.conclusion = 'skipped'; }],
     ['failed required check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.conclusion = 'failure'; }],
@@ -187,11 +187,19 @@ describe('hosted review decisions', () => {
     ['duplicate reviewers', { reviewers: ['r', 'r'] }, {}, time, 'invalid'],
     ['empty reviewer', { reviewers: [''] }, {}, time, 'invalid'],
     ['bad digest', { sessionDigest: 'bad' }, {}, time, 'invalid'],
-    ['recomputed floor', {}, { changedPaths: ['AGENTS.md'] }, time, 'needs_agent_review'],
+    ['recomputed floor', {}, { changedPaths: ['config/demo.json'] }, time, 'needs_agent_review'],
     ['mode floor', {}, { modeChanged: true }, time, 'needs_agent_review'],
-    ['intent raises floor', { risk: 'unknown' }, {}, time, 'needs_agent_review'],
+    ['intent raises floor', { risk: 'behavior' }, {}, time, 'needs_agent_review'],
   ])('%s', (_name, patch, actual, now, code) => {
     expect(admit({ receipt: { ...receipt, ...patch }, observed: { ...observed, ...actual }, now }).code).toBe(code);
+  });
+  it.each([
+    ['docs/guide.md', 'unknown', 0], ['AGENTS.md', 'routine', 1], ['app.ts', 'unknown', 1], ['app.ts', 'behavior', 2],
+  ])('recomputes v2 admission for %s with %s risk and floor %i', (path, risk, floor) => {
+    const candidate = { ...observed, changedPaths: [path] };
+    const summary = { ...receipt, risk, reviewers: Array.from({ length: floor }, (_, index) => `reviewer-${index}`) };
+    expect(admit({ receipt: summary, observed: candidate, now: time }).ok).toBe(true);
+    if (floor) expect(admit({ receipt: { ...summary, reviewers: summary.reviewers.slice(1) }, observed: candidate, now: time }).ok).toBe(false);
   });
   const facts = { reviewedTree: receipt.tree, groupTree: 'e'.repeat(40), baseAncestor: true, predictedTree: 'e'.repeat(40), changedPaths: ['source.txt'], movedPaths: ['other.ts'] };
   it.each([

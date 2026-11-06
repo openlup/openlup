@@ -277,7 +277,7 @@ Suite paths with wildcards each identify exactly one tracked file.
 - `packages/platform/test/payments/verifiedIngress.test.ts`
 - `packages/platform/test/payments/verifyHandler.test.ts`
 - `packages/platform/test/subscriptions/contracts.test.ts`
-- `scripts/documentation-impact.test.ts`
+- the former documentation-impact suite
 - `scripts/packages/platform-cold-consumer.test.ts`
 - `scripts/payment-truth-schema.test.ts`
 - `scripts/public-ci-payment-allowance.test.ts`
@@ -496,7 +496,7 @@ Recorded admissions waited 4433s in total (largest 421s); test execution totaled
 | `packages/platform/test/payments/verifiedIngress.test.ts` | PASS | 8 |
 | `packages/platform/test/payments/verifyHandler.test.ts` | PASS | 3 |
 | `packages/platform/test/subscriptions/contracts.test.ts` | PASS | 3 |
-| `scripts/documentation-impact.test.ts` | PASS | 101 |
+| the former documentation-impact suite | PASS | 101 |
 | `scripts/packages/platform-cold-consumer.test.ts` | PASS | 108 |
 | `scripts/payment-truth-schema.test.ts` | PASS | 3 |
 | `scripts/public-ci-payment-allowance.test.ts` | PASS | 8 |

@@ -135,7 +135,7 @@ selection: 10 files and 467 tests passed, with no skips:
 - `scripts/public-ci-neutrality.test.ts`
 - `scripts/documentation-bundle.test.ts`
 - `scripts/documentation-cli.test.ts`
-- `scripts/documentation-impact.test.ts`
+- the former documentation-impact suite
 - `scripts/documentation-links.test.ts`
 - `scripts/ci-test-scope.test.ts`
 - `scripts/source-release-preparation.test.ts`
@@ -303,7 +303,7 @@ hashes above bind the exact merge, before this explicit prose-only exception.
 Post-integration checks used pinned Node 24.21.0. Under focused admission,
 the original ten unchanged test files listed above plus
 `scripts/agent-review-registry.test.ts` passed 539 cases across eleven files.
-This includes main’s updated `scripts/documentation-impact.test.ts` and registry
+This includes main’s updated the former documentation-impact suite and registry
 catalogue/task-record scans. `node --test deploy/neutral-store/prove.test.mjs`
 passed all eight cases, including the planted Edge refusal. The actual Edge
 scan found zero findings in 65 files. Tests and proof source were not edited.
