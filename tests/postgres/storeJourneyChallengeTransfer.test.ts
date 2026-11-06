@@ -178,15 +178,21 @@ it("counts but never carries authorization challenges, restores customer sign-in
 
 it("rejects malformed challenge census entries before connecting", async () => {
   const packet = await captureStoreJourney(source.owner, "challenge-census-validation");
+  const destination = await resources.installation("challenge-census-target");
+  const freshTarget = await captureStoreJourney(destination.owner, "challenge-census-pristine");
+  expect([packet.observation.cluster, packet.observation.database])
+    .not.toEqual([freshTarget.observation.cluster, freshTarget.observation.database]);
   const connect = vi.fn(async () => { throw new Error("unexpected_database_connection"); });
   const owner = { connect } as unknown as Pool;
-  for (const patch of [{ disposition: "unsupported-empty", rows: "0" }, { rows: "not-a-count" }]) {
+  for (const patch of [{ disposition: "unsupported-empty", rows: "0" }, { rows: "1.5" }, { rows: "" }, { rows: "-1" }]) {
     const malformed = structuredClone(packet);
     Object.assign(malformed.outsideProfileCensus.find(entry => entry.relation === relation)!, patch);
     const { sha256: _previous, ...payload } = malformed;
     malformed.sha256 = hash(JSON.stringify(payload));
-    await expect(restoreConnectedNativeStore({ owner, installation: journeySelection, packet: malformed, freshTarget: packet }))
+    await expect(restoreConnectedNativeStore({ owner, installation: journeySelection, packet: malformed, freshTarget }))
       .rejects.toMatchObject({ code: "invalid_input", message: "postgres_transfer_invalid_input" });
     expect(connect).not.toHaveBeenCalled();
   }
+  expect(await restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet, freshTarget }))
+    .toMatchObject({ replayed: false });
 }, 30_000);
