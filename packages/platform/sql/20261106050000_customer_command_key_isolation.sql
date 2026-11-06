@@ -2,6 +2,9 @@
 -- Legacy replay is restricted to the owned subscription's same self-service action.
 -- Existing raw customer rows also require system producers to bypass foreign event types.
 -- Replacements retain their original headers and ACLs under the native-store forward class.
+-- NULL quote provenance denotes legacy raw-key history; it is never backfilled.
+
+ALTER TABLE public.subscription_edit_quotes ADD COLUMN command_key_identity jsonb;
 
 CREATE OR REPLACE FUNCTION public.customer_subscription_pause_as_actor(
   p_subscription_id uuid,
@@ -18,6 +21,7 @@ DECLARE
   v_principal_id uuid;
   v_client_id uuid;
   v_command_key text;
+  v_key_identity jsonb;
   v_existing public.subscription_events%ROWTYPE;
 BEGIN
   IF p_idempotency_key IS NULL
@@ -25,6 +29,9 @@ BEGIN
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
   THEN
     RAISE EXCEPTION 'subscription_lifecycle_invalid_idempotency_key' USING ERRCODE = '22023';
+  END IF;
+  IF starts_with(p_idempotency_key, 'command:') THEN
+    RAISE EXCEPTION 'subscription_command_reserved_idempotency_key' USING ERRCODE = '22023';
   END IF;
 
   IF p_pause_preset IS NULL
@@ -61,22 +68,54 @@ BEGIN
   END IF;
   v_command_key := 'command:' || encode(sha256(convert_to(
     v_principal_id::text || ':' || p_idempotency_key, 'UTF8')), 'hex');
+  v_key_identity := jsonb_build_object('derivation', 'principal-sha256.v1', 'actorId', v_principal_id);
   SELECT * INTO v_existing FROM public.subscription_events
    WHERE subscription_id = p_subscription_id AND idempotency_key = v_command_key;
   IF FOUND THEN
+    IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS DISTINCT FROM v_key_identity THEN
+      RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+    END IF;
     IF v_existing.event_type <> 'subscription.customer_self_service.pause'
       OR v_existing.payload->>'action' IS DISTINCT FROM 'pause'
     THEN
       RAISE EXCEPTION 'subscription_lifecycle_idempotency_conflict' USING ERRCODE = '23505';
     END IF;
-  ELSIF EXISTS (
-    SELECT 1 FROM public.subscription_events
-     WHERE subscription_id = p_subscription_id AND idempotency_key = p_idempotency_key
-       AND event_type = 'subscription.customer_self_service.pause'
-       AND payload->>'action' = 'pause'
-  ) THEN
-    -- Old history stays byte-exact; only this owner's same-action event can replay.
-    v_command_key := p_idempotency_key;
+  ELSE
+    SELECT * INTO v_existing FROM public.subscription_events
+     WHERE subscription_id = p_subscription_id AND idempotency_key = p_idempotency_key;
+    IF FOUND THEN
+      IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS NOT NULL THEN
+        RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+      END IF;
+      IF starts_with(v_existing.event_type, 'subscription.customer_self_service.') THEN
+        IF v_existing.event_type <> 'subscription.customer_self_service.pause'
+          OR v_existing.payload->>'action' IS DISTINCT FROM 'pause'
+        THEN
+          RAISE EXCEPTION 'subscription_lifecycle_idempotency_conflict' USING ERRCODE = '23505';
+        END IF;
+      ELSE
+        -- A system row at the raw key belongs to its producer, never this command.
+        v_existing := NULL;
+      END IF;
+    END IF;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.subscription_edit_quotes
+    WHERE subscription_id = p_subscription_id AND idempotency_key = v_command_key
+      AND command_key_identity IS DISTINCT FROM v_key_identity)
+  THEN
+    RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.subscription_edit_quotes
+    WHERE subscription_id = p_subscription_id
+      AND (idempotency_key = v_command_key
+        OR (idempotency_key = p_idempotency_key AND command_key_identity IS NULL)))
+  THEN
+    RAISE EXCEPTION 'subscription_lifecycle_idempotency_conflict' USING ERRCODE = '23505';
+  END IF;
+  IF v_existing.id IS NOT NULL THEN
+    -- Only a proved same-action event supplies the replay identity.
+    v_command_key := v_existing.idempotency_key;
   END IF;
 
   RETURN public.subscription_apply_lifecycle_action(
@@ -84,7 +123,7 @@ BEGIN
     v_command_key,
     p_subscription_id,
     'pause',
-    jsonb_build_object('pausePreset', p_pause_preset, 'reason', p_reason),
+    jsonb_build_object('pausePreset', p_pause_preset, 'reason', p_reason, 'commandKeyIdentity', v_key_identity),
     statement_timestamp()
   );
 END;
@@ -108,8 +147,10 @@ DECLARE
   v_principal_id uuid;
   v_client_id uuid;
   v_command_key text;
+  v_key_identity jsonb;
   v_subscription public.subscriptions%ROWTYPE;
   v_quote public.subscription_edit_quotes%ROWTYPE;
+  v_existing public.subscription_events%ROWTYPE;
   v_lines jsonb;
   v_fingerprint text;
   v_quote_hash text;
@@ -124,6 +165,9 @@ BEGIN
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
   THEN
     RAISE EXCEPTION 'subscription_edit_invalid_idempotency_key' USING ERRCODE = '22023';
+  END IF;
+  IF starts_with(p_idempotency_key, 'command:') THEN
+    RAISE EXCEPTION 'subscription_command_reserved_idempotency_key' USING ERRCODE = '22023';
   END IF;
   IF jsonb_typeof(p_core_lines) <> 'array'
     OR jsonb_array_length(p_core_lines) NOT BETWEEN 1 AND 6
@@ -150,6 +194,38 @@ BEGIN
 
   v_command_key := 'command:' || encode(sha256(convert_to(
     v_principal_id::text || ':' || p_idempotency_key, 'UTF8')), 'hex');
+  v_key_identity := jsonb_build_object('derivation', 'principal-sha256.v1', 'actorId', v_principal_id);
+
+  SELECT * INTO v_existing FROM public.subscription_events
+   WHERE subscription_id = v_subscription.id AND idempotency_key = v_command_key;
+  IF FOUND THEN
+    IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS DISTINCT FROM v_key_identity THEN
+      RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+    END IF;
+    IF v_existing.event_type <> 'subscription.customer_self_service.update_bundle'
+      OR v_existing.payload->>'action' IS DISTINCT FROM 'update_bundle'
+    THEN
+      RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+  ELSE
+    SELECT * INTO v_existing FROM public.subscription_events
+     WHERE subscription_id = v_subscription.id AND idempotency_key = p_idempotency_key;
+    IF FOUND THEN
+      IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS NOT NULL THEN
+        RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+      END IF;
+      IF starts_with(v_existing.event_type, 'subscription.customer_self_service.') THEN
+        IF v_existing.event_type <> 'subscription.customer_self_service.update_bundle'
+          OR v_existing.payload->>'action' IS DISTINCT FROM 'update_bundle'
+        THEN
+          RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
+        END IF;
+      ELSE
+        -- A system row at the raw key belongs to its producer, never this command.
+        v_existing := NULL;
+      END IF;
+    END IF;
+  END IF;
 
   v_cadence_days := COALESCE(p_cadence_days, v_subscription.cadence_days);
   v_expected_version := COALESCE(p_expected_template_version, v_subscription.template_version);
@@ -268,9 +344,17 @@ BEGIN
   );
 
   SELECT * INTO v_quote FROM public.subscription_edit_quotes
-   WHERE subscription_id = v_subscription.id AND idempotency_key IN (v_command_key, p_idempotency_key)
-   ORDER BY (idempotency_key = v_command_key) DESC LIMIT 1;
+   WHERE subscription_id = v_subscription.id AND idempotency_key = v_command_key FOR UPDATE;
   IF FOUND THEN
+    IF v_quote.command_key_identity IS DISTINCT FROM v_key_identity THEN
+      RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+    END IF;
+  ELSE
+    SELECT * INTO v_quote FROM public.subscription_edit_quotes
+     WHERE subscription_id = v_subscription.id AND idempotency_key = p_idempotency_key
+       AND command_key_identity IS NULL FOR UPDATE;
+  END IF;
+  IF v_quote.id IS NOT NULL THEN
     IF v_quote.request_fingerprint <> v_fingerprint THEN
       RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
     END IF;
@@ -280,11 +364,11 @@ BEGIN
       v_subscription.id::text || ':' || v_fingerprint || ':' || v_expected_version::text
       || ':' || v_new_total::text || ':' || v_expires_at::text, 'UTF8')), 'hex');
     INSERT INTO public.subscription_edit_quotes (
-      subscription_id, idempotency_key, request_fingerprint, quote_hash,
+      subscription_id, idempotency_key, request_fingerprint, quote_hash, command_key_identity,
       expected_template_version, proposed_lines, proposed_cadence_days,
       current_total_minor, new_total_minor, currency_code, expires_at
     ) VALUES (
-      v_subscription.id, v_command_key, v_fingerprint, v_quote_hash,
+      v_subscription.id, v_command_key, v_fingerprint, v_quote_hash, v_key_identity,
       v_expected_version, v_lines, v_cadence_days, v_current_total, v_new_total,
       v_subscription.currency_code, v_expires_at
     ) RETURNING * INTO v_quote;
@@ -328,6 +412,7 @@ DECLARE
   v_principal_id uuid;
   v_client_id uuid;
   v_command_key text;
+  v_key_identity jsonb;
   v_subscription public.subscriptions%ROWTYPE;
   v_quote public.subscription_edit_quotes%ROWTYPE;
   v_existing public.subscription_events%ROWTYPE;
@@ -339,6 +424,9 @@ BEGIN
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
   THEN
     RAISE EXCEPTION 'subscription_edit_invalid_idempotency_key' USING ERRCODE = '22023';
+  END IF;
+  IF starts_with(p_idempotency_key, 'command:') THEN
+    RAISE EXCEPTION 'subscription_command_reserved_idempotency_key' USING ERRCODE = '22023';
   END IF;
   v_principal_id := auth.uid();
   IF v_principal_id IS NULL THEN
@@ -357,25 +445,58 @@ BEGIN
 
   v_command_key := 'command:' || encode(sha256(convert_to(
     v_principal_id::text || ':' || p_idempotency_key, 'UTF8')), 'hex');
+  v_key_identity := jsonb_build_object('derivation', 'principal-sha256.v1', 'actorId', v_principal_id);
 
   SELECT * INTO v_existing FROM public.subscription_events
-   WHERE subscription_id = v_subscription.id
-     AND (idempotency_key = v_command_key OR (idempotency_key = p_idempotency_key
-       AND event_type = 'subscription.customer_self_service.update_bundle'
-       AND payload->>'action' = 'update_bundle'))
-   ORDER BY (idempotency_key = v_command_key) DESC LIMIT 1;
+   WHERE subscription_id = v_subscription.id AND idempotency_key = v_command_key;
   IF FOUND THEN
+    IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS DISTINCT FROM v_key_identity THEN
+      RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+    END IF;
+    IF v_existing.event_type <> 'subscription.customer_self_service.update_bundle'
+      OR v_existing.payload->>'action' IS DISTINCT FROM 'update_bundle'
+    THEN
+      RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+  ELSE
+    SELECT * INTO v_existing FROM public.subscription_events
+     WHERE subscription_id = v_subscription.id AND idempotency_key = p_idempotency_key;
+    IF FOUND THEN
+      IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS NOT NULL THEN
+        RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+      END IF;
+      IF starts_with(v_existing.event_type, 'subscription.customer_self_service.') THEN
+        IF v_existing.event_type <> 'subscription.customer_self_service.update_bundle'
+          OR v_existing.payload->>'action' IS DISTINCT FROM 'update_bundle'
+        THEN
+          RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
+        END IF;
+      ELSE
+        -- A system row at the raw key belongs to its producer, never this command.
+        v_existing := NULL;
+      END IF;
+    END IF;
+  END IF;
+
+  SELECT * INTO v_quote FROM public.subscription_edit_quotes
+   WHERE subscription_id = v_subscription.id AND idempotency_key = v_command_key FOR UPDATE;
+  IF FOUND THEN
+    IF v_quote.command_key_identity IS DISTINCT FROM v_key_identity THEN
+      RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+    END IF;
+  ELSE
     SELECT * INTO v_quote FROM public.subscription_edit_quotes
-     WHERE subscription_id = v_subscription.id
-       AND idempotency_key IN (v_command_key, p_idempotency_key)
-     ORDER BY (idempotency_key = v_command_key) DESC LIMIT 1;
+     WHERE subscription_id = v_subscription.id AND idempotency_key = p_idempotency_key
+       AND command_key_identity IS NULL FOR UPDATE;
+  END IF;
+  IF v_existing.id IS NOT NULL THEN
     v_fingerprint := public.subscription_bundle_edit_fingerprint(
       v_subscription.id, p_core_lines, COALESCE(p_addon_lines, '[]'::jsonb),
       COALESCE(p_composition_constraint, '{}'::jsonb),
       COALESCE(p_cadence_days, v_subscription.cadence_days),
       COALESCE(p_expected_template_version, v_quote.expected_template_version)
     );
-    IF NOT FOUND OR v_existing.event_type <> 'subscription.customer_self_service.update_bundle'
+    IF v_quote.id IS NULL OR v_existing.event_type <> 'subscription.customer_self_service.update_bundle'
       OR v_existing.payload->>'action' IS DISTINCT FROM 'update_bundle'
       OR v_quote.quote_hash IS DISTINCT FROM p_accepted_quote_hash
       OR v_quote.request_fingerprint <> v_fingerprint
@@ -397,10 +518,7 @@ BEGIN
     );
   END IF;
 
-  SELECT * INTO v_quote FROM public.subscription_edit_quotes
-   WHERE subscription_id = v_subscription.id AND idempotency_key IN (v_command_key, p_idempotency_key)
-   ORDER BY (idempotency_key = v_command_key) DESC LIMIT 1 FOR UPDATE;
-  IF NOT FOUND OR v_quote.quote_hash <> p_accepted_quote_hash THEN
+  IF v_quote.id IS NULL OR v_quote.quote_hash IS DISTINCT FROM p_accepted_quote_hash THEN
     RAISE EXCEPTION 'subscription_edit_quote_required' USING ERRCODE = '22023';
   END IF;
   v_fingerprint := public.subscription_bundle_edit_fingerprint(
@@ -460,6 +578,7 @@ BEGIN
     v_command_key,
     jsonb_build_object(
       'action', 'update_bundle',
+      'commandKeyIdentity', v_key_identity,
       'quoteHash', v_quote.quote_hash,
       'templateVersion', v_subscription.template_version,
       'newTotalMinor', v_quote.new_total_minor,

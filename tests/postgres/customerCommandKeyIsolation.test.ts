@@ -7,7 +7,9 @@ import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, 
 import { createNativeRenewalCodec, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const forward = readFileSync("db/platform/migrations/20261106050000_customer_command_key_isolation.sql", "utf8");
+const migration = readFileSync("db/platform/migrations/20261106050000_customer_command_key_isolation.sql", "utf8");
+// The runner installs the additive quote column once; upgrade fixtures replace only routines.
+const forward = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION"));
 const oldPause = readFileSync("db/platform/migrations/20260812100000_customer_subscription_pause_actor.sql", "utf8").match(/CREATE FUNCTION[\s\S]*?\n\$\$;/u)![0].replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
 const oldControl = readFileSync("db/platform/migrations/20260813200000_customer_subscription_control.sql", "utf8");
 const oldBundle = ["preview", "apply"].map(action => oldControl.match(new RegExp(`CREATE FUNCTION public.customer_subscription_${action}_bundle_as_actor\\([\\s\\S]*?\\n\\$\\$;`, "u"))![0].replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")).join("\n");
@@ -79,6 +81,19 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
   const pause = (f: Awaited<ReturnType<typeof fixture>>, key: string) => actor(f.principal, async db => (await db.query("SELECT public.customer_subscription_pause_as_actor($1,$2) AS result", [f.subscription, key])).rows[0].result.subscriptionAction);
   const events = async (subscription: string) => (await owner.query("SELECT id,event_type,idempotency_key,payload FROM public.subscription_events WHERE subscription_id=$1 ORDER BY id", [subscription])).rows;
   const resumeFixture = (subscription: string) => owner.query("UPDATE public.subscriptions SET status='active' WHERE id=$1", [subscription]);
+  const core = (f: Awaited<ReturnType<typeof fixture>>) => JSON.stringify([{ variantId: f.sku, qty: 2 }]);
+  const previewBundle = (f: Awaited<ReturnType<typeof fixture>>, key: string) => actor(f.principal, async db =>
+    (await db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS result", [f.subscription, key, core(f)])).rows[0].result.preview);
+  const applyBundle = (f: Awaited<ReturnType<typeof fixture>>, key: string, hash: string) => actor(f.principal, async db =>
+    (await db.query("SELECT public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4) AS result", [f.subscription, key, hash, core(f)])).rows[0].result.subscriptionAction);
+  const state = async (subscription: string) => (await owner.query(`SELECT jsonb_build_object(
+    'subscription',(SELECT to_jsonb(s) FROM public.subscriptions s WHERE id=$1),
+    'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.subscription_events e WHERE subscription_id=$1),
+    'quotes',(SELECT jsonb_agg(to_jsonb(q) ORDER BY id) FROM public.subscription_edit_quotes q WHERE subscription_id=$1),
+    'windows',(SELECT jsonb_agg(to_jsonb(w) ORDER BY id) FROM public.subscription_pause_windows w WHERE subscription_id=$1),
+    'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM public.subscription_lines l WHERE subscription_id=$1)) AS state`, [subscription])).rows[0].state;
+  const identity = (principal: string) => ({ derivation: "principal-sha256.v1", actorId: principal });
+
 
   it.each([false, true])("isolates pause from graduation, including legacy=%s and a pre-claimed fallback", async legacy => {
     for (const full of [true, false]) {
@@ -145,7 +160,8 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
     expect(await events(f.subscription)).toEqual(before);
     const another = await fixture();
     expect(await pause(another, raw)).toMatchObject({ status: "applied" });
-    expect((await events(another.subscription))[0].idempotency_key).toBe(commandKey(another.principal, raw));
+    expect((await events(another.subscription))[0]).toMatchObject({ idempotency_key: commandKey(another.principal, raw),
+      payload: { payload: { commandKeyIdentity: identity(another.principal) } } });
     await resumeFixture(f.subscription);
     const fresh = "new-pause-key";
     const first = await pause(f, fresh);
@@ -172,8 +188,88 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
     const before = await events(f.subscription);
     expect(before.find(e => e.event_type === "subscription.customer_self_service.update_bundle")?.idempotency_key).toBe(legacy ? key : commandKey(f.principal, key));
     expect(await apply(quote.quoteHash)).toMatchObject({ status: "replayed", eventId: first.eventId });
+    const storedQuote = (await owner.query("SELECT command_key_identity FROM public.subscription_edit_quotes WHERE subscription_id=$1", [f.subscription])).rows[0];
+    expect(storedQuote.command_key_identity).toEqual(legacy ? null : identity(f.principal));
+    if (!legacy) expect(before.find(e => e.event_type === "subscription.customer_self_service.update_bundle")?.payload.commandKeyIdentity).toEqual(identity(f.principal));
     expect(await events(f.subscription)).toEqual(before);
     expect((await owner.query("SELECT count(*)::int AS n FROM public.subscription_edit_quotes WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ n: 1 }]);
+  });
+
+
+  it("refuses the reserved command prefix at all three customer entries without false replay", async () => {
+    const f = await fixture(), key = "reserved-prefix-key";
+    await pause(f, key); await resumeFixture(f.subscription);
+    const before = await state(f.subscription), reserved = commandKey(f.principal, key);
+    const refusal = { code: "22023", message: "subscription_command_reserved_idempotency_key" };
+    await expect(pause(f, reserved)).rejects.toMatchObject(refusal);
+    await expect(previewBundle(f, reserved)).rejects.toMatchObject(refusal);
+    await expect(applyBundle(f, reserved, "a".repeat(64))).rejects.toMatchObject(refusal);
+    expect(await state(f.subscription)).toEqual(before);
+  });
+
+  it.each(["pause", "update_bundle"])("refuses a legacy %s event stored at a distinct command's derived key", async action => {
+    const f = await fixture(), key = "ambiguous-event-key", raw = commandKey(f.principal, key);
+    await owner.query(`${oldPause}\n${oldBundle}`);
+    let quoteHash = "a".repeat(64);
+    try {
+      if (action === "pause") await pause(f, raw);
+      else { quoteHash = (await previewBundle(f, raw)).quoteHash; await applyBundle(f, raw, quoteHash); }
+    } finally { await owner.query(forward); }
+    await resumeFixture(f.subscription);
+    const before = await state(f.subscription);
+    const refusal = { code: "23505", message: "subscription_command_ambiguous_idempotency_key" };
+    await expect(pause(f, key)).rejects.toMatchObject(refusal);
+    await expect(previewBundle(f, key)).rejects.toMatchObject(refusal);
+    await expect(applyBundle(f, key, quoteHash)).rejects.toMatchObject(refusal);
+    expect(await state(f.subscription)).toEqual(before);
+  });
+
+  it("refuses an unmarked legacy quote at the derived key before preview, apply or pause", async () => {
+    const f = await fixture(), key = "ambiguous-quote-key", raw = commandKey(f.principal, key);
+    await owner.query(oldBundle);
+    let quote;
+    try { quote = await previewBundle(f, raw); } finally { await owner.query(forward); }
+    const before = await state(f.subscription);
+    const refusal = { code: "23505", message: "subscription_command_ambiguous_idempotency_key" };
+    await expect(previewBundle(f, key)).rejects.toMatchObject(refusal);
+    await expect(applyBundle(f, key, quote.quoteHash)).rejects.toMatchObject(refusal);
+    await expect(pause(f, key)).rejects.toMatchObject(refusal);
+    expect(await state(f.subscription)).toEqual(before);
+  });
+
+  it.each(["pause", "update_bundle"])("refuses reuse of a legacy %s key for another customer action", async action => {
+    const f = await fixture(), key = "legacy-other-action-key";
+    await owner.query(`${oldPause}\n${oldBundle}`);
+    let quote;
+    try {
+      quote = await previewBundle(f, key);
+      if (action === "pause") await pause(f, key);
+      else await applyBundle(f, key, quote.quoteHash);
+    } finally { await owner.query(forward); }
+    await resumeFixture(f.subscription);
+    const before = await state(f.subscription);
+    if (action === "pause") {
+      await expect(applyBundle(f, key, quote.quoteHash)).rejects.toMatchObject({ code: "23505", message: "subscription_edit_idempotency_conflict" });
+      await expect(previewBundle(f, key)).rejects.toMatchObject({ code: "23505", message: "subscription_edit_idempotency_conflict" });
+    } else await expect(pause(f, key)).rejects.toMatchObject({ code: "23505", message: "subscription_lifecycle_idempotency_conflict" });
+    const stranger = await fixture();
+    await expect(actor(stranger.principal, db => db.query("SELECT public.customer_subscription_pause_as_actor($1,$2)", [f.subscription, key])))
+      .rejects.toMatchObject({ code: "22023", message: "subscription_lifecycle_forbidden" });
+    expect(await state(f.subscription)).toEqual(before);
+  });
+
+  it("accepts a legacy in-flight quote once and marks only the new hashed event", async () => {
+    const f = await fixture(), key = "legacy-inflight-quote";
+    await owner.query(oldBundle);
+    let quote;
+    try { quote = await previewBundle(f, key); } finally { await owner.query(forward); }
+    const first = await applyBundle(f, key, quote.quoteHash), before = await state(f.subscription);
+    expect(first.status).toBe("applied");
+    expect(await applyBundle(f, key, quote.quoteHash)).toMatchObject({ status: "replayed", eventId: first.eventId });
+    expect(await state(f.subscription)).toEqual(before);
+    expect(before.quotes).toEqual([expect.objectContaining({ idempotency_key: key, command_key_identity: null, accepted_event_id: first.eventId })]);
+    expect(before.events).toEqual([expect.objectContaining({ idempotency_key: commandKey(f.principal, key),
+      payload: expect.objectContaining({ commandKeyIdentity: identity(f.principal) }) })]);
   });
 
   it("keeps all new customer keys disjoint from system key forms", async () => {

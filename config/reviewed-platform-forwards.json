@@ -3479,22 +3479,22 @@
     },
     {
       "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
-      "sha256": "fc1b3d076b84230ff185a9a21f32c4d18d910827fe5632ce8c4c0ff352835b74",
+      "sha256": "c8ab11f943b18dcbb57c50f9aa51dd7f181b59374b3fc1ba0c1e4548d50404a4",
       "functions": [
         {
           "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
           "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
-          "afterSha256": "a6e7f9be1dc9eb294e65f3ffa570e2e0f1a6f297fc7a146be655c4ba71e4e498"
+          "afterSha256": "ae7d65c5bd6e613246e8194b5f510a763687023ae7d9cb18e4eb61fc3979aa57"
         },
         {
           "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
           "beforeSha256": "d1df1dd5d72f894632ad5cf6daa739ddae72b264340caa129ac887bd36dde0a1",
-          "afterSha256": "5e5dbc6246d4d95416c8b668b4e5c798e892b7a1da5d7822d47467ccb1642b87"
+          "afterSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d"
         },
         {
           "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
           "beforeSha256": "d2c82e5591e1fa8fa98a6d829307ce335c9a9c808989a2879f58c5d6704c26a8",
-          "afterSha256": "36e5742898213bf89b69f69fecfbdf7b4678d08542b82001feb819cb00b47874"
+          "afterSha256": "ed57f54c925c1e91403b966cf796c4198a3a93aa5573534a9a8921ea0aa1c4a2"
         },
         {
           "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
