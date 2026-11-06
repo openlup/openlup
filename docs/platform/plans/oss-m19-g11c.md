@@ -1,5 +1,10 @@
 # Native account consent choices
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 Status: R0 handover and selected suites are green; final cheap checks and DCO merge handoff.
 Admission remains blocked on the separately owned prior control. The supervisor
 assigned the additive native bounce/complaint fan-out fix to this row so that the

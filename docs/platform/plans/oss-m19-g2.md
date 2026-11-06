@@ -1,5 +1,10 @@
 # Native purchase renewal attachment (G2)
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 Status: function-only ACL revision locally proved; the latest evidence is in
 that section below, with earlier source anchors retained as history. Admission
 prerequisite and stabilized read still block delivery. No DCO sign-off, native review, canonical verify, push or
