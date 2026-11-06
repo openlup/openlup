@@ -491,14 +491,15 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it("refuses a policy move since the reviewed base and preserves the control-only route", () => {
+  it("accepts machinery drift on main and preserves the control-only route", () => {
     const f = correctionFixture();
     try {
       f.put("config/reviewed-platform-forwards.json", registryBytes); const control = f.commit();
       expect(() => assertCoLocatedForwardApproval(f.root, f.base, control)).not.toThrow();
       f.git("reset", "--hard", f.base); f.install(); const head = f.commit();
       f.git("checkout", "--detach", f.base); f.put("scripts/reviewed-platform-forward.ts", "new main policy"); const main = f.commit();
-      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head, main)).toThrow(/machinery must be approved separately/u);
+      f.git("update-ref", "refs/remotes/origin/main", main);
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
     } finally { f.cleanup(); }
   });
 
@@ -1268,8 +1269,12 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
       manifest.forward.push({ file: support[0]!.path, sha256: sqlSha256(replacements.get(support[0]!.path) ?? source(support[0]!)) });
       f.put("config/platform-migration-manifest.json", JSON.stringify(manifest));
     };
-    install(); const introduced = f.commit();
-    expect(() => assertCoLocatedForwardApproval(f.root, old, introduced)).toThrow(/class must be approved separately/u);
+    f.git("reset", "--hard", old); install(); const sameChange = f.commit();
+    const sameGroup = f.git("commit-tree", f.git("rev-parse", `${sameChange}^{tree}`), "-p", old, "-p", sameChange, "-m", "Support class and SQL merge group");
+    for (const head of [sameChange, sameGroup]) expect(() => assertCoLocatedForwardApproval(f.root, old, head)).not.toThrow();
+    for (const pin of support) for (const release of [false, true]) expect(() => assertReviewedPlatformForward(f.root, old, sameChange, pin.path, source(pin), release)).not.toThrow();
+    f.git("reset", "--hard", control); install(); const introduced = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, old, introduced)).not.toThrow();
     expect(() => assertCoLocatedForwardApproval(f.root, control, introduced)).not.toThrow();
     expect(() => assertAppendOnlyMigrationHistory(f.root, control, introduced)).not.toThrow();
     for (const pin of support) {
@@ -1419,7 +1424,8 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
         expect(() => assertReviewedPlatformForward(f.root, old, later, support[0]!.path, source(support[0]!), true), attack).toThrow(/reviewed/u);
       } else if (attack === "trusted machinery") {
         f.git("checkout", "--detach", control); f.put("scripts/reviewed-platform-forward.ts", "trusted main moved"); const trusted = f.commit();
-        expect(() => assertCoLocatedForwardApproval(f.root, control, head, trusted)).toThrow(/machinery/u);
+        f.git("update-ref", "refs/remotes/origin/main", trusted);
+        expect(() => assertCoLocatedForwardApproval(f.root, control, head)).not.toThrow();
       } else {
         expect(() => assertCoLocatedForwardApproval(f.root, control, head), attack).toThrow(/reviewed/u);
         if (attack === "trigger") expect(() => assertAppendOnlyMigrationHistory(f.root, control, head)).toThrow(/reviewed/u);
@@ -1791,9 +1797,13 @@ describe("M17 channel ingest approval", () => {
       put(registryPath, encode(absent)); const old = commit();
       put(registryPath, encode(marker)); const control = commit();
       expect(() => assertCoLocatedForwardApproval(root, old, control)).not.toThrow();
-      install(); const introduced = commit();
-      expect(() => assertForwardApproval(root, old, introduced)).toThrow(/class must be approved separately/u);
-      expect(() => assertCoLocatedForwardApproval(root, old, introduced)).toThrow(/class must be approved separately/u);
+      git("reset", "--hard", old); install(); const sameChange = commit();
+      const sameGroup = git("commit-tree", git("rev-parse", `${sameChange}^{tree}`), "-p", old, "-p", sameChange, "-m", "Channel class and SQL merge group");
+      for (const head of [sameChange, sameGroup]) expect(() => assertCoLocatedForwardApproval(root, old, head)).not.toThrow();
+      for (const source of sources) for (const release of [false, true]) expect(() => assertReviewedPlatformForward(root, old, sameChange, source.path, source.bytes, release)).not.toThrow();
+      git("reset", "--hard", control); install(); const introduced = commit();
+      expect(() => assertForwardApproval(root, old, introduced)).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(root, old, introduced)).not.toThrow();
       expect(() => assertCoLocatedForwardApproval(root, control, introduced)).not.toThrow();
       for (const source of sources) {
         expect(() => assertReviewedPlatformForward(root, control, introduced, source.path, source.bytes)).not.toThrow();
@@ -1805,17 +1815,20 @@ describe("M17 channel ingest approval", () => {
       const changed = structuredClone(registry); changed.channelIngestForwards[0]!.sha256 = "0".repeat(64);
       put(registryPath, encode(changed)); const repinned = commit();
       expect(() => assertForwardApproval(root, introduced, repinned)).toThrow(/approved separately/u);
-      expect(() => assertCoLocatedForwardApproval(root, introduced, repinned)).toThrow(/immutable/u);
+      expect(() => assertCoLocatedForwardApproval(root, introduced, repinned)).toThrow("issued M17 channel approvals are immutable");
       expect(() => assertReviewedPlatformForward(root, old, repinned, sources[0]!.path, sources[0]!.bytes, true)).toThrow(/approved separately/u);
       put(registryPath, encode(marker)); const removed = commit();
-      expect(() => assertCoLocatedForwardApproval(root, introduced, removed)).toThrow(/immutable/u);
+      expect(() => assertCoLocatedForwardApproval(root, introduced, removed)).toThrow("issued M17 channel approvals are immutable");
+      const reordered = structuredClone(registry); reordered.channelIngestForwards!.reverse();
+      put(registryPath, encode(reordered)); const reorderedHead = commit();
+      expect(() => assertCoLocatedForwardApproval(root, introduced, reorderedHead)).toThrow("reviewed M17 channel path, order or function inventory drifted");
       put(registryPath, encode(absent)); const removedClass = commit();
       expect(() => assertCoLocatedForwardApproval(root, control, removedClass)).toThrow(/cannot be removed/u);
       git("reset", "--hard", control); install(); put("scripts/reviewed-platform-forward.ts", "candidate machinery"); const machinery = commit();
       expect(() => assertCoLocatedForwardApproval(root, control, machinery)).toThrow(/machinery/u);
       git("reset", "--hard", old); for (const source of sources) put(source.path, source.bytes); const noMarker = commit();
-      expect(() => assertForwardApproval(root, old, noMarker)).toThrow(/class must be approved separately/u);
-      expect(() => assertCoLocatedForwardApproval(root, old, noMarker)).toThrow(/class must be approved separately/u);
+      expect(() => assertForwardApproval(root, old, noMarker)).toThrow(`reviewed M17 channel requires a binding: ${sources[0]!.path}`);
+      expect(() => assertCoLocatedForwardApproval(root, old, noMarker)).toThrow(`reviewed M17 channel requires a binding: ${sources[0]!.path}`);
       git("reset", "--hard", control); put(registryPath, encode(changed)); const lateApproval = commit();
       expect(() => assertForwardApproval(root, control, lateApproval)).toThrow(/SQL is introduced/u);
     } finally { rmSync(root, { recursive: true, force: true }); }
