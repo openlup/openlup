@@ -25,6 +25,9 @@ export interface NativeLifecycleMessagesOptions {
   bind(notice: NativeLifecycleNotice, recipient: { email: string; firstName: string | null; country: string | null }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
 }
 const aliases: Record<string, string> = {
+  "subscription.customer_self_service.swap_base_line": "subscription.package_changed",
+  "subscription.customer_self_service.update_base_mix": "subscription.package_changed",
+  "subscription.customer_self_service.update_portion": "subscription.package_changed",
   "subscription.activated": "subscription.created",
   "subscription.customer_self_service.pause": "subscription.paused",
   "subscription.customer_self_service.resume": "subscription.resumed",

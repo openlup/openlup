@@ -1234,6 +1234,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4075,6 +4083,14 @@
     },
     {
       "path": "packages/platform/sql/20261101232000_customer_account_consents.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261104100000_subscription_package_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261104110000_subscription_exact_levers.sql",
       "class": "public-output"
     },
     {
@@ -7958,6 +7974,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/classicPackageQuote.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/commandExamples.ts",
       "class": "public-output"
     },
@@ -7970,6 +7990,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/exactEdit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/index.ts",
       "class": "public-output"
     },
@@ -7978,11 +8002,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/packageEdit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/renewal.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/subscriptions/contracts/stockWait.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/exactEditQuote.ts",
       "class": "public-output"
     },
     {
@@ -8023,6 +8055,22 @@
     },
     {
       "path": "packages/platform/src/subscriptions/nativeSubscriptionSchema.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/packageEditContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/packageEditErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/packageEditRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/packageEditor.ts",
       "class": "public-output"
     },
     {
@@ -8079,6 +8127,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/subscriptionSizing.ts",
       "class": "public-output"
     },
     {
@@ -10166,7 +10218,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/classicPackageQuote.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/exactEditQuote.test.ts",
       "class": "public-output"
     },
     {
@@ -10179,6 +10239,14 @@
     },
     {
       "path": "packages/platform/test/subscriptions/noticePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/packageEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/packageEditorReplay.test.ts",
       "class": "public-output"
     },
     {
@@ -10207,6 +10275,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/renewalKeys.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
       "class": "public-output"
     },
     {
@@ -28766,6 +28838,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionExactEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionExactInstallation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionManagedStock.test.ts",
       "class": "public-output"
     },
@@ -28779,6 +28859,10 @@
     },
     {
       "path": "tests/postgres/subscriptionNoticeDelivery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPackageEditor.test.ts",
       "class": "public-output"
     },
     {

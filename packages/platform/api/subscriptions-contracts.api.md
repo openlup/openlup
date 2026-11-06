@@ -269,6 +269,73 @@ export interface RenewalFailureHandoffPort {
     }>;
 }
 ```
+## dist/subscriptions/contracts/exactEdit.d.ts
+
+```ts
+import type { PackageEditApplyResult, PackageEditLine, PackageEditPreview, PackageEditQuoteLine, PackageEditRequest } from "./packageEdit.js";
+export type ExactSubscriptionEditAction = "swap_base_line" | "add_addon" | "remove_addon" | "update_addon_quantity" | "update_plan_length" | "update_base_mix" | "update_portion";
+interface Acceptance {
+    subscriptionId: string;
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+/** Exact levers retain their individual semantics; quantities are not a combined package edit. */
+export type ExactSubscriptionEditRequest = Acceptance & ({
+    action: "swap_base_line";
+    fromVariantId: string;
+    toVariantId: string;
+} | {
+    action: "add_addon";
+    variantId: string;
+    qty: number;
+} | {
+    action: "update_addon_quantity";
+    variantId: string;
+    qty: number;
+} | {
+    action: "remove_addon";
+    variantId: string;
+} | {
+    action: "update_plan_length";
+    planDays: number;
+} | {
+    action: "update_base_mix";
+    base: PackageEditLine[];
+} | {
+    action: "update_portion";
+    portionMode: string;
+});
+export type SubscriptionEditRequest = PackageEditRequest | ExactSubscriptionEditRequest;
+export type ExactSubscriptionEditPreview = PackageEditPreview<ExactSubscriptionEditAction>;
+export type ExactSubscriptionEditApplyResult = PackageEditApplyResult<ExactSubscriptionEditAction>;
+export interface ExactSubscriptionEditPricedLine extends PackageEditLine {
+    lineId: string | null;
+    isAddon: boolean;
+    sortOrder: number;
+    quoteLine: PackageEditQuoteLine;
+}
+/** Server evidence, never accepted from customer input. New base sets have null line IDs. */
+export interface ExactSubscriptionEditQuote {
+    quoteHash: string;
+    expectedTemplateVersion: number;
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown> | null;
+    lines: ExactSubscriptionEditPricedLine[];
+    portionModes?: SubscriptionPortionModes;
+}
+/** Both factors and mode identifiers belong to the application configuration. */
+export interface SubscriptionPortionModes {
+    full: {
+        mode: string;
+        factor: number;
+    };
+    reduced: {
+        mode: string;
+        factor: number;
+    };
+}
+export {};
+```
 ## dist/subscriptions/contracts/index.d.ts
 
 ```ts
@@ -278,6 +345,8 @@ export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWa
 export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
+export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
+export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 
@@ -324,6 +393,88 @@ export interface SubscriptionLifecycleMessagePort {
         notificationId: string;
         replayed: boolean;
     }>;
+}
+```
+## dist/subscriptions/contracts/packageEdit.d.ts
+
+```ts
+/** Data-only classic package quote and command envelopes. Identity and execution stay in the server entry. */
+export interface PackageEditMoney {
+    amountMinor: number;
+    currency: string;
+}
+export interface PackageEditLine {
+    variantId: string;
+    qty: number;
+}
+export interface PackageEditQuoteLine {
+    sku: string;
+    quantity: number;
+    unitPriceGross: PackageEditMoney;
+    lineSubtotalGross: PackageEditMoney;
+    pricingComponents?: unknown[];
+}
+export interface PackageEditPricedLine extends PackageEditLine {
+    quoteLine: PackageEditQuoteLine;
+}
+export interface PackageEditRequest {
+    subscriptionId: string;
+    planDays: number;
+    base: PackageEditLine[];
+    addons?: PackageEditLine[];
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+export interface PackageEditQuote {
+    currentRecurringPrice: PackageEditMoney;
+    newRecurringPrice: PackageEditMoney;
+    delta: PackageEditMoney;
+    quoteHash: string;
+    baseLines: PackageEditPricedLine[];
+    addonLines: PackageEditPricedLine[];
+    cadenceDays: number;
+    expectedTemplateVersion: number;
+    compositionConstraint: Record<string, unknown> | null;
+}
+export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
+export interface PackageEditPreview<Action extends string = "update_package_template"> {
+    preview: {
+        subscriptionId: string;
+        action: Action;
+        canApply: boolean;
+        blockedReason: PackageEditBlockedReason | null;
+        nextCycleAt: string | null;
+        editCutoffAt: string | null;
+        templateVersion: number;
+    };
+    lockedCycle: {
+        locked: boolean;
+        status: "blocked_preflight" | "dunning" | null;
+    };
+    futureTemplate: {
+        templateVersion: number;
+        effectiveCycleAt: string | null;
+        priceAgreementPolicy: "lock_until_edit";
+    };
+    quoteHash?: string;
+    quoteExpiresAt?: string;
+    currentTotal?: PackageEditMoney;
+    newTotal?: PackageEditMoney;
+    delta?: PackageEditMoney;
+    packageEdit?: Pick<PackageEditQuote, "currentRecurringPrice" | "newRecurringPrice" | "delta" | "quoteHash"> & {
+        effectiveCycleAt: string | null;
+        priceAgreementPolicy: "lock_until_edit";
+    };
+}
+export interface PackageEditApplyResult<Action extends string = "update_package_template"> {
+    status: "applied" | "replayed" | "noop";
+    subscriptionId: string;
+    action: Action;
+    subscriptionStatus: string;
+    nextCycleAt: string | null;
+    templateVersion: number;
+    eventId: string | null;
+    originalStatus?: "applied" | "noop";
 }
 ```
 ## dist/subscriptions/contracts/renewal.d.ts

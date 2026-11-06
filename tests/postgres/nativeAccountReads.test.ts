@@ -115,7 +115,7 @@ beforeAll(async () => {
   await admin.query("INSERT INTO public.clients(id,principal_id,email,lifecycle_stage) VALUES($1,$2,'account-a@example.invalid','customer'),($3,$4,'account-b@example.invalid','customer')", [clientId, principalId, otherClient, otherPrincipal]);
   await admin.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'neutral-read','Neutral item')", [productId]);
   await admin.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,'NEUTRAL-READ-1','Neutral item')", [skuId, productId]);
-  await admin.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscriptionId, clientId, next]);
+  await admin.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,composition_constraint) VALUES($1,$2,28,$3,$4)", [subscriptionId, clientId, next, { kind: "plan_days", value: 21 }]);
   await admin.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,2,0,600,'EUR')", [subscriptionId, skuId]);
   await admin.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscriptionId]);
   const seed = await admin.connect();
@@ -162,7 +162,7 @@ it("refuses foreign identities and companion-ID bypasses, including invoice call
 });
 it("composes native subscriptions and identity while refusing missing profile/event sections", async () => {
   const before = await state(), source = sources();
-  expect(await source.readSubscriptionRows(clientId, 50)).toMatchObject([{ id: subscriptionId }]);
+  expect(await source.readSubscriptionRows(clientId, 50)).toMatchObject([{ id: subscriptionId, size_constraint: { kind: "plan_days", value: 21 } }]);
   expect((await source.readSubscriptionLines([subscriptionId])).get(subscriptionId)).toMatchObject([{ qty: 2, unitPrice: money(600), lineSubtotal: money(1200) }]);
   expect(await source.readSubscriptionBlockers([subscriptionId], new Map([[subscriptionId, next]]))).toEqual(new Map());
   expect(await source.readPauseWindows([subscriptionId])).toEqual(new Map());
@@ -172,7 +172,7 @@ it("composes native subscriptions and identity while refusing missing profile/ev
   const client = await native.readPostgresCustomerAccountClient(executor, { principalId, clientId });
   const snapshot = await account.readAccountSnapshot(source, { paymentMethodStatus: () => "missing", canUsePaymentMethodForRenewal: value => value === "usable",
     packageSummary: () => null, withNextCharge: recurring => ({ recurringPrice: recurring, nextCharge: null }) }, client!);
-  expect(snapshot).toMatchObject({ profile: { clientId }, subscriptions: [{ subscriptionId, recurringPrice: { totalGross: money(1200) } }], recentOrders: [{ orderId }] });
+  expect(snapshot).toMatchObject({ profile: { clientId }, subscriptions: [{ subscriptionId, sizeConstraint: { kind: "plan_days", value: 21 }, recurringPrice: { totalGross: money(1200) } }], recentOrders: [{ orderId }] });
   const unbound = native.createPostgresAccountReadSources(executor, { principalId, clientId, orders: store(), orderProjection: projection,
     now: () => at, additional: { readExtension: async () => null, readNextCharges: async () => new Map() } });
   for (const [read, section] of [[unbound.readAddresses,"addresses"], [unbound.readOrdererProfiles,"billingProfiles"],
