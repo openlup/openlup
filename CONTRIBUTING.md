@@ -1288,8 +1288,10 @@ that required CI and the change's own review would miss.
    Pending checks may finish afterwards; required source and group checks must
    pass before the queue merges. Confirm the merge on `main`.
 7. **FAIL: one fix commit.** Commit the fix, then review only that fix as a delta,
-   with the open finding cards, at the same floors above. Close every blocking
-   finding explicitly and return to PASS when review succeeds.
+   with the open finding cards, at the same floors above. This needs the failed
+   candidate to have had its full floor of complete reviews; after a FAIL from
+   delta reviews only, the next candidate takes a full review. Close every
+   blocking finding explicitly and return to PASS when review succeeds.
 8. **When main moves.** With no conflict, do nothing: the review carries over and
    does not expire. On a conflict, merge `origin/main`, resolve it and review only
    the resolution. Post a receipt for the resulting head. Never force-push or
