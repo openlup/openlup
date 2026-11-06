@@ -1703,7 +1703,10 @@ findings govern admission; the recorded `expires` field keeps receipt identity
 and is not enforced. There is no separate integration-review receipt route.
 The [native review rules](#native-review-and-accountability) permit one
 tree-identical trailer-only commit after the qualifying merge; the receipt still
-binds the actual tip and reviewers assess its documentation reasons.
+binds the actual tip. Reviewers assess `OpenLup-Doc-Impact` reasons in reviewed
+commits. On a trailer-only tip after a clean merge or registry union, only the
+hosted documentation policy checks them; a reason that needs judgement goes on an
+ordinary non-merge commit, which is reviewed like any change.
 
 The supervisor follows actual admission in the same logical task; the maintainer
 does not move prompts or reports. A receipt timeout needs submission, as

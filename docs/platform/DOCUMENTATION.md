@@ -585,8 +585,11 @@ in-tree task answer or record its fresh reason on a non-merge commit. The
 also permit exactly one single-parent commit directly after the qualifying
 two-parent merge: its tree must equal the merge tree, and its message may contain
 only a subject, one or more `OpenLup-Doc-Impact` trailer lines and optional
-`Signed-off-by` lines. Reviewers receive and judge those reasons. The actual
-trailer tip remains the reviewed and receipted head; all existing coverage,
+`Signed-off-by` lines. Reviewers judge `OpenLup-Doc-Impact` reasons in reviewed
+commits; on a trailer-only tip after a clean merge or registry union, only the
+hosted documentation policy checks them. Record a reason that needs judgement on
+an ordinary non-merge commit, which is reviewed like any change. The actual
+trailer tip remains the receipted head, covered by the inherited review; all existing coverage,
 intent, author, finding, cycle and integration-proof rules still apply.
 This does not change which commits answer obligations or what the digest binds.
 
