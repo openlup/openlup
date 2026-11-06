@@ -236,7 +236,8 @@ const order = [
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
-  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "price_lists", "price_entries",
+  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
+  "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
@@ -576,6 +577,9 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
+    // These guards retain final intervals and recompute the same definition digest.
+    subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
+    commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],

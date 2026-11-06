@@ -215,6 +215,14 @@ pointer is still staged. Each guarded update preserves every other product
 field and requires exactly one row; the foreign key requires the revision to
 belong to that product. The existing primary-SKU update follows SKU insertion.
 
+The profile carries `catalog_sku_identifiers` after their SKUs,
+`subscription_price_policy_revisions` after their price lists, and
+`commerce_promotion_definitions` before order adjustments. Closed and open
+price-policy intervals are inserted unchanged under the existing READ COMMITTED
+transaction and overlap guard. Promotion definitions retain their active flag
+and database-computed fingerprint; all three relations participate in exact
+row comparison and replay.
+
 The profile also carries account consent events (requested/effective
 choice, actor/client and recipient fingerprint, copy/source/reason, route/client
 attribution, capture times and work ID) and their singleton sync-target row.
