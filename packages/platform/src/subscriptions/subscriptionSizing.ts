@@ -89,6 +89,12 @@ export function createSubscriptionSizingRules(policy: SubscriptionSizingPolicy):
       return { ok: true };
     },
     async resizeComposition({ coreLines, constraint, lever }) {
+      if (lever.kind === "planLengthConstraint") {
+        const planDays = Math.trunc(Number(lever.value));
+        if (!Number.isInteger(planDays) || planDays <= 0) throw new Error("subscription_reprice_invalid_plan_length");
+        return { coreLines, constraint: { ...constraint, data: { ...constraint.data,
+          ...(policy.isPlanLengthConstraint(constraint) ? { value: planDays } : {}) } } };
+      }
       if (lever.kind !== "planLength" && lever.kind !== "portionMode") return null;
       const data = constraint.data, value = lever.value && typeof lever.value === "object" ? lever.value as Record<string, unknown> : {};
       const planDays = Math.trunc(Number(lever.kind === "planLength" ? lever.value : value.planDays ?? data.value));
