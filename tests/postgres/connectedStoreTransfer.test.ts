@@ -453,6 +453,9 @@ beforeAll(async () => {
     VALUES($1,'subscription.customer_self_service.update_package_template','retained-package-edit','{"linePricing":[]}') RETURNING id`, [graph.subscription])).rows[0].id;
   await source.runtime.query("SELECT public.subscription_quote_preview_mark_accepted($1,'retained-package-key',$2,'2026-11-05T12:00:00Z')", [acceptedPreview.id, editEvent]);
   await recordPreview("d".repeat(64));
+  // Capture the new event's delivery receipt as well, so later dispatcher replay
+  // does not create a new obligation on an otherwise identical restored graph.
+  await dispatchNotices(source);
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -1297,7 +1300,7 @@ try {
   } finally { await rm(consumer, { recursive: true, force: true }); }
 }, 60_000);
 
-// The complete transfer cases measured below supply the deadline for this same restore path.
+// Local no-coverage case: 8.141 s; fourfold 32.564 s rounds to a 40 s deadline.
 it("round-trips open and accepted package previews with their event and subscription parents", async () => {
   const captured = packet.owned.find(table => table.table === "subscription_quote_previews");
   expect(captured?.rows).toHaveLength(2);
@@ -1312,4 +1315,4 @@ it("round-trips open and accepted package previews with their event and subscrip
   const beforeReplay = await census(target.owner);
   expect((await restore()).replayed).toBe(true);
   expect(await census(target.owner)).toEqual(beforeReplay);
-}, 30_000);
+}, 40_000);

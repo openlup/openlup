@@ -126,7 +126,7 @@ it("deduplicates open previews and refuses drift, expiry and reused acceptance w
     await refuses(() => apply(f, { ...payload, ...delta }), "subscription_edit_quote_drift");
   }
   await refuses(() => apply(f, payload, randomUUID(), runtime, "2026-11-05T12:15:00Z"), "subscription_edit_quote_expired");
-  const event = (await owner.query("INSERT INTO public.subscription_events(subscription_id,event_type) VALUES($1,'subscription.customer_self_service.update_package_template') RETURNING id", [f.subscription])).rows[0].id;
+  const event = (await owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key) VALUES($1,'subscription.customer_self_service.update_package_template','used-preview-fixture:'||$1::uuid::text) RETURNING id", [f.subscription])).rows[0].id;
   await rpc(runtime, "subscription_quote_preview_mark_accepted", [preview.id, "different-key", event, at]);
   await refuses(() => apply(f, payload), "subscription_edit_quote_already_used");
 }, 30_000);
@@ -155,14 +155,14 @@ it("applies agreed amounts once, preserves the anchor, and replays original stat
 
 it("returns a no-op before ledger acceptance and locked-cycle checks, with no event or agreement mutation", async () => {
   const f = await fixture(), payload = evidence(f, 4);
-  await owner.query("INSERT INTO public.subscription_cycles(subscription_id,cycle_number,scheduled_at,status) VALUES($1,1,$2,'paid')", [f.subscription, next]);
+  await owner.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'paid')", [f.subscription, next]);
   const before = await effects();
   expect(await apply(f, payload, "noop-without-preview")).toMatchObject({ status: "noop", eventId: null, templateVersion: 1 });
   const after = await effects(); delete before.subscription_command_receipts; delete after.subscription_command_receipts;
   expect(after).toEqual(before);
   await refuses(() => apply(f, evidence(f)), "subscription_lifecycle_payment_blocked");
   await refuses(() => apply(f, { ...payload, acceptedQuoteHash: "bad" }), "subscription_edit_quote_required");
-  await owner.query("UPDATE public.subscription_method_states SET health_state='missing' WHERE subscription_id=$1", [f.subscription]);
+  await owner.query("UPDATE public.subscription_method_states SET health_state='method_missing' WHERE subscription_id=$1", [f.subscription]);
   await refuses(() => apply(f, payload), "subscription_command_payment_blocked");
 }, 30_000);
 
@@ -189,7 +189,7 @@ it("refuses a closed window, inactive service, missing method and open payment c
     const f = await fixture(), payload = evidence(f); await record(f, payload);
     if (mode === "window") await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscription, "2026-11-06T12:00:00Z"]);
     if (mode === "inactive") await owner.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1", [f.subscription]);
-    if (mode === "method") await owner.query("UPDATE public.subscription_method_states SET health_state='missing' WHERE subscription_id=$1", [f.subscription]);
+    if (mode === "method") await owner.query("UPDATE public.subscription_method_states SET health_state='method_missing' WHERE subscription_id=$1", [f.subscription]);
     if (mode === "dunning") await owner.query("INSERT INTO public.subscription_dunning_cases(subscription_id,client_id,idempotency_key) VALUES($1,$2,$3)", [f.subscription, f.client, randomUUID()]);
     await refuses(() => apply(f, payload), mode === "window" || mode === "inactive" ? "subscription_edit_window_closed" : "subscription_command_payment_blocked");
   }
@@ -234,7 +234,16 @@ it("re-quotes against real changed prices, refuses the stale hash without writes
   await refuses(() => editor.apply({ actorId: f.actor, clientId: f.client }, "stale-live-price", { ...request, acceptedQuoteHash: old.quoteHash }), "subscription_reprice_quote_not_accepted");
   const fresh = await editor.preview({ actorId: f.actor, clientId: f.client }, request);
   expect(fresh.quoteHash).not.toBe(old.quoteHash);
-  expect(await editor.apply({ actorId: f.actor, clientId: f.client }, "fresh-live-price", { ...request, acceptedQuoteHash: fresh.quoteHash })).toMatchObject({ status: "applied", templateVersion: 2 });
+  const acceptedRequest = { ...request, acceptedQuoteHash: fresh.quoteHash };
+  const result = await editor.apply({ actorId: f.actor, clientId: f.client }, "fresh-live-price", acceptedRequest);
+  expect(result).toMatchObject({ status: "applied", templateVersion: 2 });
+  await owner.query("UPDATE public.price_entries SET unit_price_minor=199 WHERE price_list_id=$1", [list]);
+  await minimum(null);
+  const beforeReplay = await effects();
+  expect(await editor.apply({ actorId: f.actor, clientId: f.client }, "fresh-live-price", acceptedRequest))
+    .toEqual({ ...result, status: "replayed", originalStatus: "applied" });
+  expect(await effects()).toEqual(beforeReplay);
+  await minimum("4");
 }, 30_000);
 
 
@@ -248,7 +257,7 @@ it("dispatches exactly one existing package_changed notice for a change and none
     } }) });
     const dispatcher = createPostgresLifecycleMessages({ delivery: { send: delivery.send, readReceipt: store.readReceipt },
       async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
-      async bind(notice) { if (notice.subscriptionId === f.subscription) kinds.push(notice.kind);
+      async bind(notice) { if (notice.id === applied.eventId && notice.source === "event") kinds.push(notice.kind);
         return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug }; } });
     await dispatcher.run(100); await dispatcher.run(100);
     expect(captures.filter(value => value === key)).toHaveLength(1); expect(kinds).toEqual(["subscription.package_changed"]);
