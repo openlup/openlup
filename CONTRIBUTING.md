@@ -1402,7 +1402,7 @@ job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
 fails the job.
 `install-proof` retains its Docker Hub service, which is pulled before steps run.
 
-The non-required raw `pgtap` job follows the
+The raw `pgtap` job, which the required `test` aggregate also requires, follows the
 [managed pgTAP on plain PostgreSQL plan](docs/platform/plans/neutral-postgres-pgtap.md).
 `node scripts/public-ci-pgtap.mjs` applies the managed-compatibility adapter
 `tests/postgres/managed-compat/supabase.sql` and replays the committed managed
@@ -2028,7 +2028,7 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The M17 reference's adjacent guard
