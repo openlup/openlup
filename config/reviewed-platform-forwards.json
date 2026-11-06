@@ -3272,6 +3272,88 @@
             ]
           }
         ]
+      },
+      {
+        "row": "C2-3",
+        "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
+            "beforeSha256": "3d364c7e36f4973bbf8f131ca528ffeb59e0b1cd247b39b2e17a24b3e60e56fb",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_dunning_claim_batch(integer,integer,integer)",
+            "beforeSha256": "d0b16d650a638e022eba3cff5318d1ddad4ed861cc6313d836faee71a860cecb",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer)",
+            "beforeSha256": "b4fbc21b216322c7de50b0d9b93a5724553c939148b2e11878d8e20a0399ee13",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer)",
+            "beforeSha256": "8becebebf448ed150e32f1d9aa31745ea8ae269731eea5ed2f2fc800974b3d93",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+            "beforeSha256": "0df0406d99a666efeba6e756cfbc39c8eba568a8c3f3613750cf41767e17d8fa",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_dunning_queue_operator_notices(uuid,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_claim_operator_batch(integer,integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_operator_delivery_eligible(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_at_risk_service(integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_dunning_notifications ALTER COLUMN recipient_ref DROP NOT NULL;",
+          "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN operator_recipient_ref uuid REFERENCES public.notification_recipients(id);",
+          "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN operator_dispatch_eligible boolean NOT NULL DEFAULT false;",
+          "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN first_attempt_at timestamptz;",
+          "ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_recipient_binding_check CHECK ((recipient_kind='customer' AND recipient_ref IS NOT NULL AND operator_recipient_ref IS NULL) OR (recipient_kind='operator' AND (NOT operator_dispatch_eligible OR recipient_ref IS NULL)));",
+          "ALTER TABLE public.subscription_reminder_ledger ADD COLUMN renewal_at timestamptz;"
+        ],
+        "uniqueSupersets": [
+          {
+            "table": "public.subscription_dunning_notifications",
+            "constraint": "subscription_dunning_notifications_case_kind_attempt_key",
+            "columns": [
+              "case_id",
+              "notification_kind",
+              "retry_attempt",
+              "recipient_kind",
+              "recipient_ref",
+              "operator_recipient_ref"
+            ],
+            "nullsNotDistinct": true
+          }
+        ]
       }
     ]
   },
@@ -3571,6 +3653,67 @@
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
           "beforeSha256": null,
           "afterSha256": "759206c10b90521bbf09f64e782c2b4ad451ca2ece82e5b01f9b1ea2169a6b07"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+      "sha256": "8d9a20baf02fdde77106dc7bca5d82a146ed8a2767a0bd638059c8f4f0708b6d",
+      "functions": [
+        {
+          "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
+          "beforeSha256": "3d364c7e36f4973bbf8f131ca528ffeb59e0b1cd247b39b2e17a24b3e60e56fb",
+          "afterSha256": "c6d67e728b87bbfefd5348daff7cbd44f0b026449247b57eec7a1ef6d9067c29"
+        },
+        {
+          "signature": "public.subscription_dunning_claim_batch(integer,integer,integer)",
+          "beforeSha256": "d0b16d650a638e022eba3cff5318d1ddad4ed861cc6313d836faee71a860cecb",
+          "afterSha256": "7b4e3b525002baa2567fad962677f0f4ead4f7cfd0eb575d81ab2d57f1874a83"
+        },
+        {
+          "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer)",
+          "beforeSha256": "b4fbc21b216322c7de50b0d9b93a5724553c939148b2e11878d8e20a0399ee13",
+          "afterSha256": "78014e87ce7d688f33f7dd3dcf90bfa5b884a3abc11e084ad4b0a8a0e201e033"
+        },
+        {
+          "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer)",
+          "beforeSha256": "8becebebf448ed150e32f1d9aa31745ea8ae269731eea5ed2f2fc800974b3d93",
+          "afterSha256": "baa8915601fab970c5c9858452b900c7e2c4bad3ccf9a1e58d0b29e9db92335b"
+        },
+        {
+          "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+          "beforeSha256": "0df0406d99a666efeba6e756cfbc39c8eba568a8c3f3613750cf41767e17d8fa",
+          "afterSha256": "21ac0affe913a651a7d6bfbfc7127bd10e2bbefc1e1ca0977c5b29678dbaa6ad"
+        },
+        {
+          "signature": "public.subscription_dunning_queue_operator_notices(uuid,text,integer)",
+          "afterSha256": "920dc7f28b92246140a9904e06a637ddb2f9320e3daa2abbb0106b4cd536b36f",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.subscription_dunning_claim_operator_batch(integer,integer,integer,integer)",
+          "afterSha256": "3cdb3dc3e24c9b07b882b3ca62033cd5911220fe649227cb30a8f082434ec6bd",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.subscription_dunning_operator_delivery_eligible(uuid,uuid)",
+          "afterSha256": "373e071168d639b1a1e83c3280a9b68e35103d46db1297551a4976f1b300cf7d",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+          "afterSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+          "afterSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.dunning_lifecycle_scan_at_risk_service(integer,integer,integer)",
+          "afterSha256": "1a4deadb15e641c43dea07c589db9a85eaebca45ffb4fbff160345e0c0c65136",
+          "beforeSha256": null
         }
       ]
     }

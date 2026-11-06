@@ -263,22 +263,33 @@ it("refuses poisoned default ACLs on an adverse reinstall, then restores the exa
  // Establish the upgraded catalogue even when this refusal runs alone.
  await runner(upgrade).apply();
  const tables=["communication_native_observations","communication_native_sends","communication_native_sync_state","notification_recipients","communication_native_policy_decisions"];
- for(const table of tables)await upgrade.query(`DROP TABLE public.${table}`);
+ const binding=(await upgrade.query(`SELECT conname,pg_get_constraintdef(oid) AS definition,convalidated
+   FROM pg_constraint WHERE contype='f' AND confrelid='public.notification_recipients'::regclass ORDER BY conname`)).rows;
+ expect(binding).toEqual([{conname:"subscription_dunning_notifications_operator_recipient_ref_fkey",definition:expect.stringMatching(/^FOREIGN KEY \(operator_recipient_ref\) REFERENCES (?:public\.)?notification_recipients\(id\)$/),convalidated:true}]);
+ const dropTables=async()=>{
+  await upgrade.query("ALTER TABLE public.subscription_dunning_notifications DROP CONSTRAINT subscription_dunning_notifications_operator_recipient_ref_fkey");
+  for(const table of tables)await upgrade.query(`DROP TABLE public.${table}`);
+ };
+ const restoreBinding=()=>upgrade.query(`ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_operator_recipient_ref_fkey ${binding[0].definition}`);
+ await dropTables();
  await upgrade.query("ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO authenticated");
  try{
   await upgrade.query(readFileSync(nativeFile,"utf8"));
+  await restoreBinding();
   await expect(delivery("poison",1).findFrozenSends({now,graceMinutes:0,limit:1})).rejects.toThrow("privileges_unsafe");
   await expect(sync("poison",1).claimBatch({providerKind:"synthetic",batchSize:1,visibilitySeconds:60,maxAttempts:2})).rejects.toThrow("privileges_unsafe");
   await expect(directory(A,1).listNotificationRecipients({notification_type:"new_signup"})).rejects.toThrow("privileges_unsafe");
   await expect(consent(1).evaluate({email,purpose:"transactional"})).rejects.toMatchObject({name:"ConsentEvaluationUnavailableError"});
  }finally{for(const table of tables)await upgrade.query(`REVOKE SELECT ON public.${table} FROM authenticated`);await upgrade.query("ALTER DEFAULT PRIVILEGES REVOKE SELECT ON TABLES FROM authenticated");}
- for(const table of tables)await upgrade.query(`DROP TABLE public.${table}`);
+ await dropTables();
  await upgrade.query(readFileSync(nativeFile,"utf8"));
+ await restoreBinding();
  // Reconstruct the later CHECK as well as the historical tables; the ledger never replays it.
  const purposeCheckStatements=readFileSync("db/platform/migrations/20261101232000_customer_account_consents.sql","utf8")
   .match(/^ALTER TABLE public\.communication_native_sync_state (?:DROP|ADD) CONSTRAINT communication_native_sync_state_purpose_check\b[^\n]*;$/gm) ?? [];
  expect(purposeCheckStatements).toHaveLength(2);
  for(const statement of purposeCheckStatements)await upgrade.query(statement);
+ expect((await upgrade.query(`SELECT conname,pg_get_constraintdef(oid) AS definition,convalidated FROM pg_constraint WHERE contype='f' AND confrelid='public.notification_recipients'::regclass ORDER BY conname`)).rows).toEqual(binding);
  expect((await runner(upgrade).apply()).applied).toEqual([]);expect(await snapshot(upgrade)).toEqual(before);
 });
 it("C-compose reads scoped native targets and atomically suppresses permission with sole-rail work", async () => {

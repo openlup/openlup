@@ -1825,6 +1825,40 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+Native notice production uses the existing lifecycle binding and its trusted
+`bind` callback. Queued renewal payloads retain `renewalAt`; the binder derives
+charge, delivery-window and edit-deadline labels from that instant and its owned
+calendar policy. Renewal facts live in the dedicated reminder ledger, isolated
+from customer-chosen lifecycle keys. Existing ledger IDs and accepted delivery
+keys remain authoritative; typed legacy renewal facts are still readable.
+`phaseFactsAllowed` is false after rescheduling; `phaseFacts`
+then contains no current acquisition/amount document. Pause notices carry a
+window UUID and the cadence-aligned next delivery, and resolved windows are
+durably suppressed before binding. Existing source names, aliases and
+`subscription-notice:<source>:<id>` delivery keys retain their meaning.
+
+The optional `notices` policy supplies positive integer timing/cap values. The
+binding passes timing explicitly to additive renewal and pause producer overloads.
+The original signatures delegate with the documented defaults in the forward;
+there is no session policy state.
+Starter freshness additionally requires the retained marker and correlated
+native paid evidence, while the notice phase counts every materialized cycle.
+Imported or uncorrelated starter histories may miss the early reminder and use
+standard freshness. Complete identity-preserving native store transfer retains
+the cycle census; standalone restore-role row imports do not prove that premise.
+
+At-risk discovery uses a service-only SQL definer entry; the replaced internal scan
+remains owner-only. At-risk notices use template controls without substituting a
+marketing consent gate. Valid accepted receipts and keyed disabled-template outcomes spend their
+cause/day allowance; failures, missing recipients and invalid-reference anomalies
+do not. Outcome events are neither deliverable aliases nor policy refusals.
+Transport idempotency must cover ambiguous acceptance across retry. Operator
+escalation requires `bindOperator`; its explicit input contains only notice ID,
+case ID and template, with recipient email separately. Operator claims never enter
+the customer claim and preserve fresh eligibility, receipt repair and manual
+review at the configured idempotency horizon. No live-provider qualification is
+established by these captured-delivery mechanisms.
+
 Native purchase renewal attachment uses
 `createPostgresPurchaseRenewalWriter` and `activateNativePurchaseWithRenewal` from
 `@openlup/platform/subscriptions`. Declare the purchase first, then supply trusted
@@ -2266,10 +2300,23 @@ precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 `createPostgresLifecycleMessages` is a native scheduled-host binding over the
-existing dunning queue, reminder ledger and subscription events. It maps native
+existing dunning queue, reminder ledger, typed outbox and subscription events. It maps native
 activation and customer pause/resume/cancel/skip/slide/bundle-edit facts to the
 existing lifecycle templates; it does not invent a parcel arrival or service
 pause. Both reminder producers run explicitly in this scheduled operation.
+New system notice keys live in the typed outbox rather than the customer command
+event namespace, under a separate `subscription_notice` aggregate so pending notices
+do not block ordinary subscription outbox work. Legacy event reads require the notice's own event type; existing IDs
+and `subscription-notice:<source>:<id>` keys remain valid across the carrier change.
+Base pause ledger reminders keep their original reminder source and key. Their
+subscription/UTC end-day bucket prevents a second window notice, and unsent rows
+undergo the same live-window check before delivery. A resumed or missing window
+is durably skipped; an open match supplies its window facts without re-keying history.
+The at-risk cause/day cap counts accepted and disabled history from both carriers,
+using retained typed keys after terminal outbox payload compaction.
+Accepted or terminally skipped outbox notices are completed, including receipt-first
+reconciliation after an interrupted completion. Customer lifecycle confirmations
+keep their own event IDs and receipts.
 For address-change events, a host uses either this binding or an outbox handler, not both, because their idempotency keys differ and the customer would receive two mails.
 `run(limit)` accepts 1–100 and mounts no HTTP route or scheduler. Supply one
 exclusive autocommit connection per `withSession` callback, host-composed transactional delivery

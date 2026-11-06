@@ -963,9 +963,9 @@
       "maxFiles": 10
     },
     "maxPackedBytes": 2595000,
-    "maxUnpackedBytes": 12235878,
+    "maxUnpackedBytes": 12264692,
     "maxFiles": 3173,
-    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained. Lifecycle closure: unpacked +24,643 B for the measured 24,159 B crossing plus 2%. Integration pack with lifecycle closure: 11,995,958 B unpacked; cap is measured bytes times 1.02, rounded up.",
+    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained. Lifecycle closure: unpacked +24,643 B for the measured 24,159 B crossing plus 2%. Integration pack with lifecycle closure: 11,995,958 B unpacked; cap is measured bytes times 1.02, rounded up. Subscription notices: unpacked 12,024,208 B measured on this stack; cap set to measured × 1.02 = 12,264,692 B; growth is ported SQL, its mirror and API reports.",
     "baseline": {
       "version": "0.35.0",
       "packedBytes": 2097540
